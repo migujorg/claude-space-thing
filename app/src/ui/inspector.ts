@@ -243,7 +243,7 @@ export class Inspector {
       const st = m.bodyLoadState(id);
       if (st !== 'loaded') {
         for (const k of this.live.keys()) set(k, '—');
-        set('dist', st === 'error' ? 'no position: its ephemeris failed to load' : id < 0 ? 'loading the small-body catalogue…' : 'loading its moon system…');
+        set('dist', st === 'error' ? 'no position: its ephemeris failed to load' : id < 0 ? (m.sb.status === 'ready' ? 'propagating its orbit…' : 'loading the small-body catalogue…') : 'loading its moon system…');
         return;
       }
       for (const k of this.live.keys()) set(k, '—');

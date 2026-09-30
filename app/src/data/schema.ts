@@ -153,7 +153,11 @@ export interface OrientationHeader {
   notes?: string;
 }
 
-export type BodyKind = 'star' | 'planet' | 'dwarf-planet' | 'moon' | 'barycenter';
+/**
+ * 'small-body': asteroids and comets of the smallbodies/* products. bodies.json never contains it; the app makes
+ * a Body of this kind for a selected catalogue object (app/src/app/smallbodies.ts).
+ */
+export type BodyKind = 'star' | 'planet' | 'dwarf-planet' | 'moon' | 'barycenter' | 'small-body';
 
 export interface Body {
   id: number;
