@@ -10,14 +10,15 @@ clouds  VIIRS (NOAA-20) cloud properties of one UTC day, product CLDPROP_L2_VIIR
         (~13:30 local solar time) of that day.
 night   VIIRS (NOAA-20) Black Marble gap-filled, lunar-BRDF-corrected nighttime-light radiance VJ146A2 (Román et al.
         2018) of one day, decoded from its GIBS colour map (bins 0.1 nW cm⁻² sr⁻¹ wide below 5, up to 0.6 near the
-        top, open-ended above 38.2: those samples are lower bounds and counted in a censored-fraction channel). The header gives the factors that turn
-        Day/Night-Band radiance into X, Y, Z, S luminance for CIE lamp spectra (an assumption: the spectrum of the
-        light is not measured).
-albedo  Surface normal reflectance relative to its disk mean (XYZS), land from the MODIS MCD43A4 v061 nadir
-        BRDF-adjusted reflectance (Schaaf et al. 2002; Planetary Computer cloud-optimized copies), ocean from the
-        ESA Ocean Colour CCI v6.0 monthly remote-sensing reflectance (ρw = π Rrs). See `build_albedo`.
-water   Fraction of each texel that is open water with a water-leaving reflectance (vs land surface), so the renderer
-        can add Fresnel reflection and sun glint (not part of the albedo) where it applies.
+        top, open-ended above 38.2: those samples are lower bounds and counted in a censored-fraction channel). The
+        header gives the factors that turn Day/Night-Band radiance into X, Y, Z, S luminance for CIE lamp spectra
+        (an assumption: the spectrum of the light is not measured).
+albedo  Nadir reflectance factor relative to its disk mean (XYZS; the absolute disk means are in the header): land
+        from the MODIS MCD43A4 v061 nadir BRDF-adjusted reflectance (Schaaf et al. 2002; Planetary Computer
+        cloud-optimized copies), water from the ESA Ocean Colour CCI v6.0 monthly remote-sensing reflectance
+        (ρw = π Rrs). See `build_albedo`.
+water   Fraction of each texel that is water (ocean and inland water) and the sea-ice concentration, so the renderer
+        can add Fresnel reflection and sun glint (not part of the albedo) where they apply.
 """
 
 from __future__ import annotations
@@ -59,7 +60,8 @@ L_DNB = "VIIRS_NOAA20_GapFilled_BRDF_Corrected_DayNightBand_Radiance"
 FRAME = {"name": "IAU_EARTH (≈ ITRF93 at this resolution)",
          "sourceLatitude": "WGS84 geodetic (all sources); texel rows are resampled to planetocentric latitude "
                            "(nearest row, shift ≤ 0.19°)",
-         "note": "Longitudes are WGS84/ITRF, which the IAU_EARTH frame matches to far below one texel."}
+         "note": "Longitudes are WGS84/ITRF; the IAU_EARTH rotation model (no nutation, UT1 or polar motion) "
+                 "matches ITRF to ≲ 40″, a fraction of a level-4 texel (0.044°)."}
 
 SOLAR_SOURCE = "tsis1-hsrs-v2"   # registered by the light stage (photometry.solar)
 SRC_GIBS = "nasa-gibs"
@@ -373,6 +375,27 @@ SRC_MUR_ICE = "ghrsst-mur-sea-ice"
 
 
 SOUTH_LIMIT = -60.0     # south of this, MOD44W "water" also means "not mapped" (see WaterMask)
+ETOPO_DAP = ("https://www.ngdc.noaa.gov/thredds/dodsC/global/ETOPO2022/60s/60s_surface_elev_netcdf/"
+             "ETOPO_2022_v1_60s_N90W180_surface.nc")
+SRC_ETOPO = "noaa-etopo-2022"
+
+
+def etopo_south() -> tuple[np.ndarray, Path]:
+    """ETOPO 2022 60″ surface elevation (m, EGM2008) for 90°S-60°S, all longitudes: (1800, 21600), row 0 at
+    89.99°S (the file's latitude is ascending). Read as one OPeNDAP binary subset (DAP2 XDR, big-endian)."""
+    rows = int(round((SOUTH_LIMIT + 90.0) * 60))
+    url = f"{ETOPO_DAP}.dods?z.z[0:1:{rows - 1}][0:1:21599]"
+    path = fetch(url, f"{SUBDIR}/etopo", f"etopo2022-60s-surface-south{int(-SOUTH_LIMIT)}.dods", timeout=900,
+                 validate=lambda q: b"Data:\n" in q.read_bytes()[:2000])
+    raw = path.read_bytes()
+    i = raw.index(b"Data:\n")
+    if f"z[lat = {rows}][lon = 21600]".encode() not in raw[:i]:
+        raise ValueError(f"{path.name}: unexpected DAP structure {raw[:i]!r}")
+    n = np.frombuffer(raw, ">u4", 2, i + 6)
+    if n[0] != rows * 21600:
+        raise ValueError(f"{path.name}: {n[0]} values, expected {rows * 21600}")
+    z = np.frombuffer(raw, ">f4", rows * 21600, i + 14).astype(np.float32).reshape(rows, 21600)
+    return z, path
 
 
 class WaterMask:
@@ -381,8 +404,8 @@ class WaterMask:
 
     North of 60°S: MOD44W v6 (GIBS). Its colour map draws the product's no-data value (253) in the water colour
     (`sourceValue="1,253"`), and MOD44W does not map Antarctica, so the whole continent comes out as water. South
-    of 60°S the mask is therefore taken from the GHRSST MUR analysis instead: a sample is water where MUR has a
-    sea-ice concentration (MUR covers every ocean cell, 0 for open water, and has no value on land or ice shelves).
+    of 60°S the mask is therefore taken from ETOPO 2022 instead: a sample is water where the 60″ surface
+    elevation (ice surface on land and on the floating ice shelves, bathymetry at sea) is ≤ 0 m.
     """
 
     def __init__(self):
@@ -400,8 +423,11 @@ class WaterMask:
         ice = np.full((h, w), np.nan, np.float32)
         self.files, self.ice_files = {}, {}
         self.unmatched = 0
-        agree = {"mod44wWaterWithMur": 0, "mod44wWater": 0, "mod44wLandWithMur": 0, "mod44wLand": 0}
+        agree = {"mod44wLandWithMur": 0, "mod44wLand": 0}
         lat_s = 90.0 - (np.arange(self.sh) + 0.5) * (180.0 / self.sh)    # geodetic latitude of sample rows
+        lon_s = -180.0 + (np.arange(self.sw) + 0.5) * (360.0 / self.sw)
+        etopo, self.etopo_path = etopo_south()
+        et_col = np.clip(np.floor((lon_s + 180.0) * 60).astype(np.int64), 0, 21599)
         for (bbox, bi, bj, p), (_, _, _, q) in zip(_fetch_blocks(L_WATER, self.day),
                                                     _fetch_blocks(L_SEAICE, self.ice_day)):
             rgba = gb.read_rgba(p)
@@ -417,12 +443,14 @@ class WaterMask:
             discard(q)
             r0, c0 = bi * rgba.shape[0], bj * rgba.shape[1]
             north = (lat_s[r0:r0 + rgba.shape[0]] >= SOUTH_LIMIT)[:, None]
-            mur = np.isfinite(val)
-            agree["mod44wWaterWithMur"] += int((wat & mur & north).sum())
-            agree["mod44wWater"] += int((wat & north).sum())
+            mur = np.isfinite(val)       # MUR has a sea-ice value (only near the ice, not a full ocean mask)
             agree["mod44wLandWithMur"] += int((~wat & mur & north).sum())
             agree["mod44wLand"] += int((~wat & north).sum())
-            wat = np.where(north, wat, mur)
+            south = ~north[:, 0]
+            if south.any():
+                et_row = np.clip(np.floor((lat_s[r0:r0 + rgba.shape[0]][south] + 90.0) * 60).astype(np.int64), 0,
+                                 etopo.shape[0] - 1)
+                wat[south] = etopo[et_row][:, et_col[c0:c0 + rgba.shape[1]]] <= 0
             self.bits[r0:r0 + rgba.shape[0], c0 // 8:(c0 + rgba.shape[1]) // 8] = np.packbits(wat, axis=1)
             rs = slice(r0 // SAMPLES, (r0 + rgba.shape[0]) // SAMPLES)
             cs = slice(c0 // SAMPLES, (c0 + rgba.shape[1]) // SAMPLES)
@@ -435,10 +463,9 @@ class WaterMask:
         self.fraction = frac[rows]
         self.ice = ice[rows]
         self.agreement = {
-            "mod44wWaterSamplesWithMurValue": round(agree["mod44wWaterWithMur"] / max(agree["mod44wWater"], 1), 4),
-            "mod44wLandSamplesWithMurValue": round(agree["mod44wLandWithMur"] / max(agree["mod44wLand"], 1), 4),
-            "what": "north of 60°S, share of MOD44W water / land samples where the MUR analysis has a sea-ice value "
-                    "(MUR covers the ocean, not most lakes, so the first is below 1 by the inland water)"}
+            "mod44wLandSamplesWithSeaIceValue": round(agree["mod44wLandWithMur"] / max(agree["mod44wLand"], 1), 5),
+            "what": "north of 60°S, share of MOD44W land samples where the MUR analysis has a sea-ice value (a "
+                    "coastline mismatch between the two products; should be ≪ 1)"}
 
     def at(self, lat_g_deg: np.ndarray, lon_deg: np.ndarray) -> np.ndarray:
         """Water flag (bool) at geodetic latitude / east longitude points."""
@@ -463,21 +490,30 @@ def build_water(ctx: BuildContext, mask: WaterMask) -> dict:
               f"opaque {WATER_RGB}; MOD44W does not map Antarctica, so it is used only north of 60°S. Blocks deleted "
               "after decoding.")
     sl.register_dataset(
+        ctx, SRC_ETOPO, "NOAA ETOPO 2022 global relief, 60 arc-second surface elevation (90°S-60°S subset)",
+        "NOAA National Centers for Environmental Information (2022). ETOPO 2022 15 Arc-Second Global Relief Model. "
+        "doi:10.25921/fd45-gt74. 60 arc-second surface-elevation version (ice surface over Antarctica and Greenland, "
+        "bathymetry at sea; heights relative to EGM2008).",
+        ETOPO_DAP, {mask.etopo_path.name: record(mask.etopo_path)}, version="ETOPO 2022 v1",
+        license="public domain (NOAA)",
+        notes="OPeNDAP binary subset of rows 90°S-60°S, all longitudes; used only as the land/water mask south of "
+              "60°S (water = elevation ≤ 0 m).")
+    sl.register_dataset(
         ctx, SRC_MUR_ICE, f"GHRSST MUR L4 sea-ice concentration, {day}, via GIBS",
         "JPL MUR MEaSUREs Project (2015). GHRSST Level 4 MUR Global Foundation Sea Surface Temperature Analysis "
         "(v4.1), sea_ice_fraction variable (from EUMETSAT OSI SAF passive-microwave sea-ice concentration). PO.DAAC, "
         "doi:10.5067/GHGMR-4FJ04. GIBS layer " + L_SEAICE + ".",
         gb.WMS, files, version=f"MUR v4.1, GIBS day {day}", license="NASA data policy (no restrictions)",
-        notes=f"Decoded with {mask.ice_cm_url} (1 % bins); blocks deleted. Also the land/water mask south of 60°S "
-              "(ocean = cells with a MUR value).")
+        notes=f"Decoded with {mask.ice_cm_url} (1 % bins); blocks deleted. The analysis has values only near the "
+              "sea ice (none on land or over the open ocean far from ice).")
     spec = sl.LayerSpec(
         naif=NAIF, body=NAME, layer="water", kind="surface-water", fmt="f16", nodata="nan",
         channels=["waterFraction", "seaIceFraction"],
-        frame=FRAME, sources=[SRC_MOD44W, SRC_MUR_ICE, gibs_id],
-        brightness=sl.Provenance("measured", [SRC_MOD44W, SRC_MUR_ICE, gibs_id],
+        frame=FRAME, sources=[SRC_MOD44W, SRC_ETOPO, SRC_MUR_ICE, gibs_id],
+        brightness=sl.Provenance("measured", [SRC_MOD44W, SRC_ETOPO, SRC_MUR_ICE, gibs_id],
                                  f"waterFraction: share of the texel's {SAMPLES * SAMPLES} samples that are water "
-                                 "(ocean and inland water): MOD44W 250 m north of 60°S, the MUR ocean mask south of it "
-                                 "(MOD44W does not map Antarctica). seaIceFraction: mean MUR sea-ice concentration "
+                                 "(ocean and inland water): MOD44W 250 m north of 60°S, ETOPO 2022 surface elevation "
+                                 "≤ 0 m south of it (MOD44W does not map Antarctica; ice shelves count as land). seaIceFraction: mean MUR sea-ice concentration "
                                  "(0-1) of the texel's samples that have one (NaN where none, e.g. land).",
                                  "MOD44W is from 2000-2015 MODIS/SRTM data; coastlines and reservoirs that changed "
                                  "since are not updated. Sea-ice concentration from passive microwave (~10-25 km "
@@ -488,7 +524,8 @@ def build_water(ctx: BuildContext, mask: WaterMask) -> dict:
                           "changes on years to decades"},
         constants={"channels": {
             "waterFraction": "fraction of the texel that is open or ice-covered water (0-1)",
-            "seaIceFraction": "sea-ice concentration (0-1) over the texel's water; NaN = no sea-ice analysis"},
+            "seaIceFraction": "sea-ice concentration (0-1) over the texel's water; NaN = no value in the analysis "
+                              "(land, and open ocean away from the ice: no ice)"},
             "samplesPerTexel": SAMPLES * SAMPLES, "seaIceDate": day, "waterMaskYear": mask.day[:4]},
         diagnostics={"unmatchedColours": unmatched, "maskAgreement": mask.agreement,
                      "waterAreaFraction": round(st.area_mean(mask.fraction, LEVEL), 5),
@@ -788,15 +825,15 @@ def build_albedo(ctx: BuildContext, mask: WaterMask) -> dict:
     cie_src = ["cie-1931-2deg-cmf", "cie-1951-scotopic"]
     spec = sl.LayerSpec(
         naif=NAIF, body=NAME, layer="albedo", kind="relative-reflectance", fmt="f16", channels=list(sc.CHANNELS),
-        frame=FRAME, sources=[SRC_MCD43, SRC_OCCCI, SRC_MOD44W, pc_id, solar_src, *cie_src],
+        frame=FRAME, sources=[SRC_MCD43, SRC_OCCCI, SRC_MOD44W, SRC_ETOPO, pc_id, solar_src, *cie_src],
         brightness=sl.Provenance(
-            "measured", [SRC_MCD43, SRC_OCCCI, SRC_MOD44W],
+            "measured", [SRC_MCD43, SRC_OCCCI, SRC_MOD44W, SRC_ETOPO],
             "Land: MODIS nadir BRDF-adjusted reflectance (reflectance factor for a nadir view with the Sun at local "
             "solar noon, from the 16-day multi-angle BRDF inversion; atmospherically corrected), box-averaged from "
             "926 m pixels. Water: water-leaving reflectance ρw = π·Rrs from the OC-CCI monthly composite (nearest "
             "4 km cell); where it has no value, the MODIS NBAR of water pixels (inland and coastal water). A texel "
-            "mixes its land and water parts by the MOD44W water fraction; if one part is unknown, the texel is the "
-            "known part. Channels are absolute reflectances ∫E☉·obs_c·r dλ / ∫E☉·obs_c dλ divided by their disk "
+            "mixes its land and water parts by the water fraction of the water layer; if one part is unknown, the "
+            "texel is the known part. Channels are absolute reflectances ∫E☉·obs_c·r dλ / ∫E☉·obs_c dλ divided by their disk "
             "means (normalization.absoluteDiskMean).",
             "MCD43A4 NBAR: a few % (relative), more where only a magnitude inversion was possible; ocean ρw: tens "
             "of % in the red and in turbid or coastal water (atmospheric-correction residuals)"),

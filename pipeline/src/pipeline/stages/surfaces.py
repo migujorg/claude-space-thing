@@ -10,6 +10,7 @@ Environment:
   SURFACES_BODIES=301,599   rebuild only these bodies (others' products are kept in the manifest)
   SURFACES_KEEP_CACHE=1     keep data/cache/surfaces (reduced intermediates) for fast re-runs; by default it is
                             deleted when the stage finishes (large raw mosaics are deleted right after reduction).
+  SURFACES_EARTH_LAYERS=clouds,night   rebuild only these Earth layers (albedo, water, clouds, night)
 """
 
 from __future__ import annotations
