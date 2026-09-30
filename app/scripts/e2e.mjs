@@ -10,7 +10,8 @@
 //   npm run e2e -- --accept              render, then make this run the new baseline (all or --only scenes)
 //   npm run e2e -- --accept-last         make the last run (app/shots/e2e/report.json) the baseline, no rendering
 //   npm run e2e -- --no-compare          render and report only
-//   options: --jobs 1|2  --timeout <s per scene>  --base http://localhost:5173 (use a running server)
+//   options: --jobs 1|2  --timeout <s per scene, default 600>  --retries <n, default 1: re-render a scene that timed
+//            out, alone>  --base http://localhost:5173 (use a running server)
 
 import { chromium } from 'playwright';
 import { createServer } from 'vite';
@@ -36,7 +37,8 @@ const only = opt('only')?.split(',').filter(Boolean);
 const accept = flag('accept');
 const acceptLast = flag('accept-last');
 const jobs = Math.max(1, Math.min(2, Number(opt('jobs') ?? 2)));
-const timeoutMs = 1000 * Number(opt('timeout') ?? 420);
+const timeoutMs = 1000 * Number(opt('timeout') ?? 600);
+const retries = Math.max(0, Number(opt('retries') ?? 1));
 
 const suite = JSON.parse(readFileSync(resolve(E2E, 'scenes.json'), 'utf8'));
 const scenes = suite.scenes.filter((s) => !only || only.includes(s.id));
@@ -188,6 +190,17 @@ await Promise.all(
     }
   }),
 );
+// A timeout usually means a loaded machine (SwiftShader shares the CPU): try those scenes again, one at a time.
+for (let attempt = 0; attempt < retries; attempt++) {
+  for (let i = 0; i < results.length; i++) {
+    if (!/Timeout/i.test(results[i].error ?? '')) continue;
+    process.stdout.write(`… ${scenes[i].id} (again, alone, after: ${results[i].error.slice(0, 80)})\n`);
+    const again = await renderScene(scenes[i]);
+    again.retried = attempt + 1;
+    results[i] = again;
+    process.stdout.write(`${again.error ? '✗' : '✓'} ${scenes[i].id} (${((again.readyMs ?? 0) / 1000).toFixed(0)} s)${again.error ? `: ${again.error}` : ''}\n`);
+  }
+}
 await browser.close();
 await server?.close();
 

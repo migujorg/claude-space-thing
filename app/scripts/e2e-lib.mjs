@@ -214,6 +214,7 @@ export function compareScene(cur, base, tolerance = {}) {
   const tol = { ...DEFAULT_TOLERANCE, ...tolerance };
   const failures = [], notes = [];
   if (cur.error) failures.push(`did not render: ${cur.error}`);
+  if (!cur.stats) return { pass: false, failures: failures.length ? failures : ['no stats (the page did not report its state)'], notes };
   if (!base) return { pass: failures.length === 0, failures, notes: ['no baseline for this scene'] };
   const s = cur.stats, b = base.stats;
   const logRatio = (key) => {

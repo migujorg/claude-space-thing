@@ -105,6 +105,8 @@ describe('scene suite helpers', () => {
     expect(fails(scene(debug({ warnings: ['Sun: limb darkening unknown'] }), g.map((x, i) => (i === 50 ? 0.9 : x))))).toMatch(/largest \|ΔL\| 0\.600.*cell 2,3/);
     expect(fails(scene(debug({ warnings: ['Sun: limb darkening unknown'] }), g, { consoleErrors: ['boom'] }))).toMatch(/console errors 0 → 1/);
     expect(lib.compareScene({ ...scene(debug(), g), error: 'timeout' }, null).failures).toEqual(['did not render: timeout']);
+    // A scene that timed out has no stats: it fails without comparing them.
+    expect(lib.compareScene({ error: 'Timeout 600000ms exceeded' } as unknown as SceneResult, base)).toEqual({ pass: false, failures: ['did not render: Timeout 600000ms exceeded'], notes: [] });
     expect(lib.compareScene(scene(debug(), g), null)).toMatchObject({ pass: true, notes: ['no baseline for this scene'] });
     // Per-scene tolerance overrides.
     expect(lib.compareScene(scene(debug({ adapt: 300, warnings: ['Sun: limb darkening unknown'] }), g), base, { adaptationLog10: 0.5 }).pass).toBe(true);

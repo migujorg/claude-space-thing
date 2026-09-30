@@ -49,7 +49,7 @@ Each scene is compared with `baseline/stats.json` and `baseline/<id>.png`. The d
 
 This check catches blank frames and gross regressions such as a missing body, a lost texture or a wrong exposure. It is not a pixel diff.
 
-A scene that fails to render always fails. Examples: a `__frameError`, or a timeout waiting for `__frameReady`.
+A scene that fails to render always fails. Examples: a `__frameError`, or a timeout waiting for `__frameReady`. SwiftShader shares the CPU, so on a busy machine a scene can time out: such a scene is rendered once more, on its own, before it counts as failed (`--retries 0` turns that off).
 
 ## Running
 
@@ -58,7 +58,7 @@ cd app
 npm run e2e                                   # all scenes, compared with the baseline; exit 1 on a regression
 npm run e2e -- --only earth-day,saturn-rings  # some scenes
 npm run e2e -- --no-compare                   # render and report only
-npm run e2e -- --jobs 1 --timeout 600         # one scene at a time, 10 min per scene
+npm run e2e -- --jobs 1 --timeout 900         # one scene at a time, 15 min per scene (default 2 and 600 s)
 npm run e2e -- --base http://localhost:5173   # use a running dev server
 ```
 
