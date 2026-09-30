@@ -966,6 +966,10 @@ export const PYRAMID_BLUR_SIGMA = 1;
 // Adaptation measurement: log-average over the foveal field of the retinal image (excluding point cores;
 // Ward Larson, Rushmeier & Piatko 1997) and the corneal flux ∫L dΩ, reduced on the GPU.
 // ─────────────────────────────────────────────────────────────────────────────────────────────
+/** Pixels per side summed by one adaptation invocation; a workgroup (8 × 8 invocations) covers ADAPT_TILE_PX². */
+export const ADAPT_BLOCK = 8;
+export const ADAPT_TILE_PX = 8 * ADAPT_BLOCK;
+
 export const ADAPT_SHADER = COMMON + /* wgsl */ `
 @group(0) @binding(0) var<uniform> F: Frame;
 @group(0) @binding(1) var<uniform> E: Eye;
@@ -976,12 +980,10 @@ export const ADAPT_SHADER = COMMON + /* wgsl */ `
 ${SRCS(0, 6)}
 ${VEIL}
 
-var<workgroup> sh: array<vec4f, 256>;
-
-@compute @workgroup_size(16, 16) fn tiles(@builtin(global_invocation_id) g: vec3u, @builtin(local_invocation_index) li: u32, @builtin(workgroup_id) wg: vec3u, @builtin(num_workgroups) nw: vec3u) {
-  let p = vec2i(g.xy);
+/** One pixel's contribution: (log cone · w, log rod · w, w, flux) (eye-model.md §2). */
+fn adaptSample(p: vec2i) -> vec4f {
   var acc = vec4f(0.0);
-  if (f32(p.x) < F.size.x && f32(p.y) < F.size.y) {
+  {
     let ndc = ndcFromFrag(F, vec2f(p) + 0.5);
     let dir = normalize(worldDirNdc(F, ndc));
     let om = pixelSolidAngle(F, ndc);
@@ -1003,13 +1005,22 @@ var<workgroup> sh: array<vec4f, 256>;
     }
     acc.w = (ext.y + pt.y) * om;
   }
-  sh[li] = acc;
-  workgroupBarrier();
-  for (var s = 128u; s > 0u; s = s >> 1u) {
-    if (li < s) { sh[li] += sh[li + s]; }
-    workgroupBarrier();
+  return acc;
+}
+
+// Each invocation sums an ADAPT_BLOCK² block of pixels into its own partial: no workgroup barriers or
+// shared memory (a tree reduction's barriers cost more than all the per-pixel work on CPU-emulated
+// GPUs), and the partials are few enough for the single-workgroup reduction below.
+@compute @workgroup_size(8, 8) fn tiles(@builtin(global_invocation_id) g: vec3u, @builtin(num_workgroups) nw: vec3u) {
+  var acc = vec4f(0.0);
+  let o = vec2i(g.xy) * ${ADAPT_BLOCK};
+  for (var j = 0; j < ${ADAPT_BLOCK}; j++) {
+    for (var i = 0; i < ${ADAPT_BLOCK}; i++) {
+      let p = o + vec2i(i, j);
+      if (f32(p.x) < F.size.x && f32(p.y) < F.size.y) { acc += adaptSample(p); }
+    }
   }
-  if (li == 0u) { partials[wg.x + wg.y * nw.x] = sh[0]; }
+  partials[g.x + g.y * nw.x * 8u] = acc;
 }
 `;
 

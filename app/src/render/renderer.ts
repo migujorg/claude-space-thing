@@ -17,7 +17,7 @@
 
 import type { RendererStats, SceneSnapshot, StarCatalog } from './scene';
 import {
-  ADAPT_REDUCE_SHADER, ADAPT_SHADER, BODY_OVERLAY_SHADER, BODY_SHADER, CLAMP_ARGS_SHADER, COMPOSITE_SHADER,
+  ADAPT_REDUCE_SHADER, ADAPT_SHADER, ADAPT_TILE_PX, BODY_OVERLAY_SHADER, BODY_SHADER, CLAMP_ARGS_SHADER, COMPOSITE_SHADER,
   CULL_SHADER, LINE_SHADER, MASK_HATCH_SHADER, OVERFLOW_SHADER, POINT_SHADER, PYRAMID_BLUR_SIGMA, PYRAMID_SHADER,
   RING_SHADER, SUN_SHADER,
 } from './shaders';
@@ -374,7 +374,7 @@ export class Renderer {
       w = Math.max(1, Math.ceil(w / 2));
       h = Math.max(1, Math.ceil(h / 2));
     }
-    const tilesX = Math.ceil(W / 16), tilesY = Math.ceil(H / 16);
+    const tilesX = Math.ceil(W / ADAPT_TILE_PX), tilesY = Math.ceil(H / ADAPT_TILE_PX);
     this.targets = {
       W, H,
       ext: tex(W, H, this.hdrFormat, RT, 'EXT'),
@@ -387,7 +387,8 @@ export class Renderer {
       levels,
       zero: tex(1, 1, 'rgba32float', ST, 'zero'),
       zero2: tex(1, 1, 'rgba32float', ST, 'zero2'),
-      partials: d.createBuffer({ size: tilesX * tilesY * 16, usage: GPUBufferUsage.STORAGE }),
+      // One partial per adaptation invocation (8 × 8 per workgroup).
+      partials: d.createBuffer({ size: tilesX * tilesY * 64 * 16, usage: GPUBufferUsage.STORAGE }),
       tilesX, tilesY,
     };
     this.glareCache.key = '';
@@ -705,7 +706,7 @@ export class Renderer {
         ],
       }));
       pass.dispatchWorkgroups(t.tilesX, t.tilesY);
-      d.queue.writeBuffer(this.reduceUB, 0, new Uint32Array([t.tilesX * t.tilesY, 0, 0, 0]));
+      d.queue.writeBuffer(this.reduceUB, 0, new Uint32Array([t.tilesX * t.tilesY * 64, 0, 0, 0]));
       pass.setPipeline(this.reducePipe);
       pass.setBindGroup(0, d.createBindGroup({
         layout: this.reducePipe.getBindGroupLayout(0),
@@ -1104,13 +1105,17 @@ export class Renderer {
     for (let k = 1; k < L.length; k++) {
       run(this.pyr.down, L[k].w, L[k].h, [{ binding: 0, resource: L[k - 1].lvl.createView() }, { binding: 2, resource: L[k].lvl.createView() }]);
     }
+    // A level the kernel fit gives no weight (often the finest ones: narrow fields, high resolutions) needs
+    // no blur, and its accumulation reads a zero texture instead: the costliest full-resolution passes.
+    const used = (k: number) => (this.glareCache.weights[k] ?? 0) > 0;
     for (let k = 0; k < L.length; k++) {
+      if (!used(k)) continue;
       run(this.pyr.blurH, L[k].w, L[k].h, [{ binding: 0, resource: L[k].lvl.createView() }, { binding: 2, resource: L[k].tmp.createView() }]);
       run(this.pyr.blurV, L[k].w, L[k].h, [{ binding: 0, resource: L[k].tmp.createView() }, { binding: 2, resource: L[k].blur.createView() }]);
     }
     for (let k = L.length - 1; k >= 0; k--) {
       run(this.pyr.accum, L[k].w, L[k].h, [
-        { binding: 0, resource: L[k].blur.createView() },
+        { binding: 0, resource: (used(k) ? L[k].blur : t.zero).createView() },
         { binding: 1, resource: (k + 1 < L.length ? L[k + 1][out] : t.zero).createView() },
         { binding: 2, resource: L[k][out].createView() },
         { binding: 3, resource: { buffer: out === 'acc' ? L[k].ub : L[k].ubR } },
