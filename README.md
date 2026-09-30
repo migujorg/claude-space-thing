@@ -15,7 +15,7 @@ cd app && npm install && npm run dev
 # open http://localhost:5173
 ```
 
-The time window of the data is centered on the moment you run the pipeline; re-run it to move "now".
+The time window of the data is centered on the moment of the first build and stored in `data/cache/window.json`, so later partial builds (`--only`) stay on it; run `uv run python -m pipeline build --new-window` to recenter it on "now".
 
 ## Layout
 
