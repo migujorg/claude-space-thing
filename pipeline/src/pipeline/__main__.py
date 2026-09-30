@@ -20,7 +20,7 @@ from .paths import CACHE
 from .schema import BuildContext
 
 # Order matters: later stages may read earlier stages' outputs.
-STAGES = ["time", "ephemeris", "light", "surfaces", "bodies", "smallbodies", "stars"]
+STAGES = ["time", "ephemeris", "light", "surfaces", "bodies", "smallbodies", "sbphotometry", "stars"]
 
 J2000_UNIX = 946727935.816  # 2000-01-01T12:00:00 TDB expressed in Unix seconds (UTC), for window selection only
 WINDOW_FILE = CACHE / "window.json"

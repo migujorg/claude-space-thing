@@ -1,0 +1,555 @@
+{
+ "generated": "2026-09-30T12:33:24+00:00",
+ "observer": "geocentre (500@399), apparent (light-time corrected) geometry, airless",
+ "quantities": "APmag (9), r (19), Delta (20), Sun-Target-Observer phase angle (24)",
+ "objects": [
+  {
+   "spkid": 20000001,
+   "coreRow": 4077,
+   "H": 3.3399999141693115,
+   "G": 0.11999999731779099,
+   "gLabel": "measured",
+   "horizonsUrl": "https://ssd.jpl.nasa.gov/api/horizons.api?format=text&COMMAND=%27DES%3D20000001%3B%27&OBJ_DATA=%27YES%27&MAKE_EPHEM=%27YES%27&EPHEM_TYPE=%27OBSERVER%27&CENTER=%27500%40399%27&TLIST=%272460827.5%27%2C%272461313.5%27%2C%272461740.5%27&TLIST_TYPE=%27JD%27&TIME_TYPE=%27UT%27&QUANTITIES=%279%2C19%2C20%2C24%27&CSV_FORMAT=%27YES%27&ANG_FORMAT=%27DEG%27",
+   "horizonsSha256": "32f835b7a2e681246258b5822f201399386bbf0a91197b5a3c9bfc2db17b3641",
+   "target": "1 Ceres (A801 AA)",
+   "horizonsH": 3.34,
+   "horizonsG": 0.12,
+   "rows": [
+    {
+     "dateUt": "2025-Jun-01 00:00:00.000",
+     "apmag": 9.239,
+     "rAu": 2.979675543615,
+     "deltaAu": 3.23568034671798,
+     "phaseDeg": 18.1812
+    },
+    {
+     "dateUt": "2026-Sep-30 00:00:00.000",
+     "apmag": 8.679,
+     "rAu": 2.67422290282,
+     "deltaAu": 2.64044095640398,
+     "phaseDeg": 21.7165
+    },
+    {
+     "dateUt": "2027-Dec-01 00:00:00.000",
+     "apmag": 8.805,
+     "rAu": 2.582033859737,
+     "deltaAu": 3.19501968701352,
+     "phaseDeg": 15.4586
+    }
+   ]
+  },
+  {
+   "spkid": 20000004,
+   "coreRow": 4080,
+   "H": 3.25,
+   "G": 0.3199999928474426,
+   "gLabel": "measured",
+   "horizonsUrl": "https://ssd.jpl.nasa.gov/api/horizons.api?format=text&COMMAND=%27DES%3D20000004%3B%27&OBJ_DATA=%27YES%27&MAKE_EPHEM=%27YES%27&EPHEM_TYPE=%27OBSERVER%27&CENTER=%27500%40399%27&TLIST=%272460827.5%27%2C%272461313.5%27%2C%272461740.5%27&TLIST_TYPE=%27JD%27&TIME_TYPE=%27UT%27&QUANTITIES=%279%2C19%2C20%2C24%27&CSV_FORMAT=%27YES%27&ANG_FORMAT=%27DEG%27",
+   "horizonsSha256": "24bceab4fb7dc67a52d29841c2709bf38553ecc4539ae32bf36f917a25184262",
+   "target": "4 Vesta (A807 FA)",
+   "horizonsH": 3.25,
+   "horizonsG": 0.32,
+   "rows": [
+    {
+     "dateUt": "2025-Jun-01 00:00:00.000",
+     "apmag": 6.118,
+     "rAu": 2.164343380094,
+     "deltaAu": 1.25928782930916,
+     "phaseDeg": 15.9091
+    },
+    {
+     "dateUt": "2026-Sep-30 00:00:00.000",
+     "apmag": 6.52,
+     "rAu": 2.456435888047,
+     "deltaAu": 1.49169796041728,
+     "phaseDeg": 8.0728
+    },
+    {
+     "dateUt": "2027-Dec-01 00:00:00.000",
+     "apmag": 7.584,
+     "rAu": 2.513117160631,
+     "deltaAu": 1.98802713217575,
+     "phaseDeg": 21.5315
+    }
+   ]
+  },
+  {
+   "spkid": 20000433,
+   "coreRow": 4509,
+   "H": 10.399999618530273,
+   "G": 0.46000000834465027,
+   "gLabel": "measured",
+   "horizonsUrl": "https://ssd.jpl.nasa.gov/api/horizons.api?format=text&COMMAND=%27DES%3D20000433%3B%27&OBJ_DATA=%27YES%27&MAKE_EPHEM=%27YES%27&EPHEM_TYPE=%27OBSERVER%27&CENTER=%27500%40399%27&TLIST=%272460827.5%27%2C%272461313.5%27%2C%272461740.5%27&TLIST_TYPE=%27JD%27&TIME_TYPE=%27UT%27&QUANTITIES=%279%2C19%2C20%2C24%27&CSV_FORMAT=%27YES%27&ANG_FORMAT=%27DEG%27",
+   "horizonsSha256": "400206dbdcf6f83a6098fb3eda12c6f152311347a30c0029674b6b942a4bed26",
+   "target": "433 Eros (A898 PA)",
+   "horizonsH": 10.4,
+   "horizonsG": 0.46,
+   "rows": [
+    {
+     "dateUt": "2025-Jun-01 00:00:00.000",
+     "apmag": 13.817,
+     "rAu": 1.74557456472,
+     "deltaAu": 1.77324335290432,
+     "phaseDeg": 33.4854
+    },
+    {
+     "dateUt": "2026-Sep-30 00:00:00.000",
+     "apmag": 13.988,
+     "rAu": 1.687284903052,
+     "deltaAu": 2.09874161762457,
+     "phaseDeg": 28.0841
+    },
+    {
+     "dateUt": "2027-Dec-01 00:00:00.000",
+     "apmag": 12.3,
+     "rAu": 1.135132538191,
+     "deltaAu": 1.1082954666127,
+     "phaseDeg": 52.145
+    }
+   ]
+  },
+  {
+   "spkid": 20099942,
+   "coreRow": 104018,
+   "H": 19.09000015258789,
+   "G": 0.23999999463558197,
+   "gLabel": "measured",
+   "horizonsUrl": "https://ssd.jpl.nasa.gov/api/horizons.api?format=text&COMMAND=%27DES%3D20099942%3B%27&OBJ_DATA=%27YES%27&MAKE_EPHEM=%27YES%27&EPHEM_TYPE=%27OBSERVER%27&CENTER=%27500%40399%27&TLIST=%272460827.5%27%2C%272461313.5%27%2C%272461740.5%27&TLIST_TYPE=%27JD%27&TIME_TYPE=%27UT%27&QUANTITIES=%279%2C19%2C20%2C24%27&CSV_FORMAT=%27YES%27&ANG_FORMAT=%27DEG%27",
+   "horizonsSha256": "552ff18e17d7d538fc2398eaf491d668fb32b20b029a98c7f9935eae52f2db63",
+   "target": "99942 Apophis (2004 MN4)",
+   "horizonsH": 19.09,
+   "horizonsG": 0.24,
+   "rows": [
+    {
+     "dateUt": "2025-Jun-01 00:00:00.000",
+     "apmag": 21.444,
+     "rAu": 1.03294515826,
+     "deltaAu": 1.93992268819593,
+     "phaseDeg": 18.4288
+    },
+    {
+     "dateUt": "2026-Sep-30 00:00:00.000",
+     "apmag": 21.042,
+     "rAu": 0.859683972713,
+     "deltaAu": 1.57847809489883,
+     "phaseDeg": 34.8413
+    },
+    {
+     "dateUt": "2027-Dec-01 00:00:00.000",
+     "apmag": 20.019,
+     "rAu": 0.851160565747,
+     "deltaAu": 0.35962775296838,
+     "phaseDeg": 101.1922
+    }
+   ]
+  },
+  {
+   "spkid": 20001000,
+   "coreRow": 5076,
+   "H": 10.630000114440918,
+   "G": 0.15000000596046448,
+   "gLabel": "estimated",
+   "horizonsUrl": "https://ssd.jpl.nasa.gov/api/horizons.api?format=text&COMMAND=%27DES%3D20001000%3B%27&OBJ_DATA=%27YES%27&MAKE_EPHEM=%27YES%27&EPHEM_TYPE=%27OBSERVER%27&CENTER=%27500%40399%27&TLIST=%272460827.5%27%2C%272461313.5%27%2C%272461740.5%27&TLIST_TYPE=%27JD%27&TIME_TYPE=%27UT%27&QUANTITIES=%279%2C19%2C20%2C24%27&CSV_FORMAT=%27YES%27&ANG_FORMAT=%27DEG%27",
+   "horizonsSha256": "eaf046805b1394627ec5db342e8bd6ba7e9d1f899d38ae3de5276728b99bb758",
+   "target": "1000 Piazzia (A923 PF)",
+   "horizonsH": 10.63,
+   "horizonsG": 0.15,
+   "rows": [
+    {
+     "dateUt": "2025-Jun-01 00:00:00.000",
+     "apmag": 14.531,
+     "rAu": 2.419474946833,
+     "deltaAu": 1.61817396927776,
+     "phaseDeg": 18.0724
+    },
+    {
+     "dateUt": "2026-Sep-30 00:00:00.000",
+     "apmag": 15.897,
+     "rAu": 3.525958264529,
+     "deltaAu": 2.57697497159401,
+     "phaseDeg": 6.0953
+    },
+    {
+     "dateUt": "2027-Dec-01 00:00:00.000",
+     "apmag": 16.583,
+     "rAu": 3.989408533113,
+     "deltaAu": 3.08949973724395,
+     "phaseDeg": 6.5872
+    }
+   ]
+  },
+  {
+   "spkid": 20010000,
+   "coreRow": 14076,
+   "H": 15.239999771118164,
+   "G": 0.15000000596046448,
+   "gLabel": "estimated",
+   "horizonsUrl": "https://ssd.jpl.nasa.gov/api/horizons.api?format=text&COMMAND=%27DES%3D20010000%3B%27&OBJ_DATA=%27YES%27&MAKE_EPHEM=%27YES%27&EPHEM_TYPE=%27OBSERVER%27&CENTER=%27500%40399%27&TLIST=%272460827.5%27%2C%272461313.5%27%2C%272461740.5%27&TLIST_TYPE=%27JD%27&TIME_TYPE=%27UT%27&QUANTITIES=%279%2C19%2C20%2C24%27&CSV_FORMAT=%27YES%27&ANG_FORMAT=%27DEG%27",
+   "horizonsSha256": "365679ff84858cda519b36de2318e2a18da89d812be27ef395d4a89ced1cac03",
+   "target": "10000 Myriostos (1951 SY)",
+   "horizonsH": 15.24,
+   "horizonsG": 0.15,
+   "rows": [
+    {
+     "dateUt": "2025-Jun-01 00:00:00.000",
+     "apmag": 19.823,
+     "rAu": 2.934280215647,
+     "deltaAu": 2.04106895323514,
+     "phaseDeg": 11.2497
+    },
+    {
+     "dateUt": "2026-Sep-30 00:00:00.000",
+     "apmag": 18.137,
+     "rAu": 1.849115215617,
+     "deltaAu": 1.15085216055927,
+     "phaseDeg": 28.5035
+    },
+    {
+     "dateUt": "2027-Dec-01 00:00:00.000",
+     "apmag": 21.121,
+     "rAu": 3.087777316362,
+     "deltaAu": 3.15247439606522,
+     "phaseDeg": 18.1498
+    }
+   ]
+  }
+ ],
+ "vSun": -26.76,
+ "hgChecks": [
+  {
+   "alphaDeg": 0.0,
+   "G": -0.1,
+   "phi": 1.0
+  },
+  {
+   "alphaDeg": 0.0,
+   "G": 0.15,
+   "phi": 1.0
+  },
+  {
+   "alphaDeg": 0.0,
+   "G": 0.46,
+   "phi": 1.0
+  },
+  {
+   "alphaDeg": 0.5,
+   "G": -0.1,
+   "phi": 0.9290714550322574
+  },
+  {
+   "alphaDeg": 0.5,
+   "G": 0.15,
+   "phi": 0.9415837828431584
+  },
+  {
+   "alphaDeg": 0.5,
+   "G": 0.46,
+   "phi": 0.9570990693286756
+  },
+  {
+   "alphaDeg": 3.0,
+   "G": -0.1,
+   "phi": 0.7024603725741534
+  },
+  {
+   "alphaDeg": 3.0,
+   "G": 0.15,
+   "phi": 0.7555666246487602
+  },
+  {
+   "alphaDeg": 3.0,
+   "G": 0.46,
+   "phi": 0.8214183772212726
+  },
+  {
+   "alphaDeg": 7.5,
+   "G": -0.1,
+   "phi": 0.5090252377500765
+  },
+  {
+   "alphaDeg": 7.5,
+   "G": 0.15,
+   "phi": 0.5988214599677153
+  },
+  {
+   "alphaDeg": 7.5,
+   "G": 0.46,
+   "phi": 0.7101687755175875
+  },
+  {
+   "alphaDeg": 15.0,
+   "G": -0.1,
+   "phi": 0.34770259533464604
+  },
+  {
+   "alphaDeg": 15.0,
+   "G": 0.15,
+   "phi": 0.4627054719300089
+  },
+  {
+   "alphaDeg": 15.0,
+   "G": 0.46,
+   "phi": 0.605309038908259
+  },
+  {
+   "alphaDeg": 30.0,
+   "G": -0.1,
+   "phi": 0.18877335781150983
+  },
+  {
+   "alphaDeg": 30.0,
+   "G": 0.15,
+   "phi": 0.30220358161959676
+  },
+  {
+   "alphaDeg": 30.0,
+   "G": 0.46,
+   "phi": 0.44285705914162454
+  },
+  {
+   "alphaDeg": 60.0,
+   "G": -0.1,
+   "phi": 0.06574850203531715
+  },
+  {
+   "alphaDeg": 60.0,
+   "G": 0.15,
+   "phi": 0.13837653277726664
+  },
+  {
+   "alphaDeg": 60.0,
+   "G": 0.46,
+   "phi": 0.22843529089728407
+  },
+  {
+   "alphaDeg": 100.0,
+   "G": -0.1,
+   "phi": 0.016633200366423007
+  },
+  {
+   "alphaDeg": 100.0,
+   "G": 0.15,
+   "phi": 0.035512885544168135
+  },
+  {
+   "alphaDeg": 100.0,
+   "G": 0.46,
+   "phi": 0.05892369516457209
+  },
+  {
+   "alphaDeg": 150.0,
+   "G": -0.1,
+   "phi": 0.0005146641516619889
+  },
+  {
+   "alphaDeg": 150.0,
+   "G": 0.15,
+   "phi": 0.00041932086633875734
+  },
+  {
+   "alphaDeg": 150.0,
+   "G": 0.46,
+   "phi": 0.00030109519253795024
+  }
+ ],
+ "hg1g2Checks": [
+  {
+   "alphaDeg": 0.0,
+   "G1": 0.62,
+   "G2": 0.14,
+   "phi": 0.999999998701211
+  },
+  {
+   "alphaDeg": 0.0,
+   "G1": 0.25,
+   "G2": 0.4,
+   "phi": 0.9999999996952635
+  },
+  {
+   "alphaDeg": 0.0,
+   "G1": 0.9,
+   "G2": 0.05,
+   "phi": 0.999999998016999
+  },
+  {
+   "alphaDeg": 0.2,
+   "G1": 0.62,
+   "G2": 0.14,
+   "phi": 0.973544201979521
+  },
+  {
+   "alphaDeg": 0.2,
+   "G1": 0.25,
+   "G2": 0.4,
+   "phi": 0.9653880738781945
+  },
+  {
+   "alphaDeg": 0.2,
+   "G1": 0.9,
+   "G2": 0.05,
+   "phi": 0.9893078181900893
+  },
+  {
+   "alphaDeg": 1.0,
+   "G1": 0.62,
+   "G2": 0.14,
+   "phi": 0.8764983498077163
+  },
+  {
+   "alphaDeg": 1.0,
+   "G1": 0.25,
+   "G2": 0.4,
+   "phi": 0.8397406504025617
+  },
+  {
+   "alphaDeg": 1.0,
+   "G1": 0.9,
+   "G2": 0.05,
+   "phi": 0.9483677102813992
+  },
+  {
+   "alphaDeg": 5.0,
+   "G1": 0.62,
+   "G2": 0.14,
+   "phi": 0.6923482436319269
+  },
+  {
+   "alphaDeg": 5.0,
+   "G1": 0.25,
+   "G2": 0.4,
+   "phi": 0.6505773002707815
+  },
+  {
+   "alphaDeg": 5.0,
+   "G1": 0.9,
+   "G2": 0.05,
+   "phi": 0.8063919946302893
+  },
+  {
+   "alphaDeg": 7.5,
+   "G1": 0.62,
+   "G2": 0.14,
+   "phi": 0.6210628761121327
+  },
+  {
+   "alphaDeg": 7.5,
+   "G1": 0.25,
+   "G2": 0.4,
+   "phi": 0.5962375276635269
+  },
+  {
+   "alphaDeg": 7.5,
+   "G1": 0.9,
+   "G2": 0.05,
+   "phi": 0.726783932523361
+  },
+  {
+   "alphaDeg": 10.0,
+   "G1": 0.62,
+   "G2": 0.14,
+   "phi": 0.5617722741230187
+  },
+  {
+   "alphaDeg": 10.0,
+   "G1": 0.25,
+   "G2": 0.4,
+   "phi": 0.5553844044874615
+  },
+  {
+   "alphaDeg": 10.0,
+   "G1": 0.9,
+   "G2": 0.05,
+   "phi": 0.6539913824452335
+  },
+  {
+   "alphaDeg": 25.0,
+   "G1": 0.62,
+   "G2": 0.14,
+   "phi": 0.3389819161972767
+  },
+  {
+   "alphaDeg": 25.0,
+   "G1": 0.25,
+   "G2": 0.4,
+   "phi": 0.3774176057795396
+  },
+  {
+   "alphaDeg": 25.0,
+   "G1": 0.9,
+   "G2": 0.05,
+   "phi": 0.3840348609027242
+  },
+  {
+   "alphaDeg": 45.0,
+   "G1": 0.62,
+   "G2": 0.14,
+   "phi": 0.19617966556528227
+  },
+  {
+   "alphaDeg": 45.0,
+   "G1": 0.25,
+   "G2": 0.4,
+   "phi": 0.23469191560061076
+  },
+  {
+   "alphaDeg": 45.0,
+   "G1": 0.9,
+   "G2": 0.05,
+   "phi": 0.2153835765346365
+  },
+  {
+   "alphaDeg": 90.0,
+   "G1": 0.62,
+   "G2": 0.14,
+   "phi": 0.04948786252000001
+  },
+  {
+   "alphaDeg": 90.0,
+   "G1": 0.25,
+   "G2": 0.4,
+   "phi": 0.063641657
+  },
+  {
+   "alphaDeg": 90.0,
+   "G1": 0.9,
+   "G2": 0.05,
+   "phi": 0.05235246390000001
+  },
+  {
+   "alphaDeg": 140.0,
+   "G1": 0.62,
+   "G2": 0.14,
+   "phi": 0.00922192429303541
+  },
+  {
+   "alphaDeg": 140.0,
+   "G1": 0.25,
+   "G2": 0.4,
+   "phi": 0.004264537979488166
+  },
+  {
+   "alphaDeg": 140.0,
+   "G1": 0.9,
+   "G2": 0.05,
+   "phi": 0.013143134196142858
+  },
+  {
+   "alphaDeg": 160.0,
+   "G1": 0.62,
+   "G2": 0.14,
+   "phi": 2.3105849219177367e-05
+  },
+  {
+   "alphaDeg": 160.0,
+   "G1": 0.25,
+   "G2": 0.4,
+   "phi": 6.601671205479247e-05
+  },
+  {
+   "alphaDeg": 160.0,
+   "G1": 0.9,
+   "G2": 0.05,
+   "phi": 8.25208900684906e-06
+  }
+ ]
+}
