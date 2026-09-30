@@ -143,10 +143,14 @@ fn darkFactor(E: Eye, Ac: f32, Ar: f32) -> f32 {
 // Crumey (2014) Eq. 39/40 large-target threshold contrast and the Ricco area A_R = ΔI/(C∞·B) (crumey.ts).
 fn crumeyRiccoArea(E: Eye, Bin: f32) -> f32 {
   let B = max(Bin, E.cr1.y);
+  return crumeyPointThreshold(E, B) / (crumeyLargeContrast(E, B) * B);
+}
+// Crumey (2014) Eq. 39/40 large-target threshold contrast C∞(B) (crumey.ts largeTargetContrast).
+fn crumeyLargeContrast(E: Eye, Bin: f32) -> f32 {
+  let B = max(Bin, E.cr1.y);
   let iq = 1.0 / sqrt(sqrt(B));
   let inner = ${f(CRUMEY.b1)} * iq * iq + ${f(CRUMEY.b2)} * iq + ${f(CRUMEY.b3)};
-  let cInf = sqrt(max(inner, 0.0)) + ${f(CRUMEY.b4)} * iq + ${f(CRUMEY.b5)};
-  return crumeyPointThreshold(E, B) / (cInf * B);
+  return sqrt(max(inner, 0.0)) + ${f(CRUMEY.b4)} * iq + ${f(CRUMEY.b5)};
 }
 // CIE 191:2010 adaptation coefficient m by the standard's iteration (mesopic.ts), for a local state.
 fn mesopicM(Lp: f32, Ls: f32) -> f32 {
@@ -1350,7 +1354,13 @@ fn adaptSample(p: vec2i) -> AdaptSample {
       // Fixations over the whole frame, drawn to the objects there in proportion to their light (the
       // unscattered scene, not the glare haze); at each the eye adapts to the retinal image (object plus
       // veil). The solar disk is never fixated; its veil still counts where the eye looks.
-      let wgt = select((max(ext.y, 0.0) + E.dark.x) * om, 0.0, dot(dir, E.fix.xyz) >= E.fix.w);
+      // Only light the eye can see draws fixations (eye/fixation.ts fixationWeight): the scene luminance as an
+      // increment on the retinal image, full weight from twice the large-target threshold contrast C∞ at that
+      // luminance, none below C∞. Light buried in a far brighter veil attracts nothing, like the veil itself.
+      let Ls = max(ext.y, 0.0);
+      let Lr = max(ret.y, 0.0) + E.dark.x;
+      let vis = clamp(Ls / (Lr * crumeyLargeContrast(E, Lr)) - 1.0, 0.0, 1.0);
+      let wgt = select((Ls * vis + E.dark.x) * om, 0.0, dot(dir, E.fix.xyz) >= E.fix.w);
       acc = vec4f(lc * wgt, lr * wgt, wgt, 0.0);
     } else if (dot(dir, -F.back.xyz) >= E.misc.y) {
       // One fixation at the view centre: log-average (geometric mean) over the adaptation field, offset by

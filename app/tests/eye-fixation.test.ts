@@ -52,6 +52,28 @@ describe('fixations: where the eye looks when adapting to the extended image', (
     expect(a / 1.1e4).toBeGreaterThan(0.9);
     expect(a / 1.1e4).toBeLessThan(1.01);
   });
+  it('light buried in the Sun\'s veil draws no fixations: the Sun with its zodiacal light adapts like the Sun alone', () => {
+    // TEST VALUES of the kind the sun-1au scene has: the inner zodiacal light a degree from the Sun is ~10⁻⁴ of the
+    // veil there, and faint everywhere else.
+    const sunOnly: RetinalSample[] = [
+      { Y: 1.6e9, S: 3.2e9, sceneY: 1.6e9, omegaSr: deg2(0.2), onSunDisk: true },
+      { Y: 1e6, S: 2e6, sceneY: 0, omegaSr: deg2(3) },
+      { Y: 1e4, S: 2e4, sceneY: 0, omegaSr: deg2(100) },
+      { Y: 1e3, S: 2e3, sceneY: 0, omegaSr: deg2(2000) },
+    ];
+    const withZodi: RetinalSample[] = [
+      { Y: 1.6e9, S: 3.2e9, sceneY: 1.6e9, omegaSr: deg2(0.2), onSunDisk: true },
+      { Y: 1e6, S: 2e6, sceneY: 200, omegaSr: deg2(3) },
+      { Y: 1e4, S: 2e4, sceneY: 1, omegaSr: deg2(100) },
+      { Y: 1e3, S: 2e3, sceneY: 1e-3, omegaSr: deg2(2000) },
+    ];
+    const a0 = fixationAdaptation(sunOnly, 'brightness').coneCdM2;
+    const a1 = fixationAdaptation(withZodi, 'brightness').coneCdM2;
+    expect(a1 / a0).toBeGreaterThan(0.95);
+    expect(a1 / a0).toBeLessThan(1.05);
+    // Weighted by the scene light alone (the rule before M5+), the 200 cd/m² next to the Sun would take the eye there.
+    expect(a0).toBeLessThan(1e4);
+  });
   it('an empty dark frame adapts to darkness (the dark-light floor)', () => {
     const a = fixationAdaptation(frame([{ Y: 0, areaDeg2: 2500 }]), 'brightness');
     expect(a.coneCdM2).toBeCloseTo(0, 12);
