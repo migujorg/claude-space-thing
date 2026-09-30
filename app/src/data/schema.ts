@@ -185,7 +185,57 @@ export interface BodyPhotometry {
   geometricAlbedoV: Sourced<number>;
   /** Disk-integrated phase function. */
   phaseFunction: Sourced<PhaseFunction>;
+  /**
+   * Optional measured spatially resolved photometric model (docs/architecture.md §4.4 "Photometric
+   * model"; docs/rendering-m2.md). It sets only how light is distributed across the disk: the renderer
+   * rescales it so the disk integral still equals geometricAlbedoXYZS·Φ(α). Absent → Lambert.
+   */
+  spatialModel?: Sourced<SpatialPhotometricModel>;
 }
+
+/** A parameter that is either constant or tabulated against phase angle (linear interpolation, no extrapolation). */
+export type PhaseDependent = number | { alphaDeg: number[]; values: number[] };
+
+/**
+ * Spatially resolved photometric (bidirectional reflectance) models. Angles: incidence i, emission e,
+ * phase g; μ0 = cos i, μ = cos e. Each is a published model with its fitted parameters:
+ *  - lambert:          r ∝ μ0
+ *  - lommel-seeliger:  r ∝ μ0/(μ0 + μ)
+ *  - lunar-lambert:    r ∝ 2L·μ0/(μ0 + μ) + (1 − L)·μ0   (McEwen 1991)
+ *  - minnaert:         r ∝ μ0^k·μ^(k−1)                  (Minnaert 1941)
+ *  - hapke:            Hapke (2012) isotropic multiple-scattering approximation with the shadow-hiding
+ *                      (SHOE) and coherent-backscatter (CBOE) opposition effects, a double Henyey–Greenstein
+ *                      particle phase function p(g) = (1+c)/2·HG(b, backward) + (1−c)/2·HG(b, forward),
+ *                      porosity factor K and Hapke's (1984) macroscopic roughness θ̄.
+ * `validPhaseDeg` (optional) is the phase-angle range the fit covers; outside it the renderer falls back to
+ * Lambert for the spatial distribution and warns.
+ */
+export type SpatialPhotometricModel =
+  | { kind: 'lambert'; validPhaseDeg?: [number, number] }
+  | { kind: 'lommel-seeliger'; validPhaseDeg?: [number, number] }
+  | { kind: 'lunar-lambert'; L: PhaseDependent; validPhaseDeg?: [number, number] }
+  | { kind: 'minnaert'; k: PhaseDependent; validPhaseDeg?: [number, number] }
+  | {
+      kind: 'hapke';
+      /** Single-scattering albedo. */
+      w: number;
+      /** Double Henyey–Greenstein asymmetry b (0..1) and backward/forward partition c (−1..1). */
+      b: number;
+      c: number;
+      /** SHOE amplitude B_S0 and angular width h_S. */
+      bs0: number;
+      hs: number;
+      /** CBOE amplitude B_C0 and width h_C (default 0: no CBOE). */
+      bc0?: number;
+      hc?: number;
+      /** Mean slope angle θ̄ of the macroscopic roughness, degrees (0 = smooth). */
+      thetaBarDeg: number;
+      /** Porosity factor K (default 1). */
+      K?: number;
+      /** Approximation of Chandrasekhar's H function used by the fit: Hapke (2002) (default) or Hapke (1981). */
+      hFunction?: 'hapke2002' | 'hapke1981';
+      validPhaseDeg?: [number, number];
+    };
 
 export type PhaseFunction =
   | { kind: 'lambert' }
