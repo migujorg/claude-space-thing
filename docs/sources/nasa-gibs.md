@@ -10,7 +10,7 @@
 
 | Layer | Product | Colour map | Used for |
 |---|---|---|---|
-| `VIIRS_NOAA20_Cloud_Optical_Thickness` | CLDPROP_L2_VIIRS_NOAA20 v1.1 (`viirs-noaa20-cldprop`) | `MODIS_VIIRS_Cloud_Optical_Thickness` — 250 bins 0.01–150 (≈ 4 % wide from 1 to 100), two classes (ice / water phase) | `clouds`: opticalThickness, iceFraction |
+| `VIIRS_NOAA20_Cloud_Optical_Thickness` | CLDPROP_L2_VIIRS_NOAA20 v1.1 (`viirs-noaa20-cldprop`) | `MODIS_VIIRS_Cloud_Optical_Thickness` — 250 bins 0.01–150 (≈ 4 % wide from 1 to 100), two classes (ice / water phase) | `clouds`: opticalThickness, iceFraction (and cloudFraction); `cloudTau`: all four channels (retrieved share, ln τ moments at the geometric bin centre, ice share) |
 | `VIIRS_NOAA20_Cloud_Top_Height_Day` | same | `MODIS_VIIRS_Cloud_Top_Height` — 50 m bins to 12 km, then `[12000, +INF)` | `clouds`: cloudFraction, cloudTopHeightM |
 | `VIIRS_NOAA20_GapFilled_BRDF_Corrected_DayNightBand_Radiance` | VJ146A2 v2 (`viirs-noaa20-vj146a2`) | `VIIRS_DayNightBand_At_Sensor_Radiance` — bins 0.1 nW cm⁻² sr⁻¹ below 5, widening to 0.6 at 38.2, then `[38.2, 999999)` | `night` |
 | `MODIS_Terra_L3_Land_Water_Mask` | MOD44W v6 (`modis-mod44w-v6-water-mask`) | `MODIS_Land_Water_Mask` — land transparent; water **and the no-data value 253** opaque (168, 248, 255) (`sourceValue="1,253"`). MOD44W does not map Antarctica, which therefore comes out as "water", so the mask is used only north of 60°S (ETOPO 2022 south of it, `noaa-etopo-2022.md`) | `water`: waterFraction; land/water split of `albedo` |
@@ -25,4 +25,4 @@
 
 ## Labels
 
-Cloud properties, radiance, water fraction and sea ice are **measured**, with quantization as above. Averages over the 16 samples in a texel are box means. The cloud layer is unknown poleward of the daylit band at the overpass (a coverage mask computed from the solar declination, Spencer 1971). All products use WGS84 geodetic latitude. Texel rows are resampled to planetocentric latitude by taking the nearest row (the shift is at most 0.19°).
+Cloud properties, radiance, water fraction and sea ice are **measured**, with quantization as above. Averages over the 16 samples in a texel are box means. The cloud day is fixed at 2026-09-28 (the wind layer's and the validation case's day) and checked against the layers' advertised periods; `cloudTau`'s moments are per-sample averages, so its coarser levels are exact. The cloud layer is unknown poleward of the daylit band at the overpass (a coverage mask computed from the solar declination, Spencer 1971). All products use WGS84 geodetic latitude. Texel rows are resampled to planetocentric latitude by taking the nearest row (the shift is at most 0.19°).
