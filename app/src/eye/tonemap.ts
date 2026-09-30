@@ -6,7 +6,7 @@
 // This file is the reference implementation (float64, used by tests and on the CPU for per-frame
 // scalars). The per-pixel part is mirrored in WGSL (wgsl.ts); keep them in sync.
 
-import { PATTANAIK as P } from './constants';
+import { CRUMEY, PATTANAIK as P } from './constants';
 
 export function sigmaCone(A: number): number {
   const a = Math.max(A, 1e-12);
@@ -62,12 +62,22 @@ export function observerState(Acone: number, Arod: number, coneBleaching: boolea
   };
 }
 
+/**
+ * "Dark light": the eye's intrinsic noise acts as an equivalent background below which luminance is
+ * indistinguishable from darkness (Barlow 1957; Crumey 2014 §2.1 attributes the flat threshold for
+ * B → 0 to it and finds B ≲ 10⁻⁵ cd/m² effectively zero). The perceived response is the increment
+ * over the dark-light pedestal, R(L + L0) − R(L0), with L0 = that level (photopic; ×ρ₂₈₅₀ scotopic).
+ * This keeps darkness black and sub-dark-light luminances (e.g. a faint stellar veil) near black.
+ */
+export const DARK_LIGHT_CONE = CRUMEY.zeroBackgroundB;
+export const DARK_LIGHT_ROD = CRUMEY.zeroBackgroundB * CRUMEY.spRatioBlackwell;
+
 export function coneResponse(s: ObserverState, Lp: number): number {
-  return response(Lp, s.sigmaCone, s.Bcone);
+  return response(Math.max(Lp, 0) + DARK_LIGHT_CONE, s.sigmaCone, s.Bcone) - response(DARK_LIGHT_CONE, s.sigmaCone, s.Bcone);
 }
 
 export function rodResponse(s: ObserverState, Ls: number): number {
-  return response(Ls, s.sigmaRod, s.Brod);
+  return response(Math.max(Ls, 0) + DARK_LIGHT_ROD, s.sigmaRod, s.Brod) - response(DARK_LIGHT_ROD, s.sigmaRod, s.Brod);
 }
 
 /** R_lum = R_rod + R_cone (§4.2). */
