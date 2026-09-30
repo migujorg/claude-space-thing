@@ -22,6 +22,7 @@ import { BinaryTable } from './binaryTable';
 import { parseStarNames, type StarName } from './stars';
 import { discoverSmallBodies, type SmallBodyProducts } from './smallbodies';
 import { discoverSurfaces, parseSurfaceHeader, type SurfaceLayer } from './surfaces';
+import { deepTilePaths, loadSkyHeaders, mapPath, type SkyHeaders } from './sky';
 
 export type FetchFn = (url: string) => Promise<Response>;
 
@@ -101,6 +102,8 @@ export interface LoadedData {
   smallBodies?: SmallBodyProducts | null;
   /** rings.json: planet NAIF id (string) → ring system. */
   rings?: RingsFile | null;
+  /** M4 sky headers (stars/deep.json, sky/diffuse.json, sky/zodiacal.json); maps and tiles load later (app/sky.ts). */
+  sky?: SkyHeaders;
   report: DataReport;
   /** Fetches deferred products later; null when the data came from elsewhere (tests). */
   loader: DataLoader | null;
@@ -389,6 +392,9 @@ export async function loadAll(opts: LoadOptions): Promise<LoadedData> {
     }
   }
 
+  // Sky (M4): headers now; map binaries after the first frame, deep tiles on demand (app/sky.ts).
+  const sky = await loadSkyHeaders(L, manifest);
+
   // Surface map layers: headers now (small), tiles on demand (aggregated in the report, one line per layer).
   const found = discoverSurfaces(manifest);
   const surfaces: SurfaceLayer[] = [];
@@ -408,6 +414,8 @@ export async function loadAll(opts: LoadOptions): Promise<LoadedData> {
   surfaces.sort((a, b) => a.bodyId - b.bodyId || a.layer.localeCompare(b.layer));
   const tileFiles = new Set(found.flatMap((f) => f.tiles.paths));
   if (manifest?.products['surfaces/index.json']) tileFiles.add('surfaces/index.json');
+  if (sky.deep) for (const p of deepTilePaths(sky.deep)) tileFiles.add(p);
+  if (sky.maps) for (const l of Object.values(sky.maps.layers)) tileFiles.add(mapPath(l));
 
   // Small bodies: tables load in the background after the moon systems; names are indexed when search needs them.
   const smallBodies = discoverSmallBodies(manifest);
@@ -432,11 +440,14 @@ export async function loadAll(opts: LoadOptions): Promise<LoadedData> {
     for (const e of [...ephemerides, ...deferred]) for (const s of e.header.segments) visit(s.sources);
     for (const o of orientations) for (const s of o.header.segments) visit(s.sources);
     for (const s of surfaces) visit(s.sources);
+    if (sky.deep) for (const rs of Object.values(sky.deep.routes ?? {})) for (const r of rs) visit(r.sources);
+    if (sky.maps) for (const l of Object.values(sky.maps.layers)) visit(l.sources);
+    if (sky.zodiacal) for (const a of [sky.zodiacal.at1AU, sky.zodiacal.s10ToXYZS, sky.zodiacal.cloud, sky.zodiacal.scattering]) visit(a?.sources);
     for (const r of Object.values(rings ?? {})) for (const a of [r.opticalDepth, r.reflectance]) visit(a?.sources);
     if (missing.size) notes.push(`Referenced source ids missing from sources.json: ${[...missing].sort().join(', ')}.`);
   }
 
-  return { manifest, sources, time, ephemerides, deferred, orientations, bodies, light, stars, starNames, surfaces, smallBodies, rings: rings ?? null, report: L.report, loader: L };
+  return { manifest, sources, time, ephemerides, deferred, orientations, bodies, light, stars, starNames, surfaces, smallBodies, rings: rings ?? null, sky, report: L.report, loader: L };
 }
 
 // ---- light validation (structure only; values are the pipeline's) -------------------------------
