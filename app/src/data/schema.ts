@@ -706,6 +706,7 @@ export interface SmallBodyNamesHeader {
   columns: string[];
   sources: string[];
   notes?: string;
+}
 
 /**
  * A star tier split into HEALPix tiles (stars/deep.json): every tile file holds records with the header's fields
