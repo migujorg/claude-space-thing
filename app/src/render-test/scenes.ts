@@ -52,6 +52,8 @@ export interface TestScene {
   title: string;
   /** Built from the pipeline's products (dataScenes.ts) rather than test fixtures. */
   realData?: boolean;
+  /** The comet model for snapshot.comets (Renderer.setCometModel). */
+  cometModel?: import('../data/schema').CometModelProduct;
 }
 
 function planet(id: number, name: string, pos: Vec3, toSun: Vec3, radius: number, albedo: SceneBody['albedoXYZS'], extra: Partial<SceneBody> = {}): SceneBody {

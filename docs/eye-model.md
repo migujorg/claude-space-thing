@@ -63,10 +63,18 @@ looks around the frame, and fixations are not uniform over the frame:
 - **Where the eye looks.** Fixations go to the objects in the frame in proportion to their light, i.e.
   to the unscattered scene luminance. Dark background attracts nothing. The glare haze around a bright
   source is in the eye, not in the scene, so it attracts nothing either.
+- **Only what can be seen draws the eye (M5).** The scene luminance L is an increment on the retinal image
+  L_r there, and it is weighted by clamp(L/(L_r·C∞(L_r)) − 1, 0, 1): no weight below Crumey's (2014)
+  large-target threshold contrast C∞, full weight from 2·C∞ (`eye/fixation.ts fixationWeight`). C∞ is at
+  most 0.13 (at 10⁻⁵ cd/m²) and 0.002 in daylight, so anything brighter than its surroundings keeps its
+  full weight. What it removes is light buried in a far brighter veil. With the M4 sky, the zodiacal light
+  a degree from the Sun (10⁻⁴ of the veil there) drew every fixation next to the Sun: the sun-1au scene
+  adapted to 1.8·10⁵ cd/m² and showed only the solar core. An observer cannot look at what cannot be
+  seen there.
 - **What it adapts to there.** At each fixation the eye adapts to the retinal image: the object plus the
   veil falling there (Moon & Spencer 1945; "Statistic" below).
 
-So A = exp(Σ L_scene·Ω·ln(L_ret + L₀) / Σ L_scene·Ω) over the frame (`eye/fixation.ts`; GPU:
+So A = exp(Σ w·Ω·ln(L_ret + L₀) / Σ w·Ω) over the frame, w the weight above (`eye/fixation.ts`; GPU:
 `ADAPT_SHADER`). The resolved solar disk is never fixated: it cannot be looked at. Its veil still
 counts wherever the eye looks. Consequences:
 

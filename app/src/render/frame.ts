@@ -32,6 +32,8 @@ export interface SurfaceBinding {
   height?: { base: number; maxLevel: number };
   /** Earth's cloud-properties, surface-water and emitted-radiance layers (earth.ts). */
   clouds?: { base: number; maxLevel: number };
+  /** Earth's cloud optical-thickness moments (earth.ts cloudLogNormal), in the clouds atlas. */
+  cloudTau?: { base: number; maxLevel: number };
   water?: { base: number; maxLevel: number };
   night?: { base: number; maxLevel: number };
   /** Earth's wind layer, one whole level in its own texture (rgba16float: ascending, daily mean, passes). */
@@ -397,7 +399,7 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
     // by the disk photometry (which includes clouds and air). Without the cloud layer it is not used.
     const earth = earthMode(b, surface, irr, warnings);
     if (!earth && surface?.albedo && b.surface?.albedo?.header.normalization?.absoluteDiskMean) surface = { ...surface, albedo: undefined };
-    if (!earth && surface && (surface.clouds || surface.water || surface.night || surface.wind)) surface = { ...surface, clouds: undefined, water: undefined, night: undefined, wind: undefined };
+    if (!earth && surface && (surface.clouds || surface.cloudTau || surface.water || surface.night || surface.wind)) surface = { ...surface, clouds: undefined, cloudTau: undefined, water: undefined, night: undefined, wind: undefined };
     // Disk-integrated p·Φ per channel: from the body's disk reflectance model (the Moon: ROLO) inside its
     // domain, else albedoXYZS·Φ(α) (architecture §4.3).
     // The measured phase range's edge when α lies beyond it (the photometry is then the law's extrapolation).
@@ -557,7 +559,32 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
         // be seen (Venus: the profile starts inside the cloud deck), so the disk stays the measured one.
         const bond = lawBond(lawRef);
         const surfaceBond = [0, 1, 2, 3].map((c) => (pRef[c] / fct[c]) * bond[c] * scaleK[c]);
-        if (air.some((a, c) => !(a < pRef[c]))) {
+        // Against a phase curve that is a model (an estimate: the Earth's radiative-transfer fit, Mars beyond the
+        // phases seen from Earth), air brighter than the curve says the curve does not hold there, not that the
+        // measured atmosphere is wrong. The surface scale then comes from the nearest lower phase where the curve
+        // still exceeds the air, and the air at α is drawn on top (as beyond the measured range).
+        let fallback: { deg: number; scale: number[] } | null = null;
+        if (air.some((a, c) => !(a < pRef[c])) && b.phaseEstimated && b.albedoXYZS && b.phase) {
+          for (let i = Math.min(i0, Math.round(Math.PI / binning) - 1); i >= 0 && !fallback; i--) {
+            const a = i * binning;
+            const ph = evalPhase(b.phase, a);
+            if (!ph.ok) continue;
+            const pA = b.albedoXYZS.map((v, k) => (v * ph.phi) / irr[k]);
+            const fa = at(i);
+            const airA = [0, 1, 2, 3].map((c) => fa[8 + c] + fa[12 + c]);
+            if (airA.some((x, c) => !(x < pA[c]))) continue;
+            const sc = [0, 1, 2, 3].map((c) => ((1 - airA[c] / pA[c]) * fa[c]) / fa[4 + c]);
+            const lrA = resolveLaw(b.spatialModel, a);
+            const bondA = lawBond('error' in lrA ? LAMBERT_LAW : lrA.law);
+            if ([0, 1, 2, 3].some((c) => !((pA[c] / fa[c]) * bondA[c] * sc[c] <= 1))) continue;
+            fallback = { deg: (a * 180) / Math.PI, scale: sc };
+          }
+        }
+        if (fallback) {
+          K = K.map((v, c) => v * fallback!.scale[c]) as XYZS;
+          onDisk = true;
+          warnings.push(`${b.name}: the atmosphere alone is brighter than the disk photometry, a model at this phase → the surface scale is taken at ${fallback.deg.toFixed(0)}°, the air drawn on top`);
+        } else if (air.some((a, c) => !(a < pRef[c]))) {
           warnings.push(`${b.name}: the atmosphere alone is brighter than the measured disk → atmosphere not drawn`);
           atmB = null;
         } else if (surfaceBond.some((x) => !(x <= 1))) {

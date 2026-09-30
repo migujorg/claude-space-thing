@@ -1,12 +1,13 @@
 {
- "description": "Canonical views for the scene regression suite (app/e2e/README.md). Each scene is a URL query of the real app (app/src/app/url.ts) rendered headless by scripts/e2e.mjs. `defaults` are merged under each scene's params; a scene's `tolerance` overrides the suite defaults in scripts/e2e-lib.mjs.",
+ "description": "Canonical views for the scene regression suite (app/e2e/README.md). Each scene is a URL query of the real app (app/src/app/url.ts) rendered headless by scripts/e2e.mjs. `defaults` are merged under each scene's params (scenes adapt instantly, except those testing the eye's time dependence: adapt=realtime with an adaptfrom history); a scene's `tolerance` overrides the suite defaults in scripts/e2e-lib.mjs.",
  "viewport": {
   "width": 1280,
   "height": 720
  },
  "defaults": {
   "t": "2026-10-15T00:00:00Z",
-  "smallbodies": "0"
+  "smallbodies": "0",
+  "adapt": "instant"
  },
  "scenes": [
   {
@@ -168,7 +169,8 @@
     "target": "999",
     "dist": "3000000000",
     "labels": "0",
-    "adaptfrom": "10000,600,120"
+    "adaptfrom": "10000,600,120",
+    "adapt": "realtime"
    }
   },
   {
@@ -178,7 +180,8 @@
     "target": "999",
     "dist": "3000000000",
     "labels": "0",
-    "adaptfrom": "10000,600,720"
+    "adaptfrom": "10000,600,720",
+    "adapt": "realtime"
    }
   },
   {
@@ -188,7 +191,8 @@
     "target": "999",
     "dist": "3000000000",
     "labels": "0",
-    "adaptfrom": "10000,600,1800"
+    "adaptfrom": "10000,600,1800",
+    "adapt": "realtime"
    }
   },
   {
@@ -232,9 +236,6 @@
     "dist": "45828.8",
     "az": "32.84",
     "el": "-17.26"
-   },
-   "tolerance": {
-    "starsRel": 0.5
    }
   },
   {
@@ -246,9 +247,6 @@
     "dist": "28715.92",
     "az": "0.65",
     "el": "1.69"
-   },
-   "tolerance": {
-    "starsRel": 0.5
    }
   },
   {
@@ -261,9 +259,6 @@
     "az": "179.99",
     "el": "0",
     "fov": "6"
-   },
-   "tolerance": {
-    "starsRel": 0.5
    }
   },
   {
@@ -275,9 +270,6 @@
     "dist": "300266.4",
     "az": "2.32",
     "el": "0.58"
-   },
-   "tolerance": {
-    "starsRel": 0.5
    }
   }
  ]

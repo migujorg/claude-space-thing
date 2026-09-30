@@ -10,11 +10,29 @@
 // body in a dark field sets the adaptation by its light rather than by its tiny area. The solar disk is
 // not fixated (it cannot be looked at); its veil still counts where the eye looks. Point sources are
 // judged at their own fixation (eye/points.ts), so faint stars beside a bright body stay visible.
+// Only the light the eye can see draws it (fixationWeight): each pixel's scene luminance counts as an increment
+// on the retinal image there, with no weight below the large-target threshold contrast C∞ (Crumey 2014) and full
+// weight from 2·C∞. Light buried in a far brighter veil (the zodiacal light a degree from the Sun, 10⁻⁴ of the
+// veil) attracts nothing, like the veil itself; an object brighter than its veil (a planet on dark sky) keeps its
+// full weight.
 //
 // 'centre' keeps the v1 rule: one fixation at the view centre, the log-average over its 1° field
 // (Ward Larson, Rushmeier & Piatko 1997).
 
 import { DARK_LIGHT_CONE, DARK_LIGHT_ROD } from './tonemap';
+import { largeTargetContrast } from './crumey';
+
+/**
+ * Fixation weight per unit solid angle of a pixel of unscattered scene luminance L on a retinal image of luminance
+ * Lret (both photopic cd/m²): L·clamp(L/(L_r·C∞(L_r)) − 1, 0, 1) + L₀, L_r = Lret + L₀. C∞ is evaluated at the
+ * photopic luminance (a weighting, not a threshold of the rendered image). Mirrored in ADAPT_SHADER.
+ */
+export function fixationWeight(L: number, Lret: number): number {
+  const Ls = Math.max(L, 0);
+  const Lr = Math.max(Lret, 0) + DARK_LIGHT_CONE;
+  const vis = Math.min(Math.max(Ls / (Lr * largeTargetContrast(Lr)) - 1, 0), 1);
+  return Ls * vis + DARK_LIGHT_CONE;
+}
 
 export interface RetinalSample {
   /** Retinal image (unscattered scene + veil, point cores excluded): photopic Y and scotopic S, cd/m². */
@@ -37,7 +55,7 @@ export function fixationAdaptation(samples: RetinalSample[], mode: 'brightness' 
     const lc = Math.log(Math.max(s.Y, 0) + DARK_LIGHT_CONE);
     const lr = Math.log(Math.max(s.S, 0) + DARK_LIGHT_ROD);
     let w: number;
-    if (mode === 'brightness') w = s.onSunDisk ? 0 : (Math.max(s.sceneY ?? s.Y, 0) + DARK_LIGHT_CONE) * s.omegaSr;
+    if (mode === 'brightness') w = s.onSunDisk ? 0 : fixationWeight(s.sceneY ?? s.Y, s.Y) * s.omegaSr;
     else w = s.inCentreField ? s.omegaSr : 0;
     sc += lc * w;
     sr += lr * w;

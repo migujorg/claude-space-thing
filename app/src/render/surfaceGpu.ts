@@ -148,6 +148,11 @@ export class SurfaceGpu {
       const l = this.cache('clouds').layer(s.clouds);
       out.clouds = { base: l.base, maxLevel: l.maxLevel };
     }
+    // The cloud optical-thickness moments share the clouds atlas (rgba16float) and are used only with clouds.
+    if (s.cloudTau && out.clouds && usable(s.cloudTau, 'clouds', ['tauRetrievedFraction', 'lnTauMoment1', 'lnTauMoment2', 'iceTauFraction'])) {
+      const l = this.cache('clouds').layer(s.cloudTau);
+      out.cloudTau = { base: l.base, maxLevel: l.maxLevel };
+    }
     for (const k of ['water', 'night'] as const) {
       const ref = s[k];
       if (ref && usable(ref, 'rg16', RG16_CHANNELS[k === 'water' ? 'surface-water' : 'emitted-radiance'])) {
@@ -277,6 +282,7 @@ export class SurfaceGpu {
       if (s.albedo && r.surface.albedo) this.cache('albedo').request(s.albedo, footprintTiles(r.frame, r.bodyToWorld, g, r.surface.albedo.maxLevel));
       if (s.height && r.surface.height) this.cache('height').request(s.height, footprintTiles(r.frame, r.bodyToWorld, g, r.surface.height.maxLevel));
       if (s.clouds && r.surface.clouds) this.cache('clouds').request(s.clouds, footprintTiles(r.frame, r.bodyToWorld, g, r.surface.clouds.maxLevel));
+      if (s.cloudTau && r.surface.cloudTau) this.cache('clouds').request(s.cloudTau, footprintTiles(r.frame, r.bodyToWorld, g, r.surface.cloudTau.maxLevel));
       if (s.water && r.surface.water) this.cache('rg16').request(s.water, footprintTiles(r.frame, r.bodyToWorld, g, r.surface.water.maxLevel));
       if (s.night && r.surface.night) this.cache('rg16').request(s.night, footprintTiles(r.frame, r.bodyToWorld, g, r.surface.night.maxLevel));
     }

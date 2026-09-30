@@ -143,10 +143,14 @@ fn darkFactor(E: Eye, Ac: f32, Ar: f32) -> f32 {
 // Crumey (2014) Eq. 39/40 large-target threshold contrast and the Ricco area A_R = ΔI/(C∞·B) (crumey.ts).
 fn crumeyRiccoArea(E: Eye, Bin: f32) -> f32 {
   let B = max(Bin, E.cr1.y);
+  return crumeyPointThreshold(E, B) / (crumeyLargeContrast(E, B) * B);
+}
+// Crumey (2014) Eq. 39/40 large-target threshold contrast C∞(B) (crumey.ts largeTargetContrast).
+fn crumeyLargeContrast(E: Eye, Bin: f32) -> f32 {
+  let B = max(Bin, E.cr1.y);
   let iq = 1.0 / sqrt(sqrt(B));
   let inner = ${f(CRUMEY.b1)} * iq * iq + ${f(CRUMEY.b2)} * iq + ${f(CRUMEY.b3)};
-  let cInf = sqrt(max(inner, 0.0)) + ${f(CRUMEY.b4)} * iq + ${f(CRUMEY.b5)};
-  return crumeyPointThreshold(E, B) / (cInf * B);
+  return sqrt(max(inner, 0.0)) + ${f(CRUMEY.b4)} * iq + ${f(CRUMEY.b5)};
 }
 // CIE 191:2010 adaptation coefficient m by the standard's iteration (mesopic.ts), for a local state.
 fn mesopicM(Lp: f32, Ls: f32) -> f32 {
@@ -354,6 +358,7 @@ struct Body {
   absR: vec4f,   // the albedo map's absoluteDiskMean (XYZS): texel × absR = absolute reflectance
   nightK: vec4f, // night lights: luminance (cd/m², XYZS) per unit of the layer's radiance
   atm: vec4f,    // atmosphere (shaders-atmosphere.ts): 1 = drawn (shell), march steps, 1 = over the disk too, unused
+  earthT: vec4f, // cloud optical-thickness moments layer (earth.ts cloudLogNormal): base, max level, enabled, unused
 };
 `;
 
@@ -820,6 +825,12 @@ const EARTH_SAMPLE = /* wgsl */ `
       ein.tauKnown = select(0.0, 1.0, sC.known.y > 0.0);
       ein.fice = sC.v.w;
       ein.cthKm = select(0.0, max(sC.v.z, 0.0) * 1e-3, sC.known.z > 0.0);
+      if (b.earthT.z > 0.5) {
+        // Optical-thickness moments of the same samples (earth.ts cloudLogNormal), in the clouds atlas.
+        let baseT = bitcast<u32>(b.earthT.x);
+        let sT = sampleLayer(cloudPages, SI.cloudsPerRow, baseT, residentLevel(baseT, surfLevel(b.surfA.w, fp, b.earthT.y), uv), uv, false);
+        if (all(sT.known.xyz > vec3f(0.0))) { ein.tauMom = sT.v; ein.tauMomKnown = 1.0; }
+      }
       if (b.earthW.z > 0.5) {
         let baseW = bitcast<u32>(b.earthW.x);
         let sW = sampleLayer(rg16Pages, SI.rg16PerRow, baseW, residentLevel(baseW, surfLevel(b.surfA.w, fp, b.earthW.y), uv), uv, false);
@@ -980,12 +991,21 @@ struct Limbs { count: vec4f, l: array<Limb, ${LIMB_MAX}> };
 
 /** Transmittance (XYZS) of the atmospheres' limbs along the unit direction u from the camera; 0 behind a solid body. */
 fn limbTransmittance(u: vec3f) -> vec4f {
+  return limbTransmittanceTo(u, 3.0e38);
+}
+
+/**
+ * The same for a source at distance D (km) along u: a limb counts only when the source lies beyond the ray's
+ * closest approach to that body. A source inside a shell (it would need part of the chord) does not occur for the
+ * sources drawn this way (comets).
+ */
+fn limbTransmittanceTo(u: vec3f, D: f32) -> vec4f {
   var T = vec4f(1.0);
   for (var i = 0; i < i32(LB.count.x); i++) {
     let qu = vec3f(dot(LB.l[i].m0.xyz, u), dot(LB.l[i].m1.xyz, u), dot(LB.l[i].m2.xyz, u));
     // Closest approach to the centre in the unit-sphere frame (the lowest point of the ray, for a sphere).
     let s = -dot(LB.l[i].o.xyz, qu) / dot(qu, qu);
-    if (s <= 0.0) { continue; }
+    if (s <= 0.0 || s >= D) { continue; }
     let q = LB.l[i].o.xyz + s * qu;
     let p = s * u - LB.l[i].c.xyz;
     let h = length(p) * (1.0 - 1.0 / length(q));
@@ -1350,7 +1370,13 @@ fn adaptSample(p: vec2i) -> AdaptSample {
       // Fixations over the whole frame, drawn to the objects there in proportion to their light (the
       // unscattered scene, not the glare haze); at each the eye adapts to the retinal image (object plus
       // veil). The solar disk is never fixated; its veil still counts where the eye looks.
-      let wgt = select((max(ext.y, 0.0) + E.dark.x) * om, 0.0, dot(dir, E.fix.xyz) >= E.fix.w);
+      // Only light the eye can see draws fixations (eye/fixation.ts fixationWeight): the scene luminance as an
+      // increment on the retinal image, full weight from twice the large-target threshold contrast C∞ at that
+      // luminance, none below C∞. Light buried in a far brighter veil attracts nothing, like the veil itself.
+      let Ls = max(ext.y, 0.0);
+      let Lr = max(ret.y, 0.0) + E.dark.x;
+      let vis = clamp(Ls / (Lr * crumeyLargeContrast(E, Lr)) - 1.0, 0.0, 1.0);
+      let wgt = select((Ls * vis + E.dark.x) * om, 0.0, dot(dir, E.fix.xyz) >= E.fix.w);
       acc = vec4f(lc * wgt, lr * wgt, wgt, 0.0);
     } else if (dot(dir, -F.back.xyz) >= E.misc.y) {
       // One fixation at the view centre: log-average (geometric mean) over the adaptation field, offset by

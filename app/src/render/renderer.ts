@@ -227,6 +227,10 @@ export class Renderer {
     private readonly weightFormat: GPUTextureFormat,
   ) {
     const d = device;
+    this.deviceLost = new Promise((res) => device.lost.then((info) => {
+      console.error(`WebGPU device lost (${info.reason}): ${info.message}`);
+      if (info.reason !== 'destroyed') res({ reason: info.reason, message: info.message });
+    }));
     const ub = (size: number) => d.createBuffer({ size, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
     this.frameUB = ub(128);
     this.eyeUB = ub(17 * 16);  // 17 vec4 (struct Eye)
@@ -374,7 +378,6 @@ export class Renderer {
         maxBufferSize: adapter.limits.maxBufferSize,
       },
     });
-    device.lost.then((info) => console.error(`WebGPU device lost (${info.reason}): ${info.message}`));
     device.addEventListener('uncapturederror', (e) => console.error('WebGPU error:', (e as GPUUncapturedErrorEvent).error.message));
     const offscreen = options.presentation === 'offscreen';
     const ctx = offscreen ? null : canvas.getContext('webgpu');
@@ -417,6 +420,13 @@ export class Renderer {
     this.visible.destroy();
     this.visible = this.device.createBuffer({ size: this.maxVisible * 32, usage: GPUBufferUsage.STORAGE });
   }
+
+  /**
+   * Resolves when the device is lost other than by its own destroy() (e.g. the GPU process was killed or ran out
+   * of memory): nothing more will be drawn. Pages set window.__frameError from it so that scripts waiting for a
+   * frame fail at once instead of at their timeout; settled() rejects.
+   */
+  readonly deviceLost: Promise<{ reason: string; message: string }>;
 
   /** The renderer's device, for GPU producers of extra point sources (e.g. the small-body field). */
   get gpuDevice(): GPUDevice {
@@ -555,7 +565,13 @@ export class Renderer {
    * Resolves once the eye's adaptation has converged for the current view and every surface-map tile the
    * view needs is loaded (drives frames itself; tile loading gives up after ~90 s).
    */
-  async settled(): Promise<void> {
+  settled(): Promise<void> {
+    // A lost device never answers the readbacks the adaptation waits for: fail instead of hanging.
+    const lost = this.deviceLost.then((i) => { throw new Error(`WebGPU device lost (${i.reason}): ${i.message}`); });
+    return Promise.race([this.settle(), lost]);
+  }
+
+  private async settle(): Promise<void> {
     const t0 = performance.now();
     // Load tiles first (one frame per batch of requests), then let the adaptation converge.
     for (let round = 0; round < 256 && this.lastSnapshot && performance.now() - t0 < 90000; round++) {
@@ -829,7 +845,7 @@ export class Renderer {
     // 1b. Comets drawn extended: tails and comae into EXT behind the bodies; comae smaller than the Ricco area join
     //     the point sources (prep.points, drawn in step 3).
     if (this.comets && snapshot.comets?.length && !skip.has('comets')) {
-      this.comets.encode(enc, t, this.frameUB, snapshot.et, snapshot.comets, g, eye.riccoAreaSr, prep.points, { timestampWrites: () => this.tsw('comets') });
+      this.comets.encode(enc, t, this.frameUB, snapshot.et, snapshot.comets, g, eye.riccoAreaSr, prep.points, { timestampWrites: () => this.tsw('comets'), limbs: this.limbsUB });
       this.stats.comets = { comae: this.comets.stats.comae, packets: this.comets.stats.packets };
     } else if (this.stats.comets) this.stats.comets = { comae: 0, packets: 0 };
 
@@ -1359,10 +1375,10 @@ export class Renderer {
     return this.windDummyTex.createView();
   }
 
-  /** Body records: 39 vec4 each (struct Body in shaders.ts). */
+  /** Body records: 40 vec4 each (struct Body in shaders.ts). */
   private writeBodies(prep: PreparedFrame): void {
     const n = prep.resolved.length;
-    const STRIDE = 156;
+    const STRIDE = 160;
     const a = new Float32Array(n * STRIDE);
     const u = new Uint32Array(a.buffer);
     prep.resolved.forEach((r, i) => {
@@ -1398,6 +1414,7 @@ export class Renderer {
       a.set(e ? [...e.absR, ...e.nightK] : [0, 0, 0, 0, 0, 0, 0, 0], o + 144);
       // x: the atmosphere is drawn (the shell beyond the disk), z: over the disk too.
       a.set([this.atmOf.has(i) ? 1 : 0, ATM_STEPS, this.atmOf.has(i) && r.atmosphere?.onDisk ? 1 : 0, 0], o + 152);
+      layer(156, e ? s?.cloudTau : undefined, 0);
     });
     const buf = this.ensure('bodiesBuf', a.byteLength);
     this.device.queue.writeBuffer(buf, 0, a);

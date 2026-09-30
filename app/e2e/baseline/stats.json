@@ -1,9 +1,9 @@
 {
- "acceptedAt": "2026-09-30T22:18:36.114Z",
- "git": "c541fca",
+ "acceptedAt": "2026-09-30T23:38:22.410Z",
+ "git": "e257f3a",
  "data": {
   "manifestGeneratedAt": "2026-09-30T22:06:28+00:00",
-  "manifestSha256": "65e48511f67b3c347010a3b34f607e6513f3b2ed211838d486fa486180116508"
+  "manifestSha256": "ccf1acc42a238c8f05ec7d1916728ee068d8d9f3246ea866187821a1f668b768"
  },
  "viewport": {
   "width": 1280,
@@ -11,13 +11,13 @@
  },
  "scenes": {
   "earth-day": {
-   "query": "t=2026-10-15T00:00:00Z&smallbodies=0&target=399&dist=20000&az=0&el=0",
+   "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=instant&target=399&dist=20000&az=0&el=0",
    "stats": {
-    "adaptationLuminance": 11051.203335015969,
-    "scotopicAdaptationLuminance": 30042.947679325236,
-    "pupilDiameterMm": 2.2331988490857912,
+    "adaptationLuminance": 8955.38790208877,
+    "scotopicAdaptationLuminance": 25427.995638403994,
+    "pupilDiameterMm": 2.253413464728947,
     "mesopicM": 1,
-    "limitingMagnitude": -4.6223292070195345,
+    "limitingMagnitude": -4.415662678638248,
     "starsDrawn": 0,
     "bodiesDrawn": 310,
     "bodies": [
@@ -344,13 +344,15 @@
     "warnings": [
      "Neptune rings: reflectance not measured → rings absorb and cast shadows only; their material is hatched as not measured"
     ],
-    "badge": []
+    "badge": [
+     "INSTANT ADAPTATION: eye always fully adapted"
+    ]
    },
    "consoleErrors": [],
-   "readyMs": 189424
+   "readyMs": 52667
   },
   "earth-day-strict": {
-   "query": "t=2026-10-15T00:00:00Z&smallbodies=0&target=399&dist=20000&az=0&el=0&exists=strict",
+   "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=instant&target=399&dist=20000&az=0&el=0&exists=strict",
    "stats": {
     "adaptationLuminance": 0.00001,
     "scotopicAdaptationLuminance": 0.00001408,
@@ -687,21 +689,22 @@
      "Sun: limb darkening unknown → drawn as an unresolved point of the correct illuminance (no uniform disk assumed)"
     ],
     "badge": [
-     "STRICT: measured + derived only"
+     "STRICT: measured + derived only",
+     "INSTANT ADAPTATION: eye always fully adapted"
     ]
    },
    "consoleErrors": [],
-   "readyMs": 155101
+   "readyMs": 56016
   },
   "earth-night": {
-   "query": "t=2026-10-15T00:00:00Z&smallbodies=0&target=399&dist=20000&az=180&el=0",
+   "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=instant&target=399&dist=20000&az=180&el=0",
    "stats": {
-    "adaptationLuminance": 0.0015344796853790645,
-    "scotopicAdaptationLuminance": 0.0029369894182682786,
-    "pupilDiameterMm": 7.4033339872476525,
+    "adaptationLuminance": 0.0015174944246798261,
+    "scotopicAdaptationLuminance": 0.002978366080996226,
+    "pupilDiameterMm": 7.404247372294521,
     "mesopicM": 0,
-    "limitingMagnitude": 5.287452451389871,
-    "starsDrawn": 526,
+    "limitingMagnitude": 5.283026113900239,
+    "starsDrawn": 527,
     "bodiesDrawn": 4,
     "bodies": [
      {
@@ -726,19 +729,21 @@
     "warnings": [
      "Earth: phase extrapolated beyond measured range (0–170°) with the spatial law → estimated"
     ],
-    "badge": []
+    "badge": [
+     "INSTANT ADAPTATION: eye always fully adapted"
+    ]
    },
    "consoleErrors": [],
-   "readyMs": 84773
+   "readyMs": 60999
   },
   "moon-quarter": {
-   "query": "t=2026-10-15T00:00:00Z&smallbodies=0&target=301&dist=6000&az=90&el=0",
+   "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=instant&target=301&dist=6000&az=90&el=0",
    "stats": {
-    "adaptationLuminance": 1634.9516005604703,
-    "scotopicAdaptationLuminance": 3618.5565489634105,
+    "adaptationLuminance": 1634.9759556269598,
+    "scotopicAdaptationLuminance": 3618.6080108559167,
     "pupilDiameterMm": 2.045251069821935,
     "mesopicM": 1,
-    "limitingMagnitude": -2.7814663951116394,
+    "limitingMagnitude": -2.7814803930843075,
     "starsDrawn": 1,
     "bodiesDrawn": 121,
     "bodies": [
@@ -874,19 +879,21 @@
     "bodiesInSnapshot": 75,
     "sun": true,
     "warnings": [],
-    "badge": []
+    "badge": [
+     "INSTANT ADAPTATION: eye always fully adapted"
+    ]
    },
    "consoleErrors": [],
-   "readyMs": 67056
+   "readyMs": 40559
   },
   "jupiter-galileans": {
-   "query": "t=2026-10-15T00:00:00Z&smallbodies=0&target=599&dist=4000000",
+   "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=instant&target=599&dist=4000000",
    "stats": {
-    "adaptationLuminance": 646.3273592361755,
-    "scotopicAdaptationLuminance": 1451.2600385211547,
+    "adaptationLuminance": 646.9074158672372,
+    "scotopicAdaptationLuminance": 1452.5625749306598,
     "pupilDiameterMm": 5.487017822084649,
     "mesopicM": 1,
-    "limitingMagnitude": -1.9213358018104265,
+    "limitingMagnitude": -1.9221552681621434,
     "starsDrawn": 186,
     "bodiesDrawn": 36,
     "bodies": [
@@ -944,20 +951,22 @@
     "warnings": [
      "Sinope: phase extrapolated beyond measured range (0–12°) with the spatial law → estimated"
     ],
-    "badge": []
+    "badge": [
+     "INSTANT ADAPTATION: eye always fully adapted"
+    ]
    },
    "consoleErrors": [],
-   "readyMs": 25123
+   "readyMs": 29563
   },
   "saturn-rings": {
-   "query": "t=2026-10-15T00:00:00Z&smallbodies=0&target=699&dist=400000&el=25",
+   "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=instant&target=699&dist=400000&el=25",
    "stats": {
-    "adaptationLuminance": 144.03771591798196,
-    "scotopicAdaptationLuminance": 296.45736711055036,
-    "pupilDiameterMm": 3.8637872956500807,
+    "adaptationLuminance": 108.06649380610057,
+    "scotopicAdaptationLuminance": 222.80103211033025,
+    "pupilDiameterMm": 3.990901900692989,
     "mesopicM": 1,
-    "limitingMagnitude": -0.5847952418911544,
-    "starsDrawn": 90,
+    "limitingMagnitude": -0.337278212156705,
+    "starsDrawn": 95,
     "bodiesDrawn": 60,
     "bodies": [
      {
@@ -1044,19 +1053,21 @@
      "Neptune rings: reflectance not measured → rings absorb and cast shadows only; their material is hatched as not measured",
      "Triton: phase extrapolated beyond measured range (0–1.26°) with the spatial law → estimated"
     ],
-    "badge": []
+    "badge": [
+     "INSTANT ADAPTATION: eye always fully adapted"
+    ]
    },
    "consoleErrors": [],
-   "readyMs": 30948
+   "readyMs": 22138
   },
   "uranus": {
-   "query": "t=2026-10-15T00:00:00Z&smallbodies=0&target=799&dist=150000",
+   "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=instant&target=799&dist=150000",
    "stats": {
-    "adaptationLuminance": 51.75300525910681,
-    "scotopicAdaptationLuminance": 138.1623183098578,
+    "adaptationLuminance": 51.76176002434807,
+    "scotopicAdaptationLuminance": 138.1857691590233,
     "pupilDiameterMm": 4.246623512309974,
     "mesopicM": 1,
-    "limitingMagnitude": 0.28423226841857124,
+    "limitingMagnitude": 0.2840916147294455,
     "starsDrawn": 175,
     "bodiesDrawn": 16,
     "bodies": [
@@ -1089,26 +1100,28 @@
     "warnings": [
      "Uranus rings: reflectance not measured → rings absorb and cast shadows only; their material is hatched as not measured"
     ],
-    "badge": []
+    "badge": [
+     "INSTANT ADAPTATION: eye always fully adapted"
+    ]
    },
    "consoleErrors": [],
-   "readyMs": 31295
+   "readyMs": 25007
   },
   "neptune": {
-   "query": "t=2026-10-15T00:00:00Z&smallbodies=0&target=899&dist=150000",
+   "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=instant&target=899&dist=150000",
    "stats": {
-    "adaptationLuminance": 17.603209819454932,
-    "scotopicAdaptationLuminance": 50.81790941346044,
-    "pupilDiameterMm": 4.936359284242217,
+    "adaptationLuminance": 17.60622402199564,
+    "scotopicAdaptationLuminance": 50.826631599622885,
+    "pupilDiameterMm": 4.9363588877585745,
     "mesopicM": 1,
-    "limitingMagnitude": 1.1607227314590731,
-    "starsDrawn": 135,
+    "limitingMagnitude": 1.1605868018162235,
+    "starsDrawn": 133,
     "bodiesDrawn": 10,
     "bodies": [
      {
       "id": 808,
       "name": "Proteus",
-      "worstLabel": "derived",
+      "worstLabel": "estimated",
       "surfaceUnknown": true
      },
      {
@@ -1133,19 +1146,21 @@
     "warnings": [
      "Neptune rings: reflectance not measured → rings absorb and cast shadows only; their material is hatched as not measured"
     ],
-    "badge": []
+    "badge": [
+     "INSTANT ADAPTATION: eye always fully adapted"
+    ]
    },
    "consoleErrors": [],
-   "readyMs": 28306
+   "readyMs": 37324
   },
   "pluto-charon": {
-   "query": "t=2026-10-15T00:00:00Z&smallbodies=0&target=999&dist=60000",
+   "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=instant&target=999&dist=60000",
    "stats": {
-    "adaptationLuminance": 10.955328626968367,
-    "scotopicAdaptationLuminance": 23.12049520030438,
+    "adaptationLuminance": 10.997170049795878,
+    "scotopicAdaptationLuminance": 23.20876293168979,
     "pupilDiameterMm": 7.1132571826288595,
     "mesopicM": 1,
-    "limitingMagnitude": 1.5332878958534866,
+    "limitingMagnitude": 1.5303247580890933,
     "starsDrawn": 1015,
     "bodiesDrawn": 3,
     "bodies": [
@@ -1171,50 +1186,22 @@
      "Charon: phase extrapolated beyond measured range (0–1.74°) with the spatial law → estimated",
      "Pluto: phase extrapolated beyond measured range (0–1.74°) with the spatial law → estimated"
     ],
-    "badge": []
+    "badge": [
+     "INSTANT ADAPTATION: eye always fully adapted"
+    ]
    },
    "consoleErrors": [],
-   "readyMs": 29201
+   "readyMs": 29766
   },
   "starfield": {
-   "query": "t=2026-10-15T00:00:00Z&smallbodies=0&target=999&dist=3000000000&labels=0",
+   "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=instant&target=999&dist=3000000000&labels=0",
    "stats": {
-    "adaptationLuminance": 0.000054438933694600595,
-    "scotopicAdaptationLuminance": 0.00011576808711704343,
-    "pupilDiameterMm": 7.8372675848035955,
+    "adaptationLuminance": 0.00005559477916429161,
+    "scotopicAdaptationLuminance": 0.00011838483535840086,
+    "pupilDiameterMm": 7.8365253586071795,
     "mesopicM": 0,
-    "limitingMagnitude": 6.589536620607466,
-    "starsDrawn": 3416,
-    "bodiesDrawn": 6,
-    "bodies": [],
-    "points": [
-     "901:estimated",
-     "902:derived:marker",
-     "903:derived:marker",
-     "904:derived:marker",
-     "905:derived:marker",
-     "999:estimated"
-    ],
-    "bodiesInSnapshot": 75,
-    "sun": true,
-    "warnings": [
-     "Charon: phase extrapolated beyond measured range (0–1.74°) with the spatial law → estimated",
-     "Pluto: phase extrapolated beyond measured range (0–1.74°) with the spatial law → estimated"
-    ],
-    "badge": []
-   },
-   "consoleErrors": [],
-   "readyMs": 24088
-  },
-  "starfield-enhanced": {
-   "query": "t=2026-10-15T00:00:00Z&smallbodies=0&target=999&dist=3000000000&labels=0&view=enhanced&boost=6",
-   "stats": {
-    "adaptationLuminance": 0.000041874230654980764,
-    "scotopicAdaptationLuminance": 0.00008768460527018937,
-    "pupilDiameterMm": 7.836671633337503,
-    "mesopicM": 0,
-    "limitingMagnitude": 11.233768377814057,
-    "starsDrawn": 211302,
+    "limitingMagnitude": 6.579253771536023,
+    "starsDrawn": 3411,
     "bodiesDrawn": 6,
     "bodies": [],
     "points": [
@@ -1232,20 +1219,53 @@
      "Pluto: phase extrapolated beyond measured range (0–1.74°) with the spatial law → estimated"
     ],
     "badge": [
-     "ENHANCED +6 stops"
+     "INSTANT ADAPTATION: eye always fully adapted"
     ]
    },
    "consoleErrors": [],
-   "readyMs": 123151
+   "readyMs": 27121
+  },
+  "starfield-enhanced": {
+   "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=instant&target=999&dist=3000000000&labels=0&view=enhanced&boost=6",
+   "stats": {
+    "adaptationLuminance": 0.00004171385468135458,
+    "scotopicAdaptationLuminance": 0.00008734059333020268,
+    "pupilDiameterMm": 7.8366714719737685,
+    "mesopicM": 0,
+    "limitingMagnitude": 11.235602776685592,
+    "starsDrawn": 211313,
+    "bodiesDrawn": 6,
+    "bodies": [],
+    "points": [
+     "901:estimated",
+     "902:derived:marker",
+     "903:derived:marker",
+     "904:derived:marker",
+     "905:derived:marker",
+     "999:estimated"
+    ],
+    "bodiesInSnapshot": 75,
+    "sun": true,
+    "warnings": [
+     "Charon: phase extrapolated beyond measured range (0–1.74°) with the spatial law → estimated",
+     "Pluto: phase extrapolated beyond measured range (0–1.74°) with the spatial law → estimated"
+    ],
+    "badge": [
+     "ENHANCED +6 stops",
+     "INSTANT ADAPTATION: eye always fully adapted"
+    ]
+   },
+   "consoleErrors": [],
+   "readyMs": 376350
   },
   "sun-1au": {
-   "query": "t=2026-10-15T00:00:00Z&smallbodies=0&target=10&dist=149597871",
+   "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=instant&target=10&dist=149597871",
    "stats": {
-    "adaptationLuminance": 181517.4012763951,
-    "scotopicAdaptationLuminance": 431155.4869624377,
+    "adaptationLuminance": 2265.972969249757,
+    "scotopicAdaptationLuminance": 5382.323483329766,
     "pupilDiameterMm": 2.0460950046959727,
     "mesopicM": 1,
-    "limitingMagnitude": -7.448278734707845,
+    "limitingMagnitude": -3.089582130173617,
     "starsDrawn": 0,
     "bodiesDrawn": 3,
     "bodies": [
@@ -1263,19 +1283,21 @@
     "bodiesInSnapshot": 75,
     "sun": true,
     "warnings": [],
-    "badge": []
+    "badge": [
+     "INSTANT ADAPTATION: eye always fully adapted"
+    ]
    },
    "consoleErrors": [],
-   "readyMs": 31004
+   "readyMs": 13529
   },
   "juno-closeup": {
-   "query": "t=2026-10-15T00:00:00Z&smallbodies=1&target=20000003",
+   "query": "t=2026-10-15T00:00:00Z&smallbodies=1&adapt=instant&target=20000003",
    "stats": {
-    "adaptationLuminance": 1420.2646935226571,
-    "scotopicAdaptationLuminance": 3166.605987373362,
-    "pupilDiameterMm": 2.9327636453471992,
+    "adaptationLuminance": 1392.6005139088577,
+    "scotopicAdaptationLuminance": 3104.9271618265484,
+    "pupilDiameterMm": 2.915468679715109,
     "mesopicM": 1,
-    "limitingMagnitude": -2.6494536573866996,
+    "limitingMagnitude": -2.6310497639278068,
     "starsDrawn": 14,
     "bodiesDrawn": 24,
     "bodies": [
@@ -1317,19 +1339,21 @@
      "Neptune rings: reflectance not measured → rings absorb and cast shadows only; their material is hatched as not measured",
      "Triton: phase extrapolated beyond measured range (0–1.26°) with the spatial law → estimated"
     ],
-    "badge": []
+    "badge": [
+     "INSTANT ADAPTATION: eye always fully adapted"
+    ]
    },
    "consoleErrors": [],
-   "readyMs": 113571
+   "readyMs": 140364
   },
   "mars-map": {
-   "query": "t=2026-10-15T00:00:00Z&smallbodies=0&target=499&dist=15000&az=0&el=10",
+   "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=instant&target=499&dist=15000&az=0&el=10",
    "stats": {
-    "adaptationLuminance": 2676.4630654495254,
-    "scotopicAdaptationLuminance": 4397.817052458827,
-    "pupilDiameterMm": 2.4955454844394884,
+    "adaptationLuminance": 2676.463160145185,
+    "scotopicAdaptationLuminance": 4397.8164909044735,
+    "pupilDiameterMm": 2.4955453975870583,
     "mesopicM": 1,
-    "limitingMagnitude": -3.2478162514088735,
+    "limitingMagnitude": -3.24781628510976,
     "starsDrawn": 8,
     "bodiesDrawn": 32,
     "bodies": [
@@ -1383,19 +1407,21 @@
     "warnings": [
      "Uranus rings: reflectance not measured → rings absorb and cast shadows only; their material is hatched as not measured"
     ],
-    "badge": []
+    "badge": [
+     "INSTANT ADAPTATION: eye always fully adapted"
+    ]
    },
    "consoleErrors": [],
-   "readyMs": 49617
+   "readyMs": 26900
   },
   "mercury-map": {
-   "query": "t=2026-10-15T00:00:00Z&smallbodies=0&target=199&dist=8000&az=0&el=10",
+   "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=instant&target=199&dist=8000&az=0&el=10",
    "stats": {
-    "adaptationLuminance": 22590.504726604002,
-    "scotopicAdaptationLuminance": 47827.61271877662,
+    "adaptationLuminance": 22590.520830666606,
+    "scotopicAdaptationLuminance": 47827.5949503996,
     "pupilDiameterMm": 2.1690155777066975,
     "mesopicM": 1,
-    "limitingMagnitude": -5.331641999149028,
+    "limitingMagnitude": -5.3316427112067,
     "starsDrawn": 0,
     "bodiesDrawn": 7,
     "bodies": [
@@ -1417,19 +1443,21 @@
     "bodiesInSnapshot": 75,
     "sun": true,
     "warnings": [],
-    "badge": []
+    "badge": [
+     "INSTANT ADAPTATION: eye always fully adapted"
+    ]
    },
    "consoleErrors": [],
-   "readyMs": 41289
+   "readyMs": 15881
   },
   "starfield-dark-2min": {
-   "query": "t=2026-10-15T00:00:00Z&smallbodies=0&target=999&dist=3000000000&labels=0&adaptfrom=10000%2C600%2C120",
+   "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=realtime&target=999&dist=3000000000&labels=0&adaptfrom=10000%2C600%2C120",
    "stats": {
-    "adaptationLuminance": 0.00006353122935205967,
-    "scotopicAdaptationLuminance": 0.00013639825588356635,
+    "adaptationLuminance": 0.00006347322759715535,
+    "scotopicAdaptationLuminance": 0.00013627316324956443,
     "pupilDiameterMm": 7.836907429178297,
     "mesopicM": 0,
-    "limitingMagnitude": 4.794009396370446,
+    "limitingMagnitude": 4.792673411241316,
     "starsDrawn": 175,
     "bodiesDrawn": 6,
     "bodies": [],
@@ -1450,16 +1478,16 @@
     "badge": []
    },
    "consoleErrors": [],
-   "readyMs": 38317
+   "readyMs": 20220
   },
   "starfield-dark-12min": {
-   "query": "t=2026-10-15T00:00:00Z&smallbodies=0&target=999&dist=3000000000&labels=0&adaptfrom=10000%2C600%2C720",
+   "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=realtime&target=999&dist=3000000000&labels=0&adaptfrom=10000%2C600%2C720",
    "stats": {
-    "adaptationLuminance": 0.00006292023092925444,
-    "scotopicAdaptationLuminance": 0.0001349682279289137,
+    "adaptationLuminance": 0.00006286106345482159,
+    "scotopicAdaptationLuminance": 0.00013484092750766597,
     "pupilDiameterMm": 7.836805452471469,
     "mesopicM": 0,
-    "limitingMagnitude": 5.045996472317093,
+    "limitingMagnitude": 5.045989321690709,
     "starsDrawn": 235,
     "bodiesDrawn": 6,
     "bodies": [],
@@ -1480,17 +1508,17 @@
     "badge": []
    },
    "consoleErrors": [],
-   "readyMs": 36909
+   "readyMs": 26128
   },
   "starfield-dark-30min": {
-   "query": "t=2026-10-15T00:00:00Z&smallbodies=0&target=999&dist=3000000000&labels=0&adaptfrom=10000%2C600%2C1800",
+   "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=realtime&target=999&dist=3000000000&labels=0&adaptfrom=10000%2C600%2C1800",
    "stats": {
-    "adaptationLuminance": 0.00005643685173969456,
-    "scotopicAdaptationLuminance": 0.00012029729981232895,
-    "pupilDiameterMm": 7.836527323888276,
+    "adaptationLuminance": 0.00005636129142902574,
+    "scotopicAdaptationLuminance": 0.0001201348011228036,
+    "pupilDiameterMm": 7.836523698897002,
     "mesopicM": 0,
-    "limitingMagnitude": 6.314782486233883,
-    "starsDrawn": 2632,
+    "limitingMagnitude": 6.317961736768535,
+    "starsDrawn": 2635,
     "bodiesDrawn": 6,
     "bodies": [],
     "points": [
@@ -1510,17 +1538,17 @@
     "badge": []
    },
    "consoleErrors": [],
-   "readyMs": 33617
+   "readyMs": 28783
   },
   "comet-lemmon": {
-   "query": "t=2025-10-27T00:00:00Z&smallbodies=1&target=1004054&sbfield=0&dist=40000000&az=90&el=20&shield=1",
+   "query": "t=2025-10-27T00:00:00Z&smallbodies=1&adapt=instant&target=1004054&sbfield=0&dist=40000000&az=90&el=20&shield=1",
    "stats": {
-    "adaptationLuminance": 0.0005531694456622271,
-    "scotopicAdaptationLuminance": 0.001264396531477653,
-    "pupilDiameterMm": 7.676389370619892,
+    "adaptationLuminance": 0.0005470607093631499,
+    "scotopicAdaptationLuminance": 0.0012487264618749536,
+    "pupilDiameterMm": 7.67682110306763,
     "mesopicM": 0,
-    "limitingMagnitude": 5.579329645875738,
-    "starsDrawn": 860,
+    "limitingMagnitude": 5.583979075385445,
+    "starsDrawn": 2406,
     "bodiesDrawn": 3,
     "bodies": [],
     "points": [
@@ -1532,21 +1560,22 @@
     "sun": true,
     "warnings": [],
     "badge": [
-     "SUN SHIELDED: occulting disc (viewing aid)"
+     "SUN SHIELDED: occulting disc (viewing aid)",
+     "INSTANT ADAPTATION: eye always fully adapted"
     ]
    },
    "consoleErrors": [],
-   "readyMs": 32928
+   "readyMs": 52115
   },
   "phobos-stickney": {
-   "query": "t=2026-10-15T05:20:00Z&smallbodies=0&target=401&dist=45&az=-21&el=5",
+   "query": "t=2026-10-15T05:20:00Z&smallbodies=0&adapt=instant&target=401&dist=45&az=-21&el=5",
    "stats": {
-    "adaptationLuminance": 452.03964092125943,
-    "scotopicAdaptationLuminance": 1012.9462987962988,
-    "pupilDiameterMm": 2.934720172703906,
+    "adaptationLuminance": 452.04478529991735,
+    "scotopicAdaptationLuminance": 1012.9585936309405,
+    "pupilDiameterMm": 2.9347202334934925,
     "mesopicM": 1,
-    "limitingMagnitude": -1.59664432961517,
-    "starsDrawn": 0,
+    "limitingMagnitude": -1.596654602940003,
+    "starsDrawn": 37,
     "bodiesDrawn": 31,
     "bodies": [
      {
@@ -1593,20 +1622,22 @@
     "warnings": [
      "Uranus rings: reflectance not measured → rings absorb and cast shadows only; their material is hatched as not measured"
     ],
-    "badge": []
+    "badge": [
+     "INSTANT ADAPTATION: eye always fully adapted"
+    ]
    },
    "consoleErrors": [],
-   "readyMs": 25657
+   "readyMs": 73087
   },
   "hyperion-fallback": {
-   "query": "t=2026-10-15T00:00:00Z&smallbodies=0&target=607&dist=900&az=30&el=10",
+   "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=instant&target=607&dist=900&az=30&el=10",
    "stats": {
-    "adaptationLuminance": 0.00004770213430591739,
-    "scotopicAdaptationLuminance": 0.00010410755386802757,
-    "pupilDiameterMm": 7.841625821235505,
+    "adaptationLuminance": 0.0000435957908779698,
+    "scotopicAdaptationLuminance": 0.00009473355706079524,
+    "pupilDiameterMm": 7.843458037273176,
     "mesopicM": 0,
-    "limitingMagnitude": 6.638537403364602,
-    "starsDrawn": 2498,
+    "limitingMagnitude": 6.682304815092578,
+    "starsDrawn": 3463,
     "bodiesDrawn": 34,
     "bodies": [
      {
@@ -1656,20 +1687,22 @@
     "warnings": [
      "Hyperion: orientation unknown → drawn as a sphere of mean radius"
     ],
-    "badge": []
+    "badge": [
+     "INSTANT ADAPTATION: eye always fully adapted"
+    ]
    },
    "consoleErrors": [],
-   "readyMs": 32284
+   "readyMs": 44842
   },
   "bennu-closeup": {
-   "query": "t=2026-10-15T00:00:00Z&smallbodies=1&target=20101955&dist=1.5&az=40&el=10",
+   "query": "t=2026-10-15T00:00:00Z&smallbodies=1&adapt=instant&target=20101955&dist=1.5&az=40&el=10",
    "stats": {
-    "adaptationLuminance": 918.599627703271,
-    "scotopicAdaptationLuminance": 2161.710341963484,
-    "pupilDiameterMm": 3.012672575244715,
+    "adaptationLuminance": 918.6239063173458,
+    "scotopicAdaptationLuminance": 2161.7705824323775,
+    "pupilDiameterMm": 3.012672615969917,
     "mesopicM": 1,
-    "limitingMagnitude": -2.2442747526521027,
-    "starsDrawn": 0,
+    "limitingMagnitude": -2.244299166127433,
+    "starsDrawn": 43,
     "bodiesDrawn": 7,
     "bodies": [
      {
@@ -1693,19 +1726,21 @@
      "Charon: phase extrapolated beyond measured range (0–1.74°) with the spatial law → estimated",
      "Pluto: phase extrapolated beyond measured range (0–1.74°) with the spatial law → estimated"
     ],
-    "badge": []
+    "badge": [
+     "INSTANT ADAPTATION: eye always fully adapted"
+    ]
    },
    "consoleErrors": [],
-   "readyMs": 201985
+   "readyMs": 429491
   },
   "earth-moon-first-run": {
-   "query": "t=2026-09-30T17:00:00Z&smallbodies=0&target=399&dist=45828.8&az=32.84&el=-17.26",
+   "query": "t=2026-09-30T17:00:00Z&smallbodies=0&adapt=instant&target=399&dist=45828.8&az=32.84&el=-17.26",
    "stats": {
-    "adaptationLuminance": 10258.014754668455,
-    "scotopicAdaptationLuminance": 26994.47994293799,
-    "pupilDiameterMm": 2.481410428561268,
+    "adaptationLuminance": 8331.298132803497,
+    "scotopicAdaptationLuminance": 22698.570806215863,
+    "pupilDiameterMm": 2.5198496696956436,
     "mesopicM": 1,
-    "limitingMagnitude": -4.549024908505142,
+    "limitingMagnitude": -4.344884559445397,
     "starsDrawn": 7,
     "bodiesDrawn": 341,
     "bodies": [
@@ -2069,20 +2104,22 @@
      "Neptune rings: reflectance not measured → rings absorb and cast shadows only; their material is hatched as not measured",
      "Uranus rings: reflectance not measured → rings absorb and cast shadows only; their material is hatched as not measured"
     ],
-    "badge": []
+    "badge": [
+     "INSTANT ADAPTATION: eye always fully adapted"
+    ]
    },
    "consoleErrors": [],
-   "readyMs": 103832
+   "readyMs": 186296
   },
   "eclipse-2027-above": {
-   "query": "t=2027-08-02T10:06:41.000Z&smallbodies=0&target=399&dist=28715.92&az=0.65&el=1.69",
+   "query": "t=2027-08-02T10:06:41.000Z&smallbodies=0&adapt=instant&target=399&dist=28715.92&az=0.65&el=1.69",
    "stats": {
-    "adaptationLuminance": 9227.039483164308,
-    "scotopicAdaptationLuminance": 24224.80697052702,
-    "pupilDiameterMm": 2.3320268678901312,
+    "adaptationLuminance": 7674.450087009542,
+    "scotopicAdaptationLuminance": 20855.708647118943,
+    "pupilDiameterMm": 2.354474225876767,
     "mesopicM": 1,
-    "limitingMagnitude": -4.4449749385570545,
-    "starsDrawn": 1,
+    "limitingMagnitude": -4.264555668495394,
+    "starsDrawn": 2,
     "bodiesDrawn": 7,
     "bodies": [
      {
@@ -2103,19 +2140,21 @@
     "bodiesInSnapshot": 75,
     "sun": true,
     "warnings": [],
-    "badge": []
+    "badge": [
+     "INSTANT ADAPTATION: eye always fully adapted"
+    ]
    },
    "consoleErrors": [],
-   "readyMs": 98969
+   "readyMs": 129571
   },
   "eclipse-2027-totality": {
-   "query": "t=2027-08-02T10:06:41.000Z&smallbodies=0&target=301&dist=350939.1&az=179.99&el=0&fov=6",
+   "query": "t=2027-08-02T10:06:41.000Z&smallbodies=0&adapt=instant&target=301&dist=350939.1&az=179.99&el=0&fov=6",
    "stats": {
-    "adaptationLuminance": 2.9331024617680463,
-    "scotopicAdaptationLuminance": 6.687330831552101,
+    "adaptationLuminance": 2.933101925220398,
+    "scotopicAdaptationLuminance": 6.687328101372959,
     "pupilDiameterMm": 7.208775196801148,
-    "mesopicM": 0.9282843735190336,
-    "limitingMagnitude": 2.5083173280968096,
+    "mesopicM": 0.9282843469548748,
+    "limitingMagnitude": 2.508317465810339,
     "starsDrawn": 1,
     "bodiesDrawn": 3,
     "bodies": [
@@ -2140,19 +2179,21 @@
     "warnings": [
      "Moon: phase extrapolated beyond measured range (1.55–120°) with the spatial law → estimated"
     ],
-    "badge": []
+    "badge": [
+     "INSTANT ADAPTATION: eye always fully adapted"
+    ]
    },
    "consoleErrors": [],
-   "readyMs": 40059
+   "readyMs": 58765
   },
   "jupiter-double-shadow": {
-   "query": "t=2027-01-30T15:12:07.461Z&smallbodies=0&target=599&dist=300266.4&az=2.32&el=0.58",
+   "query": "t=2027-01-30T15:12:07.461Z&smallbodies=0&adapt=instant&target=599&dist=300266.4&az=2.32&el=0.58",
    "stats": {
-    "adaptationLuminance": 902.0846224452747,
-    "scotopicAdaptationLuminance": 2031.6965436386147,
+    "adaptationLuminance": 902.0858269389762,
+    "scotopicAdaptationLuminance": 2031.6995801105402,
     "pupilDiameterMm": 2.7445898150206087,
     "mesopicM": 1,
-    "limitingMagnitude": -2.227521407617971,
+    "limitingMagnitude": -2.227522640298141,
     "starsDrawn": 8,
     "bodiesDrawn": 28,
     "bodies": [
@@ -2198,10 +2239,12 @@
      "Ananke: phase extrapolated beyond measured range (0–12°) with the spatial law → estimated",
      "Sinope: phase extrapolated beyond measured range (0–12°) with the spatial law → estimated"
     ],
-    "badge": []
+    "badge": [
+     "INSTANT ADAPTATION: eye always fully adapted"
+    ]
    },
    "consoleErrors": [],
-   "readyMs": 41143
+   "readyMs": 63051
   }
  }
 }

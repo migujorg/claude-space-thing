@@ -8,6 +8,7 @@
 //   nomodel=1 (rings without a reflectance model); real data (pipeline products under /data):
 //   scene=rings-data|moon-data (see dataScenes.ts); stars=N adds N fixture stars to a data scene;
 //   bench=N (the stats then carry the median GPU time of each pass over N more frames), benchab=<skip> (A/B);
+//   hdrgrid=N (log the HDR Y in N-px cells), comet=behind|front (earth-data: a fixture comet at the limb);
 //   skip=ap|limb|acuity|…
 
 import { Renderer } from '../render/renderer';
@@ -47,6 +48,7 @@ async function main(): Promise<void> {
     hdr: params.get('hdr') === 'f16' ? 'f16' : 'auto',
     surfaceCacheMiB: Number(params.get('cache') ?? 96),
   });
+  renderer.deviceLost.then((i) => { window.__frameError = `WebGPU device lost (${i.reason}): ${i.message}`; });
   renderer.resize(window.innerWidth, window.innerHeight, window.devicePixelRatio || 1);
   const scene = (params.get('scene') ?? '').endsWith('-data') ? await buildDataScene(params) : buildScene(params);
   // Data scenes carry no stars; stars=N adds N TEST FIXTURE stars (e.g. to see them set behind a limb).
@@ -56,6 +58,7 @@ async function main(): Promise<void> {
     scene.title += ` + ${fixtureCount} TEST FIXTURE stars (not data)`;
   }
   if (scene.stars) renderer.setStars(scene.stars);
+  if (scene.cometModel) renderer.setCometModel(scene.cometModel);
   // Eye history (docs/eye-model.md §2 "Time"): adaptfrom=<cd/m²>,<exposure s>,<elapsed s>.
   const adaptFrom = params.get('adaptfrom');
   if (adaptFrom) {
@@ -104,6 +107,15 @@ async function main(): Promise<void> {
     const B = ab ? Object.fromEntries(Object.entries(medians(runs[1])).map(([k, v]) => [`B ${k}`, v])) : {};
     console.log('[bench]', JSON.stringify({ frames: runs[0].length + runs[1].length, medianPassMs: { ...A, ...B } }));
     renderer.stats.gpuPassMs = { ...A, ...B };
+  }
+  // hdrgrid=N: log the mean HDR luminance Y (cd/m², before the eye model) in N × N-pixel cells, for comparing renders.
+  const cell = Math.floor(Number(params.get('hdrgrid') ?? 0));
+  if (cell > 0) {
+    const img = await renderer.readHdr();
+    const gw = Math.ceil(img.width / cell), gh = Math.ceil(img.height / cell);
+    const grid = new Float64Array(gw * gh);
+    for (let y = 0; y < img.height; y++) for (let x = 0; x < img.width; x++) grid[Math.floor(y / cell) * gw + Math.floor(x / cell)] += img.data[4 * (y * img.width + x) + 1] / (cell * cell);
+    console.warn('[hdrgrid]', JSON.stringify({ cell, gw, gh, y: Array.from(grid, (v) => Number(v.toPrecision(4))) }));
   }
   if (offscreen) {
     const px = await renderer.readPixels();

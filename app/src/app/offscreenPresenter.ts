@@ -25,6 +25,10 @@ export class OffscreenPresenter implements RendererPort {
   }
 
   /** Forwarded when the renderer offers it (small-body field). */
+  get deviceLost(): Promise<{ reason: string; message: string }> {
+    return this.r.deviceLost;
+  }
+
   get gpuDevice(): GPUDevice | undefined {
     return (this.r as unknown as Partial<Pick<RendererPort, 'gpuDevice'>>).gpuDevice;
   }

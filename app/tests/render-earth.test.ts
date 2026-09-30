@@ -1,6 +1,6 @@
 // Earth's layer model (render/earth.ts): cloud optics limits, energy conservation, unknown handling.
 import { describe, expect, it } from 'vitest';
-import { cloudOptics, cloudPlaneAlbedo, earthShade, escape, fresnel, FRESNEL_DIFFUSE, GAUSS4_W, GAUSS4_X, glintRadianceFactor, SEA_ICE_ALBEDO_VIS, type EarthSample } from '../src/render/earth';
+import { cloudLogNormal, cloudOptics, cloudPlaneAlbedo, earthShade, escape, fresnel, FRESNEL_DIFFUSE, GAUSS4_W, GAUSS4_X, glintRadianceFactor, SEA_ICE_ALBEDO_VIS, type EarthSample } from '../src/render/earth';
 
 const sample = (over: Partial<EarthSample> = {}): EarthSample => ({
   surface: [0.1, 0.1, 0.1, 0.1], waterFraction: 0, seaIceFraction: NaN, cloudFraction: 0, opticalThickness: 0, iceFraction: 0, ...over,
@@ -58,6 +58,52 @@ describe('earthShade', () => {
     const s = (mu: number) => earthShade(sample({ surface: [0, 0, 0, 0], cloudFraction: 1, opticalThickness: tau }), mu0, mu);
     expect(albedo((mu) => s(mu).rho[1], mu0)).toBeCloseTo(cloudPlaneAlbedo(tau, 0.867, mu0), 6);
     expect(s(1).rho[1] / s(0.2).rho[1]).toBeCloseTo(escape(1) / escape(0.2), 9);
+  });
+  describe('cloud thickness from the cloudTau moments (log-normal in τ, three nodes)', () => {
+    // TEST VALUES: moments of a texel whose retrieved share f has ln τ ~ N(mu, sd²).
+    const mom = (f: number, mu: number, sd: number, ice = 0) => ({ fTau: f, m1: f * mu, m2: f * (sd * sd + mu * mu), iceTau: ice * f });
+    it('with no spread it is the single τ = exp(mean ln τ)', () => {
+      const mu0 = 0.8, tau = 6;
+      const one = (mu: number) => earthShade(sample({ surface: [0.05, 0.05, 0.05, 0.05], cloudFraction: 1, opticalThickness: 99 }), mu0, mu);
+      const ln = (mu: number) => earthShade(sample({ surface: [0.05, 0.05, 0.05, 0.05], cloudFraction: 1, opticalThickness: 99, tauMoments: mom(1, Math.log(tau), 0) }), mu0, mu);
+      const ref = (mu: number) => earthShade(sample({ surface: [0.05, 0.05, 0.05, 0.05], cloudFraction: 1, opticalThickness: tau }), mu0, mu);
+      for (const mu of [0.3, 0.9]) expect(ln(mu).rho[1]).toBeCloseTo(ref(mu).rho[1], 12);
+      expect(ln(0.5).rho[1]).not.toBeCloseTo(one(0.5).rho[1], 3); // the layer's mean τ is not used
+    });
+    it('the three nodes give the plane albedo of the log-normal to 0.6 % for σ(ln τ) ≤ 1, τ ≥ 3 (against a 400-point integral)', () => {
+      // (1–3 % for σ = 1.4 on thin clouds; the layer's own check on real texels gives +0.1…0.5 %.)
+      const g = 0.867;
+      for (const [mu, sd] of [[Math.log(3), 0.5], [Math.log(3), 1.0], [Math.log(8), 1.0], [Math.log(20), 1.0]]) for (const mu0 of [0.4, 0.9]) {
+        const ln = cloudLogNormal(mom(1, mu, sd), 1)!;
+        const three = ln.taus.reduce((a, t, k) => a + [2 / 3, 1 / 6, 1 / 6][k] * cloudPlaneAlbedo(t, g, mu0), 0);
+        let num = 0, den = 0;
+        for (let i = 0; i < 400; i++) {
+          const x = -6 + (12 * (i + 0.5)) / 400, w = Math.exp(-0.5 * x * x);
+          num += w * cloudPlaneAlbedo(Math.exp(mu + sd * x), g, mu0);
+          den += w;
+        }
+        expect(Math.abs(three / (num / den) - 1)).toBeLessThan(0.006);
+      }
+    });
+    it('the cloud without a measured thickness is unknown: no light from it, marked', () => {
+      const s0 = sample({ surface: [0.05, 0.05, 0.05, 0.05], cloudFraction: 0.94, opticalThickness: 7.8, tauMoments: mom(0.06, Math.log(7.8), 0.4) });
+      const r = earthShade(s0, 0.9, 1);
+      expect(r.gap).toBeCloseTo(0.88, 12);
+      // Only the clear 6 % and the retrieved 6 % reflect.
+      const clearOnly = earthShade(sample({ surface: [0.05, 0.05, 0.05, 0.05], cloudFraction: 0 }), 0.9, 1).rho[1] * 0.06;
+      const cloudOnly = earthShade(sample({ surface: [0.05, 0.05, 0.05, 0.05], cloudFraction: 1, opticalThickness: 99, tauMoments: mom(1, Math.log(7.8), 0.4) }), 0.9, 1).rho[1] * 0.06;
+      expect(r.rho[1]).toBeCloseTo(clearOnly + cloudOnly, 12);
+      // f_τ above the cloud fraction is capped at it.
+      expect(earthShade(sample({ surface: [0, 0, 0, 0], cloudFraction: 0.5, opticalThickness: 5, tauMoments: mom(0.7, 1, 0.2) }), 1, 1).gap).toBe(0);
+    });
+    it('conserves energy over a white surface, and takes the ice share among the retrievals', () => {
+      for (const mu0 of [0.3, 0.8]) {
+        const a = albedo((mu) => earthShade(sample({ surface: [1, 1, 1, 1], cloudFraction: 1, opticalThickness: 99, tauMoments: mom(1, Math.log(5), 1) }), mu0, mu).rho[1], mu0);
+        expect(a).toBeCloseTo(1, 6);
+      }
+      expect(cloudLogNormal(mom(0.4, 1, 0.3, 0.5), 0.8)!.ice).toBeCloseTo(0.5, 12);
+      expect(cloudLogNormal({ fTau: NaN, m1: 0, m2: 0, iceTau: 0 }, 0.8)).toBeNull();
+    });
   });
   it('light emitted below a cloud leaves with its diffuse transmission', () => {
     const tau = 5;

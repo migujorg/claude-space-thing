@@ -115,6 +115,7 @@ export function sceneBodyOf(
     selected: g.id === selectedId,
     // Best/complete may continue a measured phase curve with the spatial law (labelled estimated).
     allowPhaseExtrapolation: level !== 'strict',
+    phaseEstimated: lit && !!f.phase && g.body.photometry?.phaseFunction?.label === 'estimated',
   };
   const used = applyExtras(sb, g.body, extras, level, lit);
   // Shape model (app/shapes.ts): a mesh in place of the ellipsoid, when its labels are admitted and it can be placed.

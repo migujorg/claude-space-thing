@@ -12,7 +12,7 @@
 // PACKETS: Gaussian splats (dust-tail grain packets, ion-tail segments) of given illuminance and width (km), at
 // their own distance; widths below 0.6 px are widened to 0.6 px so the splat still integrates to its illuminance.
 
-import { COMMON } from '../shaders';
+import { COMMON, LIMB_WGSL } from '../shaders';
 import { LUT_SIZE, NEAR_PX, NEAR_STEPS } from './model';
 
 const f = (x: number) => (Number.isInteger(x) ? `${x}.0` : `${x}`);
@@ -27,6 +27,7 @@ struct Coma {
 @group(0) @binding(0) var<uniform> F: Frame;
 @group(0) @binding(1) var<storage, read> comae: array<Coma>;
 @group(0) @binding(2) var<storage, read> luts: array<vec4f>;
+${LIMB_WGSL(3)}
 
 struct VO { @builtin(position) pos: vec4f, @location(0) xy: vec2f, @location(1) @interpolate(flat) inst: u32 };
 
@@ -116,7 +117,8 @@ struct FO { @location(0) ext: vec4f, @builtin(frag_depth) depth: f32 };
       aPrev = ak;
     }
   }
-  e = max(e, vec4f(0.0));
+  // Seen through an atmosphere's limb when the coma lies beyond the planet (renderer.ts writeLimbs).
+  e = max(e, vec4f(0.0)) * limbTransmittanceTo(dir, C.n.w);
   if (e.y <= 0.0 && e.w <= 0.0) { discard; }
   var o: FO;
   o.ext = toStore(F, e / omega);
@@ -132,12 +134,13 @@ struct Packet {
 };
 @group(0) @binding(0) var<uniform> F: Frame;
 @group(0) @binding(1) var<storage, read> packets: array<Packet>;
+${LIMB_WGSL(2)}
 
 struct VO {
   @builtin(position) pos: vec4f,
   @location(0) xy: vec2f,                       // tangent-plane offset (tan units)
   @location(1) @interpolate(flat) e: vec4f,     // illuminance / (2 pi sigma^2 · truncation), per sr at the peak
-  @location(2) @interpolate(flat) s: vec2f,     // x = sigma (rad), y = depth
+  @location(2) @interpolate(flat) s: vec3f,     // x = sigma (rad), y = depth, z = distance (km)
 };
 
 const CUT: f32 = 3.0;
@@ -161,7 +164,7 @@ const CUT: f32 = 3.0;
   let trunc = 1.0 - exp(-0.5 * CUT * CUT);
   o.e = P.e / (2.0 * PI * sig * sig * trunc);
   let depth = F.proj.z / max(dist * max(dot(n, -F.back.xyz), 1e-6), F.proj.z);
-  o.s = vec2f(sig, depth);
+  o.s = vec3f(sig, depth, dist);
   return o;
 }
 
@@ -171,9 +174,11 @@ struct FO { @location(0) ext: vec4f, @builtin(frag_depth) depth: f32 };
   let r2 = dot(in.xy, in.xy) / (in.s.x * in.s.x);
   if (r2 > CUT * CUT) { discard; }
   let ndc = ndcFromFrag(F, in.pos.xy);
-  if (occulted(F, normalize(worldDirNdc(F, ndc)))) { discard; }
+  let dir = normalize(worldDirNdc(F, ndc));
+  if (occulted(F, dir)) { discard; }
   var o: FO;
-  o.ext = toStore(F, in.e * exp(-0.5 * r2));
+  // Seen through an atmosphere's limb when the packet lies beyond the planet (renderer.ts writeLimbs).
+  o.ext = toStore(F, in.e * exp(-0.5 * r2) * limbTransmittanceTo(dir, in.s.z));
   o.depth = in.s.y;
   return o;
 }
