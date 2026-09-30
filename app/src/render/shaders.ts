@@ -21,7 +21,13 @@ struct Frame {
   proj: vec4f,     // x = 1/tanX, y = 1/tanY, z = near (km), w = pre-exposure
   size: vec4f,     // W, H, 1/W, 1/H
   tanHalf: vec4f,  // tanX, tanY, pixel angle at centre (rad), frame index
+  store: vec4f,    // x = largest value the HDR format can store (fp16 fallback), yzw unused
 };
+
+/** Pre-expose a luminance for storage in the HDR targets (clamped so fp16 never overflows to inf). */
+fn toStore(F: Frame, v: vec4f) -> vec4f {
+  return min(v * F.proj.w, vec4f(F.store.x));
+}
 
 struct Eye {
   scene: vec4f,    // sigmaCone, sigmaRod, Bcone, Brod
@@ -244,7 +250,7 @@ struct FOut {
     }
   }
   var o: FOut;
-  o.ext = L * (cov * F.proj.w);
+  o.ext = toStore(F, L * cov);
   o.w = b.misc.x;
   o.depth = depthOf(hit.t, hit.dir);
   return o;
@@ -358,7 +364,7 @@ struct PV {
   if (r2 > ext * ext) { discard; }
   let g = exp(-r2 / (2.0 * s * s)) / (2.0 * PI * s * s) * E.misc2.y;
   let ndc = ndcFromFrag(F, in.pos.xy);
-  return in.e * (g / pixelSolidAngle(F, ndc)) * F.proj.w;
+  return toStore(F, in.e * (g / pixelSolidAngle(F, ndc)));
 }
 `;
 
@@ -403,7 +409,7 @@ struct SO { @location(0) ext: vec4f, @builtin(frag_depth) depth: f32 };
   let mu = sqrt(max(edge, 0.0));
   let P = S.c0 + mu * (S.c1 + mu * (S.c2 + mu * (S.c3 + mu * (S.c4 + mu * S.c5))));
   var o: SO;
-  o.ext = S.i0 * max(P, vec4f(0.0)) * (cov * S.weight.x * F.proj.w);
+  o.ext = toStore(F, S.i0 * max(P, vec4f(0.0)) * (cov * S.weight.x));
   let cosT = 1.0 / sqrt(1.0 + r2);
   let t = S.n.w * cosT - S.e2.w * mu;
   let dir = normalize(S.n.xyz + in.xy.x * S.e1.xyz + in.xy.y * S.e2.xyz);

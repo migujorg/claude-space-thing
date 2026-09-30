@@ -91,6 +91,7 @@ export class Renderer {
   private waiters: ((m: Measurement) => void)[] = [];
   private glareCache = { key: '', weights: [] as number[], unscattered: 1 };
   private lastMeasurementTime = 0;
+  private persistentWarnings: string[] = [];
   /** Debug: names of passes to skip ('bodies', 'cull', 'points', 'pyramid', 'sun', 'adapt', 'composite', 'overlays'). */
   debugSkip = new Set<string>();
   /** Optional debug hook, called with each adaptation measurement. */
@@ -136,7 +137,7 @@ export class Renderer {
   ) {
     const d = device;
     const ub = (size: number) => d.createBuffer({ size, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
-    this.frameUB = ub(96);
+    this.frameUB = ub(112);
     this.eyeUB = ub(13 * 16);  // 13 vec4 (struct Eye)
     this.sunUB = ub(11 * 16);
     this.clampUB = ub(16);
@@ -214,11 +215,13 @@ export class Renderer {
    *   'offscreen' renders the display image into an internal texture that readPixels() returns (used by
    *   the headless test page, where WebGPU canvas presentation does not complete).
    */
-  static async create(canvas: HTMLCanvasElement, options: { presentation?: 'canvas' | 'offscreen' } = {}): Promise<Renderer> {
+  static async create(canvas: HTMLCanvasElement, options: { presentation?: 'canvas' | 'offscreen'; hdr?: 'auto' | 'f16' } = {}): Promise<Renderer> {
     if (!navigator.gpu) throw new Error('WebGPU is not available in this browser');
     const adapter = await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' });
     if (!adapter) throw new Error('No WebGPU adapter');
-    const blend32 = adapter.features.has('float32-blendable');
+    // float32-blendable is required for rgba32float HDR targets; otherwise (or with hdr: 'f16', for
+    // testing) the targets are rgba16float with pre-exposure 1/A_cone and clamping at the fp16 maximum.
+    const blend32 = adapter.features.has('float32-blendable') && options.hdr !== 'f16';
     const device = await adapter.requestDevice({
       requiredFeatures: blend32 ? ['float32-blendable'] : [],
       requiredLimits: {
@@ -237,7 +240,7 @@ export class Renderer {
     const r = new Renderer(device, canvas, ctx, format, blend32 ? 'rgba32float' : 'rgba16float', blend32 ? 'r32float' : 'r16float');
     const err = await device.popErrorScope();
     if (err) throw new Error(`Renderer pipeline creation failed: ${err.message}`);
-    if (!blend32) r.stats.warnings!.push('float32-blendable unavailable: HDR buffers are rgba16float with pre-exposure');
+    if (!blend32) r.persistentWarnings.push('HDR buffers are rgba16float with pre-exposure (float32-blendable unavailable or disabled)');
     r.resize(canvas.clientWidth || canvas.width || 1, canvas.clientHeight || canvas.height || 1, 1);
     return r;
   }
@@ -608,7 +611,7 @@ export class Renderer {
     this.stats.pupilDiameterMm = eye.pupilMm;
     this.stats.mesopicM = eye.mesopic.m;
     this.stats.limitingMagnitude = eye.limitingMagnitude;
-    this.stats.warnings = prep.warnings;
+    this.stats.warnings = [...this.persistentWarnings, ...prep.warnings];
     d.queue.onSubmittedWorkDone().then(() => { this.stats.frameMs = performance.now() - t0; });
 
     if (doReadback) {
@@ -676,6 +679,7 @@ export class Renderer {
       1 / g.tanX, 1 / g.tanY, NEAR_KM, preExposure,
       t.W, t.H, 1 / t.W, 1 / t.H,
       g.tanX, g.tanY, g.pixelAngle, this.frameIndex,
+      this.hdrFormat === 'rgba32float' ? 3.4e38 : 65504, 0, 0, 0,
     ]));
     const s = this.settings;
     const cosField = Math.cos(((s.adaptationFieldDeg / 2) * Math.PI) / 180);

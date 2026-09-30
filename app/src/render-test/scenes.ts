@@ -99,9 +99,10 @@ export function buildScene(p: URLSearchParams): TestScene {
     }
     case 'neptune': {
       const dist = Number(p.get('dist') ?? 90000);
-      const { body, sunPos } = litPlanet(30, dist, 24600, fixtureBluishAlbedo());
+      const dau = Number(p.get('dau') ?? 30);
+      const { body, sunPos } = litPlanet(dau, dist, 24600, fixtureBluishAlbedo());
       return {
-        title: 'Dim sphere at 30 AU (adaptation: "Neptune isn\'t dark")',
+        title: dau === 30 ? 'Dim sphere at 30 AU (adaptation: "Neptune isn\'t dark")' : `Blue-green sphere at ${dau} AU (mesopic/scotopic)`,
         stars,
         snapshot: { et: 0, camera: cam(deg(50)), sun: sunAt(sunPos), bodies: [body], view, orbits: orbits ? [{ id: 1, points: orbitFor([0, 0, 0], dist), selected: true }] : [] },
       };
