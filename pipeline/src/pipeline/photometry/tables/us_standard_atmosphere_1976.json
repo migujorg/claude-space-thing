@@ -1,0 +1,74 @@
+{
+ "_citation": "U.S. Standard Atmosphere, 1976. NOAA, NASA and USAF, NOAA-S/T 76-1562, U.S. Government Printing Office, Washington D.C., October 1976. NASA-TM-X-74335, NTRS 19770009539. Transcribed from the NTRS scan (pdf pages given as 'pdf N'; report page numbers in parentheses).",
+ "_url": "https://ntrs.nasa.gov/api/citations/19770009539/downloads/19770009539.pdf",
+ "table2_constants": {
+  "_where": "Table 2 'Adopted constants', pdf 18 (report p. 2); r0 from the text under eq. 17, pdf 24 (p. 8)",
+  "k_J_per_K": 1.380622e-23,
+  "N_A_per_kmol": 6.022169e26,
+  "Rstar_J_per_kmol_K": 8.31432e3,
+  "g0_m_s2": 9.80665,
+  "P0_Pa": 101325.0,
+  "r0_m": 6356766.0,
+  "T0_K": 288.15
+ },
+ "table3_composition": {
+  "_where": "Table 3 'Molecular weights and assumed fractional-volume composition of sea-level dry air', pdf 19 (p. 3)",
+  "columns": ["species", "M_kg_per_kmol", "F"],
+  "rows": [
+   ["N2", 28.0134, 0.78084],
+   ["O2", 31.9988, 0.209476],
+   ["Ar", 39.948, 0.00934],
+   ["CO2", 44.00995, 0.000314],
+   ["Ne", 20.183, 0.00001818],
+   ["He", 4.0026, 0.00000524],
+   ["Kr", 83.80, 0.00000114],
+   ["Xe", 131.30, 0.000000087],
+   ["CH4", 16.04303, 0.000002],
+   ["H2", 2.01594, 0.0000005]
+  ],
+  "M0_text_kg_per_kmol": 28.9644,
+  "_M0_where": "text of section 1.2.4, pdf 25 (p. 9): 'M0 is found to be 28.9644 kg/kmol'"
+ },
+ "table4_layers": {
+  "_where": "Table 4 'The defined reference levels and gradients of the linearly segmented temperature-height profile from the surface to 86 geometric kilometers', pdf 19 (p. 3); eq. 23 T_M = T_M,b + L_M,b (H - H_b), pdf 26 (p. 10)",
+  "Hb_km_geopotential": [0, 11, 20, 32, 47, 51, 71, 84.8520],
+  "LMb_K_per_km_geopotential": [-6.5, 0.0, 1.0, 2.8, 0.0, -2.8, -2.0]
+ },
+ "equations": {
+  "_where": "pdf 24 (p. 8) eqs. 17-19; pdf 26 (p. 10) eq. 23; pdf 28 (p. 12) eqs. 33a, 33b, 34",
+  "eq17": "g = g0 (r0 / (r0 + Z))^2",
+  "eq18": "H = (g0/g0') r0 Z / (r0 + Z), with g0/g0' = 1 m'/m",
+  "eq23": "T_M = T_M,b + L_M,b (H - H_b)",
+  "eq33a": "P = P_b [T_M,b / (T_M,b + L_M,b (H - H_b))]^(g0' M0 / (R* L_M,b))   (L_M,b != 0)",
+  "eq33b": "P = P_b exp[-g0' M0 (H - H_b) / (R* T_M,b)]   (L_M,b = 0)",
+  "eq34": "n_i = F_i N  (Z < 80 km)",
+  "number_density": "N = N_A P / (R* T), T = T_M M/M0 (the ideal-gas law with the constants of Table 2)"
+ },
+ "table8_molecular_weight_ratio": {
+  "_where": "Table 8 'Molecular-weight ratio geopotential and geometric altitudes in meters', pdf 25 (p. 9), geometric-altitude half (Z, M/M0). The text there states that the tables of the Standard below 86 km were computed WITHOUT this ratio (T = T_M), so their 80-86 km number densities are high by up to 0.04 %.",
+  "Z_m": [80000, 80500, 81000, 81500, 82000, 82500, 83000, 83500, 84000, 84500, 85000, 85500, 86000],
+  "M_over_M0": [1.000000, 0.999996, 0.999989, 0.999971, 0.999941, 0.999909, 0.999870, 0.999829, 0.999786, 0.999741, 0.999694, 0.999641, 0.999579]
+ },
+ "table18_ozone": {
+  "_where": "Table 18 'Mid-latitude ozone model', pdf 54 (p. 38): geometric height Z and ozone number density n(O3) with its standard deviation sigma (m^-3). Description pdf 53 (p. 37): balloon soundings (51 deg longitude band Seattle-Bedford, below 27 km) and 20 rocket soundings (mean latitude 38 N, 1949-1972, above 27 km, adjusted to 45 N with satellite latitudinal gradients); 'weighted towards the solar maximum conditions which existed in the late 1960's'; total ozone 0.345 atm-cm, 'about five percent more than ... the global network of Dobson spectrophotometers for 45 N'.",
+  "Z_m": [2000, 4000, 6000, 8000, 10000, 12000, 14000, 16000, 18000, 20000, 22000, 24000, 26000, 28000, 30000, 32000, 34000, 36000, 38000, 40000, 42000, 44000, 46000, 48000, 50000, 52000, 54000, 56000, 58000, 60000, 62000, 64000, 66000, 68000, 70000, 72000, 74000],
+  "n_O3_m3": [6.8e17, 5.8e17, 5.7e17, 6.5e17, 1.13e18, 2.02e18, 2.35e18, 2.95e18, 4.04e18, 4.77e18, 4.86e18, 4.54e18, 4.03e18, 3.24e18, 2.52e18, 2.03e18, 1.58e18, 1.22e18, 8.73e17, 6.07e17, 3.98e17, 2.74e17, 1.69e17, 1.03e17, 6.64e16, 3.84e16, 2.55e16, 1.61e16, 1.12e16, 7.33e15, 4.81e15, 3.17e15, 1.72e15, 7.5e14, 5.4e14, 2.2e14, 1.7e14],
+  "sigma_m3": [3.8e17, 2.9e17, 3.0e17, 5.9e17, 1.23e18, 1.58e18, 1.48e18, 1.42e18, 1.23e18, 0.98e18, 0.82e18, 0.61e18, 0.55e18, 0.45e18, 0.33e18, 0.34e18, 0.27e18, 0.17e18, 1.10e17, 0.79e17, 0.44e17, 0.49e17, 0.36e17, 0.17e17, 1.10e16, 0.7e16, 0.68e16, 0.37e16, 0.29e16, 2.5e15, 1.8e15, 1.2e15, 0.66e15, 5.1e14, 3.1e14, 1.7e14, 0.9e14],
+  "total_atm_cm": 0.345,
+  "total_molecules_m2": 9.27e22,
+  "_total_where": "Table 18 footer and text p. 37: 0.345 atm-cm = 9.27e22 molecules/m^2"
+ },
+ "checks": {
+  "_where": "Table I 'Geometric Altitude, Metric Units' and Table II 'Geopotential Altitude, Metric Units' (Part 4 main tables). Z geometric (m), H geopotential (m'), n number density (m^-3), rho density (kg/m^3), T (K), g (m/s^2).",
+  "rows": [
+   {"table": "II", "pdf": 67, "H_m": 0, "Z_m": 0, "T_K": 288.150, "P_mb": 1013.25, "rho_kg_m3": 1.2250},
+   {"table": "II", "pdf": 89, "H_m": -5000, "Z_m": -4996, "g": 9.8221, "n_m3": 4.0138e25},
+   {"table": "II", "pdf": 89, "H_m": -4000, "Z_m": -3997, "g": 9.8190, "n_m3": 3.6787e25},
+   {"table": "I", "pdf": 90, "Z_m": -4000, "H_m": -4003, "g": 9.8190, "n_m3": 3.6795e25},
+   {"table": "II", "pdf": 105, "H_m": 60000, "Z_m": 60572, "g": 9.6224, "n_m3": 5.9946e21},
+   {"table": "II", "pdf": 105, "H_m": 70000, "Z_m": 70779, "g": 9.5919, "n_m3": 1.5436e21},
+   {"table": "II", "pdf": 105, "H_m": 75000, "Z_m": 75896, "g": 9.5766, "n_m3": 7.2481e20},
+   {"table": "II", "pdf": 105, "H_m": 79500, "Z_m": 80507, "g": 9.5629, "n_m3": 3.5418e20}
+  ]
+ }
+}

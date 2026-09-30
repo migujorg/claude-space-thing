@@ -1,0 +1,20 @@
+{
+ "_citation": "Kinne, S. (2019). The MACv2 aerosol climatology. Tellus B: Chemical and Physical Meteorology 71, 1623639. DOI:10.1080/16000889.2019.1623639 (open access). Transcribed from the journal PDF (b.tellusjournals.se proof, 13 pages).",
+ "_what": "MACv2: monthly global maps of tropospheric aerosol properties whose mid-visible values are anchored to multi-year statistics of AERONET and MAN sun-photometer measurements, with spatial context from global modelling (abstract). The global annual averages below are 'today's (tropospheric) aerosol'.",
+ "abstract_550nm": {"AOD": 0.12, "SSA": 0.94, "ASY": 0.7},
+ "table2": {
+  "_what": "Table 2 'Global annual average aerosol radiative properties of today's (tropospheric) aerosol' (p. 10): total (coarse + fine) columns",
+  "lambda_um": [0.45, 0.55, 1.0],
+  "AOD_total": [0.144, 0.122, 0.081],
+  "SSA_total": [0.902, 0.941, 0.956],
+  "ASY_total": [0.718, 0.702, 0.693],
+  "AOD_coarse": [0.058, 0.058, 0.062],
+  "AOD_fine": [0.087, 0.063, 0.019]
+ },
+ "table3": {
+  "_what": "Table 3 'Annual averages of vertical distributions for the mid-visible AOD for four altitude (above sea-level) atmospheric layers' (p. 11): the MACv2 AOD per layer (total) = the ECHAM-HAM relative distributions of coarse and fine mode applied to MACv2 AODc and AODf",
+  "layers_km_asl": [[0, 1], [1, 3], [3, 6], [6, 12]],
+  "AOD_per_layer_total": [0.041, 0.059, 0.015, 0.004],
+  "fraction_CALIPSO_v3": [0.573, 0.280, 0.091, 0.030]
+ }
+}

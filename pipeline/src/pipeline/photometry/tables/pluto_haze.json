@@ -1,0 +1,63 @@
+{
+ "_what": "Pluto haze from New Horizons imaging (docs/sources/pluto-haze.md).",
+ "gladstone_2016": {
+  "_citation": "Gladstone, G. R., Stern, S. A., Ennico, K., et al. (2016). The atmosphere of Pluto as observed by New Horizons. Science 351, aad8866. DOI:10.1126/science.aad8866; text source arXiv:1604.05356v1, section 'Hazes' (p. 8-9).",
+  "_quote": "Extensive, optically thin hazes are seen in New Horizons images of Pluto (Fig. 4), extending to altitudes >200 km, with typical brightness scale heights of ~50 km. ... The haze scale height decreases to ~30 km at altitudes 100-200 km ... I/F ... values of ~0.2-0.3 at red wavelengths (in MVIC red, 540-700 nm, and LORRI images, 350-850 nm), and I/F values up to 0.7-0.8 at blue wavelengths (in MVIC blue images, 400-550 nm) ... (e.g., at I/F ~ 0.02 at Theta~38 deg, in MVIC red and blue images), and are just barely detectable at low phase angles (e.g., at I/F ~ 0.003 at Theta~20 deg, in LORRI images) ... with optical constants of n=1.69 and k=0.018 ... at the LORRI pivot wavelength of 607.6 nm ... For optically thin conditions, I/F ~ P(Theta) tau_LOS / 4 ... particles with radii no smaller than ~0.2 um, P(165 deg)~5, leading to tau_LOS ~ 0.16, or a vertical haze scattering optical depth of ~0.013.",
+  "scale_height_low_km": 50.0,
+  "scale_height_100_200_km": 30.0,
+  "extends_above_km": 200.0,
+  "high_phase_deg": [
+   165,
+   169
+  ],
+  "IF_red_high_phase": [
+   0.2,
+   0.3
+  ],
+  "IF_blue_high_phase": [
+   0.7,
+   0.8
+  ],
+  "red_band_nm": [
+   540,
+   700
+  ],
+  "blue_band_nm": [
+   400,
+   550
+  ],
+  "vertical_scattering_optical_depth_607nm": 0.013,
+  "tau_los_607nm": 0.16,
+  "P_165": 5.0,
+  "lorri_pivot_nm": 607.6,
+  "tholin_n": 1.69,
+  "tholin_k": 0.018,
+  "min_radius_um": 0.2
+ },
+ "cheng_2017": {
+  "_citation": "Cheng, A. F., Summers, M. E., Gladstone, G. R., et al. (2017). Haze in Pluto's atmosphere. Icarus 290, 112-133. DOI:10.1016/j.icarus.2017.02.024; text source arXiv:1702.07771v2, Table 4 'Phase Functions of Pluto Haze Particles' (p. 22) and section 5.",
+  "_quote": "The phase function of Pluto's atmospheric haze at the visible wavelengths observed by LORRI (pivot wavelength 607.6nm) is compiled in Table 4.",
+  "table4": {
+   "phase_deg": [
+    20,
+    67,
+    148,
+    167
+   ],
+   "peak_IF": [
+    0.02,
+    0.014,
+    0.05,
+    0.3
+   ],
+   "IF_at_45km": [
+    0.004,
+    0.004,
+    0.02,
+    0.15
+   ]
+  },
+  "vertical_optical_depth_section5": 0.018,
+  "_section5_quote": "From (1), the line-of-sight scattering optical depth would be ~0.24, and the vertical optical depth would be ~0.018. (section 5, same Mie particles as Gladstone et al.)"
+ }
+}

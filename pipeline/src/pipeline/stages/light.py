@@ -7,6 +7,10 @@ Writes
   rings.json       RingsFile: planet NAIF id -> RingSystem (radial optical-depth profiles from occultations).
   smallbody-class-colors.json  SmallBodyClassColorsFile: per Bus-DeMeo class, the colour per unit p_V and p_V
                    statistics, for small bodies without a measured spectrum (photometry/smallbody_colors.py).
+  atmospheres.json AtmosphereFile: per body, extinction / single-scattering albedo / phase function of each
+                   atmospheric component on an altitude grid at 360-830 nm, for sky and limb rendering
+                   (photometry/atmospheres.py; docs/reports/atmospheres.md, regenerate with
+                   `uv run python -m pipeline.photometry.atmo_report`).
 
 All inputs are fetched through pipeline.download.fetch (sha256-recorded) or transcribed published tables under
 pipeline/src/pipeline/photometry/tables/ (see docs/sources/). Diagnostics are printed and summarized in
@@ -18,7 +22,7 @@ from __future__ import annotations
 import numpy as np
 
 from ..output import write_json
-from ..photometry import bodies, phase, rings, smallbody_colors, solar
+from ..photometry import atmospheres, bodies, phase, rings, smallbody_colors, solar
 from ..schema import BuildContext
 
 DEPENDS: tuple[str, ...] = ()
@@ -65,3 +69,9 @@ def run(ctx: BuildContext) -> None:
     pop = sbc["population"]["pV"]["value"]
     print(f"[light] small-body class colours: {len(sbc['classes'])} Bus-DeMeo classes, population p_V median "
           f"{pop['median']} (n = {pop['n']})")
+
+    atm, _ = atmospheres.build(ctx)
+    write_json(ctx, "atmospheres.json", atm, "light", indent=None)
+    for e in atm["bodies"].values():
+        comps = ", ".join(f"{c['id']} τ(550)={c['columnOpticalDepth'][19]:.4g}" for c in e["components"])
+        print(f"[light] atmosphere {e['name']:8s} {comps or 'scale height ' + str(e['scaleHeightKm']['value']) + ' km'}")
