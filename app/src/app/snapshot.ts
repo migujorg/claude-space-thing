@@ -115,6 +115,12 @@ export function sceneBodyOf(
     allowPhaseExtrapolation: level !== 'strict',
   };
   const used = applyExtras(sb, g.body, extras, level, lit);
+  // Shape model (app/shapes.ts): a mesh in place of the ellipsoid, when its labels are admitted and it can be placed.
+  const mesh = extras?.shapes && sb.radii ? extras.shapes.sceneShape(sb, level, emit) : null;
+  if (mesh) {
+    sb.shape = mesh;
+    used.push(mesh.worstLabel);
+  }
   if (used.length) sb.worstLabel = worstOf([sb.worstLabel, ...used]);
   return { body: sb };
 }

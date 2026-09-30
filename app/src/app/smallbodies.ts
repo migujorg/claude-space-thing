@@ -319,7 +319,7 @@ export class SmallBodies {
   readonly cpu: CpuSmallBodyStates;
   private readonly eph: Ephem;
   private readonly names = new Map<number, string>();
-  private readonly pseudo = new Map<number, Body>();
+  private readonly pseudo = new Map<string, Body>();
   private readonly counts = new Map<ExistsLevel, SmallBodyCounts>();
   private tracks = new Map<number, OrbitSamples>();
 
@@ -349,7 +349,8 @@ export class SmallBodies {
   setName(row: number, name: string): void {
     if (!name || this.names.get(row) === name) return;
     this.names.set(row, name);
-    this.pseudo.delete(row);
+    this.pseudo.delete(`${row}|false`);
+    this.pseudo.delete(`${row}|true`);
   }
 
   knownName(row: number): string | null {
@@ -450,21 +451,32 @@ export class SmallBodies {
    * Colour/albedo come from the physical table with their own labels; the phase function is a Lambert sphere
    * (an assumption, estimated): the measured H-G1-G2 fit is not converted into a phase function yet.
    */
-  pseudoBody(row: number): Body {
-    let b = this.pseudo.get(row);
+  pseudoBody(row: number, shaped = false): Body {
+    const key = `${row}|${shaped}`;
+    let b = this.pseudo.get(key);
     if (b) return b;
     const P = this.tables.physical;
     const p = physicalRow(this.tables, row);
     const cols = P?.header.columns ?? {};
     const d = this.measuredDiameter(row);
     const radii: Sourced<[number, number, number]> = d
-      ? {
-          value: [d.km / 2, d.km / 2, d.km / 2],
-          unit: 'km',
-          label: worstOf(['estimated', d.label]),
-          sources: d.sources,
-          method: `A sphere of the ${d.label} effective diameter (${Number(d.km.toPrecision(6))} km). The shape is an assumption, so the drawn shape is estimated. Diameter: ${cols.diameter?.method ?? ''}`.trim(),
-        }
+      ? shaped
+        ? {
+            // A shape model is drawn (app/shapes.ts): the shape is no longer assumed; these radii only carry the
+            // photometric size (the disk photometry's reference area).
+            value: [d.km / 2, d.km / 2, d.km / 2],
+            unit: 'km',
+            label: d.label,
+            sources: d.sources,
+            method: `The ${d.label} effective diameter (${Number(d.km.toPrecision(6))} km) as the photometric reference size; the shape drawn is the object's shape model (see Shape model). Diameter: ${cols.diameter?.method ?? ''}`.trim(),
+          }
+        : {
+            value: [d.km / 2, d.km / 2, d.km / 2],
+            unit: 'km',
+            label: worstOf(['estimated', d.label]),
+            sources: d.sources,
+            method: `A sphere of the ${d.label} effective diameter (${Number(d.km.toPrecision(6))} km). The shape is an assumption, so the drawn shape is estimated. Diameter: ${cols.diameter?.method ?? ''}`.trim(),
+          }
       : { value: null, label: 'unknown', sources: [], method: 'No measured diameter: nothing resolved is drawn (a diameter from H is used for navigation only).' };
     const xyzs = [0, 1, 2, 3].map((k) => numOf(P, 'geometricAlbedoXYZS', p, k));
     const colorLabel = labelOf(P, 'colorLabel', p);
@@ -495,7 +507,7 @@ export class SmallBodies {
       rotation: { value: null, label: 'unknown', sources: [], method: 'A sphere of uniform albedo shows no rotation; spin data are listed below.' },
       photometry: { geometricAlbedoXYZS: albedoXYZS, geometricAlbedoV: albedoV, phaseFunction: phase },
     };
-    this.pseudo.set(row, b);
+    this.pseudo.set(key, b);
     return b;
   }
 

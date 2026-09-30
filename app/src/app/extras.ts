@@ -5,6 +5,7 @@ import type { AtmosphereFile, Body, Label, RingsFile, RingSystem } from '../data
 import type { SurfaceLayer } from '../data/surfaces';
 import type { Mat3, SceneBody, SceneRings, SurfaceLayerRef } from '../render/scene';
 import { allowedValue, labelAllowed, worstOf, type ExistsLevel } from './reality';
+import type { ShapeLibrary } from './shapes';
 
 export interface LayerRef {
   ref: SurfaceLayerRef;
@@ -29,6 +30,8 @@ export interface SceneExtras {
   rings: RingsFile | null;
   /** atmospheres.json, when loaded (render/scene.ts SceneBody.atmosphere). */
   atmospheres?: AtmosphereFile | null;
+  /** Shape models (render/scene.ts SceneBody.shape), when shapes/index.json is loaded. */
+  shapes?: ShapeLibrary | null;
 }
 
 const LABELS: readonly string[] = ['measured', 'derived', 'estimated', 'synthetic', 'unknown'];

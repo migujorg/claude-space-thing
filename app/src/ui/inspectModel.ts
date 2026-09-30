@@ -5,6 +5,7 @@ import type { SurfaceLayer } from '../data/surfaces';
 import type { OrientationSourcePort } from '../app/ports';
 import { labelAllowed, worstOf, type ExistsLevel } from '../app/reality';
 import { formatValue } from './format';
+import type { ShapeStatus } from '../app/shapes';
 
 export interface AttrRow {
   key: string;
@@ -68,6 +69,8 @@ export interface AttributeContext {
   loading?: string | null;
   /** Surface map layers for this body (surfaces/<id>/<layer>.json). */
   surfaces?: SurfaceLayer[];
+  /** Shape model status (app/shapes.ts), when the body has one. */
+  shape?: ShapeStatus | null;
 }
 
 export function attributeRows(body: Body, level: ExistsLevel, ephs: { path: string; header: EphemHeader }[], ctx: AttributeContext = {}): AttrRow[] {
@@ -91,6 +94,8 @@ export function attributeRows(body: Body, level: ExistsLevel, ephs: { path: stri
     rows.push({ key: 'position', name: 'Position (ephemeris)', label: 'unknown', value: 'unknown — no ephemeris segment for this body', sources: [], withheld: false });
   }
   rows.push(row('radii', 'Shape (triaxial radii)', body.radii, level, 'radii'));
+  const sr = shapeRow(ctx.shape ?? null, level);
+  if (sr) rows.push(sr);
   rows.push(row('gm', 'GM', body.gm, level));
   if (ctx.orientation !== undefined) {
     const o = ctx.orientation;
@@ -129,6 +134,28 @@ export function attributeRows(body: Body, level: ExistsLevel, ephs: { path: stri
     });
   }
   return rows;
+}
+
+/**
+ * The shape model row: drawn (the mesh replaces the ellipsoid; its shape and orientation labels) or why not
+ * (loading, a label not admitted at the level, an orientation that cannot be placed).
+ */
+export function shapeRow(s: ShapeStatus | null, level: ExistsLevel): AttrRow | null {
+  if (!s) return null;
+  const label = s.label ?? 'unknown';
+  const oLabel = s.orientationLabel;
+  const withheld = !s.drawn && ((s.label !== undefined && !labelAllowed(s.label, level)) || (oLabel !== undefined && oLabel !== 'unknown' && !labelAllowed(oLabel, level)));
+  return {
+    key: 'shape',
+    name: s.drawn ? 'Shape model (mesh drawn)' : 'Shape model (not drawn: ellipsoid or point instead)',
+    label: s.drawn ? worstOf([label, oLabel ?? label]) : label,
+    value: s.text + (oLabel ? ` — orientation ${oLabel}` : ''),
+    method: s.drawn
+      ? 'The disk photometry (albedo with the reference radius, phase function) is spread over the mesh, scaled by πR² over the mean projected area of the mesh; the brightness is derived (docs/rendering-shapes.md).'
+      : undefined,
+    sources: s.sources ?? [],
+    withheld,
+  };
 }
 
 /** light.json attributes the renderer uses to draw the Sun. */

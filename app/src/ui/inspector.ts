@@ -8,7 +8,7 @@ import type { Label } from '../data/schema';
 import { chip, legend } from './chips';
 import { clear, h, setText, toggleClass } from './dom';
 import { formatAngle, formatDistance, formatDuration } from './format';
-import { attributeRows, derivedLabel, sunRows, sunWhy, type AttrRow } from './inspectModel';
+import { attributeRows, derivedLabel, shapeRow, sunRows, sunWhy, type AttrRow } from './inspectModel';
 import { buildSun } from '../app/snapshot';
 import { sbRow } from '../app/smallbodies';
 import { brightnessInputs, smallBodyFacts, smallBodyLegend, smallBodyWhy } from './smallBodyInspect';
@@ -101,11 +101,15 @@ export class Inspector {
     );
     const isSun = body.id === m.sunId;
     // The Sun's and small bodies' lines depend on this frame: set in updateLive.
-    this.setWhy(isSun || sb ? '' : whyLine(f, level));
+    const shape = m.shapeStatus(body.id);
+    const shapeWhy = !shape ? '' : shape.drawn ? ` Drawn from its shape model instead of the ellipsoid: ${shape.text}.` : ` Its shape model is not drawn: ${shape.text}.`;
+    this.setWhy(isSun || sb ? '' : whyLine(f, level) + shapeWhy);
 
     this.builtKey = this.stateKey(body.id);
     if (sb && sbRowId !== null) {
       const facts = smallBodyFacts(sb.tables, sbRowId, level);
+      const sr = shapeRow(m.shapeStatus(body.id), level);
+      if (sr) facts.rows.push(sr);
       this.el.append(h('h3', null, `Attributes (at ${EXISTS_TEXT[level].name})`));
       this.appendRows(facts.rows, body.name);
       if (facts.unknown.length)
@@ -128,6 +132,7 @@ export class Inspector {
       orientation: m.orientationSource(body.id),
       loading,
       surfaces: m.data?.surfaces.filter((x) => x.bodyId === body.id) ?? [],
+      shape: m.shapeStatus(body.id),
     });
     // The Sun is drawn from light.json, not from reflectance data.
     if (isSun) rows = [...rows.filter((r) => !['albedoXYZS', 'albedoV', 'phase'].includes(r.key)), ...sunRows(m.light, level)];
@@ -180,10 +185,10 @@ export class Inspector {
   private stateKey(id: number): string {
     if (id < 0) {
       const m = this.model;
-      return `sb|${m.sb.status}|${!!m.smallBodies?.field}|${m.reality.exists}|${m.names?.spkidOf(sbRow(id)) ?? ''}`;
+      return `sb|${m.sb.status}|${!!m.smallBodies?.field}|${m.reality.exists}|${m.names?.spkidOf(sbRow(id)) ?? ''}|${m.shapeStatus(id)?.text ?? ''}`;
     }
     const o = this.model.orientationSource(id);
-    return `${this.model.bodyLoadState(id)}|${o ? `${o.kind}:${o.label}:${o.frame}` : '-'}|${this.model.reality.exists}`;
+    return `${this.model.bodyLoadState(id)}|${o ? `${o.kind}:${o.label}:${o.frame}` : '-'}|${this.model.reality.exists}|${this.model.shapeStatus(id)?.text ?? ''}`;
   }
 
   private setWhy(line: string): void {
@@ -215,6 +220,7 @@ export class Inspector {
         inputs: brightnessInputs(sb.tables, row),
         filtered: closeup ? m.filtered(id) : null,
         hasDiameter: !!sb.measuredDiameter(row),
+        shape: m.shapeStatus(id),
       }),
     );
   }
@@ -223,6 +229,8 @@ export class Inspector {
     const m = this.model;
     const id = this.id;
     if (id === null) return;
+    // The shape-model status arrives asynchronously (app/shapes.ts): rebuild when it changes.
+    if (m.shapeStatus(id) && this.stateKey(id) !== this.builtKey) { this.build(); return; }
     const g = m.world?.bodies.get(id);
     const set = (k: string, v: string, label: Label | null = null) => {
       const c = this.live.get(k);
