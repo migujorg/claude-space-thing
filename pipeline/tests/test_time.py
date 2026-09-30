@@ -21,7 +21,7 @@ UNIX_J2000 = 946728000
 
 @pytest.fixture(scope="module")
 def data():
-    return json.loads(TIME.read_text())
+    return json.loads(TIME.read_text(encoding="utf-8"))
 
 
 @pytest.fixture(scope="module")
@@ -81,7 +81,7 @@ def test_utc_to_et_matches_str2et(data, kernel):
 
 
 def test_source_record(kernel):
-    sources = {s["id"]: s for s in json.loads((OUT / "sources.json").read_text())}
+    sources = {s["id"]: s for s in json.loads((OUT / "sources.json").read_text(encoding="utf-8"))}
     rec = sources[SRC_LSK]
     assert rec["sha256"] == download.sha256_file(kernel) == download.record(kernel)["sha256"]
     assert rec["url"].endswith("/naif0012.tls")

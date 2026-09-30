@@ -244,6 +244,28 @@ export function smallBodyFacts(t: SmallBodyTables, row: number, level: ExistsLev
     }
     rows.push(r);
   }
+  const cm = t.cometModel;
+  if (cm && t.cometRow.has(row) && rows.some((r) => r.key === 'sb:cometTotal')) {
+    // Coma and tails (render/comets): the composition that splits the M1/K1 light into gas and dust.
+    const own = t.cometList?.measured[String(row)];
+    const p = cm.composition.population;
+    const v = (k: 'C2' | 'CN' | 'C3' | 'afrho') => (own?.[k] ?? p[k].median).toFixed(2);
+    const label: Label = own?.afrho !== undefined ? 'derived' : 'estimated';
+    rows.push({
+      key: 'sb:cometComposition', name: 'Coma composition (log Q(X)/Q(OH); dust log Afρ/Q(OH))', label,
+      value: `C2 ${v('C2')}, CN ${v('CN')}, C3 ${v('C3')}; Afρ ${v('afrho')} — ${own ? `this comet (${own.key}, A'Hearn et al. 1995)` : `population medians (${p.afrho.n} comets)`}`,
+      sources: [...new Set([...(own?.sources ?? []), ...cm.composition.sources])],
+      method: `${cm.composition.method} Water production from the M1/K1 magnitude: ${cm.waterFromMagnitude.method}.`,
+      withheld: !labelAllowed(label, level),
+    });
+    rows.push({
+      key: 'sb:cometComa', name: 'Coma and tails (drawn when resolved)', label: 'estimated',
+      value: 'gas bands (C2, CN, C3, CH, [O I]) and dust sharing the M1/K1 light; Finson–Probstein dust tail; CO⁺ ion tail',
+      sources: [...new Set([...cm.components.sources, ...cm.grains.sources, ...cm.solarWind.sources, ...cm.dustPhase.sources])],
+      method: 'docs/reports/comets.md: gas luminosity L = g·Q·l_d/v per band; dust = the rest of the V light, spread as a 1/ρ coma whose radius is where the Afρ coma reaches it; tail grains released with the nucleus velocity on Kepler orbits with μ(1 − β); ions along v_sw r̂ − v_comet.',
+      withheld: !labelAllowed('estimated', level),
+    });
+  }
   const flags = flagNames(t, row).map((name) => ({ name, text: FLAG_TEXT[name] ?? name }));
   return { rows, unknown, flags, orbitClass: orbitClassOf(t, row) };
 }
@@ -275,8 +297,8 @@ export function brightnessAdmitted(inputs: { what: string; label: Label }[], lev
 export function smallBodyWhy(o: {
   level: ExistsLevel;
   positionLabel: Label;
-  /** How it is drawn this frame. */
-  drawn: 'closeup' | 'point' | 'none';
+  /** How it is drawn this frame ('comet': with its coma and tails, render/comets). */
+  drawn: 'closeup' | 'point' | 'none' | 'comet';
   field: boolean;
   inputs: { what: string; label: Label }[];
   filtered: FilteredBody | null;
@@ -290,6 +312,8 @@ export function smallBodyWhy(o: {
   if (o.drawn === 'closeup' && o.filtered)
     return `${whyLine(o.filtered, o.level)} Resolved close-up: a sphere of the measured diameter — the spherical shape is an assumption.`;
   const bright = brightnessAdmitted(o.inputs, o.level);
+  if (o.drawn === 'comet')
+    return `Drawn with its coma, dust tail and ion tail: the total light is ${inputs}; its split into gas bands and dust, the coma's size and the tails come from the comet model (estimated; docs/reports/comets.md). Too small to resolve, it is a point again.`;
   const size = !o.hasDiameter
     ? ' No measured diameter: it is never drawn resolved.'
     : labelAllowed('estimated', o.level)

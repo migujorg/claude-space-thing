@@ -40,9 +40,17 @@ Landed: 1,573,014 asteroids and comets from JPL SBDB at a common epoch with per-
 
 The full MPC/JPL catalogs of asteroids and comets propagated on the GPU, with measured sizes, colors, rotation and shapes where they exist.
 
-## M4 — The real sky  *(in progress)*
+Comets as they would look (landed after M6):
 
-Data landed: 16.4M deep stars (G 10–14) in HEALPix tiles, the faint-star + diffuse Milky Way map anchored on Pioneer 10/11 photometry from beyond the zodiacal cloud, a Kelsall/Leinert zodiacal light model, Sternberg spectrophotometry for the brightest stars (docs/reports/sky.md). Rendering in progress.
+- A comet resolved from the camera is drawn with its coma, its Finson–Probstein dust tail and its CO⁺ ion tail, in absolute light, from its propagated state.
+- The total light is the M1/K1 law; the rendered coma sums to it within 0.5 %.
+- The light is split between gas bands and dust using measured activity: A'Hearn et al. (1995) production rates and Afρ, McDonald band strengths, Lowell fluorescence efficiencies, Jewitt (2015) dust colours, and the Jorda et al. (2008) water–magnitude relation.
+- Tail directions are checked against Horizons PsAng/PsAMV.
+- The comets of the window, with their predicted peaks, are listed in docs/reports/comets.md. The e2e scene `comet-lemmon` shows the best-placed one, C/2025 A6 (Lemmon).
+
+## M4 — The real sky  *(done)*
+
+Data landed: 16.4M deep stars (G 10–14) in HEALPix tiles, the faint-star + diffuse Milky Way map anchored on Pioneer 10/11 photometry from beyond the zodiacal cloud, a Kelsall/Leinert zodiacal light model, Sternberg spectrophotometry for the brightest stars (docs/reports/sky.md). Rendering: deep tiles stream by view and needed magnitude (HTTP range reads of brightest-first prefixes); everything not drawn as a point is binned into a HEALPix sky map so no starlight is lost or double counted; the Pioneer-anchored diffuse light and faint stars form an absolute-luminance background cube; zodiacal light is line-of-sight integrated for the observer's actual position (−3 % vs Leinert at 50° elongation, fades to 0 at 30 AU); deep stars are pickable with Gaia ids and provenance (docs/reports/sky.md §5).
 
 
 Gaia DR3 stars with spectra-derived colors, the brightest stars from Hipparcos, the Milky Way's diffuse light, zodiacal light.
@@ -51,6 +59,8 @@ Gaia DR3 stars with spectra-derived colors, the brightest stars from Hipparcos, 
 
 Time-dependent adaptation, HDR output, acuity limits, refinement against published vision data.
 
-## M6 — The complete solar system
+## M6 — The complete solar system  *(first layer done)*
 
-The synthetic layer (NORTH_STAR 3.3): small bodies below survey completeness, drawn from debiased population models, yielding to discoveries.
+The synthetic layer (NORTH_STAR 3.3) for small bodies: 2,948,454 synthetic objects — NEOs (Granvik et al. 2018), Hungarias, main belt and Hildas (catalogue + measured SFD slopes: Maeda et al. 2021, Terai & Yoshida 2018), Jupiter Trojans (Yoshida & Terai 2017), TNOs (CFEPS L7) — filling only each (a, e, i, H) cell's deficit below the survey completeness limit refitted to the current catalogue (Hendler & Malhotra 2020 form). Deterministic per-cell streams make it yield to discoveries: removing N catalogued objects adds ~N synthetic ones and keeps the rest. Every synthetic value is labelled `synthetic`; the inspector explains which model/cell/deficit an object stands in for. `Complete` is now the default level. From inside the main belt it still looks empty to the naked eye — the brightest synthetic object is V 14.1 (docs/reports/synthetic-populations.md).
+
+Next populations: irregular moons, Centaurs, comets' reservoirs, interplanetary dust (already modelled optically as zodiacal light).

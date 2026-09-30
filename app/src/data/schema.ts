@@ -40,6 +40,15 @@ export interface Manifest {
   /** Validity window of time-dependent products, TDB seconds past J2000. */
   window: { startEt: number; endEt: number };
   products: Record<string, ProductEntry>;
+  /** Pipeline bookkeeping for resumable builds (pipeline/build.py): stage name → last run (built / failed). */
+  stages?: Record<string, { status: 'built' | 'failed'; finishedAt?: string; error?: string; profile?: string | null }>;
+  /** The last build: its profile and, per stage, what happened and why (e.g. "not in profile minimal"). */
+  build?: {
+    profile: string | null;
+    startedAt: string;
+    finishedAt: string;
+    stages: Record<string, { status: string; reason: string }>;
+  };
 }
 
 export interface LeapSecond {
@@ -196,15 +205,40 @@ export interface BodyPhotometry {
    */
   spatialModel?: Sourced<SpatialPhotometricModel>;
   /** Optional refinement with more geometry than the phase angle (the Moon: ROLO, with libration and the
-   *  waxing/waning asymmetry). Inside its domain it gives the disk-integrated illuminance directly, in place of
-   *  geometricAlbedoXYZS · Φ(α); see docs/architecture.md §4.3. */
+   *  waxing/waning asymmetry; the Galilean moons: their measured rotational variation). Inside its domain it gives
+   *  the disk-integrated illuminance directly, in place of geometricAlbedoXYZS · Φ(α); see docs/architecture.md
+   *  §4.3. */
   diskReflectanceModel?: Sourced<DiskReflectanceModel>;
+}
+
+export type DiskReflectanceModel = RoloDiskModel | RotationSlicesDiskModel;
+
+/**
+ * Disk-integrated brightness with a rotational (orbital-longitude) variation, kind 'rotation-slices-v1' (the
+ * Galilean moons: Mayorga et al. 2020 Table 4). p·Φ = albedoXYZS · Φ(α) · F, with
+ *   F = Σ_j a_j G_j(λ_obs, λ_sun) / Σ_j G_j(λ_obs, λ_sun),
+ * a_j the albedo of longitude slice j relative to the slices' mean, λ_obs and λ_sun the planetocentric east
+ * longitudes of the sub-observer and sub-solar points, and G_j the Lambertian orange-slice integral over the part of
+ * slice j that is both lit and visible (the equator's view; `formula` gives it). Rotation-averaged, F = 1, so the
+ * model keeps geometricAlbedoXYZS and phaseFunction as the longitude average. Domain: Φ(α) tabulated at α.
+ */
+export interface RotationSlicesDiskModel {
+  kind: 'rotation-slices-v1';
+  formula: string;
+  /** The body's geometricAlbedoXYZS ("lux at 1 AU", referenced to radiusKm) and phaseFunction values. */
+  albedoXYZS: [number, number, number, number];
+  phase: PhaseFunction;
+  radiusKm: number;
+  /** Slice boundaries in planetocentric east longitude, degrees, ascending from −180 to 180 (n + 1 values). */
+  sliceEdgesEastLonDeg: number[];
+  /** Albedo of each slice relative to the mean of the slices (n values, mean 1). */
+  relativeAlbedo: number[];
 }
 
 /** Whole-disk reflectance A_c per channel (X, Y, Z, scotopic) vs viewing geometry, in the form of Kieffer & Stone
  *  (2005) Eq. 10. Illuminance at the observer E_c = A_c · E☉,c(1 AU)/d² · (radiusKm/Δ)². `formula` gives the
  *  expression and the units (radians in the polynomial terms, degrees elsewhere). */
-export interface DiskReflectanceModel {
+export interface RoloDiskModel {
   kind: 'rolo-v1';
   formula: string;
   /** Per channel X, Y, Z, scotopic: [a0, a1, a2, a3]. */
@@ -622,8 +656,14 @@ export interface SurfaceLayerHeader {
   bytesPerTexel: number;
   tileSize: 256;
   minLevel: number;
+  /** Highest level stored (the source's own maximum unless a build level cap applied, see levelCap). */
   maxLevel: number;
   levels: SurfaceLevelInfo[];
+  /**
+   * Present only when a build profile capped the pyramid (pipeline parameter surfaces.maxLevel): the source supports
+   * levels up to sourceMaxLevel, but only minLevel..maxLevel were written (identical to an uncapped build's).
+   */
+  levelCap?: { sourceMaxLevel: number; note: string };
   /** Template relative to the data root, placeholders {level}, {ty}, {tx}. */
   tilePath: string;
   /** Path of the "sha256  path" listing of every stored tile. */
@@ -951,6 +991,63 @@ export interface SmallBodyPhysicalHeader extends SmallBodyTableHeader {
   taxonomySsodnet?: string[];
 }
 
+/** A population of the synthetic layer (synthetic/objects.json `populations`; pipeline stage synthetic). */
+export interface SyntheticPopulation {
+  /** neo, hungaria, mainbelt, hilda, trojan, tno */
+  name: string;
+  /** objects.pop / cells.pop value. */
+  code: number;
+  /** The model (source id, or 'catalogue+<completeness source>+<slope source>'). */
+  modelId: string;
+  sources: string[];
+  /** Seed string prefix of the population's cell streams ('<algorithm>|<seed>|<modelId>'). */
+  prefix: string;
+  grid: { aEdgesAu: number[]; eWidth: number; iWidthDeg: number; nE: number; nI: number; hWidthMag: number; hAlignment: string };
+  hFloor: number;
+  /** How the completeness limit was found (fit of Hendler & Malhotra 2020, or comparison with the model). */
+  limit: Record<string, unknown>;
+  model: Record<string, unknown>;
+  firstCell: number;
+  cells: number;
+  firstObject: number;
+  objects: number;
+  knownInGrid: number;
+  totals: { model: number; knownInGroups: number; rawDeficit: number; deficit: number; shown: number; groups: number };
+}
+
+/** synthetic/objects.json: objects standing in for the undiscovered members of each (a, e, i, H) cell. */
+export interface SyntheticObjectsHeader extends SmallBodyTableHeader {
+  algorithm: string;
+  seed: number;
+  /** Epoch of the elements (= smallbodies core epochEt), TDB s past J2000. */
+  epochEt: number;
+  epochTdb?: string;
+  catalogue: { product: string; snapshot: string; coreSha256: string; physicalSha256: string; sources: string[] };
+  populations: SyntheticPopulation[];
+  labels: string;
+  seedRule: string;
+  yieldRule: string;
+  frame: string;
+  gmSun: number;
+  obliquityArcsec: number;
+  auKm: number;
+  cells: string;
+  counts: { synthetic: number; cells: number };
+  floors: Record<string, number>;
+  /** Slope parameter of the H-G magnitude law used for every synthetic object. */
+  slopeParameterG?: { value: number; source: string; method: string };
+  attributePools?: Record<string, unknown>;
+}
+
+/** synthetic/cells.json: one record per (population, a, e, i, H) cell. */
+export interface SyntheticCellsHeader extends SmallBodyTableHeader {
+  algorithm: string;
+  seed: number;
+  seedRule: string;
+  yieldRule: string;
+  populations: { name: string; code: number; modelId: string; firstCell: number; cells: number }[];
+}
+
 /** smallbodies/names.json: line i of `file` describes core record i. */
 export interface SmallBodyNamesHeader {
   file: string;
@@ -988,6 +1085,100 @@ export interface SmallBodyPhotometry {
   };
   comets: { method: string; label: Label };
   rules: Record<string, string>;
+}
+
+// ---- comets/ (pipeline stage comets; docs/reports/comets.md) ------------------------------------------------------
+
+/** A spectral component integrated once: XYZS (lux) and V-band flux relative to the Sun at 1 au, per unit. */
+export interface CometSpectralComponent {
+  xyzs: [number, number, number, number];
+  v: number;
+  windowNm?: [number, number];
+}
+
+export interface CometRatioStat {
+  median: number;
+  p16: number;
+  p84: number;
+  n: number;
+}
+
+/** Enclosed fraction of a Haser daughter distribution vs log10(rho / l_d). */
+export interface CometHaserTable {
+  parentKm1Au: number;
+  daughterKm1Au: number;
+  log10X: number[];
+  enclosed: number[];
+}
+
+/** comets/model.json: the physical model of comae and tails, composed by the app at each comet's geometry. */
+export interface CometModelProduct {
+  description: string;
+  sun: { vMag: number; vMagSources: string[]; irradianceXYZS1Au: [number, number, number, number]; gmKm3S2: number; gmSources: string[] };
+  waterFromMagnitude: { a: number; b: number; qH2OPerQOH: number; rmsDex: number; rRangeAu: [number, number]; label: Label; sources: string[]; method: string };
+  composition: { population: Record<'C2' | 'CN' | 'C3' | 'afrho', CometRatioStat>; label: Label; sources: string[]; method: string };
+  gFactors: { C2: number; C3: number; CN: { vKmS: number[]; value: number[] }; unit: string; label: Label; sources: string[] };
+  bandRatiosToC2: { 'C2(1)': CometRatioStat; CH?: CometRatioStat; label: Label; sources: string[]; method: string };
+  haser: { velocityKmS: number; species: Record<'C2' | 'CN' | 'C3' | 'OH', CometHaserTable>; scaling: string; sources: string[]; label: Label; method: string };
+  oxygen: { photonsPerH2O: number; branching: Record<'6300' | '6364', number>; photonEnergyErg: Record<'6300' | '6364', number>; label: Label; sources: string[] };
+  coPlus: { gTotalErgPerSIon1Au: number; share: Record<string, number>; coPerH2O: number; label: Label; sources: string[]; method: string };
+  solarWind: { medianKmS: number; p16KmS: number; p84KmS: number; hours: number; label: Label; sources: string[]; method: string };
+  grains: {
+    betaMin: number; betaMax: number; radiusMinM: number; radiusMaxM: number; crossSectionBetaExponent: number; sizeIndex: number;
+    densityKgM3: number; qPr: number; ejection: { v0KmS: number; gamma: number; Gamma: number }; label: Label; sources: string[];
+  };
+  dustPhase: { phaseDeg: number[]; value: number[]; label: Label; sources: string[]; method: string };
+  components: {
+    dust: Record<'longPeriod' | 'shortPeriod', CometSpectralComponent & { normalizedGradientPer100nm: number }>;
+    /** Per erg cm^-2 s^-1 of band flux at the observer: C2(0), C2(1), CN(0), C3, CH, OI6300, OI6364, COplus(2,0), COplus(3,0). */
+    bands: Record<string, CometSpectralComponent>;
+    sunV: { vFlux1Au: number; xyzs1Au: [number, number, number, number] };
+    sources: string[];
+  };
+  gasFractionMax: number;
+}
+
+/** A comet of comets/list.json: predicted peak m1 from Earth over the catalogue window. */
+export interface CometListEntry {
+  row: number;
+  designation: string;
+  name: string;
+  M1: number;
+  K1: number;
+  peakMag: number;
+  peakEt: number;
+  rAu: number;
+  deltaAu: number;
+  elongationDeg: number;
+  perihelionEt: number;
+  qAu: number;
+  /** Lowell database key (A'Hearn et al. 1995) when its composition was measured. */
+  measured: string | null;
+}
+
+/** Measured composition of one comet (log10 ratios to Q(OH); afrho: log10 Afrho[cm]/Q(OH)). */
+export interface CometMeasuredActivity {
+  key: string;
+  C2?: number;
+  CN?: number;
+  C3?: number;
+  afrho?: number;
+  label: Label;
+  sources: string[];
+}
+
+/** comets/list.json */
+export interface CometListProduct {
+  window: { startEt: number; endEt: number };
+  notableMag: number;
+  count: number;
+  method: string;
+  notable: CometListEntry[];
+  showcase: { row: number; designation: string; name: string; rule: string };
+  /** core row (as a string) → measured composition. */
+  measured: Record<string, CometMeasuredActivity>;
+  label: Label;
+  sources: string[];
 }
 
 /**
@@ -1052,6 +1243,8 @@ export interface HealpixMapLayer {
   labelBin?: string;
   labelCodes?: Record<string, string>;
   pixelSolidAngleSr?: number;
+  /** Several maps in one file (deepRemainder): slice k covers value[(k * npix + pix) * channels + c]. */
+  slices?: { count: number; yBelow: (number | null)[]; layout: string; tileOrder: number };
   stats?: Record<string, unknown>;
 }
 
@@ -1095,4 +1288,116 @@ export interface ZodiacalLightModel {
     perSolarFluxPerSr: { eps30: number[]; eps90: number[] };
   }>;
   notes: string;
+}
+
+// ── Validation cases (validation/cases/<id>/case.json; docs/reports/validation.md) ───────────────────────────
+// Ground-truth comparisons for the renderer: a view it can reproduce exactly and regions of interest with the
+// radiance its HDR buffer (absolute XYZS, before the eye model) must hold there. Not loaded by the app itself;
+// the render-test harness reads them.
+
+/** validation/index.json */
+export interface ValidationIndex {
+  schema: 'validation-index-v1';
+  cases: { id: string; title: string; epochUtc: string; target: { naifId: number; name: string };
+    instrument: string; rois: string[]; path: string }[];
+  doc: string;
+}
+
+/** A body as the harness must place it: maps 1:1 onto SceneBody's geometric fields. */
+export interface ValidationBody {
+  naifId: number;
+  name: string;
+  /** Camera-relative position of the body centre, km, ICRF, light-time corrected (SceneBody.pos). */
+  pos: [number, number, number];
+  /** Body centre → Sun, km, ICRF (SceneBody.toSun). */
+  toSun: [number, number, number];
+  /** Body-fixed → ICRF, row-major (SceneBody.orient). */
+  orient: [number, number, number, number, number, number, number, number, number];
+  radii: [number, number, number];
+  rangeKm: number;
+  sunDistanceAu: number;
+  phaseDeg: number;
+  subObserver: { latDeg: number; eastLonDeg: number };
+  subSolar: { latDeg: number; eastLonDeg: number };
+  /** Draw the body's ring system (rings.json) as in the app. */
+  rings: boolean;
+}
+
+export interface ValidationView {
+  epochUtc: string;
+  /** TDB seconds past J2000 of the observation (the view is explicit: the harness must not recompute it from the
+   *  app's ephemeris, which only covers the app's time window). */
+  et: number;
+  /** SceneCamera: camera → ICRF (columns right, up, back; row-major), fovY (rad), width × height pixels. */
+  camera: { orient: [number, number, number, number, number, number, number, number, number]; fovY: number;
+    width: number; height: number; pixelPitchRad: number; convention: string };
+  bodies: ValidationBody[];
+  sun: { pos: [number, number, number] };
+}
+
+export type ValidationRoiKind =
+  | 'disk-centre' | 'limb' | 'terminator' | 'point' | 'ring' | 'disk-integrated' | 'sky-near' | 'sky-far';
+
+export interface ValidationRoi {
+  id: string;
+  kind: ValidationRoiKind;
+  note: string | null;
+  /** NAIF id of the body the ROI is on. */
+  target: number;
+  /** [x0, y0, x1, y1): pixel rectangle in the view (x right, y down), exclusive upper bounds. */
+  rect: [number, number, number, number];
+  pixels: number;
+  /** Mean / range of incidence, emission, phase, latitude, east longitude or ring radius over the ROI. */
+  geometry: Record<string, unknown>;
+  /** Per instrument band: measured I/F statistics, 1σ relative budget, band radiance. */
+  bands: {
+    filter: string;
+    product: string;
+    /** Disk-integrated ROIs: `mean` has the local sky level (`background.level`, the camera's scattered light and
+     *  zero level in a 5-pixel frame around the rectangle) subtracted; `rawMean` is the plain rectangle mean. */
+    iof: { mean: number; std: number; n: number; nInRect: number;
+      background?: { level: number; levelSigma: number; robustPixelSpread: number; sideMedians: number[];
+        pixels: number; rawMean: number } };
+    sigmaRel: { calibration: number; noise: number; registration: number };
+    bandRadiance: { value: number; sigma: number | null; unit: 'W m-2 sr-1 nm-1'; bandSolarIrradiance1AU: number };
+  }[];
+  expected:
+    | { type: 'value'; XYZS: [number, number, number, number]; sigma: [number, number, number, number];
+        tolerance: [number, number, number, number]; comparison: string; label: Label; method: string;
+        budget: Record<string, unknown>; bandCentersNm: number[]; rho: number[]; colorCriterion: string }
+    | { type: 'upper-limit'; upperLimitXYZS: [number, number, number, number]; comparison: string; label: Label;
+        method: string }
+    | { type: 'none'; label: 'unknown'; method: string };
+  /** Case-specific extras, e.g. Himawari's cloudTimeOffsetH. */
+  [extra: string]: unknown;
+}
+
+export interface ValidationRatio {
+  numerator: string;
+  denominator: string;
+  ratioXYZS: [number, number, number, number];
+  sigma: [number, number, number, number];
+  tolerance: [number, number, number, number];
+  bands: { filter: string; ratio: number; sigma: number }[];
+  comparison: string;
+  method: string;
+}
+
+export interface ValidationCase {
+  schema: 'validation-case-v1';
+  id: string;
+  title: string;
+  summary: string;
+  generated: string;
+  observation: Record<string, unknown>;
+  view: ValidationView;
+  /** reference.bin: float32 LE I/F, shape [bands, height, width], NaN = no data, same pixel grid as the view. */
+  reference: { file: string; dtype: 'float32-le'; shape: [number, number, number]; bands: string[];
+    quantity: string; note: string };
+  comparison: { renderOutput: string; roiStatistic: string; tolerance: string };
+  rois: ValidationRoi[];
+  ratios: ValidationRatio[];
+  appProducts: Record<string, unknown>;
+  notes: string[];
+  sources: SourceRecord[];
 }

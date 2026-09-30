@@ -19,7 +19,7 @@ REPORT = REPO / "docs" / "reports" / "shapes.md"
 
 
 def _headers() -> list[dict]:
-    return [json.loads(p.read_text()) for p in sorted((OUT / "shapes").glob("[0-9]*.json"))]
+    return [json.loads(p.read_text(encoding="utf-8")) for p in sorted((OUT / "shapes").glob("[0-9]*.json"))]
 
 
 def _mesh(h: dict, level: int = 0) -> sm.Mesh:
@@ -120,7 +120,7 @@ def _axis_angles(m: sm.Mesh) -> tuple[float, float]:
 
 def generate() -> str:
     hs = {h["id"]: h for h in _headers()}
-    idx = json.loads((OUT / "shapes" / "index.json").read_text())
+    idx = json.loads((OUT / "shapes" / "index.json").read_text(encoding="utf-8"))
     rows = []
     total = 0
     for h in sorted(hs.values(), key=lambda x: (x["kind"], x["name"])):
@@ -231,7 +231,7 @@ def generate() -> str:
 
 def main() -> None:
     REPORT.parent.mkdir(parents=True, exist_ok=True)
-    REPORT.write_text(generate())
+    REPORT.write_text(generate(), encoding="utf-8", newline="\n")
     print(f"wrote {REPORT.relative_to(REPO)}")
 
 

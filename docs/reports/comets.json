@@ -1,0 +1,482 @@
+{
+ "generated": "2026-09-30T20:25:59+00:00",
+ "seconds": 179.0,
+ "notable": [
+  {
+   "designation": "C/2025 K1-D",
+   "name": "ATLAS",
+   "peakMag": -6.4304701130854625,
+   "rAu": 0.3366813288427836,
+   "deltaAu": 1.2902691144422094,
+   "elongationDeg": 8.52597188710217,
+   "qAu": 0.3365638130885371,
+   "measured": null,
+   "peakDate": "2025-10-08",
+   "perihelionDate": "2025-10-07"
+  },
+  {
+   "designation": "C/2026 A1",
+   "name": "MAPS",
+   "peakMag": -3.5772981469840257,
+   "rAu": 0.0546074241622818,
+   "deltaAu": 0.9694165453011664,
+   "elongationDeg": 2.6230785443331444,
+   "qAu": 0.0546074241622818,
+   "measured": null,
+   "peakDate": "2026-04-04",
+   "perihelionDate": "2026-04-04"
+  },
+  {
+   "designation": "C/2025 K1-B",
+   "name": "ATLAS",
+   "peakMag": -1.0800867475632394,
+   "rAu": 0.33619179588887355,
+   "deltaAu": 1.2898274696645415,
+   "elongationDeg": 8.516590835286914,
+   "qAu": 0.336066887482873,
+   "measured": null,
+   "peakDate": "2025-10-08",
+   "perihelionDate": "2025-10-07"
+  },
+  {
+   "designation": "C/2020 P4-C",
+   "name": "",
+   "peakMag": 4.8241681221878565,
+   "rAu": 0.08606421240882794,
+   "deltaAu": 0.9444703978664822,
+   "elongationDeg": 2.746666831543071,
+   "qAu": 0.08606421240882794,
+   "measured": null,
+   "peakDate": "2025-07-08",
+   "perihelionDate": "2025-07-08"
+  },
+  {
+   "designation": "C/2020 P4-B",
+   "name": "",
+   "peakMag": 5.698234725090563,
+   "rAu": 0.09335216988846137,
+   "deltaAu": 0.9107474376466923,
+   "elongationDeg": 1.5029317986761257,
+   "qAu": 0.09288380736287528,
+   "measured": null,
+   "peakDate": "2025-10-02",
+   "perihelionDate": "2026-10-13"
+  },
+  {
+   "designation": "C/2025 F2",
+   "name": "SWAN",
+   "peakMag": 6.018453996677051,
+   "rAu": 0.3335291501471161,
+   "deltaAu": 0.9628150924284619,
+   "elongationDeg": 19.31905009827214,
+   "qAu": 0.3335291501471161,
+   "measured": null,
+   "peakDate": "2025-04-30",
+   "perihelionDate": "2025-04-30"
+  },
+  {
+   "designation": "322P",
+   "name": "SOHO",
+   "peakMag": 6.838792012867559,
+   "rAu": 0.059186305011289395,
+   "deltaAu": 1.055154235945353,
+   "elongationDeg": 2.3267567348575833,
+   "qAu": 0.059186305011289395,
+   "measured": null,
+   "peakDate": "2027-08-11",
+   "perihelionDate": "2027-08-11"
+  },
+  {
+   "designation": "C/2025 R3",
+   "name": "PANSTARRS",
+   "peakMag": 6.905433025555478,
+   "rAu": 0.5085224742781213,
+   "deltaAu": 0.5033717081663387,
+   "elongationDeg": 6.433695335391792,
+   "qAu": 0.4986235004468645,
+   "measured": null,
+   "peakDate": "2026-04-23",
+   "perihelionDate": "2026-04-19"
+  },
+  {
+   "designation": "C/2025 A6",
+   "name": "Lemmon",
+   "peakMag": 7.5715135838027425,
+   "rAu": 0.5944064998116996,
+   "deltaAu": 0.6755485730317032,
+   "elongationDeg": 35.68675716650084,
+   "qAu": 0.5300186036790124,
+   "measured": null,
+   "peakDate": "2025-10-27",
+   "perihelionDate": "2025-11-08"
+  },
+  {
+   "designation": "45P",
+   "name": "Honda-Mrkos-Pajdusakova",
+   "peakMag": 8.181457929905548,
+   "rAu": 0.5620112202547268,
+   "deltaAu": 0.9940624872747231,
+   "elongationDeg": 32.55402798331191,
+   "qAu": 0.5585537759194207,
+   "measured": "45P",
+   "peakDate": "2027-08-27",
+   "perihelionDate": "2027-08-30"
+  },
+  {
+   "designation": "210P",
+   "name": "Christensen",
+   "peakMag": 8.47967548252661,
+   "rAu": 0.5305969700016617,
+   "deltaAu": 0.48044185803427575,
+   "elongationDeg": 12.771511692238125,
+   "qAu": 0.5244500374916021,
+   "measured": null,
+   "peakDate": "2025-11-18",
+   "perihelionDate": "2025-11-22"
+  },
+  {
+   "designation": "255P",
+   "name": "Levy",
+   "peakMag": 9.506444163067746,
+   "rAu": 0.847503018217922,
+   "deltaAu": 1.4041558244464885,
+   "elongationDeg": 36.66889813759822,
+   "qAu": 0.847047225869457,
+   "measured": null,
+   "peakDate": "2027-09-23",
+   "perihelionDate": "2027-09-25"
+  },
+  {
+   "designation": "332P",
+   "name": "Ikeya-Murakami",
+   "peakMag": 9.599091088622895,
+   "rAu": 1.6126061500291224,
+   "deltaAu": 0.926176343917183,
+   "elongationDeg": 114.78347673616904,
+   "qAu": 1.5739101249907619,
+   "measured": null,
+   "peakDate": "2027-02-15",
+   "perihelionDate": "2027-01-09"
+  },
+  {
+   "designation": "414P",
+   "name": "STEREO",
+   "peakMag": 9.857982323868763,
+   "rAu": 0.5249060497596421,
+   "deltaAu": 1.210464331857444,
+   "elongationDeg": 25.276695382222165,
+   "qAu": 0.5241943810635883,
+   "measured": null,
+   "peakDate": "2025-09-24",
+   "perihelionDate": "2025-09-25"
+  },
+  {
+   "designation": "C/2026 O1",
+   "name": "PANSTARRS",
+   "peakMag": 10.002386060856512,
+   "rAu": 1.548460250016667,
+   "deltaAu": 1.0971652187899987,
+   "elongationDeg": 94.1500996596881,
+   "qAu": 1.5001006045221998,
+   "measured": null,
+   "peakDate": "2027-06-20",
+   "perihelionDate": "2027-07-17"
+  },
+  {
+   "designation": "141P-A",
+   "name": "Machholz",
+   "peakMag": 10.49832933615864,
+   "rAu": 0.8075308122217486,
+   "deltaAu": 1.8059730011422337,
+   "elongationDeg": 4.114169811625292,
+   "qAu": 0.8075308122217486,
+   "measured": null,
+   "peakDate": "2026-04-18",
+   "perihelionDate": "2026-04-18"
+  },
+  {
+   "designation": "C/2025 R2",
+   "name": "SWAN",
+   "peakMag": 10.64043697409986,
+   "rAu": 0.835042503552016,
+   "deltaAu": 0.313936033025079,
+   "elongationDeg": 50.63496211448081,
+   "qAu": 0.5041041844243569,
+   "measured": null,
+   "peakDate": "2025-10-11",
+   "perihelionDate": "2025-09-12"
+  },
+  {
+   "designation": "C/2025 K1-C",
+   "name": "ATLAS",
+   "peakMag": 10.67222214754714,
+   "rAu": 0.3343029785922063,
+   "deltaAu": 1.288121784414708,
+   "elongationDeg": 8.480512587758806,
+   "qAu": 0.33414343244848643,
+   "measured": null,
+   "peakDate": "2025-10-08",
+   "perihelionDate": "2025-10-07"
+  },
+  {
+   "designation": "141P-D",
+   "name": "Machholz",
+   "peakMag": 11.00013646839046,
+   "rAu": 0.8074608001350014,
+   "deltaAu": 1.8084171082836056,
+   "elongationDeg": 3.4554214691873866,
+   "qAu": 0.8074608001350014,
+   "measured": null,
+   "peakDate": "2026-04-21",
+   "perihelionDate": "2026-04-21"
+  },
+  {
+   "designation": "C/2024 E1",
+   "name": "Wierzchos",
+   "peakMag": 11.070703238446939,
+   "rAu": 0.6207700086011994,
+   "deltaAu": 1.149484268190766,
+   "elongationDeg": 32.671593235312805,
+   "qAu": 0.5661372822990797,
+   "measured": null,
+   "peakDate": "2026-01-31",
+   "perihelionDate": "2026-01-20"
+  },
+  {
+   "designation": "73P-E",
+   "name": "Schwassmann-Wachmann",
+   "peakMag": 11.205034498412195,
+   "rAu": 0.9168336469430921,
+   "deltaAu": 1.8799025917169685,
+   "elongationDeg": 8.081087963646453,
+   "qAu": 0.9168336469430921,
+   "measured": null,
+   "peakDate": "2028-01-03",
+   "perihelionDate": "2028-01-03"
+  },
+  {
+   "designation": "C/2025 M2",
+   "name": "PANSTARRS",
+   "peakMag": 11.931842187297072,
+   "rAu": 2.91329591151733,
+   "deltaAu": 1.987393559175037,
+   "elongationDeg": 154.44300634020757,
+   "qAu": 2.720849075044925,
+   "measured": null,
+   "peakDate": "2028-03-02",
+   "perihelionDate": "2027-11-23"
+  }
+ ],
+ "showcase": {
+  "row": 3994,
+  "designation": "C/2025 A6",
+  "name": "Lemmon",
+  "rule": "brightest notable comet with solar elongation >= 30 deg at peak, not a fragment"
+ },
+ "horizonsCheck": [
+  {
+   "date": "2025-Oct-15 23:58:50.794",
+   "horizonsTMag": 8.346,
+   "oursM1": 8.345572194875857,
+   "horizonsR": 0.753341318246,
+   "oursR": 0.7532852494659966,
+   "horizonsDelta": 0.63746619429809,
+   "oursDelta": 0.6374343374500128
+  },
+  {
+   "date": "2025-Oct-27 23:58:50.794",
+   "horizonsTMag": 7.572,
+   "oursM1": 7.5715135838027425,
+   "horizonsR": 0.59444698282,
+   "oursR": 0.5944064998116996,
+   "horizonsDelta": 0.67548139251638,
+   "oursDelta": 0.6755485730317032
+  },
+  {
+   "date": "2025-Nov-10 23:58:50.794",
+   "horizonsTMag": 8.234,
+   "oursM1": 8.234906319984944,
+   "horizonsR": 0.533055917252,
+   "oursR": 0.533072293464356,
+   "horizonsDelta": 1.10927428225894,
+   "oursDelta": 1.1094446667523634
+  }
+ ],
+ "bandRatiosToC2": {
+  "C2(1)": {
+   "median": 0.5011872336272735,
+   "p16": 0.3981071705534969,
+   "p84": 0.6456542290346563,
+   "n": 771
+  },
+  "CN(0)": {
+   "median": 1.1641260294104931,
+   "p16": 0.8749837752274364,
+   "p84": 1.667247212551061,
+   "n": 551
+  },
+  "C3": {
+   "median": 0.27542287033381635,
+   "p16": 0.1290650126642194,
+   "p84": 0.5011872336272735,
+   "n": 464
+  },
+  "CH": {
+   "median": 0.03162277660168379,
+   "p16": 0.018197008586099826,
+   "p84": 0.053703179637025325,
+   "n": 248
+  }
+ },
+ "population": {
+  "C2": {
+   "median": -2.6799999999999997,
+   "p16": -3.2349999999999994,
+   "p84": -2.3000000000000007,
+   "n": 51
+  },
+  "CN": {
+   "median": -2.5700000000000003,
+   "p16": -2.780000000000001,
+   "p84": -2.316399999999999,
+   "n": 52
+  },
+  "C3": {
+   "median": -3.6649999999999974,
+   "p16": -4.286,
+   "p84": -3.357200000000001,
+   "n": 47
+  },
+  "afrho": {
+   "median": -25.349999999999998,
+   "p16": -25.950000000000003,
+   "p84": -24.9354,
+   "n": 53
+  }
+ },
+ "measuredComets": {
+  "1": "49P",
+  "7": "16P",
+  "9": "87P",
+  "11": "67P",
+  "12": "108P",
+  "15": "27P",
+  "16": "6P",
+  "24": "2P",
+  "25": "4P",
+  "29": "78P",
+  "31": "21P",
+  "33": "26P",
+  "34": "65P",
+  "44": "45P",
+  "45": "88P",
+  "46": "126P",
+  "49": "59P",
+  "50": "68P",
+  "62": "28P",
+  "74": "94P",
+  "79": "31P",
+  "82": "102P",
+  "87": "74P",
+  "88": "38P",
+  "90": "98P",
+  "93": "10P",
+  "96": "62P",
+  "98": "8P",
+  "108": "46P",
+  "110": "43P",
+  "121": "116P",
+  "127": "97P",
+  "138": "109P",
+  "511": "C/1979 Y1",
+  "512": "C/1980 E1",
+  "518": "C/1984 V1",
+  "520": "C/1987 B1",
+  "528": "C/1991 T2",
+  "552": "C/1990 K1",
+  "1152": "C/1980 O1",
+  "1157": "C/1981 H1",
+  "1163": "C/1983 O2",
+  "1170": "C/1984 U1",
+  "1171": "C/1984 U2",
+  "1174": "C/1985 T1",
+  "1179": "C/1986 V1",
+  "1188": "C/1987 W2",
+  "1190": "C/1988 A1",
+  "1210": "C/1989 Y1",
+  "1216": "C/1991 B1"
+ },
+ "dustColour": {
+  "longPeriod": {
+   "xyzs": [
+    144180.22347266413,
+    147101.171977694,
+    135344.66743489142,
+    326778.2651323017
+   ],
+   "v": 1.0819785121728691,
+   "normalizedGradientPer100nm": 0.11607567397260521
+  },
+  "shortPeriod": {
+   "xyzs": [
+    144759.21975260216,
+    148104.70826287585,
+    134598.5332473236,
+    327631.58837311005
+   ],
+   "v": 1.0897628166929978,
+   "normalizedGradientPer100nm": 0.12020176951689696
+  }
+ },
+ "grains": {
+  "betaMin": 9.256650385351899e-05,
+  "betaMax": 0.5742367610637173,
+  "radiusMaxM": 0.006203504908994002,
+  "radiusMinM": 1e-06,
+  "crossSectionBetaExponent": -0.5,
+  "sizeIndex": -3.5,
+  "densityKgM3": 1000.0,
+  "qPr": 1.0,
+  "cprEquivalentKgM2": 0.0011484735221274347,
+  "cprMorenoJehinKgM2": 0.001191,
+  "ejection": {
+   "v0KmS": 1.0,
+   "gamma": 0.25,
+   "Gamma": -0.5
+  }
+ },
+ "oxygenPhotonsPerH2O": 0.35317,
+ "coPlus": {
+  "gTotalErgPerSIon1Au": 9.511994e-14,
+  "share": {
+   "(2,0)": 0.4444444444444444,
+   "(3,0)": 0.5555555555555555
+  },
+  "coPerH2O": 0.044721359549995794
+ },
+ "solarWind": {
+  "medianKmS": 385.0,
+  "p16KmS": 334.0,
+  "p84KmS": 458.0,
+  "hours": 8581,
+  "label": "measured",
+  "sources": [
+   "omni2-2024"
+  ],
+  "method": "median of the 2024 OMNI hourly flow speeds at 1 au"
+ },
+ "products": {
+  "comets/model.json": {
+   "path": "comets/model.json",
+   "bytes": 34770,
+   "sha256": "1600bc96b54389c1587bd29c800062a614d29348b2793853b6f96f36e4344bd2",
+   "stage": "comets"
+  },
+  "comets/list.json": {
+   "path": "comets/list.json",
+   "bytes": 24584,
+   "sha256": "ab9f6c3e5079eaa94c95670d82aa4c37faba02643406bcbc50e2af317571534d",
+   "stage": "comets"
+  }
+ }
+}

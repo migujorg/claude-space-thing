@@ -5,6 +5,8 @@
 import type { PointSourceBuffer, RendererPort } from './ports';
 import type { RendererStats, SceneSnapshot, StarCatalog } from '../render/scene';
 import { Renderer } from '../render/renderer';
+import type { SkyBackgroundHook } from '../render/sky/background';
+import type { CometModelProduct } from '../data/schema';
 
 export class OffscreenPresenter implements RendererPort {
   private blitting: Promise<void> | null = null;
@@ -32,8 +34,16 @@ export class OffscreenPresenter implements RendererPort {
     return r.setExtraPointSources ? (src) => r.setExtraPointSources!.call(this.r, src) : undefined;
   }
 
+  setCometModel(model: CometModelProduct | null): void {
+    this.r.setCometModel(model);
+  }
+
   setStars(c: StarCatalog): void {
     this.r.setStars(c);
+  }
+
+  setBackground(b: SkyBackgroundHook | null): void {
+    this.r.setBackground(b);
   }
 
   resize(w: number, h: number, dpr: number): void {

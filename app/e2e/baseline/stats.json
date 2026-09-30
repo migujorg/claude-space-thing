@@ -342,7 +342,7 @@
     "bodiesInSnapshot": 75,
     "sun": true,
     "warnings": [
-     "Neptune rings: reflectance not measured → rings absorb and cast shadows only; their material is hatched as not measured"
+     "Neptune rings: reflectance not measured \u2192 rings absorb and cast shadows only; their material is hatched as not measured"
     ],
     "badge": []
    },
@@ -352,8 +352,8 @@
   "earth-day-strict": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&target=399&dist=20000&az=0&el=0&exists=strict",
    "stats": {
-    "adaptationLuminance": 0.00001,
-    "scotopicAdaptationLuminance": 0.00001408,
+    "adaptationLuminance": 1e-05,
+    "scotopicAdaptationLuminance": 1.408e-05,
     "pupilDiameterMm": 7.899136182401596,
     "mesopicM": 0,
     "limitingMagnitude": 7.601985293005745,
@@ -681,10 +681,10 @@
     "bodiesInSnapshot": 75,
     "sun": true,
     "warnings": [
-     "Earth: orientation unknown → drawn as a sphere of mean radius",
-     "Neptune rings: reflectance not measured → rings absorb and cast shadows only; their material is hatched as not measured",
-     "Saturn rings: reflectance not measured → rings absorb and cast shadows only; their material is hatched as not measured",
-     "Sun: limb darkening unknown → drawn as an unresolved point of the correct illuminance (no uniform disk assumed)"
+     "Earth: orientation unknown \u2192 drawn as a sphere of mean radius",
+     "Neptune rings: reflectance not measured \u2192 rings absorb and cast shadows only; their material is hatched as not measured",
+     "Saturn rings: reflectance not measured \u2192 rings absorb and cast shadows only; their material is hatched as not measured",
+     "Sun: limb darkening unknown \u2192 drawn as an unresolved point of the correct illuminance (no uniform disk assumed)"
     ],
     "badge": [
      "STRICT: measured + derived only"
@@ -724,7 +724,7 @@
     "bodiesInSnapshot": 75,
     "sun": true,
     "warnings": [
-     "Earth: phase extrapolated beyond measured range (0–170°) with the spatial law → estimated"
+     "Earth: phase extrapolated beyond measured range (0\u2013170\u00b0) with the spatial law \u2192 estimated"
     ],
     "badge": []
    },
@@ -942,7 +942,7 @@
     "bodiesInSnapshot": 75,
     "sun": true,
     "warnings": [
-     "Sinope: phase extrapolated beyond measured range (0–12°) with the spatial law → estimated"
+     "Sinope: phase extrapolated beyond measured range (0\u201312\u00b0) with the spatial law \u2192 estimated"
     ],
     "badge": []
    },
@@ -1041,8 +1041,8 @@
     "bodiesInSnapshot": 75,
     "sun": true,
     "warnings": [
-     "Neptune rings: reflectance not measured → rings absorb and cast shadows only; their material is hatched as not measured",
-     "Triton: phase extrapolated beyond measured range (0–1.26°) with the spatial law → estimated"
+     "Neptune rings: reflectance not measured \u2192 rings absorb and cast shadows only; their material is hatched as not measured",
+     "Triton: phase extrapolated beyond measured range (0\u20131.26\u00b0) with the spatial law \u2192 estimated"
     ],
     "badge": []
    },
@@ -1087,7 +1087,7 @@
     "bodiesInSnapshot": 75,
     "sun": true,
     "warnings": [
-     "Uranus rings: reflectance not measured → rings absorb and cast shadows only; their material is hatched as not measured"
+     "Uranus rings: reflectance not measured \u2192 rings absorb and cast shadows only; their material is hatched as not measured"
     ],
     "badge": []
    },
@@ -1131,7 +1131,7 @@
     "bodiesInSnapshot": 75,
     "sun": true,
     "warnings": [
-     "Neptune rings: reflectance not measured → rings absorb and cast shadows only; their material is hatched as not measured"
+     "Neptune rings: reflectance not measured \u2192 rings absorb and cast shadows only; their material is hatched as not measured"
     ],
     "badge": []
    },
@@ -1168,8 +1168,8 @@
     "bodiesInSnapshot": 75,
     "sun": true,
     "warnings": [
-     "Charon: phase extrapolated beyond measured range (0–1.74°) with the spatial law → estimated",
-     "Pluto: phase extrapolated beyond measured range (0–1.74°) with the spatial law → estimated"
+     "Charon: phase extrapolated beyond measured range (0\u20131.74\u00b0) with the spatial law \u2192 estimated",
+     "Pluto: phase extrapolated beyond measured range (0\u20131.74\u00b0) with the spatial law \u2192 estimated"
     ],
     "badge": []
    },
@@ -1179,8 +1179,8 @@
   "starfield": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&target=999&dist=3000000000&labels=0",
    "stats": {
-    "adaptationLuminance": 0.00001,
-    "scotopicAdaptationLuminance": 0.00001408,
+    "adaptationLuminance": 1e-05,
+    "scotopicAdaptationLuminance": 1.408e-05,
     "pupilDiameterMm": 7.876001337430523,
     "mesopicM": 0,
     "limitingMagnitude": 7.601985293005745,
@@ -1198,8 +1198,8 @@
     "bodiesInSnapshot": 75,
     "sun": true,
     "warnings": [
-     "Charon: phase extrapolated beyond measured range (0–1.74°) with the spatial law → estimated",
-     "Pluto: phase extrapolated beyond measured range (0–1.74°) with the spatial law → estimated"
+     "Charon: phase extrapolated beyond measured range (0\u20131.74\u00b0) with the spatial law \u2192 estimated",
+     "Pluto: phase extrapolated beyond measured range (0\u20131.74\u00b0) with the spatial law \u2192 estimated"
     ],
     "badge": []
    },
@@ -1209,8 +1209,8 @@
   "starfield-enhanced": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&target=999&dist=3000000000&labels=0&view=enhanced&boost=6",
    "stats": {
-    "adaptationLuminance": 0.00001,
-    "scotopicAdaptationLuminance": 0.0000155269297716486,
+    "adaptationLuminance": 1e-05,
+    "scotopicAdaptationLuminance": 1.55269297716486e-05,
     "pupilDiameterMm": 7.864578058886922,
     "mesopicM": 0,
     "limitingMagnitude": 12.068888732751358,
@@ -1228,8 +1228,8 @@
     "bodiesInSnapshot": 75,
     "sun": true,
     "warnings": [
-     "Charon: phase extrapolated beyond measured range (0–1.74°) with the spatial law → estimated",
-     "Pluto: phase extrapolated beyond measured range (0–1.74°) with the spatial law → estimated"
+     "Charon: phase extrapolated beyond measured range (0\u20131.74\u00b0) with the spatial law \u2192 estimated",
+     "Pluto: phase extrapolated beyond measured range (0\u20131.74\u00b0) with the spatial law \u2192 estimated"
     ],
     "badge": [
      "ENHANCED +6 stops"
@@ -1314,8 +1314,8 @@
     "bodiesInSnapshot": 76,
     "sun": true,
     "warnings": [
-     "Neptune rings: reflectance not measured → rings absorb and cast shadows only; their material is hatched as not measured",
-     "Triton: phase extrapolated beyond measured range (0–1.26°) with the spatial law → estimated"
+     "Neptune rings: reflectance not measured \u2192 rings absorb and cast shadows only; their material is hatched as not measured",
+     "Triton: phase extrapolated beyond measured range (0\u20131.26\u00b0) with the spatial law \u2192 estimated"
     ],
     "badge": []
    },
@@ -1381,7 +1381,7 @@
     "bodiesInSnapshot": 75,
     "sun": true,
     "warnings": [
-     "Uranus rings: reflectance not measured → rings absorb and cast shadows only; their material is hatched as not measured"
+     "Uranus rings: reflectance not measured \u2192 rings absorb and cast shadows only; their material is hatched as not measured"
     ],
     "badge": []
    },
@@ -1790,8 +1790,8 @@
     "bodiesInSnapshot": 75,
     "sun": true,
     "warnings": [
-     "Neptune rings: reflectance not measured → rings absorb and cast shadows only; their material is hatched as not measured",
-     "Uranus rings: reflectance not measured → rings absorb and cast shadows only; their material is hatched as not measured"
+     "Neptune rings: reflectance not measured \u2192 rings absorb and cast shadows only; their material is hatched as not measured",
+     "Uranus rings: reflectance not measured \u2192 rings absorb and cast shadows only; their material is hatched as not measured"
     ],
     "badge": []
    },
@@ -1862,7 +1862,7 @@
     "bodiesInSnapshot": 75,
     "sun": true,
     "warnings": [
-     "Moon: phase extrapolated beyond measured range (1.55–120°) with the spatial law → estimated"
+     "Moon: phase extrapolated beyond measured range (1.55\u2013120\u00b0) with the spatial law \u2192 estimated"
     ],
     "badge": []
    },
@@ -1919,13 +1919,39 @@
     "bodiesInSnapshot": 75,
     "sun": true,
     "warnings": [
-     "Ananke: phase extrapolated beyond measured range (0–12°) with the spatial law → estimated",
-     "Sinope: phase extrapolated beyond measured range (0–12°) with the spatial law → estimated"
+     "Ananke: phase extrapolated beyond measured range (0\u201312\u00b0) with the spatial law \u2192 estimated",
+     "Sinope: phase extrapolated beyond measured range (0\u201312\u00b0) with the spatial law \u2192 estimated"
     ],
     "badge": []
    },
    "consoleErrors": [],
    "readyMs": 41081
+  },
+  "comet-lemmon": {
+   "query": "t=2025-10-27T00:00:00Z&smallbodies=1&target=1004054&sbfield=0&dist=40000000&az=90&el=20&shield=1",
+   "stats": {
+    "adaptationLuminance": 1.0750226534141897e-05,
+    "scotopicAdaptationLuminance": 2.4833550011256867e-05,
+    "pupilDiameterMm": 7.76111252528496,
+    "mesopicM": 0,
+    "limitingMagnitude": 7.322145509544188,
+    "starsDrawn": 5322,
+    "bodiesDrawn": 3,
+    "bodies": [],
+    "points": [
+     "-3995:derived:marker",
+     "301:estimated",
+     "399:estimated"
+    ],
+    "bodiesInSnapshot": 75,
+    "sun": true,
+    "warnings": [],
+    "badge": [
+     "SUN SHIELDED: occulting disc (viewing aid)"
+    ]
+   },
+   "consoleErrors": [],
+   "readyMs": 71044
   }
  }
 }

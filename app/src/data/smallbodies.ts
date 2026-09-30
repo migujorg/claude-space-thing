@@ -4,7 +4,7 @@
 
 import { BinaryTable } from './binaryTable';
 import type { DataLoader, Progress } from './load';
-import type { Manifest, SmallBodyCoreHeader, SmallBodyNamesHeader, SmallBodyPhotometry, SmallBodyPhysicalHeader, SmallBodyTableHeader } from './schema';
+import type { CometListProduct, CometModelProduct, Manifest, SmallBodyCoreHeader, SmallBodyNamesHeader, SmallBodyPhotometry, SmallBodyPhysicalHeader, SmallBodyTableHeader, SyntheticCellsHeader, SyntheticObjectsHeader } from './schema';
 
 export interface SmallBodyProducts {
   /** Header product paths, from the manifest. */
@@ -15,7 +15,11 @@ export interface SmallBodyProducts {
   names: string | null;
   /** smallbodies/photometry.json (magnitude laws, colours) for the GPU field. */
   photometry?: string | null;
-  /** Every smallbodies/* product path (for the report). */
+  /** The synthetic layer (pipeline stage synthetic): synthetic/objects.json and cells.json, when built. */
+  synthetic?: { objects: string; cells: string | null } | null;
+  /** Comets as they look (pipeline stage comets): comets/model.json and list.json, when built. */
+  cometProducts?: { model: string; list: string | null } | null;
+  /** Every smallbodies/* (and synthetic/*) product path (for the report). */
   all: string[];
   /** Bytes of the tables loaded in the background (headers + binaries, names excluded). */
   tableBytes: number;
@@ -24,7 +28,7 @@ export interface SmallBodyProducts {
 
 export function discoverSmallBodies(manifest: Manifest | null): SmallBodyProducts | null {
   if (!manifest?.products['smallbodies/core.json']) return null;
-  const all = Object.keys(manifest.products).filter((p) => p.startsWith('smallbodies/'));
+  const all = Object.keys(manifest.products).filter((p) => p.startsWith('smallbodies/') || p.startsWith('synthetic/'));
   const has = (p: string) => (manifest.products[p] ? p : null);
   let tableBytes = 0, namesBytes = 0;
   for (const p of all) {
@@ -38,6 +42,8 @@ export function discoverSmallBodies(manifest: Manifest | null): SmallBodyProduct
     nongrav: has('smallbodies/nongrav.json'),
     names: has('smallbodies/names.json'),
     photometry: has('smallbodies/photometry.json'),
+    synthetic: has('synthetic/objects.json') ? { objects: 'synthetic/objects.json', cells: has('synthetic/cells.json') } : null,
+    cometProducts: has('comets/model.json') ? { model: 'comets/model.json', list: has('comets/list.json') } : null,
     all,
     tableBytes,
     namesBytes,
@@ -57,6 +63,11 @@ export interface SmallBodyTables {
   nongrav: SmallBodyTable | null;
   namesHeader: SmallBodyNamesHeader | null;
   photometry?: SmallBodyPhotometry | null;
+  /** The synthetic layer: objects standing in for undiscovered ones (rows count .. count + objects.count - 1). */
+  synthetic?: { objects: SmallBodyTable<SyntheticObjectsHeader>; cells: SmallBodyTable<SyntheticCellsHeader> | null } | null;
+  /** Comets as they look (comets/model.json, list.json): the coma/tail model and the notable comets of the window. */
+  cometModel?: CometModelProduct | null;
+  cometList?: CometListProduct | null;
   /** core row → comets / nongrav record (physical rows come from core.physRow). */
   cometRow: Map<number, number>;
   nongravRow: Map<number, number>;
@@ -96,12 +107,28 @@ export async function loadSmallBodyTables(L: SmallBodyLoader, p: SmallBodyProduc
   const photometry = p.photometry
     ? await L.get(p.photometry, (b) => json(b) as SmallBodyPhotometry, 'Small bodies cannot be drawn: their brightness laws are missing.')
     : null;
+  // The synthetic layer: must be built against this very catalogue (its conditioning counted these objects).
+  let synthetic: SmallBodyTables['synthetic'] = null;
+  if (p.synthetic) {
+    const objects = await table<SyntheticObjectsHeader>(p.synthetic.objects, 'No synthetic objects: the Complete level shows the catalogue only.');
+    const cells = objects ? await table<SyntheticCellsHeader>(p.synthetic.cells, 'Synthetic objects cannot say which cell they fill.') : null;
+    const built = objects?.header.catalogue;
+    const coreBin = core.header.bin.includes('/') ? core.header.bin : p.core.replace(/[^/]+$/, '') + core.header.bin;
+    const coreSha = L.manifest?.products[coreBin]?.sha256;
+    const mismatch = built && (built.snapshot !== core.header.snapshot || (coreSha && built.coreSha256 && built.coreSha256 !== coreSha));
+    if (objects && mismatch) {
+      L.setReport(p.synthetic.objects, { status: 'error', message: `built for another catalogue (snapshot ${built!.snapshot}, core sha256 ${built!.coreSha256.slice(0, 12)}…)`, consequence: 'No synthetic objects: rebuild the synthetic stage.' });
+    } else if (objects) synthetic = { objects, cells };
+  }
   const rowMap = (t: SmallBodyTable | null) => {
     const m = new Map<number, number>();
     if (t?.table.has('row')) for (let k = 0; k < t.table.count; k++) m.set(t.table.get('row', k), k);
     return m;
   };
-  return { core, physical, comets, nongrav, namesHeader, photometry, cometRow: rowMap(comets), nongravRow: rowMap(nongrav), count: core.table.count };
+  const cp = p.cometProducts;
+  const cometModel = cp ? await L.get(cp.model, (b) => json(b) as CometModelProduct, 'Comets are drawn as points (no coma or tails).') : null;
+  const cometList = cp?.list && cometModel ? await L.get(cp.list, (b) => json(b) as CometListProduct, 'Only a selected comet can be drawn with its coma and tails.') : null;
+  return { core, physical, comets, nongrav, namesHeader, photometry, synthetic, cometModel, cometList, cometRow: rowMap(comets), nongravRow: rowMap(nongrav), count: core.table.count };
 }
 
 const namesHeaders = new WeakMap<object, Promise<SmallBodyNamesHeader | null>>();

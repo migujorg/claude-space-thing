@@ -4,6 +4,8 @@
 //   1. bodies   → EXT (XYZS luminance, additive), W (Ricco weight, min), MASK (not-measured map gaps and
 //                 ring regions), depth (reversed-Z, ∞ far); surface maps are virtual-textured (surfaceGpu.ts);
 //                 then rings (ray–plane, lit/unlit faces, planet shadow), depth-tested, not depth-writing
+//   1b. comets  → EXT: comae (enclosed-light tables; below the Ricco area → body points) and dust/ion-tail
+//                 packets of the comets the shell draws extended (SceneSnapshot.comets; ./comets/model.ts)
 //   2. cull     → stars above the Crumey threshold → compact list + indirect draw args (compute)
 //   3. points   → PT (stars, unresolved bodies): physical energy-conserving splats, depth-tested vs
 //                 bodies, and PTEX: the part of their light the display cannot convey (eye/points.ts)
@@ -15,18 +17,22 @@
 //   7. composite→ Pattanaik tone reproduction, mesopic colour, CAT02, + points, sRGB, dither → canvas
 //   8. overlays → hatch / provenance tint / markers / orbits in display space
 
-import type { RendererStats, SceneSnapshot, StarCatalog } from './scene';
+import type { RendererStats, SceneBody, SceneSnapshot, StarCatalog } from './scene';
 import {
-  ADAPT_REDUCE_SHADER, ADAPT_SHADER, ADAPT_TILE_PX, ATMOSPHERE_SHELL_SHADER, BODY_OVERLAY_SHADER, BODY_SHADER, CLAMP_ARGS_SHADER, COMPOSITE_SHADER, EARTH_BODY_SHADER,
+  ADAPT_REDUCE_SHADER, ADAPT_SHADER, ADAPT_TILE_PX, ATM_BODY_SHADER, ATMOSPHERE_SHELL_SHADER, BODY_OVERLAY_SHADER, BODY_SHADER, CLAMP_ARGS_SHADER, COMPOSITE_SHADER, EARTH_BODY_SHADER,
   CULL_SHADER, LINE_SHADER, MASK_HATCH_SHADER, OVERFLOW_SHADER, POINT_SHADER, PYRAMID_BLUR_SIGMA, PYRAMID_SHADER,
   RING_SHADER, SUN_SHADER,
 } from './shaders';
 import { SurfaceGpu } from './surfaceGpu';
 import { AtmosphereGpu, ATM_UB_BYTES, type AtmosphereBinding } from './atmosphereGpu';
 import type { RingPrep } from './rings';
+import type { BackgroundTargets } from './sky/background';
 import { LAW } from './spatial';
 import { cameraGeom, prepareFrame, type PreparedFrame } from './frame';
 import { ExtraPointSources, type PointSourceBuffer } from './extraPoints';
+import { HdrReadback, type HdrImage, type HdrRect, type HdrRegionStats } from './hdrReadback';  // validation hook
+import { CometLayer } from './comets/layer';
+import type { CometModelProduct } from '../data/schema';
 import { orbitVertices } from './overlays';
 import { AdaptationState, computeEyeFrame, type EyeFrame } from '../eye/model';
 import { DEFAULT_EYE_SETTINGS, type EyeSettings } from '../eye/settings';
@@ -106,6 +112,8 @@ export class Renderer {
   private starStride = 7;
   private starCount = 0;
   private extraPts: ExtraPointSources | null = null;
+  /** Comet comae and tails (./comets), drawn from SceneSnapshot.comets once a model is set. */
+  private comets: CometLayer | null = null;
   private visible: GPUBuffer;
   private maxVisible = 1;
   private frameIndex = 0;
@@ -115,8 +123,10 @@ export class Renderer {
   private glareCache = { key: '', weights: [] as number[], unscattered: 1 };
   private lastMeasurementTime = 0;
   private persistentWarnings: string[] = [];
-  /** Debug: names of passes to skip ('bodies', 'cull', 'points', 'pyramid', 'sun', 'adapt', 'composite', 'overlays'). */
+  /** Debug: names of passes to skip ('bodies', 'background', 'cull', 'points', 'pyramid', 'sun', 'adapt', 'composite', 'overlays'). */
   debugSkip = new Set<string>();
+  /** Extended sky light behind the bodies (render/sky/background.ts), drawn into EXT after the bodies pass. */
+  private background: { encode(enc: GPUCommandEncoder, t: BackgroundTargets): void } | null = null;
   /** Optional debug hook, called with each adaptation measurement. */
   onMeasurement?: (info: { goal: { coneCdM2: number; rodCdM2: number; cornealFlux: number }; used: { cone: number; rod: number }; converged: boolean; starsDrawn: number }) => void;
 
@@ -140,6 +150,8 @@ export class Renderer {
   private bodyPipe: GPURenderPipeline;
   /** The body pipeline with Earth's layers (earth.ts); compiled when an Earth-mode body first appears. */
   private earthPipe: GPURenderPipeline | null = null;
+  /** The body pipeline with an atmosphere (bodies drawn from their photometry: Mars, Venus, Pluto). */
+  private atmPipe: GPURenderPipeline | null = null;
   private makeBodyPipe!: (code: string, label: string) => GPURenderPipeline;
   /** Atmospheres (atmosphereGpu.ts) and the shell pipeline for rays that miss the solid body. */
   private atm: AtmosphereGpu | null = null;
@@ -337,6 +349,11 @@ export class Renderer {
     return r;
   }
 
+  /** Sky background hook (render/sky); null removes it. */
+  setBackground(b: { encode(enc: GPUCommandEncoder, t: BackgroundTargets): void } | null): void {
+    this.background = b;
+  }
+
   /** Upload the star catalog once (static). Large catalogs are split into storage-binding-sized chunks. */
   setStars(catalog: StarCatalog): void {
     for (const c of this.stars) { c.buffer.destroy(); c.info.destroy(); }
@@ -369,6 +386,12 @@ export class Renderer {
     this.maxVisible = Math.max(1, Math.min(this.starCount + this.extraPts.count, MAX_VISIBLE_STARS));
     this.visible.destroy();
     this.visible = this.device.createBuffer({ size: this.maxVisible * 32, usage: GPUBufferUsage.STORAGE });
+  }
+
+  /** The physical model of comets (comets/model.json); null removes it. See ./comets. */
+  setCometModel(model: CometModelProduct | null): void {
+    this.comets?.destroy();
+    this.comets = model ? new CometLayer(this.device, model, this.hdrFormat) : null;
   }
 
   resize(width: number, height: number, devicePixelRatio: number): void {
@@ -449,6 +472,27 @@ export class Renderer {
     return { width, height, data };
   }
 
+  // ── Validation hook (render/hdrReadback.ts; docs/reports/validation.md §1) ─────────────────────────────────
+  // The HDR XYZS target (EXT) of the last rendered frame in absolute units, before the eye model: resolved
+  // bodies, rings, atmospheres, sky background, solar disk; not the point sources. Read-only, outside render().
+  private hdrReadback: HdrReadback | null = null;
+  /** Pre-exposure the last frame's HDR targets were written with (1 for rgba32float); set in writeUniforms. */
+  private hdrPreExposure = 1;
+
+  /** Mean, standard deviation and pixel count of EXT over [x0, x1) × [y0, y1) (x right, y down). */
+  readHdrRegion(rect: HdrRect): Promise<HdrRegionStats> {
+    if (!this.targets) return Promise.reject(new Error('readHdrRegion: no render targets'));
+    return (this.hdrReadback ??= new HdrReadback(this.device)).region(this.targets.ext, rect, 1 / this.hdrPreExposure);
+  }
+
+  /** The whole EXT target, width × height × 4 float32 (X, Y, Z, S). */
+  readHdr(): Promise<HdrImage> {
+    if (!this.targets) return Promise.reject(new Error('readHdr: no render targets'));
+    const t = this.targets;
+    return (this.hdrReadback ??= new HdrReadback(this.device)).read(t.ext, [0, 0, t.W, t.H], 1 / this.hdrPreExposure);
+  }
+  // ── end of the validation hook ─────────────────────────────────────────────────────────────────────────────
+
   private destroyTargets(): void {
     const t = this.targets;
     if (!t) return;
@@ -524,7 +568,10 @@ export class Renderer {
     }
     const surf = this.surf;
     surf?.beginFrame();
-    const prep = prepareFrame(snapshot, g, eye, footprintSr, surf ? { surfaces: (b) => surf.binding(b) } : {});
+    const prep = prepareFrame(snapshot, g, eye, footprintSr, {
+      ...(surf ? { surfaces: (b: SceneBody) => surf.binding(b) } : {}),
+      atmospheres: (b, groundAlbedo, dust) => (this.atm ??= new AtmosphereGpu(d)).binding(b.atmosphere!, groundAlbedo, b.name, dust),
+    });
     if (surf) {
       surf.request(prep, g);
       surf.flush();
@@ -533,13 +580,9 @@ export class Renderer {
     // Atmospheres whose tables are ready (computed in a worker the first time a body shows one).
     const atmOf = new Map<number, AtmosphereBinding>();
     prep.resolved.forEach((r, i) => {
-      if (!r.atmosphere) return;
-      const atm = (this.atm ??= new AtmosphereGpu(d));
-      const b = atm.binding(r.atmosphere.data, r.atmosphere.groundAlbedo, r.body.name);
-      if (!b) return;
-      atmOf.set(i, b);
-      const sunE = r.K.map((v) => v) as number[];
-      atm.writeUniform(b, sunE, r.atmosphere.sunAngularRadius, r.atmosphere.shellBeta, r.frame.near, ATM_STEPS);
+      if (!r.atmosphere || !this.atm) return;
+      atmOf.set(i, r.atmosphere.binding);
+      this.atm.writeUniform(r.atmosphere.binding, r.atmosphere.sunE, r.atmosphere.sunAngularRadius, r.atmosphere.shellBeta, r.frame.near, ATM_STEPS);
     });
     this.atmOf = atmOf;
     this.stats.cpuPrepMs = performance.now() - t0;
@@ -620,12 +663,21 @@ export class Renderer {
         // Runs of consecutive bodies (sorted by distance) share a pipeline: the plain one, or the Earth variant
         // for bodies drawn from Earth's layers (earth.ts), one draw each (each binds its own atmosphere).
         let bound: GPURenderPipeline | null = null;
+        const overDisk = (k: number) => atmOf.has(k) && !!prep.resolved[k].atmosphere?.onDisk;
+        const special = (k: number) => (!!prep.resolved[k].earth && !!surf) || overDisk(k);
         for (let i = 0; i < nRes;) {
           const earth = !!prep.resolved[i].earth && !!surf;
+          const withAtm = !earth && overDisk(i);
           let j = i + 1;
-          if (!earth) while (j < nRes && !(prep.resolved[j].earth && surf)) j++;
-          const pipe = earth ? (this.earthPipe ??= this.makeBodyPipe(EARTH_BODY_SHADER, 'bodies (Earth)')) : this.bodyPipe;
-          if (earth) {
+          if (!earth && !withAtm) while (j < nRes && !special(j)) j++;
+          const pipe = earth ? (this.earthPipe ??= this.makeBodyPipe(EARTH_BODY_SHADER, 'bodies (Earth)'))
+            : withAtm ? (this.atmPipe ??= this.makeBodyPipe(ATM_BODY_SHADER, 'bodies (atmosphere)'))
+              : this.bodyPipe;
+          if (withAtm) {
+            pass.setPipeline(pipe);
+            pass.setBindGroup(0, d.createBindGroup({ layout: pipe.getBindGroupLayout(0), entries: [...entries, ...this.atmEntries(atmOf.get(i))] }));
+            bound = null;
+          } else if (earth) {
             pass.setPipeline(pipe);
             pass.setBindGroup(0, d.createBindGroup({
               layout: pipe.getBindGroupLayout(0),
@@ -670,6 +722,15 @@ export class Renderer {
       }
       pass.end();
     }
+
+    // 1b. Sky background (render/sky): extended sky light into EXT wherever no body is in front.
+    if (this.background && !skip.has('background')) this.background.encode(enc, { ext: t.ext, depth: t.depth, frameUB: this.frameUB, W: t.W, H: t.H, snapshot });
+    // 1b. Comets drawn extended: tails and comae into EXT behind the bodies; comae smaller than the Ricco area join
+    //     the point sources (prep.points, drawn in step 3).
+    if (this.comets && snapshot.comets?.length && !skip.has('comets')) {
+      this.comets.encode(enc, t, this.frameUB, snapshot.et, snapshot.comets, g, eye.riccoAreaSr, prep.points, { timestampWrites: () => this.tsw('comets') });
+      this.stats.comets = { comae: this.comets.stats.comae, packets: this.comets.stats.packets };
+    } else if (this.stats.comets) this.stats.comets = { comae: 0, packets: 0 };
 
     // 2. Star visibility culling (reads last frame's veil for the local background).
     const veilView = t.levels[0].acc.createView();
@@ -836,7 +897,7 @@ export class Renderer {
     const lines: number[] = [...prep.overlay];
     orbitVertices(snapshot.orbits, g, lines);
     const ovBodies = prep.resolved.some((r) => r.hatch || r.tint);
-    const ovMask = prep.rings.length > 0 || prep.resolved.some((r) => r.surface?.albedo);
+    const ovMask = prep.rings.length > 0 || prep.resolved.some((r) => r.surface?.albedo || r.atmosphere?.binding.unmeasured);
     if ((ovBodies || ovMask || lines.length) && !skip.has('overlays')) {
       const pass = enc.beginRenderPass({ label: 'overlays', timestampWrites: this.tsw('overlays'), colorAttachments: [{ view: canvasView, loadOp: 'load', storeOp: 'store' }] });
       if (ovMask) {
@@ -1014,6 +1075,7 @@ export class Renderer {
     const d = this.device;
     const t = this.targets!;
     const preExposure = this.hdrFormat === 'rgba32float' ? 1 : 1 / Math.max(eye.Acone, 1e-6);
+    this.hdrPreExposure = preExposure;  // validation hook (readHdrRegion)
     d.queue.writeBuffer(this.frameUB, 0, new Float32Array([
       ...g.right, 0, ...g.up, 0, ...g.back, 0,
       1 / g.tanX, 1 / g.tanY, NEAR_KM, preExposure,
@@ -1125,7 +1187,8 @@ export class Renderer {
       layer(136, e ? s?.water : undefined, e && s?.wind ? 1 : 0);
       layer(140, e ? s?.night : undefined, 0);
       a.set(e ? [...e.absR, ...e.nightK] : [0, 0, 0, 0, 0, 0, 0, 0], o + 144);
-      a.set([this.atmOf.has(i) ? 1 : 0, ATM_STEPS, 0, 0], o + 152);
+      // x: the atmosphere is drawn (the shell beyond the disk), z: over the disk too.
+      a.set([this.atmOf.has(i) ? 1 : 0, ATM_STEPS, this.atmOf.has(i) && r.atmosphere?.onDisk ? 1 : 0, 0], o + 152);
     });
     const buf = this.ensure('bodiesBuf', a.byteLength);
     this.device.queue.writeBuffer(buf, 0, a);

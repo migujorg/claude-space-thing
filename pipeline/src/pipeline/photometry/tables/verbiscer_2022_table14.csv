@@ -1,0 +1,23 @@
+# Transcribed from: Verbiscer, A. J. et al. (2022), "The diverse shapes of dwarf planet and large KBO phase curves
+#   observed from New Horizons", The Planetary Science Journal 3, 95, DOI:10.3847/PSJ/ac63a6, Table 14 ("Hapke (2012b)
+#   Parameters for Dwarf Planets, Satellites, and Large KBOs Observed by New Horizons"), checked line by line against
+#   the PDF text.
+# Model (paper Sec. 3.1): Hapke (2012b) with anisotropic multiple scattering, the Helfenstein & Shepard (2011) form
+#   that ties the porosity factor K to the SHOE width through the regolith porosity (Table 16 footnote b:
+#   hS = -0.3102 f^(1/3) ln(1 - 1.209 f^(2/3)), f = 1 - porosity; Hapke 2008), shadow hiding (hS, BoS) and coherent
+#   backscatter (hC, BoC), a double Henyey-Greenstein particle phase function P = (1+c)/2 HG_back(b) + (1-c)/2
+#   HG_fwd(b) (Eq. 4), and the mean photometric roughness theta_p (deg; footnote a: differs from the macroscopic
+#   roughness, Sec. 4.6). Fits to disk-integrated phase curves (Earth-based and New Horizons LORRI/MVIC).
+# fixed: parameters held fixed in the fit (in parentheses in the table) or computed from b with Hapke's (2012a)
+#   hockey-stick relation (in brackets). Empty hS/BoS or hC/BoC: that opposition term was not used ("L" in the table).
+object,naif,w,theta_p_deg,b,c,hS,BoS,hC,BoC,fixed
+Eris,,0.999,20,0.95,-1.00,,,0.057,0.36,theta;c
+Makemake,,0.947,5,0.73,-0.88,0.11,1.00,,,
+Haumea,,0.625,20,0.39,0.00,0.22,0.99,0.074,0.32,theta
+Quaoar,,0.145,20,0.36,-0.54,0.50,0.18,0.051,1.00,theta
+2002 MS4,,0.103,20,0.31,-0.30,0.24,1.00,0.076,1.00,theta;c-hockey-stick
+Ixion,,0.065,20,0.24,1.55,0.14,0.98,0.089,0.72,theta
+2014 OE394,,0.211,34,0.08,1.98,0.025,0.90,0.032,1.00,
+Triton,801,0.999,27,0.63,-0.94,0.495,0.47,0.00055,0.17,
+Pluto,999,0.917,28,0.60,-0.77,0.035,0.21,0.00014,0.18,
+Charon,901,0.485,23,0.059,1.950,0.19,1.00,0.0047,0.47,

@@ -22,7 +22,7 @@ REPORT = REPO / "docs" / "reports" / "surfaces.md"
 def _headers() -> dict[tuple[int, str], dict]:
     out = {}
     for p in sorted((OUT / "surfaces").glob("*/*.json")):
-        h = json.loads(p.read_text())
+        h = json.loads(p.read_text(encoding="utf-8"))
         out[(h["body"], h["layer"])] = h
     return out
 
@@ -165,9 +165,9 @@ def earth_numbers(hs: dict) -> str:
     a = n["absoluteDiskMean"]
     lam = n["lambertSphereGeometricAlbedo"]
     try:
-        phot = json.loads((OUT / "photometry.json").read_text())["399"]
+        phot = json.loads((OUT / "photometry.json").read_text(encoding="utf-8"))["399"]
         pv = phot["geometricAlbedoV"]["value"]
-        sun = json.loads((OUT / "light.json").read_text())["sun"]["irradianceXYZS_1AU"]["value"]
+        sun = json.loads((OUT / "light.json").read_text(encoding="utf-8"))["sun"]["irradianceXYZS_1AU"]["value"]
         pc = [p / s for p, s in zip(phot["geometricAlbedoXYZS"]["value"], sun)]
     except (FileNotFoundError, KeyError):
         pv, pc = None, None
@@ -258,7 +258,7 @@ EXCLUDED_NOTE = """## Bodies deliberately without a visible surface map
 
 def generate() -> str:
     hs = _headers()
-    idx = json.loads((OUT / "surfaces" / "index.json").read_text())
+    idx = json.loads((OUT / "surfaces" / "index.json").read_text(encoding="utf-8"))
     total = sum(h["stats"]["bytes"] for h in hs.values())
     meta = sum((OUT / "surfaces" / str(b) / f"{lay}{ext}").stat().st_size for (b, lay) in hs
                for ext in (".json", ".sha256"))
@@ -432,7 +432,7 @@ def generate() -> str:
 
 
 def main() -> None:
-    REPORT.write_text(generate())
+    REPORT.write_text(generate(), encoding="utf-8", newline="\n")
     print(f"wrote {REPORT.relative_to(REPO)}")
 
 

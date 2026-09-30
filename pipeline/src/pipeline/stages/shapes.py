@@ -5,15 +5,16 @@ Writes
   shapes/damit-index.json/.bin + shapes/damit.bin   every DAMIT lightcurve-inversion model (compact)
   shapes/index.json                      id → summary
 
-Environment:
-  SHAPES_ONLY=eros,bennu     rebuild only these catalogue keys (plus 'damit'); others' products are carried over
-  SHAPES_KEEP_RAW=1          keep large source files (by default > 50 MB sources are deleted after conversion)
+Build parameters (pipeline/config.py; `build --set key=value`, or the environment variable):
+  shapes.damit=0             do not build the DAMIT collection (1.4 GB download); the index then has no `damit`
+  shapes.only=eros,bennu     [SHAPES_ONLY] rebuild only these catalogue keys (plus 'damit'); others are carried over
+  shapes.keepRaw=1           [SHAPES_KEEP_RAW] keep large source files (by default > 50 MB sources are deleted
+                             after conversion)
 """
 
 from __future__ import annotations
 
 import json
-import os
 import time
 
 from .. import ephem_kernels, shape_build, shape_catalog, shape_damit
@@ -29,7 +30,7 @@ def _carry_over(ctx: BuildContext, rebuilt: set[str]) -> None:
     mpath = OUT / "manifest.json"
     if not mpath.exists():
         return
-    for rel, entry in json.loads(mpath.read_text()).get("products", {}).items():
+    for rel, entry in json.loads(mpath.read_text(encoding="utf-8")).get("products", {}).items():
         if entry.get("stage") != "shapes" or rel == "shapes/index.json":
             continue
         stem = rel.split("/", 1)[1].split(".")[0]
@@ -39,12 +40,13 @@ def _carry_over(ctx: BuildContext, rebuilt: set[str]) -> None:
 
 def run(ctx: BuildContext) -> None:
     t0 = time.time()
-    only = {x.strip() for x in os.environ.get("SHAPES_ONLY", "").split(",") if x.strip()}
-    keep_raw = os.environ.get("SHAPES_KEEP_RAW", "") == "1"
+    only = set(ctx.param("shapes.only"))
+    keep_raw = ctx.param("shapes.keepRaw")
+    damit = ctx.param("shapes.damit")
     pck11 = ephem_kernels.pck(ctx)
     radii = pck_radii()
     idx_path = OUT / "shapes" / "index.json"
-    index = json.loads(idx_path.read_text()) if (only and idx_path.exists()) else {"bodies": {}}
+    index = json.loads(idx_path.read_text(encoding="utf-8")) if (only and idx_path.exists()) else {"bodies": {}}
     headers, rebuilt, timing = [], set(), {}
     for src in shape_catalog.ALL:
         if only and src.key not in only:
@@ -55,7 +57,7 @@ def run(ctx: BuildContext) -> None:
         rebuilt.add(str(h["id"]))
         timing[src.key] = round(time.time() - t, 1)
     index["bodies"].update(shape_build.summarize(headers))
-    if not only or "damit" in only:
+    if damit and (not only or "damit" in only):
         t = time.time()
         dh = shape_damit.build(ctx)
         rebuilt |= {"damit", "damit-index"}

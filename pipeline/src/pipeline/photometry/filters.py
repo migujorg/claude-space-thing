@@ -103,6 +103,18 @@ def _hriv(band: str) -> Download:
         notes="Filter + CCD system response, photon counter (SVO DetectorType 1).")
 
 
+def _lorri() -> Download:
+    return Download(
+        id="svo-newhorizons-lorri-pan", url=_SVO.format(id="NewHorizons/LORRI.Pan"), subdir="filters",
+        name="NewHorizons_LORRI.Pan.dat",
+        title="New Horizons LORRI panchromatic system QE, SVO NewHorizons/LORRI.Pan",
+        citation="Cheng, A. F. et al. (2008). Long-Range Reconnaissance Imager on New Horizons. Space Science "
+                 "Reviews 140, 189-215. DOI:10.1007/s11214-007-9271-6. Curve as distributed by the SVO Filter "
+                 "Profile Service (profile reference: PDS nh-x-lorri-3-launch-v3.0, calib/). " + _SVO_CITE,
+        notes="System quantum efficiency (filter + CCD), photon counter (SVO DetectorType 1); pivot wavelength "
+              "607.6 nm, as used by the LORRI calibration keywords.")
+
+
 def _ahi9_download() -> Download:
     from .earth_data import AHI_SRF
     return AHI_SRF
@@ -112,7 +124,8 @@ FILTERS = {**{f"bessell.{b}": _bessell(b) for b in "UBVRI"}, **{f"johnson.{b}": 
            **{f"hriv.{b}": _hriv(b) for b in ("Violet", "Blue", "Green", "Orange", "Red", "NIR", "IR")},
            **{f"ahi9.B{b:02d}": _ahi9_download() for b in (1, 2, 3, 4)},
            **{f"wfpc2.{b}": _wfpc2(b) for b in ("F336W", "F439W", "F555W", "F675W", "F814W")},
-           "voyager.nac.Clear": _voyager_nac("Clear"),
+           **{f"voyager.nac.{b}": _voyager_nac(b) for b in ("Clear", "Violet", "Blue", "Green", "Orange")},
+           "lorri.Pan": _lorri(),
            **{f"cassini.wac.{b}": _cassini_wac(b) for b in ("VIO", "BL1", "GRN", "RED", "CB2", "CB3")},
            **{f"hrsc.{b}": _hrsc(b) for b in ("Blue", "Green", "Red", "NIR")}}
 # Short aliases: plain letters are Bessell (1990).
@@ -120,7 +133,7 @@ FILTERS.update({b: FILTERS[f"bessell.{b}"] for b in "UBVRI"})
 
 # Photon-counting responses (SVO DetectorType 1): the detected signal is ∫ E T λ dλ / (hc), so band averages of an
 # albedo weight by E·T·λ. Johnson/Bessell curves are tabulated as energy responses (DetectorType 0): weight E·T.
-PHOTON_COUNTERS = {k for k in FILTERS if k.startswith(("cassini.", "hrsc.", "wfpc2.", "hriv."))}
+PHOTON_COUNTERS = {k for k in FILTERS if k.startswith(("cassini.", "hrsc.", "wfpc2.", "hriv.", "lorri."))}
 # AHI-09 responses (JMA workbook, not SVO) weight radiance per unit wavelength: energy weighting.
 
 

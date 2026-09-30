@@ -23,12 +23,12 @@ AU_KM = 149597870.7  # IAU 2012 Resolution B2 (exact definition of the astronomi
 
 def read_table_csv(name: str) -> list[dict[str, str]]:
     """Rows of a transcribed CSV table under tables/ (lines starting with '#' are the citation header)."""
-    lines = [ln for ln in (TABLES / name).read_text().splitlines() if ln and not ln.startswith("#")]
+    lines = [ln for ln in (TABLES / name).read_text(encoding="utf-8").splitlines() if ln and not ln.startswith("#")]
     return list(csv.DictReader(io.StringIO("\n".join(lines))))
 
 
 def read_table_json(name: str) -> dict:
-    return json.loads((TABLES / name).read_text())
+    return json.loads((TABLES / name).read_text(encoding="utf-8"))
 
 
 BROWSER_AGENT = "Mozilla/5.0"

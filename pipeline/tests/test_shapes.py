@@ -81,11 +81,11 @@ def test_plate_and_obj_readers(tmp_path):
     m = _cube()
     p = tmp_path / "cube.tab"
     p.write_text(f"{m.nv} {m.nf}\n" + "".join(f"{i + 1} {x} {y} {z}\n" for i, (x, y, z) in enumerate(m.v))
-                 + "".join(f"{i + 1} {a + 1} {b + 1} {c + 1}\n" for i, (a, b, c) in enumerate(m.f)))
+                 + "".join(f"{i + 1} {a + 1} {b + 1} {c + 1}\n" for i, (a, b, c) in enumerate(m.f)), encoding="utf-8", newline="\n")
     assert np.array_equal(sm.read_plate_table(p).f, m.f)
     o = tmp_path / "cube.obj"
     o.write_text("".join(f"v {x} {y} {z}\n" for x, y, z in m.v) + "".join(f"f {a + 1} {b + 1} {c + 1}\n"
-                                                                           for a, b, c in m.f))
+                                                                           for a, b, c in m.f), encoding="utf-8", newline="\n")
     assert np.allclose(sm.read_obj(o).v, m.v)
 
 
@@ -109,7 +109,7 @@ SCALE_EXCEPTIONS = {
 
 
 def _load(p):
-    h = json.loads(p.read_text())
+    h = json.loads(p.read_text(encoding="utf-8"))
     return h, (OUT / h["bin"]).read_bytes()
 
 

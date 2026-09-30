@@ -16,6 +16,7 @@
     { "id": "starfield-enhanced", "title": "The same star field, Enhanced +6 stops", "params": { "target": "999", "dist": "3000000000", "labels": "0", "view": "enhanced", "boost": "6" } },
     { "id": "sun-1au", "title": "The Sun from 1 au", "params": { "target": "10", "dist": "149597871" } },
     { "id": "juno-closeup", "title": "3 Juno close-up (small body with a measured diameter and colour)", "params": { "target": "20000003", "smallbodies": "1" } },
+    { "id": "comet-lemmon", "title": "C/2025 A6 (Lemmon) at its predicted peak (m1 7.6 from Earth, 2025-10-27): coma and dust tail seen from the side at 0.27 au, naked eye (Sun shielded; catalogue points off, so SwiftShader need not integrate every small body 338 days back)", "params": { "t": "2025-10-27T00:00:00Z", "target": "1004054", "smallbodies": "1", "sbfield": "0", "dist": "40000000", "az": "90", "el": "20", "shield": "1" } },
     { "id": "mars-map", "title": "Mars surface map, day side", "params": { "target": "499", "dist": "15000", "az": "0", "el": "10" } },
     { "id": "mercury-map", "title": "Mercury surface map, day side", "params": { "target": "199", "dist": "8000", "az": "0", "el": "10" } },
     { "id": "earth-moon-first-run", "title": "The first-run composition (no URL parameters) at a fixed time: the Earth framed, the Moon 14° from the centre (upper left)", "params": { "t": "2026-09-30T17:00:00Z", "target": "399", "dist": "45828.8", "az": "32.84", "el": "-17.26" } },

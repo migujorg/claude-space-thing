@@ -59,12 +59,20 @@ export function surfaceRefs(layers: SurfaceLayer[], dataRoot: string): Map<numbe
   return out;
 }
 
-/** A body's atmosphere from atmospheres.json when every value it needs is admitted at the level, else null. */
+/**
+ * A body's atmosphere from atmospheres.json when every known value it needs is admitted at the level, else null.
+ * Extinction must be known. A single-scattering albedo or phase function that is unknown (Titan's haze) does not
+ * withhold it: the renderer draws no light for it and marks the air beyond the disk "not measured".
+ */
 export function atmosphereFor(file: AtmosphereFile | null | undefined, id: number, level: ExistsLevel): SceneBody['atmosphere'] {
   const b = file?.bodies[String(id)];
   if (!file || !b || !b.components.length || !file.foldWeights.value) return null;
   const labels: Label[] = [file.foldWeights.label];
-  for (const c of b.components) labels.push(c.extinctionPerKm.label, c.singleScatteringAlbedo.label, c.phaseFunction.label);
+  for (const c of b.components) {
+    if (c.extinctionPerKm.label === 'unknown') return null;
+    labels.push(c.extinctionPerKm.label);
+    for (const l of [c.singleScatteringAlbedo.label, c.phaseFunction.label]) if (l !== 'unknown') labels.push(l);
+  }
   if (!labels.every((l) => labelAllowed(l, level))) return null;
   return { wavelengthsNm: file.wavelengthsNm, foldWeights: file.foldWeights.value, body: b, worstLabel: worstOf(labels) };
 }
@@ -137,6 +145,12 @@ export function applyExtras(sb: SceneBody, body: Body, extras: SceneExtras | und
       used.push(s.photometry.label);
     }
     if (surface.albedo || surface.height) sb.surface = surface;
+  }
+  // Other bodies with an atmosphere (Mars, Venus, Pluto, Titan) keep their disk photometry; the renderer
+  // renormalizes it under the air (docs/rendering-earth.md §8).
+  if (atm && !sb.atmosphere && lit && !sb.surfaceUnknown) {
+    sb.atmosphere = atm;
+    used.push(atm.worstLabel);
   }
   const sys = extras.rings?.[String(body.id)];
   if (sys) {

@@ -20,3 +20,9 @@ For these, band averages weight by T(λ)·E☉(λ)·λ, which is how a photon-co
 **Earth photometry (M3 follow-up)**:
 - `DeepImpact/HRI-VIS.{Violet,Blue,Green,Orange,Red,NIR,IR}` (`svo-deepimpact-hriv-*`): Deep Impact HRI-VIS filter + CCD system responses (Hampton, D. L. et al. 2005, *Space Science Reviews* 117, 43–93; SVO profile reference: the PDS 9P encounter calibration). These are photon counters (SVO DetectorType 1). They are used for the EPOXI Earth cross-check (epoxi-earth.md).
 - The Himawari-9 AHI bands 1–4 (`ahi9.B01`–`B04`) are not in SVO. Their responses come from JMA's AHI-09 workbook (`jma-ahi9-srf`, himawari9-ahi.md) and are energy-weighted.
+
+**Validation set** (`docs/reports/validation.md`):
+- `Voyager/ISS-NAC.{Violet,Blue,Green,Orange}` (`svo-voyager-iss-nac-*`): relative responses "digitized from Fig 6 in Smith et al. 1977" (SVO comment), energy counters; used with the Voyager 2 Uranus and Neptune images. They are pre-launch curves generic to both spacecraft.
+- `NewHorizons/LORRI.Pan` (`svo-newhorizons-lorri-pan`): LORRI system QE (filter + CCD; SVO profile reference: PDS nh-x-lorri-3-launch-v3.0 `calib/`), photon counter, pivot wavelength 607.6 nm, matching the LORRI calibration keywords' pivot (Cheng, A. F. et al. 2008, *Space Science Reviews* 140, 189–215).
+- The Cassini WAC (`Cassini/ISS_WAC.{BL1,GRN,RED}`), Deep Impact HRI-VIS and AHI-09 curves above are reused for their images.
+

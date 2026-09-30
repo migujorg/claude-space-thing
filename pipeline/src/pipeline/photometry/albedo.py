@@ -95,7 +95,7 @@ WILLMER = Download(
 def pck_radii() -> dict[int, tuple[float, float, float]]:
     """BODYnnn_RADII from the data sections of pck00011.tpc."""
     import re
-    text = PCK.fetch().read_text()
+    text = PCK.fetch().read_text(encoding="utf-8")
     data = "".join(re.findall(r"\\begindata(.*?)(?:\\begintext|\Z)", text, flags=re.S))
     out = {}
     for m in re.finditer(r"BODY(\d+)_RADII\s*=\s*\(([^)]*)\)", data):
@@ -192,7 +192,7 @@ def _check_zenodo_md5(dl: Download) -> None:
     import hashlib
     import json
     from ..download import fetch
-    meta = json.loads(fetch(PAYNE_RECORD, "payne2026", "zenodo-record-17470005.json").read_text())
+    meta = json.loads(fetch(PAYNE_RECORD, "payne2026", "zenodo-record-17470005.json").read_text(encoding="utf-8"))
     want = {f["key"]: f["checksum"] for f in meta["files"]}[dl.name]
     got = "md5:" + hashlib.md5(dl.fetch().read_bytes()).hexdigest()
     if got != want:

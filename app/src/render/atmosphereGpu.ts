@@ -2,7 +2,7 @@
 // precomputes its tables in a worker, packs them into one rgba16float texture array (shaders-atmosphere.ts)
 // and keeps one uniform buffer per atmosphere.
 
-import { atmosphereModelFromData, IRR_H, IRR_W, MS_N, PHASE_N, particleTable, PROFILE_N, rayleighDepolarization, T_H, T_W, type AtmosphereModel, type AtmosphereTables } from './atmosphere';
+import { atmosphereModelFromData, IRR_H, IRR_W, MS_N, PHASE_N, particleTable, PROFILE_N, ProfileGrid, rayleighDepolarization, T_H, T_W, type AtmosphereModel, type AtmosphereTables } from './atmosphere';
 import { ATM_K4_MAX, ATM_TEX_H, ATM_TEX_W } from './shaders-atmosphere';
 import { numberToF16 } from './surface';
 import type { SceneAtmosphere } from './scene';
@@ -11,13 +11,26 @@ export interface AtmosphereBinding {
   model: AtmosphereModel;
   view: GPUTextureView;
   uniform: GPUBuffer;
+  /** The tables and a profile grid, for CPU integrals (the disk renormalization, atmosphere.ts). */
+  tables?: AtmosphereTables;
+  grid?: ProfileGrid;
+  /** Identifies the model (body, dust bin) for caches. */
+  key: string;
+  /**
+   * Scattering not measured (Titan's haze): only the extent (model.bottomKm/topKm) is known; the shell
+   * marks the air beyond the disk "not measured" and draws no light (no tables; a placeholder texture).
+   */
+  unmeasured?: boolean;
 }
 
 interface Entry {
-  state: 'pending' | 'ready' | 'failed';
+  state: 'pending' | 'ready' | 'failed' | 'unmeasured';
   model?: AtmosphereModel;
   texture?: GPUTexture;
   uniform?: GPUBuffer;
+  tables?: AtmosphereTables;
+  grid?: ProfileGrid;
+  key?: string;
   error?: string;
 }
 
@@ -25,12 +38,13 @@ interface Entry {
 export const ATM_UB_BYTES = (3 + 16 + 4) * 16;
 
 export class AtmosphereGpu {
-  private entries = new Map<SceneAtmosphere['body'], Entry>();
+  /** Per atmosphere data object, per dust-season bin (−1: no dust scaling). */
+  private entries = new Map<SceneAtmosphere['body'], Map<number, Entry>>();
+  private ids = new Map<SceneAtmosphere['body'], number>();
   private worker: Worker | null = null;
   private nextId = 1;
   private waiting = new Map<number, (t: AtmosphereTables) => void>();
   private pendingCount = 0;
-  readonly problems = new Set<string>();
   /** Called when an atmosphere becomes ready (the host re-renders). */
   onReady?: () => void;
   readonly sampler: GPUSampler;
@@ -58,36 +72,52 @@ export class AtmosphereGpu {
    * drawn (reason in `problems`). groundAlbedo: the Lambert-equivalent reflectance of what lies below
    * (for the multiple-scattering table).
    */
-  binding(atm: SceneAtmosphere, groundAlbedo: number, name: string): AtmosphereBinding | null {
-    let e = this.entries.get(atm.body);
+  binding(atm: SceneAtmosphere, groundAlbedo: number[], name: string, dust?: { scale: number; bin: number } | null): AtmosphereBinding | { error: string; unmeasured?: AtmosphereBinding } | null {
+    let byBin = this.entries.get(atm.body);
+    if (!byBin) { byBin = new Map(); this.entries.set(atm.body, byBin); this.ids.set(atm.body, this.ids.size + 1); }
+    const bin = dust ? dust.bin : -1;
+    let e = byBin.get(bin);
     if (!e) {
-      const r = atmosphereModelFromData(atm, groundAlbedo);
-      if ('error' in r) {
+      const r = atmosphereModelFromData(atm, groundAlbedo, dust ? dust.scale : 1);
+      if ('error' in r && r.extent) {
+        e = {
+          state: 'unmeasured', error: r.error, key: `${this.ids.get(atm.body)}|u`,
+          model: { bottomKm: r.extent.bottomKm, topKm: r.extent.topKm, altitudesKm: [0], wavelengthsNm: [], weights: [[], [], [], []], species: [], groundAlbedo: [] },
+          uniform: this.device.createBuffer({ size: ATM_UB_BYTES, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST, label: `atmosphere ${name} (not measured)` }),
+          texture: this.device.createTexture({ size: [1, 1, 1], format: 'rgba16float', usage: GPUTextureUsage.TEXTURE_BINDING, label: `atmosphere ${name} (not measured)` }),
+        };
+      } else if ('error' in r) {
         e = { state: 'failed', error: r.error };
-        this.problems.add(r.error);
       } else if (Math.ceil(r.model.wavelengthsNm.length / 4) > ATM_K4_MAX) {
-        e = { state: 'failed' };
-        this.problems.add(`${name}: atmosphere has ${r.model.wavelengthsNm.length} bins, the shaders handle ${4 * ATM_K4_MAX} → not drawn`);
+        e = { state: 'failed', error: `${name}: atmosphere has ${r.model.wavelengthsNm.length} bins, the shaders handle ${4 * ATM_K4_MAX} → not drawn` };
       } else {
-        const entry: Entry = { state: 'pending', model: r.model };
+        const entry: Entry = { state: 'pending', model: r.model, key: `${this.ids.get(atm.body)}|${bin}` };
         e = entry;
         this.pendingCount++;
         this.tables(r.model).then((t) => {
+          entry.tables = t;
+          entry.grid = new ProfileGrid(r.model, 512);
           entry.texture = this.pack(r.model, t);
           entry.uniform = this.device.createBuffer({ size: ATM_UB_BYTES, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST, label: `atmosphere ${name}` });
           entry.state = 'ready';
         }).catch((err) => {
           entry.state = 'failed';
-          this.problems.add(`${name}: atmosphere tables failed (${err}) → not drawn`);
+          entry.error = `${name}: atmosphere tables failed (${err}) → not drawn`;
         }).finally(() => {
           this.pendingCount--;
           this.onReady?.();
           if (this.idle()) { const w = this.idleWaiters; this.idleWaiters = []; for (const f of w) f(); }
         });
       }
-      this.entries.set(atm.body, e);
+      byBin.set(bin, e);
     }
-    return e.state === 'ready' ? { model: e.model!, view: e.texture!.createView({ dimension: '2d-array' }), uniform: e.uniform! } : null;
+    if (e.state === 'failed') return { error: e.error ?? `${name}: atmosphere not drawn` };
+    if (e.state === 'unmeasured') {
+      return { error: e.error!, unmeasured: { model: e.model!, view: e.texture!.createView({ dimension: '2d-array' }), uniform: e.uniform!, key: e.key!, unmeasured: true } };
+    }
+    return e.state === 'ready'
+      ? { model: e.model!, view: e.texture!.createView({ dimension: '2d-array' }), uniform: e.uniform!, tables: e.tables!, grid: e.grid!, key: e.key! }
+      : null;
   }
 
   idle(): boolean { return this.pendingCount === 0; }
@@ -108,7 +138,8 @@ export class AtmosphereGpu {
     const K = m.wavelengthsNm.length;
     const K4 = Math.ceil(K / 4);
     const a = new Float32Array(ATM_UB_BYTES / 4);
-    a.set([m.bottomKm, m.topKm, K4, sunAngularRadius, ...sunE, quadHalfExtent, fullScreen ? 1 : 0, steps, 0], 0);
+    a.set([m.bottomKm, m.topKm, K4, sunAngularRadius, ...sunE, quadHalfExtent, fullScreen ? 1 : 0, steps, b.unmeasured ? 1 : 0], 0);
+    if (b.unmeasured) { this.device.queue.writeBuffer(b.uniform, 0, a); return; }
     for (let c = 0; c < 4; c++) for (let k = 0; k < K; k++) a[12 + (4 * c + (k >> 2)) * 4 + (k & 3)] = m.weights[c][k];
     const dep = rayleighDepolarization(m);
     for (let k = 0; k < K; k++) a[12 + 64 + k] = dep[k];
@@ -138,7 +169,7 @@ export class AtmosphereGpu {
   }
 
   destroy(): void {
-    for (const e of this.entries.values()) { e.texture?.destroy(); e.uniform?.destroy(); }
+    for (const m of this.entries.values()) for (const e of m.values()) { e.texture?.destroy(); e.uniform?.destroy(); }
     this.worker?.terminate();
   }
 }

@@ -72,7 +72,7 @@ def _chunked(read, n: int, step: int = 200_000) -> np.ndarray:
 def read_plate_table(path: Path) -> Mesh:
     """PDS plate model table: a line 'nv nf', nv vertex lines ('x y z' or 'i x y z'), nf plate lines ('i j k' or
     'n i j k'); indices 1-based."""
-    rows = [ln.split() for ln in path.read_text().splitlines() if ln.strip()]
+    rows = [ln.split() for ln in path.read_text(encoding="utf-8").splitlines() if ln.strip()]
     nv, nf = int(rows[0][0]), int(rows[0][1])
     vr = rows[1:1 + nv]
     fr = rows[1 + nv:1 + nv + nf]
@@ -85,7 +85,7 @@ def read_plate_table(path: Path) -> Mesh:
 
 def read_obj(path: Path) -> Mesh:
     v, f = [], []
-    for ln in path.read_text().splitlines():
+    for ln in path.read_text(encoding="utf-8").splitlines():
         s = ln.split()
         if not s:
             continue

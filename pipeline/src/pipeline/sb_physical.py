@@ -73,7 +73,7 @@ def designation_index(cat: Catalog) -> dict[str, int]:
 def load_sbdb_phys(pages: list[Path]) -> dict[int, dict]:
     out: dict[int, dict] = {}
     for p in pages:
-        d = json.loads(p.read_text())
+        d = json.loads(p.read_text(encoding="utf-8"))
         f = d["fields"]
         for r in d["data"]:
             out[int(r[0])] = dict(zip(f, r))

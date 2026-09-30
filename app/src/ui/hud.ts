@@ -130,7 +130,10 @@ export class Hud {
 
 const n = (x: number): string => x.toLocaleString('en-US');
 
-/** HUD line: "N small bodies drawn / M withheld at this level" (or where the catalogue stands). */
+/**
+ * HUD line: "N small bodies drawn / M withheld at this level" (or where the catalogue stands); with a synthetic
+ * layer at Complete "N catalogued + M synthetic small bodies drawn / K withheld".
+ */
 export function smallBodyHudText(m: AppModel): string {
   const s = m.sb;
   if (s.status === 'loading') return `small bodies loading ${s.total ? Math.round((100 * s.got) / s.total) : 0}%`;
@@ -139,6 +142,8 @@ export function smallBodyHudText(m: AppModel): string {
   const c = m.smallBodyCounts();
   if (!c) return '';
   const level = EXISTS_TEXT[m.reality.exists].name;
-  if (m.smallBodies?.field) return `${n(c.drawn)} small bodies drawn / ${n(c.withheld)} withheld at ${level}`;
+  if (m.smallBodies?.field && c.synthetic?.drawn)
+    return `${n(c.drawn)} catalogued + ${n(c.synthetic.drawn)} synthetic small bodies drawn / ${n(c.withheld)} withheld at ${level}`;
+  if (m.smallBodies?.field) return `${n(c.drawn)} small bodies drawn / ${n(c.withheld)} withheld at ${level}${c.synthetic ? ` (${n(c.synthetic.objects)} synthetic at Complete)` : ''}`;
   return `small bodies not drawn (no small-body renderer): ${n(c.drawn)} admitted / ${n(c.withheld)} withheld at ${level}`;
 }

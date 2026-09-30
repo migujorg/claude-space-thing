@@ -7,6 +7,7 @@
 
 import type { BodyAtmosphere, DiskReflectanceModel, Label, PhaseFunction, RingReflectance, SpatialPhotometricModel, SurfaceLayerHeader } from '../data/schema';
 import type { EyeSettings } from '../eye/settings';
+import type { CometActivity } from './comets/model';
 
 export type { EyeSettings };
 
@@ -92,8 +93,9 @@ export interface SceneBody {
   /**
    * atmospheres.json for this body, when admitted at the reality level (its worst label in `worstLabel` and
    * in `atmosphere.worstLabel`). Drawn for Earth with its layers (docs/rendering-earth.md §4): multiple
-   * scattering, limb and terminator colours. A component whose extinction, single-scattering albedo or
-   * phase function is unknown stops the whole atmosphere from being drawn (warning).
+   * scattering, limb and terminator colours; for other bodies over their renormalized disk photometry (§8).
+   * A component whose single-scattering albedo or phase function is unknown: no light is drawn for the
+   * atmosphere, and the air beyond the disk is marked "not measured" (warning).
    */
   atmosphere?: SceneAtmosphere | null;
 }
@@ -199,6 +201,29 @@ export interface OrbitPolyline {
   selected: boolean;
 }
 
+/**
+ * A comet drawn extended (coma, dust tail, ion tail; render/comets). The shell sends only comets resolved from the
+ * camera (render/comets/lod.ts) and takes them out of the small-body field's points; the rest stay points.
+ */
+export interface SceneComet {
+  /** Body id (small bodies: −(row + 1)). */
+  id: number;
+  name: string;
+  /** Camera-relative apparent position of the nucleus (km, ICRF, light-time corrected). float64. */
+  rel: Vec3;
+  /** Heliocentric ICRF state of the nucleus at the emission time (km, km/s): position and velocity from the propagator. */
+  helioPos: Vec3;
+  helioVel: Vec3;
+  /** SBDB total-magnitude law and its label. */
+  M1: number;
+  K1: number;
+  totalLabel: Label;
+  /** Composition (render/comets/model.ts CometActivity): the comet's measured ratios or the population medians. */
+  activity: CometActivity;
+  /** Dust colour population (long-period: P > 200 yr or unbound). */
+  dust: 'longPeriod' | 'shortPeriod';
+}
+
 export interface SceneSnapshot {
   et: number;
   camera: SceneCamera;
@@ -206,6 +231,8 @@ export interface SceneSnapshot {
   bodies: SceneBody[];
   view: ViewSettings;
   orbits: OrbitPolyline[];
+  /** Comets drawn extended this frame (optional; absent: none). */
+  comets?: SceneComet[];
 }
 
 /** Star catalog as loaded from app/public/data/stars/*.bin (see the header's field list). */
@@ -238,6 +265,8 @@ export interface RendererStats {
   /** CPU time of the last render() call, ms: frame preparation (photometry, rings, tiles) and all of render() up to submit. */
   cpuPrepMs?: number;
   cpuFrameMs?: number;
+  /** Comets drawn extended in the last frame (render/comets): comae and tail packets. */
+  comets?: { comae: number; packets: number };
   /** Surface-map tile cache (virtual texturing). */
   surfaceCache?: {
     budgetMiB: number;

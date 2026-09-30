@@ -30,7 +30,7 @@ def test_round_trip_bytes(tmp_path):
     rec, fl, stride = pack(fields, cols, n)
     (tmp_path / "t.bin").write_bytes(rec.tobytes())
     header = {"bin": "t.bin", "count": n, "stride": stride, "fields": fl}
-    (tmp_path / "t.json").write_text(json.dumps(header))
+    (tmp_path / "t.json").write_text(json.dumps(header), encoding="utf-8", newline="\n")
     h, data = read_table(tmp_path / "t.json")
     assert np.array_equal(data["pos"], cols["pos"])  # float64 survives bit for bit
     assert np.isnan(data["H"][2]) and data["row"][2] == 0xFFFFFFFF and list(data["lab"]) == [0, 1, 4, 2, 4]
@@ -42,7 +42,7 @@ def test_round_trip_bytes(tmp_path):
 @pytest.mark.skipif(not CORE.exists(), reason="smallbodies products not built")
 def test_built_products_are_consistent():
     header, core = read_table(CORE)
-    sources = {s["id"] for s in json.loads((OUT / "sources.json").read_text())}
+    sources = {s["id"] for s in json.loads((OUT / "sources.json").read_text(encoding="utf-8"))}
     assert all(s in sources for s in header["sourceTable"]), set(header["sourceTable"]) - sources
     enc = header["labelEncoding"]
     assert enc == ["measured", "derived", "estimated", "synthetic", "unknown"]
