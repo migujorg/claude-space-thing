@@ -6,7 +6,7 @@ import type { SceneBody, SceneSnapshot } from './scene';
 import { AU_KM } from './constants';
 import { diskIlluminance, evalPhase, lambertRadianceFactor, limbDarkenedI0, meanRadius, spatialScale, type XYZS } from './photometry';
 import { dot, len, normalize, prepareBody, scale, sub, type BodyFrame, type M3, type V3 } from './raycast';
-import { camToNdc, MARKER_COLOR, PROVENANCE_TINT, PROVENANCE_TINT_ALPHA, ringVertices, toCam, type CameraGeom } from './overlays';
+import { camToNdc, PROVENANCE_TINT, PROVENANCE_TINT_ALPHA, ringVertices, toCam, type CameraGeom } from './overlays';
 import { blackwellEquivalent } from '../eye/mesopic';
 import type { EyeFrame } from '../eye/model';
 import { CIE146 } from '../eye/constants';
@@ -178,8 +178,8 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
     const c = toCam(g, b.pos);
     const tint = tintOn ? ([...PROVENANCE_TINT[b.worstLabel], PROVENANCE_TINT_ALPHA] as [number, number, number, number]) : null;
     if (!b.radii) {
-      // Position known, size unknown: no brightness can be computed (R is needed) → hollow marker.
-      if (c[2] < 0) ringVertices(camToNdc(g, c), 6, 1.5, tint ?? MARKER_COLOR, g, overlay);
+      // Position known, size unknown: no brightness can be computed (R is needed). Nothing is drawn; the
+      // shell draws the hollow "position known, brightness not admitted" marker (ui/labels.ts).
       continue;
     }
     const R = meanRadius(b.radii);
@@ -195,7 +195,7 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
     const alpha = angle(b.toSun, scale(b.pos, -1));
     if (!b.surfaceUnknown && b.albedoXYZS && b.phase) {
       const ph = evalPhase(b.phase, alpha);
-      if (!ph.ok) warnings.push(`${b.name}: ${ph.reason} → surface drawn as not measured`);
+      if (!ph.ok) warnings.push(`${b.name}: ${ph.reason} → sunlit part drawn as not measured (night side black)`);
       else {
         const sc = spatialScale(b.phase, ph.phi, alpha);
         E = diskIlluminance(b.albedoXYZS, dAU, R, D, ph.phi);
@@ -254,9 +254,8 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
           points.push({ ndc, depth: g.near / -c[2], E: Ep });
         }
         if (tint && fRes < 0.5) ringVertices(ndc, 7, 1.5, tint, g, overlay);
-      } else if (fRes < 0.5) {
-        ringVertices(ndc, 6, 1.5, tint ?? MARKER_COLOR, g, overlay);
       }
+      // A sub-pixel body without admitted brightness: nothing is drawn (the shell owns those markers).
     }
   }
   resolved.sort((a, b) => a.frame.D - b.frame.D);

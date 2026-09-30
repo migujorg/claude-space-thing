@@ -8,7 +8,12 @@ chose where the literature offers alternatives, and where we deviate from a publ
 v0's mesopic brightness dip (§4, §10); loss of colour at low light uses Pattanaik's own colour
 exponent (Eq. 3) instead of a rod-share mix (§5); the Watson (2013) optical MTF now carries the square
 root of the diffraction MTF, as in the published formula (§3); CIE 146, CIE 191 and Watson 2013
-constants were cross-checked (§9).
+constants were cross-checked (§9). **Fixes after real-data review:** point sources are drawn as sharp
+points whose *brightness* (not size) follows Ricco summation, with their own colour, and glare is painted
+only for light the display cannot show (§3, §6.3); the adaptation statistic is the log-average (§2);
+unlit hemispheres are black (and occlude the stars behind them) even where the reflectance or phase
+curve is unknown: the "not measured" hatch marks only the sunlit part, whose brightness is what is
+unknown (geometry alone says the night side receives no direct sunlight).
 
 Code: `app/src/eye/` (pure TypeScript reference, unit-tested) and the per-pixel mirror in
 `app/src/render/shaders.ts`. Constants live in `app/src/eye/constants.ts`, each next to its citation.
@@ -44,12 +49,26 @@ at). The adaptation field is a 1°-diameter foveal disk around the fixation poin
 "1-degree foveal weighting" of Ward Larson, Rushmeier & Piatko (1997), which Pattanaik et al. (2000,
 §4.1.2) use as their adaptation goal finder. Setting: `adaptationFieldDeg`.
 
-**Statistic.** The solid-angle-weighted arithmetic mean of the *retinal image* over that field: the
-unscattered scene plus the intraocular veil from every glare source (§3). Including the veil follows
-Moon & Spencer (1945): the adaptation state in a non-uniform field is that of the fixated luminance plus
-the equivalent veiling luminance of the surround. The cores of point sources are excluded (a star's
-image covers a few receptors, not the adaptation pool); their scattered light is included. Photopic
-(A_cone, from Y) and scotopic (A_rod, from S) means are measured separately.
+**Statistic.** The solid-angle-weighted *log-average* (geometric mean) of the *retinal image* over that
+field, exp⟨ln(L + L₀)⟩ − L₀ with L₀ the dark light (below): the unscattered scene plus the intraocular
+veil from every glare source (§3), in frame (the pyramid) and off frame (the analytic veil of the Sun
+and bodies within 100° of fixation). Including the veil follows Moon & Spencer (1945): the adaptation
+state in a non-uniform field is that of the fixated luminance plus the equivalent veiling luminance
+of the surround (their surround term is a 1/θ² veil, which CIE 146 supersedes). The log-average is
+Ward Larson et al.'s (1997) foveal statistic, the method Pattanaik et al. (2000) cite; v0 used the
+arithmetic mean, which let a small bright region (a fixated star's own near-core glare) dominate the
+field. The cores of point sources are excluded (a star's image covers a few receptors, not the
+adaptation pool); their scattered light is included. Photopic (A_cone, from Y) and scotopic (A_rod,
+from S) averages are measured separately.
+
+*Checked against the "grey veil" report:* in the night-side view of Earth from 400 000 km the veil
+filling the frame is the Moon's glare (60° off axis, i.e. off frame, analytic veil). It is included in
+the adaptation measurement (5.7·10⁻⁵ cd/m² there, 5.7× the dark light), and a uniform field at the
+adaptation level is displayed as a dim grey by Pattanaik's appearance rules (§4, §10 table: ~3 cd/m²).
+So the veil and the adaptation state are consistent; the grey is the model's rendering of a sky
+brightened by moonlight glare. A single global adaptation remains a limitation (§10): fixating a
+bright star light-adapts the fovea by its own glare, as Moon & Spencer's model also predicts, while
+real faint-star vision uses parafoveal rods adapted to the dark sky.
 
 **Floor.** Both are floored at the luminance below which vision treats the background as zero:
 10⁻⁵ cd/m² (Crumey 2014 §2.1 and §2.3, after Crawford 1937), ×1.408 for the scotopic channel
@@ -99,6 +118,27 @@ The Sun, and bodies whose centre is outside the frame, are veiled analytically p
 pyramid. The Sun's E is reduced by the fraction of its disk covered by bodies in front of it. A source
 contributes only if it lies within 100° of the fixation direction (the CIE validity range, and
 roughly the extent of the visual field); within the frame θ is clamped to that range.
+
+**Which glare is painted.** The physical veil above (the scene observer's retina) drives adaptation
+and visibility thresholds, but it is *not* what the display shows. The viewer's own eye scatters
+whatever the display shows, so painting the physical veil of displayable light double-counts it (and
+turned every faint star into a soft blob in v0). Glare is painted to convey luminance the display cannot
+reach (Spencer et al. 1995; Yoshida et al. 2008; Ritschel et al. 2009). Quantitatively:
+
+- The *intended display luminance* of a pixel or point is the display luminance that would evoke the
+  scene observer's response in the display observer (Pattanaik's appearance map and inverse display
+  model, §4) *without* clamping at the display peak. It is bounded by Hunt's cone-bleaching luminance
+  (Pattanaik Eq. 6, 2·10⁶ cd/m²), beyond which the display observer's model is undefined.
+- The *overflow* is the part above what the display shows: intended luminance minus the peak for
+  extended sources, and the display flux a point's splat cannot hold (§6.3).
+- The painted glare is the viewer's veil of the overflow: the same CIE 146 kernel (the pyramid run a
+  second time, on the overflow image, in display units), with levels finer than the viewer's Ricco area
+  (at the display adaptation, ~5′) weighted by A_k/A_R,disp, and added to the display image.
+- The Sun and off-frame bodies (the analytic veil) are never displayable, so their glare is shown as the
+  scene observer's veil, through the tone reproduction.
+
+A star the display can show therefore has no painted halo; Sirius at dark adaptation has a small one;
+Venus a bright glow; the full Moon a large one.
 
 **Optical core.** Watson (2013) mean optical MTF of the best-corrected eye as a function of pupil
 diameter d: M(u, d) = √D(u, d, 555 nm)·(1 + (u/u₁(d))²)^−0.62, u₁ = 21.95 − 5.512·d + 0.3922·d², D the
@@ -218,9 +258,10 @@ At m = 0 this is Crumey's own scotopic colour correction; at m = 1 it is the pho
 
 **Background.** B = max(adaptation, local background). The eye's sensitivity is set by its adaptation
 (looking at a sunlit planet hides the stars even against black sky) unless the local background is
-brighter. The local background is the Ricco-weighted veil (§4) at the star plus the analytic veil. It
-comes from the previous frame, and excludes each star's own near-core scatter, which would otherwise
-mask the star itself.
+brighter. The local background is the physical veil at scales at or above the Ricco area (the pyramid
+level whose Gaussian first reaches A_R, sampled bilinearly) plus the analytic veil, from the previous
+frame. The source's own light in it (Σ_{k≥k_R} w_k/(2πσ_k²) per unit illuminance) is subtracted: a source
+never masks itself.
 
 **Test of the whole chain.** Under a dark sky of 21.5–22 mag/arcsec² (sky S/P 1.38, Crumey §1.3), the
 model gives naked-eye limits between V ≈ 6.0 and 7.0 for star colours B−V = 0 … 1.5 (S/P from
@@ -231,16 +272,42 @@ V ≈ 7.6 with F = 2.
 **Culling.** On the GPU, each star whose Blackwell-equivalent illuminance is below F·ΔI(B) (÷ the
 enhanced boost) is not drawn. Unresolved bodies use the same test on the CPU.
 
-**Perceived brightness of small sources: Ricco summation.** A point's image is far smaller than the
-area over which the eye sums light at low luminance, so its pixel luminance says little about how
-bright it looks. Crumey's Ricco area A_R(B) = ΔI/ΔB∞ (Eq. 22/59, with C∞ from Eq. 39/40) is defined so
-that a point of illuminance E is exactly as detectable as a patch of area A_R and luminance E/A_R.
-The perceived image therefore uses the point's equivalent luminance E/A_R (weight A_footprint/A_R on
-the point layer). A resolved body of angular area A_t < A_R gets weight A_t/A_R, which makes the
-point-to-disk transition continuous. Scattered light at scales below A_R gets weight A_k/A_R per
-pyramid level. At threshold this displays a star as a large-field threshold increment, i.e. just
-visible; brighter stars scale with the same response curve. Physical buffers, adaptation and glare
-are unaffected: this weighting applies only to what the tone reproduction sees.
+### 6.3 How point sources are shown (`eye/points.ts`)
+
+**Brightness, not size.** A point's image is far smaller than the area over which the eye sums light at
+low luminance, so its pixel luminance says little about how bright it looks. Crumey's Ricco area
+A_R(B) = ΔI/ΔB∞ (Eq. 22/59, with C∞ from Eq. 39/40) is defined so that a point of illuminance E is
+exactly as detectable as a patch of area A_R and luminance E/A_R. Ricco's law governs brightness, not
+perceived size: dark-adapted A_R is ~50′ in radius, yet stars look like points. So:
+
+1. the scene observer's response to the local background B plus E·u/A_R (u = unscattered fraction) is
+   mapped to an intended display luminance increment ΔL_d over the background's (§3);
+2. the viewer, adapted to the display, sums a small displayed dot over *their* Ricco area A_R,disp
+   (Crumey's A_R at the display observer's adaptation, peak/5: 5.0′ radius at 200 cd/m²), so the dot
+   carries the display flux ΔL_d·A_R,disp and looks as bright as the Ricco patch would;
+3. the dot is a sharp splat of the eye's optical core (Watson 2013, never narrower than the 0.6 px
+   reconstruction minimum), drawn in display space after tone reproduction; what it cannot hold
+   without exceeding the display peak is the overflow, painted as the viewer's glare (§3).
+
+Where the dot and a painted halo overlap beyond the display range, the dot is drawn over the halo
+with a hue-preserving fit into the gamut, so a bright star keeps its colour instead of clipping to
+white. A resolved body smaller than A_R keeps the Ricco weight A_t/A_R on its luminance, which makes
+the point-to-disk transition continuous (a residual step of up to max(1, A_R,disp/A_t) remains for
+disks between 1 and ~2.4 px across, where the viewer's own summation applies; not corrected).
+
+**Colour of point sources.** Only cones carry colour, and a point concentrates its light on few cones,
+so a star's colour depends on its own retinal illuminance, not on the global mesopic state or on the
+pixel's mean luminance. The colour exponent of Pattanaik's Eq. 3 (§5) is evaluated at the star's cone
+signal B + E·u/A_c, where A_c is the cone system's summation area: Crumey's A_R at a photopic background
+(≥ 5 cd/m², the upper end of the CIE 191 mesopic range, where his full-range model is cone-only; 6.2′
+radius), held at that value at lower adaptation, where cones are at absolute sensitivity. Checks
+(tests, dark adaptation): at the cone point threshold of Hecht (1947, photopic branch; in modern units
+Crumey 2014 Eq. 20, c = 4.808·10⁻⁸ lx, V = 4.31), the one Schaefer (1990) uses for his day branch, the
+exponent is within 0.05 of the background's (no colour); it rises through V ≈ 2 (weak tint; Protte &
+Hoffmann 2020 give ~2.3 mag as the observational onset of star colour) to 0.25 at V = 0 and 0.58 at
+V = −1.5. Crumey (2014, §1.2) reports, after Schaefer (1996), that stars more than about one magnitude
+above threshold are seen with cone participation in telescopic viewing; our onset is consistent with
+that. Rigel/Vega stay near white, Antares and Betelgeuse show a warm tint.
 
 ## 7. Display encoding
 
@@ -302,6 +369,11 @@ shows the badge.
 - **Ricco summation for supra-threshold brightness** is our extension of a threshold result. It is
   exact at threshold by construction; above threshold it assumes brightness pools like detection.
 - **Cone bleaching** is off (see §4).
+- **Single global adaptation.** The whole image uses the foveal state. Fixating a bright star (e.g.
+  Antares, V = 1) light-adapts the fovea by the star's own CIE 146 glare (log-average ~4·10⁻⁴ cd/m²
+  instead of 10⁻⁵), which lowers the limiting magnitude of the whole frame by ~1.5 mag. Real
+  faint-star vision uses parafoveal rods (the central ~1.25° is rod-free; Curcio et al. 1990) adapted to
+  the dark sky. A rod adaptation measured over a rod-weighted parafoveal field is the fix; not done.
 - **Adapted brightness across the range (v1).** A fully adapted surface (S/P 2.3), 200 cd/m² display:
 
   | adaptation (cd/m²) | 10⁻⁵ | 10⁻⁴ | 10⁻³ | 10⁻² | 0.1 | 1 | 10 | 10² | 10³ | 10⁴ | 10⁵ |
@@ -336,6 +408,9 @@ shows the badge.
 - Ferwerda, J. A., Pattanaik, S. N., Shirley, P., Greenberg, D. P. (1996). A model of visual
   adaptation for realistic image synthesis. SIGGRAPH 96, 249–258.
 - Fairchild, M. D. (2013). Color Appearance Models, 3rd ed. Wiley. (Ch. 12: the Hunt model.)
+- Curcio, C. A., Sloan, K. R., Kalina, R. E., Hendrickson, A. E. (1990). Human photoreceptor
+  topography. J. Comp. Neurol. 292, 497–523.
+- Hecht, S. (1947). Visual thresholds of steady point sources in the eye. JOSA 37, 59.
 - Hunt, R. W. G. (1995). The Reproduction of Colour, 5th ed. Fountain Press.
 - Hunt, R. W. G. (2004). The Reproduction of Colour, 6th ed. Wiley.
 - Maksimainen, M., Kurkela, M., Bhusal, P., Hyyppä, H. (2019). Calculation of mesopic luminance using
@@ -349,18 +424,26 @@ shows the badge.
   ACM TOG 30(4), 42 (SIGGRAPH 2011).
 - Mantiuk, R., Daly, S., Kerofsky, L. (2008). Display adaptive tone mapping. ACM TOG 27(3), 68.
 - Moon, P., Spencer, D. E. (1945). The visual effect of non-uniform surrounds. JOSA 35, 233–248.
+- Protte, P., Hoffmann, S. M. (2020). Accuracy of magnitudes in pre-telescopic star catalogues.
+  Astron. Nachr. 341; arXiv:2008.04967.
 - Okabe, M., Ito, K. (2008). Color Universal Design (CUD): how to make figures and presentations that
   are friendly to colorblind people. (Palette used for the provenance tint.)
 - Pattanaik, S. N., Tumblin, J., Yee, H., Greenberg, D. P. (2000). Time-dependent visual adaptation
   for fast realistic image display. SIGGRAPH 2000, 47–54.
+- Ritschel, T., Ihrke, M., Frisvad, J. R., Coppens, J., Myszkowski, K., Seidel, H.-P. (2009).
+  Temporal glare: real-time dynamic simulation of the scattering in the human eye. CGF 28(2), 183–192.
 - Reinhard, E., Devlin, K. (2005). Dynamic range reduction inspired by photoreceptor physiology.
   IEEE TVCG 11(1), 13–24.
 - Spencer, G., Shirley, P., Zimmerman, K., Greenberg, D. P. (1995). Physically-based glare effects
   for digital images. SIGGRAPH 95, 325–334.
+- Schaefer, B. E. (1990). Telescopic limiting magnitudes. PASP 102, 212–229.
+- Schaefer, B. E. (1996), survey of experienced observers, as cited by Crumey (2014) §1.2 (not read).
 - Ward, G. (1994). A contrast-based scalefactor for luminance display. Graphics Gems IV, 415–421.
 - Ward Larson, G., Rushmeier, H., Piatko, C. (1997). A visibility matching tone reproduction operator
   for high dynamic range scenes. IEEE TVCG 3(4), 291–306.
 - Watson, A. B. (2013). A formula for the mean human optical modulation transfer function as a
   function of pupil size. J. Vision 13(6):18. doi:10.1167/13.6.18.
+- Yoshida, A., Ihrke, M., Mantiuk, R., Seidel, H.-P. (2008). Brightness of the glare illusion. APGV 2008,
+  83–90.
 - Watson, A. B., Yellott, J. I. (2012). A unified formula for light-adapted pupil size. J. Vision
   12(10):12. doi:10.1167/12.10.12.

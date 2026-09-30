@@ -60,7 +60,7 @@ describe('resolved/point split', () => {
     }
     const noR = prepareFrame(snap([body(1e5, { radii: null })], 60), g, eye, 1e-9);
     expect(noR.resolved.length + noR.points.length).toBe(0);
-    expect(noR.overlay.length).toBeGreaterThan(0); // hollow marker
+    expect(noR.overlay.length).toBe(0); // the shell draws the hollow marker (ui/labels.ts), not the renderer
   });
   it('a measured phase curve outside its validity range is not extrapolated', () => {
     const eye = computeEyeFrame(DEFAULT_EYE_SETTINGS, eyeState(), 'eye', 0, null);

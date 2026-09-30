@@ -1,7 +1,7 @@
 // The eye model's per-frame state: adaptation (goal → current), pupil, mesopic state, and every
 // scalar the GPU passes need. Pure TS, no GPU; see docs/eye-model.md for the stage-by-stage account.
 
-import { CRUMEY, PATTANAIK } from './constants';
+import { CIE191, CRUMEY, PATTANAIK } from './constants';
 import { luxFromMagnitude, magnitudeFromLux, pointThreshold, riccoArea } from './crumey';
 import { blackwellEquivalent, mesopic, type MesopicResult } from './mesopic';
 import { pupilDiameterMm } from './pupil';
@@ -86,6 +86,17 @@ export interface EyeFrame {
   cat: M3;
   /** Responses to the dark-light pedestal (cone, rod), subtracted per pixel. */
   darkResponse: [number, number];
+  /**
+   * The viewer's Ricco area while looking at the display (Crumey's A_R at the display observer's
+   * adaptation, peak/5), sr: a displayed dot smaller than this is seen by its flux (points.ts).
+   */
+  displayRiccoSr: number;
+  /**
+   * Spatial summation area of the cone system, sr: Crumey's A_R at a photopic background (at least the
+   * upper end of the CIE 191 mesopic range, 5 cd/m², where his full-range model is cone-only). Below
+   * that the cones are at absolute sensitivity and the value is held (docs/eye-model.md §6.3).
+   */
+  coneSummationSr: number;
 }
 
 export function computeEyeFrame(
@@ -129,6 +140,8 @@ export function computeEyeFrame(
     coreSigmaDeg: opticalCoreSigmaDeg(pupilMm),
     cat,
     darkResponse: [response(DARK_LIGHT_CONE, scene.sigmaCone, scene.Bcone), rodResponseRaw(scene, DARK_LIGHT_ROD)],
+    displayRiccoSr: riccoArea(display.peak / PATTANAIK.refWhiteFactor),
+    coneSummationSr: riccoArea(Math.max(adaptBw, CIE191.upperCdM2)),
   };
 }
 

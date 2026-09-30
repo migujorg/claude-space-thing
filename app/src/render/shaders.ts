@@ -1,7 +1,7 @@
 // WGSL sources. Eye-model constants are injected from src/eye/constants.ts (single source of truth);
 // the per-pixel eye functions mirror src/eye/*.ts (keep in sync).
 
-import { CIE146, HUNT, SRGB } from '../eye/constants';
+import { CIE146, HUNT, PATTANAIK, SRGB } from '../eye/constants';
 import { SRGB_TO_XYZ, inv3 } from '../eye/display';
 import { XYZ_TO_HPE } from '../eye/tonemap';
 
@@ -48,6 +48,7 @@ struct Eye {
   misc: vec4f,     // dither amplitude, cos(adaptation field radius), star sigma px, analytic source count
   misc2: vec4f,    // star quad half-extent px, 1/(1-exp(-extent^2/2 sigma^2)), unused, unused
   dark: vec4f,     // dark-light pedestal: L0 cone, L0 rod, R(L0) cone, R(L0) rod
+  pts: vec4f,      // points (eye/points.ts): display response at the bleaching luminance, viewer's Ricco area (sr), cone summation area (sr), own veil in the background per lux per pixel solid angle
 };
 
 fn toCam(F: Frame, w: vec3f) -> vec3f {
@@ -119,6 +120,76 @@ fn analyticVeil(E: Eye, dir: vec3f) -> vec4f {
   return v;
 }
 
+`;
+
+/** Scene → display tone reproduction (eye/tonemap.ts), shared by the composite and the point shaders; needs \`E\`. */
+const TONE = /* wgsl */ `
+fn naka(L: f32, sigma: f32, B: f32) -> f32 {
+  if (L <= 0.0) { return 0.0; }
+  return B / (1.0 + pow(sigma / L, E.map.z));
+}
+// Hunt rod response (tonemap.ts rodResponseRaw): B_S(S)·Sⁿ/(Sⁿ + σ_rodⁿ), B_S = stimulus + adaptation parts.
+fn rodRaw(S: f32) -> f32 {
+  let bs = 0.5 / (1.0 + ${f(HUNT.bsA)} * pow(max(S, 0.0) / ${f(HUNT.scotopicScale)}, ${f(HUNT.bsExp)})) + E.scene.w;
+  return naka(S, E.scene.y, bs);
+}
+/** R_lum = R_cone + R_rod over the dark-light pedestal (tonemap.ts lumResponse); perceived Y, S. */
+fn sceneResponse(Y: f32, S: f32) -> f32 {
+  let rc = naka(max(Y, 0.0) + E.dark.x, E.scene.x, E.scene.z) - E.dark.z;
+  let rr = rodRaw(max(S, 0.0) + E.dark.y) - E.dark.w;
+  return rc + rr;
+}
+/** Pattanaik's appearance map and inverse display model (tonemap.ts inverseDisplay): display cd/m². */
+fn displayLd(R: f32) -> f32 {
+  let Rd = E.map.x * R + E.map.y;
+  if (Rd <= 0.0) { return 0.0; }
+  if (Rd >= E.disp.z) { return E.disp.w; }
+  return E.disp.x * pow(Rd / (E.disp.y - Rd), 1.0 / E.map.z);
+}
+/** Intended display luminance (points.ts intendedDisplayLd): not clamped at the peak, bounded by bleaching. */
+fn intendedLd(R: f32) -> f32 {
+  let Rd = E.map.x * R + E.map.y;
+  if (Rd <= 0.0) { return 0.0; }
+  if (Rd >= E.pts.x) { return ${f(PATTANAIK.coneBleachHalf)}; }
+  return E.disp.x * pow(Rd / (E.disp.y - Rd), 1.0 / E.map.z);
+}
+/** Pattanaik Eq. 3 colour exponent (tonemap.ts colourExponent): cone signal Lc (perceived Y), display Ld. */
+fn colourK(Lc: f32, Ld: f32) -> f32 {
+  let rcr = naka(max(Lc, 0.0) + E.dark.x, E.scene.x, E.scene.z);
+  let sScene = E.map.z * rcr * (1.0 - rcr / E.scene.z);
+  let rdr = naka(Ld, E.disp.x, E.disp.y);
+  let sDisp = E.map.z * rdr * (1.0 - rdr / E.disp.y);
+  return select(1.0, min(1.0, sScene / sDisp), sDisp > 0.0);
+}
+const WHITE_XYZ = vec3f(${f(SRGB.whiteX / SRGB.whiteY)}, 1.0, ${f((1 - SRGB.whiteX - SRGB.whiteY) / SRGB.whiteY)});
+const HPE = mat3x3f(vec3f(${f(XYZ_TO_HPE[0])}, ${f(XYZ_TO_HPE[3])}, ${f(XYZ_TO_HPE[6])}), vec3f(${f(XYZ_TO_HPE[1])}, ${f(XYZ_TO_HPE[4])}, ${f(XYZ_TO_HPE[7])}), vec3f(${f(XYZ_TO_HPE[2])}, ${f(XYZ_TO_HPE[5])}, ${f(XYZ_TO_HPE[8])}));
+const HPE_INV = mat3x3f(${HPE_INV_COLS});
+/** Display chromaticity (XYZ, Y = 1) of a scene XYZ: CAT to the display white, then colour exponent k. */
+fn displayChroma(xyz: vec3f, k: f32) -> vec3f {
+  let cat = mat3x3f(vec3f(E.cat0.x, E.cat1.x, E.cat2.x), vec3f(E.cat0.y, E.cat1.y, E.cat2.y), vec3f(E.cat0.z, E.cat1.z, E.cat2.z));
+  var chroma = WHITE_XYZ;
+  let a = cat * xyz;
+  if (a.y > 0.0) { chroma = a / a.y; }
+  let lmsW = HPE * WHITE_XYZ;
+  let lms = pow(max((HPE * chroma) / lmsW, vec3f(1e-9)), vec3f(k)) * lmsW;
+  let c2 = HPE_INV * lms;
+  return c2 / max(c2.y, 1e-12);
+}
+`;
+
+/** Bilinear sample of a (coarser) screen-aligned texture at an NDC position. */
+const BG = /* wgsl */ `
+fn bgAt(t: texture_2d<f32>, ndc: vec2f) -> vec4f {
+  let d = vec2i(textureDimensions(t));
+  let c = (ndc * vec2f(0.5, -0.5) + 0.5) * vec2f(d) - 0.5;
+  let i0 = vec2i(floor(c));
+  let fr = c - vec2f(i0);
+  let l = vec2i(0);
+  let h = d - 1;
+  let a = mix(textureLoad(t, clamp(i0, l, h), 0), textureLoad(t, clamp(i0 + vec2i(1, 0), l, h), 0), fr.x);
+  let b = mix(textureLoad(t, clamp(i0 + vec2i(0, 1), l, h), 0), textureLoad(t, clamp(i0 + vec2i(1, 1), l, h), 0), fr.x);
+  return mix(a, b, fr.y);
+}
 `;
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -278,7 +349,11 @@ export const BODY_OVERLAY_SHADER = COMMON + BODY_COMMON + /* wgsl */ `
   let flags = ov[2u * in.id + 1u];
   var out = vec4f(0.0);
   if (flags.y > 0.5) { out = vec4f(col.rgb, col.a * cov); }
-  if (flags.x > 0.5) {
+  // The hatch marks only the SUNLIT part: an unlit hemisphere receives no direct sunlight whatever its
+  // reflectance or phase curve (geometry), so it stays black and still occludes what is behind it.
+  let N = normalize(b.m0.xyz * hit.h.x + b.m1.xyz * hit.h.y + b.m2.xyz * hit.h.z);
+  let sunlit = dot(N, b.sun.xyz) > 0.0;
+  if (flags.x > 0.5 && sunlit) {
     // Diagonal stripes in screen space: clearly non-physical "not measured" material.
     let s = fract((in.pos.x + in.pos.y) / 10.0);
     let stripe = select(0.18, 0.55, s < 0.5);
@@ -301,10 +376,11 @@ struct CullInfo { count: u32, stride: u32, maxVisible: u32, groupsX: u32 };
 @group(0) @binding(2) var<storage, read> stars: array<f32>;
 @group(0) @binding(3) var<storage, read_write> visible: array<vec4f>;
 @group(0) @binding(4) var<storage, read_write> args: array<atomic<u32>, 4>;
-@group(0) @binding(5) var veilTex: texture_2d<f32>;
+@group(0) @binding(5) var bgTex: texture_2d<f32>;
 @group(0) @binding(6) var<uniform> info: CullInfo;
 ${SRCS(0, 7)}
 ${VEIL}
+${BG}
 
 @compute @workgroup_size(256) fn main(@builtin(global_invocation_id) gid: vec3u) {
   let i = gid.x + gid.y * info.groupsX * 256u;
@@ -317,9 +393,10 @@ ${VEIL}
   let ndc = vec2f(c.x * F.proj.x, c.y * F.proj.y) / (-c.z);
   let marg = E.misc2.x * 2.0 * F.size.zw;
   if (abs(ndc.x) > 1.0 + marg.x || abs(ndc.y) > 1.0 + marg.y) { return; }
-  // Local background: last frame's scattered light plus the analytic veil, at this star.
-  let px = clamp(vec2i((ndc * vec2f(0.5, -0.5) + 0.5) * F.size.xy), vec2i(0), vec2i(F.size.xy) - 1);
-  let bg = textureLoad(veilTex, px, 0) / F.proj.w + analyticVeil(E, normalize(u));
+  // Local background: last frame's scattered light at scales ≥ the Ricco area (so a star's own core glare
+  // does not mask it), plus the analytic veil (Sun, off-frame bodies).
+  let own = e * (E.pts.w / pixelSolidAngle(F, ndc));
+  let bg = max(bgAt(bgTex, ndc) / F.proj.w - own, vec4f(0.0)) + analyticVeil(E, normalize(u));
   let Bbw = max(E.cr1.z, blackwellEq(E, bg.y, bg.w));
   let thr = E.mes.w * crumeyPointThreshold(E, Bbw) / E.map.w;
   if (blackwellEq(E, e.y, e.w) < thr) { return; }
@@ -336,40 +413,88 @@ export const CLAMP_ARGS_SHADER = /* wgsl */ `
 @compute @workgroup_size(1) fn main() { args[1] = min(args[1], maxVisible.x); }
 `;
 
-// Point sources (stars, unresolved bodies, unresolved Sun): energy-conserving Gaussian splat of the
-// eye's optical core (σ ≥ reconstruction minimum), luminance = E·g/Ω_pixel.
-export const POINT_SHADER = COMMON + /* wgsl */ `
+// Point sources (stars, unresolved bodies, unresolved Sun), eye/points.ts. Two passes share the vertex stage:
+//  fsPhys (before the glare pyramids): the physical retinal image, an energy-conserving Gaussian splat of
+//    the eye's optical core (σ ≥ reconstruction minimum) with luminance E·g/Ω into PT, and the overflow
+//    (display flux the splat cannot hold, display units) into PTEX, the only point light whose glare is
+//    painted (as the viewer's glare, in display space);
+//  fsDisp (before the composite): what the display shows, a sharp splat of display flux ΔL_d·A_R,disp
+//    (Ricco summation sets brightness, never size) in display-linear XYZ with the star's own colour.
+export const POINT_SHADER = COMMON + TONE + BG + /* wgsl */ `
 @group(0) @binding(0) var<uniform> F: Frame;
 @group(0) @binding(1) var<uniform> E: Eye;
 @group(0) @binding(2) var<storage, read> pts: array<vec4f>;   // (ndc.x, ndc.y, depth, _), (E XYZS)
+@group(0) @binding(3) var bgTex: texture_2d<f32>;              // coarse physical veil (≥ Ricco scale)
+@group(0) @binding(4) var extTex: texture_2d<f32>;             // resolved bodies
+${SRCS(0, 5)}
+${VEIL}
 
 struct PV {
   @builtin(position) pos: vec4f,
   @location(0) off: vec2f,
   @location(1) @interpolate(flat) e: vec4f,
+  @location(2) @interpolate(flat) disp: vec4f,   // drawn display flux × chroma (XYZ)
+  @location(3) @interpolate(flat) over: vec4f,   // overflowing display flux × chroma (XYZ)
 };
 
 @vertex fn vs(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> PV {
   var corners = array<vec2f, 6>(vec2f(-1.0, -1.0), vec2f(1.0, -1.0), vec2f(-1.0, 1.0), vec2f(-1.0, 1.0), vec2f(1.0, -1.0), vec2f(1.0, 1.0));
   let p = pts[2u * ii];
+  let e = pts[2u * ii + 1u];
   let ext = E.misc2.x;
   let offPx = corners[vi] * ext;
   var o: PV;
   o.pos = vec4f(p.xy + offPx * 2.0 * F.size.zw, p.z, 1.0);
   o.off = offPx * vec2f(1.0, -1.0);
-  o.e = pts[2u * ii + 1u];
+  o.e = e;
+  // Appearance (points.ts pointAppearance). Background: coarse veil + analytic veil + bodies, perceived.
+  let px = clamp(vec2i((p.xy * vec2f(0.5, -0.5) + 0.5) * F.size.xy), vec2i(0), vec2i(F.size.xy) - 1);
+  let dir = normalize(worldDirNdc(F, p.xy));
+  // The source's own light is removed from the background (it would otherwise mask itself).
+  let own = e * (E.pts.w / pixelSolidAngle(F, p.xy));
+  let bg = (max(bgAt(bgTex, p.xy) / F.proj.w - own, vec4f(0.0)) + analyticVeil(E, dir) + E.glare.x * textureLoad(extTex, px, 0) / F.proj.w) * E.map.w;
+  let u = E.glare.x * E.map.w;
+  let eY = e.y * u / E.cr1.w;
+  let eS = e.w * u / E.cr1.w;
+  let Lb = intendedLd(sceneResponse(bg.y, bg.w));
+  let dLd = max(0.0, intendedLd(sceneResponse(bg.y + eY, bg.w + eS)) - Lb);
+  let wanted = dLd * E.pts.y;
+  let Ldb = min(Lb, E.disp.w);
+  let splatArea = 2.0 * PI * E.misc.z * E.misc.z * pixelSolidAngle(F, p.xy) / E.misc2.y;
+  let capacity = max(0.0, E.disp.w - Ldb) * splatArea;
+  let drawn = min(wanted, capacity);
+  let peakLd = Ldb + drawn / max(splatArea, 1e-30);
+  let chroma = displayChroma(e.xyz, colourK(bg.y + e.y * u / E.pts.z, peakLd));
+  o.disp = vec4f(chroma * drawn, 0.0);
+  o.over = vec4f(chroma * (wanted - drawn), 0.0);
   return o;
 }
 
-@fragment fn fs(in: PV) -> @location(0) vec4f {
+fn splat(in: PV) -> f32 {
   // Offset from the true (sub-pixel) centre, in pixels.
   let s = E.misc.z;
   let r2 = dot(in.off, in.off);
   let ext = E.misc2.x;
-  if (r2 > ext * ext) { discard; }
-  let g = exp(-r2 / (2.0 * s * s)) / (2.0 * PI * s * s) * E.misc2.y;
+  if (r2 > ext * ext) { return -1.0; }
   let ndc = ndcFromFrag(F, in.pos.xy);
-  return toStore(F, in.e * (g / pixelSolidAngle(F, ndc)));
+  return exp(-r2 / (2.0 * s * s)) / (2.0 * PI * s * s) * E.misc2.y / pixelSolidAngle(F, ndc);
+}
+
+struct PhysOut { @location(0) pt: vec4f, @location(1) ex: vec4f };
+
+@fragment fn fsPhys(in: PV) -> PhysOut {
+  let g = splat(in);
+  if (g < 0.0) { discard; }
+  var o: PhysOut;
+  o.pt = toStore(F, in.e * g);
+  o.ex = min(in.over * g, vec4f(F.store.x));   // display units (cd/m²), not pre-exposed
+  return o;
+}
+
+@fragment fn fsDisp(in: PV) -> @location(0) vec4f {
+  let g = splat(in);
+  if (g < 0.0) { discard; }
+  return vec4f(in.disp.xyz * g, 0.0);
 }
 `;
 
@@ -427,7 +552,7 @@ struct SO { @location(0) ext: vec4f, @builtin(frag_depth) depth: f32 };
 // Glare pyramid (intraocular scatter): combine → downsample → separable blur → weighted upsample sum.
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 export const PYRAMID_SHADER = /* wgsl */ `
-struct Lvl { weight: f32, pad0: f32, pad1: f32, pad2: f32 };  // pad0 = Ricco weight r_k
+struct Lvl { weight: f32, pad0: f32, pad1: f32, pad2: f32 };  // accum: level weight
 
 @group(0) @binding(0) var srcA: texture_2d<f32>;
 @group(0) @binding(1) var srcB: texture_2d<f32>;
@@ -484,12 +609,9 @@ fn blur(p: vec2i, dir: vec2i) -> vec4f {
   textureStore(dst, p, blur(p, vec2i(0, 1)));
 }
 
-// Two accumulations share the pyramid: the physical veil  P_k = w_k·blur_k + up(P_{k+1}) and the
-// Ricco-weighted veil  R_k = r_k·w_k·blur_k + up(R_{k+1}), where r_k = min(1, A_k/A_R) sums structure
-// smaller than the Ricco area as the eye does (docs/eye-model.md §3). srcA = blur_k,
-// srcB = P_{k+1}, srcC = R_{k+1} (1×1 zero textures above the top level).
-@group(0) @binding(4) var srcC: texture_2d<f32>;
-@group(0) @binding(5) var dst2: texture_storage_2d<rgba32float, write>;
+// Accumulation P_k = w_k·blur_k + up(P_{k+1}) (srcA = blur_k, srcB = P_{k+1}, a 1×1 zero texture above the
+// top level). The pyramid runs twice per frame: on the physical image (the veil on the retina: adaptation,
+// visibility thresholds) and on the overflow image (the viewer's glare that is painted, eye-model.md §3).
 
 fn upsample(t: texture_2d<f32>, p: vec2i) -> vec4f {
   let c = (vec2f(p) + 0.5) * 0.5 - 0.5;
@@ -504,9 +626,34 @@ fn upsample(t: texture_2d<f32>, p: vec2i) -> vec4f {
   let p = vec2i(g.xy);
   let d = vec2i(textureDimensions(dst));
   if (p.x >= d.x || p.y >= d.y) { return; }
-  let b = load(srcA, p);
-  textureStore(dst, p, lvl.weight * b + upsample(srcB, p));
-  textureStore(dst2, p, lvl.pad0 * lvl.weight * b + upsample(srcC, p));
+  textureStore(dst, p, lvl.weight * load(srcA, p) + upsample(srcB, p));
+}
+`;
+
+/**
+ * Overflow image, the input of the painted-glare pyramid (eye/points.ts §3), in display units (cd/m²,
+ * XYZ): for extended sources the intended display luminance above the display peak, with the pixel's
+ * displayed colour; plus the point sources' overflow (PTEX).
+ */
+export const OVERFLOW_SHADER = COMMON + TONE + /* wgsl */ `
+@group(0) @binding(0) var<uniform> F: Frame;
+@group(0) @binding(1) var<uniform> E: Eye;
+@group(0) @binding(2) var extTex: texture_2d<f32>;
+@group(0) @binding(3) var wTex: texture_2d<f32>;
+@group(0) @binding(4) var ptExTex: texture_2d<f32>;
+@group(0) @binding(5) var dst: texture_storage_2d<rgba32float, write>;
+
+@compute @workgroup_size(8, 8) fn main(@builtin(global_invocation_id) g: vec3u) {
+  let p = vec2i(g.xy);
+  let d = vec2i(textureDimensions(dst));
+  if (p.x >= d.x || p.y >= d.y) { return; }
+  let perc = textureLoad(wTex, p, 0).x * E.glare.x * textureLoad(extTex, p, 0) / F.proj.w * E.map.w;
+  var o = textureLoad(ptExTex, p, 0);
+  let over = intendedLd(sceneResponse(perc.y, perc.w)) - E.disp.w;
+  if (over > 0.0 && perc.y > 0.0) {
+    o = o + vec4f(displayChroma(perc.xyz, colourK(perc.y, E.disp.w)) * over, 0.0);
+  }
+  textureStore(dst, p, o);
 }
 `;
 
@@ -514,8 +661,8 @@ fn upsample(t: texture_2d<f32>, p: vec2i) -> vec4f {
 export const PYRAMID_BLUR_SIGMA = 1;
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────
-// Adaptation measurement: foveal-field mean of the retinal image (excluding point cores) and the
-// corneal flux ∫L dΩ, reduced on the GPU.
+// Adaptation measurement: log-average over the foveal field of the retinal image (excluding point cores;
+// Ward Larson, Rushmeier & Piatko 1997) and the corneal flux ∫L dΩ, reduced on the GPU.
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 export const ADAPT_SHADER = COMMON + /* wgsl */ `
 @group(0) @binding(0) var<uniform> F: Frame;
@@ -540,7 +687,9 @@ var<workgroup> sh: array<vec4f, 256>;
     let pt = textureLoad(ptTex, p, 0) / F.proj.w;
     let ret = E.glare.x * ext + textureLoad(veilTex, p, 0) / F.proj.w + analyticVeil(E, dir);
     if (dot(dir, -F.back.xyz) >= E.misc.y) {
-      acc = vec4f(ret.y * om, ret.w * om, om, 0.0);
+      // Log-average (geometric mean) over the adaptation field, offset by the dark light so that darkness
+      // is finite: a tiny bright region (a fixated star's own near-core glare) cannot dominate it.
+      acc = vec4f(log(max(ret.y, 0.0) + E.dark.x) * om, log(max(ret.w, 0.0) + E.dark.y) * om, om, 0.0);
     }
     acc.w = (ext.y + pt.y) * om;
   }
@@ -580,13 +729,13 @@ var<workgroup> sh: array<vec4f, 256>;
 // Composite: retinal image → eye model (Ricco summation, Pattanaik rod/cone responses, mesopic
 // desaturation, CAT02) → display luminance → sRGB with gamut mapping and dither.
 // ─────────────────────────────────────────────────────────────────────────────────────────────
-export const COMPOSITE_SHADER = COMMON + /* wgsl */ `
+export const COMPOSITE_SHADER = COMMON + TONE + /* wgsl */ `
 @group(0) @binding(0) var<uniform> F: Frame;
 @group(0) @binding(1) var<uniform> E: Eye;
 @group(0) @binding(2) var extTex: texture_2d<f32>;
-@group(0) @binding(3) var ptTex: texture_2d<f32>;
+@group(0) @binding(3) var ptDispTex: texture_2d<f32>;   // point sources, display-linear XYZ (cd/m²)
 @group(0) @binding(4) var wTex: texture_2d<f32>;
-@group(0) @binding(5) var veilTex: texture_2d<f32>;
+@group(0) @binding(5) var paintTex: texture_2d<f32>;    // painted glare: the viewer's veil of the overflow (display XYZ, cd/m²)
 ${SRCS(0, 6)}
 ${VEIL}
 
@@ -594,26 +743,12 @@ const XYZ2RGB = mat3x3f(
   vec3f(${f(SRGB.xyzToRgb[0])}, ${f(SRGB.xyzToRgb[3])}, ${f(SRGB.xyzToRgb[6])}),
   vec3f(${f(SRGB.xyzToRgb[1])}, ${f(SRGB.xyzToRgb[4])}, ${f(SRGB.xyzToRgb[7])}),
   vec3f(${f(SRGB.xyzToRgb[2])}, ${f(SRGB.xyzToRgb[5])}, ${f(SRGB.xyzToRgb[8])}));
-const WHITE_XYZ = vec3f(${f(SRGB.whiteX / SRGB.whiteY)}, 1.0, ${f((1 - SRGB.whiteX - SRGB.whiteY) / SRGB.whiteY)});
-const HPE = mat3x3f(vec3f(${f(XYZ_TO_HPE[0])}, ${f(XYZ_TO_HPE[3])}, ${f(XYZ_TO_HPE[6])}), vec3f(${f(XYZ_TO_HPE[1])}, ${f(XYZ_TO_HPE[4])}, ${f(XYZ_TO_HPE[7])}), vec3f(${f(XYZ_TO_HPE[2])}, ${f(XYZ_TO_HPE[5])}, ${f(XYZ_TO_HPE[8])}));
-const HPE_INV = mat3x3f(${HPE_INV_COLS});
 // 1 / (Y of RGB (1,1,1)): the achromatic colour of luminance Y is (Y·GRAY_NORM)·(1,1,1).
 const GRAY_NORM: f32 = ${f(1 / (SRGB_TO_XYZ[3] + SRGB_TO_XYZ[4] + SRGB_TO_XYZ[5]))};
 
 @vertex fn vs(@builtin(vertex_index) vi: u32) -> @builtin(position) vec4f {
   var p = array<vec2f, 3>(vec2f(-1.0, -1.0), vec2f(3.0, -1.0), vec2f(-1.0, 3.0));
   return vec4f(p[vi], 0.0, 1.0);
-}
-
-fn naka(L: f32, sigma: f32, B: f32) -> f32 {
-  if (L <= 0.0) { return 0.0; }
-  return B / (1.0 + pow(sigma / L, E.map.z));
-}
-
-// Hunt rod response (tonemap.ts rodResponseRaw): B_S(S)·Sⁿ/(Sⁿ + σ_rodⁿ), B_S = stimulus + adaptation parts.
-fn rodRaw(S: f32) -> f32 {
-  let bs = 0.5 / (1.0 + ${f(HUNT.bsA)} * pow(max(S, 0.0) / ${f(HUNT.scotopicScale)}, ${f(HUNT.bsExp)})) + E.scene.w;
-  return naka(S, E.scene.y, bs);
 }
 
 fn srgbEncode(c: f32) -> f32 {
@@ -634,43 +769,22 @@ fn hash(p: vec2u) -> f32 {
   let ndc = ndcFromFrag(F, pos.xy);
   let dir = normalize(worldDirNdc(F, ndc));
   let ext = textureLoad(extTex, p, 0) / F.proj.w;
-  let pt = textureLoad(ptTex, p, 0) / F.proj.w;
   let w = textureLoad(wTex, p, 0).x;
-  // veilTex here is the Ricco-weighted veil; the analytic veil (Sun, off-frame bodies) is large-scale.
-  let veil = textureLoad(veilTex, p, 0) / F.proj.w + analyticVeil(E, dir);
-  // Perceived retinal image: unscattered core + scattered veil, with Ricco summation of small sources.
-  let perc = (w * E.glare.x * ext + veil + E.glare.w * E.glare.x * pt) * E.map.w;
-  // Pattanaik et al. (2000): rod and cone responses of the scene observer.
-  // Increment over the dark-light pedestal (tonemap.ts coneResponse/rodResponse).
-  let rc = naka(max(perc.y, 0.0) + E.dark.x, E.scene.x, E.scene.z) - E.dark.z;
-  let rr = rodRaw(max(perc.w, 0.0) + E.dark.y) - E.dark.w;
-  let R = rc + rr;
-  let Rd = E.map.x * R + E.map.y;
-  var Ld = 0.0;
-  if (Rd > 0.0) {
-    if (Rd >= E.disp.z) { Ld = E.disp.w; }
-    else { Ld = E.disp.x * pow(Rd / (E.disp.y - Rd), 1.0 / E.map.z); }
-  }
-  // Colour: chromatic adaptation to the display white, then the cone colour-appearance exponent.
-  let cat = mat3x3f(vec3f(E.cat0.x, E.cat1.x, E.cat2.x), vec3f(E.cat0.y, E.cat1.y, E.cat2.y), vec3f(E.cat0.z, E.cat1.z, E.cat2.z));
+  // Perceived extended image: unscattered core (small resolved bodies Ricco-weighted) + the analytic veil
+  // of the Sun and off-frame bodies (never displayable, so their glare is shown as the scene observer's).
+  // The in-frame veil is not shown here: the viewer's eye scatters whatever the display shows, and what it
+  // cannot show is painted below as the viewer's glare of the overflow.
+  let perc = (w * E.glare.x * ext + analyticVeil(E, dir)) * E.map.w;
+  // Pattanaik et al. (2000) with Hunt rods: scene responses → display luminance.
+  let Ld = displayLd(sceneResponse(perc.y, perc.w));
+  // Colour: chromatic adaptation to the display white, then the cone colour-appearance exponent
+  // (Pattanaik Eq. 3, tonemap.ts colourExponent).
   var chroma = WHITE_XYZ;
-  if (perc.y > 0.0) {
-    let a = cat * perc.xyz;
-    if (a.y > 0.0) { chroma = a / a.y; }
-  }
-  // Pattanaik Eq. 3 (tonemap.ts colourExponent): cone chromatic strength ∝ response slope; colour
-  // ratios in Hunt–Pointer–Estevez cone space are raised to min(1, S_scene/S_display).
-  let rcr = naka(max(perc.y, 0.0) + E.dark.x, E.scene.x, E.scene.z);
-  let sScene = E.map.z * rcr * (1.0 - rcr / E.scene.z);
-  let rdr = naka(Ld, E.disp.x, E.disp.y);
-  let sDisp = E.map.z * rdr * (1.0 - rdr / E.disp.y);
-  let kc = select(1.0, min(1.0, sScene / sDisp), sDisp > 0.0);
-  let lmsW = HPE * WHITE_XYZ;
-  let lms = pow(max((HPE * chroma) / lmsW, vec3f(1e-9)), vec3f(kc)) * lmsW;
-  let c2 = HPE_INV * lms;
-  chroma = c2 / max(c2.y, 1e-12);
-  let Yd = Ld / E.disp.w;               // relative display luminance (chroma.y = 1)
-  var rgb = XYZ2RGB * (chroma * Yd);
+  if (perc.y > 0.0) { chroma = displayChroma(perc.xyz, colourK(perc.y, Ld)); }
+  // Display-linear, relative to the display peak, plus the painted glare.
+  let xyzD = chroma * (Ld / E.disp.w) + textureLoad(paintTex, p, 0).xyz / E.disp.w;
+  let Yd = xyzD.y;
+  var rgb = XYZ2RGB * xyzD;
   // Gamut mapping toward the achromatic colour of equal luminance (docs/eye-model.md §7).
   let g = Yd * GRAY_NORM;
   var t = 1.0;
@@ -681,6 +795,19 @@ fn hash(p: vec2u) -> f32 {
   }
   if (g >= 1.0) { rgb = vec3f(1.0); } else { rgb = vec3f(g) + t * (rgb - vec3f(g)); }
   rgb = clamp(rgb, vec3f(0.0), vec3f(1.0));
+  // Point sources (display units, at most the display peak by construction): hue-preserving fit into the
+  // gamut, then drawn over the extended image. Where a star's dot and its painted glare together exceed
+  // the display, the dot's own colour is kept rather than clipping both to white.
+  var rp = XYZ2RGB * (textureLoad(ptDispTex, p, 0).xyz / E.disp.w);
+  let lo = min(rp.r, min(rp.g, rp.b));
+  if (lo < 0.0) {
+    let gp = max(textureLoad(ptDispTex, p, 0).y / E.disp.w, 0.0) * GRAY_NORM;
+    rp = vec3f(gp) + (gp / max(gp - lo, 1e-12)) * (rp - vec3f(gp));
+  }
+  rp = max(rp, vec3f(0.0));
+  let hi = max(rp.r, max(rp.g, rp.b));
+  if (hi > 1.0) { rp = rp / hi; }
+  rgb = clamp(rp + rgb * (1.0 - min(1.0, max(rp.r, max(rp.g, rp.b)))), vec3f(0.0), vec3f(1.0));
   // sRGB encoding with triangular dither of ±1 LSB against banding.
   let n = hash(vec2u(p)) + hash(vec2u(p) + vec2u(7919u, 104729u)) - 1.0;
   let enc = vec3f(srgbEncode(rgb.r), srgbEncode(rgb.g), srgbEncode(rgb.b)) + n * E.misc.x;

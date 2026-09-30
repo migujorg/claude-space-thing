@@ -122,6 +122,21 @@ export const HUNT = {
 } as const;
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────
+// Hecht, S. (1947), JOSA 37, 59: two-branch point-source threshold ΔI = c·(1 + √(K·B))², in modern
+// units as given by Crumey (2014) Eq. 20. Its photopic (cone) branch at B → 0 is the cone system's
+// point threshold, the constant Schaefer (1990, PASP 102, 212) uses for the "day" branch. Used only to
+// validate the onset of star colour (tests, docs/eye-model.md §6), not in rendering.
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+export const HECHT1947 = {
+  /** Cone (photopic) branch: c (lux), K (per cd/m²), valid for B ≥ 1.645e-2 cd/m². */
+  coneC: 4.808e-8,
+  coneK: 1.259e-1,
+  /** Rod (scotopic) branch. */
+  rodC: 1.706e-9,
+  rodK: 1.259e3,
+} as const;
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────
 // CIE 191:2010, Recommended System for Mesopic Photometry Based on Visual Performance.
 // Verification (eye model v1): the standard itself was not obtainable. Cross-checked against the
 // published reproduction of the CIE 191 system in Maksimainen, Kurkela, Bhusal, Hyyppä (2019),
