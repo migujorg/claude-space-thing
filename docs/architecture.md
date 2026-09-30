@@ -140,6 +140,8 @@ E_obs,c = A_c(g, Φ, θ, φ) · E☉,c(1 AU) · (1/d²) · (radiusKm/Δ)²
 
 with A_c from the model's `formula`. The inputs are the phase angle g, the Sun's selenographic longitude Φ, and the observer's selenographic latitude and longitude θ, φ. E☉,c is the solar XYZS in `light.json`. The model applies only inside its stated domain (phase range and observer libration range). There it replaces `geometricAlbedoXYZS · Φ(α)`; outside it, the α-only `phaseFunction` applies (within its own domain). `phaseFunction` equals the model's Y channel at zero libration, averaged over waxing and waning (geometric mean), divided by the albedo's Y.
 
+Shape models ([rendering-shapes.md](rendering-shapes.md)): an irregular body drawn from its mesh (`SceneBody.shape`) keeps this contract on average. The radiance prefactor is scaled by πR² / ⟨A_proj⟩, where ⟨A_proj⟩ is the mesh's rotation-mean projected area, so the rotation-averaged illuminance at small phase is still `geometricAlbedoXYZS · Φ(α) · (1/d²) · (R/Δ)²`. The instantaneous brightness then varies with the shape as it rotates (a lightcurve); that variation is `derived`.
+
 ### 4.4 Surface maps (M2)
 
 Disk-integrated photometry (§4.3) is the **absolute** calibration of a body's brightness and color: it is measured from far away with well-understood instruments. Surface maps supply only the **spatial pattern** on top of it. This keeps the two consistent by construction and stops a map's calibration problems from changing how bright a world is.
