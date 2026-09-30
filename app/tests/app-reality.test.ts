@@ -93,4 +93,10 @@ describe('badge', () => {
     expect(badgeParts({ ...d, overlays: { ...d.overlays, provenanceTint: true } }, d)).toEqual(['PROVENANCE TINT']);
     expect(badgeParts({ ...d, exists: 'complete' }, d)[0]).toMatch(/COMPLETE/);
   });
+  it('the Sun shield is off by default and badged whenever it is on, in both view modes', () => {
+    expect(d.sunShield).toBe(false);
+    expect(badgeParts({ ...d, sunShield: true }, d)).toEqual(['SUN SHIELDED: occulting disc (viewing aid)']);
+    expect(badgeParts({ ...d, view: 'enhanced', sunShield: true }, d)).toContain('SUN SHIELDED: occulting disc (viewing aid)');
+    expect(badgeParts({ ...d, sunShield: true }, { ...d, sunShield: true })).toContain('SUN SHIELDED: occulting disc (viewing aid)');
+  });
 });

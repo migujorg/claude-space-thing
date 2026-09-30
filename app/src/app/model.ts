@@ -212,7 +212,9 @@ export class AppModel {
 
   setData(d: LoadedData, dataBaseUrl = 'data/'): void {
     this.data = d;
-    this.extras = { surfaces: surfaceRefs(d.surfaces ?? [], dataBaseUrl), rings: d.rings ?? null };
+    // atmospheres.json (render/scene.ts SceneBody.atmosphere) once the loader provides it as `atmospheres`.
+    const atmospheres = d.atmospheres ?? null;
+    this.extras = { surfaces: surfaceRefs(d.surfaces ?? [], dataBaseUrl), rings: d.rings ?? null, atmospheres };
     this.bodies = d.bodies;
     this.byId = new Map(d.bodies.map((b) => [b.id, b]));
     this.roots.clear();
@@ -1317,6 +1319,7 @@ export class AppModel {
     if (v.labels !== undefined) patch.overlays!.labels = v.labels;
     if (v.orbits !== undefined) patch.overlays!.orbits = v.orbits;
     if (v.tint !== undefined) patch.overlays!.provenanceTint = v.tint;
+    if (v.shield !== undefined) patch.sunShield = v.shield;
     this.setReality(patch);
     if (v.ui === false) this.uiHidden = true;
 
@@ -1401,6 +1404,7 @@ export class AppModel {
     if (r.overlays.labels !== d.overlays.labels) v.labels = r.overlays.labels;
     if (r.overlays.orbits !== d.overlays.orbits) v.orbits = r.overlays.orbits;
     if (r.overlays.provenanceTint !== d.overlays.provenanceTint) v.tint = r.overlays.provenanceTint;
+    if (!!r.sunShield !== !!d.sunShield) v.shield = !!r.sunShield;
     return v;
   }
 
