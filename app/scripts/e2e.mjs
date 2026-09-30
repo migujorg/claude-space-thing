@@ -11,7 +11,7 @@
 //   npm run e2e -- --accept-last         make the last run (app/shots/e2e/report.json) the baseline, no rendering
 //   npm run e2e -- --no-compare          render and report only
 //   options: --jobs 1|2  --timeout <s per scene, default 600>  --retries <n, default 1: re-render a scene that timed
-//            out, alone>  --base http://localhost:5173 (use a running server)
+//            out or lost its GPU device, alone>  --base http://localhost:5173 (use a running server)
 
 import { chromium } from 'playwright';
 import { createServer } from 'vite';
@@ -190,10 +190,13 @@ await Promise.all(
     }
   }),
 );
-// A timeout usually means a loaded machine (SwiftShader shares the CPU): try those scenes again, one at a time.
+// A timeout, or a lost GPU device (the GPU process killed or out of memory; the page reports it at once through
+// window.__frameError), usually means a loaded machine (SwiftShader shares the CPU and memory): try those scenes
+// again, one at a time.
+const RETRYABLE = /Timeout|device lost/i;
 for (let attempt = 0; attempt < retries; attempt++) {
   for (let i = 0; i < results.length; i++) {
-    if (!/Timeout/i.test(results[i].error ?? '')) continue;
+    if (!RETRYABLE.test(results[i].error ?? '')) continue;
     process.stdout.write(`… ${scenes[i].id} (again, alone, after: ${results[i].error.slice(0, 80)})\n`);
     const again = await renderScene(scenes[i]);
     again.retried = attempt + 1;

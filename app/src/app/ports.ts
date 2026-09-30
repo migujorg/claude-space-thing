@@ -187,6 +187,8 @@ export interface RendererPort {
   frameDone?(): Promise<void>;
   /** Optional (M3): the renderer's GPUDevice, so the small-body field can share buffers with it. */
   readonly gpuDevice?: GPUDevice;
+  /** Optional: resolves when the GPU device is lost (not by destroy()); nothing more will be drawn. */
+  readonly deviceLost?: Promise<{ reason: string; message: string }>;
   /** Optional (M3): extra point sources (small bodies) drawn with the stars; null removes them. */
   setExtraPointSources?(src: PointSourceBuffer | null): void;
   /** Optional (M4): sky background (Milky Way, faint stars, zodiacal light) drawn behind the bodies. */

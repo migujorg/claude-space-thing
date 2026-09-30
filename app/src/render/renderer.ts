@@ -227,6 +227,10 @@ export class Renderer {
     private readonly weightFormat: GPUTextureFormat,
   ) {
     const d = device;
+    this.deviceLost = new Promise((res) => device.lost.then((info) => {
+      console.error(`WebGPU device lost (${info.reason}): ${info.message}`);
+      if (info.reason !== 'destroyed') res({ reason: info.reason, message: info.message });
+    }));
     const ub = (size: number) => d.createBuffer({ size, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
     this.frameUB = ub(128);
     this.eyeUB = ub(17 * 16);  // 17 vec4 (struct Eye)
@@ -374,7 +378,6 @@ export class Renderer {
         maxBufferSize: adapter.limits.maxBufferSize,
       },
     });
-    device.lost.then((info) => console.error(`WebGPU device lost (${info.reason}): ${info.message}`));
     device.addEventListener('uncapturederror', (e) => console.error('WebGPU error:', (e as GPUUncapturedErrorEvent).error.message));
     const offscreen = options.presentation === 'offscreen';
     const ctx = offscreen ? null : canvas.getContext('webgpu');
@@ -417,6 +420,13 @@ export class Renderer {
     this.visible.destroy();
     this.visible = this.device.createBuffer({ size: this.maxVisible * 32, usage: GPUBufferUsage.STORAGE });
   }
+
+  /**
+   * Resolves when the device is lost other than by its own destroy() (e.g. the GPU process was killed or ran out
+   * of memory): nothing more will be drawn. Pages set window.__frameError from it so that scripts waiting for a
+   * frame fail at once instead of at their timeout; settled() rejects.
+   */
+  readonly deviceLost: Promise<{ reason: string; message: string }>;
 
   /** The renderer's device, for GPU producers of extra point sources (e.g. the small-body field). */
   get gpuDevice(): GPUDevice {
@@ -555,7 +565,13 @@ export class Renderer {
    * Resolves once the eye's adaptation has converged for the current view and every surface-map tile the
    * view needs is loaded (drives frames itself; tile loading gives up after ~90 s).
    */
-  async settled(): Promise<void> {
+  settled(): Promise<void> {
+    // A lost device never answers the readbacks the adaptation waits for: fail instead of hanging.
+    const lost = this.deviceLost.then((i) => { throw new Error(`WebGPU device lost (${i.reason}): ${i.message}`); });
+    return Promise.race([this.settle(), lost]);
+  }
+
+  private async settle(): Promise<void> {
     const t0 = performance.now();
     // Load tiles first (one frame per batch of requests), then let the adaptation converge.
     for (let round = 0; round < 256 && this.lastSnapshot && performance.now() - t0 < 90000; round++) {

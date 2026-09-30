@@ -58,6 +58,7 @@ async function main(): Promise<void> {
     hdr: params.get('hdr') === 'f16' ? 'f16' : 'auto',
     surfaceCacheMiB: Number(params.get('cache') ?? 512),
   });
+  renderer.deviceLost.then((i) => { window.__frameError = `WebGPU device lost (${i.reason}): ${i.message}`; });
   const base = `${import.meta.env.BASE_URL}data/`;
   const loaded = await loadAll({ fetch: (u: string) => fetch(u), base, verifyHashes: false, eagerEphemeris: () => false });
   const data: ValidationData = {

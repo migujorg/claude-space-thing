@@ -47,6 +47,7 @@ async function main(): Promise<void> {
     hdr: params.get('hdr') === 'f16' ? 'f16' : 'auto',
     surfaceCacheMiB: Number(params.get('cache') ?? 96),
   });
+  renderer.deviceLost.then((i) => { window.__frameError = `WebGPU device lost (${i.reason}): ${i.message}`; });
   renderer.resize(window.innerWidth, window.innerHeight, window.devicePixelRatio || 1);
   const scene = (params.get('scene') ?? '').endsWith('-data') ? await buildDataScene(params) : buildScene(params);
   // Data scenes carry no stars; stars=N adds N TEST FIXTURE stars (e.g. to see them set behind a limb).

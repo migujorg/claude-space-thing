@@ -157,6 +157,13 @@ export async function startApp(canvas: HTMLCanvasElement, uiRoot: HTMLElement, d
       ui.fatal(`${msg}. The data and UI still work; nothing can be drawn.`);
       window.__frameError = msg;
     }
+    // A lost GPU device (the GPU process killed or out of memory): say so, and let scripts waiting for a frame fail
+    // at once (window.__frameError) instead of at their timeout.
+    renderer?.deviceLost?.then((i) => {
+      const msg = `WebGPU device lost (${i.reason}): ${i.message}`;
+      window.__frameError = msg;
+      ui.fatal(`${msg}. Reload the page to draw again.`);
+    });
     sizeViewport();
     // M4 sky (app/sky.ts): decides which stars are points and which are sky light, streams the deep tiles and
     // draws the sky background; without it, the bright catalogue goes to the renderer as before.

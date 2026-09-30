@@ -49,7 +49,7 @@ Each scene is compared with `baseline/stats.json` and `baseline/<id>.png`. The d
 
 This check catches blank frames and gross regressions such as a missing body, a lost texture or a wrong exposure. It is not a pixel diff.
 
-A scene that fails to render always fails. Examples: a `__frameError`, or a timeout waiting for `__frameReady`. SwiftShader shares the CPU, so on a busy machine a scene can time out: such a scene is rendered once more, on its own, before it counts as failed (`--retries 0` turns that off).
+A scene that fails to render always fails. Examples: a `__frameError`, or a timeout waiting for `__frameReady`. SwiftShader shares the CPU and memory, so on a busy machine a scene can time out, or its GPU process can be killed. A lost GPU device sets `__frameError` at once, with the reason (`WebGPU device lost (unknown): …`), so the run does not wait for the timeout. Either way the scene is rendered once more, on its own, before it counts as failed (`--retries 0` turns that off).
 
 ## Running
 
