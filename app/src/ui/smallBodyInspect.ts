@@ -290,7 +290,7 @@ export function smallBodyWhy(o: {
   if (!labelAllowed(posShown, o.level)) return `Its position is ${posShown}, not admitted at ${L}: nothing is drawn.`;
   const inputs = o.inputs.map((i) => `${i.what} (${i.label})`).join(', ');
   if (o.drawn === 'closeup' && o.filtered && o.shape?.drawn)
-    return `${whyLine(o.filtered, o.level)} Resolved close-up drawn from its shape model, which also gives its orientation: ${o.shape.text}. The measured diameter sets the photometric size; the brightness spread over the mesh is derived.`;
+    return `${whyLine(o.filtered, o.level)} Resolved close-up drawn from its shape model, which also gives its orientation: ${o.shape.text}. The photometric size is the measured diameter or, without one, the model's volume-equivalent radius; the brightness spread over the mesh is derived.`;
   if (o.drawn === 'closeup' && o.filtered)
     return `${whyLine(o.filtered, o.level)} Resolved close-up: a sphere of the measured diameter — the spherical shape is an assumption.${o.shape ? ` Shape model not drawn: ${o.shape.text}.` : ''}`;
   const bright = brightnessAdmitted(o.inputs, o.level);
