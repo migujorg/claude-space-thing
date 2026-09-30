@@ -192,6 +192,9 @@ export interface RendererStats {
   gpuPassMs?: Record<string, number>;
   /** Sum of gpuPassMs, ms. */
   gpuFrameMs?: number;
+  /** CPU time of the last render() call, ms: frame preparation (photometry, rings, tiles) and all of render() up to submit. */
+  cpuPrepMs?: number;
+  cpuFrameMs?: number;
   /** Surface-map tile cache (virtual texturing). */
   surfaceCache?: {
     budgetMiB: number;

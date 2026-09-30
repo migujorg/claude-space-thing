@@ -481,6 +481,7 @@ export class Renderer {
       surf.flush();
       this.stats.surfaceCache = surf.stats();
     }
+    this.stats.cpuPrepMs = performance.now() - t0;
 
     // Scatter kernel (CIE 146) fitted to this pyramid and field of view.
     const key = `${t.W}x${t.H}:${snapshot.camera.fovY}:${this.settings.ageYears}:${this.settings.pigmentation}`;
@@ -784,6 +785,7 @@ export class Renderer {
     const doReadback = !this.readbackBusy;
     if (doReadback) enc.copyBufferToBuffer(this.result, 0, this.readback, 0, 32);
     this.resolveTimestamps(enc);
+    this.stats.cpuFrameMs = performance.now() - t0;
     d.queue.submit([enc.finish()]);
     this.readTimestamps();
 
