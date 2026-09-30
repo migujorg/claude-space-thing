@@ -48,6 +48,21 @@ def test_sunlight_xyzs():
     assert 2.2 < S / Y < 2.6
 
 
+def test_sunlight_vs_independent_reference_spectrum():
+    """Independent check with a different instrument generation: the 2008 Whole Heliosphere Interval reference
+    spectrum (Woods et al. 2009, GRL 36, L01101, DOI:10.1029/2008GL036373; SORCE SIM in the visible), from LISIRD.
+    Measured: WHI gives Y = 133 001 lux, xy = (0.3212, 0.3321); HSRS 1.2 % higher in Y (TSIS-1 vs SORCE scale)."""
+    from pipeline.download import fetch
+    path = fetch("https://lasp.colorado.edu/lisird/latis/dap/whi_ref_spectra.csv", "tests", "whi_ref_spectra.csv")
+    d = np.genfromtxt(path, delimiter=",", skip_header=1)
+    m = d[:, 1] > 0
+    whi = cie.xyzs(bin_average(d[m, 0], d[m, 1]))  # vacuum wavelengths; the 0.15 nm shift is negligible here
+    ours = solar.irradiance_xyzs()
+    assert ours[1] / whi[1] == pytest.approx(1.0, abs=0.02)
+    assert ours[0] / ours[:3].sum() == pytest.approx(whi[0] / whi[:3].sum(), abs=0.002)
+    assert ours[1] / ours[:3].sum() == pytest.approx(whi[1] / whi[:3].sum(), abs=0.002)
+
+
 def test_limb_darkening_channels():
     ld = solar.limb_darkening()
     assert ld.coeffs.shape == (4, 6)
