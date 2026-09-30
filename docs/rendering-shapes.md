@@ -97,6 +97,8 @@ The mesh is shaded with the same chain as the ellipsoid (architecture §4.3; `fr
 
 The disk photometry says how bright a body is on average: a geometric albedo p with reference area πR², and a phase function Φ(α). Mean brightness (H magnitudes and lightcurve means) is what those measurements describe. A mesh of the same volume has a larger mean projected area: area/4 for a convex body (Cauchy). With s, the mesh's rotation-averaged disk-integrated brightness at small phase equals the photometry. The rotational lightcurve then comes from the shape.
 
+A small body with a spacecraft or radar model but no measured diameter in the catalogue, such as Arrokoth, uses the model's volume-equivalent radius as R. Its albedo then follows from its absolute magnitude H: p·E☉ = E(α = 0; 1 AU, 1 AU) / (R / 1 AU)². The colour is assumed to be the Sun's, so this albedo is estimated.
+
 The drawn brightness distribution is labelled **derived**, because it is computed from the measured photometry and the shape. It is part of the body's worst label.
 
 Caveats:

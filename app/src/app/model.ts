@@ -25,7 +25,7 @@ import { angularRadius, pick, pixelRay, pixelsPerRadian, project, type PickTarge
 import type { CoreDeps, EphemerisSetPort, OrientationSetPort, OrientationSourcePort, SmallBodyFieldPort, TimeScalePort, Vec3 } from './ports';
 import { badgeParts, defaultReality, labelAllowed, type RealityState } from './reality';
 import { buildSnapshot, buildSun, filtered, sceneBodyOf, type OverlayOnlyBody } from './snapshot';
-import { SmallBodies, sbId, sbRow, type SmallBodyCounts } from './smallbodies';
+import { SmallBodies, sbId, sbRow, type ShapeSize, type SmallBodyCounts } from './smallbodies';
 import { GridWorkerClient, type GridWorkerPort } from './sbgrid';
 import { parseIsoUtc, type UrlView } from './url';
 import { DEG, IDENTITY, len, matFromQuat, norm, quatFromMat, slerpQuat, sub } from './vec';
@@ -456,6 +456,17 @@ export class AppModel {
     return this.extras?.shapes?.status(id) ?? null;
   }
 
+  /**
+   * How a small body's pseudo-body carries a shape model: false (none admitted: a sphere of the measured diameter),
+   * true (the measured diameter as the photometric size) or the model's own size (no measured diameter).
+   */
+  private shapedPseudo(id: number, row: number): boolean | ShapeSize {
+    const shapes = this.extras?.shapes;
+    if (!shapes || shapes.available(id, this.reality.exists) !== true) return false;
+    if (this.smallBodies?.measuredDiameter(row)) return true;
+    return shapes.size(id) ?? false;
+  }
+
   shapesIdle(): boolean {
     return this.extras?.shapes?.idle() ?? true;
   }
@@ -489,7 +500,7 @@ export class AppModel {
   bodyOf(id: number): Body | undefined {
     if (id < 0) {
       const sb = this.smallBodies, row = sbRow(id);
-      return sb?.has(row) ? sb.pseudoBody(row, this.extras?.shapes?.available(id, this.reality.exists) === true) : undefined;
+      return sb?.has(row) ? sb.pseudoBody(row, this.shapedPseudo(id, row)) : undefined;
     }
     return this.byId.get(id);
   }
@@ -1039,8 +1050,7 @@ export class AppModel {
       const a = sb.apparent(row, world.cameraPos, world.et, this.core);
       // With an admitted shape model the object's shape is not assumed (app/shapes.ts): the radii keep the measured
       // diameter's label, so the mesh can be drawn wherever that diameter is admitted.
-      const shaped = this.extras?.shapes?.available(id, this.reality.exists) === true;
-      world.bodies.set(id, { id, body: sb.pseudoBody(row, shaped), app: a?.app ?? null, toSun: a?.toSun ?? null });
+      world.bodies.set(id, { id, body: sb.pseudoBody(row, this.shapedPseudo(id, row)), app: a?.app ?? null, toSun: a?.toSun ?? null });
     }
   }
 

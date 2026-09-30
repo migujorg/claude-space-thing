@@ -175,6 +175,18 @@ export class ShapeLibrary {
   }
 
   /**
+   * The size of a small body's spacecraft or radar shape model (km, volume-equivalent), for a close-up without a
+   * measured diameter; null when there is none or its header is not loaded yet.
+   */
+  size(id: number): { radiusKm: number; label: Label; sources: string[]; what: string } | null {
+    const key = id < 0 ? this.o.spkidOf?.(id) ?? null : id;
+    if (key === null || !this.index?.bodies[String(key)]) return null;
+    const h = this.header(String(key));
+    if (!h || !(h.stats.volumeEquivalentRadiusKm > 0)) return null;
+    return { radiusKm: h.stats.volumeEquivalentRadiusKm, label: h.provenance.label, sources: h.provenance.sources, what: `${h.kind} shape model` };
+  }
+
+  /**
    * The mesh for a scene body at this level and emission epoch, or null (the body keeps its ellipsoid). `sb` must
    * carry the admitted radii (the photometric size) and, for major bodies, the app's orientation.
    */
