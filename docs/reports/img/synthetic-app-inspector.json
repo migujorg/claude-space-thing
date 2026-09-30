@@ -1,0 +1,29 @@
+{
+ "query": "",
+ "row": 2366899,
+ "id": -2366900,
+ "name": "Synthetic main-belt asteroid #12,346",
+ "counts": {
+  "drawn": 1570423,
+  "withheld": 2529,
+  "noPosition": 61,
+  "from": "field",
+  "synthetic": {
+   "drawn": 2948401,
+   "objects": 2948454
+  }
+ },
+ "reality": {
+  "exists": "complete",
+  "view": "eye",
+  "exposureBoostStops": 0,
+  "overlays": {
+   "labels": true,
+   "orbits": false,
+   "provenanceTint": false
+  }
+ },
+ "badge": [],
+ "hud": "2026-09-30T16:42:20Z❚❚⇆real1 min/s1 h/s1 day/s1 week/s30 days/sreal timeNow2025-03-31data window2028-03-31frame 44515.5 ms · adapt 1.00e-5 cd/m² · stars 36931,570,423 catalogued + 2,948,401 synthetic small bodies drawn / 2,529 withheld at Completeorbiting Synthetic main-belt asteroid #12,346 · 3.000 million km",
+ "why": "Why does it look like this? A synthetic object, drawn as a point of the brightness its synthetic H gives (H-G law); never drawn resolved. Every attribute is synthetic."
+}

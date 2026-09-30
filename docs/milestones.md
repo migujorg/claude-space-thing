@@ -44,6 +44,13 @@ Gaia DR3 stars with spectra-derived colors, the brightest stars from Hipparcos, 
 
 Time-dependent adaptation, HDR output, acuity limits, refinement against published vision data.
 
-## M6 — The complete solar system
+## M6 — The complete solar system  *(first layer landed)*
 
 The synthetic layer (NORTH_STAR 3.3): small bodies below survey completeness, drawn from debiased population models, yielding to discoveries.
+
+Landed: 2.95 M synthetic small bodies. They fill only the catalogue's deficit in each (a, e, i, H) cell, and none is brighter than the local survey limit:
+- NEOs from the Granvik et al. (2018) model;
+- main belt, Hungarias, Hildas and Jupiter Trojans from the catalogue, complete to its Hendler & Malhotra (2020) limit (refitted each build) and continued with debiased slopes;
+- TNOs from the CFEPS L7 model.
+
+Seeded per-cell streams make the layer deterministic and let it yield to new discoveries by truncation. Attributes are drawn from measured samples, all labelled synthetic. The GPU field draws the layer at Complete only, and Complete is now the default level. The inspector says what each object stands for: model, cell, deficit, seed. Details: docs/reports/synthetic-populations.md. Not yet modelled: Centaurs, irregular moons, comets.
