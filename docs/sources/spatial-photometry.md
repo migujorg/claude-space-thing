@@ -60,6 +60,16 @@ Every entry is therefore **estimated**, and its `method` states the assumptions.
 - **The 0° value:** it is 2 × OPAL's k = 0.719. At zero phase μ0 = μ, and the Barkstrom law equals Minnaert's with B = 2k. OPAL is used there because at small phase its law is the one divided out of the map the app shows. Pioneer's own 0° value, 1.335, lies outside Pioneer's observed phase range.
 - **Independence:** Pioneer 11 (1979), fitted in 1984/1993; none of the validation frames is involved.
 - **Validation** (Cassini WAC, 2016, 54.6°; docs/reports/validation.md): the exact law gives centre / limb / terminator 0.882 / 1.091 / 0.705 of observed. The terminator fails (−2.6σ): the law darkens toward it more steeply than this frame shows. The earlier Minnaert approximation gave 0.900 / 0.912 / 1.111. The exact law is kept because it is the published one; nothing is fitted to the frame.
+- **Season- and latitude-aware alternatives (searched 2026-09-30, none adopted).** Pioneer 11 saw Saturn near equinox in 1979, mostly its equatorial belts and zones. The validation frame looks from 28.7° N in northern summer. Candidates checked:
+
+  | Source | What it gives | Why not adopted |
+  |---|---|---|
+  | Mendikoa et al. (2017), A&A; arXiv:1709.09664, CDS tables B1–B8 | Ground-based PlanetCam Minnaert k per latitude and filter, northern hemisphere, 2012–2016 | The season is right, but the phase angle is ≤ 6°, and small-phase k already fails at 54.6° (the OPAL experience) |
+  | Pérez-Hoyos et al. (2016), Icarus 277 | Cassini ISS 2010–11 phase behaviour | A radiative-transfer particle phase function, not an I/F law; closed access (OpenAlex: no open copy) |
+  | Wang et al. (2024) | Hemispheric reflectances at 102–120° only | No law |
+  | Barstow et al. (2016); Sanz-Requena et al. (2019); Sromovsky et al. (2021); Sánchez-Lavega et al. (2024) | Cloud and haze retrievals | No disk law |
+
+  A latitude-dependent law would also need a schema and renderer extension, since `spatialModel` holds one law per body.
 
 ### Saturn's mid-sized moons: Akimov
 
