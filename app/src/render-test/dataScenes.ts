@@ -72,7 +72,7 @@ function bodyOf(pr: Products, id: number, pos: Vec3, toSun: Vec3, orient: Mat3, 
 
 export async function buildDataScene(p: URLSearchParams): Promise<TestScene> {
   const name = p.get('scene');
-  const view = { mode: 'eye' as const, exposureBoostStops: 0, overlays: { provenanceTint: p.get('tint') === '1' } };
+  const view = { mode: 'eye' as const, exposureBoostStops: 0, overlays: { provenanceTint: p.get('tint') === '1' }, sunShield: p.get('shield') === '1' };
   const noModel = p.get('nomodel') === '1';
   const pr = await products();
   if (name === 'rings-data') {

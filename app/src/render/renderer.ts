@@ -173,7 +173,7 @@ export class Renderer {
   ) {
     const d = device;
     const ub = (size: number) => d.createBuffer({ size, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
-    this.frameUB = ub(112);
+    this.frameUB = ub(128);
     this.eyeUB = ub(16 * 16);  // 16 vec4 (struct Eye)
     this.sunUB = ub(11 * 16);
     this.clampUB = ub(16);
@@ -941,6 +941,7 @@ export class Renderer {
       t.W, t.H, 1 / t.W, 1 / t.H,
       g.tanX, g.tanY, g.pixelAngle, this.frameIndex,
       this.hdrFormat === 'rgba32float' ? 3.4e38 : 65504, 0, 0, 0,
+      ...(prep.sunShield ? [...prep.sunShield.dir, prep.sunShield.cosRadius] : [0, 0, 1, 2]),
     ]));
     const s = this.settings;
     const cosField = Math.cos(((s.adaptationFieldDeg / 2) * Math.PI) / 180);
@@ -949,9 +950,12 @@ export class Renderer {
     const c = eye.cat;
     // The resolved solar disk is never a fixation (brightness-weighted fixations, eye-model.md §2).
     const sp = prep.sun;
-    const sunFix = sp && sp.resolvedFraction > 0
-      ? [...sp.n, Math.cos(Math.min(Math.asin(Math.min(1, sp.radiusKm / sp.distKm)) + g.pixelAngle, Math.PI))]
-      : [0, 0, 1, 2];
+    // With the Sun shield on, its occulting disc takes that place (nothing behind it is seen: Frame.occ).
+    const sunFix = prep.sunShield
+      ? [...prep.sunShield.dir, prep.sunShield.cosRadius]
+      : sp && sp.resolvedFraction > 0
+        ? [...sp.n, Math.cos(Math.min(Math.asin(Math.min(1, sp.radiusKm / sp.distKm)) + g.pixelAngle, Math.PI))]
+        : [0, 0, 1, 2];
     d.queue.writeBuffer(this.eyeUB, 0, new Float32Array([
       eye.scene.sigmaCone, eye.scene.sigmaRod, eye.scene.Bcone, eye.scene.BrodAdapt,
       eye.map.gain, eye.map.offset, PATTANAIK.n, eye.exposure,

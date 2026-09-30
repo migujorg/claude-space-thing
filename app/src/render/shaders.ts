@@ -37,7 +37,13 @@ struct Frame {
   size: vec4f,     // W, H, 1/W, 1/H
   tanHalf: vec4f,  // tanX, tanY, pixel angle at centre (rad), frame index
   store: vec4f,    // x = largest value the HDR format can store (fp16 fallback), yzw unused
+  occ: vec4f,      // Sun shield (viewing aid): occulting disc direction (ICRF), w = cos(angular radius); w = 2: none
 };
+
+/** Behind the Sun shield's occulting disc (ViewSettings.sunShield): hidden from the eye. */
+fn occulted(F: Frame, dir: vec3f) -> bool {
+  return dot(normalize(dir), F.occ.xyz) >= F.occ.w;
+}
 
 /** Pre-expose a luminance for storage in the HDR targets (clamped so fp16 never overflows to inf). */
 fn toStore(F: Frame, v: vec4f) -> vec4f {
@@ -59,7 +65,7 @@ struct Eye {
   misc2: vec4f,    // star quad half-extent px, 1/(1-exp(-extent^2/2 sigma^2)), unused, unused
   dark: vec4f,     // dark-light pedestal: L0 cone, L0 rod, R(L0) cone, R(L0) rod
   pts: vec4f,      // points (eye/points.ts): display response at the bleaching luminance, viewer's Ricco area (sr), cone summation area (sr), own veil in the background per lux per pixel solid angle
-  fix: vec4f,      // fixations: unit direction to the Sun, w = cos(angular radius + 1 px) of its disk (2: no Sun)
+  fix: vec4f,      // never fixated: unit direction to the resolved Sun (or the Sun shield's disc), w = cos(angular radius + 1 px) (2: none)
   flags: vec4f,    // display black response, cone bleaching (1/0), fixation mode (1 brightness, 0 centre), unused
 };
 
@@ -512,7 +518,7 @@ struct FOut {
   let b = bodies[in.id];
   let hit = castBody(b, in.xy);
   let cov = clamp(0.5 + hit.disc / max(fwidth(hit.disc), 1e-30), 0.0, 1.0);
-  if (cov <= 0.0) { discard; }
+  if (cov <= 0.0 || occulted(F, hit.dir)) { discard; }
   var L = vec4f(0.0);
   var gap = 0.0;
   if (b.misc.w > 0.5) {
@@ -624,7 +630,7 @@ export const BODY_OVERLAY_SHADER = COMMON + BODY_COMMON + /* wgsl */ `
   let b = bodies[in.id];
   let hit = castBody(b, in.xy);
   let cov = clamp(0.5 + hit.disc / max(fwidth(hit.disc), 1e-30), 0.0, 1.0);
-  if (cov <= 0.0) { discard; }
+  if (cov <= 0.0 || occulted(F, hit.dir)) { discard; }
   let stored = textureLoad(depthTex, vec2i(in.pos.xy), 0);
   if (stored > depthOf(hit.t, hit.dir) * 1.0001) { discard; }   // behind another body
   let col = ov[2u * in.id];
@@ -671,7 +677,7 @@ ${BG}
   let u = vec3f(stars[base], stars[base + 1u], stars[base + 2u]);
   let e = vec4f(stars[base + 3u], stars[base + 4u], stars[base + 5u], stars[base + 6u]);
   let c = toCam(F, u);
-  if (c.z >= 0.0) { return; }
+  if (c.z >= 0.0 || occulted(F, u)) { return; }
   let ndc = vec2f(c.x * F.proj.x, c.y * F.proj.y) / (-c.z);
   let marg = E.misc2.x * 2.0 * F.size.zw;
   if (abs(ndc.x) > 1.0 + marg.x || abs(ndc.y) > 1.0 + marg.y) { return; }

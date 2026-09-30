@@ -147,6 +147,15 @@ export interface ViewSettings {
    * Omitted fields keep their defaults.
    */
   eye?: Partial<EyeSettings>;
+  /**
+   * Viewing aid, not a change to reality (the shell shows it in the reality badge): an occulting disc
+   * held over the Sun, like a coronagraph's occulter or a hand held up. It just covers the solar disk
+   * (its angular radius plus one pixel), so the Sun's light never enters the eye: no solar disk, no
+   * solar glare, no solar light in the adaptation or the pupil. Everything else stays physical,
+   * including the sunlight on the bodies. Whatever lies behind the disc is hidden. Available in eye and
+   * enhanced modes; off by default.
+   */
+  sunShield?: boolean;
 }
 
 export interface OrbitPolyline {

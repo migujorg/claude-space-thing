@@ -470,7 +470,7 @@ struct FOut {
     t = R.n.w + s;
     dir = R.n.xyz + in.xy.x * R.e1.xyz + in.xy.y * R.e2.xyz;
   }
-  if (!(t > 0.0)) { discard; }
+  if (!(t > 0.0) || occulted(F, dir)) { discard; }
   let r = length(X);
   let fw = max(fwidth(r), 1e-3);
   if (r + fw < R.N.w || r - fw > R.geo.x) { discard; }

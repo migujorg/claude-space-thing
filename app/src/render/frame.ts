@@ -103,6 +103,8 @@ export interface PreparedFrame {
    * drives the pupil (Watson & Yellott 2012) together with the frame's own flux.
    */
   offFrameFluxDeg2: number;
+  /** Sun shield (viewing aid) on: the occulting disc's direction and cos(angular radius); null when off. */
+  sunShield: { dir: V3; cosRadius: number } | null;
 }
 
 export function cameraGeom(snap: SceneSnapshot, W: number, H: number, near: number): CameraGeom {
@@ -189,6 +191,7 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
   const sunR = snap.sun?.radius ?? 0;
   let sun: SunPrep | null = null;
   let adaptedWhite: V3 | null = null;
+  let sunShield: { dir: V3; cosRadius: number } | null = null;
   if (snap.sun) {
     const s = snap.sun;
     const dist = len(s.pos);
@@ -199,7 +202,11 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
     const rho = Math.asin(Math.min(1, s.radius / dist));
     const diamPx = (2 * rho) / g.pixelAngle;
     let fRes = s.limbDarkening ? smooth(1, 2, diamPx) : 0;
-    if (!s.limbDarkening && diamPx > 1) warnings.push('Sun: limb darkening unknown → drawn as an unresolved point of the correct illuminance (no uniform disk assumed)');
+    // Sun shield (viewing aid, ViewSettings.sunShield): an occulting disc covers the solar disk (its
+    // angular radius plus one pixel). The Sun's light never reaches the eye: no disk, no point, no veil.
+    const shielded = snap.view.sunShield === true;
+    if (shielded) sunShield = { dir: n, cosRadius: Math.cos(Math.min(rho + g.pixelAngle, Math.PI)) };
+    if (!s.limbDarkening && diamPx > 1 && !shielded) warnings.push('Sun: limb darkening unknown → drawn as an unresolved point of the correct illuminance (no uniform disk assumed)');
     const c = toCam(g, s.pos);
     const sunInFrame = inFrame(c);
     // Visible fraction of the disk (bodies in front), for the analytic glare veil.
@@ -212,7 +219,9 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
       covered += diskOverlapFraction(rho, rb, angle(b.pos, s.pos));
     }
     const vis = Math.max(0, 1 - covered);
-    glare.push({ dir: n, minDeg: (rho * 180) / Math.PI, E: E.map((v) => v * vis) as XYZS, inFrame: sunInFrame });
+    if (!shielded) glare.push({ dir: n, minDeg: (rho * 180) / Math.PI, E: E.map((v) => v * vis) as XYZS, inFrame: sunInFrame });
+    // The outline marks the disc; drawn with a radius of at least OCCULTER_OUTLINE_MIN_PX so a tiny disc stays findable.
+    else if (c[2] < 0) occulterOutline(g, n, Math.max(rho + g.pixelAngle, OCCULTER_OUTLINE_MIN_PX * g.pixelAngle), overlay);
     const coeffs: number[][] = [0, 1, 2, 3].map((k) => {
       const src = s.limbDarkening?.[k] ?? [1];
       if (src.length > 6) warnings.push('Sun: limb-darkening polynomial truncated to degree 5');
@@ -220,10 +229,10 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
     });
     const I0 = [0, 1, 2, 3].map((k) => (fRes > 0 ? limbDarkenedI0(E[k], coeffs[k], s.radius, dist) : 0)) as XYZS;
     let point: PointSource | null = null;
-    if (fRes < 1 && c[2] < 0) {
+    if (fRes < 1 && c[2] < 0 && !shielded) {
       point = { ndc: camToNdc(g, c), depth: g.near / -c[2], E: E.map((v) => v * (1 - fRes)) as XYZS };
     }
-    if (c[2] >= 0) fRes = 0;
+    if (c[2] >= 0 || shielded) fRes = 0;
     const [e1, e2] = tangent(n);
     const margin = 3 * g.pixelAngle;
     sun = {
@@ -362,8 +371,10 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
     const At = 2 * Math.PI * (1 - Math.cos(angR));
     const ricco = Math.min(1, Math.max(At, pointFootprintSr) / AR);
 
+    // Behind the Sun shield's occulting disc: hidden (its resolved part is cut out on the GPU).
+    const behindShield = sunShield !== null && dot(normalize(b.pos), sunShield.dir) >= sunShield.cosRadius;
     // Off-frame bright bodies still veil the view (analytic glare).
-    if (E && !inFrame(c)) glare.push({ dir: normalize(b.pos), minDeg: (angR * 180) / Math.PI, E, inFrame: false });
+    if (E && !inFrame(c) && !behindShield) glare.push({ dir: normalize(b.pos), minDeg: (angR * 180) / Math.PI, E, inFrame: false });
 
     if (behind) continue;
     if (fRes > 0) {
@@ -402,7 +413,7 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
         riccoWeight: ricco, occluders, hatch, tint,
       });
     }
-    if (fRes < 1 && c[2] < 0) {
+    if (fRes < 1 && c[2] < 0 && !behindShield) {
       const ndc = camToNdc(g, c);
       // The unresolved part of the disk plus the unresolved part of its rings' reflected light.
       let Ep: XYZS | null = E && E[1] > 0 ? (E.map((v) => v * (1 - fRes)) as XYZS) : null;
@@ -442,8 +453,45 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
     .filter((x) => x.gs.inFrame || x.v >= 0.01 * DARK_LIGHT_CONE)
     .sort((a, b) => b.v - a.v)
     .map((x) => x.gs);
-  return { resolved, points, sun, glare: veiling, overlay, warnings, adaptedWhite, rings, offFrameFluxDeg2 };
+  return { resolved, points, sun, glare: veiling, overlay, warnings, adaptedWhite, rings, offFrameFluxDeg2, sunShield };
 }
+
+/**
+ * Outline of the Sun shield's occulting disc (a display overlay marking the viewing aid): the rim of the
+ * cone of angular radius `r` around `n`, projected, as a thin band of triangles in `out`.
+ */
+function occulterOutline(g: CameraGeom, n: V3, r: number, out: number[]): void {
+  const [e1, e2] = tangent(n);
+  const seg = 64;
+  const half = 0.75; // px: a 1.5 px line
+  const rim: ([number, number] | null)[] = [];
+  for (let i = 0; i <= seg; i++) {
+    const a = (i / seg) * 2 * Math.PI;
+    const d: V3 = [0, 1, 2].map((k) => Math.cos(r) * n[k] + Math.sin(r) * (Math.cos(a) * e1[k] + Math.sin(a) * e2[k])) as V3;
+    const c = toCam(g, d);
+    rim.push(c[2] < 0 ? camToNdc(g, c) : null);
+  }
+  const col = OCCULTER_OUTLINE_RGBA;
+  for (let i = 0; i < seg; i++) {
+    const p = rim[i];
+    const q = rim[i + 1];
+    if (!p || !q) continue;
+    // Offset perpendicular to the segment, in pixels.
+    const dx = ((q[0] - p[0]) * g.W) / 2;
+    const dy = ((q[1] - p[1]) * g.H) / 2;
+    const l = Math.hypot(dx, dy) || 1;
+    const ox = ((-dy / l) * half * 2) / g.W;
+    const oy = ((dx / l) * half * 2) / g.H;
+    const v = (x: number, y: number) => out.push(x, y, 0, col[0], col[1], col[2], col[3]);
+    v(p[0] - ox, p[1] - oy); v(q[0] - ox, q[1] - oy); v(p[0] + ox, p[1] + oy);
+    v(p[0] + ox, p[1] + oy); v(q[0] - ox, q[1] - oy); v(q[0] + ox, q[1] + oy);
+  }
+}
+
+/** Smallest radius (px) at which the occulting disc's outline is drawn (a UI marking). */
+const OCCULTER_OUTLINE_MIN_PX = 5;
+/** Display colour of the occulting disc's outline (a UI marking, not scene light): neutral grey. */
+const OCCULTER_OUTLINE_RGBA = [0.45, 0.45, 0.45, 0.9] as const;
 
 function tangent(n: V3): [V3, V3] {
   const h: V3 = Math.abs(n[0]) < 0.6 ? [1, 0, 0] : Math.abs(n[1]) < 0.6 ? [0, 1, 0] : [0, 0, 1];

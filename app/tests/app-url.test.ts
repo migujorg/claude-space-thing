@@ -16,7 +16,7 @@ describe('URL parameters', () => {
     expect(errors).toHaveLength(5);
   });
   it('round-trips', () => {
-    const v = { tMs: Date.UTC(2026, 0, 2, 3, 4, 5, 600), target: 599, dist: 1234567, az: 12.5, el: -3.25, exists: 'complete' as const, fov: 35, orbits: true };
+    const v = { tMs: Date.UTC(2026, 0, 2, 3, 4, 5, 600), target: 599, dist: 1234567, az: 12.5, el: -3.25, exists: 'complete' as const, fov: 35, orbits: true, shield: true };
     expect(parseUrlParams(formatUrlParams(v)).view).toEqual(v);
   });
   it('treats times without a zone as UTC, never local', () => {
