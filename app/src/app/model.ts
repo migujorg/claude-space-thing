@@ -17,6 +17,7 @@ import {
 import { Clock, intersectWindows, type TimeWindow } from './clock';
 import { SystemScheduler, systemBarycenter, type SystemInfo, type SystemState } from './lazy';
 import { surfaceRefs, type SceneExtras } from './extras';
+import { ShapeLibrary, type ShapeStatus } from './shapes';
 import { buildOrientation } from './orientation';
 import { OrbitManager } from './orbits';
 import { NameService } from './nameService';
@@ -24,7 +25,7 @@ import { angularRadius, pick, pixelRay, pixelsPerRadian, project, type PickTarge
 import type { CoreDeps, EphemerisSetPort, OrientationSetPort, OrientationSourcePort, SmallBodyFieldPort, TimeScalePort, Vec3 } from './ports';
 import { badgeParts, defaultReality, labelAllowed, type RealityState } from './reality';
 import { buildSnapshot, buildSun, filtered, sceneBodyOf, type OverlayOnlyBody } from './snapshot';
-import { SmallBodies, sbId, sbRow, type SmallBodyCounts } from './smallbodies';
+import { SmallBodies, sbId, sbRow, type ShapeSize, type SmallBodyCounts } from './smallbodies';
 import { GridWorkerClient, type GridWorkerPort } from './sbgrid';
 import { parseIsoUtc, type UrlView } from './url';
 import { DEG, IDENTITY, len, matFromQuat, norm, quatFromMat, slerpQuat, sub } from './vec';
@@ -202,7 +203,15 @@ export class AppModel {
     this.data = d;
     // atmospheres.json (render/scene.ts SceneBody.atmosphere) once the loader provides it as `atmospheres`.
     const atmospheres = d.atmospheres ?? null;
-    this.extras = { surfaces: surfaceRefs(d.surfaces ?? [], dataBaseUrl), rings: d.rings ?? null, atmospheres };
+    // Shape models (app/shapes.ts): headers, meshes and the DAMIT table are fetched when a body first needs them.
+    const shapes = d.shapes
+      ? new ShapeLibrary(d.shapes, {
+          dataRoot: dataBaseUrl,
+          utcToEt: (ms) => this.timeScale?.utcMsToEt(ms) ?? NaN,
+          spkidOf: (id) => this.spkidForShapes(id),
+        })
+      : null;
+    this.extras = { surfaces: surfaceRefs(d.surfaces ?? [], dataBaseUrl), rings: d.rings ?? null, atmospheres, shapes };
     this.bodies = d.bodies;
     this.byId = new Map(d.bodies.map((b) => [b.id, b]));
     this.roots.clear();
@@ -457,6 +466,40 @@ export class AppModel {
     }
   }
 
+  /** SBDB SPK-ID of a small body for the shape-model lookup (asks the name index when not known yet). */
+  private spkidForShapes(id: number): number | null {
+    if (id >= 0 || !this.names) return null;
+    const row = sbRow(id);
+    const s = this.names.spkidOf(row);
+    if (s === null) this.fetchName(row);
+    return s;
+  }
+
+  /** Why a body is or is not drawn from a shape model (inspector), or null when it has none. */
+  shapeStatus(id: number): ShapeStatus | null {
+    return this.extras?.shapes?.status(id) ?? null;
+  }
+
+  /**
+   * How a small body's pseudo-body carries a shape model: false (none admitted: a sphere of the measured diameter),
+   * true (the measured diameter as the photometric size) or the model's own size (no measured diameter).
+   */
+  private shapedPseudo(id: number, row: number): boolean | ShapeSize {
+    const shapes = this.extras?.shapes;
+    if (!shapes || shapes.available(id, this.reality.exists) !== true) return false;
+    if (this.smallBodies?.measuredDiameter(row)) return true;
+    return shapes.size(id) ?? false;
+  }
+
+  shapesIdle(): boolean {
+    return this.extras?.shapes?.idle() ?? true;
+  }
+
+  /** Resolves when no shape-model header, DAMIT table or SPK-ID lookup for a shape is in flight. */
+  shapesSettled(): Promise<void> {
+    return this.extras?.shapes?.whenIdle() ?? Promise.resolve();
+  }
+
   /** Ask the name index for a small body's display name (the inspector and labels pick it up). */
   private fetchName(row: number): void {
     const sb = this.smallBodies;
@@ -481,7 +524,7 @@ export class AppModel {
   bodyOf(id: number): Body | undefined {
     if (id < 0) {
       const sb = this.smallBodies, row = sbRow(id);
-      return sb?.has(row) ? sb.pseudoBody(row) : undefined;
+      return sb?.has(row) ? sb.pseudoBody(row, this.shapedPseudo(id, row)) : undefined;
     }
     return this.byId.get(id);
   }
@@ -1030,7 +1073,9 @@ export class AppModel {
       const row = sbRow(id);
       if (!sb.has(row)) continue;
       const a = sb.apparent(row, world.cameraPos, world.et, this.core);
-      world.bodies.set(id, { id, body: sb.pseudoBody(row), app: a?.app ?? null, toSun: a?.toSun ?? null });
+      // With an admitted shape model the object's shape is not assumed (app/shapes.ts): the radii keep the measured
+      // diameter's label, so the mesh can be drawn wherever that diameter is admitted.
+      world.bodies.set(id, { id, body: sb.pseudoBody(row, this.shapedPseudo(id, row)), app: a?.app ?? null, toSun: a?.toSun ?? null });
     }
   }
 
@@ -1071,7 +1116,7 @@ export class AppModel {
     const excluded: number[] = [];
     for (const g of world.bodies.values()) {
       if (g.id >= 0 || !g.app) continue;
-      const e = sceneBodyOf(g, level, this.orientations, this.chainLabel(g.id, world.et), this.selectedId);
+      const e = sceneBodyOf(g, level, this.orientations, this.chainLabel(g.id, world.et), this.selectedId, this.extras, 1 / ppr);
       if (!e) continue; // position not admitted at this level
       if ('body' in e && e.body.radii) {
         const px = 2 * Math.tan(angularRadius(e.body.radii[0], len(e.body.pos))) * ppr;

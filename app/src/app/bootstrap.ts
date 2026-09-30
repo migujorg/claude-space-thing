@@ -293,6 +293,12 @@ export async function startApp(canvas: HTMLCanvasElement, uiRoot: HTMLElement, d
     await nextFrame();
     // Orbit tracks are normally built a few per frame; here finish them at once, then render once more.
     if (model.finishOrbitWork() > 0) await nextFrame();
+    // Shape models (app/shapes.ts): the headers and DAMIT table the frames asked for, then a settled frame (the
+    // renderer's settled() waits for the mesh levels) that draws them.
+    for (let i = 0; i < 4 && !model.shapesIdle(); i++) {
+      await model.shapesSettled();
+      await nextFrame();
+    }
     if (!window.__frameError) window.__frameReady = true;
   })().catch((e) => {
     console.error(e);

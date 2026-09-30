@@ -276,3 +276,17 @@ def test_equivalent_constants_reproduce_a_pck_frame():
     assert eq["POLE_DEC"][0] == pytest.approx(17.22, abs=1e-6)
     assert eq["PM"][0] == pytest.approx(326.07, abs=1e-5)
     assert eq["PM"][1] == pytest.approx(1639.38864745, abs=1e-7)
+
+
+def test_source_rotation_reproduces_the_frame_with_nutation_terms():
+    """Phobos's shape frame (pck00010) has nutation/precession terms of ~2°: the header constants must include them."""
+    from pipeline import shape_orient as so
+    from pipeline.paths import RAW
+    pck10 = RAW / "shapes" / "phobos" / "kernels" / "pck00010.tpc"
+    if not pck10.exists():
+        pytest.skip("pck00010 not downloaded")
+    c = so._constants([pck10], "IAU_PHOBOS")
+    assert c["NUT_PREC_BODY"] == 4 and len(c["NUT_PREC_PM"]) >= 2
+    ets = [so.et_of(e) for e in ("2000-01-01T12:00:00", "2026-10-01T00:00:00")]
+    for et, r in zip(ets, so._rotations([pck10], "IAU_PHOBOS", ets)):
+        assert so.rotation_angle_deg(so.iau_matrix(c, et), r) < 1e-6

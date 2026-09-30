@@ -30,6 +30,7 @@ import type { BackgroundTargets } from './sky/background';
 import { LAW } from './spatial';
 import { cameraGeom, prepareFrame, type PreparedFrame } from './frame';
 import { ExtraPointSources, type PointSourceBuffer } from './extraPoints';
+import { MeshBodies } from './meshes/meshBodies';
 import { HdrReadback, type HdrImage, type HdrRect, type HdrRegionStats } from './hdrReadback';  // validation hook
 import { CometLayer } from './comets/layer';
 import type { CometModelProduct } from '../data/schema';
@@ -114,6 +115,10 @@ export class Renderer {
   private extraPts: ExtraPointSources | null = null;
   /** Comet comae and tails (./comets), drawn from SceneSnapshot.comets once a model is set. */
   private comets: CometLayer | null = null;
+  /** Shape meshes (meshes/meshBodies.ts), created when a body first brings one. */
+  private meshes: MeshBodies | null = null;
+  /** GPU memory budget for shape-mesh levels (MiB). */
+  meshCacheMiB = 512;
   private visible: GPUBuffer;
   private maxVisible = 1;
   private frameIndex = 0;
@@ -123,7 +128,7 @@ export class Renderer {
   private glareCache = { key: '', weights: [] as number[], unscattered: 1 };
   private lastMeasurementTime = 0;
   private persistentWarnings: string[] = [];
-  /** Debug: names of passes to skip ('bodies', 'background', 'cull', 'points', 'pyramid', 'sun', 'adapt', 'composite', 'overlays'). */
+  /** Debug: names of passes to skip ('bodies', 'background', 'cull', 'points', 'pyramid', 'sun', 'adapt', 'composite', 'overlays', 'meshShadow'). */
   debugSkip = new Set<string>();
   /** Extended sky light behind the bodies (render/sky/background.ts), drawn into EXT after the bodies pass. */
   private background: { encode(enc: GPUCommandEncoder, t: BackgroundTargets): void } | null = null;
@@ -513,9 +518,17 @@ export class Renderer {
       this.render(this.lastSnapshot);
       const surfIdle = !this.surf || this.surf.idle();
       const atmIdle = !this.atm || this.atm.idle();
-      if (surfIdle && atmIdle) break;
+      const meshIdle = !this.meshes || this.meshes.idle();  // shape meshes (meshes/)
+      if (surfIdle && atmIdle && meshIdle) break;
       if (!atmIdle) await this.atm!.whenIdle(30000);
+      else if (!meshIdle) await this.meshes!.whenIdle(30000);
       else await this.surf!.whenIdle(10000);
+    }
+    // Shape meshes (meshes/): their levels can arrive only after frames that ask for them; wait for them longer than
+    // for tiles (a close-up without its mesh would show the ellipsoid).
+    for (let round = 0; round < 64 && this.lastSnapshot && this.meshes && !this.meshes.idle() && performance.now() - t0 < 300000; round++) {
+      await this.meshes.whenIdle(30000);
+      this.render(this.lastSnapshot);
     }
     await this.settleAdaptation();
   }
@@ -585,6 +598,10 @@ export class Renderer {
       this.atm.writeUniform(r.atmosphere.binding, r.atmosphere.sunE, r.atmosphere.sunAngularRadius, r.atmosphere.shellBeta, r.frame.near, ATM_STEPS);
     });
     this.atmOf = atmOf;
+    // Shape meshes (meshes/meshBodies.ts): bodies whose mesh is resident are drawn from it, not as ellipsoids.
+    if (!this.meshes && prep.resolved.some((r) => r.body.shape)) this.meshes = new MeshBodies(d, this.hdrFormat, this.weightFormat, this.meshCacheMiB);
+    const meshSet = this.meshes ? this.meshes.prepare(prep, g, { selfShadow: !this.debugSkip.has('meshShadow') }) : null;
+    if (this.meshes) this.stats.meshes = this.meshes.stats();
     this.stats.cpuPrepMs = performance.now() - t0;
 
     // Scatter kernel (CIE 146) fitted to this pyramid and field of view.
@@ -623,6 +640,7 @@ export class Renderer {
     const nRes = prep.resolved.length;
     if (nRes) this.writeBodies(prep);  // after atmOf is set (the atmosphere flag)
     const nRings = this.writeRings(prep.rings);
+    if (meshSet?.size && !this.debugSkip.has('bodies')) this.meshes!.encodeShadows(enc);  // meshes: self-shadow maps
     d.queue.writeBuffer(this.surfUB, 0, new Uint32Array([surf?.perRow('albedo') ?? 1, surf?.perRow('height') ?? 1, nRings, 0, surf?.perRow('clouds') ?? 1, surf?.perRow('rg16') ?? 1, 0, 0]));
     const skip = this.debugSkip;
     {
@@ -666,10 +684,11 @@ export class Renderer {
         const overDisk = (k: number) => atmOf.has(k) && !!prep.resolved[k].atmosphere?.onDisk;
         const special = (k: number) => (!!prep.resolved[k].earth && !!surf) || overDisk(k);
         for (let i = 0; i < nRes;) {
+          if (meshSet?.has(i)) { i++; continue; }  // drawn from its shape mesh below
           const earth = !!prep.resolved[i].earth && !!surf;
           const withAtm = !earth && overDisk(i);
           let j = i + 1;
-          if (!earth && !withAtm) while (j < nRes && !special(j)) j++;
+          if (!earth && !withAtm) while (j < nRes && !special(j) && !meshSet?.has(j)) j++;
           const pipe = earth ? (this.earthPipe ??= this.makeBodyPipe(EARTH_BODY_SHADER, 'bodies (Earth)'))
             : withAtm ? (this.atmPipe ??= this.makeBodyPipe(ATM_BODY_SHADER, 'bodies (atmosphere)'))
               : this.bodyPipe;
@@ -695,6 +714,7 @@ export class Renderer {
           pass.draw(6, j - i, 0, i);
           i = j;
         }
+        if (meshSet?.size) this.meshes!.draw(pass, { frameUB: this.frameUB, bodies: this.bodiesBuf, rings: ringsRes, ringProf: profRes });
       }
       // Atmosphere shells (after the bodies, whose depth they test against).
       if (atmOf.size && this.bodiesBuf && !skip.has('atmosphere')) {
@@ -896,8 +916,9 @@ export class Renderer {
     // 8. Display-space overlays.
     const lines: number[] = [...prep.overlay];
     orbitVertices(snapshot.orbits, g, lines);
-    const ovBodies = prep.resolved.some((r) => r.hatch || r.tint);
-    const ovMask = prep.rings.length > 0 || prep.resolved.some((r) => r.surface?.albedo || r.atmosphere?.binding.unmeasured);
+    // A mesh body's hatch comes through MASK and its tint from its own pass (meshes/), not the ellipsoid overlay.
+    const ovBodies = prep.resolved.some((r, i) => (r.hatch || r.tint) && !meshSet?.has(i));
+    const ovMask = prep.rings.length > 0 || prep.resolved.some((r, i) => r.surface?.albedo || r.atmosphere?.binding.unmeasured || (r.hatch && meshSet?.has(i)));
     if ((ovBodies || ovMask || lines.length) && !skip.has('overlays')) {
       const pass = enc.beginRenderPass({ label: 'overlays', timestampWrites: this.tsw('overlays'), colorAttachments: [{ view: canvasView, loadOp: 'load', storeOp: 'store' }] });
       if (ovMask) {
@@ -910,7 +931,8 @@ export class Renderer {
         const ov = new Float32Array(nRes * 8);
         prep.resolved.forEach((r, i) => {
           const col = r.tint ?? [0, 0, 0, 0];
-          ov.set([col[0], col[1], col[2], col[3], r.hatch ? 1 : 0, r.tint ? 1 : 0, 0, 0], i * 8);
+          const mesh = !!meshSet?.has(i);
+          ov.set([col[0], col[1], col[2], col[3], r.hatch && !mesh ? 1 : 0, r.tint && !mesh ? 1 : 0, 0, 0], i * 8);
         });
         const buf = this.ensure('overlayBuf', ov.byteLength);
         d.queue.writeBuffer(buf, 0, ov);
@@ -937,6 +959,7 @@ export class Renderer {
       }
       pass.end();
     }
+    if (meshSet?.size && !skip.has('overlays')) this.meshes!.encodeTint(enc, canvasView, this.format, t.depth.createView(), this.frameUB);
 
     const doReadback = !this.readbackBusy;
     if (doReadback) enc.copyBufferToBuffer(this.result, 0, this.readback, 0, 32);
@@ -950,7 +973,7 @@ export class Renderer {
     this.stats.pupilDiameterMm = eye.pupilMm;
     this.stats.mesopicM = eye.mesopic.m;
     this.stats.limitingMagnitude = eye.limitingMagnitude;
-    this.stats.warnings = [...this.persistentWarnings, ...prep.warnings, ...(surf?.problems ?? [])];
+    this.stats.warnings = [...this.persistentWarnings, ...prep.warnings, ...(surf?.problems ?? []), ...(this.meshes?.problems ?? [])];
     d.queue.onSubmittedWorkDone().then(() => { this.stats.frameMs = performance.now() - t0; });
 
     if (doReadback) {

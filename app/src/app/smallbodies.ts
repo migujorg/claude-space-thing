@@ -16,6 +16,7 @@
 // catalogue. They have no name, flags or catalogue records; every attribute is labelled synthetic, so the reality
 // filter admits them (position included) at Complete only. Positions: two-body motion of their elements.
 
+import { AU_KM } from '../core/constants';
 import { coreState, readCore, readNonGrav, type SmallBodyCatalog } from '../core/smallbodyCatalog';
 import { diameterFromH, readSynthetic, syntheticPeriod, syntheticPopulation, syntheticState, type SyntheticCatalog } from '../core/smallbodySynthetic';
 import { SB_OK, SmallBodyPropagator, type NonGrav } from '../core/smallbody';
@@ -30,6 +31,14 @@ import { labelAllowed, worstOf, type ExistsLevel } from './reality';
 import { CometShell } from './comets';
 
 export const sbId = (row: number): number => -(row + 1);
+
+/** A shape model's size for a small body without a measured diameter (app/shapes.ts ShapeLibrary.size). */
+export interface ShapeSize {
+  radiusKm: number;
+  label: import('../data/schema').Label;
+  sources: string[];
+  what: string;
+}
 
 /** Names of the synthetic populations (synthetic/objects.json populations[].name). */
 export const SYNTHETIC_POP_TEXT: Record<string, { short: string; long: string; plural: string }> = {
@@ -341,7 +350,7 @@ export class SmallBodies {
   readonly cpu: CpuSmallBodyStates;
   private readonly eph: Ephem;
   private readonly names = new Map<number, string>();
-  private readonly pseudo = new Map<number, Body>();
+  private readonly pseudo = new Map<string, Body>();
   private readonly counts = new Map<ExistsLevel, SmallBodyCounts>();
   private tracks = new Map<number, OrbitSamples>();
 
@@ -388,7 +397,8 @@ export class SmallBodies {
   setName(row: number, name: string): void {
     if (!name || this.names.get(row) === name) return;
     this.names.set(row, name);
-    this.pseudo.delete(row);
+    this.pseudo.delete(`${row}|false`);
+    this.pseudo.delete(`${row}|true`);
   }
 
   knownName(row: number): string | null {
@@ -518,12 +528,13 @@ export class SmallBodies {
    * Colour/albedo come from the physical table with their own labels; the phase function is a Lambert sphere
    * (an assumption, estimated): the measured H-G1-G2 fit is not converted into a phase function yet.
    */
-  pseudoBody(row: number): Body {
-    let b = this.pseudo.get(row);
+  pseudoBody(row: number, shaped: boolean | ShapeSize = false): Body {
+    const key = `${row}|${shaped === false ? 'false' : 'true'}`;
+    let b = this.pseudo.get(key);
     if (b) return b;
     if (this.isSynthetic(row)) {
       b = this.syntheticBody(row);
-      this.pseudo.set(row, b);
+      this.pseudo.set(key, b);
       if (this.pseudo.size > 256) this.pseudo.delete(this.pseudo.keys().next().value!);
       return b;
     }
@@ -532,20 +543,52 @@ export class SmallBodies {
     const cols = P?.header.columns ?? {};
     const d = this.measuredDiameter(row);
     const radii: Sourced<[number, number, number]> = d
-      ? {
-          value: [d.km / 2, d.km / 2, d.km / 2],
-          unit: 'km',
-          label: worstOf(['estimated', d.label]),
-          sources: d.sources,
-          method: `A sphere of the ${d.label} effective diameter (${Number(d.km.toPrecision(6))} km). The shape is an assumption, so the drawn shape is estimated. Diameter: ${cols.diameter?.method ?? ''}`.trim(),
-        }
-      : { value: null, label: 'unknown', sources: [], method: 'No measured diameter: nothing resolved is drawn (a diameter from H is used for navigation only).' };
+      ? shaped
+        ? {
+            // A shape model is drawn (app/shapes.ts): the shape is no longer assumed; these radii only carry the
+            // photometric size (the disk photometry's reference area).
+            value: [d.km / 2, d.km / 2, d.km / 2],
+            unit: 'km',
+            label: d.label,
+            sources: d.sources,
+            method: `The ${d.label} effective diameter (${Number(d.km.toPrecision(6))} km) as the photometric reference size; the shape drawn is the object's shape model (see Shape model). Diameter: ${cols.diameter?.method ?? ''}`.trim(),
+          }
+        : {
+            value: [d.km / 2, d.km / 2, d.km / 2],
+            unit: 'km',
+            label: worstOf(['estimated', d.label]),
+            sources: d.sources,
+            method: `A sphere of the ${d.label} effective diameter (${Number(d.km.toPrecision(6))} km). The shape is an assumption, so the drawn shape is estimated. Diameter: ${cols.diameter?.method ?? ''}`.trim(),
+          }
+      : typeof shaped === 'object'
+        ? {
+            // No measured diameter, but a spacecraft or radar shape model in km: its volume-equivalent sphere.
+            value: [shaped.radiusKm, shaped.radiusKm, shaped.radiusKm],
+            unit: 'km',
+            label: shaped.label,
+            sources: shaped.sources,
+            method: `Volume-equivalent radius of the ${shaped.what} (no measured diameter in the catalogue), as the photometric reference size; the shape drawn is the model itself.`,
+          }
+        : { value: null, label: 'unknown', sources: [], method: 'No measured diameter: nothing resolved is drawn (a diameter from H is used for navigation only).' };
     const xyzs = [0, 1, 2, 3].map((k) => numOf(P, 'geometricAlbedoXYZS', p, k));
     const colorLabel = labelOf(P, 'colorLabel', p);
-    const albedoXYZS: Sourced<[number, number, number, number]> =
+    let albedoXYZS: Sourced<[number, number, number, number]> =
       xyzs.every(Number.isFinite) && colorLabel !== 'unknown'
         ? { value: xyzs as [number, number, number, number], unit: cols.geometricAlbedoXYZS?.unit, label: colorLabel, sources: sourcesOf(P, 'colorSrc', p), method: cols.geometricAlbedoXYZS?.method }
         : { value: null, label: 'unknown', sources: [], method: 'No reflectance spectrum for this object.' };
+    // A shape model's size without a measured diameter (e.g. Arrokoth): the albedo that makes the disk as bright as
+    // its absolute magnitude H says, p = E(α = 0; 1 AU, 1 AU) / (R/1 AU)² per channel, in the Sun's colour (assumed).
+    const sp = this.tables.photometry;
+    const H = numOf(this.tables.core, 'H', row);
+    const hLabel = labelOf(this.tables.core, 'hLabel', row);
+    if (!albedoXYZS.value && typeof shaped === 'object' && sp && Number.isFinite(H) && hLabel !== 'unknown') {
+      const rAu = shaped.radiusKm / AU_KM;
+      const v = [0, 1, 2, 3].map((k) => (sp.sunIrradianceXYZS1AU.value![k] * 10 ** (-0.4 * (H - sp.vSun.value!))) / (rAu * rAu)) as [number, number, number, number];
+      albedoXYZS = {
+        value: v, unit: 'lux at 1 AU', label: worstOf(['estimated', hLabel, shaped.label]), sources: [...sourcesOf(this.tables.core, 'hSrc', row), ...shaped.sources],
+        method: `From the absolute magnitude H = ${H} (${hLabel}) and the ${shaped.what}'s volume-equivalent radius (${shaped.radiusKm.toPrecision(4)} km): p·E_sun = E(α = 0 at 1 AU) / (R/1 AU)². The colour is assumed to be the Sun's (estimated).`,
+      };
+    }
     const pv = numOf(P, 'albedo', p);
     const pvLabel = labelOf(P, 'albedoLabel', p);
     const albedoV: Sourced<number> =
@@ -569,7 +612,7 @@ export class SmallBodies {
       rotation: { value: null, label: 'unknown', sources: [], method: 'A sphere of uniform albedo shows no rotation; spin data are listed below.' },
       photometry: { geometricAlbedoXYZS: albedoXYZS, geometricAlbedoV: albedoV, phaseFunction: phase },
     };
-    this.pseudo.set(row, b);
+    this.pseudo.set(key, b);
     return b;
   }
 
