@@ -101,8 +101,8 @@ export interface SceneBody {
    * Shape model (docs/rendering-shapes.md): a triangle mesh drawn in place of the triaxial ellipsoid, when its
    * shape and orientation are admitted at the reality level. The renderer fetches the mesh levels itself and draws
    * the ellipsoid until one is resident. Radii, albedo and phase keep their meaning: the disk photometry is
-   * redistributed over the mesh (energy normalization by the mesh's mean projected area). Include its label in
-   * `worstLabel`.
+   * redistributed over the mesh (energy normalization by the mesh's mean projected area). Set only for a body at
+   * least a pixel across (a point is drawn from the disk photometry alone); include its label in `worstLabel`.
    */
   shape?: SceneShape | null;
 }

@@ -88,6 +88,15 @@ export class ShapeLibrary {
     return this.statuses.get(id) ?? null;
   }
 
+  /**
+   * The body is under a pixel across this frame: it is drawn as a point from its disk photometry, so the mesh that
+   * sceneShape found is not drawn and its labels are not the body's (app/snapshot.ts).
+   */
+  asPoint(id: number): void {
+    const s = this.statuses.get(id);
+    if (s?.drawn) this.statuses.set(id, { ...s, drawn: false, text: `${s.text}; not drawn while the body is under a pixel across (a point)` });
+  }
+
   idle(): boolean {
     return this.pending === 0;
   }

@@ -1116,7 +1116,7 @@ export class AppModel {
     const excluded: number[] = [];
     for (const g of world.bodies.values()) {
       if (g.id >= 0 || !g.app) continue;
-      const e = sceneBodyOf(g, level, this.orientations, this.chainLabel(g.id, world.et), this.selectedId, this.extras);
+      const e = sceneBodyOf(g, level, this.orientations, this.chainLabel(g.id, world.et), this.selectedId, this.extras, 1 / ppr);
       if (!e) continue; // position not admitted at this level
       if ('body' in e && e.body.radii) {
         const px = 2 * Math.tan(angularRadius(e.body.radii[0], len(e.body.pos))) * ppr;

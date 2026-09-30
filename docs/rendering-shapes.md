@@ -40,6 +40,8 @@ The shell sets it in `snapshot.ts` `sceneBodyOf` through `ShapeLibrary.sceneShap
 - major bodies are looked up by NAIF id;
 - small bodies by their SBDB SPK-ID. A small body's close-up has a negative id, `sbId(row)`; the name index gives its SPK-ID.
 
+It is set only when the body is at least a pixel across at its mean radius, the size at which `frame.ts` starts drawing a disk. A point is drawn from the disk photometry alone, so a mesh's labels would not describe it: a distant Proteus stays a derived point at Best estimate, not an estimated one. The inspector then says the mesh is not drawn while the body is under a pixel across.
+
 The body keeps its radii, albedo and phase function: they still carry the photometry. The mesh only changes how that light is spread over the image.
 
 The renderer fetches the levels itself. It keeps drawing the ellipsoid until the model's coarsest level and a drawable level are resident, so a view never waits on a mesh.

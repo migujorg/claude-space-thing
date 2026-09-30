@@ -1,8 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { radarSpin, ShapeLibrary } from '../src/app/shapes';
 import type { ShapeIndex, ShapeModelHeader } from '../src/data/schema';
-import type { Mat3, SceneBody } from '../src/render/scene';
+import type { Mat3, SceneBody, SceneCamera } from '../src/render/scene';
 import { bodyToIcrfFromConstants, rotationAngleDeg } from '../src/core/shapeRotation';
+import { buildSnapshot } from '../src/app/snapshot';
+import { IauOrientationSet } from '../src/app/orientation';
+import { computeWorld } from '../src/app/world';
+import { defaultReality } from '../src/app/reality';
+import { body as fakeBody, FakeEphemerisSet, fakeBodyToIcrf, fakeLight, makeApparent } from './app-fakes';
 
 const lod = (tri: number, off: number) => ({
   level: 0, triangles: tri, vertices: tri / 2 + 2, offset: off, bytes: 100, method: 'source' as const, watertight: true, decimationAttempts: 0, volumeRatioToSource: 1,
@@ -110,6 +115,33 @@ describe('ShapeLibrary: which mesh replaces the ellipsoid', () => {
     const p = [s.orient[2], s.orient[5], s.orient[8]];
     const z = -Math.sin(ecl) * p[1] + Math.cos(ecl) * p[2];
     expect(Math.asin(z) * 180 / Math.PI).toBeCloseTo(80, 6);
+  });
+});
+
+describe('snapshot: a mesh only for a body at least a pixel across', () => {
+  it('draws the estimated Larissa mesh up close and keeps the distant point derived', async () => {
+    const l = lib();
+    await loaded(l, [807]);
+    const bodies = [fakeBody(10, 'Sun', 'star', { r: 500 }), fakeBody(807, 'Larissa', 'moon', { r: 97, albedo: 'derived', phase: 'derived' })];
+    const eph = new FakeEphemerisSet({ 10: () => [0, 0, 0], 807: () => [1e8, 0, 0] });
+    const core = { apparentPosition: makeApparent(299792.458), bodyToIcrf: fakeBodyToIcrf };
+    const camera: SceneCamera = { orient: [1, 0, 0, 0, 1, 0, 0, 0, 1], fovY: 1, width: 100, height: 100 };  // 0.011 rad/px
+    const at = (dKm: number) => {
+      const world = computeWorld(0, [1e8 - dKm, 0, 0], bodies, eph, core, 10);
+      const s = buildSnapshot({
+        world, camera, reality: defaultReality(), light: fakeLight(), selectedId: null, orbits: [],
+        orientations: new IauOrientationSet(bodies, fakeBodyToIcrf), extras: { surfaces: new Map(), rings: null, shapes: l },
+      });
+      return s.bodies.find((b) => b.id === 807)!;
+    };
+    const near = at(5000);  // 3.5 px across
+    expect(near.shape?.key).toBe('shapes/807');
+    expect(near.worstLabel).toBe('estimated');
+    expect(l.status(807)!.drawn).toBe(true);
+    const far = at(1e6);  // 0.02 px: a point from the disk photometry
+    expect(far.shape).toBeUndefined();
+    expect(far.worstLabel).toBe('derived');
+    expect(l.status(807)).toMatchObject({ drawn: false, text: expect.stringMatching(/under a pixel across/) });
   });
 });
 
