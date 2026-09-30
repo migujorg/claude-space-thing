@@ -487,6 +487,39 @@ Product: p_V = 0.239 (V(1,0) = -3.354 at R = 6371.0 km), x, y = 0.2944, 0.3004 (
 
 Colour check: EPOXI violet/green (350/550 nm filters) = 1.62 at 57.7°, the product's (whose spectrum below 0.47 µm follows the PSG model's shape) 1.60. Mallama & Hilton's p = 0.434 × the same model curve would predict about twice the EPOXI brightness at 58-77°. The phase curve stays the model shape (estimated): the three EPOXI days scatter ±20-30 % about it, as much as the Earth varies between days.
 
+## M3 follow-up: small-body class colours (`smallbody-class-colors.json`)
+
+Estimated colours and albedos for small bodies without a measured spectrum (docs/sources/smallbody-class-colors.md): Bus-DeMeo class mean spectra (DeMeo et al. 2009) extended to the UV with ECAS colours (Zellner et al. 1985), and NEOWISE p_V of the spectrally classified asteroids. x, y of the reflected sunlight:
+
+| class | x, y | p_V median (16-84 %, n) | UV from (n) |
+|---|---|---|---|
+| A | 0.3565, 0.3613 | 0.339 (0.246-0.460, 16) | A (6) |
+| B | 0.3236, 0.3343 | 0.065 (0.049-0.120, 56) | B (18) |
+| C | 0.3251, 0.3359 | 0.053 (0.042-0.109, 142) | C (35) |
+| Cb | 0.3211, 0.3317 | 0.060 (0.041-0.108, 31) | Cb (8) |
+| Cg | 0.3319, 0.3428 | 0.040 (0.032-0.066, 8) | Cg (1) |
+| Cgh | 0.3296, 0.3421 | 0.078 (0.051-0.129, 20) | Cgh (7) |
+| Ch | 0.3236, 0.3364 | 0.046 (0.036-0.061, 134) | Ch (42) |
+| D | 0.3342, 0.3421 | 0.068 (0.053-0.113, 17) | D (5) |
+| K | 0.3364, 0.3451 | 0.147 (0.107-0.201, 28) | K (13) |
+| L | 0.3422, 0.3491 | 0.168 (0.107-0.242, 42) | L (10) |
+| O | 0.3307, 0.3416 | unknown | all classified (300) |
+| Q | 0.3393, 0.3487 | 0.234 (0.223-0.320, 7) | Q (2) |
+| R | 0.3462, 0.3527 | unknown | R (1) |
+| S | 0.3423, 0.3498 | 0.268 (0.209-0.350, 373) | S (79) |
+| Sa | 0.3498, 0.3554 | 0.276 (0.210-0.378, 29) | Sa (2) |
+| Sq | 0.3408, 0.3489 | 0.278 (0.213-0.370, 44) | Sq (4) |
+| Sr | 0.3426, 0.3511 | 0.271 (0.216-0.363, 24) | S-complex (85) |
+| Sv | 0.3411, 0.3484 | unknown | S-complex (85) |
+| T | 0.3325, 0.3413 | 0.073 (0.051-0.141, 11) | T (2) |
+| V | 0.3463, 0.3528 | 0.392 (0.270-0.460, 33) | V (1) |
+| X | 0.3269, 0.3370 | 0.107 (0.044-0.225, 99) | X (17) |
+| Xc | 0.3287, 0.3386 | 0.068 (0.043-0.208, 60) | Xc (12) |
+| Xe | 0.3344, 0.3420 | 0.208 (0.126-0.710, 26) | Xe (11) |
+| Xk | 0.3291, 0.3386 | 0.093 (0.050-0.201, 47) | Xk (24) |
+
+Population (unclassified): x, y = 0.3354, 0.3442 (SDSS class frequencies), p_V median 0.081 (0.047-0.261, n = 128162). The S complex is redder than the C complex by ~0.017 in x; asteroid colours are all close to the Sun's.
+
 ## Weak data, in order of concern
 
 1. **Earth**: one measured snapshot (one hemisphere, one day) sets the albedo; the phase curve is a model (EPOXI agrees within 4-16 % at 58-77°, 34 % at 86°); 0.64 mag fainter than the magnitude Horizons uses.

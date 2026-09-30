@@ -595,6 +595,7 @@ def _m3_section(w) -> None:
       "ROLO geometry per channel (derived).\n")
     _m3_surges(w)
     _m3_earth(w)
+    _m3_smallbody(w)
 
 
 def _m3_surges(w) -> None:
@@ -691,6 +692,30 @@ def _m3_earth(w) -> None:
       f"spectrum below 0.47 µm follows the PSG model's shape) {ours:.2f}. Mallama & Hilton's p = 0.434 × the same "
       "model curve would predict about twice the EPOXI brightness at 58-77°. The phase curve stays the model shape "
       "(estimated): the three EPOXI days scatter ±20-30 % about it, as much as the Earth varies between days.\n")
+
+
+def _m3_smallbody(w) -> None:
+    from . import smallbody_colors as sc
+    w("## M3 follow-up: small-body class colours (`smallbody-class-colors.json`)\n")
+    out = sc.build(None)
+    w("Estimated colours and albedos for small bodies without a measured spectrum "
+      "(docs/sources/smallbody-class-colors.md): Bus-DeMeo class mean spectra (DeMeo et al. 2009) extended to "
+      "the UV with ECAS colours (Zellner et al. 1985), and NEOWISE p_V of the spectrally classified asteroids. "
+      "x, y of the reflected sunlight:\n")
+    w("| class | x, y | p_V median (16-84 %, n) | UV from (n) |\n|---|---|---|---|")
+    for c, v in out["classes"].items():
+        x = v["colour"]["value"]["xyzsPerUnitPV"]
+        s = sum(x[:3])
+        pv = v["pV"]["value"]
+        pvs = f"{pv['median']:.3f} ({pv['p16']:.3f}-{pv['p84']:.3f}, {pv['n']})" if pv else "unknown"
+        w(f"| {c} | {x[0] / s:.4f}, {x[1] / s:.4f} | {pvs} | {v['colour']['value']['ultravioletFrom']} "
+          f"({v['colour']['value']['ecasN']}) |")
+    pop = out["population"]
+    x = pop["colour"]["value"]["xyzsPerUnitPV"]
+    pv = pop["pV"]["value"]
+    w(f"\nPopulation (unclassified): x, y = {x[0] / sum(x[:3]):.4f}, {x[1] / sum(x[:3]):.4f} (SDSS class "
+      f"frequencies), p_V median {pv['median']:.3f} ({pv['p16']:.3f}-{pv['p84']:.3f}, n = {pv['n']}). The S "
+      "complex is redder than the C complex by ~0.017 in x; asteroid colours are all close to the Sun's.\n")
 
 
 if __name__ == "__main__":
