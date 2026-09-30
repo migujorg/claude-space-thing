@@ -314,7 +314,7 @@ MALLAMA_2017 = Download(
 )
 
 
-def broadband_reconstruction(bands: dict[str, float]) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+def broadband_reconstruction(bands: dict[str, float], wl_min: float = 300.0) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Piecewise-linear p(λ) with one node at each band's solar-weighted effective wavelength (constant beyond the
     end nodes), solved exactly so that every band average ∫pET/∫ET equals the given albedo. Returns
     (λ grid, p, node wavelengths)."""
@@ -322,7 +322,7 @@ def broadband_reconstruction(bands: dict[str, float]) -> tuple[np.ndarray, np.nd
     nodes = np.array([filters.effective_wavelength(k) for k in keys])
     order = np.argsort(nodes)
     keys, nodes = [keys[i] for i in order], nodes[order]
-    wl = np.arange(300.0, 1200.01, 0.5)
+    wl = np.arange(wl_min, 1200.01, 0.5)
 
     def hat(k):
         y = np.zeros_like(nodes)
