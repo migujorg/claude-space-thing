@@ -297,3 +297,131 @@ export interface BinaryRoute {
   sources: string[];
   method: string;
 }
+
+// ------------------------------------------------------------------------------------------ surface maps (§4.4)
+// Written by the pipeline's `surfaces` stage: surfaces/<naifId>/<layer>.json next to the tile pyramid.
+
+/** Provenance of one aspect of a surface layer (its brightness pattern or its colour). */
+export interface SurfaceProvenance {
+  label: Label;
+  sources: string[];
+  method: string;
+  uncertainty?: string;
+}
+
+/** A lat/lon box of a layer that comes from a particular source with its own provenance (e.g. polar caps). */
+export interface SurfaceRegion {
+  latMin: number;
+  latMax: number;
+  /** East longitude, degrees, −180..180. */
+  lonMin: number;
+  lonMax: number;
+  brightness: SurfaceProvenance;
+  color?: SurfaceProvenance;
+  note?: string;
+}
+
+export interface SurfaceLevelInfo {
+  level: number;
+  /** Texels: width = 512·2^level, height = 256·2^level. */
+  width: number;
+  height: number;
+  tilesX: number;
+  tilesY: number;
+  /** Texel size in degrees (same in latitude and longitude). */
+  texelDeg: number;
+}
+
+export type SurfaceLayerKind = 'relative-reflectance' | 'height' | 'photometric-parameters';
+
+export interface SurfaceLayerHeader {
+  body: number;
+  bodyName: string;
+  /** 'albedo' | 'height' | other layer names (e.g. 'hapke'). */
+  layer: string;
+  kind: SurfaceLayerKind;
+  /** Per-channel element type of the raw little-endian tiles. */
+  format: 'float16' | 'float32';
+  /** Channel names, interleaved per texel: ['X','Y','Z','S'] for albedo, ['height'] for height. */
+  channels: string[];
+  bytesPerTexel: number;
+  tileSize: 256;
+  minLevel: number;
+  maxLevel: number;
+  levels: SurfaceLevelInfo[];
+  /** Template relative to the data root, placeholders {level}, {ty}, {tx}. */
+  tilePath: string;
+  /** Path of the "sha256  path" listing of every stored tile. */
+  tileListing: string;
+  /** level (as string) → [tx, ty][] of tiles that are entirely unknown and therefore not stored. */
+  missingTiles: Record<string, [number, number][]>;
+  /** How unknown texels are encoded (float16 layers: all channels exactly 0; float32 layers: NaN). */
+  noData: string;
+  geometry: {
+    projection: 'equirectangular';
+    latitude: 'planetocentric';
+    longitude: 'east';
+    u: string;
+    v: string;
+    texelValue: string;
+  };
+  /** Body-fixed frame of the source maps and how it relates to the app's IAU frame. */
+  frame: {
+    name: string;
+    note?: string;
+    longitudeSystem?: string;
+    sourceLatitude?: string;
+    referenceRadiusKm?: number;
+    referenceEllipsoidKm?: number[];
+  };
+  coverage: {
+    /** Fraction of the sphere's area with data (top level). */
+    areaFraction: number;
+    /** Fraction of the rotation-averaged zero-phase disk weight (cos²φ) with data. */
+    diskWeightFraction: number;
+    regions: SurfaceRegion[];
+  };
+  /**
+   * Provenance of the layer's values, worst over regions: for albedo layers the spatial brightness pattern, for
+   * height and parameter layers the heights / parameters themselves.
+   */
+  brightness: SurfaceProvenance;
+  /** Provenance of the per-texel colour variation (albedo layers only). */
+  color?: SurfaceProvenance;
+  sources: string[];
+  /** Observation epoch; maps of changing surfaces carry start/end (ISO UTC) and how the surface changes. */
+  epoch?: {
+    start?: string;
+    end?: string;
+    mid?: string;
+    observed?: string;
+    changes?: string;
+    perFilter?: Record<string, { start: string; end: string }>;
+  };
+  /**
+   * Albedo layers: how the texels were normalized so that the cos²φ-weighted disk average is 1 per channel
+   * (band disk means before normalization, band → XYZS weights W (texel = W·bandRatios), achieved disk mean).
+   */
+  normalization?: {
+    weighting: string;
+    texelDiskMeanCheck: number[];
+    channelWeights?: { bandsNm: number[]; W: number[][] };
+    [k: string]: unknown;
+  };
+  /** Height layers: 'm' (above the pck00011 reference ellipsoid named in `frame`). */
+  units?: string;
+  /** Parameter layers: model constants and the model definition. */
+  constants?: Record<string, unknown>;
+  diagnostics?: Record<string, unknown>;
+  notes?: string[];
+  generated: string;
+  stats: { tiles: number; bytes: number };
+}
+
+/** surfaces/index.json */
+export interface SurfaceIndex {
+  bodies: Record<string, { name: string; layers: Record<string, string> }>;
+  /** NAIF id → why the body deliberately has no visible-light surface map (e.g. Venus, Titan). */
+  excluded: Record<string, string>;
+  notes?: string;
+}
