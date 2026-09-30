@@ -66,7 +66,11 @@ def parse(text: str) -> list[Row]:
         f = [x.strip() for x in line.split(",")]
         # date, (blank), (blank), APmag, S-brt, ObsLON, ObsLAT, SunLON, SunLAT, r, rdot, delta, deldot, S-T-O
         ap = None if f[3] in ("n.a.", "") else float(f[3])
-        rows.append(Row(f[0], ap, float(f[6]), float(f[8]), float(f[9]), float(f[11]), float(f[13])))
+
+        def num(x):     # sub-observer/sub-solar latitudes are n.a. for bodies without a rotation model
+            return math.nan if x in ("n.a.", "") else float(x)
+
+        rows.append(Row(f[0], ap, num(f[6]), num(f[8]), float(f[9]), float(f[11]), float(f[13])))
     return rows
 
 

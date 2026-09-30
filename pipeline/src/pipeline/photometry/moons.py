@@ -14,6 +14,10 @@ Per body (details in each builder's `method` text and in docs/sources/):
   Triton           Verbiscer et al. (2022) Table 2 p_V and B-V; Buratti et al. (2011) phase coefficient (their Table 3).
   Charon           Buie et al. (2010) HST B and V photometry and Hapke fit.
   Iapetus, Miranda unknown (reasons in the entries).
+  Himalia..Leda,   Irregular satellites with pck00011 radii: V absolute magnitude H and slope G compiled by Grav et al.
+  Phoebe           (2015) -> visual albedo at the pck radius; colour ASSUMED grey; H-G phase curve (estimated).
+Moons with no accessible disk-integrated photometry (the small inner moons of Jupiter, Saturn, Uranus and Neptune,
+Hyperion, Nereid, the other irregulars) are left out: absent from photometry.json means unknown.
 """
 
 from __future__ import annotations
@@ -38,7 +42,10 @@ from .phase import Phase, _tabulate
 
 MOONS = {401: "Phobos", 402: "Deimos", 501: "Io", 502: "Europa", 503: "Ganymede", 504: "Callisto", 601: "Mimas",
          602: "Enceladus", 603: "Tethys", 604: "Dione", 605: "Rhea", 606: "Titan", 608: "Iapetus", 701: "Ariel",
-         702: "Umbriel", 703: "Titania", 704: "Oberon", 705: "Miranda", 801: "Triton", 901: "Charon"}
+         702: "Umbriel", 703: "Titania", 704: "Oberon", 705: "Miranda", 801: "Triton", 901: "Charon",
+         506: "Himalia", 507: "Elara", 508: "Pasiphae", 509: "Sinope", 510: "Lysithea", 511: "Carme", 512: "Ananke",
+         513: "Leda", 609: "Phoebe"}
+IRREGULAR = (506, 507, 508, 509, 510, 511, 512, 513, 609)
 
 
 @dataclass(frozen=True)
@@ -137,6 +144,15 @@ VERBISCER = Download(
           "(Earth-based photometry of Triton 1992-2004).",
     browser_agent=True, sha256="0f3ad0518dd65fbfe8b586c05fc8a3fc5a1008c29ded3c82617a9ed424cf1352",
     retrieved="2026-09-30")
+
+GRAV = _arxiv(
+    "grav-2015", "1505.07820v1",
+    "Absolute magnitudes, slope parameters, diameters and albedos of the irregular satellites (Tables 1, 3)",
+    "Grav, T., Bauer, J. M., Mainzer, A. K., Masiero, J. R., Nugent, C. R., Cutri, R. M., Sonnett, S. & Kramer, E. "
+    "(2015). NEOWISE: observations of the irregular satellites of Jupiter and Saturn. Astrophysical Journal 809, 3. "
+    "DOI:10.1088/0004-637X/809/1/3 (arXiv:1505.07820v1).",
+    "Table 1 H and G (compiled from Luu 1991, Rettig et al. 2001, Grav et al. 2003, Grav & Bauer 2007, Bauer et al. "
+    "2006) and Table 3 NEOWISE diameters and albedos, transcribed to photometry/tables/grav_2015_irregulars.json.")
 
 KARKOSCHKA_1994_TEXT = Download(
     id="karkoschka-1994-text",
@@ -562,6 +578,42 @@ def deimos_spectrum(ctx: BuildContext | None = None) -> AlbedoSpectrum:
         notes={"A_p": t["A_p"]})
 
 
+# ---------------------------------------------------------------------------------------------- irregulars
+def irregular_spectrum(naif: int, ctx: BuildContext | None = None) -> AlbedoSpectrum:
+    s = read_table_json("grav_2015_irregulars.json")["satellites"][str(naif)]
+    r = mean_radius(naif)
+    p_v = 10 ** (-0.4 * (s["H"] - sun_mag("V"))) / (r / AU_KM) ** 2
+    wl = np.array([300.0, 1100.0])
+    return AlbedoSpectrum(
+        naif, wl, np.full(2, p_v), "estimated", [_src(ctx, GRAV), _src(ctx, albedo.WILLMER), _src(ctx, PCK)],
+        f"Brightness only: the V absolute magnitude H = {s['H']} ± {s['H_err']} compiled by Grav et al. (2015, Table 1) "
+        f"with V_sun = {sun_mag('V')} (Willmer 2018) and the pck00011 radius {r:.1f} km gives p = {p_v:.4f}. ASSUMED "
+        "grey: p(λ) is that value at all wavelengths, so the colour is a placeholder (these irregular satellites are "
+        "grey to reddish; their measured broadband colours were not available in machine-usable form). NEOWISE "
+        f"measured D = {s['D_km']} ± {s['D_err']} km and p_V = {s['pV_pct'] / 100:.3f} (Table 3): same brightness, "
+        "different size; the pck radius is kept so that R here matches bodies.json.",
+        f"H ±{s['H_err']} mag; the pck00011 radius is a rough value for this body (NEOWISE diameter {s['D_km']} km); "
+        "rotational lightcurves of ~0.2 mag (Himalia, Phoebe) not represented",
+        p_v_label="derived",
+        p_v_method=f"From H = {s['H']} (Grav et al. 2015 Table 1), V_sun = {sun_mag('V')} and R = {r:.1f} km (pck00011): "
+                   "p_V = 10^(-0.4 (H - V_sun)) / (R/AU)². Referenced to the pck radius, not to the NEOWISE diameter "
+                   f"(for which the same H gives p_V = {s['pV_pct'] / 100:.3f}).",
+        notes={"H": s["H"], "p_V": p_v})
+
+
+def irregular_phase(naif: int, ctx: BuildContext | None = None) -> Phase:
+    t = read_table_json("grav_2015_irregulars.json")
+    s = t["satellites"][str(naif)]
+    amax = t["earth_phase_limit_deg"][str(naif)[0]]
+    how = ("the value the authors ASSUMED for all Jovian irregulars" if s["G_assumed"] else
+           "as compiled from the literature (Table 1)")
+    return Phase(
+        _tab(lambda a: hg_delta_mag(a, s["G"]), amax, step=0.25), "estimated", [_src(ctx, GRAV)],
+        f"IAU H-G phase function (Bowell et al. 1989) with G = {s['G']} ± {s['G_err']}, {how}; it is the function "
+        f"that defines H. Tabulated over 0-{amax}°, the phase range seen from Earth; unknown beyond.",
+        f"G ±{s['G_err']}")
+
+
 # ---------------------------------------------------------------------------------------------- dispatch
 UNKNOWN_SPECTRUM = {
     608: Unknown(
@@ -605,6 +657,8 @@ def spectrum_for(naif: int, ctx: BuildContext | None = None) -> AlbedoSpectrum |
         return phobos_spectrum(ctx)
     if naif == 402:
         return deimos_spectrum(ctx)
+    if naif in IRREGULAR:
+        return irregular_spectrum(naif, ctx)
     raise KeyError(naif)
 
 
@@ -625,4 +679,6 @@ def phase_for(naif: int, ctx: BuildContext | None = None) -> Phase | Unknown:
         return charon_phase(ctx)
     if naif == 401:
         return phobos_phase(ctx)
+    if naif in IRREGULAR:
+        return irregular_phase(naif, ctx)
     raise KeyError(naif)

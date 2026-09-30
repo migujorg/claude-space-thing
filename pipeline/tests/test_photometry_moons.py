@@ -241,3 +241,19 @@ def test_horizons_moon_apmag_is_v10_plus_distance(res):
         for row in horizons.parse(texts[n]):
             implied = (row.apmag - 5 * math.log10(row.r_au * row.delta_au) - h) / row.phase_deg
             assert implied == pytest.approx(beta, abs=0.02), n
+
+
+# ---------------------------------------------------------------------------------------------- irregular satellites
+def test_irregulars_reproduce_their_absolute_magnitudes(res):
+    """Grey reconstructions from H (Grav et al. 2015 Table 1): our V(1,0) equals H exactly and the phase function is
+    the H-G curve with the tabulated G. The NEOWISE albedos at the NEOWISE diameters give nearly the same brightness
+    (they rest on the same H values)."""
+    t = read_table_json("grav_2015_irregulars.json")["satellites"]
+    for n in moons.IRREGULAR:
+        s = t[str(n)]
+        assert res[n].v10 == pytest.approx(s["H"], abs=1e-9)
+        assert res[n].entry["geometricAlbedoXYZS"]["label"] == "estimated"
+        pf = res[n].entry["phaseFunction"]["value"]
+        assert phase.delta_mag(pf, 5.0) == pytest.approx(moons.hg_delta_mag(5.0, s["G"]), abs=1e-4)
+        v10_neowise = albedo.sun_mag("V") - 2.5 * math.log10(s["pV_pct"] / 100 * (s["D_km"] / 2 / AU_KM) ** 2)
+        assert v10_neowise == pytest.approx(s["H"], abs=0.3), n

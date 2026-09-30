@@ -1,0 +1,17 @@
+{
+ "_citation": "Grav, T., Bauer, J. M., Mainzer, A. K., Masiero, J. R., Nugent, C. R., Cutri, R. M., Sonnett, S. & Kramer, E. (2015), 'NEOWISE: observations of the irregular satellites of Jupiter and Saturn', Astrophysical Journal 809, 3. DOI:10.1088/0004-637X/809/1/3. Text source: arXiv:1505.07820v1.",
+ "_transcription": "Table 1 (p. 4): absolute magnitude H (V band, 1 AU from Sun and observer, zero phase, IAU H-G system) and slope parameter G as collected by the authors from Luu (1991), Rettig et al. (2001), Grav et al. (2003), Grav & Bauer (2007) and Bauer et al. (2006). Caption: 'for all the Jovian irregular satellites observed here, the absolute magnitude is found using an assumed value of IAU phase slope parameter G = 0.10 +- 0.15'. Table 3 (p. 7): NEOWISE thermal-model diameter and visible geometric albedo (for Phoebe the first of the two tabulated fits, the one discussed in Sec. 4.12). Only satellites with pck00011 radii are transcribed.",
+ "satellites": {
+  "506": {"name": "Himalia",  "H": 8.00,  "H_err": 0.011, "G": 0.10, "G_err": 0.15,  "G_assumed": true,  "D_km": 139.6, "D_err": 1.7, "pV_pct": 5.7,  "pV_err": 0.8},
+  "507": {"name": "Elara",    "H": 9.45,  "H_err": 0.011, "G": 0.10, "G_err": 0.15,  "G_assumed": true,  "D_km": 79.9,  "D_err": 1.7, "pV_pct": 4.6,  "pV_err": 0.7},
+  "508": {"name": "Pasiphae", "H": 10.21, "H_err": 0.011, "G": 0.10, "G_err": 0.15,  "G_assumed": true,  "D_km": 57.8,  "D_err": 0.8, "pV_pct": 4.4,  "pV_err": 0.6},
+  "509": {"name": "Sinope",   "H": 11.29, "H_err": 0.011, "G": 0.10, "G_err": 0.15,  "G_assumed": true,  "D_km": 35.0,  "D_err": 0.6, "pV_pct": 4.2,  "pV_err": 0.6},
+  "510": {"name": "Lysithea", "H": 11.09, "H_err": 0.021, "G": 0.10, "G_err": 0.15,  "G_assumed": true,  "D_km": 42.2,  "D_err": 0.7, "pV_pct": 3.6,  "pV_err": 0.6},
+  "511": {"name": "Carme",    "H": 10.91, "H_err": 0.011, "G": 0.10, "G_err": 0.15,  "G_assumed": true,  "D_km": 46.7,  "D_err": 0.9, "pV_pct": 3.5,  "pV_err": 0.6},
+  "512": {"name": "Ananke",   "H": 11.84, "H_err": 0.031, "G": 0.10, "G_err": 0.15,  "G_assumed": true,  "D_km": 29.1,  "D_err": 0.6, "pV_pct": 3.8,  "pV_err": 0.6},
+  "513": {"name": "Leda",     "H": 12.63, "H_err": 0.031, "G": 0.10, "G_err": 0.15,  "G_assumed": true,  "D_km": 21.5,  "D_err": 1.7, "pV_pct": 3.4,  "pV_err": 0.6},
+  "609": {"name": "Phoebe",   "H": 6.59,  "H_err": 0.023, "G": 0.02, "G_err": 0.033, "G_assumed": false, "D_km": 202.2, "D_err": 4.5, "pV_pct": 10.0, "pV_err": 0.5}
+ },
+ "earth_phase_limit_deg": {"5": 12.0, "6": 6.5},
+ "earth_phase_limit_note": "Largest phase angles at which Jupiter's and Saturn's satellites are seen from Earth (the H, G fits rest on such data); the tabulated NEOWISE observations were at 11.2-12.2 deg (Jupiter) and 6.0-6.2 deg (Saturn), Table 1."
+}
