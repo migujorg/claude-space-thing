@@ -34,6 +34,12 @@ export interface SceneBody {
   surfaceUnknown: boolean;
   /** Worst provenance label among what is drawn, for the provenance-tint overlay. */
   worstLabel: Label;
+  /**
+   * The phase function is a model or an estimate rather than a measurement (its label is `estimated`; e.g. the
+   * Earth's, a radiative-transfer fit). Where the air of a measured atmosphere alone outshines such a curve, the air
+   * is drawn and the surface under it gets no light (frame.ts); against a measured curve the air is not drawn.
+   */
+  phaseEstimated?: boolean;
   selected: boolean;
 
   // ── M2 additions (all optional; see docs/rendering-m2.md) ─────────────────────────────────────

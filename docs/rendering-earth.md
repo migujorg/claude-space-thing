@@ -442,7 +442,7 @@ cached in 1° phase bins, interpolated linearly, one integral of a few ms per ne
 of the ratio I0/Iatm is left out: it is second order. The shader (`ATM_OVER_PHOTOMETRY`) draws the surface
 term × T_sun·T_view, the skylight term and the path radiance, per bin, folded to XYZS.
 
-Three outcomes, each with a warning where it applies:
+Four outcomes, each with a warning where it applies:
 
 1. **Over the disk and beyond** (Mars and Pluto at most phases).
 2. **Beyond the disk only**, when the renormalised surface would reflect more than it receives (Bond
@@ -450,8 +450,18 @@ Three outcomes, each with a warning where it applies:
    in the model, and the disk keeps its measured photometry. Only the shell is drawn, and K is reduced by
    its share, Ashell/pΦ. This is Venus: atmospheres.json starts the profile at 60 km, inside the deck, with
    τ ≈ 12 above it (the file says to use photometry.json for the reflectance there).
-3. **Not drawn**, when the air alone is brighter than the measured body in any channel
-   (Apath + Ashell ≥ pΦ). This is Mars beyond α ≈ 65–70°, first in Z. (Apath + Ashell)/pΦ for X, Y, Z, S
+3. **Air brighter than a phase curve that is a model (M5).** When the air alone is brighter than pΦ in any
+   channel (Apath + Ashell ≥ pΦ) and the phase function is `estimated` (`SceneBody.phaseEstimated`, set from
+   its label), the curve does not hold there; the measured atmosphere is not the part in doubt. The surface
+   scale is then taken at the nearest lower phase (1° bins) where the curve still exceeds the air and the
+   surface's Bond albedo stays ≤ 1, and the air at α is drawn on top, as beyond the measured range. The
+   warning names that phase. Examples:
+   - Mars, whose curve beyond the ~47° seen from Earth is estimated: at α = 100° the scale is taken at 58°.
+   - The Earth drawn from its disk photometry, whose curve is Mallama & Hilton's fit to a radiative-transfer
+     model: at 175° the scale is taken at 103°, and the sunlit air ring is drawn. Earth mode with its layers
+     does not use this.
+4. **Not drawn**, when the air alone is brighter than a *measured* disk in any channel. Until M5 this was
+   also Mars beyond α ≈ 65–70°, first in Z. (Apath + Ashell)/pΦ for X, Y, Z, S
    is 0.37 / 0.40 / 0.58 / 0.48 at α = 0°, 0.61 / 0.65 / 0.94 / 0.78 at 60° and 0.94 / 1.00 / 1.49 / 1.22
    at 95° (dust at L_s ≈ 0°, scale 0.95). In blue the dust (ω ≈ 0.8) is brighter than the dark surface, so
    the dust's light approaching the whole measured blue light at high phase is plausible, and the overshoot
@@ -469,7 +479,7 @@ extrapolated disk could not contain.
 
 | Body | Components | Outcome in the test views |
 |---|---|---|
-| Mars | CO₂ Rayleigh; dust, double HG, ω 0.71–0.98 | Over the disk to α ≈ 65°: haze softens the terminator and lowers contrast. At α = 36° the surface scale is ×0.62 / 0.57 / 0.18 / 0.41 (X, Y, Z, S; with the δ-scaled view transmittance): the blue of the disk is mostly dust light. Not drawn beyond (3.). |
+| Mars | CO₂ Rayleigh; dust, double HG, ω 0.71–0.98 | Over the disk to α ≈ 65°: haze softens the terminator and lowers contrast. At α = 36° the surface scale is ×0.62 / 0.57 / 0.18 / 0.41 (X, Y, Z, S; with the δ-scaled view transmittance): the blue of the disk is mostly dust light. Beyond, the surface scale of the nearest phase where the estimated curve still exceeds the air (3.). |
 | Venus | the cloud and upper haze above 60 km | Beyond the disk only. Near inferior conjunction (α = 172°) the haze alone outshines the measured p·Φ: not drawn. |
 | Pluto | haze (tabulated Mie phase, ω 0.944) | Over the disk; the haze is 1–2 % of the disk at low phase and forms a ring at high phase. |
 | Titan | N₂ Rayleigh; haze with ω and phase unknown | See below. |

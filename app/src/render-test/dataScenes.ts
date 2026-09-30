@@ -70,7 +70,7 @@ function bodyOf(pr: Products, id: number, pos: Vec3, toSun: Vec3, orient: Mat3, 
     id, name: b.name, pos, toSun, orient, radii: b.radii.value,
     albedoXYZS: albedo, phase, surfaceUnknown: !albedo || !phase,
     worstLabel: [lab(b.radii), lab(ph?.geometricAlbedoXYZS), lab(ph?.phaseFunction)].reduce(worse, 'measured'),
-    selected: false, allowPhaseExtrapolation: true, ...extra,
+    selected: false, allowPhaseExtrapolation: true, phaseEstimated: !!phase && ph.phaseFunction.label === 'estimated', ...extra,
   };
 }
 
