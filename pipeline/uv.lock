@@ -288,6 +288,19 @@ wheels = [
 ]
 
 [[package]]
+name = "jplephem"
+version = "2.24"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
+    { name = "numpy", version = "2.5.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/90/8b/a50514f000fcd0207cd281370b0db66e7712a5db9f96b77a0301a7205f96/jplephem-2.24.tar.gz", hash = "sha256:354fe1adae022264ab46f18afb6af26211277cfd7b3ef90400755fcabe93bc11", size = 45289, upload-time = "2026-01-23T21:03:01.07Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/9d/3f/b9d5739352badc11ca637c8f72525d519458622936bc3313ddefdc7dee96/jplephem-2.24-py3-none-any.whl", hash = "sha256:2de15608a0f13010a71a0a8af8765646d5884402006dac0dd7639d7db13629ac", size = 49585, upload-time = "2026-01-23T21:03:00.079Z" },
+]
+
+[[package]]
 name = "numpy"
 version = "2.4.6"
 source = { registry = "https://pypi.org/simple" }
@@ -462,6 +475,7 @@ dependencies = [
     { name = "astropy" },
     { name = "colour-science" },
     { name = "h5py" },
+    { name = "jplephem" },
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
     { name = "numpy", version = "2.5.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
     { name = "requests" },
@@ -480,6 +494,7 @@ requires-dist = [
     { name = "astropy", specifier = ">=6.0" },
     { name = "colour-science", specifier = ">=0.4.6" },
     { name = "h5py", specifier = ">=3.16.0" },
+    { name = "jplephem", specifier = ">=2.24" },
     { name = "numpy", specifier = ">=2.0" },
     { name = "requests", specifier = ">=2.31" },
     { name = "scipy", specifier = ">=1.17.1" },
