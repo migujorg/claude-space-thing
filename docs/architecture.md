@@ -151,6 +151,16 @@ Disk-integrated photometry (§4.3) is the **absolute** calibration of a body's b
 - **Layers:** `albedo` (above) and optionally `height` (one float32 per texel, meters above the reference ellipsoid, same tiling), used for normals and, later, displacement. Each layer has a `surfaces/<naifId>/<layer>.json` header: levels, source ids, label, epoch, notes, per-channel normalization constants, and the valid lat/lon coverage (gaps are `unknown` and rendered as such, never filled).
 - **Photometric model:** when a body has a measured spatially-resolved photometric model (e.g. Hapke parameters from LROC for the Moon, MESSENGER for Mercury), photometry.json carries it and the renderer uses it instead of Lambert for the *spatial* distribution; the disk-integrated Φ(α) still governs total brightness.
 
+### 4.5 Sky background (M4)
+
+Everything that is not a body is light at the observer, in the same units as the rest of the scene. The renderer's EXT target receives the sky's radiance (XYZS, cd/m² and scotopic cd/m²) wherever no body is in front (render/sky/background.ts, one pass right after the bodies), so the sky takes part in the glare veil, the adaptation measurement and every point source's local background.
+
+- **Stars are points or sky light, never both.** A catalogue star (bright tier, loaded deep-tier record) is a point when its visibility proxy v = max(Y, S/1.408) reaches the point cut E(V_lim + 0.75 mag), V_lim being the renderer's limiting magnitude; every other one is binned (HEALPix order 8) into the background. The light of stars too faint to see individually is therefore still there as glow (it is most of the Milky Way), and nothing is counted twice (app/sky.ts).
+- **Deep tiles** (`stars/deep`) are fetched by view direction with HTTP Range requests, only to the prefix (`prefixCounts`) that holds every record that can reach the cut; the light of the records not loaded comes from `deepRemainder` slice k for a tile loaded to prefix k (slice 0: not loaded; nothing when fully loaded).
+- **Maps:** `faintStars` + `diffuse` + `deepRemainder` + the binned stars are composed on the GPU into a cube map (rgba16float, µcd/m²), each texel a disc average over about one source pixel, with a mip chain; the background pass samples it at the screen pixel's footprint.
+- **Zodiacal light:** the Kelsall cloud with the fitted visible scattering (`sky/zodiacal.json`) is integrated along each line of sight on the GPU, on a grid of one ray per 16 pixels (recomputed when the observer or view changes) and interpolated; its colour is Leinert's f_co at the view direction's solar elongation. The CPU twin (render/sky/zodiacal.ts) is tested against Leinert Table 16.
+- **Reality level:** each layer is drawn only if its label is admitted (all are `estimated`, so Strict shows neither glow nor zodiacal light; stars keep their own labels).
+
 ## 5. The app
 
 ### 5.1 Module layout

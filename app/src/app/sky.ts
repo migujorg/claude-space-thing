@@ -1,0 +1,581 @@
+// SkyController: the M4 sky in the app. It decides which stars are drawn as points and which light goes into the
+// sky background, streams the deep tiles, and feeds the renderer (setStars + the render/sky background hook).
+//
+// The split is by brightness: a catalogue star (bright tier, loaded deep-tier records) is a point when its
+// visibility proxy v = max(Y, S / 1.408) — photopic illuminance, or the scotopic one referred to the 2850 K
+// point the eye model's limiting magnitude is defined for — reaches the point cut Y_cut = E(V_lim + MARGIN_MAG),
+// where V_lim is the renderer's limiting magnitude (stats.limitingMagnitude). Every star below the cut is
+// binned into an order-8 HEALPix map and drawn as extended light: its light is not lost (thousands of such
+// stars are the Milky Way the eye sees), and no star is counted twice. The deep tiles in view are loaded only
+// to the prefix that holds every record that can reach the cut (Y ≥ Y_cut / 3, colour margin for v); the
+// rest of each tile's light comes from the pipeline's deepRemainder slice for that prefix, so the sky is
+// complete whatever is loaded. faintStars (G ≥ 14), the diffuse remainder and the zodiacal light are added on
+// the GPU (render/sky/background.ts). Each layer is drawn only if its label is admitted at the reality level.
+
+import type { Label } from '../data/schema';
+import type { LoadedData } from '../data/load';
+import { DeepTiles, deepTilePattern, gaiaSourceId, httpRangeFetch, loadSkyMaps, type SkyMaps } from '../data/sky';
+import { resolveStarLayout } from '../data/stars';
+import type { RendererStats, SceneSnapshot, StarCatalog } from '../render/scene';
+import { SkyBackground } from '../render/sky/background';
+import { npix, pix2vec, vec2pix } from '../render/sky/healpix';
+import { AU_KM, earthMeanLongitude, icrfToEcliptic, losBrightness, parseZodiacal, zodiXYZS, type ZodiParams } from '../render/sky/zodiacal';
+import { luxFromMagnitude } from '../eye/crumey';
+import { CRUMEY } from '../eye/constants';
+import type { RendererPort, Vec3 } from './ports';
+
+/** Points are loaded down to this many magnitudes below the limiting magnitude. */
+export const MARGIN_MAG = 0.75;
+/** The point cut moves in steps of this size (hysteresis: only when the limit moved by a full step). */
+const CUT_STEP_MAG = 0.25;
+const SP = CRUMEY.spRatioBlackwell;
+const BIN_ORDER = 8;
+/** Deep-tier records held in memory before tiles out of view are evicted. */
+const RECORD_BUDGET = 3_000_000;
+const MAX_INFLIGHT = 4;
+/** Tiles within this angle beyond the view cone are loaded too (turning the view slowly needs no wait). */
+const VIEW_MARGIN_RAD = (5 * Math.PI) / 180;
+
+export interface StarPick {
+  tier: 'bright' | 'deep';
+  /** bright: table row; deep: tile pixel and record. */
+  row: number;
+  pix?: number;
+  dir: Vec3;
+  xyzs: [number, number, number, number];
+}
+
+export interface StarFacts {
+  tier: 'bright' | 'deep';
+  name: string | null;
+  catalog: string;
+  catalogId: string;
+  vLike: number;
+  xyzs: [number, number, number, number];
+  labels: { position: Label; flux: Label; colour: Label };
+  routes: { position: { label: Label; sources: string[]; method: string } | null; light: { label: Label; sources: string[]; method: string } | null };
+  flags: string[];
+  sources: string[];
+}
+
+export interface SkyStats {
+  cutMag: number;
+  pointsBright: number;
+  pointsDeep: number;
+  binnedBright: number;
+  binnedDeep: number;
+  tilesLoaded: number;
+  tilesInView: number;
+  deepRecords: number;
+  deepMiB: number;
+  pendingTiles: number;
+  mapsLoaded: boolean;
+  layers: Record<string, boolean>;
+  rebuilds: number;
+}
+
+type Allowed = (l: Label) => boolean;
+
+export class SkyController {
+  readonly tiles: DeepTiles | null;
+  private maps: SkyMaps | null = null;
+  private mapsPromise: Promise<void> | null = null;
+  private bg: SkyBackground | null = null;
+  private cutMag = NaN;
+  private dirty = true;
+  private lastRebuild = 0;
+  private inflight = new Set<number>();
+  private queue: { pix: number; count: number; prio: number }[] = [];
+  private lastUse = new Map<number, number>();
+  private frame = 0;
+  private waiters: (() => void)[] = [];
+  private allowed: Allowed;
+  private levelKey = '';
+  // bright tier, per reality level: rows admitted, their v and bin pixel
+  private bright: { rows: Int32Array; v: Float32Array; pix: Uint32Array; star: Float32Array } | null = null;
+  private points: { tier: 'bright' | 'deep'; row: number; pix: number }[] = [];
+  private pointData: Float32Array = new Float32Array(0);
+  private lastMap: Float32Array | null = null;
+  private lastLevels: Uint32Array | null = null;
+  private lastSnap: SceneSnapshot | null = null;
+  private zodi: ZodiParams | null = null;
+  /** Debug: upload only one tier's point stars (background unchanged), to count stars drawn per tier. */
+  debugTier: 'all' | 'bright' | 'deep' = 'all';
+  readonly stats: SkyStats = { cutMag: NaN, pointsBright: 0, pointsDeep: 0, binnedBright: 0, binnedDeep: 0, tilesLoaded: 0, tilesInView: 0, deepRecords: 0, deepMiB: 0, pendingTiles: 0, mapsLoaded: false, layers: {}, rebuilds: 0 };
+
+  constructor(
+    private readonly data: LoadedData,
+    private readonly renderer: RendererPort,
+    base: string,
+    allowed: Allowed,
+    fetchFn?: (url: string, init?: RequestInit) => Promise<Response>,
+  ) {
+    this.allowed = allowed;
+    const deep = data.sky?.deep ?? null;
+    this.tiles = deep ? new DeepTiles(deep, base, httpRangeFetch(fetchFn), () => { this.dirty = true; }) : null;
+  }
+
+  /** GPU background counters (composes, zodiacal updates, cube size), for the HUD / scripts. */
+  get backgroundStats(): { composes: number; zodiUpdates: number; cubeSize: number } | null {
+    return this.bg ? { ...this.bg.stats } : null;
+  }
+
+  /** Re-run the split now (e.g. after changing debugTier). */
+  invalidate(): void {
+    this.dirty = true;
+  }
+
+  /** The reality level changed: re-filter everything. */
+  setAllowed(allowed: Allowed): void {
+    this.allowed = allowed;
+    this.bright = null;
+    this.dirty = true;
+  }
+
+  /** Start fetching the map binaries (after the first frame). */
+  startMaps(): Promise<void> {
+    if (this.mapsPromise) return this.mapsPromise;
+    const L = this.data.loader;
+    const maps = this.data.sky?.maps;
+    this.mapsPromise = (async () => {
+      if (L && maps) this.maps = await loadSkyMaps(L, maps);
+      this.createBackground();
+      this.stats.mapsLoaded = true;
+      this.dirty = true;
+    })().catch((e) => { console.error(e); });
+    return this.mapsPromise;
+  }
+
+  private createBackground(): void {
+    const dev = this.renderer.gpuDevice;
+    if (!dev || !this.renderer.setBackground) return;
+    let zodi = null;
+    try {
+      zodi = this.data.sky?.zodiacal ? parseZodiacal(this.data.sky.zodiacal) : null;
+    } catch (e) {
+      console.error(e);
+    }
+    this.zodi = zodi;
+    const order = this.data.sky?.deep?.tiling.order ?? 3;
+    // A software adapter (SwiftShader, headless tests) composes a 256² cube (0.35° texels) instead of 512² (0.18°).
+    const info = (dev as unknown as { adapterInfo?: { vendor?: string; architecture?: string; description?: string } }).adapterInfo;
+    const soft = !!info && /swiftshader|llvmpipe|software/i.test(`${info.vendor} ${info.architecture} ${info.description}`);
+    this.bg = new SkyBackground(dev, { faint: this.maps?.faint ?? null, diffuse: this.maps?.diffuse ?? null, remainder: this.maps?.remainder ?? null, tileOrder: order }, zodi, soft ? 256 : 512);
+    this.renderer.setBackground(this.bg);
+  }
+
+  /** Called once per frame before renderer.render(s). */
+  beforeFrame(s: SceneSnapshot, rs: RendererStats | null): void {
+    this.frame++;
+    this.lastSnap = s;
+    const lim = rs?.limitingMagnitude;
+    const target = Math.round(((Number.isFinite(lim) ? lim! : 6.5) + MARGIN_MAG) / CUT_STEP_MAG) * CUT_STEP_MAG;
+    if (!Number.isFinite(this.cutMag) || Math.abs(target - this.cutMag) >= CUT_STEP_MAG * 2 - 1e-9) {
+      this.cutMag = target;
+      this.dirty = true;
+    }
+    this.stats.cutMag = this.cutMag;
+    this.planTiles(s);
+    this.pump();
+    const now = performance.now();
+    // Rebuild once the tile loads of this view are in (or every 3 s while they stream): each rebuild re-uploads
+    // the points and recomposes the sky cube.
+    if (this.dirty && ((this.inflight.size === 0 && this.queue.length === 0) || now - this.lastRebuild > 3000)) this.rebuild();
+    this.updateLayers();
+    if (this.idleNow()) { const w = this.waiters; this.waiters = []; w.forEach((f) => f()); }
+  }
+
+  /** Resolves when the maps are in, every tile the view needs is loaded, and the result is uploaded. */
+  idle(): Promise<void> {
+    if (this.idleNow()) return Promise.resolve();
+    return new Promise((res) => this.waiters.push(res));
+  }
+
+  private idleNow(): boolean {
+    return (!this.data.sky?.maps || this.stats.mapsLoaded) && this.queue.length === 0 && this.inflight.size === 0 && !this.dirty && !(this.bg?.pending ?? false);
+  }
+
+  private yCut(): number {
+    return luxFromMagnitude(this.cutMag);
+  }
+
+  // ---- tiles --------------------------------------------------------------------------------------
+
+  private planTiles(s: SceneSnapshot): void {
+    const T = this.tiles;
+    if (!T || !Number.isFinite(this.cutMag)) return;
+    const h = T.header;
+    const o = s.camera.orient;
+    const fwd: Vec3 = [-o[2], -o[5], -o[8]];
+    const tanY = Math.tan(s.camera.fovY / 2);
+    const tanX = (tanY * s.camera.width) / Math.max(1, s.camera.height);
+    const half = Math.atan(Math.hypot(tanX, tanY));
+    const yc = this.yCut();
+    const want: { pix: number; count: number; prio: number }[] = [];
+    let inView = 0;
+    h.tiles.forEach((t, pix) => {
+      const c = t.center;
+      const ang = Math.acos(Math.max(-1, Math.min(1, c[0] * fwd[0] + c[1] * fwd[1] + c[2] * fwd[2])));
+      if (ang > half + (t.radiusDeg * Math.PI) / 180 + VIEW_MARGIN_RAD) return;
+      inView++;
+      this.lastUse.set(pix, this.frame);
+      const count = neededCount(t, h.tiling.prefixY, yc);
+      const have = T.get(pix)?.count ?? 0;
+      if (count > have && !this.inflight.has(pix)) want.push({ pix, count, prio: ang });
+    });
+    this.stats.tilesInView = inView;
+    want.sort((a, b) => a.prio - b.prio);
+    this.queue = want;
+  }
+
+  private pump(): void {
+    const T = this.tiles;
+    if (!T) return;
+    while (this.inflight.size < MAX_INFLIGHT && this.queue.length) {
+      const job = this.queue.shift()!;
+      if (this.inflight.has(job.pix)) continue;
+      this.inflight.add(job.pix);
+      T.ensure(job.pix, job.count).then(
+        () => { this.inflight.delete(job.pix); this.evict(); this.dirty = true; },
+        (e) => { this.inflight.delete(job.pix); T.failures++; console.error(e); },
+      );
+    }
+    this.stats.pendingTiles = this.queue.length + this.inflight.size;
+    this.reportTiles();
+  }
+
+  private evict(): void {
+    const T = this.tiles!;
+    if (T.records() <= RECORD_BUDGET) return;
+    const lru = T.loaded().map((t) => t.pix).filter((p) => (this.lastUse.get(p) ?? 0) < this.frame).sort((a, b) => (this.lastUse.get(a) ?? 0) - (this.lastUse.get(b) ?? 0));
+    for (const p of lru) {
+      if (T.records() <= RECORD_BUDGET * 0.8) break;
+      T.evict(p);
+    }
+  }
+
+  private reportTiles(): void {
+    const T = this.tiles;
+    const L = this.data.loader;
+    if (!T || !L) return;
+    const loaded = T.loaded();
+    const changed = loaded.length !== this.stats.tilesLoaded || T.records() !== this.stats.deepRecords;
+    this.stats.tilesLoaded = loaded.length;
+    this.stats.deepRecords = T.records();
+    this.stats.deepMiB = T.fetchedBytes / 2 ** 20;
+    if (changed) {
+      const h = T.header;
+      L.setReport(deepTilePattern(h), {
+        status: 'on-demand',
+        bytes: h.tiles.reduce((a, t) => a + t.count * h.stride, 0),
+        message: `${h.tiles.length} tiles, ${h.count.toLocaleString('en')} stars; ${loaded.length} tiles in memory (${T.records().toLocaleString('en')} stars, brightest-first prefixes), ${this.stats.deepMiB.toFixed(1)} MiB fetched by HTTP range${T.failures ? `, ${T.failures} failed fetches` : ''}. Ranges are size-checked; tile sha256s are not verified (tiles are read in prefixes).`,
+      });
+    }
+  }
+
+  // ---- rebuild: points + binned background --------------------------------------------------------
+
+  private brightRows(): NonNullable<SkyController['bright']> | null {
+    const st = this.data.stars;
+    if (!st) return null;
+    if (this.bright) return this.bright;
+    const t = st.table;
+    const lay = resolveStarLayout(t);
+    const lf = t.labelFields();
+    const rows: number[] = [];
+    for (let i = 0; i < t.count; i++) {
+      let ok = true;
+      for (const f of lf) if (!this.allowed(t.label(f, i))) { ok = false; break; }
+      if (ok) rows.push(i);
+    }
+    const n = rows.length;
+    const star = new Float32Array(n * 7);
+    const v = new Float32Array(n);
+    const pix = new Uint32Array(n);
+    rows.forEach((r, k) => {
+      for (let j = 0; j < 7; j++) star[k * 7 + j] = lay.get[j](r);
+      v[k] = Math.max(star[k * 7 + 4], star[k * 7 + 6] / SP);
+      pix[k] = vec2pix(BIN_ORDER, [star[k * 7], star[k * 7 + 1], star[k * 7 + 2]]);
+    });
+    this.bright = { rows: Int32Array.from(rows), v, pix, star };
+    return this.bright;
+  }
+
+  private rebuild(): void {
+    this.dirty = false;
+    this.lastRebuild = performance.now();
+    this.stats.rebuilds++;
+    // Without the GPU background nothing can show binned light: every star stays a point (the M1 behaviour).
+    const yc = this.bg ? this.yCut() : 0;
+    const nb = npix(BIN_ORDER);
+    const om = (4 * Math.PI) / nb;
+    const map = new Float32Array(nb * 4);
+    const pts: number[] = [];
+    const idx: { tier: 'bright' | 'deep'; row: number; pix: number }[] = [];
+    let pb = 0, pd = 0, bb = 0, bd = 0;
+    const b = this.brightRows();
+    if (b) {
+      for (let k = 0; k < b.v.length; k++) {
+        const s = b.star.subarray(k * 7, k * 7 + 7);
+        if (b.v[k] >= yc) { for (let j = 0; j < 7; j++) pts.push(s[j]); idx.push({ tier: 'bright', row: b.rows[k], pix: -1 }); pb++; }
+        else { const p = b.pix[k] * 4; for (let j = 0; j < 4; j++) map[p + j] += s[3 + j] / om; bb++; }
+      }
+    }
+    const T = this.tiles;
+    const levels = new Uint32Array(T ? T.header.tiles.length : 1);
+    if (T) {
+      const pc = T.header.tiles;
+      for (const tile of T.loaded()) {
+        const meta = pc[tile.pix];
+        levels[tile.pix] = tile.count >= meta.count ? 4 : Math.max(0, meta.prefixCounts.findIndex((c) => c === tile.count) + 1);
+        for (let i = 0; i < tile.count; i++) {
+          if (!this.allowed(T.label(tile.labels[i * 3])) || !this.allowed(T.label(tile.labels[i * 3 + 1])) || !this.allowed(T.label(tile.labels[i * 3 + 2]))) continue;
+          const s = tile.stars.subarray(i * 7, i * 7 + 7);
+          const v = Math.max(s[4], s[6] / SP);
+          if (v >= yc) { for (let j = 0; j < 7; j++) pts.push(s[j]); idx.push({ tier: 'deep', row: i, pix: tile.pix }); pd++; }
+          else { const p = vec2pix(BIN_ORDER, [s[0], s[1], s[2]]) * 4; for (let j = 0; j < 4; j++) map[p + j] += s[3 + j] / om; bd++; }
+        }
+      }
+    }
+    this.pointData = new Float32Array(pts);
+    this.points = idx;
+    let cat: StarCatalog = { count: idx.length, data: this.pointData, stride: 7 };
+    if (this.debugTier !== 'all') {
+      const keep = idx.map((p, k) => (p.tier === this.debugTier ? k : -1)).filter((k) => k >= 0);
+      const sub = new Float32Array(keep.length * 7);
+      keep.forEach((k, j) => sub.set(this.pointData.subarray(k * 7, k * 7 + 7), j * 7));
+      cat = { count: keep.length, data: sub, stride: 7 };
+    }
+    this.renderer.setStars(cat);
+    this.bg?.setDynamic(map, levels);
+    this.lastMap = map;
+    this.lastLevels = levels;
+    Object.assign(this.stats, { pointsBright: pb, pointsDeep: pd, binnedBright: bb, binnedDeep: bd });
+  }
+
+  private updateLayers(): void {
+    const bg = this.bg;
+    const maps = this.data.sky?.maps;
+    if (!bg || !maps) return;
+    const key = String(['faintStars', 'diffuse', 'deepRemainder'].map((k) => this.allowed(maps.layers[k]?.label ?? 'unknown')));
+    const zl = this.data.sky?.zodiacal?.scattering.label ?? 'unknown';
+    const zOn = this.allowed(zl);
+    if (key + zOn === this.levelKey) return;
+    this.levelKey = key + zOn;
+    const on = key.split(',').map((x) => x === 'true');
+    bg.setLayers({ faint: on[0], diffuse: on[1], remainder: on[2] });
+    bg.showZodiacal = zOn;
+    this.stats.layers = { faintStars: on[0], diffuse: on[1], deepRemainder: on[2], zodiacal: zOn };
+  }
+
+  // ---- probes (CPU twin of the GPU background, for verification) ----------------------------------
+
+  /**
+   * Sky-background radiance toward (RA, Dec) in degrees, per component (XYZS, cd/m² and scotopic cd/m²), from the
+   * same inputs the GPU composes (nearest pixel, no disc average) plus the zodiacal light for the current observer.
+   */
+  probe(raDeg: number, decDeg: number, radiusDeg = 0): Record<string, number[]> {
+    const r = (raDeg * Math.PI) / 180, dd = (decDeg * Math.PI) / 180;
+    const d: Vec3 = [Math.cos(dd) * Math.cos(r), Math.cos(dd) * Math.sin(r), Math.sin(dd)];
+    // directions averaged: the centre, or every order-8 pixel centre within radiusDeg (equal-area pixels)
+    const dirs: Vec3[] = [];
+    if (radiusDeg > 0) {
+      const c = Math.cos((radiusDeg * Math.PI) / 180);
+      for (let p = 0; p < npix(BIN_ORDER); p++) { const v = pix2vec(BIN_ORDER, p); if (v[0] * d[0] + v[1] * d[1] + v[2] * d[2] >= c) dirs.push(v); }
+    } else dirs.push(d);
+    const tOrder = this.data.sky?.deep?.tiling.order ?? 3;
+    const avg = (f: (v: Vec3) => number[]) => {
+      const a = [0, 0, 0, 0];
+      for (const v of dirs) { const x = f(v); for (let k = 0; k < 4; k++) a[k] += x[k] / dirs.length; }
+      return a;
+    };
+    const at = (m: Float32Array | null | undefined, order: number, v: Vec3, slice = 0) => {
+      if (!m) return [0, 0, 0, 0];
+      const p = vec2pix(order, v) + slice * npix(order);
+      return [m[p * 4], m[p * 4 + 1], m[p * 4 + 2], m[p * 4 + 3]];
+    };
+    const out: Record<string, number[]> = {};
+    const on = this.stats.layers;
+    out.faintStars = on.faintStars ? avg((v) => at(this.maps?.faint, 8, v)) : [0, 0, 0, 0];
+    out.diffuse = on.diffuse ? avg((v) => at(this.maps?.diffuse, 6, v)) : [0, 0, 0, 0];
+    const lvlOf = (v: Vec3) => (this.lastLevels ? this.lastLevels[vec2pix(tOrder, v)] ?? 0 : 0);
+    const lvl = lvlOf(d);
+    out.deepRemainder = on.deepRemainder ? avg((v) => (lvlOf(v) < 4 ? at(this.maps?.remainder, 7, v, lvlOf(v)) : [0, 0, 0, 0])) : [0, 0, 0, 0];
+    out.binnedStars = avg((v) => at(this.lastMap, BIN_ORDER, v));
+    // points drawn in the cap (their light, as radiance over the cap): not background, but what the eye integrates
+    if (radiusDeg > 0) {
+      const c = Math.cos((radiusDeg * Math.PI) / 180);
+      const om = 2 * Math.PI * (1 - c);
+      const pd = this.pointData;
+      const a = [0, 0, 0, 0];
+      for (let k = 0; k < this.points.length; k++) {
+        if (pd[k * 7] * d[0] + pd[k * 7 + 1] * d[1] + pd[k * 7 + 2] * d[2] >= c) for (let j = 0; j < 4; j++) a[j] += pd[k * 7 + 3 + j] / om;
+      }
+      out.pointStarsInCap = a;
+    }
+    out.zodiacal = [0, 0, 0, 0];
+    const s = this.lastSnap;
+    if (this.zodi && on.zodiacal && s?.sun) {
+      const oI = [-s.sun.pos[0] / AU_KM, -s.sun.pos[1] / AU_KM, -s.sun.pos[2] / AU_KM];
+      const I = losBrightness(this.zodi, icrfToEcliptic(oI), icrfToEcliptic(d), earthMeanLongitude(s.et));
+      const n = Math.hypot(oI[0], oI[1], oI[2]);
+      const eps = Math.acos(Math.max(-1, Math.min(1, -(oI[0] * d[0] + oI[1] * d[1] + oI[2] * d[2]) / n)));
+      out.zodiacal = zodiXYZS(this.zodi, I, eps);
+    }
+    out.background = [0, 1, 2, 3].map((k) => ['faintStars', 'diffuse', 'deepRemainder', 'binnedStars', 'zodiacal'].reduce((a, n) => a + out[n][k], 0));
+    out.level = [lvl];
+    out.pixels = [dirs.length];
+    return out;
+  }
+
+  /** Debug: the GPU cube (hardware cube sampling) against the CPU composition (probe, without zodiacal light). */
+  async checkCube(radec: [number, number][]): Promise<{ ra: number; dec: number; gpuY: number; cpuY: number }[]> {
+    if (!this.bg) return [];
+    const dirs = radec.map(([ra, dec]) => {
+      const r = (ra * Math.PI) / 180, d = (dec * Math.PI) / 180;
+      return [Math.cos(d) * Math.cos(r), Math.cos(d) * Math.sin(r), Math.sin(d)] as [number, number, number];
+    });
+    const g = await this.bg.sampleCube(dirs);
+    return radec.map(([ra, dec], i) => {
+      const p = this.probe(ra, dec, 0.5);
+      return { ra, dec, gpuY: g[i][1], cpuY: p.background[1] - p.zodiacal[1] };
+    });
+  }
+
+  /**
+   * Debug: the GPU zodiacal grid against the CPU twin (render/sky/zodiacal.ts) at a few grid points of the
+   * current view: [{ px, py, gpuY, cpuY }] (cd/m²).
+   */
+  async checkZodiacal(): Promise<{ px: number; py: number; gpuY: number; cpuY: number }[]> {
+    const g = await this.bg?.readZodi();
+    const s = this.lastSnap;
+    if (!g || !s || !s.sun || !this.zodi) return [];
+    const W = s.camera.width, H = s.camera.height;
+    const tanY = Math.tan(s.camera.fovY / 2), tanX = (tanY * W) / H;
+    const o = s.camera.orient;
+    const oI = [-s.sun.pos[0] / AU_KM, -s.sun.pos[1] / AU_KM, -s.sun.pos[2] / AU_KM];
+    const n = Math.hypot(oI[0], oI[1], oI[2]);
+    const out: { px: number; py: number; gpuY: number; cpuY: number }[] = [];
+    for (const [fx, fy] of [[0.5, 0.5], [0.1, 0.1], [0.9, 0.2], [0.3, 0.8], [0.75, 0.6]]) {
+      const i = Math.round(fx * (g.w - 1)), j = Math.round(fy * (g.h - 1));
+      const px = i * 16, py = j * 16;
+      const ndx = (px / W) * 2 - 1, ndy = 1 - (py / H) * 2;
+      const c = [ndx * tanX, ndy * tanY, -1];
+      const d = [o[0] * c[0] + o[1] * c[1] + o[2] * c[2], o[3] * c[0] + o[4] * c[1] + o[5] * c[2], o[6] * c[0] + o[7] * c[1] + o[8] * c[2]];
+      const dn = Math.hypot(d[0], d[1], d[2]);
+      const u = [d[0] / dn, d[1] / dn, d[2] / dn];
+      const I = losBrightness(this.zodi, icrfToEcliptic(oI), icrfToEcliptic(u), earthMeanLongitude(s.et));
+      const eps = Math.acos(Math.max(-1, Math.min(1, -(oI[0] * u[0] + oI[1] * u[1] + oI[2] * u[2]) / n)));
+      out.push({ px, py, gpuY: g.data[(j * g.w + i) * 4 + 1], cpuY: zodiXYZS(this.zodi, I, eps)[1] });
+    }
+    return out;
+  }
+
+  // ---- picking ------------------------------------------------------------------------------------
+
+  /** The brightest point star within tolRad of the ray (ICRF unit vector), or null. */
+  pickStar(ray: Vec3, tolRad: number): StarPick | null {
+    const c = Math.cos(tolRad);
+    let best = -1, bestY = -1;
+    const d = this.pointData;
+    for (let k = 0; k < this.points.length; k++) {
+      const dot = d[k * 7] * ray[0] + d[k * 7 + 1] * ray[1] + d[k * 7 + 2] * ray[2];
+      if (dot >= c && d[k * 7 + 4] > bestY) { best = k; bestY = d[k * 7 + 4]; }
+    }
+    if (best < 0) return null;
+    const p = this.points[best];
+    return { tier: p.tier, row: p.row, pix: p.pix >= 0 ? p.pix : undefined, dir: [d[best * 7], d[best * 7 + 1], d[best * 7 + 2]], xyzs: [d[best * 7 + 3], d[best * 7 + 4], d[best * 7 + 5], d[best * 7 + 6]] };
+  }
+
+  /** What is known about a picked star, with its provenance (bright or deep header routes). */
+  facts(p: StarPick): StarFacts | null {
+    if (p.tier === 'bright') {
+      const st = this.data.stars;
+      if (!st) return null;
+      const t = st.table;
+      const hdr = st.header;
+      const lab = (n: string) => (t.has(n) ? t.label(n, p.row) : 'unknown');
+      const u8 = (n: string) => (t.has(n) ? t.column(n).get(p.row) : -1);
+      const src = hdr.sourceTable?.[u8('src')] ?? '?';
+      const cat = t.has('catId') ? [t.column('catId').get(p.row, 0), t.column('catId').get(p.row, 1)] : [0, 0];
+      const hip = t.has('hip') ? t.column('hip').get(p.row) : 0;
+      const catalogId = /gaia/.test(src) ? `Gaia DR3 ${gaiaSourceId(cat[0], cat[1])}` : /tycho/.test(src) ? `TYC ${cat[0] >>> 17}-${(cat[0] >>> 3) & 0x3fff}-${cat[0] & 7}` : `HIP ${cat[0]}`;
+      const name = this.data.starNames.find((n) => n.index === p.row && !/^HIP \d+$/.test(n.name))?.name ?? null;
+      return this.factsOf('bright', name, src, catalogId + (hip && !/^HIP/.test(catalogId) ? ` · HIP ${hip}` : ''), p.xyzs,
+        { position: lab('labelPos'), flux: lab('labelFlux'), colour: lab('labelColor') }, hdr, u8('posRoute'), u8('lightRoute'), u8('flags'));
+    }
+    const T = this.tiles;
+    const tile = T && p.pix !== undefined ? T.get(p.pix) : undefined;
+    if (!T || !tile) return null;
+    const i = p.row;
+    const hdr = T.header;
+    return this.factsOf('deep', null, hdr.sourceTable?.[0] ?? 'gaia', `Gaia DR3 ${gaiaSourceId(tile.catId[i * 2], tile.catId[i * 2 + 1])}`, p.xyzs,
+      { position: T.label(tile.labels[i * 3]), flux: T.label(tile.labels[i * 3 + 1]), colour: T.label(tile.labels[i * 3 + 2]) }, hdr, tile.routes[i * 2], tile.routes[i * 2 + 1], tile.flags[i]);
+  }
+
+  private factsOf(tier: 'bright' | 'deep', name: string | null, catalog: string, catalogId: string, xyzs: [number, number, number, number],
+    labels: StarFacts['labels'], hdr: { routes?: Record<string, { label: Label; sources: string[]; method: string }[]>; flagBits?: Record<string, string> }, posRoute: number, lightRoute: number, flags: number): StarFacts {
+    const r = hdr.routes ?? {};
+    const pos = r.pos?.[posRoute] ?? null;
+    const light = r.light?.[lightRoute] ?? null;
+    const fl = Object.entries(hdr.flagBits ?? {}).filter(([k]) => /^\d+$/.test(k) && (flags & Number(k)) !== 0).map(([, v]) => v);
+    const sources = [...new Set([...(pos?.sources ?? []), ...(light?.sources ?? [])])];
+    return { tier, name, catalog, catalogId, vLike: -2.5 * Math.log10(xyzs[1] / CRUMEY.zeroPointVLux), xyzs, labels, routes: { position: pos, light }, flags: fl, sources };
+  }
+}
+
+/** Records of a tile needed so that every star with v ≥ yCut is loaded (0 = none). */
+export function neededCount(t: { count: number; yMax: number | null; prefixCounts: number[] }, prefixY: number[], yCut: number): number {
+  if (t.yMax === null || t.count === 0) return 0;
+  // v ≤ 3 Y for the bluest stars (S/Y ≲ 4, S/1.408): records with Y < yCut/3 can never reach the cut.
+  if (t.yMax < yCut / 3) return 0;
+  for (let k = 0; k < prefixY.length; k++) if (prefixY[k] <= yCut / 3) return t.prefixCounts[k];
+  return t.count;
+}
+
+/** One line for the Data panel. */
+export function skySummary(sky: SkyController): string {
+  const s = sky.stats;
+  const layers = Object.entries(s.layers).map(([k, on]) => `${k} ${on ? 'on' : 'off'}`).join(', ');
+  return `points to V≈${Number.isFinite(s.cutMag) ? s.cutMag.toFixed(2) : '—'}: ${s.pointsBright.toLocaleString('en')} bright + ${s.pointsDeep.toLocaleString('en')} deep; ` +
+    `below the cut, as sky light: ${s.binnedBright.toLocaleString('en')} bright + ${s.binnedDeep.toLocaleString('en')} deep; ` +
+    `deep tiles ${s.tilesLoaded} loaded (${s.deepRecords.toLocaleString('en')} stars, ${s.deepMiB.toFixed(1)} MiB fetched), ${s.tilesInView} in view, ${s.pendingTiles} pending` +
+    (s.mapsLoaded ? `; layers: ${layers || 'none'}` : '; sky maps loading');
+}
+
+/**
+ * Click a star: when a click hits no body (pickBody), the brightest point star within 6 px of it opens the star
+ * card. Listens on the canvas itself (ui/input.ts is untouched); a drag is not a click.
+ */
+export function attachStarPicking(
+  canvas: HTMLElement,
+  sky: SkyController,
+  pickBody: (x: number, y: number) => Promise<number | null>,
+  camera: () => { orient: number[]; fovY: number } | null,
+  show: (f: StarFacts | null) => void,
+): () => void {
+  let down: [number, number] | null = null;
+  const onDown = (e: PointerEvent) => { down = [e.clientX, e.clientY]; };
+  const onUp = (e: PointerEvent) => {
+    if (!down || Math.hypot(e.clientX - down[0], e.clientY - down[1]) > 3) { down = null; return; }
+    down = null;
+    const r = canvas.getBoundingClientRect();
+    const x = e.clientX - r.left, y = e.clientY - r.top;
+    void pickBody(x, y).then((id) => {
+      if (id !== null) { show(null); return; }
+      const cam = camera();
+      if (!cam) return;
+      const t = Math.tan(cam.fovY / 2);
+      const cx = ((2 * x) / r.width - 1) * t * (r.width / r.height);
+      const cy = (1 - (2 * y) / r.height) * t;
+      const o = cam.orient;
+      const d = [o[0] * cx + o[1] * cy - o[2], o[3] * cx + o[4] * cy - o[5], o[6] * cx + o[7] * cy - o[8]];
+      const n = Math.hypot(d[0], d[1], d[2]);
+      const p = sky.pickStar([d[0] / n, d[1] / n, d[2] / n], (6 * 2 * t) / r.height);
+      show(p ? sky.facts(p) : null);
+    });
+  };
+  canvas.addEventListener('pointerdown', onDown);
+  canvas.addEventListener('pointerup', onUp);
+  return () => { canvas.removeEventListener('pointerdown', onDown); canvas.removeEventListener('pointerup', onUp); };
+}

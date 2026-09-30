@@ -57,6 +57,7 @@ export class DataPanel {
         h('div', null, d.surfaces.length ? d.surfaces.map((s) => `${m.byId.get(s.bodyId)?.name ?? s.bodyId} ${s.layer} (${s.label}, ${s.tiles.count} tiles)`).join(', ') : 'none'),
         h('div', null, 'Stars'),
         h('div', null, this.starsLine()),
+        m.skyInfo ? [h('div', null, 'Sky (M4)'), h('div', null, m.skyInfo())] : null,
         h('div', null, 'Small bodies'),
         h('div', null, this.smallBodiesLine()),
         h('div', null, 'Sources'),
