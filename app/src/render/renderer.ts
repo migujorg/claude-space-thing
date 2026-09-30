@@ -168,7 +168,7 @@ export class Renderer {
     const d = device;
     const ub = (size: number) => d.createBuffer({ size, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
     this.frameUB = ub(112);
-    this.eyeUB = ub(14 * 16);  // 14 vec4 (struct Eye)
+    this.eyeUB = ub(16 * 16);  // 16 vec4 (struct Eye)
     this.sunUB = ub(11 * 16);
     this.clampUB = ub(16);
     this.reduceUB = ub(16);
@@ -913,6 +913,11 @@ export class Renderer {
     const nSrc = Math.min(prep.glare.length, MAX_GLARE_SOURCES);
     const norm = 1 / (1 - Math.exp(-(SPLAT_EXTENT_SIGMA * SPLAT_EXTENT_SIGMA) / 2));
     const c = eye.cat;
+    // The resolved solar disk is never a fixation (brightness-weighted fixations, eye-model.md §2).
+    const sp = prep.sun;
+    const sunFix = sp && sp.resolvedFraction > 0
+      ? [...sp.n, Math.cos(Math.min(Math.asin(Math.min(1, sp.radiusKm / sp.distKm)) + g.pixelAngle, Math.PI))]
+      : [0, 0, 1, 2];
     d.queue.writeBuffer(this.eyeUB, 0, new Float32Array([
       eye.scene.sigmaCone, eye.scene.sigmaRod, eye.scene.Bcone, eye.scene.BrodAdapt,
       eye.map.gain, eye.map.offset, PATTANAIK.n, eye.exposure,
@@ -926,6 +931,8 @@ export class Renderer {
       extentPx, norm, 0, 0,
       DARK_LIGHT_CONE, DARK_LIGHT_ROD, eye.darkResponse[0], eye.darkResponse[1],
       response(PATTANAIK.coneBleachHalf, eye.display.sigma, eye.display.B), eye.displayRiccoSr, eye.coneSummationSr, this.selfVeilPx,
+      ...sunFix,
+      eye.display.blackRef, s.coneBleaching ? 1 : 0, s.fixation === 'centre' ? 0 : 1, 0,
     ]));
     const src = new Float32Array(MAX_GLARE_SOURCES * 8);
     prep.glare.slice(0, nSrc).forEach((gs, i) => src.set([...gs.dir, gs.minDeg, ...gs.E], i * 8));

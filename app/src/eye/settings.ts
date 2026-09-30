@@ -24,6 +24,13 @@ export interface EyeSettings {
   eyes: 1 | 2;
   /** Diameter of the adaptation field around the fixation point, degrees (Ward Larson et al. 1997 foveal 1°). */
   adaptationFieldDeg: number;
+  /**
+   * Where the eye looks when adapting to the extended image (docs/eye-model.md §2 "Fixations"):
+   * 'brightness' — fixations over the whole frame weighted by the light they bring to the eye (the eye
+   * looks at what is lit, never at the Sun's disk); 'centre' — one fixation at the view centre with the
+   * `adaptationFieldDeg` field (v1). Point sources are always judged at their own fixation.
+   */
+  fixation: 'brightness' | 'centre';
   /** Display peak luminance, cd/m² (sRGB display assumed). */
   displayPeakCdM2: number;
   /** Display black level, cd/m² (0 = ideal emissive display). */
@@ -41,6 +48,7 @@ export const DEFAULT_EYE_SETTINGS: EyeSettings = {
   fieldFactor: CRUMEY.typicalFieldFactor,
   eyes: 2,
   adaptationFieldDeg: 1,
+  fixation: 'brightness',
   displayPeakCdM2: 200,
   displayBlackCdM2: 0,
   coneBleaching: false,

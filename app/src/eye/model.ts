@@ -99,6 +99,41 @@ export interface EyeFrame {
   coneSummationSr: number;
 }
 
+/**
+ * The observer adapted to one luminance: the scene observer's state, appearance map, mesopic state and
+ * point-source thresholds at adaptation (A_cone, A_rod), floored at the zero-background level. Used for
+ * the frame's global state and, per point source, for the local state of the eye looking at that point
+ * (its background; docs/eye-model.md §2 "Fixations").
+ */
+export interface LocalObserver {
+  Acone: number;
+  Arod: number;
+  scene: ObserverState;
+  refs: References;
+  map: AppearanceMap;
+  mesopic: MesopicResult;
+  adaptBw: number;
+  riccoAreaSr: number;
+  thresholdBwLux: number;
+  coneSummationSr: number;
+}
+
+export function localObserver(settings: EyeSettings, display: DisplayObserver, AconeIn: number, ArodIn: number, exposure: number): LocalObserver {
+  const Acone = Math.max(AconeIn, CRUMEY.zeroBackgroundB);
+  const Arod = Math.max(ArodIn, CRUMEY.zeroBackgroundB * CRUMEY.spRatioBlackwell);
+  const mes = mesopic(Acone, Arod);
+  const scene = observerState(Acone, Arod, settings.coneBleaching);
+  const refs = sceneReferences(scene);
+  const map = appearanceMap(refs, display);
+  const adaptBw = blackwellEquivalent(Acone, Arod, mes.m);
+  return {
+    Acone, Arod, scene, refs, map, mesopic: mes, adaptBw,
+    riccoAreaSr: riccoArea(adaptBw),
+    thresholdBwLux: (settings.fieldFactor * pointThreshold(adaptBw)) / exposure,
+    coneSummationSr: riccoArea(Math.max(adaptBw, CIE191.upperCdM2)),
+  };
+}
+
 export function computeEyeFrame(
   settings: EyeSettings,
   state: AdaptationState,
@@ -109,14 +144,10 @@ export function computeEyeFrame(
   const Acone = state.coneCdM2;
   const Arod = state.rodCdM2;
   const pupilMm = pupilDiameterMm(state.cornealFlux, settings.ageYears, settings.eyes);
-  const mes = mesopic(Acone, Arod);
-  const scene = observerState(Acone, Arod, settings.coneBleaching);
-  const refs = sceneReferences(scene);
   const display = displayObserver(settings.displayPeakCdM2, settings.displayBlackCdM2);
-  const map = appearanceMap(refs, display);
   const exposure = mode === 'enhanced' ? Math.pow(2, boostStops) : 1;
-  const adaptBw = blackwellEquivalent(Acone, Arod, mes.m);
-  const thresholdBwLux = (settings.fieldFactor * pointThreshold(adaptBw)) / exposure;
+  const o = localObserver(settings, display, Acone, Arod, exposure);
+  const { scene, refs, map, adaptBw, thresholdBwLux } = o;
   // Limiting magnitude of a 2850 K point: its Blackwell-equivalent illuminance equals its photopic one.
   const limitingMagnitude = magnitudeFromLux(thresholdBwLux);
   const D = degreeOfAdaptation(Acone);
@@ -128,20 +159,20 @@ export function computeEyeFrame(
     Acone,
     Arod,
     pupilMm,
-    mesopic: mes,
+    mesopic: o.mesopic,
     scene,
     refs,
     display,
     map,
     adaptBw,
-    riccoAreaSr: riccoArea(adaptBw),
+    riccoAreaSr: o.riccoAreaSr,
     thresholdBwLux,
     limitingMagnitude,
     coreSigmaDeg: opticalCoreSigmaDeg(pupilMm),
     cat,
     darkResponse: [response(DARK_LIGHT_CONE, scene.sigmaCone, scene.Bcone), rodResponseRaw(scene, DARK_LIGHT_ROD)],
     displayRiccoSr: riccoArea(display.peak / PATTANAIK.refWhiteFactor),
-    coneSummationSr: riccoArea(Math.max(adaptBw, CIE191.upperCdM2)),
+    coneSummationSr: o.coneSummationSr,
   };
 }
 
