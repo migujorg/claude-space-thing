@@ -11,6 +11,7 @@ import { coreState, readCore, readNonGrav } from '../../core/smallbodyCatalog';
 import { AU_KM, C_KM_S } from '../../core/constants';
 import { BinaryTable } from '../../data/binaryTable';
 import { buildStarCatalog } from '../../data/stars';
+import { luxFromMagnitude, magnitudeFromLux } from '../../eye/crumey';
 import { resolveBinPath } from '../../data/load';
 import { SmallBodyField, type SmallBodyTables } from './field';
 import type { Vec3 } from '../../core/vec';
@@ -376,7 +377,7 @@ async function render(): Promise<unknown> {
   const scene = params.get('scene') ?? 'above';
   const level = (params.get('level') ?? 'best') as 'strict' | 'best' | 'complete';
   const allowed = (l: string) => (level === 'strict' ? ['measured', 'derived'] : ['measured', 'derived', 'estimated']).includes(l);
-  renderer.setStars(buildStarCatalog(starT, allowed as never).catalog);
+  if (params.get('nostars') !== '1') renderer.setStars(buildStarCatalog(starT, allowed as never).catalog);
   const field = await SmallBodyField.create(dev, tables, eph, { chunkObjects: Number(params.get('chunk') ?? 262144), backgroundStepsPerUpdate: 0 });
   renderer.setExtraPointSources(field.pointSources);
   const et = field.epochEt + Number(params.get('days') ?? 0) * 86400;
@@ -391,10 +392,11 @@ async function render(): Promise<unknown> {
   let fovDeg: number;
   let mode: 'eye' | 'enhanced';
   if (scene === 'inside') {
-    // In the ecliptic at 2.7 au from the Sun (towards the vernal equinox), looking along the orbital motion.
+    // In the ecliptic at 2.7 au from the Sun (towards the vernal equinox), looking away from the Sun (look=out,
+    // default: the Sun behind the observer) or along the orbital motion (look=along: the Sun 90 deg to the side).
     const r = Number(params.get('rau') ?? 2.7) * AU_KM;
     camH = [r, 0, 0];
-    fwd = norm(cross(north, [1, 0, 0]));
+    fwd = params.get('look') === 'along' ? norm(cross(north, [1, 0, 0])) : [1, 0, 0];
     up = north;
     fovDeg = Number(params.get('fov') ?? 60);
     mode = (params.get('mode2') ?? 'eye') as 'eye' | 'enhanced';
@@ -413,7 +415,7 @@ async function render(): Promise<unknown> {
     camH = [north[0] * h, north[1] * h, north[2] * h];
     fwd = [-north[0], -north[1], -north[2]];
     up = [1, 0, 0];
-    fovDeg = Number(params.get('fov') ?? 110);
+    fovDeg = Number(params.get('fov') ?? 64);
     mode = (params.get('mode2') ?? 'enhanced') as 'eye' | 'enhanced';
   }
   const camSSB: Vec3 = [sunSSB[0] + camH[0], sunSSB[1] + camH[1], sunSSB[2] + camH[2]];
@@ -449,13 +451,17 @@ async function render(): Promise<unknown> {
   let lit = 0, brightest = 0;
   for (let s = 0; s < field.count; s++) { const y = recs[8 * s + 4]; if (y > 0) { lit++; brightest = Math.max(brightest, y); } }
   const s = renderer.stats;
+  // Small bodies above the eye's point threshold (photopic Y vs the limiting magnitude's illuminance).
+  const yLim = s.limitingMagnitude !== undefined ? luxFromMagnitude(s.limitingMagnitude) : Infinity;
+  let above = 0;
+  for (let q = 0; q < field.count; q++) if (recs[8 * q + 4] > yLim) above++;
   const hud = document.getElementById('hud')!;
   hud.textContent = [
-    `REAL DATA · ${field.count.toLocaleString()} small bodies (${lit.toLocaleString()} with admitted brightness, level ${level}) · ${scene === 'inside' ? `inside the main belt, ${params.get('rau') ?? 2.7} au from the Sun, looking along the orbital motion` : scene === 'above-off' ? `${params.get('hau') ?? 3} au above the Sun, looking down at the belt, Sun just outside the frame` : `${params.get('hau') ?? 3} au above the ecliptic, looking down at the Sun`}`,
-    ...(params.get('nosun') === '1' ? ['DIAGNOSTIC: the Sun is left out of the scene (no disk, no glare), so the eye is dark-adapted: not what an observer would see'] : []),
-    `${mode} mode${mode === 'enhanced' ? ` (+${snapshot.view.exposureBoostStops} stops)` : ''} · points drawn ${s.starsDrawn} (stars + small bodies) · limiting V ${s.limitingMagnitude?.toFixed(2)} · ${new Date((946728000 + et - 69.184) * 1000).toISOString().slice(0, 10)}`,
+    `REAL DATA · ${field.count.toLocaleString()} small bodies (${lit.toLocaleString()} with admitted brightness, level ${level}) · ${scene === 'inside' ? `inside the main belt, ${params.get('rau') ?? 2.7} au from the Sun, ${params.get('look') === 'along' ? 'looking along the orbital motion' : 'looking away from the Sun'}` : scene === 'above-off' ? `${params.get('hau') ?? 3} au above the Sun, looking down at the belt, Sun just outside the frame` : `${params.get('hau') ?? 3} au above the ecliptic, looking down at the Sun`}`,
+    ...(params.get('nosun') === '1' ? [`DIAGNOSTIC: the Sun${params.get('nostars') === '1' ? ' and the stars are' : ' is'} left out of the scene (no disk, no glare), so the eye is dark-adapted: not what an observer would see`] : []),
+    `${mode} mode${mode === 'enhanced' ? ` (+${snapshot.view.exposureBoostStops} stops)` : ''} · points drawn ${s.starsDrawn} (stars + small bodies) · limiting V ${s.limitingMagnitude?.toFixed(2)} · small bodies above it: ${above} (brightest V ${magnitudeFromLux(brightest).toFixed(1)}) · ${new Date((946728000 + et - 69.184) * 1000).toISOString().slice(0, 10)}`,
   ].join('\n');
-  const res = { scene, mode, level, lit, brightestY: brightest, pointsDrawn: s.starsDrawn, limitingV: s.limitingMagnitude, adaptation: s.adaptationLuminance };
+  const res = { scene, mode, level, lit, brightestY: brightest, brightestV: magnitudeFromLux(brightest), smallBodiesAboveThreshold: above, pointsDrawn: s.starsDrawn, limitingV: s.limitingMagnitude, adaptation: s.adaptationLuminance, stats: field.stats };
   window.__frameReady = true;
   return res;
 }

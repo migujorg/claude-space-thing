@@ -1,0 +1,12 @@
+{
+ "scene": "inside",
+ "mode": "eye",
+ "level": "best",
+ "lit": 1570333,
+ "brightestY": 1.8454656691702098e-9,
+ "brightestV": 7.846819365266872,
+ "smallBodiesAboveThreshold": 0,
+ "pointsDrawn": 4514,
+ "limitingV": 7.570462651268501,
+ "adaptation": 0.00001
+}
