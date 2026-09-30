@@ -1,0 +1,14 @@
+{
+ "_citation": "Fornasier, S., Wargnier, A., Hasselmann, P. H., Tirsch, D., Matz, K.-D., Doressoundiram, A., Gautier, T. & Barucci, M. A. (2024), 'Phobos photometric properties from Mars Express HRSC observations', Astronomy & Astrophysics 686, A203. DOI:10.1051/0004-6361/202449220. Text source: arXiv:2403.12156v1 (accepted manuscript).",
+ "_transcription": "Table 1 (p. 6, 'Hapke parameters obtained from disk-averaged photometry': geometric albedo per HRSC filter from the disk-integrated Hapke model, with the SRC-derived opposition parameters B0 = 2.283, h = 0.05728 and the roughness 24 deg held fixed) and Table 2 (p. 8, 'Absolute magnitude of Phobos in the four HRSC filters, following the IAU HG system'). Table 1 calls the fourth channel 'IR'; SVO calls it MEX/HRSC.NIR.",
+ "hapke_geometric_albedo": {"Blue": 0.0714, "Green": 0.0816, "Red": 0.0835, "NIR": 0.0877},
+ "hapke_common": {"B0": 2.283, "h": 0.05728, "roughness_deg": 24},
+ "hg": {
+  "Blue":  {"lambda_c_nm": 444, "dlambda_nm": 76, "H": 12.280, "G": 0.024, "H_lin": 12.813, "beta_mag_per_deg": 0.03250, "q": 0.3064},
+  "Green": {"lambda_c_nm": 538, "dlambda_nm": 88, "H": 11.575, "G": 0.029, "H_lin": 12.166, "beta_mag_per_deg": 0.03119, "q": 0.3102},
+  "Red":   {"lambda_c_nm": 748, "dlambda_nm": 48, "H": 10.732, "G": 0.026, "H_lin": 11.417, "beta_mag_per_deg": 0.02964, "q": 0.3078},
+  "NIR":   {"lambda_c_nm": 956, "dlambda_nm": 81, "H": 10.486, "G": 0.025, "H_lin": 11.022, "beta_mag_per_deg": 0.03073, "q": 0.3073}
+ },
+ "hrsc_phase_range_deg": [10, 100],
+ "hrsc_phase_range_source": "Sec. 2.1 (p. 3): the HRSC colour data 'cover mostly the 10-100 deg phase range, with very few observations at small phase angles'; the surge was measured with the SRC panchromatic channel at 0.1-17 deg (relative photometry only)."
+}

@@ -1,23 +1,27 @@
 """Cross-check: predicted apparent V magnitudes vs JPL Horizons APmag.
 
-Horizons' APmag for the planets implements Mallama & Hilton (2018). For each body we compare
+Horizons' APmag for the planets implements Mallama & Hilton (2018); for the moons it uses the V(1,0) printed in
+the object-data header (JPL's compiled satellite physical parameters) plus, where Horizons has one, a phase law.
+For each body we compare
   ours     = V(1,0) implied by our p_V and the pck00011 radius + 5 log10(r Δ) + our phase function Δm(α)
   mh       = our reimplementation of Mallama & Hilton (2018) as coded in Ap_Mag_V3 (checks geometry and equations)
   horizons = APmag
 using Horizons' own r, Δ, phase angle and sub-observer/sub-solar latitudes. Responses are fetched through
 download.fetch (sha256-recorded) and copies are kept as test fixtures under pipeline/tests/fixtures/horizons/.
+Moon requests include the object-data header (OBJ_DATA=YES) so its V(1,0) and geometric albedo can be reported.
 """
 
 from __future__ import annotations
 
 import math
+import re
 import time
 from dataclasses import dataclass
 from pathlib import Path
 
 from ..download import fetch
 from . import albedo, phase
-from .bodies import BodyResult
+from .bodies import BODIES, PLANETS, BodyResult
 from .common import read_table_json
 
 API = "https://ssd.jpl.nasa.gov/api/horizons.api"
@@ -28,7 +32,8 @@ FIXTURES = Path(__file__).resolve().parents[3] / "tests" / "fixtures" / "horizon
 
 
 def _params(naif: int) -> dict:
-    return {"format": "text", "COMMAND": f"'{naif}'", "OBJ_DATA": "'NO'", "MAKE_EPHEM": "'YES'",
+    obj = "'NO'" if naif in PLANETS else "'YES'"
+    return {"format": "text", "COMMAND": f"'{naif}'", "OBJ_DATA": obj, "MAKE_EPHEM": "'YES'",
             "EPHEM_TYPE": "'OBSERVER'", "CENTER": f"'{OBSERVER.get(naif, '500@399')}'",
             "TLIST": "'" + "','".join(f"{jd}" for jd in EPOCHS_JD) + "'", "TLIST_TYPE": "'JD'", "TIME_TYPE": "'UT'",
             "QUANTITIES": f"'{QUANTITIES}'", "CSV_FORMAT": "'YES'", "ANG_FORMAT": "'DEG'"}
@@ -61,8 +66,23 @@ def parse(text: str) -> list[Row]:
         f = [x.strip() for x in line.split(",")]
         # date, (blank), (blank), APmag, S-brt, ObsLON, ObsLAT, SunLON, SunLAT, r, rdot, delta, deldot, S-T-O
         ap = None if f[3] in ("n.a.", "") else float(f[3])
-        rows.append(Row(f[0], ap, float(f[6]), float(f[8]), float(f[9]), float(f[11]), float(f[13])))
+
+        def num(x):     # sub-observer/sub-solar latitudes are n.a. for bodies without a rotation model
+            return math.nan if x in ("n.a.", "") else float(x)
+
+        rows.append(Row(f[0], ap, num(f[6]), num(f[8]), float(f[9]), float(f[11]), float(f[13])))
     return rows
+
+
+def header_values(text: str) -> dict[str, str]:
+    """'V(1,0)' and 'Geometric Albedo' from a Horizons satellite object-data header (strings as printed)."""
+    head = text.split("$$SOE", 1)[0]
+    out = {}
+    for key in ("V(1,0)", "Geometric Albedo", "Geometric albedo"):
+        m = re.search(re.escape(key) + r"[ \t]*=[ \t]*(\S[^\n]*?)(?:[ \t]{2,}|$)", head, flags=re.M)
+        if m:
+            out[key.replace("albedo", "Albedo")] = m.group(1).strip()
+    return out
 
 
 def planetocentric(lat_det_deg: float, naif: int) -> float:
@@ -101,7 +121,10 @@ def charon_mag(row: Row) -> float:
 
 
 def our_prediction(res: BodyResult, row: Row) -> float | None:
-    dm = phase.delta_mag(res.entry["phaseFunction"]["value"], row.phase_deg)
+    pf = res.entry["phaseFunction"]["value"]
+    if res.v10 is None or pf is None:
+        return None
+    dm = phase.delta_mag(pf, row.phase_deg)
     if dm is None:
         return None
     v = res.v10 + 5.0 * math.log10(row.r_au * row.delta_au) + dm
@@ -136,13 +159,12 @@ def compare(results: dict[int, BodyResult], texts: dict[int, str] | None = None)
     return out
 
 
-def save_fixtures() -> None:
+def save_fixtures(ids=None) -> None:
     FIXTURES.mkdir(parents=True, exist_ok=True)
-    for naif in (199, 299, 399, 301, 499, 599, 699, 799, 899, 999):
+    for naif in (ids or BODIES):
         (FIXTURES / fixture_name(naif)).write_text(download(naif).read_text())
         time.sleep(1.0)
 
 
-def load_fixtures() -> dict[int, str]:
-    return {naif: (FIXTURES / fixture_name(naif)).read_text()
-            for naif in (199, 299, 399, 301, 499, 599, 699, 799, 899, 999)}
+def load_fixtures(ids=None) -> dict[int, str]:
+    return {naif: (FIXTURES / fixture_name(naif)).read_text() for naif in (ids or BODIES)}

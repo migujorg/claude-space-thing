@@ -222,8 +222,8 @@ def payne(naif: int, ctx: BuildContext | None = None) -> AlbedoSpectrum:
         399: ("Earth", "This is a radiative-transfer MODEL of one day's disk (2022 June 21, MERRA-2 clouds), "
                        "validated against DSCOVR/EPIC narrow bands; Earth's real disk-integrated albedo varies with "
                        "clouds, season and the hemisphere in view by tens of percent. No machine-readable measured "
-                       "zero-phase visible spectrum of the whole Earth was available to this pipeline (the EPIC L1B "
-                       "archive at NASA ASDC was not reachable).",
+                       "zero-phase visible spectrum of the whole Earth was available to this pipeline (the calibrated "
+                       "DSCOVR/EPIC L1B granules are in NASA Earthdata Cloud and require an Earthdata Login).",
               "tens of percent (cloud cover); in the blue the model lies up to ~10 % above the EPIC points "
               "(Payne et al. Fig. 4)"),
     }[naif]

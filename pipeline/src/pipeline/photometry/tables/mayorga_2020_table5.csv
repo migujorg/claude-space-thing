@@ -1,0 +1,31 @@
+# Transcribed from: Mayorga, L. C., Charbonneau, D. & Thorngren, D. P. (2020), "Reflected light observations of the
+#   Galilean satellites from Cassini: a test bed for cold terrestrial exoplanets", Astronomical Journal 160, 238.
+#   DOI:10.3847/1538-3881/abb8df. Text source: arXiv:2009.05467v1 (accepted manuscript), Table 5 ("The tabulated best
+#   fit polynomial to the phase curves"), checked against the PDF text line by line.
+# f(alpha) = sum_i c_i alpha^i is the disk-integrated reflectivity (flux relative to a Lambert disk of the same size at
+#   the same distance) of the whole moon vs phase angle alpha in DEGREES, fitted to Cassini ISS WAC images of the
+#   2000-2001 Jupiter flyby (CISSCAL 3.9 radiometric calibration, not renormalized to any reference spectrum); the fits
+#   are constrained to f(180) = 0. f(0) = c0 is the geometric albedo in that filter (Sec. 4, Fig. 14).
+# Footnote a: "As tabulated, results differ by 0.05% or less when used at phase angles from 0-130 deg. We do not
+#   recommend the use of these fits beyond the range constrained by the data, particularly at high phase angles beyond
+#   140 where no data exists in any filter."
+# Filters (WAC combinations; Table 2 solar-weighted effective wavelengths): CL1VIO 420 nm, CL1GRN 568 nm,
+#   CL1RED 647 nm, CB2CL2 752 nm, CB3CL2 939 nm. Table 5 has no CB2/CB3 fit for Callisto and no CB3 fit for Europa.
+moon,naif,filter,c0,c1,c2,c3,c4,c5
+Io,501,VIO,0.341370,-1.032816e-2,1.658435e-4,-1.522074e-6,7.031275e-9,-1.249025e-11
+Io,501,GRN,0.621452,-9.898741e-3,4.331736e-5,1.745495e-8,-3.288270e-10,
+Io,501,RED,0.670283,-1.115061e-2,6.532755e-5,-1.729996e-7,2.188850e-10,
+Io,501,CB2,0.756797,-1.420334e-2,1.295066e-4,-9.210421e-7,4.440832e-9,-8.926980e-12
+Io,501,CB3,0.728667,-1.301458e-2,7.742211e-5,-1.533886e-7,,
+Europa,502,VIO,0.553986,-1.080960e-2,9.656056e-5,-4.947030e-7,1.095093e-9,
+Europa,502,GRN,0.660793,-5.872271e-3,-4.206296e-5,5.690905e-7,-1.486222e-9,
+Europa,502,RED,0.671382,-6.617609e-3,-1.859836e-5,3.371624e-7,-8.032902e-10,
+Europa,502,CB2,0.741602,-9.289342e-3,2.538278e-5,1.880550e-8,,
+Ganymede,503,VIO,0.369516,-7.996506e-3,6.939563e-5,-2.883812e-7,4.795368e-10,
+Ganymede,503,GRN,0.428328,-6.268761e-3,2.914738e-5,-5.598929e-8,7.891153e-11,
+Ganymede,503,RED,0.433450,-6.217511e-3,1.625945e-5,1.056810e-7,-4.359767e-10,
+Ganymede,503,CB2,0.451342,-6.327110e-3,2.484652e-5,-2.004107e-8,,
+Ganymede,503,CB3,0.453006,-7.840016e-3,4.510538e-5,-8.628336e-8,,
+Callisto,504,VIO,0.149008,-4.221449e-3,4.780409e-5,-2.453344e-7,4.695099e-10,
+Callisto,504,GRN,0.182535,-4.198701e-3,4.260496e-5,-2.216542e-7,4.628491e-10,
+Callisto,504,RED,0.182846,-3.784310e-3,2.674916e-5,-6.320749e-8,,

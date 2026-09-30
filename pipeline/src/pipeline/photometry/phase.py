@@ -60,6 +60,8 @@ BUIE = Download(
              "Astronomical Journal 139, 1117-1127. DOI:10.1088/0004-6256/139/3/1117.",
     notes="HST ACS/HRC B and V photometry of Pluto and Charon separately, 2002-2003, phase 0.36-1.74 deg. Numbers "
           "transcribed to photometry/tables/buie_2010a_pluto.json (docs/sources/buie-2010a.md).",
+    browser_agent=True,
+    sha256="89b6dd0c8fdf1fb9c0f32db27aa6147054ae12a90fbc105fc32a9e961f162bb5", retrieved="2026-09-30",
 )
 
 MH = read_table_json("mallama_hilton_2018.json")

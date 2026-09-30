@@ -1,0 +1,5 @@
+{
+ "_citation": "Wargnier, A., Simon, P. N., Fornasier, S., El-Bez-Sebastien, N., Tirsch, D., Matz, K.-D., Gautier, T., Doressoundiram, A. & Barucci, M. A. (2025), 'Deimos photometric properties: analysis of 20 years of observations (2004-2024) by the Mars Express HRSC camera', Astronomy & Astrophysics 703, A289. DOI:10.1051/0004-6361/202555564. Text source: arXiv:2509.12804v1 (accepted manuscript).",
+ "_transcription": "Table 4 (p. 9, 'Hapke parameters found from the SRC disk-integrated analysis'), row H2012-1THG (Hapke 2012 with porosity, single-term Henyey-Greenstein; B_sh,0 = 2.14, h_sh = 0.065 and roughness 19.4 deg fixed from the disk-resolved analysis). The SRC is a panchromatic channel; the authors derived its absolute calibration themselves (Sec. 3, with a synthetic filter; I/F factor (1.73 +- 0.13) x 10^7 DN/s, Eq. 13). No per-colour geometric albedos are tabulated.",
+ "src_panchromatic": {"A_p": 0.080, "A_p_err": 0.001, "A_B": 0.018, "q": 0.228, "w": 0.083, "g": -0.274, "B_sh0": 2.14, "h_sh": 0.065, "roughness_deg": 19.4}
+}
