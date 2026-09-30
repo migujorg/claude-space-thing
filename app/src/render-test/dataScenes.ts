@@ -2,7 +2,7 @@
 // photometry.json, light.json, bodies.json, surfaces/) with a synthetic viewing geometry chosen by URL
 // parameters. Nothing here describes the universe: every body number is read from the products.
 //   scene=rings-data&planet=699|799|899&B=obs elevation°&Bsun=Sun elevation°&phase=°&dist=km&fovdeg=°&map=1
-//   scene=moon-data&sunlon=Sun selenographic longitude° (east +: waxing)&lib=lat,lon (observer)&rolo=0|1
+//   scene=moon-data&sunlon=Sun selenographic longitude° (east +: waxing)&lib=lat,lon (observer)&rolo=0|1&hapke=0|1 (per-texel law)
 //   (both: nomodel=1 drops the reflectance model / disk model to show the not-measured treatment)
 
 import { LABEL_ORDER, type Label, type RingsFile, type SurfaceLayerHeader, type Sourced, type LightData, type Body, type PhotometryFile } from '../data/schema';
@@ -117,10 +117,10 @@ export async function buildDataScene(p: URLSearchParams): Promise<TestScene> {
     const I: Mat3 = [1, 0, 0, 0, 1, 0, 0, 0, 1];
     const ph = pr.phot['301'];
     const rolo = !noModel && p.get('rolo') !== '0' && ph.diskReflectanceModel && ph.diskReflectanceModel.label !== 'unknown' ? ph.diskReflectanceModel.value : null;
-    const [albedo, height] = await Promise.all([layer('surfaces/301/albedo.json'), layer('surfaces/301/height.json')]);
+    const [albedo, height, hapke] = await Promise.all([layer('surfaces/301/albedo.json'), layer('surfaces/301/height.json'), layer('surfaces/301/hapke.json')]);
     const body = bodyOf(pr, 301, pos, toSun, I, {
       diskReflectanceModel: rolo,
-      surface: p.get('map') === '0' ? undefined : { albedo, height },
+      surface: p.get('map') === '0' ? undefined : { albedo, height, photometry: p.get('hapke') === '0' ? undefined : hapke },
     });
     if (rolo) body.worstLabel = worse(body.worstLabel, ph.diskReflectanceModel!.label);
     // Disk-integrated illuminance both ways, for the title (Y, lux).
