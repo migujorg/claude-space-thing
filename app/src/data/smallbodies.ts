@@ -4,7 +4,7 @@
 
 import { BinaryTable } from './binaryTable';
 import type { DataLoader, Progress } from './load';
-import type { Manifest, SmallBodyCoreHeader, SmallBodyNamesHeader, SmallBodyPhotometry, SmallBodyPhysicalHeader, SmallBodyTableHeader, SyntheticCellsHeader, SyntheticObjectsHeader } from './schema';
+import type { CometListProduct, CometModelProduct, Manifest, SmallBodyCoreHeader, SmallBodyNamesHeader, SmallBodyPhotometry, SmallBodyPhysicalHeader, SmallBodyTableHeader, SyntheticCellsHeader, SyntheticObjectsHeader } from './schema';
 
 export interface SmallBodyProducts {
   /** Header product paths, from the manifest. */
@@ -17,6 +17,8 @@ export interface SmallBodyProducts {
   photometry?: string | null;
   /** The synthetic layer (pipeline stage synthetic): synthetic/objects.json and cells.json, when built. */
   synthetic?: { objects: string; cells: string | null } | null;
+  /** Comets as they look (pipeline stage comets): comets/model.json and list.json, when built. */
+  cometProducts?: { model: string; list: string | null } | null;
   /** Every smallbodies/* (and synthetic/*) product path (for the report). */
   all: string[];
   /** Bytes of the tables loaded in the background (headers + binaries, names excluded). */
@@ -41,6 +43,7 @@ export function discoverSmallBodies(manifest: Manifest | null): SmallBodyProduct
     names: has('smallbodies/names.json'),
     photometry: has('smallbodies/photometry.json'),
     synthetic: has('synthetic/objects.json') ? { objects: 'synthetic/objects.json', cells: has('synthetic/cells.json') } : null,
+    cometProducts: has('comets/model.json') ? { model: 'comets/model.json', list: has('comets/list.json') } : null,
     all,
     tableBytes,
     namesBytes,
@@ -62,6 +65,9 @@ export interface SmallBodyTables {
   photometry?: SmallBodyPhotometry | null;
   /** The synthetic layer: objects standing in for undiscovered ones (rows count .. count + objects.count - 1). */
   synthetic?: { objects: SmallBodyTable<SyntheticObjectsHeader>; cells: SmallBodyTable<SyntheticCellsHeader> | null } | null;
+  /** Comets as they look (comets/model.json, list.json): the coma/tail model and the notable comets of the window. */
+  cometModel?: CometModelProduct | null;
+  cometList?: CometListProduct | null;
   /** core row → comets / nongrav record (physical rows come from core.physRow). */
   cometRow: Map<number, number>;
   nongravRow: Map<number, number>;
@@ -119,7 +125,10 @@ export async function loadSmallBodyTables(L: SmallBodyLoader, p: SmallBodyProduc
     if (t?.table.has('row')) for (let k = 0; k < t.table.count; k++) m.set(t.table.get('row', k), k);
     return m;
   };
-  return { core, physical, comets, nongrav, namesHeader, photometry, synthetic, cometRow: rowMap(comets), nongravRow: rowMap(nongrav), count: core.table.count };
+  const cp = p.cometProducts;
+  const cometModel = cp ? await L.get(cp.model, (b) => json(b) as CometModelProduct, 'Comets are drawn as points (no coma or tails).') : null;
+  const cometList = cp?.list && cometModel ? await L.get(cp.list, (b) => json(b) as CometListProduct, 'Only a selected comet can be drawn with its coma and tails.') : null;
+  return { core, physical, comets, nongrav, namesHeader, photometry, synthetic, cometModel, cometList, cometRow: rowMap(comets), nongravRow: rowMap(nongrav), count: core.table.count };
 }
 
 const namesHeaders = new WeakMap<object, Promise<SmallBodyNamesHeader | null>>();

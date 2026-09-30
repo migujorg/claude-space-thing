@@ -1,7 +1,7 @@
 // URL parameters for reproducible views:
 //   ?t=<ISO UTC>&target=<NAIF id>&dist=<km from target center>&az=<deg>&el=<deg>
 //    &exists=strict|best|complete&view=eye|enhanced&boost=<stops>&fov=<deg, vertical>
-//    &labels=0|1&orbits=0|1&tint=0|1&ui=0|1&system=jup,sat|all&smallbodies=0|1&shield=0|1
+//    &labels=0|1&orbits=0|1&tint=0|1&ui=0|1&system=jup,sat|all&smallbodies=0|1&sbfield=0|1&shield=0|1
 // target may also be an SBDB SPK-ID (>= 1000000, e.g. 20099942 for 99942 Apophis): a small body, resolved once the
 // small-body catalogue and its name index are in. smallbodies=0 skips loading the small-body catalogue.
 // `system` names moon systems (ephem/sat-<key>) to load before the first frame instead of in the background;
@@ -31,6 +31,9 @@ export interface UrlView {
   system?: string[];
   /** false: do not load the small-body catalogue. */
   smallbodies?: boolean;
+  /** false: load the catalogue (targets, selection, comets) but do not draw it all as GPU points (no field: a view far
+   * from the catalogue epoch then needs no integration of every object; used by the comet regression scene). */
+  sbfield?: boolean;
   /** Sun shield (viewing aid): an occulting disc over the Sun (RealityState.sunShield). */
   shield?: boolean;
 }
@@ -99,6 +102,7 @@ export function parseUrlParams(search: string): { view: UrlView; errors: string[
   view.tint = bool('tint');
   view.ui = bool('ui');
   view.smallbodies = bool('smallbodies');
+  view.sbfield = bool('sbfield');
   view.shield = bool('shield');
   for (const k of Object.keys(view) as (keyof UrlView)[]) if (view[k] === undefined) delete view[k];
   return { view, errors };
@@ -116,7 +120,7 @@ export function formatUrlParams(v: UrlView): string {
   if (v.view !== undefined) p.set('view', v.view);
   if (v.boost !== undefined) p.set('boost', String(v.boost));
   if (v.fov !== undefined) p.set('fov', sig(v.fov, 4));
-  for (const k of ['labels', 'orbits', 'tint', 'ui', 'smallbodies', 'shield'] as const) if (v[k] !== undefined) p.set(k, v[k] ? '1' : '0');
+  for (const k of ['labels', 'orbits', 'tint', 'ui', 'smallbodies', 'sbfield', 'shield'] as const) if (v[k] !== undefined) p.set(k, v[k] ? '1' : '0');
   if (v.system?.length) p.set('system', v.system.join(','));
   // ':' is legal in a query string; keep ISO times readable.
   return p.toString().replace(/%3A/gi, ':');
