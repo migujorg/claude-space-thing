@@ -507,7 +507,9 @@ export interface SurfaceLevelInfo {
  * Earth only (all dated, float16 with NaN = unknown per channel):
  * 'cloud-properties': [cloudFraction, opticalThickness, cloudTopHeightM, iceFraction] of one day's daytime overpass;
  * 'emitted-radiance': [dnbRadiance (nW cm⁻² sr⁻¹), censoredFraction]; `constants.toXYZS` converts to luminance;
- * 'surface-water': [waterFraction, seaIceFraction] (where the renderer adds Fresnel reflection and glint).
+ * 'surface-water': [waterFraction, seaIceFraction] (where the renderer adds Fresnel reflection and glint);
+ * 'surface-wind': [windSpeed10mAscending, windSpeed10mDailyMean, passes] in m/s at 10 m (for the Cox & Munk glint
+ * slope variance; `constants.coxMunk` states the formula and the 12.5 m vs 10 m height note).
  */
 export type SurfaceLayerKind =
   | 'relative-reflectance'
@@ -515,7 +517,8 @@ export type SurfaceLayerKind =
   | 'photometric-parameters'
   | 'cloud-properties'
   | 'emitted-radiance'
-  | 'surface-water';
+  | 'surface-water'
+  | 'surface-wind';
 
 export interface SurfaceLayerHeader {
   body: number;
