@@ -425,14 +425,23 @@ export const SAMPLES_PER_BIN = 4;
  * - scattering = ω·β_ext and absorption = (1 − ω)·β_ext (the schema's definition);
  * - phase functions become per-bin tables at 1° (HG, double HG and tabulated; ∫P dΩ = 1).
  * An atmosphere with a component whose extinction, single-scattering albedo or phase function is unknown is
- * not drawn: partial scattering would misstate its light (e.g. Titan's haze). groundAlbedo: per bin.
+ * not drawn: partial scattering would misstate its light (e.g. Titan's haze); its extent (bottom and top
+ * radii) is returned with the error, for the "not measured" treatment of the limb.
+ * groundAlbedo: the Lambert-equivalent reflectance below, one number or per channel X, Y, Z, S; per channel,
+ * each bin takes the value of the colour-matching channel (X, Y or Z) whose fold weight is largest there, and
+ * values are capped at 1 (energy conservation; 1.5·p exceeds 1 for Venus).
  */
-export function atmosphereModelFromData(d: AtmosphereData, groundAlbedo: number): { model: AtmosphereModel } | { error: string } {
+export function atmosphereModelFromData(d: AtmosphereData, groundAlbedo: number | number[], dustScale = 1): { model: AtmosphereModel } | { error: string; extent?: { bottomKm: number; topKm: number } } {
   const b = d.body;
   if (!b.altitudesKm.length || b.topAltitudeKm === null) return { error: `${b.name}: no atmosphere profile (scale height only) → no atmosphere drawn` };
   for (const c of b.components) {
     for (const [what, s] of [['extinction', c.extinctionPerKm], ['single-scattering albedo', c.singleScatteringAlbedo], ['phase function', c.phaseFunction]] as const) {
-      if (s.label === 'unknown' || s.value === null) return { error: `${b.name}: ${c.id} ${what} not measured → atmosphere not drawn (its scattering cannot be computed)` };
+      if (s.label === 'unknown' || s.value === null) {
+        return {
+          error: `${b.name}: ${c.id} ${what} not measured → its light is not drawn; the atmosphere beyond the disk is marked not measured`,
+          extent: { bottomKm: b.referenceRadiusKm + b.altitudesKm[0], topKm: b.referenceRadiusKm + b.topAltitudeKm },
+        };
+      }
     }
   }
   const n = d.wavelengthsNm.length;
@@ -448,8 +457,16 @@ export function atmosphereModelFromData(d: AtmosphereData, groundAlbedo: number)
   };
   const weights = [0, 1, 2, 3].map((c) => bins.map((bin) => bin.reduce((a, k) => a + W[c][k], 0)));
   const wavelengthsNm = bins.map((bin) => avg((k) => d.wavelengthsNm[k], bin));
+  const ground = bins.map((_, k) => {
+    if (typeof groundAlbedo === 'number') return Math.min(1, Math.max(0, groundAlbedo));
+    let best = 0;
+    for (let c = 1; c < 3; c++) if (weights[c][k] > weights[best][k]) best = c;
+    return Math.min(1, Math.max(0, groundAlbedo[best]));
+  });
   const species: AtmosphereSpecies[] = b.components.map((c) => {
-    const ext = c.extinctionPerKm.value!, ssa = c.singleScatteringAlbedo.value!, ph = c.phaseFunction.value!;
+    const ssa = c.singleScatteringAlbedo.value!, ph = c.phaseFunction.value!;
+    // Mars: the dust component is the annual global mean, scaled to the season (marsDustScale).
+    const ext = c.id === 'dust' && dustScale !== 1 ? c.extinctionPerKm.value!.map((row) => row.map((v) => v * dustScale)) : c.extinctionPerKm.value!;
     const scattering = ext.map((row) => bins.map((bin) => avg((k) => row[k] * ssa[k], bin)));
     const absorption = ext.map((row) => bins.map((bin) => avg((k) => row[k] * (1 - ssa[k]), bin)));
     let phase: AtmosphereSpecies['phase'];
@@ -476,7 +493,7 @@ export function atmosphereModelFromData(d: AtmosphereData, groundAlbedo: number)
       // The profile's first level is the bottom (0 for Earth and Mars; Venus: 60 km, inside its cloud deck).
       bottomKm: b.referenceRadiusKm + b.altitudesKm[0], topKm: b.referenceRadiusKm + b.topAltitudeKm,
       altitudesKm: b.altitudesKm.map((a) => a - b.altitudesKm[0]),
-      wavelengthsNm, weights, species, groundAlbedo: bins.map(() => groundAlbedo),
+      wavelengthsNm, weights, species, groundAlbedo: ground,
     },
   };
 }
@@ -493,15 +510,16 @@ export interface ViewPath {
  * Reference of the shader's atmMarch (shaders-atmosphere.ts) for a sphere: the segment from surface point p
  * (planet-centred, km, at the bottom) toward the observer along unit e, to the top of the atmosphere, marched
  * in n steps from the observer's side; single scattering with the species' phase functions plus the
- * multiple-scattering table; Lc/Tc over the part above altitude hSplit.
+ * multiple-scattering table; Lc/Tc over the part above altitude hSplit. sLen: the segment's length instead
+ * (a chord that misses the body, from its far end p; the shell shader's march).
  */
-export function viewPath(m: AtmosphereModel, tab: AtmosphereTables, G: ProfileGrid, p: V3, e: V3, sunV: V3, hSplit: number, n: number): ViewPath {
+export function viewPath(m: AtmosphereModel, tab: AtmosphereTables, G: ProfileGrid, p: V3, e: V3, sunV: V3, hSplit: number, n: number, sLen?: number): ViewPath {
   const K = tab.K;
   const out: ViewPath = { L: new Float64Array(K), T: new Float64Array(K).fill(1), Lc: new Float64Array(K), Tc: new Float64Array(K).fill(1) };
   const r0 = Math.hypot(p[0], p[1], p[2]);
   const pe = p[0] * e[0] + p[1] * e[1] + p[2] * e[2];
   const Hk = m.topKm - m.bottomKm;
-  const sTop = -pe + Math.sqrt(Math.max(pe * pe + 2 * r0 * Hk + Hk * Hk, 0));
+  const sTop = sLen ?? -pe + Math.sqrt(Math.max(pe * pe + 2 * r0 * Hk + Hk * Hk, 0));
   const d: V3 = [-e[0], -e[1], -e[2]];
   const nu = d[0] * sunV[0] + d[1] * sunV[1] + d[2] * sunV[2];
   const depol = rayleighDepolarization(m);
@@ -537,4 +555,99 @@ export function sunTransmittanceK(m: AtmosphereModel, tab: AtmosphereTables, h: 
 /** Sky irradiance at altitude h, all bins. */
 export function skyIrradianceK(m: AtmosphereModel, tab: AtmosphereTables, h: number, muS: number, out: Float64Array): Float64Array {
   return lutK(tab.skyIrradiance, IRR_W, IRR_H, tab.K, (muS + 1) / 2, h / (m.topKm - m.bottomKm), out);
+}
+
+/**
+ * Mars (atmospheres.json dustColumn): the dust component's scale at ephemeris time et, the global-mean
+ * column dust optical depth of the season's L_s bin over its annual mean, and the bin index (for caching).
+ * L_s comes from the file's solarLongitude table (linear in et). The latitude dependence of the column is
+ * left out: the tables are spherically symmetric. Null when the body has no dust column.
+ */
+export function marsDustScale(body: { dustColumn?: { value: { lsDeg: number[]; globalMean610Pa: number[]; annualGlobalMean610Pa: number } | null } ; solarLongitude?: { value: { et: number[]; lsDeg: number[] } | null } }, et: number): { scale: number; bin: number; ls: number } | null {
+  const dc = body.dustColumn?.value, sl = body.solarLongitude?.value;
+  if (!dc || !sl || !sl.et.length) return null;
+  const t = sl.et;
+  let i = 0;
+  while (i < t.length - 2 && t[i + 1] < et) i++;
+  const f = Math.min(Math.max((et - t[i]) / (t[i + 1] - t[i]), 0), 1);
+  let l0 = sl.lsDeg[i], l1 = sl.lsDeg[i + 1];
+  if (l1 < l0 - 180) l1 += 360;
+  const ls = (((l0 + (l1 - l0) * f) % 360) + 360) % 360;
+  // Nearest bin centre (the table's L_s are bin centres, 5° apart), on the circle.
+  const dist = (a: number) => { const d = Math.abs(a - ls) % 360; return Math.min(d, 360 - d); };
+  let bin = 0;
+  for (let k = 1; k < dc.lsDeg.length; k++) if (dist(dc.lsDeg[k]) < dist(dc.lsDeg[bin])) bin = k;
+  return { scale: dc.globalMean610Pa[bin] / dc.annualGlobalMean610Pa, bin, ls };
+}
+
+/**
+ * The disk integrals that renormalize a body drawn from its disk photometry once its atmosphere is added
+ * (docs/rendering-earth.md §8): over a grid of n × n points on the disk seen from direction o (unit, body →
+ * observer) with the Sun along s, for a surface radiance factor f (per channel, law × map, without air):
+ * - I0: ∫ f (the surface alone),
+ * - Iatm: ∫ Σ_k w[c][k]·(f·T_sun,k + M·E_sky,k)·T_view,k (the surface under the air; skylight as Lambert),
+ * - Apath: ∫ Σ_k w[c][k]·π·L_path,k (the light of the air itself),
+ * - Ashell: the same for the rays that miss the body and cross the air (the limb; the shell shader), over the
+ *   annulus from the bottom to the top radius, marched in `shellSteps` like the shader,
+ * all as disk-integrated reflectances (1/(πR²))∫ρ dA with R the bottom radius. The rendered body keeps the
+ * measured p·Φ when the surface scale K is multiplied by (1 − (Apath + Ashell)/pΦ)·I0/Iatm.
+ */
+export function atmosphereDiskFactors(
+  m: AtmosphereModel, tab: AtmosphereTables, G: ProfileGrid, o: V3, s: V3,
+  f: (n: V3, mu0: number, mu: number) => { rho: number[]; albedo: number[] }, n = 24, shellSteps = 32,
+): { I0: number[]; Iatm: number[]; Apath: number[]; Ashell: number[] } {
+  const K = tab.K;
+  const I0 = [0, 0, 0, 0], Iatm = [0, 0, 0, 0], Apath = [0, 0, 0, 0], Ashell = [0, 0, 0, 0];
+  // Basis of the disk plane.
+  const h: V3 = Math.abs(o[2]) < 0.9 ? [0, 0, 1] : [1, 0, 0];
+  const e1n = [o[1] * h[2] - o[2] * h[1], o[2] * h[0] - o[0] * h[2], o[0] * h[1] - o[1] * h[0]];
+  const l1 = Math.hypot(e1n[0], e1n[1], e1n[2]);
+  const e1: V3 = [e1n[0] / l1, e1n[1] / l1, e1n[2] / l1];
+  const e2: V3 = [o[1] * e1[2] - o[2] * e1[1], o[2] * e1[0] - o[0] * e1[2], o[0] * e1[1] - o[1] * e1[0]];
+  const ts = new Float64Array(K), es = new Float64Array(K);
+  const dA = (2 / n) * (2 / n) / Math.PI;
+  for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) {
+    const x = -1 + (2 * (i + 0.5)) / n, y = -1 + (2 * (j + 0.5)) / n;
+    const r2 = x * x + y * y;
+    if (r2 >= 1) continue;
+    const mu = Math.sqrt(1 - r2);
+    const nv: V3 = [x * e1[0] + y * e2[0] + mu * o[0], x * e1[1] + y * e2[1] + mu * o[1], x * e1[2] + y * e2[2] + mu * o[2]];
+    const mu0 = nv[0] * s[0] + nv[1] * s[1] + nv[2] * s[2];
+    const sf = f(nv, mu0, mu);
+    const p: V3 = [nv[0] * m.bottomKm, nv[1] * m.bottomKm, nv[2] * m.bottomKm];
+    const path = viewPath(m, tab, G, p, o, s, -1, 16);
+    sunTransmittanceK(m, tab, 0, mu0, ts);
+    skyIrradianceK(m, tab, 0, mu0, es);
+    for (let c = 0; c < 4; c++) {
+      let under = 0, air = 0;
+      for (let k = 0; k < K; k++) {
+        under += m.weights[c][k] * (sf.rho[c] * ts[k] + sf.albedo[c] * es[k]) * path.T[k];
+        air += m.weights[c][k] * Math.PI * path.L[k];
+      }
+      I0[c] += sf.rho[c] * dA;
+      Iatm[c] += under * dA;
+      Apath[c] += air * dA;
+    }
+  }
+  // The annulus: impact parameter b = R + H·x² (dense near the bottom, where the air is), n/2 radii × n angles.
+  const R = m.bottomKm, Hk = m.topKm - m.bottomKm, nb = Math.max(8, Math.round(n / 2)), nt = n;
+  for (let i = 0; i < nb; i++) {
+    const x = (i + 0.5) / nb;
+    const b = R + Hk * x * x;
+    const db = (2 * Hk * x) / nb;
+    const half = Math.sqrt(Math.max(m.topKm * m.topKm - b * b, 0));
+    for (let j = 0; j < nt; j++) {
+      const t = (2 * Math.PI * (j + 0.5)) / nt;
+      const c0 = Math.cos(t) * b, c1 = Math.sin(t) * b;
+      const pFar: V3 = [c0 * e1[0] + c1 * e2[0] - half * o[0], c0 * e1[1] + c1 * e2[1] - half * o[1], c0 * e1[2] + c1 * e2[2] - half * o[2]];
+      const path = viewPath(m, tab, G, pFar, o, s, -1, shellSteps, 2 * half);
+      const dA = (b * db * ((2 * Math.PI) / nt)) / (Math.PI * R * R);
+      for (let c = 0; c < 4; c++) {
+        let air = 0;
+        for (let k = 0; k < K; k++) air += m.weights[c][k] * Math.PI * path.L[k];
+        Ashell[c] += air * dA;
+      }
+    }
+  }
+  return { I0, Iatm, Apath, Ashell };
 }

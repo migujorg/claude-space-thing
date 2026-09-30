@@ -90,6 +90,30 @@ describe('scene extras', () => {
     expect(strict.atmosphere).toBeUndefined();
   });
 
+  it('attaches an admitted atmosphere to a body drawn from its photometry (unknown scattering does not withhold it)', () => {
+    const comp = (id: string, ext: string, ssa: string) => ({ id, description: '', extinctionPerKm: { value: [[1]], label: ext, sources: [] }, singleScatteringAlbedo: { value: ssa === 'unknown' ? null : [1], label: ssa, sources: [] }, phaseFunction: { value: ssa === 'unknown' ? null : { kind: 'rayleigh', depolarization: [0] }, label: ssa, sources: [] } });
+    const entry = (components: unknown[]) => ({ name: 'X', naifId: 1, referenceRadiusKm: 1, altitudeReference: '', altitudesKm: [0], topAltitudeKm: 1, topRadiusKm: 2, scaleHeightKm: { value: 1, label: 'derived', sources: [] }, components });
+    const file = (components: unknown[]) => ({ definition: '', wavelengthsNm: [550], channels: ['X', 'Y', 'Z', 'S'], foldWeights: { value: [[1], [1], [1], [1]], label: 'derived', sources: [] }, bodies: { '1': entry(components) } }) as unknown as SceneExtras['atmospheres'];
+    const plain: SceneExtras = { surfaces: new Map(), rings: null, atmospheres: file([comp('dust', 'estimated', 'derived')]) };
+    const sb = scene();
+    applyExtras(sb, body(1), plain, 'best', true);
+    expect(sb.atmosphere?.worstLabel).toBe('estimated');
+    const strict = scene();
+    applyExtras(strict, body(1), plain, 'strict', true);
+    expect(strict.atmosphere).toBeUndefined();
+    const dark = scene();
+    applyExtras(dark, body(1), plain, 'best', false);
+    expect(dark.atmosphere).toBeUndefined();
+    // Titan-like: haze scattering unknown, extinction estimated → passed (the renderer marks it not measured).
+    const titan = scene();
+    applyExtras(titan, body(1), { ...plain, atmospheres: file([comp('rayleigh', 'estimated', 'derived'), comp('haze', 'estimated', 'unknown')]) }, 'best', true);
+    expect(titan.atmosphere?.worstLabel).toBe('estimated');
+    // Unknown extinction → nothing to draw at all.
+    const none = scene();
+    applyExtras(none, body(1), { ...plain, atmospheres: file([comp('haze', 'unknown', 'unknown')]) }, 'best', true);
+    expect(none.atmosphere).toBeUndefined();
+  });
+
   it('ring normal is the body z axis in ICRF', () => {
     expect(poleOf([1, 0, 0.1, 0, 1, 0.2, 0, 0, 0.97])).toEqual([0.1, 0.2, 0.97]);
   });

@@ -8,6 +8,8 @@ import { diskIlluminance, diskModelPPhi, evalPhase, extrapolatePhase, LAMBERT_AL
 import { LAMBERT_LAW, LAW, lawDiskIntegral, lawRadf, mapDiskIntegral, NormalizationCache, photometricFrame, resolveLaw, TEXEL_LAW, type ResolvedLaw, type ZonalProfile } from './spatial';
 import { sampleLevel0, type Level0Map } from './surface';
 import { NIGHT_LAMP } from './earth';
+import { atmosphereDiskFactors, marsDustScale } from './atmosphere';
+import type { AtmosphereBinding } from './atmosphereGpu';
 import { texelRadf, type TexelHapke } from './texelLaw';
 import { planetshineSources, type PlanetshineSource } from './planetshine';
 import { prepareRings, type RingPrep } from './rings';
@@ -66,11 +68,18 @@ export interface ResolvedBody {
   /** Earth's layers (earth.ts): the albedo map's absoluteDiskMean and the night lights' luminance factors. */
   earth: EarthBinding | null;
   /**
-   * The body's atmosphere (drawn with Earth's layers only, for now): the data, the Lambert-equivalent
-   * reflectance below it for the multiple-scattering table (1.5·p_Y from the disk photometry, as
+   * The body's atmosphere (docs/rendering-earth.md §4, §8): the data, the Lambert-equivalent reflectance
+   * below it per channel for the multiple-scattering table (1.5·p from the disk photometry, as
    * planetshine.ts), the shell quad's half-extent (tan units) and the Sun's angular radius at the body.
+   * onDisk: drawn over the disk too (else beyond the disk only: an atmosphere whose lower boundary is hidden
+   * (Venus), or one whose scattering is not measured (Titan: binding.unmeasured, hatched)).
    */
-  atmosphere: { data: SceneAtmosphere; groundAlbedo: number; shellBeta: number; sunAngularRadius: number } | null;
+  atmosphere: {
+    data: SceneAtmosphere; groundAlbedo: number[]; shellBeta: number; sunAngularRadius: number; onDisk: boolean;
+    /** Solar illuminance at the body over π (cd/m² per unit radiance factor), times the resolved fraction. */
+    sunE: XYZS;
+    binding: AtmosphereBinding;
+  } | null;
 }
 
 export interface EarthBinding {
@@ -186,9 +195,29 @@ const angle = (a: V3, b: V3) => 2 * Math.asin(Math.min(1, 0.5 * len(sub(normaliz
  * @param pointFootprintSr equivalent solid angle of a point splat's footprint (for the Ricco weight)
  */
 const normCache = new NormalizationCache();
+/** Disk renormalization factors under an atmosphere (I0, Iatm, Apath, Ashell per channel), by phase bin. */
+const ATM_FACTOR_BIN_DEG = 1;
+const atmCache = new Map<string, number[]>();
 const zonalIds = new WeakMap<ZonalProfile, number>();
 let nextZonalId = 1;
 const lawKey = (l: ResolvedLaw) => `${l.kind}:${l.p}:${l.b}:${l.c}:${l.bs0}:${l.hs}:${l.bc0}:${l.hc}:${l.thetaBar}:${l.K}:${l.hFn}`;
+
+/**
+ * Bond albedo per unit scale of a law: q·I(0) = 2∫₀^π I(α) sin α dα (1 for Lambert). With the surface scale
+ * p·Φ(α)/I(α) it is the surface's Bond albedo, which energy conservation keeps ≤ 1.
+ */
+function lawBond(law: ResolvedLaw): XYZS {
+  return normCache.get(`bond|${lawKey(law)}`, () => {
+    const n = 64;
+    const out: XYZS = [0, 0, 0, 0];
+    for (let i = 0; i < n; i++) {
+      const a = (Math.PI * (i + 0.5)) / n;
+      const I = lawIntegral(law, a);
+      for (let c = 0; c < 4; c++) out[c] += (2 * I[c] * Math.sin(a) * Math.PI) / n;
+    }
+    return out;
+  });
+}
 
 /** Disk integral I(α) of a law, optionally weighted by a map's zonal mean (cached; exact for plain Lambert). */
 function lawIntegral(law: ResolvedLaw, alpha: number, zonal?: { profile: ZonalProfile; pole: V3 }): XYZS {
@@ -210,6 +239,11 @@ const worse = (a: Label, b: Label): Label => (LABEL_ORDER.indexOf(a) >= LABEL_OR
 export interface PrepareOptions {
   /** Surface-map bindings per body (renderer.ts); absent → no maps. */
   surfaces?: (b: SceneBody) => SurfaceBinding | null;
+  /**
+   * A body's atmosphere once its tables are ready (atmosphereGpu.ts), else null: groundAlbedo for the
+   * multiple-scattering table, dust the Mars season scaling.
+   */
+  atmospheres?: (b: SceneBody, groundAlbedo: number[], dust: { scale: number; bin: number } | null) => AtmosphereBinding | { error: string; unmeasured?: AtmosphereBinding } | null;
 }
 
 export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, pointFootprintSr: number, opts: PrepareOptions = {}): PreparedFrame {
@@ -366,6 +400,8 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
     if (!earth && surface && (surface.clouds || surface.water || surface.night || surface.wind)) surface = { ...surface, clouds: undefined, water: undefined, night: undefined, wind: undefined };
     // Disk-integrated p·Φ per channel: from the body's disk reflectance model (the Moon: ROLO) inside its
     // domain, else albedoXYZS·Φ(α) (architecture §4.3).
+    // The measured phase range's edge when α lies beyond it (the photometry is then the law's extrapolation).
+    let phaseEdge: number | null = null;
     let pPhi: XYZS | null = b.surfaceUnknown ? null
       : diskModelPPhi(b.diskReflectanceModel, b.orient, R, b.toSun, scale(b.pos, -1), irr);
     // Photometry measured at this very geometry (ROLO): normalize the maps at this geometry, not on a
@@ -386,6 +422,7 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
           : null;
         if (x) {
           phi = x.phi;
+          if (range) phaseEdge = ((alpha * 180) / Math.PI > range[1] ? range[1] : range[0]) * (Math.PI / 180);
           label = worse(label, 'estimated');
           warnings.push(`${b.name}: phase extrapolated beyond measured range (${range?.[0]}–${range?.[1]}°) with the spatial law → estimated`);
         } else {
@@ -394,6 +431,7 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
       }
       if (phi !== null) pPhi = b.albedoXYZS.map((a) => a * phi!) as XYZS;
     }
+    let Idisk: XYZS | null = null;
     if (pPhi) {
       E = diskIlluminance(pPhi, dAU, R, D, 1);
       // Normalization: the disk integral of law × map equals p·Φ(α). A zonal map with a constant law:
@@ -432,6 +470,7 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
       if (I[1] > 0) {
         K = [0, 1, 2, 3].map((k) => (I[k] > 0 ? pPhi![k] / (Math.PI * dAU * dAU * I[k]) : 0)) as XYZS;
         lit = true;
+        Idisk = I;
       }
     }
     if (earth && irr) {
@@ -439,6 +478,79 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
       K = irr.map((v) => v / (Math.PI * dAU * dAU)) as XYZS;
       law = LAMBERT_LAW;
       lit = true;
+    }
+    // The atmosphere (docs/rendering-earth.md §4, §8): Earth with its layers; other bodies from their disk
+    // photometry, with the surface scale renormalized so that the body (surface under the air, the air over
+    // the disk and beyond its edge) still reflects the measured p·Φ.
+    let atmB: AtmosphereBinding | null = null;
+    let onDisk = false;
+    const groundAlbedo = b.albedoXYZS && irr ? [0, 1, 2, 3].map((c) => LAMBERT_ALBEDO_PER_GEOMETRIC_ALBEDO * (b.albedoXYZS![c] / irr[c])) : [0, 0, 0, 0];
+    if (b.atmosphere && b.orient && irr && lit && opts.atmospheres && (earth || pPhi)) {
+      const dust = b.atmosphere.body.dustColumn ? marsDustScale(b.atmosphere.body, snap.et) : null;
+      const got = opts.atmospheres(b, groundAlbedo, dust ? { scale: dust.scale, bin: dust.bin } : null);
+      if (got && 'error' in got) {
+        warnings.push(got.error);
+        atmB = got.unmeasured ?? null;
+      } else atmB = got;
+      if (atmB && earth) onDisk = !atmB.unmeasured;
+      if (atmB && !earth && pPhi && Idisk && !atmB.unmeasured && atmB.tables && atmB.grid) {
+        // Beyond the measured phase range the photometry is the spatial law's extrapolation: a surface model
+        // that knows nothing of the air (e.g. Pluto's haze at high phase). The surface scale is then found at
+        // the range's edge, with the measured p·Φ there, and the air's light at α is added on top.
+        let aRef = alpha;
+        let pRef = pPhi.map((v, k) => v / irr[k]);
+        let lawRef = law;
+        if (phaseEdge !== null && b.phase && b.albedoXYZS) {
+          const pe = evalPhase(b.phase, phaseEdge);
+          if (pe.ok) {
+            aRef = phaseEdge;
+            pRef = b.albedoXYZS.map((v, k) => (v * pe.phi) / irr[k]);
+            const lr2 = resolveLaw(b.spatialModel, phaseEdge);
+            lawRef = 'error' in lr2 ? LAMBERT_LAW : lr2.law;
+          }
+        }
+        // Factors by phase angle only (a uniform surface: the map's share in the ratio I0/Iatm is second order),
+        // in 1° bins, linear between bins: a new bin costs one integral (a few ms), whatever the rotation.
+        const binning = (Math.PI / 180) * ATM_FACTOR_BIN_DEG;
+        const i0 = Math.min(Math.floor(aRef / binning), Math.round(Math.PI / binning) - 1);
+        const at = (i: number): number[] => {
+          const a = i * binning;
+          const lr3 = resolveLaw(b.spatialModel, a);
+          const lawA = 'error' in lr3 ? LAMBERT_LAW : lr3.law;
+          const key = `atm|${atmB!.key}|${lawKey(lawA)}|${i}`;
+          let f = atmCache.get(key);
+          if (!f) {
+            const r = atmosphereDiskFactors(atmB!.model, atmB!.tables!, atmB!.grid!, [Math.sin(a), 0, Math.cos(a)], [0, 0, 1], (_nv, mu0, mu) => {
+              const rr = mu0 > 0 ? lawRadf(lawA, mu0, mu, a) : 0;
+              return { rho: [rr, rr, rr, rr], albedo: [1, 1, 1, 1] };
+            }, 16);
+            f = [...r.I0, ...r.Iatm, ...r.Apath, ...r.Ashell];
+            if (atmCache.size > 4096) atmCache.clear();
+            atmCache.set(key, f);
+          }
+          return f;
+        };
+        const f0 = at(i0), f1 = at(i0 + 1);
+        const tt = Math.min(Math.max(aRef / binning - i0, 0), 1);
+        const fct = f0.map((v, k) => v + (f1[k] - v) * tt);
+        const air = [0, 1, 2, 3].map((c) => fct[8 + c] + fct[12 + c]);
+        const scaleK = [0, 1, 2, 3].map((c) => ((1 - air[c] / pRef[c]) * fct[c]) / fct[4 + c]);
+        // The surface's Bond albedo once renormalized (lawBond): > 1 means the surface under the air cannot
+        // be seen (Venus: the profile starts inside the cloud deck), so the disk stays the measured one.
+        const bond = lawBond(lawRef);
+        const surfaceBond = [0, 1, 2, 3].map((c) => (pRef[c] / fct[c]) * bond[c] * scaleK[c]);
+        if (air.some((a, c) => !(a < pRef[c]))) {
+          warnings.push(`${b.name}: the atmosphere alone is brighter than the measured disk → atmosphere not drawn`);
+          atmB = null;
+        } else if (surfaceBond.some((x) => !(x <= 1))) {
+          const shell = [0, 1, 2, 3].map((c) => 1 - fct[12 + c] / pRef[c]);
+          K = K.map((v, c) => v * shell[c]) as XYZS;
+          warnings.push(`${b.name}: the surface under the atmosphere is not visible in its model → the atmosphere is drawn beyond the disk only (the disk is the measured photometry)`);
+        } else {
+          K = K.map((v, c) => v * scaleK[c]) as XYZS;
+          onDisk = true;
+        }
+      }
     }
     const tint = tintOn ? ([...PROVENANCE_TINT[label], PROVENANCE_TINT_ALPHA] as [number, number, number, number]) : null;
     const hatch = !lit && !(E && E[1] > 0);
@@ -489,12 +601,15 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
         sunDir, sunDistKm: toSunLen, sunRadiusKm: sunR,
         riccoWeight: ricco, occluders, hatch, tint,
         earth: orient ? earth : null,
-        atmosphere: orient && earth && b.atmosphere && irr && b.albedoXYZS
+        atmosphere: orient && atmB && b.atmosphere && irr
           ? {
             data: b.atmosphere,
-            groundAlbedo: LAMBERT_ALBEDO_PER_GEOMETRIC_ALBEDO * (b.albedoXYZS[1] / irr[1]),
+            groundAlbedo,
+            onDisk,
             shellBeta: prepareBody(b.pos, [atmTop(b), atmTop(b), atmTop(b)], null, 3 * g.pixelAngle).beta,
             sunAngularRadius: Math.asin(Math.min(1, sunR / toSunLen)),
+            sunE: irr.map((v) => (v / (Math.PI * dAU * dAU)) * fRes) as XYZS,
+            binding: atmB,
           }
           : null,
       });
