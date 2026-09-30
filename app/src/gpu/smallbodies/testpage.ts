@@ -2,9 +2,13 @@
 //   /sb-test.html?mode=accuracy[&n=1000]   GPU vs float64 CPU reference (19 verification objects + n random ones)
 //   /sb-test.html?mode=timing[&chunk=65536] full catalogue: create, one grid step, shade
 //   /sb-test.html?mode=render&scene=above|inside  real-data frame through the renderer (enhanced / eye)
+//   /sb-test.html?mode=synthetic                   synthetic layer: GPU records vs float64 two-body positions and
+//                                                  photometry, level gating, pick, timing
 // Results in window.__sbResult (JSON); render mode sets window.__frameReady.
 
-import type { EphemHeader, LightData, SmallBodyCoreHeader, SmallBodyPhotometry, SmallBodyPhysicalHeader, SmallBodyTableHeader, BinaryTableHeader } from '../../data/schema';
+import type { EphemHeader, LightData, SmallBodyCoreHeader, SmallBodyPhotometry, SmallBodyPhysicalHeader, SmallBodyTableHeader, BinaryTableHeader, SyntheticObjectsHeader } from '../../data/schema';
+import { readSynthetic, syntheticState } from '../../core/smallbodySynthetic';
+import { hgPhi, magnitudeToXYZS } from '../../core/smallbodyPhotometry';
 import { Ephemeris, EphemerisSet } from '../../core/ephemeris';
 import { SB_OK, SmallBodyPropagator, type NonGrav } from '../../core/smallbody';
 import { coreState, readCore, readNonGrav } from '../../core/smallbodyCatalog';
@@ -59,7 +63,16 @@ async function loadTables(): Promise<SmallBodyTables> {
   const nongravHeader = await json<SmallBodyTableHeader>(d + 'nongrav.json');
   const [core, physical, comets, nongrav] = await Promise.all(['core', 'physical', 'comets', 'nongrav'].map((n) => bin(`${d}${n}.bin`)));
   const photometry = await json<SmallBodyPhotometry>(d + 'photometry.json');
-  return { core, coreHeader, physical, physicalHeader, comets, cometsHeader, nongrav, nongravHeader, photometry };
+  let synthetic: SmallBodyTables['synthetic'];
+  if (params.get('synthetic') !== '0') {
+    try {
+      const header = await json<SyntheticObjectsHeader>('/data/synthetic/objects.json');
+      synthetic = { header, objects: await bin('/data/synthetic/objects.bin') };
+    } catch (e) {
+      log(`no synthetic layer: ${(e as Error).message}`);
+    }
+  }
+  return { core, coreHeader, physical, physicalHeader, comets, cometsHeader, nongrav, nongravHeader, photometry, synthetic };
 }
 
 /** Tables restricted to core rows `rows` (in that order); row references remapped. */
@@ -116,7 +129,7 @@ function subsetTables(t: SmallBodyTables, rows: number[]): SmallBodyTables {
   const ng = sub(t.nongrav, t.nongravHeader, (r) => newIndex.get(r) ?? null);
   return {
     core: core.buffer, coreHeader, physical: ph.buf as ArrayBuffer | undefined, physicalHeader: ph.h as SmallBodyPhysicalHeader | undefined,
-    comets: co.buf, cometsHeader: co.h, nongrav: ng.buf, nongravHeader: ng.h, photometry: t.photometry,
+    comets: co.buf, cometsHeader: co.h, nongrav: ng.buf, nongravHeader: ng.h, photometry: t.photometry, synthetic: t.synthetic,
   };
 }
 
@@ -378,7 +391,9 @@ async function render(): Promise<unknown> {
   const level = (params.get('level') ?? 'best') as 'strict' | 'best' | 'complete';
   const allowed = (l: string) => (level === 'strict' ? ['measured', 'derived'] : ['measured', 'derived', 'estimated']).includes(l);
   if (params.get('nostars') !== '1') renderer.setStars(buildStarCatalog(starT, allowed as never).catalog);
-  const field = await SmallBodyField.create(dev, tables, eph, { chunkObjects: Number(params.get('chunk') ?? 262144), backgroundStepsPerUpdate: 0 });
+  // syntint=1: DIAGNOSTIC false colour (orange) for synthetic objects.
+  const synDiag: [number, number, number, number] | undefined = params.get('syntint') === '1' ? [1.9, 1.0, 0.12, 0.35] : undefined;
+  const field = await SmallBodyField.create(dev, tables, eph, { chunkObjects: Number(params.get('chunk') ?? 262144), backgroundStepsPerUpdate: 0, syntheticDiagnosticColour: synDiag });
   renderer.setExtraPointSources(field.pointSources);
   const et = field.epochEt + Number(params.get('days') ?? 0) * 86400;
   const sunSSB = eph.positionSSB(10, et)!;
@@ -450,18 +465,26 @@ async function render(): Promise<unknown> {
   const recs = await field.readRecords();
   let lit = 0, brightest = 0;
   for (let s = 0; s < field.count; s++) { const y = recs[8 * s + 4]; if (y > 0) { lit++; brightest = Math.max(brightest, y); } }
+  let synLit = 0, synBrightest = 0;
+  for (let j = 0; j < field.syntheticCount; j++) { const y = recs[8 * (field.count + j) + 4]; if (y > 0) { synLit++; synBrightest = Math.max(synBrightest, y); } }
   const s = renderer.stats;
   // Small bodies above the eye's point threshold (photopic Y vs the limiting magnitude's illuminance).
   const yLim = s.limitingMagnitude !== undefined ? luxFromMagnitude(s.limitingMagnitude) : Infinity;
-  let above = 0;
+  let above = 0, synAbove = 0;
   for (let q = 0; q < field.count; q++) if (recs[8 * q + 4] > yLim) above++;
+  for (let j = 0; j < field.syntheticCount; j++) if (recs[8 * (field.count + j) + 4] > yLim) synAbove++;
   const hud = document.getElementById('hud')!;
   hud.textContent = [
-    `REAL DATA · ${field.count.toLocaleString()} small bodies (${lit.toLocaleString()} with admitted brightness, level ${level}) · ${scene === 'inside' ? `inside the main belt, ${params.get('rau') ?? 2.7} au from the Sun, ${params.get('look') === 'along' ? 'looking along the orbital motion' : 'looking away from the Sun'}` : scene === 'above-off' ? `${params.get('hau') ?? 3} au above the Sun, looking down at the belt, Sun just outside the frame` : `${params.get('hau') ?? 3} au above the ecliptic, looking down at the Sun`}`,
+    `REAL DATA · ${field.count.toLocaleString()} catalogued small bodies (${lit.toLocaleString()} with admitted brightness)${field.syntheticCount ? ` + ${synLit.toLocaleString()} synthetic drawn` : ''} · level ${level} · ${scene === 'inside' ? `inside the main belt, ${params.get('rau') ?? 2.7} au from the Sun, ${params.get('look') === 'along' ? 'looking along the orbital motion' : 'looking away from the Sun'}` : scene === 'above-off' ? `${params.get('hau') ?? 3} au above the Sun, looking down at the belt, Sun just outside the frame` : `${params.get('hau') ?? 3} au above the ecliptic, looking down at the Sun`}`,
     ...(params.get('nosun') === '1' ? [`DIAGNOSTIC: the Sun${params.get('nostars') === '1' ? ' and the stars are' : ' is'} left out of the scene (no disk, no glare), so the eye is dark-adapted: not what an observer would see`] : []),
-    `${mode} mode${mode === 'enhanced' ? ` (+${snapshot.view.exposureBoostStops} stops)` : ''} · points drawn ${s.starsDrawn} (stars + small bodies) · limiting V ${s.limitingMagnitude?.toFixed(2)} · small bodies above it: ${above} (brightest V ${magnitudeFromLux(brightest).toFixed(1)}) · ${new Date((946728000 + et - 69.184) * 1000).toISOString().slice(0, 10)}`,
+    ...(synDiag ? ['DIAGNOSTIC FALSE COLOUR: synthetic objects orange, catalogued objects in their own colours'] : []),
+    `${mode} mode${mode === 'enhanced' ? ` (+${snapshot.view.exposureBoostStops} stops)` : ''} · points drawn ${s.starsDrawn} (stars + small bodies) · limiting V ${s.limitingMagnitude?.toFixed(2)} · catalogued above it: ${above} (brightest V ${magnitudeFromLux(brightest).toFixed(1)})${field.syntheticCount ? ` · synthetic above it: ${synAbove} (brightest V ${synBrightest > 0 ? magnitudeFromLux(synBrightest).toFixed(1) : '-'})` : ''} · ${new Date((946728000 + et - 69.184) * 1000).toISOString().slice(0, 10)}`,
   ].join('\n');
-  const res = { scene, mode, level, lit, brightestY: brightest, brightestV: magnitudeFromLux(brightest), smallBodiesAboveThreshold: above, pointsDrawn: s.starsDrawn, limitingV: s.limitingMagnitude, adaptation: s.adaptationLuminance, stats: field.stats };
+  const res = {
+    scene, mode, level, lit, brightestY: brightest, brightestV: magnitudeFromLux(brightest), smallBodiesAboveThreshold: above, pointsDrawn: s.starsDrawn,
+    limitingV: s.limitingMagnitude, adaptation: s.adaptationLuminance, stats: field.stats,
+    synthetic: { objects: field.syntheticCount, lit: synLit, brightestV: synBrightest > 0 ? magnitudeFromLux(synBrightest) : null, aboveThreshold: synAbove, falseColour: !!synDiag },
+  };
   window.__frameReady = true;
   return res;
 }
@@ -571,9 +594,142 @@ async function unit(): Promise<unknown> {
   return res;
 }
 
+// ------------------------------------------------------------------------------------------------ synthetic
+/** GPU records of the synthetic layer vs float64 two-body positions (core/smallbodySynthetic) and CPU photometry. */
+async function synthetic(): Promise<unknown> {
+  const dev = await device();
+  const eph = await loadEphemeris();
+  const all = await loadTables();
+  if (!all.synthetic) throw new Error('no synthetic layer (build the pipeline stage synthetic)');
+  // A small catalogue subset keeps the test fast; the synthetic layer is complete.
+  const tables = params.get('full') === '1' ? all : subsetTables(all, Array.from({ length: 2000 }, (_, k) => k * 700));
+  const t0 = performance.now();
+  const field = await SmallBodyField.create(dev, tables, eph, { backgroundStepsPerUpdate: 0 });
+  const createMs = performance.now() - t0;
+  const N = field.count, S = field.syntheticCount;
+  log(`field: ${N} catalogue + ${S} synthetic objects, created in ${createMs.toFixed(0)} ms; synthetic ${JSON.stringify(field.info.synthetic)}`);
+  if (!S) throw new Error(`synthetic layer not enabled: ${field.info.synthetic.reason}`);
+  const syn = readSynthetic(all.synthetic.header, all.synthetic.objects);
+  const phot = tables.photometry!;
+  const sunXYZS = phot.sunIrradianceXYZS1AU.value!;
+  const cls = (tables.coreHeader.colorClasses?.classes ?? []).map((c) => c.xyzsPerUnitPV.map((v, k) => v / sunXYZS[k]));
+  const G = all.synthetic.header.slopeParameterG!.value;
+  const rand = rng(99);
+  const sample = Array.from({ length: 20000 }, () => Math.floor(rand() * S));
+  const DAY = 86400;
+  const res: Record<string, unknown>[] = [];
+  const win = tables.coreHeader.window;
+  for (const dd of (params.get('days') ?? '0,0.37,200.6,-547.2,547.9').split(',').map(Number)) {
+    const et = Math.min(win.endEt - 60, Math.max(win.startEt + 60, field.epochEt + dd * DAY));
+    const sun = eph.positionSSB(10, et)!;
+    const cam: Vec3 = [sun[0] + 0.4 * AU_KM, sun[1] + 2.2 * AU_KM, sun[2] - 0.1 * AU_KM];
+    const ms = await submit(dev, field, et, cam, 'complete');
+    const recs = await field.readRecords();
+    const u32 = new Uint32Array(recs.buffer);
+    const sa = eph.positionSSB(10, et - 1)!, sb = eph.positionSSB(10, et + 1)!;
+    const sv = [0, 1, 2].map((j) => (sb[j] - sa[j]) / 2);
+    let maxAng = 0, maxKm = 0, maxDm = 0, maxDm30 = 0, idxOk = 0, lit = 0;
+    const angs: number[] = [];
+    for (const j of sample) {
+      const o = 8 * (N + j);
+      if (u32[o + 7] === N + j) idxOk++;
+      const st = syntheticState(syn, j, et)!;
+      const rel0 = [0, 1, 2].map((k) => st.pos[k] + sun[k] - cam[k]);
+      const tau = Math.hypot(...rel0) / C_KM_S;
+      const rel = [0, 1, 2].map((k) => rel0[k] - tau * (st.vel[k] + sv[k]));
+      const xo = [0, 1, 2].map((k) => st.pos[k] - tau * st.vel[k]);
+      const dist = Math.hypot(...rel);
+      const ang = Math.hypot(rel[0] / dist - recs[o], rel[1] / dist - recs[o + 1], rel[2] / dist - recs[o + 2]);
+      angs.push(ang);
+      maxAng = Math.max(maxAng, ang);
+      maxKm = Math.max(maxKm, ang * dist);
+      const r = Math.hypot(...xo);
+      const cr = [xo[1] * rel[2] - xo[2] * rel[1], xo[2] * rel[0] - xo[0] * rel[2], xo[0] * rel[1] - xo[1] * rel[0]];
+      const alpha = Math.atan2(Math.hypot(...cr), xo[0] * rel[0] + xo[1] * rel[1] + xo[2] * rel[2]);
+      const m = syn.table.get('H', j) + 5 * Math.log10((r / AU_KM) * (dist / AU_KM)) - 2.5 * Math.log10(hgPhi(phot, alpha, G));
+      const k = syn.table.has('colorClass') ? syn.table.get('colorClass', j) : 255;
+      const E = magnitudeToXYZS(phot, m, cls[k] ?? [1, 1, 1, 1]);
+      if (recs[o + 4] > 0) {
+        lit++;
+        const dm = Math.abs(-2.5 * Math.log10(recs[o + 4] / E[1]));
+        maxDm = Math.max(maxDm, dm);
+        if (m < 30) maxDm30 = Math.max(maxDm30, dm);
+      }
+    }
+    if (params.get('debug') === '1') {
+      // worst few: CPU with / without light time, elements
+      const worst = sample.map((j) => {
+        const o = 8 * (N + j);
+        const st = syntheticState(syn, j, et)!;
+        const rel0 = [0, 1, 2].map((k) => st.pos[k] + sun[k] - cam[k]);
+        const d0 = Math.hypot(...rel0);
+        const tau = d0 / C_KM_S;
+        const rel = [0, 1, 2].map((k) => rel0[k] - tau * (st.vel[k] + sv[k]));
+        const d1 = Math.hypot(...rel);
+        const a1 = Math.hypot(rel[0] / d1 - recs[o], rel[1] / d1 - recs[o + 1], rel[2] / d1 - recs[o + 2]);
+        const a0 = Math.hypot(rel0[0] / d0 - recs[o], rel0[1] / d0 - recs[o + 1], rel0[2] / d0 - recs[o + 2]);
+        return { j, a1, a0, d1, el: [0, 1, 2, 3, 4, 5, 6].map((c) => syn.table.get(['a', 'e', 'i', 'node', 'peri', 'M', 'H'][c], j)), pop: syn.table.get('pop', j), gpu: [recs[o], recs[o + 1], recs[o + 2]], cpu: rel.map((v) => v / d1) };
+      }).sort((x, y) => y.a1 - x.a1).slice(0, 4);
+      log(`worst: ${JSON.stringify(worst)}`);
+      const wph = sample.map((j) => {
+        const o = 8 * (N + j);
+        const st = syntheticState(syn, j, et)!;
+        const rel0 = [0, 1, 2].map((k) => st.pos[k] + sun[k] - cam[k]);
+        const tau = Math.hypot(...rel0) / C_KM_S;
+        const rel = [0, 1, 2].map((k) => rel0[k] - tau * (st.vel[k] + sv[k]));
+        const xo = [0, 1, 2].map((k) => st.pos[k] - tau * st.vel[k]);
+        const dist = Math.hypot(...rel);
+        const r = Math.hypot(...xo);
+        const cr = [xo[1] * rel[2] - xo[2] * rel[1], xo[2] * rel[0] - xo[0] * rel[2], xo[0] * rel[1] - xo[1] * rel[0]];
+        const alpha = Math.atan2(Math.hypot(...cr), xo[0] * rel[0] + xo[1] * rel[1] + xo[2] * rel[2]);
+        const m = syn.table.get('H', j) + 5 * Math.log10((r / AU_KM) * (dist / AU_KM)) - 2.5 * Math.log10(hgPhi(phot, alpha, G));
+        const k = syn.table.get('colorClass', j);
+        const E = magnitudeToXYZS(phot, m, cls[k] ?? [1, 1, 1, 1]);
+        return { j, k, cls: cls[k], dm: -2.5 * Math.log10(recs[o + 4] / E[1]), alphaDeg: alpha * 180 / Math.PI, rAu: r / AU_KM, dAu: dist / AU_KM, m, gpuY: recs[o + 4], cpuY: E[1] };
+      }).sort((x, y) => Math.abs(y.dm) - Math.abs(x.dm)).slice(0, 4);
+      log(`worst photometry: ${JSON.stringify(wph)}`);
+      const pops = new Map<number, number[]>();
+      sample.forEach((j, q) => { const pp = syn.table.get('pop', j); if (!pops.has(pp)) pops.set(pp, []); pops.get(pp)!.push(angs[q]); });
+      log(`by pop (unsorted angs): ${JSON.stringify([...pops].map(([k, v]) => [k, v.length, v.sort((a, b) => a - b)[v.length >> 1]]))}`);
+    }
+    angs.sort((a, b) => a - b);
+    const r = { days: dd, gpuMs: Math.round(ms), sampled: sample.length, indexOk: idxOk, lit, maxDirErrRad: maxAng, p50DirErrRad: angs[angs.length >> 1], p99DirErrRad: angs[Math.floor(0.99 * angs.length)], maxPosErrKm: maxKm, maxDmagVsCpuBrighterThanV30: maxDm30, maxDmagVsCpuAll: maxDm };
+    res.push(r);
+    log(`t = ${dd} d: GPU ${ms.toFixed(0)} ms; direction max ${maxAng.toExponential(2)} rad (${maxKm.toFixed(0)} km at the object), p99 ${r.p99DirErrRad.toExponential(2)}, p50 ${angs[angs.length >> 1].toExponential(2)}; photometry max ${maxDm30.toFixed(4)} mag (V < 30; ${maxDm.toFixed(2)} for all, the faintest being V ~ 36 where the device's exp2 is coarse) over ${lit} lit; index ok ${idxOk}/${sample.length}`);
+  }
+  // Level gating: below complete every synthetic record is zero (not drawn, not pickable); counts arrive later.
+  const et = field.epochEt;
+  const sun = eph.positionSSB(10, et)!;
+  const cam: Vec3 = [sun[0] + 0.4 * AU_KM, sun[1] + 2.2 * AU_KM, sun[2] - 0.1 * AU_KM];
+  const onMs = await submit(dev, field, et, cam, 'complete');
+  const recsOn = await field.readRecords();
+  const j0 = sample[0];
+  const dir0: Vec3 = [recsOn[8 * (N + j0)], recsOn[8 * (N + j0) + 1], recsOn[8 * (N + j0) + 2]];
+  const pickedOn = await field.pick(dir0, 2e-6);
+  await submit(dev, field, et, cam, 'complete');
+  await new Promise((r) => setTimeout(r, 50));
+  const statsComplete = field.stats;
+  const offMs = await submit(dev, field, et, cam, 'best');
+  const recsOff = await field.readRecords();
+  let nonZero = 0;
+  for (let j = 0; j < S; j++) if (recsOff[8 * (N + j)] !== 0 || recsOff[8 * (N + j) + 4] !== 0) nonZero++;
+  const pickedOff = await field.pick(dir0, 2e-6);
+  await submit(dev, field, et, cam, 'best');
+  await new Promise((r) => setTimeout(r, 50));
+  const statsBest = field.stats;
+  const so = field.stateOf(N + j0, et + 10 * DAY);
+  const cpu = syntheticState(syn, j0, et + 10 * DAY);
+  log(`gating: at complete pick -> ${pickedOn} (want ${N + j0}), stats ${JSON.stringify(statsComplete)}; at best ${nonZero} non-zero synthetic records, pick -> ${pickedOff}, stats ${JSON.stringify(statsBest)}; shade ${onMs.toFixed(0)} ms (complete) vs ${offMs.toFixed(0)} ms (best)`);
+  return {
+    catalogue: N, synthetic: S, createMs, info: field.info.synthetic, times: res,
+    gating: { pickAtComplete: pickedOn, want: N + j0, nonZeroAtBest: nonZero, pickAtBest: pickedOff, statsComplete, statsBest, shadeMsComplete: onMs, shadeMsBest: offMs },
+    stateOfMatchesCpu: !!so && !!cpu && so.pos.every((v, k) => v === cpu.pos[k]),
+  };
+}
+
 async function main(): Promise<void> {
   const mode = params.get('mode') ?? 'accuracy';
-  const r = mode === 'timing' ? await timing() : mode === 'render' ? await render() : mode === 'unit' ? await unit() : await accuracy();
+  const r = mode === 'timing' ? await timing() : mode === 'render' ? await render() : mode === 'unit' ? await unit() : mode === 'synthetic' ? await synthetic() : await accuracy();
   window.__sbResult = r;
 }
 

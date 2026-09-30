@@ -44,7 +44,7 @@ def test_round_trip(tmp_path):
     (tmp_path / "t.bin").write_bytes(sf.encode(rec))
     header = {"bin": "t.bin", "count": len(rec), "stride": sf.STRIDE, "fields": sf.header_fields(),
               "labelEncoding": list(LABEL_ORDER), "sourceTable": ["a", "b", "c"]}
-    (tmp_path / "t.json").write_text(json.dumps(header))
+    (tmp_path / "t.json").write_text(json.dumps(header), encoding="utf-8", newline="\n")
     h, cols = sf.read_table(tmp_path / "t.json")
     for name in rec.dtype.names:
         np.testing.assert_array_equal(cols[name], rec[name])

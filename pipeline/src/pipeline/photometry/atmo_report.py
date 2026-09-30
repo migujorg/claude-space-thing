@@ -229,7 +229,7 @@ def main() -> None:
         if e.get("omitted"):
             w(f"- {e['name']}: {e['omitted']}")
     w("")
-    OUT.write_text("\n".join(L))
+    OUT.write_text("\n".join(L), encoding="utf-8", newline="\n")
     print(f"wrote {OUT}")
 
 

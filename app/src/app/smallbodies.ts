@@ -11,8 +11,13 @@
 //
 // Ids: small bodies share the app's body-id space as negative numbers, sbId(row) = −(row + 1), so the
 // selection, camera, picking and labels code paths take them unchanged. (NAIF ids of major bodies are ≥ 0.)
+//
+// Synthetic objects (the COMPLETE level, synthetic/objects): rows count … count + syntheticCount − 1, after the
+// catalogue. They have no name, flags or catalogue records; every attribute is labelled synthetic, so the reality
+// filter admits them (position included) at Complete only. Positions: two-body motion of their elements.
 
 import { coreState, readCore, readNonGrav, type SmallBodyCatalog } from '../core/smallbodyCatalog';
+import { diameterFromH, readSynthetic, syntheticPeriod, syntheticPopulation, syntheticState, type SyntheticCatalog } from '../core/smallbodySynthetic';
 import { SB_OK, SmallBodyPropagator, type NonGrav } from '../core/smallbody';
 import type { EphemerisSet } from '../core/ephemeris';
 import type { Body, BodyKind, Label, PhaseFunction, Sourced } from '../data/schema';
@@ -20,14 +25,25 @@ import { flagNames, orbitClassOf, physicalRow, type SmallBodyTable, type SmallBo
 import type { TimeWindow } from './clock';
 import { osculatingPeriod, orbitSpan } from './orbits';
 import type { ApparentResult, CoreFunctions, EphemerisSetPort, SmallBodyFieldPort, Vec3 } from './ports';
+import type { GridStates, GridWorkerPort } from './sbgrid';
 import { labelAllowed, worstOf, type ExistsLevel } from './reality';
 
 export const sbId = (row: number): number => -(row + 1);
+
+/** Names of the synthetic populations (synthetic/objects.json populations[].name). */
+export const SYNTHETIC_POP_TEXT: Record<string, { short: string; long: string; plural: string }> = {
+  neo: { short: 'NEO', long: 'near-Earth object (q < 1.3 au)', plural: 'near-Earth objects' },
+  hungaria: { short: 'Hungaria', long: 'Hungaria-region asteroid (1.78–2.0 au)', plural: 'Hungaria-region asteroids' },
+  mainbelt: { short: 'main-belt asteroid', long: 'main-belt asteroid (2.0–3.7 au)', plural: 'main-belt asteroids' },
+  hilda: { short: 'Hilda', long: 'Hilda-region asteroid (3.7–4.2 au)', plural: 'Hilda-region asteroids' },
+  trojan: { short: 'Jupiter Trojan', long: 'Jupiter Trojan (5.05–5.35 au)', plural: 'Jupiter Trojans' },
+  tno: { short: 'trans-Neptunian object', long: 'trans-Neptunian object (a ≥ 30 au)', plural: 'trans-Neptunian objects' },
+};
 export const sbRow = (id: number): number => -id - 1;
 export const isSmallBodyId = (id: number | null | undefined): id is number => typeof id === 'number' && id < 0;
 
-/** Kind shown for small bodies. Not a BodyKind of bodies.json: code that switches on kind treats it as "other". */
-export const SMALL_BODY_KIND = 'small-body' as unknown as BodyKind;
+/** Kind of the Body made for a catalogue object (never in bodies.json). */
+export const SMALL_BODY_KIND: BodyKind = 'small-body';
 
 export interface HelioState {
   /** Heliocentric ICRF, km. */
@@ -75,6 +91,8 @@ export interface SmallBodySummary {
 export interface SmallBodyCounts {
   /** Drawn (the field's count) or admitted by labels (without a field). */
   drawn: number;
+  /** The synthetic layer at this level: objects drawn (0 below Complete) of `objects` in the layer. */
+  synthetic?: { drawn: number; objects: number };
   /** Position known, but a brightness input (or the position) is not admitted at this level. */
   withheld: number;
   /** No position at all (label unknown). */
@@ -92,11 +110,18 @@ interface GridStore {
   /** First grid index (absolute value) that could not be reached (collision, no ephemeris). */
   failFwd: number;
   failBwd: number;
+  /** Seeded with the whole window (from the worker). */
+  complete: boolean;
 }
 
 const MAX_STORES = 64;
 
-/** f64 reference positions (core/smallbody.ts) on the catalogue's integration grid, per object on demand. */
+/**
+ * f64 reference positions (core/smallbody.ts) on the catalogue's integration grid, per object on demand.
+ * With a worker attached (GridWorkerClient), an object's grid states are computed off the main thread for the
+ * whole window at its first use; until they arrive it has no position (pending). Without one (tests, Node), the
+ * states are computed here, step by step as far as needed.
+ */
 export class CpuSmallBodyStates {
   readonly cat: SmallBodyCatalog;
   readonly H: number;
@@ -105,7 +130,13 @@ export class CpuSmallBodyStates {
   private readonly ng: Map<number, NonGrav>;
   private readonly stores = new Map<number, GridStore>();
   private readonly tmp = new Float64Array(6);
-  /** Wall-clock ms spent propagating (diagnostics). */
+  private worker: GridWorkerPort | null = null;
+  private readonly pendingRows = new Set<number>();
+  /** Called when an object's grid states have arrived from the worker. */
+  onSeeded: ((row: number) => void) | null = null;
+  /** Called once if the worker fails (positions are then computed on the main thread). */
+  onWorkerError: ((e: Error) => void) | null = null;
+  /** Wall-clock ms spent propagating on this thread (diagnostics). */
   ms = 0;
 
   constructor(tables: SmallBodyTables, eph: Ephem) {
@@ -123,6 +154,20 @@ export class CpuSmallBodyStates {
     return this.prop.mu;
   }
 
+  /** Propagate new objects in the background from now on. */
+  attachWorker(w: GridWorkerPort | null): void {
+    this.worker = w;
+  }
+
+  get hasWorker(): boolean {
+    return this.worker !== null;
+  }
+
+  /** The object's states are being computed in the background. */
+  isPending(row: number): boolean {
+    return this.pendingRows.has(row);
+  }
+
   inWindow(et: number): boolean {
     return et >= this.window.startEt && et <= this.window.endEt;
   }
@@ -137,10 +182,60 @@ export class CpuSmallBodyStates {
     }
     const st0 = coreState(this.cat, row);
     if (!st0) return null;
-    s = { fwd: [st0], bwd: [], failFwd: Infinity, failBwd: Infinity };
+    s = { fwd: [st0], bwd: [], failFwd: Infinity, failBwd: Infinity, complete: false };
     this.stores.set(row, s);
     if (this.stores.size > MAX_STORES) this.stores.delete(this.stores.keys().next().value!);
     return s;
+  }
+
+  /** With a worker: whether the store can answer now; if not, the background computation is requested. */
+  private ready(row: number, s: GridStore): boolean {
+    if (!this.worker || s.complete) return true;
+    if (!this.pendingRows.has(row)) {
+      this.pendingRows.add(row);
+      const w = this.worker;
+      w.grid(row, s.fwd[0], this.ng.get(row) ?? null).then(
+        (g) => {
+          this.pendingRows.delete(row);
+          this.seed(row, g);
+          this.onSeeded?.(row);
+        },
+        (e: Error) => {
+          this.pendingRows.delete(row);
+          // Fall back to this thread for good; the next query computes synchronously.
+          if (this.worker === w) {
+            this.worker = null;
+            this.onWorkerError?.(e);
+          }
+          this.onSeeded?.(row);
+        },
+      );
+    }
+    return false;
+  }
+
+  /** Install whole-window grid states computed elsewhere (sbgrid.ts gridStates). */
+  seed(row: number, g: GridStates): void {
+    const st0 = coreState(this.cat, row);
+    if (!st0) return;
+    const s: GridStore = { fwd: [], bwd: [], failFwd: Infinity, failBwd: Infinity, complete: true };
+    const at = (n: number) => g.states.subarray(6 * (n - g.n0), 6 * (n - g.n0) + 6);
+    const nMax = g.n0 + g.states.length / 6 - 1;
+    for (let n = 0; n <= nMax; n++) {
+      const x = at(n);
+      if (!Number.isFinite(x[0])) { s.failFwd = n; break; }
+      s.fwd.push(Float64Array.from(x));
+    }
+    if (s.failFwd === Infinity) s.failFwd = nMax + 1;
+    for (let n = -1; n >= g.n0; n--) {
+      const x = at(n);
+      if (!Number.isFinite(x[0])) { s.failBwd = -n; break; }
+      s.bwd.push(Float64Array.from(x));
+    }
+    if (s.failBwd === Infinity) s.failBwd = -g.n0 + 1;
+    this.stores.delete(row);
+    this.stores.set(row, s);
+    if (this.stores.size > MAX_STORES) this.stores.delete(this.stores.keys().next().value!);
   }
 
   /** State at grid index n, extending the store as needed; null if unreachable. */
@@ -173,11 +268,11 @@ export class CpuSmallBodyStates {
     }
   }
 
-  /** Heliocentric state at et, or null (position unknown, outside the catalogue window, or lost on the way). */
+  /** Heliocentric state at et, or null (position unknown, outside the catalogue window, lost on the way, or pending). */
   stateOf(row: number, et: number): HelioState | null {
     if (!this.inWindow(et) || row < 0 || row >= this.cat.count) return null;
     const s = this.store(row);
-    if (!s) return null;
+    if (!s || !this.ready(row, s)) return null;
     const e0 = this.cat.epochEt;
     const n = Math.trunc((et - e0) / this.H);
     const g = this.gridState(row, s, n);
@@ -194,10 +289,10 @@ export class CpuSmallBodyStates {
     return { pos: [st[0], st[1], st[2]], vel: [st[3], st[4], st[5]] };
   }
 
-  /** Heliocentric positions at every grid epoch in [t0, t1] (xyz per sample; NaN where unreachable). */
+  /** Heliocentric positions at every grid epoch in [t0, t1] (xyz per sample; NaN where unreachable); null if pending. */
   gridPositions(row: number, t0: number, t1: number): { times: Float64Array; pos: Float64Array } | null {
     const s = this.store(row);
-    if (!s) return null;
+    if (!s || !this.ready(row, s)) return null;
     const e0 = this.cat.epochEt, H = this.H;
     const n0 = Math.ceil((Math.max(t0, this.window.startEt) - e0) / H);
     const n1 = Math.floor((Math.min(t1, this.window.endEt) - e0) / H);
@@ -234,7 +329,11 @@ export interface OrbitSamples {
 
 export class SmallBodies {
   readonly tables: SmallBodyTables;
+  /** Catalogue objects (core rows). */
   readonly count: number;
+  /** Synthetic objects (rows count … count + syntheticCount − 1); 0 without the layer. */
+  readonly syntheticCount: number;
+  readonly synthetic: SyntheticCatalog | null;
   /** NAIF id of the centre of the heliocentric states (forceModel.sun). */
   readonly sunNaif: number;
   field: SmallBodyFieldPort | null = null;
@@ -251,10 +350,28 @@ export class SmallBodies {
     this.eph = eph;
     this.sunNaif = tables.core.header.forceModel.sun.naifId;
     this.cpu = new CpuSmallBodyStates(tables, eph);
+    const syn = tables.synthetic;
+    this.synthetic = syn ? readSynthetic(syn.objects.header, syn.objects.buffer, syn.cells?.header ?? null, syn.cells?.buffer ?? null) : null;
+    this.syntheticCount = this.synthetic?.count ?? 0;
   }
 
   has(row: number): boolean {
-    return Number.isInteger(row) && row >= 0 && row < this.count;
+    return Number.isInteger(row) && row >= 0 && row < this.count + this.syntheticCount;
+  }
+
+  /** Whether a row is a synthetic object (not a real one). */
+  isSynthetic(row: number): boolean {
+    return this.synthetic !== null && row >= this.count && row < this.count + this.syntheticCount;
+  }
+
+  /** Index of a synthetic row in synthetic/objects. */
+  syntheticIndex(row: number): number {
+    return row - this.count;
+  }
+
+  /** The object's position is being propagated in the background (no position yet). */
+  pending(row: number): boolean {
+    return !this.field && this.cpu.isPending(row);
   }
 
   get window(): TimeWindow {
@@ -273,13 +390,18 @@ export class SmallBodies {
     return this.names.get(row) ?? null;
   }
 
-  /** Display name, or a placeholder until the name index has answered. */
+  /** Display name, or a placeholder until the name index has answered. Synthetic objects: what they stand for. */
   name(row: number): string {
+    if (this.isSynthetic(row)) {
+      const j = this.syntheticIndex(row);
+      const p = syntheticPopulation(this.synthetic!, j);
+      return `Synthetic ${SYNTHETIC_POP_TEXT[p?.name ?? '']?.short ?? 'object'} #${(j - (p?.firstObject ?? 0) + 1).toLocaleString('en-US')}`;
+    }
     return this.names.get(row) ?? `Small body #${row + 1}`;
   }
 
   flags(row: number): string[] {
-    return flagNames(this.tables, row);
+    return this.isSynthetic(row) ? [] : flagNames(this.tables, row);
   }
 
   hasFlag(row: number, name: string): boolean {
@@ -287,6 +409,15 @@ export class SmallBodies {
   }
 
   summary(row: number): SmallBodySummary {
+    if (this.isSynthetic(row)) {
+      const j = this.syntheticIndex(row);
+      const p = syntheticPopulation(this.synthetic!, j);
+      return {
+        row, H: this.synthetic!.table.get('H', j), hLabel: 'synthetic',
+        orbitClass: p ? { code: p.name, name: SYNTHETIC_POP_TEXT[p.name]?.long ?? p.name } : null,
+        comet: false, neo: p?.name === 'neo', pha: false, planetary: false, positionKnown: true,
+      };
+    }
     const t = this.tables.core;
     const f = this.flags(row);
     const H = numOf(t, 'H', row);
@@ -304,7 +435,7 @@ export class SmallBodies {
   }
 
   posLabel(row: number): Label {
-    return labelOf(this.tables.core, 'posLabel', row);
+    return this.isSynthetic(row) ? 'synthetic' : labelOf(this.tables.core, 'posLabel', row);
   }
 
   // ---- positions ----
@@ -312,6 +443,10 @@ export class SmallBodies {
   /** Heliocentric f64 state: the field's stateOf when there is a field, else the CPU reference propagator. */
   helio(row: number, et: number): HelioState | null {
     if (!this.has(row) || !this.cpu.inWindow(et)) return null;
+    if (this.isSynthetic(row)) {
+      const s = this.field?.syntheticCount ? this.field.stateOf(row, et) : syntheticState(this.synthetic!, this.syntheticIndex(row), et);
+      return s ? { pos: [s.pos[0], s.pos[1], s.pos[2]], vel: [s.vel[0], s.vel[1], s.vel[2]] } : null;
+    }
     if (this.field) {
       const s = this.field.stateOf(row, et);
       return s ? { pos: [s.pos[0], s.pos[1], s.pos[2]], vel: [s.vel[0], s.vel[1], s.vel[2]] } : null;
@@ -341,6 +476,7 @@ export class SmallBodies {
 
   /** Measured diameter (km) and its label, or null. */
   measuredDiameter(row: number): { km: number; label: Label; sources: string[] } | null {
+    if (this.isSynthetic(row)) return null;
     const P = this.tables.physical;
     const p = physicalRow(this.tables, row);
     const D = numOf(P, 'diameter', p);
@@ -353,6 +489,11 @@ export class SmallBodies {
    * catalogue's diameter-from-H (from the brightness and an albedo; estimated). Never used for drawing.
    */
   navRadius(row: number): number | null {
+    if (this.isSynthetic(row)) {
+      const j = this.syntheticIndex(row), t = this.synthetic!.table;
+      const d = t.has('pV') ? diameterFromH(t.get('H', j), t.get('pV', j)) : NaN;
+      return Number.isFinite(d) && d > 0 ? d / 2 : null;
+    }
     const m = this.measuredDiameter(row);
     if (m) return m.km / 2;
     const d = numOf(this.tables.core, 'diameterFromH', row);
@@ -370,6 +511,12 @@ export class SmallBodies {
   pseudoBody(row: number): Body {
     let b = this.pseudo.get(row);
     if (b) return b;
+    if (this.isSynthetic(row)) {
+      b = this.syntheticBody(row);
+      this.pseudo.set(row, b);
+      if (this.pseudo.size > 256) this.pseudo.delete(this.pseudo.keys().next().value!);
+      return b;
+    }
     const P = this.tables.physical;
     const p = physicalRow(this.tables, row);
     const cols = P?.header.columns ?? {};
@@ -416,6 +563,30 @@ export class SmallBodies {
     return b;
   }
 
+  /** A synthetic object as a Body: a point (never resolved) whose every attribute is synthetic. */
+  private syntheticBody(row: number): Body {
+    const s = this.synthetic!, j = this.syntheticIndex(row), t = s.table;
+    const pv = t.has('pV') ? t.get('pV', j) : NaN;
+    const pop = syntheticPopulation(s, j);
+    const src = pop?.sources ?? [];
+    const cls = t.has('colorClass') ? this.tables.core.header.colorClasses?.classes[t.get('colorClass', j)] : undefined;
+    const xyzs = cls && Number.isFinite(pv) ? (cls.xyzsPerUnitPV.map((v) => v * pv) as [number, number, number, number]) : null;
+    return {
+      id: sbId(row),
+      name: this.name(row),
+      kind: SMALL_BODY_KIND,
+      ephemeris: '',
+      radii: { value: null, label: 'unknown', sources: [], method: 'A synthetic object is drawn as a point only: its size is a population draw, not a shape.' },
+      gm: { value: null, label: 'unknown', sources: [] },
+      rotation: { value: null, label: 'unknown', sources: [] },
+      photometry: {
+        geometricAlbedoXYZS: xyzs ? { value: xyzs, label: 'synthetic', sources: src, method: `The class colour of ${cls!.name} (smallbody-class-colors) at the synthetic p_V.` } : { value: null, label: 'unknown', sources: [] },
+        geometricAlbedoV: Number.isFinite(pv) ? { value: pv, label: 'synthetic', sources: src, method: s.header.columns?.pV?.method } : { value: null, label: 'unknown', sources: [] },
+        phaseFunction: { value: { kind: 'lambert' }, label: 'synthetic', sources: src, method: 'Points are lit with the H-G law of the synthetic H (G of the layer header); no resolved phase function.' },
+      },
+    };
+  }
+
   // ---- orbit track ----
 
   /**
@@ -428,6 +599,22 @@ export class SmallBodies {
     if (!(w.endEt > w.startEt)) return null;
     const old = this.tracks.get(row);
     if (old && (old.period === null || Math.abs(et - old.centerEt) < (old.t1 - old.t0) / 4)) return old;
+    if (this.isSynthetic(row)) {
+      // A fixed Kepler ellipse: one period of two-body positions (the whole window if the period is longer).
+      const s = this.synthetic!, j = this.syntheticIndex(row);
+      const period = syntheticPeriod(s, j);
+      const [t0, t1] = orbitSpan(et, period, w);
+      const n = 257;
+      const pos = new Float64Array(3 * n);
+      for (let k = 0; k < n; k++) {
+        const st = syntheticState(s, j, t0 + ((t1 - t0) * k) / (n - 1));
+        pos.set(st ? st.pos : [NaN, NaN, NaN], 3 * k);
+      }
+      const tr: OrbitSamples = { row, t0, t1, centerEt: et, period: period < w.endEt - w.startEt ? period : null, pos };
+      this.tracks.set(row, tr);
+      if (this.tracks.size > 8) this.tracks.delete(this.tracks.keys().next().value!);
+      return tr;
+    }
     const st0 = coreState(this.cpu.cat, row);
     if (!st0) return null;
     const period = osculatingPeriod([st0[0], st0[1], st0[2]], [st0[3], st0[4], st0[5]], this.cpu.mu);
@@ -486,7 +673,9 @@ export class SmallBodies {
   /** Counts for the HUD: the field's own when it reports them, else by labels. */
   countsAt(level: ExistsLevel): SmallBodyCounts {
     const s = this.field?.stats;
-    if (s) return { drawn: s.drawn, withheld: s.withheld, noPosition: this.labelCounts(level).noPosition, from: 'field' };
-    return this.labelCounts(level);
+    const objects = this.field ? this.field.syntheticCount ?? 0 : this.syntheticCount;
+    const synthetic = objects ? { drawn: s?.synthetic?.drawn ?? (level === 'complete' && !this.field ? objects : 0), objects } : undefined;
+    if (s) return { drawn: s.drawn, withheld: s.withheld, noPosition: this.labelCounts(level).noPosition, from: 'field', ...(synthetic ? { synthetic } : {}) };
+    return { ...this.labelCounts(level), ...(synthetic ? { synthetic } : {}) };
   }
 }

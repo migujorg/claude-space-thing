@@ -82,11 +82,11 @@ def test_sbpy_constants_parse():
 
 @pytest.mark.skipif(not (OUT / "smallbodies/core.json").exists(), reason="smallbodies products not built")
 def test_built_class_colours_and_photometry_product():
-    core = json.loads((OUT / "smallbodies/core.json").read_text())
+    core = json.loads((OUT / "smallbodies/core.json").read_text(encoding="utf-8"))
     cc = core["colorClasses"]
     assert cc["classes"][-1]["name"] == "population"
     assert sum(cc["counts"].values()) + core["statistics"]["kinds"]["numberedComets"] \
         + core["statistics"]["kinds"]["unnumberedComets"] == core["count"]
-    phot = json.loads((OUT / "smallbodies/photometry.json").read_text())
+    phot = json.loads((OUT / "smallbodies/photometry.json").read_text(encoding="utf-8"))
     assert phot["vSun"]["value"] == -26.76
     assert 0.97 < phot["colour"]["yOverV"]["p1"] < 1.0 < phot["colour"]["yOverV"]["p99"] < 1.05

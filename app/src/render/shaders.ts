@@ -6,6 +6,8 @@ import { SRGB_TO_XYZ, inv3 } from '../eye/display';
 import { XYZ_TO_HPE } from '../eye/tonemap';
 import { LAW_WGSL, MASK_HATCH_SHADER, RING_COMMON, RING_SHADER as RING_SHADER_OF, SURFACE_WGSL } from './shaders-m2';
 import { FORESHORTEN_MIN_MU } from './surface';
+import { EARTH_WGSL } from './shaders-earth';
+import { ATMOSPHERE_WGSL } from './shaders-atmosphere';
 
 // Relief self-shadowing: horizon search toward the Sun in geometrically growing steps from one texel
 // (a numerical choice, not a physical constant: 40 steps growing by 15% reach ~230 texels, capped at
@@ -37,7 +39,13 @@ struct Frame {
   size: vec4f,     // W, H, 1/W, 1/H
   tanHalf: vec4f,  // tanX, tanY, pixel angle at centre (rad), frame index
   store: vec4f,    // x = largest value the HDR format can store (fp16 fallback), yzw unused
+  occ: vec4f,      // Sun shield (viewing aid): occulting disc direction (ICRF), w = cos(angular radius); w = 2: none
 };
+
+/** Behind the Sun shield's occulting disc (ViewSettings.sunShield): hidden from the eye. */
+fn occulted(F: Frame, dir: vec3f) -> bool {
+  return dot(normalize(dir), F.occ.xyz) >= F.occ.w;
+}
 
 /** Pre-expose a luminance for storage in the HDR targets (clamped so fp16 never overflows to inf). */
 fn toStore(F: Frame, v: vec4f) -> vec4f {
@@ -59,7 +67,7 @@ struct Eye {
   misc2: vec4f,    // star quad half-extent px, 1/(1-exp(-extent^2/2 sigma^2)), unused, unused
   dark: vec4f,     // dark-light pedestal: L0 cone, L0 rod, R(L0) cone, R(L0) rod
   pts: vec4f,      // points (eye/points.ts): display response at the bleaching luminance, viewer's Ricco area (sr), cone summation area (sr), own veil in the background per lux per pixel solid angle
-  fix: vec4f,      // fixations: unit direction to the Sun, w = cos(angular radius + 1 px) of its disk (2: no Sun)
+  fix: vec4f,      // never fixated: unit direction to the resolved Sun (or the Sun shield's disc), w = cos(angular radius + 1 px) (2: none)
   flags: vec4f,    // display black response, cone bleaching (1/0), fixation mode (1 brightness, 0 centre), unused
 };
 
@@ -315,6 +323,12 @@ struct Body {
   law2: vec4f,  // θ̄ (rad), K, H function (0: Hapke 2002, 1: 1981), unused
   ps0: vec4f, psK0: vec4f, ps1: vec4f, psK1: vec4f,  // planetshine: unit direction (w = 1 if present), radiance prefactor
   ring: vec4f,  // ring system index (−1: none), body centre − ring centre (km)
+  earthC: vec4f, // Earth (earth.ts): cloud layer page-table base (u32 bits), max level, enabled, 1 = Earth mode
+  earthW: vec4f, // surface-water layer: base, max level, enabled; w = 1: wind layer bound (windTex)
+  earthN: vec4f, // emitted-radiance (night) layer: base, max level, enabled, unused
+  absR: vec4f,   // the albedo map's absoluteDiskMean (XYZS): texel × absR = absolute reflectance
+  nightK: vec4f, // night lights: luminance (cd/m², XYZS) per unit of the layer's radiance
+  atm: vec4f,    // atmosphere (shaders-atmosphere.ts): 1 = drawn (shell), march steps, 1 = over the disk too, unused
 };
 
 @group(0) @binding(0) var<uniform> F: Frame;
@@ -380,7 +394,12 @@ fn depthOf(t: f32, dir: vec3f) -> f32 {
 }
 `;
 
-export const BODY_SHADER = COMMON + BODY_COMMON + RING_COMMON + LAW_WGSL + SURFACE_WGSL + /* wgsl */ `
+/**
+ * Body shader variants: 'plain'; 'earth' (Earth's layers, earth.ts, with its atmosphere); 'atm' (a body drawn
+ * from its disk photometry under an atmosphere: Mars, Venus, Pluto; docs/rendering-earth.md §8).
+ */
+type BodyVariant = 'plain' | 'earth' | 'atm';
+const bodyShader = (v: BodyVariant) => { const earth = v === 'earth'; const atm = v !== 'plain'; return COMMON + BODY_COMMON + RING_COMMON + LAW_WGSL + SURFACE_WGSL + (earth ? EARTH_WGSL : '') + (atm ? ATMOSPHERE_WGSL : '') + /* wgsl */ `
 @group(0) @binding(2) var<storage, read> pageTable: array<u32>;
 @group(0) @binding(3) var albedoPages: texture_2d_array<f32>;
 @group(0) @binding(4) var heightPages: texture_2d_array<f32>;
@@ -389,6 +408,32 @@ export const BODY_SHADER = COMMON + BODY_COMMON + RING_COMMON + LAW_WGSL + SURFA
 @group(0) @binding(7) var<storage, read> ringProf: array<vec4f>;
 @group(0) @binding(8) var texelLaw: texture_2d_array<f32>;   // per-texel Hapke (texelLaw.ts): w, b, c, B_S0, h_S of 4 bands, denominator XYZS
 @group(0) @binding(9) var<uniform> TL: TexelLawInfo;
+${atm ? `@group(0) @binding(12) var<uniform> A: Atm;
+@group(0) @binding(13) var atmTex: texture_2d_array<f32>;
+@group(0) @binding(14) var atmSamp: sampler;` : ''}
+${earth ? `@group(0) @binding(10) var cloudPages: texture_2d_array<f32>;
+@group(0) @binding(11) var rg16Pages: texture_2d_array<f32>;
+@group(0) @binding(15) var windTex: texture_2d<f32>;
+
+/** Wind layer (one whole level, NaN = unknown): bilinear over known texels per channel. */
+fn sampleWind(uv: vec2f) -> LayerSample {
+  let d = vec2i(textureDimensions(windTex));
+  let c = uv * vec2f(d) - 0.5;
+  let i0 = vec2i(floor(c));
+  let fr = c - vec2f(i0);
+  var acc = vec4f(0.0);
+  var wk = vec4f(0.0);
+  for (var k = 0; k < 4; k++) {
+    let dx = k & 1;
+    let dy = k >> 1;
+    let w = select(1.0 - fr.x, fr.x, dx == 1) * select(1.0 - fr.y, fr.y, dy == 1);
+    let t = textureLoad(windTex, vec2i((i0.x + dx + d.x) % d.x, clamp(i0.y + dy, 0, d.y - 1)), 0);
+    let ok = vec4<bool>(isFiniteF(t.x), isFiniteF(t.y), isFiniteF(t.z), isFiniteF(t.w));
+    acc += select(vec4f(0.0), w * t, ok);
+    wk += select(vec4f(0.0), vec4f(w), ok);
+  }
+  return LayerSample(select(vec4f(0.0), acc / max(wk, vec4f(1e-30)), wk > vec4f(0.0)), wk);
+}` : ''}
 
 struct TexelLawInfo {
   cw: array<vec4f, 4>,  // channel X, Y, Z, S: weights W[c][b]/⟨A_b⟩ over the 4 bands
@@ -512,7 +557,7 @@ struct FOut {
   let b = bodies[in.id];
   let hit = castBody(b, in.xy);
   let cov = clamp(0.5 + hit.disc / max(fwidth(hit.disc), 1e-30), 0.0, 1.0);
-  if (cov <= 0.0) { discard; }
+  if (cov <= 0.0 || occulted(F, hit.dir)) { discard; }
   var L = vec4f(0.0);
   var gap = 0.0;
   if (b.misc.w > 0.5) {
@@ -524,12 +569,13 @@ struct FOut {
     var N = Nell;
     var M = vec4f(1.0);
     var selfShadow = 1.0;
-    if (b.surfA.z > 0.5 || b.surfH.z > 0.5) {
-      // Body-fixed point (km), planetocentric (u, v), and the pixel's surface footprint (surface.ts).
-      let radii = vec3f(b.rot0.w, b.rot1.w, b.rot2.w);
-      let pbf = hit.h * radii;
-      let uv = uvOfBf(pbf);
-      let fp = F.tanHalf.z * range / sqrt(max(dot(Nell, V), ${FORESHORTEN}));
+    // Body-fixed point (km), planetocentric (u, v), and the pixel's surface footprint (surface.ts).
+    let radii = vec3f(b.rot0.w, b.rot1.w, b.rot2.w);
+    let pbf = hit.h * radii;
+    let uv = uvOfBf(pbf);
+    let fp = F.tanHalf.z * range / sqrt(max(dot(Nell, V), ${FORESHORTEN}));
+    ${earth ? EARTH_SAMPLE : ''}
+    if (${earth ? 'b.earthC.w < 0.5 && ' : ''}(b.surfA.z > 0.5 || b.surfH.z > 0.5)) {
       if (b.surfA.z > 0.5) {
         let base = bitcast<u32>(b.surfA.x);
         let Lr = residentLevel(base, surfLevel(b.surfA.w, fp, b.surfA.y), uv);
@@ -558,9 +604,11 @@ struct FOut {
           let sE = (hE.x - hW.x) * 1e-3 / (2.0 / W * 2.0 * PI * r * max(cos(lat), 1e-3));
           let sN = (hN.x - hS.x) * 1e-3 / (2.0 / H * PI * r);
           let nb = normalize(upb - sE * east - sN * north);
-          N = normalize(b.rot0.xyz * nb.x + b.rot1.xyz * nb.y + b.rot2.xyz * nb.z);
+          // Body-fixed → world: world_i = row_i · nb (rot0..2 are the rows of the body→world matrix).
+          N = normalize(vec3f(dot(b.rot0.xyz, nb), dot(b.rot1.xyz, nb), dot(b.rot2.xyz, nb)));
           // Self-shadowing: horizon toward the Sun by ray marching the height field (curvature included),
           // compared with the solar disk (soft terminator of relief).
+          // World → body-fixed: the transpose, Σ_i row_i · s_i.
           let sbf = b.rot0.xyz * b.sun.x + b.rot1.xyz * b.sun.y + b.rot2.xyz * b.sun.z;
           let es = asin(clamp(dot(sbf, upb), -1.0, 1.0));
           let hor = sbf - dot(sbf, upb) * upb;
@@ -590,6 +638,21 @@ struct FOut {
     let S = b.sun.xyz;
     let mu0 = dot(N, S);
     let mu = dot(N, V);
+    ${earth ? `if (b.earthC.w > 0.5) {
+      // Earth (earth.ts): sunlight, then moonshine (planetshine sources), then night lights.
+      if (mu > 0.0 && b.atm.z > 0.5) {
+        ${EARTH_WITH_ATMOSPHERE}
+      } else if (mu > 0.0) {
+        // ρ carries max(μ0, 0): zero on the night side, where the emission and moonshine remain.
+        let hv = normalize(S + V);
+        let es = earthShade(ein, mu0, mu, dot(hv, N), dot(hv, S));
+        if (mu0 > 0.0) { L = b.rad * es.rho * (sunVisible(b, p) * ringShadowT(b, p)); }
+        if (b.ps0.w > 0.5) { L += b.psK0 * earthShade(ein, dot(N, b.ps0.xyz), mu, 0.0, 0.0).rho; }
+        if (b.ps1.w > 0.5) { L += b.psK1 * earthShade(ein, dot(N, b.ps1.xyz), mu, 0.0, 0.0).rho; }
+        L += nightL * es.emitT;
+        gap = earthGap(es.gap, es.gapEmit, mu0 > 0.0, nightL);
+      }
+    } else {` : ''}
     if (mu0 > 0.0 && mu > 0.0) {
       let gph = acos(clamp(dot(S, V), -1.0, 1.0));
       var r4: vec4f;
@@ -601,9 +664,12 @@ struct FOut {
       }
       L = b.rad * M * r4 * (sunVisible(b, p) * selfShadow * ringShadowT(b, p));
     }
+    var psT = vec4f(1.0);
+    ${atm && !earth ? ATM_OVER_PHOTOMETRY : ''}
     // Planetshine (Lambert, measured albedos of both bodies; planetshine.ts).
-    if (b.ps0.w > 0.5) { L += b.psK0 * M * max(dot(N, b.ps0.xyz), 0.0); }
-    if (b.ps1.w > 0.5) { L += b.psK1 * M * max(dot(N, b.ps1.xyz), 0.0); }
+    if (b.ps0.w > 0.5) { L += b.psK0 * M * max(dot(N, b.ps0.xyz), 0.0) * psT; }
+    if (b.ps1.w > 0.5) { L += b.psK1 * M * max(dot(N, b.ps1.xyz), 0.0) * psT; }
+    ${earth ? '}' : ''}
     L *= ringViewT(b, p, dirN, range);
   }
   var o: FOut;
@@ -613,7 +679,212 @@ struct FOut {
   o.depth = depthOf(hit.t, hit.dir);
   return o;
 }
+`; };
+
+/**
+ * A body drawn from its disk photometry under its atmosphere (docs/rendering-earth.md §8). The surface term
+ * (b.rad·M·r4, with b.rad renormalized in frame.ts so that the whole disk still reflects the measured p·Φ) is
+ * dimmed by the sunlight's and the view's paths through the air and gains skylight on a Lambert surface of the
+ * same scale; the air adds its own path radiance. Each channel folds per bin (the channel's b.rad, M and r4 are
+ * constant over its bins), as atmosphereDiskFactors (atmosphere.ts) does on the CPU.
+ */
+const ATM_OVER_PHOTOMETRY = /* wgsl */ `
+    if (b.atm.z > 0.5) {
+      let e = -dirN;
+      let pe = dot(p, e);
+      let Hk = A.geo.y - A.geo.x;
+      let rS = length(p);
+      let sTop = min(-pe + sqrt(max(pe * pe + 2.0 * rS * Hk + Hk * Hk, 0.0)), range);
+      let path = atmMarch(p, dirN, sTop, 0.0, i32(b.atm.y), S, b.m0.xyz, b.m1.xyz, b.m2.xyz, -1.0);
+      let muSg = dot(p, S) / rS;
+      var T2 = vec4f(0.0);
+      var Sky = vec4f(0.0);
+      var Lp = vec4f(0.0);
+      psT = vec4f(0.0);
+      for (var j = 0; j < atmK4(); j++) {
+        let ts = atmTsun(A.geo.x, muSg, j) * path.T[j];
+        let es = atmIrr(0.0, muSg, j) * path.T[j];
+        for (var c = 0; c < 4; c++) {
+          let w = A.w[4 * c + j];
+          T2[c] += dot(w, ts);
+          Sky[c] += dot(w, es);
+          Lp[c] += dot(w, path.L[j]);
+          psT[c] += dot(w, path.T[j]);
+        }
+      }
+      L = L * T2 + (b.rad * M * Sky + PI * A.sunE * Lp) * sunVisible(b, p);
+    }
 `;
+
+/**
+ * Earth under its atmosphere (docs/rendering-earth.md §4): the view segment from the surface point back to the
+ * top of the atmosphere (or the camera) is marched once; the clear part of the pixel is lit through the whole
+ * column, the cloudy part at its cloud tops (the column above them). Sunlight reaches both attenuated
+ * (transmittance tables) and as skylight (sky-irradiance table); both are folded into XYZS per bin.
+ */
+const EARTH_WITH_ATMOSPHERE = /* wgsl */ `
+        let e = -dirN;
+        let pe = dot(p, e);
+        let Hk = A.geo.y - A.geo.x;
+        let rS = length(p);
+        let sTop = min(-pe + sqrt(max(pe * pe + 2.0 * rS * Hk + Hk * Hk, 0.0)), range);
+        let path = atmMarch(p, dirN, sTop, 0.0, i32(b.atm.y), S, b.m0.xyz, b.m1.xyz, b.m2.xyz, ein.cthKm);
+        let muSg = dot(p, S) / rS;
+        let hv = normalize(S + V);
+        let pr = earthParts(ein, mu0, mu, dot(hv, N), dot(hv, S));
+        let unknownW = max(1.0 - pr.clear.w - pr.cloudy.w, 0.0);
+        var Lsun = vec4f(0.0);
+        var Temit = vec4f(0.0);
+        for (var j = 0; j < atmK4(); j++) {
+          let ts0 = atmTsun(A.geo.x, muSg, j);
+          let es0 = atmIrr(0.0, muSg, j);
+          let tsc = atmTsun(A.geo.x + ein.cthKm, muSg, j);
+          let esc = atmIrr(ein.cthKm, muSg, j);
+          for (var c = 0; c < 4; c++) {
+            let clearRad = PI * path.L[j] + path.T[j] * (pr.clear.dir[c] * ts0 + pr.clear.dif[c] * es0);
+            let cloudRad = PI * path.Lc[j] + path.Tc[j] * (pr.cloudy.dir[c] * tsc + pr.cloudy.dif[c] * esc);
+            Lsun[c] += dot(A.w[4 * c + j], pr.clear.w * clearRad + pr.cloudy.w * cloudRad + unknownW * PI * path.L[j]);
+            Temit[c] += dot(A.w[4 * c + j], path.T[j]);
+          }
+        }
+        L = A.sunE * Lsun * sunVisible(b, p);
+        // Moonshine (planetshine sources) and night lights, dimmed by the view path.
+        if (b.ps0.w > 0.5) { L += b.psK0 * earthShade(ein, dot(N, b.ps0.xyz), mu, 0.0, 0.0).rho * Temit; }
+        if (b.ps1.w > 0.5) { L += b.psK1 * earthShade(ein, dot(N, b.ps1.xyz), mu, 0.0, 0.0).rho * Temit; }
+        L += nightL * (pr.clear.w * pr.clear.emit + pr.cloudy.w * pr.cloudy.emit) * Temit;
+        // An unknown wind marks the water where a possible glint (through both paths) outshines the known light.
+        var glintT = 0.0;
+        for (var j = 0; j < atmK4(); j++) { glintT += dot(A.w[4 + j], atmTsun(A.geo.x, muSg, j) * path.T[j]); }
+        let glintGap = earthGlintGap(pr.glintShare, pr.glintMax * glintT, Lsun.y);
+        // Reflected light matters while the sky above is lit (to ~6° below the horizon, sin 6° ≈ 0.1).
+        gap = earthGap(max(pr.gap, glintGap), pr.gapEmit, muSg > -0.1, nightL);
+`;
+
+/** Samples of Earth's layers at (uv, fp) for earthShade (earth.ts), and the night lights' radiance. */
+const EARTH_SAMPLE = /* wgsl */ `
+    var ein: EarthIn;
+    var nightL = vec4f(0.0);
+    if (b.earthC.w > 0.5) {
+      let baseA = bitcast<u32>(b.surfA.x);
+      let sA = sampleLayer(albedoPages, SI.albedoPerRow, baseA, residentLevel(baseA, surfLevel(b.surfA.w, fp, b.surfA.y), uv), uv, true);
+      ein.Rs = sA.v * b.absR;
+      ein.surfKnown = select(0.0, 1.0, sA.known.x >= 0.5);
+      let baseC = bitcast<u32>(b.earthC.x);
+      let sC = sampleLayer(cloudPages, SI.cloudsPerRow, baseC, residentLevel(baseC, surfLevel(b.surfA.w, fp, b.earthC.y), uv), uv, false);
+      ein.C = sC.v.x;
+      ein.cKnown = select(0.0, 1.0, sC.known.x >= 0.5);
+      ein.tau = sC.v.y;
+      ein.tauKnown = select(0.0, 1.0, sC.known.y > 0.0);
+      ein.fice = sC.v.w;
+      ein.cthKm = select(0.0, max(sC.v.z, 0.0) * 1e-3, sC.known.z > 0.0);
+      if (b.earthW.z > 0.5) {
+        let baseW = bitcast<u32>(b.earthW.x);
+        let sW = sampleLayer(rg16Pages, SI.rg16PerRow, baseW, residentLevel(baseW, surfLevel(b.surfA.w, fp, b.earthW.y), uv), uv, false);
+        ein.fw = sW.v.x;
+        ein.fi = sW.v.y;
+      }
+      if (b.earthW.w > 0.5) {
+        // Wind (a whole level in its own texture): the ascending pass, else the daily mean.
+        let wv = sampleWind(uv);
+        ein.glint = 1.0;
+        if (wv.known.x > 0.0) { ein.u10 = wv.v.x; ein.windKnown = 1.0; }
+        else if (wv.known.y > 0.0) { ein.u10 = wv.v.y; ein.windKnown = 1.0; }
+      }
+      if (b.earthN.z > 0.5) {
+        let baseN = bitcast<u32>(b.earthN.x);
+        let sN = sampleLayer(rg16Pages, SI.rg16PerRow, baseN, residentLevel(baseN, surfLevel(b.surfA.w, fp, b.earthN.y), uv), uv, false);
+        nightL = max(sN.v.x, 0.0) * b.nightK;
+      }
+    }
+`;
+
+export const BODY_SHADER = bodyShader('plain');
+
+/**
+ * The atmosphere around a body, for rays that miss the solid body (limb, twilight arcs): the chord through
+ * the top sphere is marched (shaders-atmosphere.ts). Pixels partly covered by the body get the uncovered
+ * share. Additive, depth-tested against bodies in front, no depth write.
+ */
+export const ATMOSPHERE_SHELL_SHADER = COMMON + BODY_COMMON + ATMOSPHERE_WGSL + /* wgsl */ `
+@group(0) @binding(12) var<uniform> A: Atm;
+@group(0) @binding(13) var atmTex: texture_2d_array<f32>;
+@group(0) @binding(14) var atmSamp: sampler;
+
+@vertex fn vsShell(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> VOut {
+  var corners = array<vec2f, 6>(vec2f(-1.0, -1.0), vec2f(1.0, -1.0), vec2f(-1.0, 1.0), vec2f(-1.0, 1.0), vec2f(1.0, -1.0), vec2f(1.0, 1.0));
+  let b = bodies[ii];
+  let c = corners[vi];
+  var o: VOut;
+  o.id = ii;
+  if (b.e2.w > 0.5) {
+    o.pos = vec4f(c, 0.0, 1.0);
+    o.xy = c;
+  } else {
+    let xy = c * A.quad.x;
+    let d = b.n.xyz + xy.x * b.e1.xyz + xy.y * b.e2.xyz;
+    let cc = toCam(F, d);
+    o.pos = vec4f(cc.x * F.proj.x, cc.y * F.proj.y, 0.0, -cc.z);
+    o.xy = xy;
+  }
+  return o;
+}
+
+struct SOut {
+  @location(0) ext: vec4f,
+  @location(1) w: f32,
+  @location(2) mask: f32,
+  @builtin(frag_depth) depth: f32,
+};
+
+@fragment fn fsShell(in: VOut) -> SOut {
+  let b = bodies[in.id];
+  if (b.atm.x < 0.5) { discard; }
+  let hit = castBody(b, in.xy);
+  let cov = select(0.0, clamp(0.5 + hit.disc / max(fwidth(hit.disc), 1e-30), 0.0, 1.0), hit.t > 0.0);
+  if (cov >= 1.0 || occulted(F, hit.dir)) { discard; }
+  // Closest approach q of the ray to the body centre (relative to it), without cancellation at large D.
+  var dirN: vec3f;
+  var q: vec3f;
+  var tCam: f32;
+  if (b.e2.w > 0.5) {
+    dirN = normalize(worldDirNdc(F, in.xy));
+    let cRel = -b.n.xyz * b.n.w;
+    tCam = -dot(cRel, dirN);
+    q = cRel + dirN * tCam;
+  } else {
+    let a = in.xy.x * b.e1.xyz + in.xy.y * b.e2.xyz;
+    let a2 = dot(a, a);
+    let L2 = 1.0 + a2;
+    dirN = (b.n.xyz + a) / sqrt(L2);
+    q = b.n.w * (a - b.n.xyz * a2) / L2;
+    tCam = b.n.w / sqrt(L2);
+  }
+  let Rt = A.geo.y + (max(b.rot0.w, max(b.rot1.w, b.rot2.w)) - A.geo.x);
+  let rq2 = dot(q, q);
+  if (rq2 >= Rt * Rt) { discard; }
+  let chord = sqrt(Rt * Rt - rq2);
+  let sNearQ = max(-chord, -tCam);
+  if (chord <= sNearQ) { discard; }
+  var o: SOut;
+  o.w = 1.0;
+  if (A.quad.w > 0.5) {
+    // Scattering not measured (Titan's haze): no light; the air beyond the disk is marked "not measured".
+    o.ext = vec4f(0.0);
+    o.mask = 1.0 - cov;
+  } else {
+    let pFar = q + dirN * chord;
+    let path = atmMarch(pFar, dirN, chord - sNearQ, 0.0, i32(b.atm.y), b.sun.xyz, b.m0.xyz, b.m1.xyz, b.m2.xyz, -1.0);
+    o.ext = toStore(F, A.sunE * PI * atmFold(path.L) * (1.0 - cov));
+    o.mask = 0.0;
+  }
+  o.depth = depthOf(max(tCam + sNearQ, 0.0) + 1e-3, dirN);
+  return o;
+}
+`;
+/** The body shader with Earth's layers (clouds, water, night lights; earth.ts). */
+export const EARTH_BODY_SHADER = bodyShader('earth');
+/** Bodies drawn from their photometry under an atmosphere (ATM_OVER_PHOTOMETRY). */
+export const ATM_BODY_SHADER = bodyShader('atm');
 
 /** Display-space overlay for resolved bodies: "not measured" hatch and provenance tint. */
 export const BODY_OVERLAY_SHADER = COMMON + BODY_COMMON + /* wgsl */ `
@@ -624,7 +895,7 @@ export const BODY_OVERLAY_SHADER = COMMON + BODY_COMMON + /* wgsl */ `
   let b = bodies[in.id];
   let hit = castBody(b, in.xy);
   let cov = clamp(0.5 + hit.disc / max(fwidth(hit.disc), 1e-30), 0.0, 1.0);
-  if (cov <= 0.0) { discard; }
+  if (cov <= 0.0 || occulted(F, hit.dir)) { discard; }
   let stored = textureLoad(depthTex, vec2i(in.pos.xy), 0);
   if (stored > depthOf(hit.t, hit.dir) * 1.0001) { discard; }   // behind another body
   let col = ov[2u * in.id];
@@ -671,7 +942,7 @@ ${BG}
   let u = vec3f(stars[base], stars[base + 1u], stars[base + 2u]);
   let e = vec4f(stars[base + 3u], stars[base + 4u], stars[base + 5u], stars[base + 6u]);
   let c = toCam(F, u);
-  if (c.z >= 0.0) { return; }
+  if (c.z >= 0.0 || occulted(F, u)) { return; }
   let ndc = vec2f(c.x * F.proj.x, c.y * F.proj.y) / (-c.z);
   let marg = E.misc2.x * 2.0 * F.size.zw;
   if (abs(ndc.x) > 1.0 + marg.x || abs(ndc.y) > 1.0 + marg.y) { return; }
@@ -960,6 +1231,10 @@ export const PYRAMID_BLUR_SIGMA = 1;
 // Adaptation measurement: log-average over the foveal field of the retinal image (excluding point cores;
 // Ward Larson, Rushmeier & Piatko 1997) and the corneal flux ∫L dΩ, reduced on the GPU.
 // ─────────────────────────────────────────────────────────────────────────────────────────────
+/** Pixels per side summed by one adaptation invocation; a workgroup (8 × 8 invocations) covers ADAPT_TILE_PX². */
+export const ADAPT_BLOCK = 8;
+export const ADAPT_TILE_PX = 8 * ADAPT_BLOCK;
+
 export const ADAPT_SHADER = COMMON + /* wgsl */ `
 @group(0) @binding(0) var<uniform> F: Frame;
 @group(0) @binding(1) var<uniform> E: Eye;
@@ -970,12 +1245,10 @@ export const ADAPT_SHADER = COMMON + /* wgsl */ `
 ${SRCS(0, 6)}
 ${VEIL}
 
-var<workgroup> sh: array<vec4f, 256>;
-
-@compute @workgroup_size(16, 16) fn tiles(@builtin(global_invocation_id) g: vec3u, @builtin(local_invocation_index) li: u32, @builtin(workgroup_id) wg: vec3u, @builtin(num_workgroups) nw: vec3u) {
-  let p = vec2i(g.xy);
+/** One pixel's contribution: (log cone · w, log rod · w, w, flux) (eye-model.md §2). */
+fn adaptSample(p: vec2i) -> vec4f {
   var acc = vec4f(0.0);
-  if (f32(p.x) < F.size.x && f32(p.y) < F.size.y) {
+  {
     let ndc = ndcFromFrag(F, vec2f(p) + 0.5);
     let dir = normalize(worldDirNdc(F, ndc));
     let om = pixelSolidAngle(F, ndc);
@@ -997,13 +1270,22 @@ var<workgroup> sh: array<vec4f, 256>;
     }
     acc.w = (ext.y + pt.y) * om;
   }
-  sh[li] = acc;
-  workgroupBarrier();
-  for (var s = 128u; s > 0u; s = s >> 1u) {
-    if (li < s) { sh[li] += sh[li + s]; }
-    workgroupBarrier();
+  return acc;
+}
+
+// Each invocation sums an ADAPT_BLOCK² block of pixels into its own partial: no workgroup barriers or
+// shared memory (a tree reduction's barriers cost more than all the per-pixel work on CPU-emulated
+// GPUs), and the partials are few enough for the single-workgroup reduction below.
+@compute @workgroup_size(8, 8) fn tiles(@builtin(global_invocation_id) g: vec3u, @builtin(num_workgroups) nw: vec3u) {
+  var acc = vec4f(0.0);
+  let o = vec2i(g.xy) * ${ADAPT_BLOCK};
+  for (var j = 0; j < ${ADAPT_BLOCK}; j++) {
+    for (var i = 0; i < ${ADAPT_BLOCK}; i++) {
+      let p = o + vec2i(i, j);
+      if (f32(p.x) < F.size.x && f32(p.y) < F.size.y) { acc += adaptSample(p); }
+    }
   }
-  if (li == 0u) { partials[wg.x + wg.y * nw.x] = sh[0]; }
+  partials[g.x + g.y * nw.x * 8u] = acc;
 }
 `;
 

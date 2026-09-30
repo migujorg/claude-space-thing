@@ -216,7 +216,7 @@ def himawari_disk() -> dict:
     key = _cache_key(paths)
     cache = CACHE / "earth" / f"himawari-{key}.json"
     if cache.exists():
-        return json.loads(cache.read_text())
+        return json.loads(cache.read_text(encoding="utf-8"))
     nseg = ed.HIMAWARI_SEGMENTS
     by_band = {b: paths[(b - 1) * nseg:b * nseg] for b in ed.HIMAWARI_BANDS}
     t0 = read_header_times(by_band[1][0])[0]
@@ -279,7 +279,7 @@ def himawari_disk() -> dict:
         a["ring_iof"] = ring
         out["bands"][str(b)] = a
     cache.parent.mkdir(parents=True, exist_ok=True)
-    cache.write_text(json.dumps(out, indent=1))
+    cache.write_text(json.dumps(out, indent=1), encoding="utf-8", newline="\n")
     return out
 
 
@@ -325,7 +325,7 @@ def epoxi_disk() -> dict:
     key = _cache_key([p for k in sorted(files) for p in files[k]])
     cache = CACHE / "earth" / f"epoxi-{key}.json"
     if cache.exists():
-        return json.loads(cache.read_text())
+        return json.loads(cache.read_text(encoding="utf-8"))
     sel = ed.epoxi_selection()
     out = {}
     for (ep, flt), paths in files.items():
@@ -335,7 +335,7 @@ def epoxi_disk() -> dict:
                               "A_max": float(a.max()), "n": len(res), "phase": float(np.mean([r["phase"] for r in res])),
                               "times": [i.time for i in sel[(ep, flt)]], "images": res}
     cache.parent.mkdir(parents=True, exist_ok=True)
-    cache.write_text(json.dumps(out, indent=1))
+    cache.write_text(json.dumps(out, indent=1), encoding="utf-8", newline="\n")
     return out
 
 

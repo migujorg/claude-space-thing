@@ -40,6 +40,15 @@ export interface Manifest {
   /** Validity window of time-dependent products, TDB seconds past J2000. */
   window: { startEt: number; endEt: number };
   products: Record<string, ProductEntry>;
+  /** Pipeline bookkeeping for resumable builds (pipeline/build.py): stage name → last run (built / failed). */
+  stages?: Record<string, { status: 'built' | 'failed'; finishedAt?: string; error?: string; profile?: string | null }>;
+  /** The last build: its profile and, per stage, what happened and why (e.g. "not in profile minimal"). */
+  build?: {
+    profile: string | null;
+    startedAt: string;
+    finishedAt: string;
+    stages: Record<string, { status: string; reason: string }>;
+  };
 }
 
 export interface LeapSecond {
@@ -153,7 +162,11 @@ export interface OrientationHeader {
   notes?: string;
 }
 
-export type BodyKind = 'star' | 'planet' | 'dwarf-planet' | 'moon' | 'barycenter';
+/**
+ * 'small-body': asteroids and comets of the smallbodies/* products. bodies.json never contains it; the app makes
+ * a Body of this kind for a selected catalogue object (app/src/app/smallbodies.ts).
+ */
+export type BodyKind = 'star' | 'planet' | 'dwarf-planet' | 'moon' | 'barycenter' | 'small-body';
 
 export interface Body {
   id: number;
@@ -618,8 +631,14 @@ export interface SurfaceLayerHeader {
   bytesPerTexel: number;
   tileSize: 256;
   minLevel: number;
+  /** Highest level stored (the source's own maximum unless a build level cap applied, see levelCap). */
   maxLevel: number;
   levels: SurfaceLevelInfo[];
+  /**
+   * Present only when a build profile capped the pyramid (pipeline parameter surfaces.maxLevel): the source supports
+   * levels up to sourceMaxLevel, but only minLevel..maxLevel were written (identical to an uncapped build's).
+   */
+  levelCap?: { sourceMaxLevel: number; note: string };
   /** Template relative to the data root, placeholders {level}, {ty}, {tx}. */
   tilePath: string;
   /** Path of the "sha256  path" listing of every stored tile. */
@@ -707,6 +726,152 @@ export interface SurfaceIndex {
   /** NAIF id → why a candidate map failed a check (the body is rendered from photometry only). */
   rejected?: Record<string, string>;
   /** Builder module → wall-clock seconds of the last build. */
+  buildSeconds?: Record<string, number>;
+  notes?: string;
+}
+
+// ---------------------------------------------------------------------------------------------- shape models
+// Products of the `shapes` stage (app/public/data/shapes/): triangle meshes of irregular bodies.
+
+/** One part (positions, normals or indices) of a mesh LOD, relative to the LOD's `offset` in the .bin. */
+export interface ShapeBinaryPart {
+  offset: number;
+  bytes: number;
+  /** f32 positions (km), i16 snorm normals (÷ 32767), u16 or u32 triangle indices. */
+  type: 'f32' | 'i16' | 'u16' | 'u32';
+  /** 3 per element (xyz, or the three vertex indices of a triangle). */
+  components: 3;
+  /** Number of elements (vertices or triangles). */
+  count: number;
+  encoding?: string;
+}
+
+export interface ShapeLod {
+  /** 0 = finest; each further level has fewer triangles (about 1/4). */
+  level: number;
+  triangles: number;
+  vertices: number;
+  /** Byte offset of this LOD in the .bin; each part padded to 4 bytes. */
+  offset: number;
+  bytes: number;
+  positions: ShapeBinaryPart;
+  normals: ShapeBinaryPart;
+  /** Counter-clockwise seen from outside. */
+  indices: ShapeBinaryPart;
+  /** Every edge shared by exactly two triangles with consistent orientation. */
+  watertight: boolean;
+  /** Present only when `watertight` is false (a decimated level of a closed source that could not be kept closed). */
+  defectEdges?: { boundaryEdges: number; nonManifoldEdges: number; inconsistentEdges: number };
+  /** Volume of this level ÷ volume of the welded source mesh. */
+  volumeRatioToSource: number;
+  /** 'source' (the welded source mesh itself) or 'quadric' (quadric-error decimation of the previous level). */
+  method: 'source' | 'quadric';
+  decimationAttempts: number;
+}
+
+/** shapes/<id>.json next to shapes/<id>.bin (id = NAIF id for planetary satellites, SBDB SPK-ID otherwise). */
+export interface ShapeModelHeader {
+  id: number;
+  name: string;
+  /** SPICE body id where one exists (e.g. 2000433 for Eros; asteroids' SBDB SPK-IDs are 20000000 + number). */
+  naifId: number | null;
+  sbdb: { spkid: number; fullname: string } | null;
+  /** How the shape was obtained: spacecraft imaging/altimetry, radar delay-Doppler, lightcurve inversion. */
+  kind: 'spacecraft' | 'radar' | 'lightcurve';
+  bin: string;
+  units: 'km';
+  /** The body-fixed frame the vertices are given in (the source's own). */
+  frame: { name: string; origin: string; axes: string };
+  /**
+   * Orientation provenance: `frame`, the SPICE kernels that define it for the source, the rotation constants
+   * behind it (`sourceRotation`: POLE_RA/POLE_DEC [deg, deg/century, deg/century²], PM [deg, deg/day, deg/day²]),
+   * the app's frame for the body (`appFrame`, pck00011) and its constants, the angle between the two frames at
+   * given epochs (`differenceDeg`, `poleDifferenceDeg`), and for radar models the published spin state.
+   */
+  orientation: {
+    frame: string;
+    label: Label;
+    kernels?: string[];
+    appFrame?: string;
+    sourceRotation?: Record<string, unknown>;
+    appRotation?: Record<string, unknown>;
+    differenceDeg?: Record<string, number>;
+    poleDifferenceDeg?: Record<string, number>;
+    labelRotation?: Record<string, unknown>;
+    spinState?: { file: string; fields: { name: string; unit?: string; description?: string; value: number | string }[] };
+    note?: string;
+    comparison?: string;
+    [k: string]: unknown;
+  };
+  provenance: { label: Label; sources: string[]; method: string; uncertainty?: string };
+  source: {
+    file: string;
+    nativeVertices: number;
+    nativeTriangles: number;
+    weldedVertices: number;
+    /** After dropping degenerate, repeated and zero-volume back-to-back plates (noted in `notes` when any). */
+    weldedTriangles: number;
+    /**
+     * Of the welded source: `components` = separate surfaces (Arrokoth's two lobes are 2); `genus` (only when
+     * watertight) = handles, i.e. tunnels through the mesh (0 for a sphere-like surface).
+     */
+    integrity: {
+      boundaryEdges: number;
+      nonManifoldEdges: number;
+      inconsistentEdges: number;
+      eulerCharacteristic: number;
+      components: number;
+      genus?: number;
+      watertight: boolean;
+    };
+  };
+  stats: {
+    volumeKm3: number;
+    areaKm2: number;
+    volumeEquivalentRadiusKm: number;
+    centroidKm: number[];
+    boundsKm: number[][];
+  };
+  /** Volume-equivalent radius against a measured mean radius (pck00011 radii or SBDB diameter). */
+  scaleCheck: {
+    referenceMeanRadiusKm: number;
+    reference: string;
+    volumeEquivalentRadiusKm: number;
+    ratio: number;
+  } | null;
+  lods: ShapeLod[];
+  layout: string;
+  notes: string[];
+}
+
+/**
+ * shapes/damit-index.json: a BinaryTableHeader with one row per DAMIT model; mesh data in `meshBin` (per model at
+ * `dataOffset`: int16 xyz × vertexCount scaled by `scale`/32767, padded to 4 bytes, then uint16 indices).
+ */
+export interface DamitIndexHeader extends BinaryTableHeader {
+  kind: 'damit-models';
+  meshBin: string;
+  provenance: { label: Label; sources: string[]; method: string; uncertainty: string };
+  rotation: string;
+  references: { author: string; year: string; title: string; journal: string; bibcode: string; url: string }[];
+  stats: Record<string, number>;
+}
+
+/** shapes/index.json */
+export interface ShapeIndex {
+  bodies: Record<string, {
+    name: string;
+    file: string;
+    kind: ShapeModelHeader['kind'];
+    label: Label;
+    trianglesFinest: number;
+    lods: number;
+    bytes: number;
+    volumeEquivalentRadiusKm: number;
+    scaleRatio: number | null;
+    orientationLabel: Label;
+  }>;
+  damit?: { file: string; models: number; asteroids: number; bytes: number; label: Label; [k: string]: unknown };
   buildSeconds?: Record<string, number>;
   notes?: string;
 }
@@ -799,6 +964,63 @@ export interface SmallBodyPhysicalHeader extends SmallBodyTableHeader {
   spinTechniques?: string[];
   /** SsODNet best taxonomy per physical.taxonomyBft index: 'scheme|class|technique'. */
   taxonomySsodnet?: string[];
+}
+
+/** A population of the synthetic layer (synthetic/objects.json `populations`; pipeline stage synthetic). */
+export interface SyntheticPopulation {
+  /** neo, hungaria, mainbelt, hilda, trojan, tno */
+  name: string;
+  /** objects.pop / cells.pop value. */
+  code: number;
+  /** The model (source id, or 'catalogue+<completeness source>+<slope source>'). */
+  modelId: string;
+  sources: string[];
+  /** Seed string prefix of the population's cell streams ('<algorithm>|<seed>|<modelId>'). */
+  prefix: string;
+  grid: { aEdgesAu: number[]; eWidth: number; iWidthDeg: number; nE: number; nI: number; hWidthMag: number; hAlignment: string };
+  hFloor: number;
+  /** How the completeness limit was found (fit of Hendler & Malhotra 2020, or comparison with the model). */
+  limit: Record<string, unknown>;
+  model: Record<string, unknown>;
+  firstCell: number;
+  cells: number;
+  firstObject: number;
+  objects: number;
+  knownInGrid: number;
+  totals: { model: number; knownInGroups: number; rawDeficit: number; deficit: number; shown: number; groups: number };
+}
+
+/** synthetic/objects.json: objects standing in for the undiscovered members of each (a, e, i, H) cell. */
+export interface SyntheticObjectsHeader extends SmallBodyTableHeader {
+  algorithm: string;
+  seed: number;
+  /** Epoch of the elements (= smallbodies core epochEt), TDB s past J2000. */
+  epochEt: number;
+  epochTdb?: string;
+  catalogue: { product: string; snapshot: string; coreSha256: string; physicalSha256: string; sources: string[] };
+  populations: SyntheticPopulation[];
+  labels: string;
+  seedRule: string;
+  yieldRule: string;
+  frame: string;
+  gmSun: number;
+  obliquityArcsec: number;
+  auKm: number;
+  cells: string;
+  counts: { synthetic: number; cells: number };
+  floors: Record<string, number>;
+  /** Slope parameter of the H-G magnitude law used for every synthetic object. */
+  slopeParameterG?: { value: number; source: string; method: string };
+  attributePools?: Record<string, unknown>;
+}
+
+/** synthetic/cells.json: one record per (population, a, e, i, H) cell. */
+export interface SyntheticCellsHeader extends SmallBodyTableHeader {
+  algorithm: string;
+  seed: number;
+  seedRule: string;
+  yieldRule: string;
+  populations: { name: string; code: number; modelId: string; firstCell: number; cells: number }[];
 }
 
 /** smallbodies/names.json: line i of `file` describes core record i. */
@@ -902,6 +1124,8 @@ export interface HealpixMapLayer {
   labelBin?: string;
   labelCodes?: Record<string, string>;
   pixelSolidAngleSr?: number;
+  /** Several maps in one file (deepRemainder): slice k covers value[(k * npix + pix) * channels + c]. */
+  slices?: { count: number; yBelow: (number | null)[]; layout: string; tileOrder: number };
   stats?: Record<string, unknown>;
 }
 

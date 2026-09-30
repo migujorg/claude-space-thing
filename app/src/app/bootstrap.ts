@@ -12,6 +12,9 @@ import { mountUi, type Ui } from '../ui/index';
 import { AppModel } from './model';
 import type { AppDeps, RendererPort } from './ports';
 import { sbId } from './smallbodies';
+import { attachStarPicking, SkyController, skySummary } from './sky';
+import { labelAllowed } from './reality';
+import { StarCard } from '../ui/starCard';
 import { formatUrlParams, parseUrlParams, type UrlView } from './url';
 
 export interface AppHandle {
@@ -42,10 +45,14 @@ export interface DebugApi {
     goTo(spkid: number, dist?: number, instant?: boolean): Promise<void>;
   };
   model: AppModel;
+  /** M4 sky controller (app/sky.ts), when running. */
+  sky?: SkyController;
 }
 
 /** The name index runs in a module worker (Vite bundles it). */
 const defaultNameWorker = (): Worker => new Worker(new URL('./names.worker.ts', import.meta.url), { type: 'module' });
+/** Selected small bodies are propagated in a module worker. */
+const defaultPropagationWorker = (): Worker => new Worker(new URL('./sbprop.worker.ts', import.meta.url), { type: 'module' });
 
 declare global {
   interface Window {
@@ -151,9 +158,23 @@ export async function startApp(canvas: HTMLCanvasElement, uiRoot: HTMLElement, d
       window.__frameError = msg;
     }
     sizeViewport();
+    // M4 sky (app/sky.ts): decides which stars are points and which are sky light, streams the deep tiles and
+    // draws the sky background; without it, the bright catalogue goes to the renderer as before.
+    const base = deps.dataBaseUrl ?? `${import.meta.env.BASE_URL}data/`;
+    const allowed = () => (l: Parameters<typeof labelAllowed>[0]) => labelAllowed(l, model.reality.exists);
+    const sky = renderer && renderer.setBackground && renderer.gpuDevice ? new SkyController(data, renderer, base, allowed()) : null;
+    if (sky) {
+      window.__app!.sky = sky;
+      model.skyInfo = () => skySummary(sky);
+      const card = new StarCard({ openSources: (ids) => ui.openPanel('sources', ids) });
+      ui.root.querySelector('.st-right')?.append(card.el);
+      model.on('selection', () => { if (model.selectedId !== null) card.show(null); });
+      attachStarPicking(canvas, sky, (x, y) => model.pickAtAsync(x, y), () => model.snapshot?.camera ?? null, (f) => card.show(f));
+    }
     const pushStars = () => {
       const r = model.starCatalog();
-      if (renderer && r) renderer.setStars(r.catalog);
+      if (sky) sky.setAllowed(allowed());
+      else if (renderer && r) renderer.setStars(r.catalog);
     };
     pushStars();
     let lastLevel = model.reality.exists;
@@ -167,6 +188,10 @@ export async function startApp(canvas: HTMLCanvasElement, uiRoot: HTMLElement, d
     // Render loop with backpressure: a new frame is built and submitted only once the GPU has finished the
     // previous one, so a slow GPU (or software rendering) never accumulates a queue of stale frames, and the
     // DOM overlays (labels) always match the image on screen. Simulated time still advances by real time.
+    // Pacing waits for the frame only (frameDone, or the device's queue); renderer.settled(), which drives extra
+    // frames until tiles are in and the eye has adapted, is used only when a script waits for a settled frame
+    // (__app.nextFrame(), __frameReady) — per frame it would multiply GPU work and short-cut the eye's temporal
+    // adaptation. A renderer that offers neither falls back to settled().
     let inFlight = false;
     let last = performance.now();
     let fieldFailed = false;
@@ -189,9 +214,12 @@ export async function startApp(canvas: HTMLCanvasElement, uiRoot: HTMLElement, d
           model.message(`Small bodies can no longer be drawn: ${(e as Error).message ?? e}`, 'error');
         }
       }
+      sky?.beforeFrame(s, renderer.stats);
       renderer.render(s);
       inFlight = true;
-      renderer.settled().then(
+      const r = renderer;
+      const done = ws.length ? r.settled() : r.frameDone ? r.frameDone() : r.gpuDevice ? r.gpuDevice.queue.onSubmittedWorkDone() : r.settled();
+      done.then(
         () => { inFlight = false; ws.forEach((w) => w()); },
         (e) => { inFlight = false; console.error(e); ws.forEach((w) => w()); },
       );
@@ -200,7 +228,7 @@ export async function startApp(canvas: HTMLCanvasElement, uiRoot: HTMLElement, d
     // the small-body catalogue (names are indexed in a worker when search or a small-body target needs them).
     renderFrame(0, null);
     model.startBackgroundLoading();
-    const base = deps.dataBaseUrl ?? `${import.meta.env.BASE_URL}data/`;
+    const skyReady = sky ? sky.startMaps() : Promise.resolve();
     const attachSmallBodyField = async () => {
       const sb = model.smallBodies;
       const dev = renderer?.gpuDevice;
@@ -219,6 +247,7 @@ export async function startApp(canvas: HTMLCanvasElement, uiRoot: HTMLElement, d
             nongrav: t.nongrav?.buffer,
             nongravHeader: t.nongrav?.header,
             photometry: t.photometry ?? undefined,
+            synthetic: t.synthetic ? { objects: t.synthetic.objects.buffer, header: t.synthetic.objects.header } : undefined,
           },
           { positionSSB: (id, et) => model.eph?.positionSSB(id, et) ?? null },
         );
@@ -235,6 +264,7 @@ export async function startApp(canvas: HTMLCanvasElement, uiRoot: HTMLElement, d
             loader: data.loader,
             namesUrl: (file) => new URL(base + file, location.href).href,
             worker: deps.nameWorker ?? defaultNameWorker,
+            propagationWorker: deps.propagationWorker === null ? undefined : deps.propagationWorker ?? defaultPropagationWorker,
             enabled: view.smallbodies !== false,
           })
           .then(() => attachSmallBodyField())
@@ -255,6 +285,8 @@ export async function startApp(canvas: HTMLCanvasElement, uiRoot: HTMLElement, d
     await model.systemsIdle();
     await smallBodiesReady;
     await model.urlTargetSettled();
+    await skyReady;
+    await sky?.idle();
     const nextFrame = () => new Promise<void>((res) => frameWaiters.push(res));
     await nextFrame();
     // Orbit tracks are normally built a few per frame; here finish them at once, then render once more.

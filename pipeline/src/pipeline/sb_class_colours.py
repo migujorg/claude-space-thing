@@ -33,7 +33,7 @@ def load(path: Path | None = None) -> dict:
     p = path or OUT / PRODUCT
     if not p.exists():
         raise FileNotFoundError(f"{p} missing: build the light stage first (it writes {PRODUCT})")
-    return json.loads(p.read_text())
+    return json.loads(p.read_text(encoding="utf-8"))
 
 
 def _strip(name: str) -> str:

@@ -67,6 +67,53 @@ describe('scene extras', () => {
     expect(sb.surface?.albedo).toBeUndefined();
   });
 
+  it('draws a surface-only map with its clouds, water, night and wind layers once the atmosphere is admitted', () => {
+    const abs = { normalization: { absoluteDiskMean: { X: 0.03, Y: 0.03, Z: 0.03, S: 0.03 } } };
+    const layers = surfaceRefs([
+      layer(1, 'albedo', { maxLevel: 3, brightness: { label: 'measured' }, color: { label: 'estimated' }, ...abs }),
+      layer(1, 'clouds', { maxLevel: 3, kind: 'cloud-properties', brightness: { label: 'measured' } }),
+      layer(1, 'water', { maxLevel: 3, kind: 'surface-water', brightness: { label: 'measured' } }),
+      layer(1, 'night', { maxLevel: 3, kind: 'emitted-radiance', brightness: { label: 'measured' }, color: { label: 'estimated' } }),
+      layer(1, 'wind', { maxLevel: 2, kind: 'surface-wind', brightness: { label: 'measured' } }),
+    ], '/data');
+    const comp = (l: string) => ({ id: 'rayleigh', description: '', extinctionPerKm: { value: [[1]], label: l, sources: [] }, singleScatteringAlbedo: { value: [1], label: 'derived', sources: [] }, phaseFunction: { value: { kind: 'rayleigh', depolarization: [0] }, label: 'derived', sources: [] } });
+    const atmospheres = { definition: '', wavelengthsNm: [550], channels: ['X', 'Y', 'Z', 'S'], foldWeights: { value: [[1], [1], [1], [1]], label: 'derived', sources: [] }, bodies: { '1': { name: 'X', naifId: 1, referenceRadiusKm: 1, altitudeReference: '', altitudesKm: [0], topAltitudeKm: 1, topRadiusKm: 2, scaleHeightKm: { value: 1, label: 'derived', sources: [] }, components: [comp('estimated')] } } } as unknown as SceneExtras['atmospheres'];
+    const best = scene();
+    applyExtras(best, body(1), { surfaces: layers, rings: null, atmospheres }, 'best', true);
+    expect(best.surface?.albedo).toBeDefined();
+    expect(best.surface?.clouds && best.surface.water && best.surface.night && best.surface.wind).toBeTruthy();
+    expect(best.atmosphere?.worstLabel).toBe('estimated');
+    // Strict: the atmosphere (estimated) is not admitted, so the surface-only map stays withheld.
+    const strict = scene();
+    applyExtras(strict, body(1), { surfaces: layers, rings: null, atmospheres }, 'strict', true);
+    expect(strict.surface?.albedo).toBeUndefined();
+    expect(strict.atmosphere).toBeUndefined();
+  });
+
+  it('attaches an admitted atmosphere to a body drawn from its photometry (unknown scattering does not withhold it)', () => {
+    const comp = (id: string, ext: string, ssa: string) => ({ id, description: '', extinctionPerKm: { value: [[1]], label: ext, sources: [] }, singleScatteringAlbedo: { value: ssa === 'unknown' ? null : [1], label: ssa, sources: [] }, phaseFunction: { value: ssa === 'unknown' ? null : { kind: 'rayleigh', depolarization: [0] }, label: ssa, sources: [] } });
+    const entry = (components: unknown[]) => ({ name: 'X', naifId: 1, referenceRadiusKm: 1, altitudeReference: '', altitudesKm: [0], topAltitudeKm: 1, topRadiusKm: 2, scaleHeightKm: { value: 1, label: 'derived', sources: [] }, components });
+    const file = (components: unknown[]) => ({ definition: '', wavelengthsNm: [550], channels: ['X', 'Y', 'Z', 'S'], foldWeights: { value: [[1], [1], [1], [1]], label: 'derived', sources: [] }, bodies: { '1': entry(components) } }) as unknown as SceneExtras['atmospheres'];
+    const plain: SceneExtras = { surfaces: new Map(), rings: null, atmospheres: file([comp('dust', 'estimated', 'derived')]) };
+    const sb = scene();
+    applyExtras(sb, body(1), plain, 'best', true);
+    expect(sb.atmosphere?.worstLabel).toBe('estimated');
+    const strict = scene();
+    applyExtras(strict, body(1), plain, 'strict', true);
+    expect(strict.atmosphere).toBeUndefined();
+    const dark = scene();
+    applyExtras(dark, body(1), plain, 'best', false);
+    expect(dark.atmosphere).toBeUndefined();
+    // Titan-like: haze scattering unknown, extinction estimated → passed (the renderer marks it not measured).
+    const titan = scene();
+    applyExtras(titan, body(1), { ...plain, atmospheres: file([comp('rayleigh', 'estimated', 'derived'), comp('haze', 'estimated', 'unknown')]) }, 'best', true);
+    expect(titan.atmosphere?.worstLabel).toBe('estimated');
+    // Unknown extinction → nothing to draw at all.
+    const none = scene();
+    applyExtras(none, body(1), { ...plain, atmospheres: file([comp('haze', 'unknown', 'unknown')]) }, 'best', true);
+    expect(none.atmosphere).toBeUndefined();
+  });
+
   it('ring normal is the body z axis in ICRF', () => {
     expect(poleOf([1, 0, 0.1, 0, 1, 0.2, 0, 0, 0.97])).toEqual([0.1, 0.2, 0.97]);
   });

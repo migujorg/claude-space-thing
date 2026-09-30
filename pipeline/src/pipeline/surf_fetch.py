@@ -17,14 +17,13 @@ import hashlib
 from collections.abc import Callable, Iterable
 from pathlib import Path
 
-import requests
 
 from . import download
 from .paths import RAW
 
 
 def ledger_entry(path: Path) -> dict | None:
-    return download._load_ledger().get(str(path.relative_to(RAW)))
+    return download._load_ledger().get(download.ledger_key(path))
 
 
 def fetch_transient(url: str, subdir: str, name: str | None = None) -> tuple[Path, dict]:
@@ -42,7 +41,7 @@ def fetch_transient(url: str, subdir: str, name: str | None = None) -> tuple[Pat
 
 def discard(path: Path) -> None:
     """Delete a large raw file after reduction (its ledger entry stays)."""
-    path.unlink(missing_ok=True)
+    download.remove(path)
 
 
 def fetch_range(url: str, subdir: str, name: str, start: int, length: int) -> tuple[Path, dict]:
@@ -53,8 +52,7 @@ def fetch_range(url: str, subdir: str, name: str, start: int, length: int) -> tu
 
 
 def remote_size(url: str) -> int:
-    r = requests.head(url, allow_redirects=True, timeout=60)
-    r.raise_for_status()
+    r = download.request("HEAD", url, allow_redirects=True, timeout=60)
     return int(r.headers["Content-Length"])
 
 

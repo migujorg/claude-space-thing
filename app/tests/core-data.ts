@@ -11,10 +11,12 @@ interface Fs {
   readFileSync(p: string): Uint8Array;
   readFileSync(p: string, enc: 'utf8'): string;
 }
-// Non-literal specifier: node:fs without depending on @types/node.
+// Non-literal specifiers: node:fs and node:url without depending on @types/node.
 const fs: Fs = await import(/* @vite-ignore */ 'node:fs' as string);
+const nodeUrl: { fileURLToPath(u: URL): string } = await import(/* @vite-ignore */ 'node:url' as string);
 
-const dir = (rel: string) => decodeURIComponent(new URL(rel, import.meta.url).pathname);
+// fileURLToPath, not URL.pathname: on Windows the latter gives "/C:/..." which fs cannot open.
+const dir = (rel: string) => nodeUrl.fileURLToPath(new URL(rel, import.meta.url));
 export const DATA_DIR = dir('../public/data/');
 export const FIXTURE_DIR = dir('./fixtures/');
 

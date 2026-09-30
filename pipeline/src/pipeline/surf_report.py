@@ -22,7 +22,7 @@ REPORT = REPO / "docs" / "reports" / "surfaces.md"
 def _headers() -> dict[tuple[int, str], dict]:
     out = {}
     for p in sorted((OUT / "surfaces").glob("*/*.json")):
-        h = json.loads(p.read_text())
+        h = json.loads(p.read_text(encoding="utf-8"))
         out[(h["body"], h["layer"])] = h
     return out
 
@@ -115,6 +115,19 @@ def verification(hs: dict) -> list[str]:
                      f"land median). Water covers {wd['waterAreaFraction'] * 100:.1f} % of the area (ocean ≈ 70.8 % + "
                      "inland water); MOD44W land samples that have a MUR sea-ice value (coastline mismatch) "
                      f"{wd['maskAgreement']['mod44wLandSamplesWithSeaIceValue'] * 100:.3f} %.")
+    if (399, "wind") in hs:
+        h = hs[(399, "wind")]
+        L = h["maxLevel"]
+        u = st.read_level(OUT, 399, "wind", L, 3, "f16", nodata="nan")
+        lat = st.lat_centers(L)
+        wgt = np.broadcast_to(np.cos(np.radians(lat))[:, None], u.shape[:2])
+        ok = np.isfinite(u[..., 1])
+        trades = u[(lat > 10) & (lat < 25), :, 1]
+        south = u[(lat > -60) & (lat < -45), :, 1]
+        lines.append(f"- **Earth wind (level {L}, U10 daily mean, {h['epoch']['start'][:10]}):** known on "
+                     f"{wgt[ok].sum() / wgt.sum() * 100:.0f} % of the sphere's area, area-weighted mean "
+                     f"{np.average(u[..., 1][ok], weights=wgt[ok]):.1f} m/s; trade-wind belt (10–25°N) median "
+                     f"{np.nanmedian(trades):.1f} m/s, Southern Ocean (45–60°S) median {np.nanmedian(south):.1f} m/s.")
     if (399, "night") in hs:
         h = hs[(399, "night")]
         L = h["maxLevel"]
@@ -152,9 +165,9 @@ def earth_numbers(hs: dict) -> str:
     a = n["absoluteDiskMean"]
     lam = n["lambertSphereGeometricAlbedo"]
     try:
-        phot = json.loads((OUT / "photometry.json").read_text())["399"]
+        phot = json.loads((OUT / "photometry.json").read_text(encoding="utf-8"))["399"]
         pv = phot["geometricAlbedoV"]["value"]
-        sun = json.loads((OUT / "light.json").read_text())["sun"]["irradianceXYZS_1AU"]["value"]
+        sun = json.loads((OUT / "light.json").read_text(encoding="utf-8"))["sun"]["irradianceXYZS_1AU"]["value"]
         pc = [p / s for p, s in zip(phot["geometricAlbedoXYZS"]["value"], sun)]
     except (FileNotFoundError, KeyError):
         pv, pc = None, None
@@ -245,7 +258,7 @@ EXCLUDED_NOTE = """## Bodies deliberately without a visible surface map
 
 def generate() -> str:
     hs = _headers()
-    idx = json.loads((OUT / "surfaces" / "index.json").read_text())
+    idx = json.loads((OUT / "surfaces" / "index.json").read_text(encoding="utf-8"))
     total = sum(h["stats"]["bytes"] for h in hs.values())
     meta = sum((OUT / "surfaces" / str(b) / f"{lay}{ext}").stat().st_size for (b, lay) in hs
                for ext in (".json", ".sha256"))
@@ -419,7 +432,7 @@ def generate() -> str:
 
 
 def main() -> None:
-    REPORT.write_text(generate())
+    REPORT.write_text(generate(), encoding="utf-8", newline="\n")
     print(f"wrote {REPORT.relative_to(REPO)}")
 
 

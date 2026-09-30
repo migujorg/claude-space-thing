@@ -21,13 +21,14 @@ import json
 import os
 import time
 import zlib
-from concurrent.futures import ProcessPoolExecutor, as_completed
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
 import requests
 
+from . import download
 from .download import fetch, sha256_file
 from .paths import CACHE, RAW
 
@@ -121,9 +122,9 @@ def tap_query(select: str, table: str, where: str, subdir: str, base: str, expec
         if not rows_file.exists():
             expected = int(_sync(count_query or f"SELECT COUNT(*) AS n FROM {table}{cond}").splitlines()[1])
             if n == expected:
-                rows_file.write_text(str(expected))
+                rows_file.write_text(str(expected), encoding="utf-8", newline="\n")
         else:
-            expected = int(rows_file.read_text())
+            expected = int(rows_file.read_text(encoding="utf-8"))
         if n == expected:
             break
         print(f"  {name}: {n} rows, expected {expected}; refetching", flush=True)
@@ -132,7 +133,7 @@ def tap_query(select: str, table: str, where: str, subdir: str, base: str, expec
         raise RuntimeError(f"Gaia TAP query {name} kept returning truncated results")
     sidecar = path.with_name(path.name + ".adql")
     if not sidecar.exists():
-        sidecar.write_text(query)
+        sidecar.write_text(query, encoding="utf-8", newline="\n")
     return path
 
 
@@ -189,7 +190,7 @@ def tap_query_fits(select: str, table: str, where: str, subdir: str, base: str) 
                  params={"REQUEST": "doQuery", "LANG": "ADQL", "FORMAT": "fits", "QUERY": query})
     sidecar = path.with_name(path.name + ".adql")
     if not sidecar.exists():
-        sidecar.write_text(query)
+        sidecar.write_text(query, encoding="utf-8", newline="\n")
     return path
 
 
@@ -206,7 +207,7 @@ def xp_index() -> list[tuple[str, str]]:
     """(file name, md5) for every bulk XP sampled file, from ESA's _MD5SUM.txt (downloaded + hashed)."""
     p = fetch(XP_BASE + "_MD5SUM.txt", XP_SUBDIR, "_MD5SUM.txt")
     out = []
-    for line in p.read_text().splitlines():
+    for line in p.read_text(encoding="utf-8").splitlines():
         parts = line.split()
         if len(parts) == 2 and parts[1].endswith(".csv.gz"):
             out.append((parts[1], parts[0]))
@@ -214,11 +215,15 @@ def xp_index() -> list[tuple[str, str]]:
 
 
 _WANTED: set[int] = set()
+_W: np.ndarray | None = None
+_COVER: np.ndarray | None = None
+XP_REDUCED_SUBDIR = "stars/xp_reduced"  # under CACHE: derived from the streamed bulk files
 
 
-def _init_worker(wanted: np.ndarray) -> None:
-    global _WANTED
-    _WANTED = set(int(x) for x in wanted)
+def _init_worker(wanted: np.ndarray | None, W: np.ndarray | None = None, cover: np.ndarray | None = None) -> None:
+    global _WANTED, _W, _COVER
+    _WANTED = set(int(x) for x in wanted) if wanted is not None else set()
+    _W, _COVER = W, cover
 
 
 def _parse_array(field: bytes) -> np.ndarray:
@@ -226,7 +231,25 @@ def _parse_array(field: bytes) -> np.ndarray:
     return np.array([float(v) if v and v != b"null" else np.nan for v in s.split(b",")], dtype=np.float32)
 
 
-def _stream_one(name: str, md5_expected: str, out_path: str, retries: int = 5) -> dict:
+def _parse_flux(field: bytes) -> np.ndarray:
+    """'[f1,f2,...]' -> float64 array; 'null' samples -> NaN."""
+    s = field.strip().strip(b'"').strip(b"[]()")
+    parts = s.split(b",")
+    try:
+        return np.array(parts, dtype=np.float64)
+    except ValueError:
+        return np.array([float(v) if v and v != b"null" else np.nan for v in parts])
+
+
+def _stream_file(name: str, md5_expected: str, subset_out: str | None, reduced_out: str | None,
+                 retries: int = 5) -> dict:
+    """Stream one bulk XP file once and write what is asked for:
+
+    * `subset_out`: the flux and flux_error rows (float32) of the sources in the worker's wanted set (`stream_xp`);
+    * `reduced_out`: every spectrum reduced to `flux @ W` (float32; NaN where samples in `cover` are missing)
+      (`stream_xp_reduced`).
+    Each output is exactly what a separate pass for it alone would write. Returns {"subset": rec, "reduced": rec}
+    with the per-output stream-ledger records."""
     url = XP_BASE + name
     delay = 5.0
     for attempt in range(retries + 1):
@@ -236,8 +259,11 @@ def _stream_one(name: str, md5_expected: str, out_path: str, retries: int = 5) -
             buf = b""
             nbytes = 0
             nrows = 0
-            ids, fluxes, errs = [], [], []
+            ids, fluxes, errs = [], [], []   # subset
+            rids, fl = [], []                # reduced
             header_seen = False
+            expect = ([b"source_id", b"solution_id", b"ra", b"dec", b"flux", b"flux_error"] if subset_out else
+                      [b"source_id", b"solution_id", b"ra", b"dec", b"flux"])
 
             def handle(lines):
                 nonlocal header_seen, nrows
@@ -245,21 +271,26 @@ def _stream_one(name: str, md5_expected: str, out_path: str, retries: int = 5) -
                     if not ln or ln[:1] == b"#":
                         continue
                     if not header_seen:
-                        if ln.split(b",")[:6] != [b"source_id", b"solution_id", b"ra", b"dec", b"flux", b"flux_error"]:
+                        if ln.split(b",")[:len(expect)] != expect:
                             raise ValueError(f"unexpected header in {name}: {ln[:120]!r}")
                         header_seen = True
                         continue
                     nrows += 1
                     sid = int(ln[:ln.index(b",")])
-                    if sid in _WANTED:
+                    want = bool(subset_out) and sid in _WANTED
+                    if want or reduced_out:
                         # source_id,solution_id,ra,dec,"[flux...]","[flux_error...]"
                         q1 = ln.index(b'"')
                         q2 = ln.index(b'"', q1 + 1)
+                    if want:
                         q3 = ln.index(b'"', q2 + 1)
                         q4 = ln.index(b'"', q3 + 1)
                         ids.append(sid)
                         fluxes.append(_parse_array(ln[q1 + 1:q2]))
                         errs.append(_parse_array(ln[q3 + 1:q4]))
+                    if reduced_out:
+                        rids.append(sid)
+                        fl.append(_parse_flux(ln[q1 + 1:q2]))
 
             with requests.get(url, stream=True, timeout=180) as r:
                 r.raise_for_status()
@@ -275,17 +306,34 @@ def _stream_one(name: str, md5_expected: str, out_path: str, retries: int = 5) -
             handle(buf.split(b"\n"))
             if md5.hexdigest() != md5_expected:
                 raise IOError(f"md5 mismatch for {name}: {md5.hexdigest()} != {md5_expected}")
-            n = len(ids)
-            flux = np.stack(fluxes) if n else np.zeros((0, XP_WAVELENGTHS.size), np.float32)
-            err = np.stack(errs) if n else np.zeros((0, XP_WAVELENGTHS.size), np.float32)
-            if n and flux.shape[1] != XP_WAVELENGTHS.size:
-                raise ValueError(f"{name}: {flux.shape[1]} samples, expected {XP_WAVELENGTHS.size}")
-            tmp = out_path + ".tmp.npz"
-            np.savez(tmp, source_id=np.array(ids, dtype=np.int64), flux=flux, flux_error=err)
-            Path(tmp).replace(out_path)
-            return {"name": name, "url": url, "md5": md5_expected, "sha256": sha.hexdigest(), "bytes": nbytes,
-                    "rows": nrows, "kept": n, "retrieved": _dt.date.today().isoformat(),
-                    "subset_sha256": sha256_file(Path(out_path))}
+            base = {"name": name, "url": url, "md5": md5_expected, "sha256": sha.hexdigest(), "bytes": nbytes}
+            out = {}
+            if subset_out:
+                n = len(ids)
+                flux = np.stack(fluxes) if n else np.zeros((0, XP_WAVELENGTHS.size), np.float32)
+                err = np.stack(errs) if n else np.zeros((0, XP_WAVELENGTHS.size), np.float32)
+                if n and flux.shape[1] != XP_WAVELENGTHS.size:
+                    raise ValueError(f"{name}: {flux.shape[1]} samples, expected {XP_WAVELENGTHS.size}")
+                tmp = subset_out + ".tmp.npz"
+                np.savez(tmp, source_id=np.array(ids, dtype=np.int64), flux=flux, flux_error=err)
+                Path(tmp).replace(subset_out)
+                out["subset"] = {**base, "rows": nrows, "kept": n, "retrieved": _dt.date.today().isoformat(),
+                                 "subset_sha256": sha256_file(Path(subset_out))}
+            if reduced_out:
+                n = len(rids)
+                red = np.full((n, _W.shape[1]), np.nan, dtype=np.float64)
+                if n:
+                    F = np.stack(fl)
+                    if F.shape[1] != _W.shape[0]:
+                        raise ValueError(f"{name}: {F.shape[1]} samples, expected {_W.shape[0]}")
+                    ok = np.isfinite(F[:, _COVER]).all(axis=1)
+                    red[ok] = np.nan_to_num(F[ok]) @ _W
+                tmp = reduced_out + ".tmp.npz"
+                np.savez(tmp, source_id=np.array(rids, dtype=np.int64), red=red.astype(np.float32))
+                Path(tmp).replace(reduced_out)
+                out["reduced"] = {**base, "rows": n, "retrieved": _dt.date.today().isoformat(),
+                                  "subset_sha256": sha256_file(Path(reduced_out))}
+            return out
         except (requests.RequestException, IOError, zlib.error) as e:
             if attempt == retries:
                 raise RuntimeError(f"streaming {name} failed: {e}") from e
@@ -294,25 +342,30 @@ def _stream_one(name: str, md5_expected: str, out_path: str, retries: int = 5) -
     raise RuntimeError("unreachable")
 
 
-def stream_xp(wanted: np.ndarray, *, workers: int = 4, log=print, stream: bool = True) -> tuple[list[Path], dict]:
-    """Stream every bulk XP file, keep rows whose source_id is in `wanted`. Returns (npz paths, stream ledger).
+@dataclass
+class _Target:
+    """One output of the XP stream: a directory of per-file .npz and its stream ledger."""
+    dir: Path
+    ledger: dict
 
-    Resumable: files already in the stream ledger with their subset present are skipped. If the wanted set
-    changes, the selection is redone (the ledger stores a hash of the wanted ids). stream=False (development
-    only) returns whatever has been streamed so far without downloading anything.
-    """
-    index = xp_index()
+    @property
+    def ledger_path(self) -> Path:
+        return self.dir / "_streamed.json"
+
+    def done(self, name: str) -> bool:
+        return name in self.ledger["files"] and (self.dir / (name + ".npz")).exists()
+
+    def save(self) -> None:
+        self.ledger_path.write_text(json.dumps(self.ledger, indent=1, sort_keys=True), encoding="utf-8",
+                                    newline="\n")
+
+
+def _subset_target(wanted: np.ndarray) -> _Target:
     d = RAW / XP_SUBDIR
     d.mkdir(parents=True, exist_ok=True)
     ledger_path = d / "_streamed.json"
-    if not stream:
-        ledger = json.loads(ledger_path.read_text())
-        done = [n for n, _ in index if n in ledger["files"] and (d / (n + ".npz")).exists()]
-        log(f"  XP: using {len(done)}/{len(index)} already-streamed files (streaming disabled)")
-        return [d / (n + ".npz") for n in done], ledger
-    wanted = np.unique(np.asarray(wanted, dtype=np.int64))
     wanted_hash = hashlib.sha256(wanted.tobytes()).hexdigest()
-    ledger = json.loads(ledger_path.read_text()) if ledger_path.exists() else {}
+    ledger = json.loads(ledger_path.read_text(encoding="utf-8")) if ledger_path.exists() else {}
     if ledger.get("wanted_sha256") != wanted_hash:
         # A superset selection is still valid: the loader filters. Only redo when ids are missing.
         prev = d / "_wanted.npy"
@@ -327,26 +380,83 @@ def stream_xp(wanted: np.ndarray, *, workers: int = 4, log=print, stream: bool =
     if not ledger:
         ledger = {"wanted_sha256": wanted_hash, "wanted_count": int(wanted.size), "files": {}}
         np.save(d / "_wanted.npy", wanted)
-    todo = [(n, m) for n, m in index
-            if not (n in ledger["files"] and (d / (n + ".npz")).exists())]
-    log(f"  XP bulk files: {len(index)} total, {len(todo)} to stream ({len(wanted)} wanted sources)")
+    return _Target(d, ledger)
+
+
+def _reduced_target(W: np.ndarray, cover: np.ndarray, tag: str) -> _Target:
+    d = CACHE / XP_REDUCED_SUBDIR / tag
+    d.mkdir(parents=True, exist_ok=True)
+    ledger_path = d / "_streamed.json"
+    w_hash = hashlib.sha256(np.ascontiguousarray(W, dtype=np.float64).tobytes() + cover.tobytes()).hexdigest()
+    ledger = json.loads(ledger_path.read_text(encoding="utf-8")) if ledger_path.exists() else {}
+    if ledger.get("W_sha256") != w_hash:
+        ledger = {"W_sha256": w_hash, "files": {}}
+    return _Target(d, ledger)
+
+
+def _run_stream(index: list[tuple[str, str]], subset: _Target | None, reduced: _Target | None,
+                initargs: tuple, workers: int, log, what: str) -> None:
+    """Stream every bulk file that either target still lacks, once, writing both targets' outputs."""
+    todo = []
+    for n, m in index:
+        s = str(subset.dir / (n + ".npz")) if subset and not subset.done(n) else None
+        r = str(reduced.dir / (n + ".npz")) if reduced and not reduced.done(n) else None
+        if s or r:
+            todo.append((n, m, s, r))
+    log(f"  XP bulk files ({what}): {len(index)} total, {len(todo)} to stream")
     t0 = time.time()
     done = 0
+    got = 0
     if todo:
-        with ProcessPoolExecutor(max_workers=workers, initializer=_init_worker, initargs=(wanted,)) as ex:
-            futs = {ex.submit(_stream_one, n, m, str(d / (n + ".npz"))): n for n, m in todo}
+        with ProcessPoolExecutor(max_workers=workers, initializer=_init_worker, initargs=initargs) as ex:
+            futs = [ex.submit(_stream_file, n, m, s, r) for n, m, s, r in todo]
             for f in as_completed(futs):
-                rec = f.result()
-                ledger["files"][rec["name"]] = rec
+                recs = f.result()
+                for key, tgt in (("subset", subset), ("reduced", reduced)):
+                    if key in recs:
+                        tgt.ledger["files"][recs[key]["name"]] = recs[key]
+                rec = next(iter(recs.values()))
+                download.count(rec["bytes"], files=1)
+                got += rec["bytes"]
                 done += 1
                 if done % 25 == 0 or done == len(todo):
-                    ledger_path.write_text(json.dumps(ledger, indent=1, sort_keys=True))
+                    for tgt in (subset, reduced):
+                        if tgt:
+                            tgt.save()
                     el = time.time() - t0
-                    log(f"  XP streamed {done}/{len(todo)} files, {el / 60:.1f} min, "
-                        f"eta {(len(todo) - done) * el / done / 60:.1f} min")
-    ledger_path.write_text(json.dumps(ledger, indent=1, sort_keys=True))
-    paths = [d / (n + ".npz") for n, _ in index]
-    return paths, ledger
+                    log(f"  XP streamed {done}/{len(todo)} files ({got / 1e9:.1f} GB, {got / 1e6 / el:.0f} MB/s), "
+                        f"{el / 60:.1f} min, eta {(len(todo) - done) * el / done / 60:.1f} min")
+    for tgt in (subset, reduced):
+        if tgt:
+            tgt.save()
+
+
+def stream_xp(wanted: np.ndarray, *, workers: int = 4, log=print, stream: bool = True,
+              also_reduce: tuple[np.ndarray, np.ndarray, str] | None = None) -> tuple[list[Path], dict]:
+    """Stream every bulk XP file, keep rows whose source_id is in `wanted`. Returns (npz paths, stream ledger).
+
+    Resumable: files already in the stream ledger with their subset present are skipped. If the wanted set
+    changes, the selection is redone (the ledger stores a hash of the wanted ids). stream=False (development
+    only) returns whatever has been streamed so far without downloading anything.
+
+    `also_reduce=(W, cover, tag)` fills the `stream_xp_reduced(W, cover, tag)` cache in the same pass (the deep
+    tiers need it): the 114 GB of bulk files are then read once instead of twice, and a later `stream_xp_reduced`
+    call finds every file done. Both outputs are identical to separate passes.
+    """
+    index = xp_index()
+    if not stream:
+        d = RAW / XP_SUBDIR
+        ledger = json.loads((d / "_streamed.json").read_text(encoding="utf-8"))
+        done = [n for n, _ in index if n in ledger["files"] and (d / (n + ".npz")).exists()]
+        log(f"  XP: using {len(done)}/{len(index)} already-streamed files (streaming disabled)")
+        return [d / (n + ".npz") for n in done], ledger
+    wanted = np.unique(np.asarray(wanted, dtype=np.int64))
+    subset = _subset_target(wanted)
+    reduced = _reduced_target(*also_reduce) if also_reduce else None
+    what = f"{len(wanted)} wanted sources" + (f" + reduced '{also_reduce[2]}' for every source" if reduced else "")
+    _run_stream(index, subset, reduced, (wanted, *(also_reduce[:2] if also_reduce else (None, None))),
+                workers, log, what)
+    return [subset.dir / (n + ".npz") for n, _ in index], subset.ledger
 
 
 def load_xp(paths: list[Path], wanted: np.ndarray | None = None) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -377,123 +487,19 @@ def stream_ledger_digest(ledger: dict) -> str:
 
 # ------------------------------------------------------------------- XP bulk files, reduced per star
 
-XP_REDUCED_SUBDIR = "stars/xp_reduced"  # under CACHE: derived from the streamed bulk files
-_W: np.ndarray | None = None
-_COVER: np.ndarray | None = None
-
-
-def _init_reduce(W: np.ndarray, cover: np.ndarray) -> None:
-    global _W, _COVER
-    _W, _COVER = W, cover
-
-
-def _parse_flux(field: bytes) -> np.ndarray:
-    """'[f1,f2,...]' -> float64 array; 'null' samples -> NaN."""
-    s = field.strip().strip(b'"').strip(b"[]()")
-    parts = s.split(b",")
-    try:
-        return np.array(parts, dtype=np.float64)
-    except ValueError:
-        return np.array([float(v) if v and v != b"null" else np.nan for v in parts])
-
-
-def _reduce_one(name: str, md5_expected: str, out_path: str, retries: int = 5) -> dict:
-    """Stream one bulk XP file; reduce every spectrum to `flux @ W` (NaN where samples in `cover` are missing)."""
-    url = XP_BASE + name
-    delay = 5.0
-    for attempt in range(retries + 1):
-        try:
-            md5, sha = hashlib.md5(), hashlib.sha256()
-            dec = zlib.decompressobj(wbits=47)
-            buf = b""
-            nbytes = 0
-            ids, fl = [], []
-            header_seen = False
-
-            def handle(lines):
-                nonlocal header_seen
-                for ln in lines:
-                    if not ln or ln[:1] == b"#":
-                        continue
-                    if not header_seen:
-                        if ln.split(b",")[:5] != [b"source_id", b"solution_id", b"ra", b"dec", b"flux"]:
-                            raise ValueError(f"unexpected header in {name}: {ln[:120]!r}")
-                        header_seen = True
-                        continue
-                    q1 = ln.index(b'"')
-                    q2 = ln.index(b'"', q1 + 1)
-                    ids.append(int(ln[:ln.index(b",")]))
-                    fl.append(_parse_flux(ln[q1 + 1:q2]))
-
-            with requests.get(url, stream=True, timeout=180) as r:
-                r.raise_for_status()
-                for chunk in r.iter_content(1 << 20):
-                    nbytes += len(chunk)
-                    md5.update(chunk)
-                    sha.update(chunk)
-                    buf += dec.decompress(chunk)
-                    lines = buf.split(b"\n")
-                    buf = lines.pop()
-                    handle(lines)
-            buf += dec.flush()
-            handle(buf.split(b"\n"))
-            if md5.hexdigest() != md5_expected:
-                raise IOError(f"md5 mismatch for {name}: {md5.hexdigest()} != {md5_expected}")
-            n = len(ids)
-            red = np.full((n, _W.shape[1]), np.nan, dtype=np.float64)
-            if n:
-                F = np.stack(fl)
-                if F.shape[1] != _W.shape[0]:
-                    raise ValueError(f"{name}: {F.shape[1]} samples, expected {_W.shape[0]}")
-                ok = np.isfinite(F[:, _COVER]).all(axis=1)
-                red[ok] = np.nan_to_num(F[ok]) @ _W
-            tmp = out_path + ".tmp.npz"
-            np.savez(tmp, source_id=np.array(ids, dtype=np.int64), red=red.astype(np.float32))
-            Path(tmp).replace(out_path)
-            return {"name": name, "url": url, "md5": md5_expected, "sha256": sha.hexdigest(), "bytes": nbytes,
-                    "rows": n, "retrieved": _dt.date.today().isoformat(),
-                    "subset_sha256": sha256_file(Path(out_path))}
-        except (requests.RequestException, IOError, zlib.error) as e:
-            if attempt == retries:
-                raise RuntimeError(f"streaming {name} failed: {e}") from e
-            time.sleep(delay)
-            delay *= 2
-    raise RuntimeError("unreachable")
-
 
 def stream_xp_reduced(W: np.ndarray, cover: np.ndarray, tag: str, *, workers: int = 4, log=print
                       ) -> tuple[list[Path], dict]:
     """Stream every bulk XP file and keep, for every source, the linear reductions `flux @ W` (float32).
 
     `W` (343 x K) is e.g. the CIE X, Y, Z, S operator plus band averages; `tag` must change whenever W does (it names
-    the cache directory and is stored with a hash of W). Resumable per file, like `stream_xp`.
+    the cache directory and is stored with a hash of W). Resumable per file, like `stream_xp` (which can fill this
+    cache in its own pass: `also_reduce`).
     """
     index = xp_index()
-    d = CACHE / XP_REDUCED_SUBDIR / tag
-    d.mkdir(parents=True, exist_ok=True)
-    ledger_path = d / "_streamed.json"
-    w_hash = hashlib.sha256(np.ascontiguousarray(W, dtype=np.float64).tobytes() + cover.tobytes()).hexdigest()
-    ledger = json.loads(ledger_path.read_text()) if ledger_path.exists() else {}
-    if ledger.get("W_sha256") != w_hash:
-        ledger = {"W_sha256": w_hash, "files": {}}
-    todo = [(n, m) for n, m in index if not (n in ledger["files"] and (d / (n + ".npz")).exists())]
-    log(f"  XP bulk files (reduced '{tag}'): {len(index)} total, {len(todo)} to stream")
-    t0 = time.time()
-    done = 0
-    if todo:
-        with ProcessPoolExecutor(max_workers=workers, initializer=_init_reduce, initargs=(W, cover)) as ex:
-            futs = {ex.submit(_reduce_one, n, m, str(d / (n + ".npz"))): n for n, m in todo}
-            for f in as_completed(futs):
-                rec = f.result()
-                ledger["files"][rec["name"]] = rec
-                done += 1
-                if done % 25 == 0 or done == len(todo):
-                    ledger_path.write_text(json.dumps(ledger, indent=1, sort_keys=True))
-                    el = time.time() - t0
-                    log(f"  XP reduced {done}/{len(todo)} files, {el / 60:.1f} min, "
-                        f"eta {(len(todo) - done) * el / done / 60:.1f} min")
-    ledger_path.write_text(json.dumps(ledger, indent=1, sort_keys=True))
-    return [d / (n + ".npz") for n, _ in index], ledger
+    reduced = _reduced_target(W, cover, tag)
+    _run_stream(index, None, reduced, (None, W, cover), workers, log, f"reduced '{tag}'")
+    return [reduced.dir / (n + ".npz") for n, _ in index], reduced.ledger
 
 
 def load_xp_reduced(paths: list[Path]) -> tuple[np.ndarray, np.ndarray]:
@@ -572,26 +578,37 @@ DEEP_COLUMNS = ("source_id", "ra", "dec", "pmra", "pmdec", "parallax", "phot_g_m
 DEEP_LEVEL = 2  # one query per HEALPix level-2 pixel (192 queries, ~1e5 rows each for 10 <= G < 14)
 
 
-def fetch_gaia_deep(g_lo: float, g_hi: float, *, log=print) -> list[Path]:
-    """gaia_source rows with g_lo <= G < g_hi, one FITS file per HEALPix level-2 pixel (sequential: the ledger
-    is a single JSON file)."""
-    out = []
+def _in_order(fn, items: list, workers: int, log=None, what: str = "", every: int = 12) -> list:
+    """[fn(x) for x in items], running up to `workers` at once (TAP queries: the ledger is lock-protected and every
+    query writes its own file, so the results are the same as sequentially); logs progress every `every` items."""
     t0 = time.time()
-    for pix in range(12 * 4 ** DEEP_LEVEL):
+    out, done = [None] * len(items), 0
+    with ThreadPoolExecutor(max(1, workers)) as ex:
+        futs = {ex.submit(fn, x): k for k, x in enumerate(items)}
+        for f in as_completed(futs):
+            out[futs[f]] = f.result()
+            done += 1
+            if log and (done % every == 0 or done == len(items)):
+                log(f"  {what}: {done}/{len(items)}, {(time.time() - t0) / 60:.1f} min")
+    return out
+
+
+def fetch_gaia_deep(g_lo: float, g_hi: float, *, log=print, workers: int = 1) -> list[Path]:
+    """gaia_source rows with g_lo <= G < g_hi, one FITS file per HEALPix level-2 pixel (`workers` queries at a
+    time)."""
+    def one(pix: int) -> Path:
         lo, hi = healpix_source_id_range(DEEP_LEVEL, pix)
         where = (f"source_id >= {lo} AND source_id < {hi} AND phot_g_mean_mag >= {g_lo} "
                  f"AND phot_g_mean_mag < {g_hi}")
-        out.append(tap_query_fits(", ".join(DEEP_COLUMNS), f"{REL.schema}.gaia_source", where,
-                                  SUBDIR + "_deep", f"gaia_source_G{g_lo}-{g_hi}_hpx{DEEP_LEVEL}_{pix:03d}"))
-        if pix % 12 == 11:
-            log(f"  deep G {g_lo}-{g_hi}: {pix + 1}/{12 * 4 ** DEEP_LEVEL} pixels, {(time.time() - t0) / 60:.1f} min")
-    return out
+        return tap_query_fits(", ".join(DEEP_COLUMNS), f"{REL.schema}.gaia_source", where,
+                              SUBDIR + "_deep", f"gaia_source_G{g_lo}-{g_hi}_hpx{DEEP_LEVEL}_{pix:03d}")
+    return _in_order(one, list(range(12 * 4 ** DEEP_LEVEL)), workers, log, f"deep G {g_lo}-{g_hi} pixels")
 
 
 SUM_LEVEL = 1  # aggregation queries run per HEALPix level-1 pixel (48 queries)
 
 
-def fetch_faint_sums(g_min: float, level: int) -> list[Path]:
+def fetch_faint_sums(g_min: float, level: int, workers: int = 1) -> list[Path]:
     """Per HEALPix pixel (nested, `level`) sums over all gaia_source rows with G >= g_min: counts and sums of
     10^(-0.4 m) in G, BP, RP, split by whether BP and RP both exist."""
     select = (f"GAIA_HEALPIX_INDEX({level}, source_id) AS hpx, COUNT(*) AS n, "
@@ -600,33 +617,33 @@ def fetch_faint_sums(g_min: float, level: int) -> list[Path]:
               "SUM(POWER(10, -0.4 * phot_g_mean_mag) + 0 * phot_bp_mean_mag + 0 * phot_rp_mean_mag) AS fg_c, "
               "SUM(POWER(10, -0.4 * phot_bp_mean_mag) + 0 * phot_rp_mean_mag) AS fbp_c, "
               "SUM(POWER(10, -0.4 * phot_rp_mean_mag) + 0 * phot_bp_mean_mag) AS frp_c")
-    out = []
-    for pix in range(12 * 4 ** SUM_LEVEL):
+
+    def one(pix: int) -> Path:
         lo, hi = healpix_source_id_range(SUM_LEVEL, pix)
         cut = f"source_id >= {lo} AND source_id < {hi} AND phot_g_mean_mag >= {g_min}"
         count = (f"SELECT COUNT(*) AS n FROM (SELECT GAIA_HEALPIX_INDEX({level}, source_id) AS hpx FROM "
                  f"{REL.schema}.gaia_source WHERE {cut} GROUP BY hpx) AS t")
-        out.append(tap_query(select, f"{REL.schema}.gaia_source", cut + " GROUP BY hpx", SUBDIR + "_sums",
-                             f"faint_sums_G{g_min}_L{level}_p{pix:02d}", "hpx", count_query=count))
-    return out
+        return tap_query(select, f"{REL.schema}.gaia_source", cut + " GROUP BY hpx", SUBDIR + "_sums",
+                         f"faint_sums_G{g_min}_L{level}_p{pix:02d}", "hpx", count_query=count)
+    return _in_order(one, list(range(12 * 4 ** SUM_LEVEL)), workers)
 
 
-def fetch_faint_colour_sums(g_min: float, level: int) -> list[Path]:
+def fetch_faint_colour_sums(g_min: float, level: int, workers: int = 1) -> list[Path]:
     """Per HEALPix pixel (`level`) and BP-RP bin of 0.1 mag (cbin = FLOOR(10 (BP - RP)); NULL = no colour), for all
     sources with G >= g_min: count and sum of 10^(-0.4 G). Gives the colour mix of the faint stars."""
     select = (f"GAIA_HEALPIX_INDEX({level}, source_id) AS hpx, "
               "FLOOR(10 * (phot_bp_mean_mag - phot_rp_mean_mag)) AS cbin, COUNT(*) AS n, "
               "SUM(POWER(10, -0.4 * phot_g_mean_mag)) AS fg")
-    out = []
-    for pix in range(12 * 4 ** SUM_LEVEL):
+
+    def one(pix: int) -> Path:
         lo, hi = healpix_source_id_range(SUM_LEVEL, pix)
         cut = f"source_id >= {lo} AND source_id < {hi} AND phot_g_mean_mag >= {g_min}"
         count = (f"SELECT COUNT(*) AS n FROM (SELECT GAIA_HEALPIX_INDEX({level}, source_id) AS hpx, "
                  f"FLOOR(10 * (phot_bp_mean_mag - phot_rp_mean_mag)) AS cbin FROM {REL.schema}.gaia_source "
                  f"WHERE {cut} GROUP BY hpx, cbin) AS t")
-        out.append(tap_query(select, f"{REL.schema}.gaia_source", cut + " GROUP BY hpx, cbin", SUBDIR + "_sums",
-                             f"faint_colour_sums_G{g_min}_L{level}_p{pix:02d}", "hpx", count_query=count))
-    return out
+        return tap_query(select, f"{REL.schema}.gaia_source", cut + " GROUP BY hpx, cbin", SUBDIR + "_sums",
+                         f"faint_colour_sums_G{g_min}_L{level}_p{pix:02d}", "hpx", count_query=count)
+    return _in_order(one, list(range(12 * 4 ** SUM_LEVEL)), workers)
 
 
 def fetch_count_grid(level: int) -> list[Path]:

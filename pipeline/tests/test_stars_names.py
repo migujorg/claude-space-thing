@@ -23,7 +23,7 @@ def test_designations():
 
 @pytest.mark.skipif(not (OUT / "stars" / "names.json").exists(), reason="stars product not built")
 def test_names_product():
-    names = json.loads((OUT / "stars" / "names.json").read_text())
+    names = json.loads((OUT / "stars" / "names.json").read_text(encoding="utf-8"))
     stars = names["stars"]
     by_name = {v["iau"]: v for v in stars.values() if "iau" in v}
     assert by_name["Sirius"]["hip"] == 32349 and by_name["Sirius"]["bayer"] == "α CMa"

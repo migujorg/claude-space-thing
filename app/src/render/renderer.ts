@@ -15,14 +15,16 @@
 //   7. composite→ Pattanaik tone reproduction, mesopic colour, CAT02, + points, sRGB, dither → canvas
 //   8. overlays → hatch / provenance tint / markers / orbits in display space
 
-import type { RendererStats, SceneSnapshot, StarCatalog } from './scene';
+import type { RendererStats, SceneBody, SceneSnapshot, StarCatalog } from './scene';
 import {
-  ADAPT_REDUCE_SHADER, ADAPT_SHADER, BODY_OVERLAY_SHADER, BODY_SHADER, CLAMP_ARGS_SHADER, COMPOSITE_SHADER,
+  ADAPT_REDUCE_SHADER, ADAPT_SHADER, ADAPT_TILE_PX, ATM_BODY_SHADER, ATMOSPHERE_SHELL_SHADER, BODY_OVERLAY_SHADER, BODY_SHADER, CLAMP_ARGS_SHADER, COMPOSITE_SHADER, EARTH_BODY_SHADER,
   CULL_SHADER, LINE_SHADER, MASK_HATCH_SHADER, OVERFLOW_SHADER, POINT_SHADER, PYRAMID_BLUR_SIGMA, PYRAMID_SHADER,
   RING_SHADER, SUN_SHADER,
 } from './shaders';
 import { SurfaceGpu } from './surfaceGpu';
+import { AtmosphereGpu, ATM_UB_BYTES, type AtmosphereBinding } from './atmosphereGpu';
 import type { RingPrep } from './rings';
+import type { BackgroundTargets } from './sky/background';
 import { LAW } from './spatial';
 import { cameraGeom, prepareFrame, type PreparedFrame } from './frame';
 import { ExtraPointSources, type PointSourceBuffer } from './extraPoints';
@@ -46,6 +48,8 @@ const SIGMA_MIN_PX = 0.6;
 const SPLAT_EXTENT_SIGMA = 3;
 const MAX_GLARE_SOURCES = 32;
 const MAX_VISIBLE_STARS = 1 << 22;
+/** Steps of the per-pixel atmosphere march (shaders-atmosphere.ts atmMarch): a numerical resolution. */
+const ATM_STEPS = 32;
 
 interface Level {
   w: number;
@@ -112,8 +116,10 @@ export class Renderer {
   private glareCache = { key: '', weights: [] as number[], unscattered: 1 };
   private lastMeasurementTime = 0;
   private persistentWarnings: string[] = [];
-  /** Debug: names of passes to skip ('bodies', 'cull', 'points', 'pyramid', 'sun', 'adapt', 'composite', 'overlays'). */
+  /** Debug: names of passes to skip ('bodies', 'background', 'cull', 'points', 'pyramid', 'sun', 'adapt', 'composite', 'overlays'). */
   debugSkip = new Set<string>();
+  /** Extended sky light behind the bodies (render/sky/background.ts), drawn into EXT after the bodies pass. */
+  private background: { encode(enc: GPUCommandEncoder, t: BackgroundTargets): void } | null = null;
   /** Optional debug hook, called with each adaptation measurement. */
   onMeasurement?: (info: { goal: { coneCdM2: number; rodCdM2: number; cornealFlux: number }; used: { cone: number; rod: number }; converged: boolean; starsDrawn: number }) => void;
 
@@ -135,6 +141,16 @@ export class Renderer {
 
   // Pipelines
   private bodyPipe: GPURenderPipeline;
+  /** The body pipeline with Earth's layers (earth.ts); compiled when an Earth-mode body first appears. */
+  private earthPipe: GPURenderPipeline | null = null;
+  /** The body pipeline with an atmosphere (bodies drawn from their photometry: Mars, Venus, Pluto). */
+  private atmPipe: GPURenderPipeline | null = null;
+  private makeBodyPipe!: (code: string, label: string) => GPURenderPipeline;
+  /** Atmospheres (atmosphereGpu.ts) and the shell pipeline for rays that miss the solid body. */
+  private atm: AtmosphereGpu | null = null;
+  private shellPipe: GPURenderPipeline | null = null;
+  private makeShellPipe!: () => GPURenderPipeline;
+  private atmDummy: { uniform: GPUBuffer; texture: GPUTexture; sampler: GPUSampler } | null = null;
   private bodyOverlayPipe: GPURenderPipeline;
   private cullPipe: GPUComputePipeline;
   private clampPipe: GPUComputePipeline;
@@ -173,7 +189,7 @@ export class Renderer {
   ) {
     const d = device;
     const ub = (size: number) => d.createBuffer({ size, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
-    this.frameUB = ub(112);
+    this.frameUB = ub(128);
     this.eyeUB = ub(16 * 16);  // 16 vec4 (struct Eye)
     this.sunUB = ub(11 * 16);
     this.clampUB = ub(16);
@@ -184,7 +200,7 @@ export class Renderer {
     this.readback = d.createBuffer({ size: 32, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
     this.sunPointBuf = d.createBuffer({ size: 32, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
     this.visible = d.createBuffer({ size: 32, usage: GPUBufferUsage.STORAGE });
-    this.surfUB = ub(16);
+    this.surfUB = ub(32);
     this.texelUB = ub(6 * 16);
     this.dummyStorage = d.createBuffer({ size: 256, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
 
@@ -194,13 +210,27 @@ export class Renderer {
     const min: GPUBlendState = { color: { operation: 'min', srcFactor: 'one', dstFactor: 'one' }, alpha: { operation: 'min', srcFactor: 'one', dstFactor: 'one' } };
     const max: GPUBlendState = { color: { operation: 'max', srcFactor: 'one', dstFactor: 'one' }, alpha: { operation: 'max', srcFactor: 'one', dstFactor: 'one' } };
     const over: GPUBlendState = { color: { operation: 'add', srcFactor: 'one', dstFactor: 'one-minus-src-alpha' }, alpha: { operation: 'add', srcFactor: 'one', dstFactor: 'one-minus-src-alpha' } };
-    this.bodyPipe = d.createRenderPipeline({
-      label: 'bodies', layout: 'auto',
-      vertex: { module: bodyMod, entryPoint: 'vs' },
-      fragment: { module: bodyMod, entryPoint: 'fs', targets: [{ format: hdrFormat, blend: add }, { format: weightFormat, blend: min }, { format: 'r8unorm', blend: max }] },
-      primitive: { topology: 'triangle-list' },
-      depthStencil: { format: 'depth32float', depthWriteEnabled: true, depthCompare: 'greater' },
-    });
+    this.makeBodyPipe = (code: string, label: string) => {
+      const m = code === BODY_SHADER ? bodyMod : mod(code, label);
+      return d.createRenderPipeline({
+        label, layout: 'auto',
+        vertex: { module: m, entryPoint: 'vs' },
+        fragment: { module: m, entryPoint: 'fs', targets: [{ format: hdrFormat, blend: add }, { format: weightFormat, blend: min }, { format: 'r8unorm', blend: max }] },
+        primitive: { topology: 'triangle-list' },
+        depthStencil: { format: 'depth32float', depthWriteEnabled: true, depthCompare: 'greater' },
+      });
+    };
+    this.bodyPipe = this.makeBodyPipe(BODY_SHADER, 'bodies');
+    this.makeShellPipe = () => {
+      const m = mod(ATMOSPHERE_SHELL_SHADER, 'atmosphere shell');
+      return d.createRenderPipeline({
+        label: 'atmosphere shell', layout: 'auto',
+        vertex: { module: m, entryPoint: 'vsShell' },
+        fragment: { module: m, entryPoint: 'fsShell', targets: [{ format: hdrFormat, blend: add }, { format: weightFormat, blend: min }, { format: 'r8unorm', blend: max }] },
+        primitive: { topology: 'triangle-list' },
+        depthStencil: { format: 'depth32float', depthWriteEnabled: false, depthCompare: 'greater' },
+      });
+    };
     const ringMod = mod(RING_SHADER, 'rings');
     this.ringPipe = d.createRenderPipeline({
       label: 'rings', layout: 'auto',
@@ -312,6 +342,11 @@ export class Renderer {
     return r;
   }
 
+  /** Sky background hook (render/sky); null removes it. */
+  setBackground(b: { encode(enc: GPUCommandEncoder, t: BackgroundTargets): void } | null): void {
+    this.background = b;
+  }
+
   /** Upload the star catalog once (static). Large catalogs are split into storage-binding-sized chunks. */
   setStars(catalog: StarCatalog): void {
     for (const c of this.stars) { c.buffer.destroy(); c.info.destroy(); }
@@ -374,7 +409,7 @@ export class Renderer {
       w = Math.max(1, Math.ceil(w / 2));
       h = Math.max(1, Math.ceil(h / 2));
     }
-    const tilesX = Math.ceil(W / 16), tilesY = Math.ceil(H / 16);
+    const tilesX = Math.ceil(W / ADAPT_TILE_PX), tilesY = Math.ceil(H / ADAPT_TILE_PX);
     this.targets = {
       W, H,
       ext: tex(W, H, this.hdrFormat, RT, 'EXT'),
@@ -387,7 +422,8 @@ export class Renderer {
       levels,
       zero: tex(1, 1, 'rgba32float', ST, 'zero'),
       zero2: tex(1, 1, 'rgba32float', ST, 'zero2'),
-      partials: d.createBuffer({ size: tilesX * tilesY * 16, usage: GPUBufferUsage.STORAGE }),
+      // One partial per adaptation invocation (8 × 8 per workgroup).
+      partials: d.createBuffer({ size: tilesX * tilesY * 64 * 16, usage: GPUBufferUsage.STORAGE }),
       tilesX, tilesY,
     };
     this.glareCache.key = '';
@@ -441,10 +477,18 @@ export class Renderer {
     // Load tiles first (one frame per batch of requests), then let the adaptation converge.
     for (let round = 0; round < 256 && this.lastSnapshot && performance.now() - t0 < 90000; round++) {
       this.render(this.lastSnapshot);
-      if (!this.surf || this.surf.idle()) break;
-      await this.surf.whenIdle(10000);
+      const surfIdle = !this.surf || this.surf.idle();
+      const atmIdle = !this.atm || this.atm.idle();
+      if (surfIdle && atmIdle) break;
+      if (!atmIdle) await this.atm!.whenIdle(30000);
+      else await this.surf!.whenIdle(10000);
     }
     await this.settleAdaptation();
+  }
+
+  /** Resolves when the GPU has finished the last submitted frame (frame pacing; no extra frames). */
+  frameDone(): Promise<void> {
+    return this.device.queue.onSubmittedWorkDone();
   }
 
   private async settleAdaptation(): Promise<void> {
@@ -485,17 +529,28 @@ export class Renderer {
     const omegaCentre = ((2 * g.tanX) / t.W) * ((2 * g.tanY) / t.H);
     const footprintSr = 2 * Math.PI * sigmaPx * sigmaPx * omegaCentre;
     const wPt = Math.min(1, footprintSr / eye.riccoAreaSr);
-    if (!this.surf && snapshot.bodies.some((b) => b.surface && (b.surface.albedo || b.surface.height))) {
+    if (!this.surf && snapshot.bodies.some((b) => b.surface && (b.surface.albedo || b.surface.height || b.surface.clouds || b.surface.night || b.surface.water))) {
       this.surf = new SurfaceGpu(d, this.surfaceCacheMiB);
     }
     const surf = this.surf;
     surf?.beginFrame();
-    const prep = prepareFrame(snapshot, g, eye, footprintSr, surf ? { surfaces: (b) => surf.binding(b) } : {});
+    const prep = prepareFrame(snapshot, g, eye, footprintSr, {
+      ...(surf ? { surfaces: (b: SceneBody) => surf.binding(b) } : {}),
+      atmospheres: (b, groundAlbedo, dust) => (this.atm ??= new AtmosphereGpu(d)).binding(b.atmosphere!, groundAlbedo, b.name, dust),
+    });
     if (surf) {
       surf.request(prep, g);
       surf.flush();
       this.stats.surfaceCache = surf.stats();
     }
+    // Atmospheres whose tables are ready (computed in a worker the first time a body shows one).
+    const atmOf = new Map<number, AtmosphereBinding>();
+    prep.resolved.forEach((r, i) => {
+      if (!r.atmosphere || !this.atm) return;
+      atmOf.set(i, r.atmosphere.binding);
+      this.atm.writeUniform(r.atmosphere.binding, r.atmosphere.sunE, r.atmosphere.sunAngularRadius, r.atmosphere.shellBeta, r.frame.near, ATM_STEPS);
+    });
+    this.atmOf = atmOf;
     this.stats.cpuPrepMs = performance.now() - t0;
 
     // Scatter kernel (CIE 146) fitted to this pyramid and field of view.
@@ -532,9 +587,9 @@ export class Renderer {
 
     // 1. Resolved bodies, then rings.
     const nRes = prep.resolved.length;
-    if (nRes) this.writeBodies(prep);
+    if (nRes) this.writeBodies(prep);  // after atmOf is set (the atmosphere flag)
     const nRings = this.writeRings(prep.rings);
-    d.queue.writeBuffer(this.surfUB, 0, new Uint32Array([surf?.perRow('albedo') ?? 1, surf?.perRow('height') ?? 1, nRings, 0]));
+    d.queue.writeBuffer(this.surfUB, 0, new Uint32Array([surf?.perRow('albedo') ?? 1, surf?.perRow('height') ?? 1, nRings, 0, surf?.perRow('clouds') ?? 1, surf?.perRow('rg16') ?? 1, 0, 0]));
     const skip = this.debugSkip;
     {
       const pass = enc.beginRenderPass({
@@ -559,23 +614,65 @@ export class Renderer {
       const texelView = tp ? tp.view : this.texelDummy.createView({ dimension: '2d-array' });
       const profRes = this.ringProfBuf && nRings ? this.ringProfBuf : this.dummyStorage;
       if (nRes && this.bodiesBuf && !skip.has('bodies')) {
-        pass.setPipeline(this.bodyPipe);
-        pass.setBindGroup(0, d.createBindGroup({
-          layout: this.bodyPipe.getBindGroupLayout(0),
-          entries: [
-            { binding: 0, resource: { buffer: this.frameUB } },
-            { binding: 1, resource: { buffer: this.bodiesBuf } },
-            { binding: 2, resource: { buffer: surf ? surf.pageTable : this.dummyStorage } },
-            { binding: 3, resource: surf ? surf.view('albedo') : this.dummyAtlas('albedo') },
-            { binding: 4, resource: surf ? surf.view('height') : this.dummyAtlas('height') },
-            { binding: 5, resource: { buffer: this.surfUB } },
-            { binding: 6, resource: { buffer: ringsRes } },
-            { binding: 7, resource: { buffer: profRes } },
-            { binding: 8, resource: texelView },
-            { binding: 9, resource: { buffer: this.texelUB } },
-          ],
-        }));
-        pass.draw(6, nRes);
+        const entries: GPUBindGroupEntry[] = [
+          { binding: 0, resource: { buffer: this.frameUB } },
+          { binding: 1, resource: { buffer: this.bodiesBuf } },
+          { binding: 2, resource: { buffer: surf ? surf.pageTable : this.dummyStorage } },
+          { binding: 3, resource: surf ? surf.view('albedo') : this.dummyAtlas('albedo') },
+          { binding: 4, resource: surf ? surf.view('height') : this.dummyAtlas('height') },
+          { binding: 5, resource: { buffer: this.surfUB } },
+          { binding: 6, resource: { buffer: ringsRes } },
+          { binding: 7, resource: { buffer: profRes } },
+          { binding: 8, resource: texelView },
+          { binding: 9, resource: { buffer: this.texelUB } },
+        ];
+        // Runs of consecutive bodies (sorted by distance) share a pipeline: the plain one, or the Earth variant
+        // for bodies drawn from Earth's layers (earth.ts), one draw each (each binds its own atmosphere).
+        let bound: GPURenderPipeline | null = null;
+        const overDisk = (k: number) => atmOf.has(k) && !!prep.resolved[k].atmosphere?.onDisk;
+        const special = (k: number) => (!!prep.resolved[k].earth && !!surf) || overDisk(k);
+        for (let i = 0; i < nRes;) {
+          const earth = !!prep.resolved[i].earth && !!surf;
+          const withAtm = !earth && overDisk(i);
+          let j = i + 1;
+          if (!earth && !withAtm) while (j < nRes && !special(j)) j++;
+          const pipe = earth ? (this.earthPipe ??= this.makeBodyPipe(EARTH_BODY_SHADER, 'bodies (Earth)'))
+            : withAtm ? (this.atmPipe ??= this.makeBodyPipe(ATM_BODY_SHADER, 'bodies (atmosphere)'))
+              : this.bodyPipe;
+          if (withAtm) {
+            pass.setPipeline(pipe);
+            pass.setBindGroup(0, d.createBindGroup({ layout: pipe.getBindGroupLayout(0), entries: [...entries, ...this.atmEntries(atmOf.get(i))] }));
+            bound = null;
+          } else if (earth) {
+            pass.setPipeline(pipe);
+            pass.setBindGroup(0, d.createBindGroup({
+              layout: pipe.getBindGroupLayout(0),
+              entries: [
+                ...entries, { binding: 10, resource: surf!.view('clouds') }, { binding: 11, resource: surf!.view('rg16') }, ...this.atmEntries(atmOf.get(i)),
+                { binding: 15, resource: prep.resolved[i].surface?.wind?.view ?? this.windDummy() },
+              ],
+            }));
+            bound = null;
+          } else if (pipe !== bound) {
+            pass.setPipeline(pipe);
+            pass.setBindGroup(0, d.createBindGroup({ layout: pipe.getBindGroupLayout(0), entries }));
+            bound = pipe;
+          }
+          pass.draw(6, j - i, 0, i);
+          i = j;
+        }
+      }
+      // Atmosphere shells (after the bodies, whose depth they test against).
+      if (atmOf.size && this.bodiesBuf && !skip.has('atmosphere')) {
+        const pipe = (this.shellPipe ??= this.makeShellPipe());
+        pass.setPipeline(pipe);
+        for (const [i, b] of atmOf) {
+          pass.setBindGroup(0, d.createBindGroup({
+            layout: pipe.getBindGroupLayout(0),
+            entries: [{ binding: 0, resource: { buffer: this.frameUB } }, { binding: 1, resource: { buffer: this.bodiesBuf } }, ...this.atmEntries(b)],
+          }));
+          pass.draw(6, 1, 0, i);
+        }
       }
       if (nRings && !skip.has('rings')) {
         pass.setPipeline(this.ringPipe);
@@ -591,6 +688,9 @@ export class Renderer {
       }
       pass.end();
     }
+
+    // 1b. Sky background (render/sky): extended sky light into EXT wherever no body is in front.
+    if (this.background && !skip.has('background')) this.background.encode(enc, { ext: t.ext, depth: t.depth, frameUB: this.frameUB, W: t.W, H: t.H, snapshot });
 
     // 2. Star visibility culling (reads last frame's veil for the local background).
     const veilView = t.levels[0].acc.createView();
@@ -705,7 +805,7 @@ export class Renderer {
         ],
       }));
       pass.dispatchWorkgroups(t.tilesX, t.tilesY);
-      d.queue.writeBuffer(this.reduceUB, 0, new Uint32Array([t.tilesX * t.tilesY, 0, 0, 0]));
+      d.queue.writeBuffer(this.reduceUB, 0, new Uint32Array([t.tilesX * t.tilesY * 64, 0, 0, 0]));
       pass.setPipeline(this.reducePipe);
       pass.setBindGroup(0, d.createBindGroup({
         layout: this.reducePipe.getBindGroupLayout(0),
@@ -757,7 +857,7 @@ export class Renderer {
     const lines: number[] = [...prep.overlay];
     orbitVertices(snapshot.orbits, g, lines);
     const ovBodies = prep.resolved.some((r) => r.hatch || r.tint);
-    const ovMask = prep.rings.length > 0 || prep.resolved.some((r) => r.surface?.albedo);
+    const ovMask = prep.rings.length > 0 || prep.resolved.some((r) => r.surface?.albedo || r.atmosphere?.binding.unmeasured);
     if ((ovBodies || ovMask || lines.length) && !skip.has('overlays')) {
       const pass = enc.beginRenderPass({ label: 'overlays', timestampWrites: this.tsw('overlays'), colorAttachments: [{ view: canvasView, loadOp: 'load', storeOp: 'store' }] });
       if (ovMask) {
@@ -941,6 +1041,7 @@ export class Renderer {
       t.W, t.H, 1 / t.W, 1 / t.H,
       g.tanX, g.tanY, g.pixelAngle, this.frameIndex,
       this.hdrFormat === 'rgba32float' ? 3.4e38 : 65504, 0, 0, 0,
+      ...(prep.sunShield ? [...prep.sunShield.dir, prep.sunShield.cosRadius] : [0, 0, 1, 2]),
     ]));
     const s = this.settings;
     const cosField = Math.cos(((s.adaptationFieldDeg / 2) * Math.PI) / 180);
@@ -949,9 +1050,12 @@ export class Renderer {
     const c = eye.cat;
     // The resolved solar disk is never a fixation (brightness-weighted fixations, eye-model.md §2).
     const sp = prep.sun;
-    const sunFix = sp && sp.resolvedFraction > 0
-      ? [...sp.n, Math.cos(Math.min(Math.asin(Math.min(1, sp.radiusKm / sp.distKm)) + g.pixelAngle, Math.PI))]
-      : [0, 0, 1, 2];
+    // With the Sun shield on, its occulting disc takes that place (nothing behind it is seen: Frame.occ).
+    const sunFix = prep.sunShield
+      ? [...prep.sunShield.dir, prep.sunShield.cosRadius]
+      : sp && sp.resolvedFraction > 0
+        ? [...sp.n, Math.cos(Math.min(Math.asin(Math.min(1, sp.radiusKm / sp.distKm)) + g.pixelAngle, Math.PI))]
+        : [0, 0, 1, 2];
     d.queue.writeBuffer(this.eyeUB, 0, new Float32Array([
       eye.scene.sigmaCone, eye.scene.sigmaRod, eye.scene.Bcone, eye.scene.BrodAdapt,
       eye.map.gain, eye.map.offset, PATTANAIK.n, eye.exposure,
@@ -983,10 +1087,32 @@ export class Renderer {
     void snap;
   }
 
-  /** Body records: 33 vec4 each (struct Body in shaders.ts). */
+  /** Atmosphere bindings (12–14) of the Earth body and shell shaders: the atmosphere's, or dummies. */
+  private atmEntries(b: AtmosphereBinding | undefined): GPUBindGroupEntry[] {
+    const d = this.device;
+    this.atmDummy ??= {
+      uniform: d.createBuffer({ size: ATM_UB_BYTES, usage: GPUBufferUsage.UNIFORM }),
+      texture: d.createTexture({ size: [1, 1, 1], format: 'rgba16float', usage: GPUTextureUsage.TEXTURE_BINDING, label: 'atmosphere dummy' }),
+      sampler: d.createSampler(),
+    };
+    return [
+      { binding: 12, resource: { buffer: b ? b.uniform : this.atmDummy.uniform } },
+      { binding: 13, resource: b ? b.view : this.atmDummy.texture.createView({ dimension: '2d-array' }) },
+      { binding: 14, resource: this.atm ? this.atm.sampler : this.atmDummy.sampler },
+    ];
+  }
+
+  private atmOf = new Map<number, AtmosphereBinding>();
+  private windDummyTex: GPUTexture | null = null;
+  private windDummy(): GPUTextureView {
+    this.windDummyTex ??= this.device.createTexture({ size: [1, 1], format: 'rgba16float', usage: GPUTextureUsage.TEXTURE_BINDING, label: 'wind dummy' });
+    return this.windDummyTex.createView();
+  }
+
+  /** Body records: 39 vec4 each (struct Body in shaders.ts). */
   private writeBodies(prep: PreparedFrame): void {
     const n = prep.resolved.length;
-    const STRIDE = 132;
+    const STRIDE = 156;
     const a = new Float32Array(n * STRIDE);
     const u = new Uint32Array(a.buffer);
     prep.resolved.forEach((r, i) => {
@@ -1010,6 +1136,18 @@ export class Renderer {
       a.set([l.kind, l.p, l.b, l.c, l.bs0, l.hs, l.bc0, l.hc, l.thetaBar, l.K, l.hFn, 0], o + 100);
       r.planetshine.slice(0, 2).forEach((ps, k) => a.set([...ps.dir, 1, ...ps.K], o + 112 + 8 * k));
       a.set(r.ring ? [r.ring.index, ...r.ring.B] : [-1, 0, 0, 0], o + 128);
+      // Earth's layers (earth.ts): clouds (and Earth mode), water, night lights, absolute reflectance scale.
+      const e = r.earth, s = r.surface;
+      const layer = (off: number, l: { base: number; maxLevel: number } | undefined, mode: number) => {
+        a.set([0, l ? l.maxLevel : 0, l ? 1 : 0, mode], o + off);
+        if (l) u[o + off] = l.base;
+      };
+      layer(132, e ? s?.clouds : undefined, e ? 1 : 0);
+      layer(136, e ? s?.water : undefined, e && s?.wind ? 1 : 0);
+      layer(140, e ? s?.night : undefined, 0);
+      a.set(e ? [...e.absR, ...e.nightK] : [0, 0, 0, 0, 0, 0, 0, 0], o + 144);
+      // x: the atmosphere is drawn (the shell beyond the disk), z: over the disk too.
+      a.set([this.atmOf.has(i) ? 1 : 0, ATM_STEPS, this.atmOf.has(i) && r.atmosphere?.onDisk ? 1 : 0, 0], o + 152);
     });
     const buf = this.ensure('bodiesBuf', a.byteLength);
     this.device.queue.writeBuffer(buf, 0, a);
@@ -1100,13 +1238,17 @@ export class Renderer {
     for (let k = 1; k < L.length; k++) {
       run(this.pyr.down, L[k].w, L[k].h, [{ binding: 0, resource: L[k - 1].lvl.createView() }, { binding: 2, resource: L[k].lvl.createView() }]);
     }
+    // A level the kernel fit gives no weight (often the finest ones: narrow fields, high resolutions) needs
+    // no blur, and its accumulation reads a zero texture instead: the costliest full-resolution passes.
+    const used = (k: number) => (this.glareCache.weights[k] ?? 0) > 0;
     for (let k = 0; k < L.length; k++) {
+      if (!used(k)) continue;
       run(this.pyr.blurH, L[k].w, L[k].h, [{ binding: 0, resource: L[k].lvl.createView() }, { binding: 2, resource: L[k].tmp.createView() }]);
       run(this.pyr.blurV, L[k].w, L[k].h, [{ binding: 0, resource: L[k].tmp.createView() }, { binding: 2, resource: L[k].blur.createView() }]);
     }
     for (let k = L.length - 1; k >= 0; k--) {
       run(this.pyr.accum, L[k].w, L[k].h, [
-        { binding: 0, resource: L[k].blur.createView() },
+        { binding: 0, resource: (used(k) ? L[k].blur : t.zero).createView() },
         { binding: 1, resource: (k + 1 < L.length ? L[k + 1][out] : t.zero).createView() },
         { binding: 2, resource: L[k][out].createView() },
         { binding: 3, resource: { buffer: out === 'acc' ? L[k].ub : L[k].ubR } },

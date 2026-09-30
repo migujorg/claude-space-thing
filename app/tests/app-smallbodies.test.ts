@@ -8,7 +8,8 @@ import { viewDistance } from '../src/app/camera';
 import { NameService } from '../src/app/nameService';
 import { CpuSmallBodyStates, sbId, sbRow } from '../src/app/smallbodies';
 import { len, sub } from '../src/app/vec';
-import { keplerDrift } from '../src/core/smallbody';
+import { keplerDrift, SmallBodyPropagator } from '../src/core/smallbody';
+import { gridStates } from '../src/app/sbgrid';
 import type { LoadedData } from '../src/data/load';
 import type { SmallBodyNamesHeader } from '../src/data/schema';
 import type { SmallBodyProducts } from '../src/data/smallbodies';
@@ -85,6 +86,62 @@ describe('small-body identity and CPU positions', () => {
     expect(Math.hypot(first[0]!.pos[0] - st[0], first[0]!.pos[1] - st[1], first[0]!.pos[2] - st[2])).toBeLessThan(1e-3);
     expect(a.stateOf(0, EPOCH + 401 * DAY)).toBeNull(); // outside the catalogue window: never extrapolated
     expect(a.stateOf(2, T)).toBeNull(); // position unknown
+  });
+});
+
+describe('background propagation (worker protocol, in-process)', () => {
+  const fakeEph = { positionSSB: () => [0, 0, 0] as [number, number, number] };
+  /** The worker's computation, run in this thread but answered asynchronously like the real worker. */
+  const port = (t: ReturnType<typeof fakeTables>) => {
+    const prop = new SmallBodyPropagator(t.core.header.forceModel, fakeEph as never);
+    const calls: number[] = [];
+    return {
+      calls,
+      grid: async (row: number, state: ArrayLike<number>, ng: null) => {
+        calls.push(row);
+        await new Promise((r) => setTimeout(r, 0));
+        return gridStates(prop, state, ng, EPOCH, t.core.header.forceModel.grid.baseStepS, t.core.header.window);
+      },
+    };
+  };
+
+  it('seeds the store with whole-window states identical to the main-thread propagation', async () => {
+    const t = fakeTables();
+    const sync = new CpuSmallBodyStates(t, fakeEph);
+    const bg = new CpuSmallBodyStates(t, fakeEph);
+    const p = port(t);
+    bg.attachWorker(p);
+    const seeded = new Promise<number>((r) => (bg.onSeeded = r));
+    expect(bg.stateOf(1, T)).toBeNull(); // pending
+    expect(bg.isPending(1)).toBe(true);
+    expect(bg.stateOf(1, T + DAY)).toBeNull();
+    expect(p.calls).toEqual([1]); // requested once
+    expect(await seeded).toBe(1);
+    const times = [T, EPOCH - 399.5 * DAY, EPOCH + 399.9 * DAY, EPOCH + 3.3 * DAY];
+    expect(times.map((x) => bg.stateOf(1, x))).toEqual(times.map((x) => sync.stateOf(1, x)));
+    expect(bg.ms).toBeLessThan(sync.ms + 50); // only partial steps on this thread
+  });
+
+  it('a go-to waits for the background propagation, then travels', async () => {
+    const { model } = withTables();
+    const p = port(model.smallBodies!.tables);
+    model.useGridWorker(p);
+    const r = model.goTo(sbId(1), undefined, { instant: true });
+    expect(r).toBeInstanceOf(Promise);
+    expect(model.bodyLoadState(sbId(1))).toBe('loading');
+    expect(model.messages.at(-1)?.text).toMatch(/Propagating Small body #2/);
+    await r;
+    expect(model.cam).toMatchObject({ mode: 'orbit', target: sbId(1) });
+    expect(model.bodyLoadState(sbId(1))).toBe('loaded');
+  });
+
+  it('falls back to the main thread when the worker fails', async () => {
+    const { model } = withTables();
+    model.useGridWorker({ grid: async () => { throw new Error('boom'); } });
+    expect(model.bodyPos(sbId(1))).toBeNull();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(model.messages.at(-1)?.text).toMatch(/main thread \(worker failed: boom\)/);
+    expect(model.bodyPos(sbId(1))).not.toBeNull();
   });
 });
 

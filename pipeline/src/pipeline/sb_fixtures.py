@@ -31,7 +31,7 @@ FIXTURE_STEP_DAYS = 20
 
 
 def main() -> None:
-    w = json.loads((CACHE / "window.json").read_text())
+    w = json.loads((CACHE / "window.json").read_text(encoding="utf-8"))
     ctx = BuildContext(w["startEt"], w["endEt"])
     common = common_epoch(ctx)
     snap = sb_sbdb.fetch_snapshot()
@@ -80,18 +80,18 @@ def main() -> None:
         "description": "stateCommon -> SmallBodyPropagator.propagateOne(grid0 = epochEt) must reproduce `python` (same "
                        "scheme) and stay within toleranceKm of `horizons` (JPL Horizons heliocentric ICRF, TDB).",
     }
-    APP_FIX.write_text(json.dumps(app, indent=1))
+    APP_FIX.write_text(json.dumps(app, indent=1), encoding="utf-8", newline="\n")
 
     PIPE_FIX.mkdir(parents=True, exist_ok=True)
     (PIPE_FIX / "nongrav").mkdir(exist_ok=True)
     fields, data = None, []
     for p in snap.orbit_pages:
-        d = json.loads(p.read_text())
+        d = json.loads(p.read_text(encoding="utf-8"))
         fields = d["fields"]
         want = {int(cat.spkid[i]) for i in rows}
         data += [row for row in d["data"] if int(row[0]) in want]
     data.sort(key=lambda row: int(row[0]))
-    (PIPE_FIX / "orbits.json").write_text(json.dumps({"fields": fields, "data": data, "count": len(data)}, indent=0))
+    (PIPE_FIX / "orbits.json").write_text(json.dumps({"fields": fields, "data": data, "count": len(data)}, indent=0), encoding="utf-8", newline="\n")
     for i in rows:
         spk = int(cat.spkid[i])
         if spk in snap.nongrav:
@@ -102,7 +102,7 @@ def main() -> None:
          "states": [[float(v) for v in r.horizons[j]] for j in range(0, r.epochs.size, stride)],
          "stateCommon": [float(x) for x in r.state_common], "toleranceKm": _tolerance(cat, r),
          "maxErrKm": r.max_err_km} for r in res]}
-    (PIPE_FIX / "horizons.json").write_text(json.dumps(hzfix, indent=0))
+    (PIPE_FIX / "horizons.json").write_text(json.dumps(hzfix, indent=0), encoding="utf-8", newline="\n")
     print(f"wrote {APP_FIX} and {PIPE_FIX} ({len(objs)} objects)")
 
 

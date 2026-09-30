@@ -190,7 +190,7 @@ def _segment_owners(products: list[str]) -> dict[int, tuple[str, int]]:
         path = OUT / f"{name}.json"
         if not path.exists():
             raise FileNotFoundError(f"{path} missing: run the ephemeris stage first")
-        for s in json.loads(path.read_text())["segments"]:
+        for s in json.loads(path.read_text(encoding="utf-8"))["segments"]:
             t = s["target"]
             if t in owner and owner[t][0] != name:
                 if t not in PLANET_CENTERS or owner[t][1] != s["center"]:

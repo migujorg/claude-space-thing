@@ -5,6 +5,7 @@
 import type { PointSourceBuffer, RendererPort } from './ports';
 import type { RendererStats, SceneSnapshot, StarCatalog } from '../render/scene';
 import { Renderer } from '../render/renderer';
+import type { SkyBackgroundHook } from '../render/sky/background';
 
 export class OffscreenPresenter implements RendererPort {
   private blitting: Promise<void> | null = null;
@@ -36,6 +37,10 @@ export class OffscreenPresenter implements RendererPort {
     this.r.setStars(c);
   }
 
+  setBackground(b: SkyBackgroundHook | null): void {
+    this.r.setBackground(b);
+  }
+
   resize(w: number, h: number, dpr: number): void {
     this.r.resize(w, h, dpr);
   }
@@ -44,6 +49,12 @@ export class OffscreenPresenter implements RendererPort {
     this.r.render(s);
     this.dirty = true;
     if (!this.blitting) this.blitting = this.blit().finally(() => (this.blitting = null));
+  }
+
+  /** The GPU finished the last frame and its pixels are in the visible canvas. */
+  async frameDone(): Promise<void> {
+    await this.gpuDevice?.queue.onSubmittedWorkDone();
+    if (this.blitting) await this.blitting;
   }
 
   async settled(): Promise<void> {
