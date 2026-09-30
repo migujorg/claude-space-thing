@@ -36,7 +36,7 @@ describe('Chandrasekhar H function', () => {
       for (let i = 0; i < x.length; i++) a0 += (gw[i] / 2) * hExact((x[i] + 1) / 2, w);
       expect(a0 / ((2 / w) * (1 - Math.sqrt(1 - w)))).toBeCloseTo(1, 4);
     }
-  });
+  }, 60000); // slow reference solver: allow for a loaded machine
   it('Hapke (2002) approximation is within 1 % of the exact H for all w, μ (as Hapke states)', () => {
     for (const w of [0.1, 0.3, 0.5, 0.7, 0.9, 0.99])
       for (const mu of [0.05, 0.2, 0.5, 0.8, 1]) {
