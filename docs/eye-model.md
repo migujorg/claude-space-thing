@@ -15,6 +15,15 @@ unlit hemispheres are black (and occlude the stars behind them) even where the r
 curve is unknown: the "not measured" hatch marks only the sunlit part, whose brightness is what is
 unknown (geometry alone says the night side receives no direct sunlight).
 
+**Changes in v2 (M3): fixations.** A scene is perceived over many fixations, not from its geometric
+centre (§2 "Fixations").
+- The extended image adapts to where the eye looks: fixations are drawn over the whole frame in
+  proportion to the light of the objects there, so a quarter Moon filling the view is seen adapted to its
+  sunlit half, not to the night side under the view centre.
+- Point sources are judged at their own fixation, adapted to their own background, which is Crumey's
+  experimental condition. Faint stars therefore stay visible beside a bright planet the extended image is
+  adapted to.
+
 Code: `app/src/eye/` (pure TypeScript reference, unit-tested) and the per-pixel mirror in
 `app/src/render/shaders.ts`. Constants live in `app/src/eye/constants.ts`, each next to its citation.
 Observer and display *settings* (age, pigmentation, field factor, display peak) are in
@@ -25,9 +34,9 @@ HDR scene (X, Y, Z, S luminance, cd/m²)          points (stars, unresolved bodi
         │                                                  │
         ├──► intraocular scatter (CIE 146) ──► veil ◄──────┤   §3  (+ analytic veil: Sun, off-frame bodies)
         │                                                  │
-        ├──► adaptation: 1° foveal mean of retinal image ──┼──► A_cone, A_rod, pupil (Watson & Yellott)   §2
+        ├──► adaptation: fixations weighted by light ──────┼──► A_cone, A_rod (extended image), pupil (Watson & Yellott)   §2
         │                                                  │
-        │    visibility: Crumey threshold at max(A, local background) culls points   §6
+        │    points at their own fixation: Crumey threshold, response, colour at the local background   §2 §6
         │                                                  │
         └──► perceived image: Ricco summation of small sources ─► rod + cone responses (Pattanaik 2000; rods: Hunt)
                ─► display response ─► display luminance ─► colour (mesopic, CAT02) ─► sRGB   §4 §5 §7
@@ -44,13 +53,59 @@ scotopic thresholds computable; it is never derived from XYZ.
 
 ## 2. Adaptation and pupil
 
-**Field.** The eye is assumed to fixate the centre of the view (the shell centres what the user looks
-at). The adaptation field is a 1°-diameter foveal disk around the fixation point, following the
-"1-degree foveal weighting" of Ward Larson, Rushmeier & Piatko (1997), which Pattanaik et al. (2000,
-§4.1.2) use as their adaptation goal finder. Setting: `adaptationFieldDeg`.
+**Fixations (v2).** A person does not look at the geometric centre of a view: a scene is perceived
+over many fixations. Ward Larson, Rushmeier & Piatko (1997) treat every foveal field of the image as a
+possible fixation, and their visibility-matching operator is built on the distribution of the
+adaptation levels those fixations meet. We keep one adaptation state for the extended image (a global
+operator: region brightness keeps its order, with no halos). It is the state the eye settles to while it
+looks around the frame, and fixations are not uniform over the frame:
 
-**Statistic.** The solid-angle-weighted *log-average* (geometric mean) of the *retinal image* over that
-field, exp⟨ln(L + L₀)⟩ − L₀ with L₀ the dark light (below): the unscattered scene plus the intraocular
+- **Where the eye looks.** Fixations go to the objects in the frame in proportion to their light, i.e.
+  to the unscattered scene luminance. Dark background attracts nothing. The glare haze around a bright
+  source is in the eye, not in the scene, so it attracts nothing either.
+- **What it adapts to there.** At each fixation the eye adapts to the retinal image: the object plus the
+  veil falling there (Moon & Spencer 1945; "Statistic" below).
+
+So A = exp(Σ L_scene·Ω·ln(L_ret + L₀) / Σ L_scene·Ω) over the frame (`eye/fixation.ts`; GPU:
+`ADAPT_SHADER`). The resolved solar disk is never fixated: it cannot be looked at. Its veil still
+counts wherever the eye looks. Consequences:
+
+- A quarter Moon filling the view is seen adapted to its sunlit half, even when the view centre falls on
+  the night side (the v1 rule saturated the lit half to white).
+- A small bright body in a dark field (the Moon from Earth, a planet in a star field) sets the adaptation
+  by its light rather than its area. A 1° log-average around it would be pulled down by the black sky
+  that fills most of the field.
+- Of two bodies in view, the brighter and larger dominates. The crescent Earth beside the Moon is seen
+  adapted mostly to the Earth, so the Moon (albedo 0.12 against the Earth's 0.3) looks darker, as in the
+  well-known spacecraft images.
+
+**Point sources at their own fixation.** Point sources are judged at their own fixation. This covers
+the visibility threshold, the Ricco area, the tone response, the colour exponent and the mesopic state.
+The eye looking at a star is adapted to the star's own background: the sky plus the veil at the star, its
+own light removed. That is exactly the condition of Crumey's (2014) thresholds, which are functions of
+the background luminance at the source. So a faint star in dark sky looks the same whether the extended
+image is adapted to a bright planet or to darkness, and near the planet its veil hides it. v1 floored the
+star's background at the global adaptation. That removed every faint star from a frame containing a
+bright extended body.
+
+What this does not do:
+
+- **Faint extended features beside a far brighter one** (earthshine next to the sunlit crescent) are
+  shown as seen while looking at the bright part. A person who looks at the earthshine sees it.
+- **A fully local (per-pixel) adaptation** would show both, at the cost of flattening region brightness
+  and of halos at edges (Ashikhmin 2002; Ledda, Santos & Chalmers 2004; Reinhard & Devlin 2005 blend
+  local and global with a free parameter). It is a possible next step (§10).
+- **The old rule** is kept as `fixation: 'centre'`: one fixation at the view centre with a
+  `adaptationFieldDeg` (1°) foveal field. It is useful when the user deliberately looks at a dark
+  feature.
+
+**Field ('centre' mode).** The adaptation field is a 1°-diameter foveal disk around the fixation point,
+following the "1-degree foveal weighting" of Ward Larson, Rushmeier & Piatko (1997), which Pattanaik et
+al. (2000, §4.1.2) use as their adaptation goal finder. Setting: `adaptationFieldDeg`.
+
+**Statistic.** The *log-average* (geometric mean) of the *retinal image*: in 'centre' mode solid-angle
+weighted over that field, in 'brightness' mode weighted by the fixations over the frame (above).
+It is exp⟨ln(L + L₀)⟩ − L₀ with L₀ the dark light (below). The retinal image is: the unscattered scene plus the intraocular
 veil from every glare source (§3), in frame (the pyramid) and off frame (the analytic veil of the Sun
 and bodies within 100° of fixation). Including the veil follows Moon & Spencer (1945): the adaptation
 state in a non-uniform field is that of the fixated luminance plus the equivalent veiling luminance
@@ -66,9 +121,9 @@ filling the frame is the Moon's glare (60° off axis, i.e. off frame, analytic v
 the adaptation measurement (5.7·10⁻⁵ cd/m² there, 5.7× the dark light), and a uniform field at the
 adaptation level is displayed as a dim grey by Pattanaik's appearance rules (§4, §10 table: ~3 cd/m²).
 So the veil and the adaptation state are consistent; the grey is the model's rendering of a sky
-brightened by moonlight glare. A single global adaptation remains a limitation (§10): fixating a
-bright star light-adapts the fovea by its own glare, as Moon & Spencer's model also predicts, while
-real faint-star vision uses parafoveal rods adapted to the dark sky.
+brightened by moonlight glare. (v1 added that fixating a bright star light-adapts the whole frame by the
+star's own glare. Since v2 stars do not draw the extended image's fixations, and each point is judged at
+its own background; see "Fixations" above.)
 
 **Floor.** Both are floored at the luminance below which vision treats the background as zero:
 10⁻⁵ cd/m² (Crumey 2014 §2.1 and §2.3, after Crawford 1937), ×1.408 for the scotopic channel
@@ -261,12 +316,22 @@ Q_bw = [m·q_p + (1 − m)·V′(λ0)·q_s] / [m + (1 − m)·V′(λ0)·ρ₂�
 At m = 0 this is Crumey's own scotopic colour correction; at m = 1 it is the photopic value. Stars
 (E_p, E_s) and backgrounds are converted the same way.
 
-**Background.** B = max(adaptation, local background). The eye's sensitivity is set by its adaptation
-(looking at a sunlit planet hides the stars even against black sky) unless the local background is
-brighter. The local background is the physical veil at scales at or above the Ricco area (the pyramid
-level whose Gaussian first reaches A_R, sampled bilinearly) plus the analytic veil, from the previous
-frame. The source's own light in it (Σ_{k≥k_R} w_k/(2πσ_k²) per unit illuminance) is subtracted: a source
+**Background.** B = the local background, and the eye judging the point is adapted to it: its own
+fixation (§2). Crumey's thresholds are measured this way. The local background is:
+- the physical veil at scales at or above the Ricco area (the pyramid level whose Gaussian first reaches
+  A_R, sampled bilinearly), from the previous frame;
+- plus the analytic veil;
+- plus, in the point shader, the extended image at the point.
+
+The source's own light in it (Σ_{k≥k_R} w_k/(2πσ_k²) per unit illuminance) is subtracted, so a source
 never masks itself.
+
+The mesopic state m, the Ricco area, the cone summation area and the tone response (Pattanaik's
+observer with Hunt's rods, reference white and black, appearance rules) are all evaluated at that
+background, per point. They are ported to WGSL: `obsAt`, `mesopicM`, `crumeyRiccoArea`.
+
+v1 used B = max(global adaptation, local background): "looking at a sunlit planet hides the stars even
+against black sky". That holds for one fixation, but it is not how a scene is looked at.
 
 **Test of the whole chain.** Under a dark sky of 21.5–22 mag/arcsec² (sky S/P 1.38, Crumey §1.3), the
 model gives naked-eye limits between V ≈ 6.0 and 7.0 for star colours B−V = 0 … 1.5 (S/P from
@@ -275,7 +340,8 @@ background (v0 has no zodiacal light or diffuse Galactic light yet), the zero-ba
 V ≈ 7.6 with F = 2.
 
 **Culling.** On the GPU, each star whose Blackwell-equivalent illuminance is below F·ΔI(B) (÷ the
-enhanced boost) is not drawn. Unresolved bodies use the same test on the CPU.
+enhanced boost) at its own background is not drawn. Unresolved bodies are tested in the point shader.
+The CPU only drops those invisible even against a zero background.
 
 ### 6.3 How point sources are shown (`eye/points.ts`)
 
@@ -374,17 +440,16 @@ shows the badge.
 - **Ricco summation for supra-threshold brightness** is our extension of a threshold result. It is
   exact at threshold by construction; above threshold it assumes brightness pools like detection.
 - **Cone bleaching** is off (see §4).
-- **Single global adaptation.** The whole image uses the foveal state. Fixating a bright star (e.g.
-  Antares, V = 1) light-adapts the fovea by the star's own CIE 146 glare (log-average ~4·10⁻⁴ cd/m²
-  instead of 10⁻⁵), which lowers the limiting magnitude of the whole frame by ~1.5 mag. Real
-  faint-star vision uses parafoveal rods (the central ~1.25° is rod-free; Curcio et al. 1990) adapted to
-  the dark sky. A rod adaptation measured over a rod-weighted parafoveal field is the fix; not done.
-  The opposite case shows the same limit. With a bright body filling half of a dark frame (the Moon at a
-  0.8° field of view, real data), the log-average of the retinal image is ~53 cd/m², pulled down by the
-  dark half. The Moon is ~3 000 cd/m², so its lit surface saturates to white, though the terminator
-  relief stays visible. The retina adapts locally, within ~1° (the receptors imaging the Moon adapt to
-  the Moon). A spatially varying adaptation (e.g. Ledda et al. 2004; Pattanaik et al. 2000 applied per
-  region) is the fix; not done.
+- **One adaptation state for the extended image (v2: fixation-weighted, §2).**
+  - Two v1 failures are gone. A bright body filling half of a dark frame (the quarter Moon from
+    6 000 km, or at a 0.8° field) no longer saturates. Fixating a bright star (Antares, V = 1) no longer
+    costs the whole frame ~1.5 mag, because stars are judged at their own fixation.
+  - Still global: a faint extended feature next to a far brighter one (earthshine beside the sunlit
+    crescent) is shown as seen while looking at the bright part.
+  - Rods: real faint-star vision uses parafoveal rods (the central ~1.25° is rod-free; Curcio et al.
+    1990). The point observer uses the local background, which is foveal and parafoveal alike.
+  - A fully local adaptation (Ledda et al. 2004; Ashikhmin 2002) is the next step if the flattening it
+    brings is acceptable.
 - **Adapted brightness across the range (v1).** A fully adapted surface (S/P 2.3), 200 cd/m² display:
 
   | adaptation (cd/m²) | 10⁻⁵ | 10⁻⁴ | 10⁻³ | 10⁻² | 0.1 | 1 | 10 | 10² | 10³ | 10⁴ | 10⁵ |
@@ -404,6 +469,8 @@ shows the badge.
 
 ## References
 
+- Ashikhmin, M. (2002). A tone mapping algorithm for high contrast images. Proc. 13th Eurographics
+  Workshop on Rendering, 145–156.
 - Barlow, H. B. (1957). Increment thresholds at low intensities considered as signal/noise
   discriminations. J. Physiol. 136, 469–488.
 - Blackwell, H. R. (1946). Contrast thresholds of the human eye. JOSA 36, 624–643.
