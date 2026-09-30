@@ -21,6 +21,6 @@
     { "id": "earth-moon-first-run", "title": "The first-run composition (no URL parameters) at a fixed time: the Earth framed, the Moon 14° from the centre (upper left)", "params": { "t": "2026-09-30T17:00:00Z", "target": "399", "dist": "45828.8", "az": "32.84", "el": "-17.26" } },
     { "id": "eclipse-2027-above", "title": "Event: total solar eclipse of 2027-08-02 at greatest eclipse, from the shadow axis above the Earth (Moments view 1)", "params": { "t": "2027-08-02T10:06:41.000Z", "target": "399", "dist": "28715.92", "az": "0.65", "el": "1.69" } },
     { "id": "eclipse-2027-totality", "title": "Event: the same eclipse from just above the atmosphere over the greatest-eclipse point, looking at the Moon covering the Sun (6° field; Moments view 2)", "params": { "t": "2027-08-02T10:06:41.000Z", "target": "301", "dist": "350939.1", "az": "179.99", "el": "0", "fov": "6" } },
-    { "id": "jupiter-double-shadow", "title": "Event: Europa's and Callisto's shadows on Jupiter together (2027-01-30), from the Earth's direction", "params": { "t": "2027-01-30T15:12:07.461Z", "target": "599", "dist": "700000", "az": "2.32", "el": "0.58" } }
+    { "id": "jupiter-double-shadow", "title": "Event: Europa's and Callisto's shadows on Jupiter together (2027-01-30), from the Earth's direction at 4.2 Jupiter radii", "params": { "t": "2027-01-30T15:12:07.461Z", "target": "599", "dist": "300266.4", "az": "2.32", "el": "0.58" } }
   ]
 }

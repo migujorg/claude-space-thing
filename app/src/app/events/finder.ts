@@ -341,7 +341,7 @@ export function fullMoons(g: Geometry): number[] {
   return minima(f, w.startEt, w.endEt, 43200).map((m) => m.t);
 }
 
-const EPHEM_METHOD = 'from the loaded ephemerides (positions), the bodies\' measured radii and orientation models; light-time corrected (Newtonian), no aberration';
+const EPHEM_METHOD = 'from the loaded ephemerides (positions), the bodies\' radii and orientation models; light-time corrected (Newtonian), no aberration';
 
 export function solarEclipses(g: Geometry): SkyEvent[] {
   const out: SkyEvent[] = [];
@@ -359,7 +359,7 @@ export function solarEclipses(g: Geometry): SkyEvent[] {
     const where = Number.isFinite(e.latDeg) ? `${fmtLat(e.latDeg)} ${fmtLon(e.lonDeg)}` : 'unknown';
     const central = e.kind !== 'partial';
     const detail = [
-      `greatest eclipse at ${where}, Sun ${e.sunAltDeg.toFixed(0)}° high`,
+      `greatest eclipse at ${where}, Sun ${Math.round(e.sunAltDeg) || 0}° high`,
       central ? `${e.kind === 'total' ? 'totality' : 'annularity'} ${fmtDuration(e.durationS)} there` : `${(100 * e.magnitude).toFixed(0)} % of the Sun's diameter covered at most`,
       `magnitude ${e.magnitude.toFixed(4)}`,
       `shadow axis ${e.gamma.toFixed(4)} Earth radii from the centre`,
@@ -493,6 +493,18 @@ export const GALILEANS: Record<number, string> = { 501: 'Io', 502: 'Europa', 503
 
 interface Interval { start: number; end: number; mid: number }
 
+/** Framing (not physics): shadows seen from this many Jupiter radii (inside the Galilean orbits, so no moon
+ *  comes between); a moon's own transit, occultation or eclipse from this multiple of its distance (so it is in view). */
+export const JOVIAN_VIEW = { shadowRadii: 4.2, moonDistances: 1.5 };
+
+/** From the Earth's direction: close for shadows on the disk, beyond the moon for the moon's own phenomena. */
+function jovianView(g: Geometry, subtype: string, m: number, t: number): EventView {
+  const E = g.pos(EARTH, t), J = g.pos(JUPITER, t);
+  const shadow = subtype.includes('shadow');
+  const d = shadow ? JOVIAN_VIEW.shadowRadii * g.radius(JUPITER)[0] : JOVIAN_VIEW.moonDistances * len(sub(g.pos(m, t), J));
+  return { label: shadow ? 'Jupiter\'s disk from the Earth\'s direction, close' : `Jupiter and ${GALILEANS[m]} from the Earth's direction`, target: JUPITER, rel: mul(unit(sub(E, J)), d) };
+}
+
 export function jovianEvents(g: Geometry, onProgress?: (f: number) => void): SkyEvent[] {
   const w = g.inp.window;
   const out: SkyEvent[] = [];
@@ -559,7 +571,7 @@ export function jovianEvents(g: Geometry, onProgress?: (f: number) => void): Sky
         observer: 'the Earth',
         method: `Contacts of the moon's centre with Jupiter's limb (seen from the Earth's centre) or with the edge of the shadow (sunlight grazing the ellipsoid), Jupiter's shape from its measured radii and IAU orientation; times as observed at the Earth. ${EPHEM_METHOD}.`,
         rank: 5,
-        views: [{ label: 'From the Earth\'s direction, near Jupiter', target: JUPITER, rel: mul(unit(sub(E, J)), 700000) }],
+        views: [jovianView(g, subtype, m, mid)],
         data: { moon: m, elongationDeg: elong },
       });
     };
@@ -601,7 +613,6 @@ export function jovianEvents(g: Geometry, onProgress?: (f: number) => void): Sky
       const id = `jovian:${third ? 'triple' : 'double'}-shadow:${ids.join('-')}:${Math.round(mid)}`;
       const elong = angle(sub(g.pos(JUPITER, mid), g.pos(EARTH, mid)), sub(g.pos(SUN, mid), g.pos(EARTH, mid))) / DEG;
       if (out.some((e) => e.id === id)) continue;
-      const E = g.pos(EARTH, mid), J = g.pos(JUPITER, mid);
       out.push({
         id,
         kind: 'jovian',
@@ -616,7 +627,7 @@ export function jovianEvents(g: Geometry, onProgress?: (f: number) => void): Sky
         observer: 'the Earth',
         method: `Overlap of the individual shadow transits (times as observed at the Earth). ${EPHEM_METHOD}.`,
         rank: (third ? 90 : 45) + Math.min(20, (e2 - s2) / 540) - (elong < 15 ? 30 : 0),
-        views: [{ label: 'From the Earth\'s direction, near Jupiter', target: JUPITER, rel: mul(unit(sub(E, J)), 700000) }],
+        views: [jovianView(g, 'shadow', ids[0], mid)],
         data: { elongationDeg: elong, overlapS: e2 - s2 },
       });
     }
