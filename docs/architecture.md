@@ -187,6 +187,9 @@ When an attribute needed for drawing is below the current `exists` level or `unk
 | `light.json` | `light` | Sun spectrum-derived quantities, CIE constants actually used |
 | `rings.json` | `light` | planet NAIF id → `RingSystem`: measured radial profiles of normal optical depth (occultations), lit-face reflectance (reserved, `unknown` so far); see below |
 | `stars/<name>.json` + `.bin` | `stars` | header + interleaved per-star data |
+| `stars/deep.json` + `stars/deep-o3-NNN.bin` | `deepstars` | deep star tier (`TiledBinaryTableHeader`): Gaia sources 10 ≤ G < 14 not already in `stars/bright`, same 48-byte record, one file per HEALPix order-3 NESTED (ICRS) pixel, each sorted brightest first; the header lists every tile's centre, radius, count and prefix counts at Y limits, so the app loads tiles by view direction and reads a prefix to a magnitude limit |
+| `sky/diffuse.json` + `sky/*.bin` | `sky` | `SkyMapsFile`: HEALPix NESTED (ICRS) float32 XYZS radiance maps (cd/m², scotopic cd/m²): `faintStars` (Gaia G ≥ 14, order 8), `diffuse` (Pioneer 10/11 sky minus all stars = diffuse galactic light + EBL + stars fainter than Gaia, order 6 at 3° resolution, per-pixel method codes), `deepAggregate` (the deep tier summed, for level of detail; not additive) |
+| `sky/zodiacal.json` | `sky` | `ZodiacalLightModel`: Leinert 1998 zodiacal light at 1 AU (measured), S10sun → XYZS conversion, Kelsall 1998 dust cloud with a visible phase function and albedo fitted to Leinert (for observers away from 1 AU) |
 | `surfaces/<naifId>/<layer>.json` + tiles | `surfaces` | tiled map pyramids per §4.4 |
 
 Headers (`*.json` next to a `*.bin`) define byte layout explicitly (field name, type, count, stride) so the loader is generic.

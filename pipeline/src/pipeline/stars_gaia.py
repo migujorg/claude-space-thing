@@ -18,23 +18,57 @@ from __future__ import annotations
 import datetime as _dt
 import hashlib
 import json
+import os
 import time
 import zlib
 from concurrent.futures import ProcessPoolExecutor, as_completed
+from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
 import requests
 
 from .download import fetch, sha256_file
-from .paths import RAW
+from .paths import CACHE, RAW
 
 TAP_URL = "https://gea.esac.esa.int/tap-server/tap"
-XP_BASE = "https://cdn.gea.esac.esa.int/Gaia/gdr3/Spectroscopy/xp_sampled_mean_spectrum/"
-XP_SUBDIR = "stars/gaia_dr3_xp_sampled"
+
+
+@dataclass(frozen=True)
+class GaiaRelease:
+    """Everything release-specific. Select with the environment variable PIPELINE_GAIA_RELEASE (default dr3)."""
+    key: str
+    label: str            # "Gaia DR3"
+    schema: str           # archive TAP schema, "gaiadr3"
+    cdn: str              # bulk-file directory on cdn.gea.esac.esa.int, "gdr3"
+    citation: str
+    doi: str
+    xp_first_nm: float    # XP sampled grid
+    xp_last_nm: float
+    xp_step_nm: float
+
+
+RELEASES = {
+    "dr3": GaiaRelease(
+        key="dr3", label="Gaia DR3", schema="gaiadr3", cdn="gdr3",
+        citation="Gaia Collaboration, Vallenari A. et al. 2023, Gaia Data Release 3: Summary of the content and "
+                 "survey properties, A&A 674, A1",
+        doi="10.1051/0004-6361/202243940", xp_first_nm=336.0, xp_last_nm=1020.0, xp_step_nm=2.0),
+    # Gaia DR4 (scheduled 2 Dec 2026): add its entry here once the archive schema, bulk layout and XP sampling are
+    # published; the queries below only use the schema name and column names that DR3 and the DR4 draft data model
+    # share, but every entry must be checked against the released data model, not assumed.
+}
+_REL_KEY = os.environ.get("PIPELINE_GAIA_RELEASE", "dr3").lower()
+if _REL_KEY not in RELEASES:
+    raise RuntimeError(f"PIPELINE_GAIA_RELEASE={_REL_KEY!r} is not configured in stars_gaia.RELEASES "
+                       f"(known: {sorted(RELEASES)})")
+REL = RELEASES[_REL_KEY]
+
+XP_BASE = f"https://cdn.gea.esac.esa.int/Gaia/{REL.cdn}/Spectroscopy/xp_sampled_mean_spectrum/"
+XP_SUBDIR = f"stars/gaia_{REL.key}_xp_sampled"
 #: Sampling of the Gaia DR3 XP sampled mean spectra: 343 points, 336..1020 nm in 2 nm steps
 #: (Gaia DR3 documentation, xp_sampled_mean_spectrum; Montegriffo et al. 2023).
-XP_WAVELENGTHS = np.arange(336.0, 1020.0 + 1e-9, 2.0)
+XP_WAVELENGTHS = np.arange(REL.xp_first_nm, REL.xp_last_nm + 1e-9, REL.xp_step_nm)
 
 
 # --------------------------------------------------------------------------------------------- TAP
@@ -100,6 +134,70 @@ def tap_query(select: str, table: str, where: str, subdir: str, base: str, expec
     if not sidecar.exists():
         sidecar.write_text(query)
     return path
+
+
+def _fits_table_ok(path: Path) -> bool:
+    """True when `path` is a complete FITS file whose first extension is a binary table (a truncated response or
+    an error document fails). Reads only the headers."""
+    size = path.stat().st_size
+    with path.open("rb") as f:
+        head = f.read(2880)
+        if not head.startswith(b"SIMPLE  ="):
+            return False
+        off = 0
+        cards: dict[str, str] = {}
+        for hdu in range(2):
+            cards = {}
+            while True:
+                f.seek(off)
+                block = f.read(2880)
+                off += 2880
+                if len(block) < 2880:
+                    return False
+                end = False
+                for i in range(0, 2880, 80):
+                    card = block[i:i + 80].decode("ascii", "replace")
+                    key = card[:8].strip()
+                    if key == "END":
+                        end = True
+                        break
+                    if card[8:10] == "= ":
+                        cards[key] = card[10:].split("/")[0].strip()
+                if end:
+                    break
+            if hdu == 0:
+                naxis = int(cards.get("NAXIS", "0"))
+                n = 1
+                for k in range(1, naxis + 1):
+                    n *= int(cards[f"NAXIS{k}"])
+                off += -(-n * abs(int(cards["BITPIX"])) // 8 // 2880) * 2880 if naxis else 0
+        if cards.get("XTENSION", "").strip("' ") != "BINTABLE":
+            return False
+        need = int(cards["NAXIS1"]) * int(cards["NAXIS2"]) + int(cards.get("PCOUNT", "0"))
+        return size >= off + need
+
+
+def tap_query_fits(select: str, table: str, where: str, subdir: str, base: str) -> Path:
+    """Like `tap_query` but FITS binary table output (~2.5x smaller than CSV for numeric columns).
+
+    A FITS response declares its row count before the data, so a truncated transfer is detected from the file
+    size alone (`_fits_table_ok`, run by `fetch` as validation); no COUNT(*) round trip is needed."""
+    query = f"SELECT {select} FROM {table} WHERE {where}"
+    qhash = hashlib.sha256(query.encode()).hexdigest()[:10]
+    name = f"{base}_{qhash}.fits"
+    path = fetch(TAP_URL + "/sync", subdir, name, timeout=1800.0, validate=_fits_table_ok,
+                 params={"REQUEST": "doQuery", "LANG": "ADQL", "FORMAT": "fits", "QUERY": query})
+    sidecar = path.with_name(path.name + ".adql")
+    if not sidecar.exists():
+        sidecar.write_text(query)
+    return path
+
+
+def healpix_source_id_range(level: int, pix: int) -> tuple[int, int]:
+    """[lo, hi) source_id range of HEALPix (nested, ICRS) pixel `pix` at `level`: Gaia source_id >> 35 is the
+    level-12 index (Gaia DR3 documentation, source_id)."""
+    span = 4 ** (12 - level) * 2 ** 35
+    return pix * span, (pix + 1) * span
 
 
 # ------------------------------------------------------------------------------------- XP bulk files
@@ -277,6 +375,140 @@ def stream_ledger_digest(ledger: dict) -> str:
     return h.hexdigest()
 
 
+# ------------------------------------------------------------------- XP bulk files, reduced per star
+
+XP_REDUCED_SUBDIR = "stars/xp_reduced"  # under CACHE: derived from the streamed bulk files
+_W: np.ndarray | None = None
+_COVER: np.ndarray | None = None
+
+
+def _init_reduce(W: np.ndarray, cover: np.ndarray) -> None:
+    global _W, _COVER
+    _W, _COVER = W, cover
+
+
+def _parse_flux(field: bytes) -> np.ndarray:
+    """'[f1,f2,...]' -> float64 array; 'null' samples -> NaN."""
+    s = field.strip().strip(b'"').strip(b"[]()")
+    parts = s.split(b",")
+    try:
+        return np.array(parts, dtype=np.float64)
+    except ValueError:
+        return np.array([float(v) if v and v != b"null" else np.nan for v in parts])
+
+
+def _reduce_one(name: str, md5_expected: str, out_path: str, retries: int = 5) -> dict:
+    """Stream one bulk XP file; reduce every spectrum to `flux @ W` (NaN where samples in `cover` are missing)."""
+    url = XP_BASE + name
+    delay = 5.0
+    for attempt in range(retries + 1):
+        try:
+            md5, sha = hashlib.md5(), hashlib.sha256()
+            dec = zlib.decompressobj(wbits=47)
+            buf = b""
+            nbytes = 0
+            ids, fl = [], []
+            header_seen = False
+
+            def handle(lines):
+                nonlocal header_seen
+                for ln in lines:
+                    if not ln or ln[:1] == b"#":
+                        continue
+                    if not header_seen:
+                        if ln.split(b",")[:5] != [b"source_id", b"solution_id", b"ra", b"dec", b"flux"]:
+                            raise ValueError(f"unexpected header in {name}: {ln[:120]!r}")
+                        header_seen = True
+                        continue
+                    q1 = ln.index(b'"')
+                    q2 = ln.index(b'"', q1 + 1)
+                    ids.append(int(ln[:ln.index(b",")]))
+                    fl.append(_parse_flux(ln[q1 + 1:q2]))
+
+            with requests.get(url, stream=True, timeout=180) as r:
+                r.raise_for_status()
+                for chunk in r.iter_content(1 << 20):
+                    nbytes += len(chunk)
+                    md5.update(chunk)
+                    sha.update(chunk)
+                    buf += dec.decompress(chunk)
+                    lines = buf.split(b"\n")
+                    buf = lines.pop()
+                    handle(lines)
+            buf += dec.flush()
+            handle(buf.split(b"\n"))
+            if md5.hexdigest() != md5_expected:
+                raise IOError(f"md5 mismatch for {name}: {md5.hexdigest()} != {md5_expected}")
+            n = len(ids)
+            red = np.full((n, _W.shape[1]), np.nan, dtype=np.float64)
+            if n:
+                F = np.stack(fl)
+                if F.shape[1] != _W.shape[0]:
+                    raise ValueError(f"{name}: {F.shape[1]} samples, expected {_W.shape[0]}")
+                ok = np.isfinite(F[:, _COVER]).all(axis=1)
+                red[ok] = np.nan_to_num(F[ok]) @ _W
+            tmp = out_path + ".tmp.npz"
+            np.savez(tmp, source_id=np.array(ids, dtype=np.int64), red=red.astype(np.float32))
+            Path(tmp).replace(out_path)
+            return {"name": name, "url": url, "md5": md5_expected, "sha256": sha.hexdigest(), "bytes": nbytes,
+                    "rows": n, "retrieved": _dt.date.today().isoformat(),
+                    "subset_sha256": sha256_file(Path(out_path))}
+        except (requests.RequestException, IOError, zlib.error) as e:
+            if attempt == retries:
+                raise RuntimeError(f"streaming {name} failed: {e}") from e
+            time.sleep(delay)
+            delay *= 2
+    raise RuntimeError("unreachable")
+
+
+def stream_xp_reduced(W: np.ndarray, cover: np.ndarray, tag: str, *, workers: int = 4, log=print
+                      ) -> tuple[list[Path], dict]:
+    """Stream every bulk XP file and keep, for every source, the linear reductions `flux @ W` (float32).
+
+    `W` (343 x K) is e.g. the CIE X, Y, Z, S operator plus band averages; `tag` must change whenever W does (it names
+    the cache directory and is stored with a hash of W). Resumable per file, like `stream_xp`.
+    """
+    index = xp_index()
+    d = CACHE / XP_REDUCED_SUBDIR / tag
+    d.mkdir(parents=True, exist_ok=True)
+    ledger_path = d / "_streamed.json"
+    w_hash = hashlib.sha256(np.ascontiguousarray(W, dtype=np.float64).tobytes() + cover.tobytes()).hexdigest()
+    ledger = json.loads(ledger_path.read_text()) if ledger_path.exists() else {}
+    if ledger.get("W_sha256") != w_hash:
+        ledger = {"W_sha256": w_hash, "files": {}}
+    todo = [(n, m) for n, m in index if not (n in ledger["files"] and (d / (n + ".npz")).exists())]
+    log(f"  XP bulk files (reduced '{tag}'): {len(index)} total, {len(todo)} to stream")
+    t0 = time.time()
+    done = 0
+    if todo:
+        with ProcessPoolExecutor(max_workers=workers, initializer=_init_reduce, initargs=(W, cover)) as ex:
+            futs = {ex.submit(_reduce_one, n, m, str(d / (n + ".npz"))): n for n, m in todo}
+            for f in as_completed(futs):
+                rec = f.result()
+                ledger["files"][rec["name"]] = rec
+                done += 1
+                if done % 25 == 0 or done == len(todo):
+                    ledger_path.write_text(json.dumps(ledger, indent=1, sort_keys=True))
+                    el = time.time() - t0
+                    log(f"  XP reduced {done}/{len(todo)} files, {el / 60:.1f} min, "
+                        f"eta {(len(todo) - done) * el / done / 60:.1f} min")
+    ledger_path.write_text(json.dumps(ledger, indent=1, sort_keys=True))
+    return [d / (n + ".npz") for n, _ in index], ledger
+
+
+def load_xp_reduced(paths: list[Path]) -> tuple[np.ndarray, np.ndarray]:
+    ids, red = [], []
+    for p in paths:
+        z = np.load(p)
+        if z["source_id"].size:
+            ids.append(z["source_id"])
+            red.append(z["red"])
+    sid = np.concatenate(ids)
+    r = np.concatenate(red)
+    o = np.argsort(sid)
+    return sid[o], r[o]
+
+
 # ------------------------------------------------------------------------------------ stage queries
 
 GAIA_COLUMNS = (
@@ -289,7 +521,7 @@ GAIA_COLUMNS = (
 #: G slices keep each synchronous response at <= ~1.2e5 rows (the whole set is ~0.8 M rows).
 G_SLICES = ((None, 8.0), (8.0, 9.0), (9.0, 9.5), (9.5, 9.75), (9.75, 10.0), (10.0, 10.2), (10.2, 10.35),
             (10.35, 10.5))
-SUBDIR = "stars/gaia_dr3"
+SUBDIR = f"stars/gaia_{REL.key}"
 
 
 def fetch_gaia_sources(g_max: float) -> list[Path]:
@@ -300,7 +532,7 @@ def fetch_gaia_sources(g_max: float) -> list[Path]:
             break
         hi = min(hi, g_max)
         cond = f"phot_g_mean_mag < {hi}" if lo is None else f"phot_g_mean_mag >= {lo} AND phot_g_mean_mag < {hi}"
-        out.append(tap_query(", ".join(GAIA_COLUMNS), "gaiadr3.gaia_source", cond, SUBDIR,
+        out.append(tap_query(", ".join(GAIA_COLUMNS), f"{REL.schema}.gaia_source", cond, SUBDIR,
                              f"gaia_source_G{lo if lo is not None else 'min'}-{hi}", "source_id"))
     return out
 
@@ -308,15 +540,15 @@ def fetch_gaia_sources(g_max: float) -> list[Path]:
 def fetch_hip_xmatch() -> Path:
     """Gaia DR3's own Hipparcos-2 cross-match (gaiadr3.hipparcos2_best_neighbour), complete table."""
     return tap_query("source_id, original_ext_source_id, angular_distance, number_of_neighbours, xm_flag",
-                     "gaiadr3.hipparcos2_best_neighbour", "", SUBDIR, "hipparcos2_best_neighbour", "source_id")
+                     f"{REL.schema}.hipparcos2_best_neighbour", "", SUBDIR, "hipparcos2_best_neighbour", "source_id")
 
 
 def fetch_tycho_pm_for_2p(g_max: float) -> Path:
     """Tycho-2 proper motions of the Gaia DR3 sources that have only a 2-parameter solution (no proper motion)."""
     return tap_query(
         "g.source_id, t.id, t.pm_ra, t.pm_de, t.e_pm_ra, t.e_pm_de, b.angular_distance",
-        "gaiadr3.gaia_source AS g JOIN gaiadr3.tycho2tdsc_merge_best_neighbour AS b ON b.source_id = g.source_id "
-        "JOIN gaiadr3.tycho2tdsc_merge AS t ON t.id = b.original_ext_source_id",
+        f"{REL.schema}.gaia_source AS g JOIN {REL.schema}.tycho2tdsc_merge_best_neighbour AS b ON b.source_id = g.source_id "
+        f"JOIN {REL.schema}.tycho2tdsc_merge AS t ON t.id = b.original_ext_source_id",
         f"g.astrometric_params_solved = 3 AND g.phot_g_mean_mag < {g_max}",
         SUBDIR, f"tycho2_pm_for_gaia2p_G{g_max}", "source_id")
 
@@ -328,6 +560,64 @@ def fetch_tycho_unmatched(vt_max: float) -> Path:
         "t.e_de_mdeg, t.e_pm_ra, t.e_pm_de, t.ra_deg, t.de_deg, t.ep_ra1990, t.ep_de1990, "
         "t.bt_mag, t.vt_mag, t.e_bt_mag, t.e_vt_mag, t.pflag, t.posflg, "
         "t.prox, t.ccdm, t.cmp, t.hd, t.n_main, t.n_sup",
-        "gaiadr3.tycho2tdsc_merge AS t LEFT OUTER JOIN gaiadr3.tycho2tdsc_merge_best_neighbour AS b "
+        f"{REL.schema}.tycho2tdsc_merge AS t LEFT OUTER JOIN {REL.schema}.tycho2tdsc_merge_best_neighbour AS b "
         "ON b.original_ext_source_id = t.id", f"b.source_id IS NULL AND t.vt_mag < {vt_max}",
         SUBDIR, f"tycho2tdsc_unmatched_VT{vt_max}", "id")
+
+
+# ------------------------------------------------------------------------------------ deep tiers and sky sums
+
+DEEP_COLUMNS = ("source_id", "ra", "dec", "pmra", "pmdec", "parallax", "phot_g_mean_mag", "phot_bp_mean_mag",
+                "phot_rp_mean_mag", "astrometric_params_solved", "has_xp_sampled")
+DEEP_LEVEL = 2  # one query per HEALPix level-2 pixel (192 queries, ~1e5 rows each for 10 <= G < 14)
+
+
+def fetch_gaia_deep(g_lo: float, g_hi: float, *, log=print) -> list[Path]:
+    """gaia_source rows with g_lo <= G < g_hi, one FITS file per HEALPix level-2 pixel (sequential: the ledger
+    is a single JSON file)."""
+    out = []
+    t0 = time.time()
+    for pix in range(12 * 4 ** DEEP_LEVEL):
+        lo, hi = healpix_source_id_range(DEEP_LEVEL, pix)
+        where = (f"source_id >= {lo} AND source_id < {hi} AND phot_g_mean_mag >= {g_lo} "
+                 f"AND phot_g_mean_mag < {g_hi}")
+        out.append(tap_query_fits(", ".join(DEEP_COLUMNS), f"{REL.schema}.gaia_source", where,
+                                  SUBDIR + "_deep", f"gaia_source_G{g_lo}-{g_hi}_hpx{DEEP_LEVEL}_{pix:03d}"))
+        if pix % 12 == 11:
+            log(f"  deep G {g_lo}-{g_hi}: {pix + 1}/{12 * 4 ** DEEP_LEVEL} pixels, {(time.time() - t0) / 60:.1f} min")
+    return out
+
+
+SUM_LEVEL = 1  # aggregation queries run per HEALPix level-1 pixel (48 queries)
+
+
+def fetch_faint_sums(g_min: float, level: int) -> list[Path]:
+    """Per HEALPix pixel (nested, `level`) sums over all gaia_source rows with G >= g_min: counts and sums of
+    10^(-0.4 m) in G, BP, RP, split by whether BP and RP both exist."""
+    select = (f"GAIA_HEALPIX_INDEX({level}, source_id) AS hpx, COUNT(*) AS n, "
+              "SUM(POWER(10, -0.4 * phot_g_mean_mag)) AS fg, "
+              "COUNT(phot_bp_mean_mag + phot_rp_mean_mag) AS n_c, "
+              "SUM(POWER(10, -0.4 * phot_g_mean_mag) + 0 * phot_bp_mean_mag + 0 * phot_rp_mean_mag) AS fg_c, "
+              "SUM(POWER(10, -0.4 * phot_bp_mean_mag) + 0 * phot_rp_mean_mag) AS fbp_c, "
+              "SUM(POWER(10, -0.4 * phot_rp_mean_mag) + 0 * phot_bp_mean_mag) AS frp_c")
+    out = []
+    for pix in range(12 * 4 ** SUM_LEVEL):
+        lo, hi = healpix_source_id_range(SUM_LEVEL, pix)
+        where = f"source_id >= {lo} AND source_id < {hi} AND phot_g_mean_mag >= {g_min} GROUP BY hpx"
+        out.append(tap_query(select, f"{REL.schema}.gaia_source", where, SUBDIR + "_sums",
+                             f"faint_sums_G{g_min}_L{level}_p{pix:02d}", "hpx"))
+    return out
+
+
+def fetch_count_grid(level: int) -> list[Path]:
+    """Archive star counts and G-flux sums per HEALPix pixel (`level`) and integer G bin, all G: the reference
+    for tier counts (docs/reports/sky.md)."""
+    select = (f"GAIA_HEALPIX_INDEX({level}, source_id) AS hpx, FLOOR(phot_g_mean_mag) AS gbin, COUNT(*) AS n, "
+              "SUM(POWER(10, -0.4 * phot_g_mean_mag)) AS fg")
+    out = []
+    for pix in range(12 * 4 ** SUM_LEVEL):
+        lo, hi = healpix_source_id_range(SUM_LEVEL, pix)
+        where = f"source_id >= {lo} AND source_id < {hi} GROUP BY hpx, gbin"
+        out.append(tap_query(select, f"{REL.schema}.gaia_source", where, SUBDIR + "_sums",
+                             f"count_grid_L{level}_p{pix:02d}", "hpx"))
+    return out

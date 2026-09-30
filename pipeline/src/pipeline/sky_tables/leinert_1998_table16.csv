@@ -1,0 +1,32 @@
+# Transcribed from: Leinert, Ch., Bowyer, S., Haikala, L. K., Hanner, M. S., Hauser, M. G., Levasseur-Regourd, A.-Ch.,
+#   Mann, I., Mattila, K., Reach, W. T., Schlosser, W., Staude, H. J., Toller, G. N., Weiland, J. L., Weinberg, J. L. &
+#   Witt, A. N. (1998), "The 1997 reference of diffuse night sky brightness", Astronomy & Astrophysics Supplement
+#   Series 127, 1-99. DOI:10.1051/aas:1998105. ADS 1998A&AS..127....1L.
+# Table 16, p. 36: "Zodiacal light brightness observed from the Earth (in S10sun) at 500 nm" (annual average; update of
+#   Levasseur-Regourd & Dumont 1980). Rows: helioecliptic longitude lambda - lambda_sun (deg); columns: ecliptic
+#   latitude beta (deg). Towards the ecliptic pole the brightness is 60 +- 3 S10sun (p. 37, Eq. 19).
+#   Blank cells are blank in the paper (too close to the Sun). Errors (p. 38): 10-15 S10sun for low values, 5-10 %
+#   for the higher brightnesses. 1 S10sun = 6.61e-12 F_sun/sr (p. 4, Sect. 2).
+# Transcription: numbers taken from the text layer of the PDF copy recorded in docs/sources/zodiacal-light.md
+#   (sha256 46244db7...), blank cells placed by column alignment, then checked cell by cell against the page image;
+#   tests check it against Table 17 (= Table 16 x 1.28, rounded to 3 digits).
+lambda_minus_lambda_sun_deg,beta_0,beta_5,beta_10,beta_15,beta_20,beta_25,beta_30,beta_45,beta_60,beta_75
+0,,,,2450,1260,770,500,215,117,78
+5,,,,2300,1200,740,490,212,117,78
+10,,,3700,1930,1070,675,460,206,116,78
+15,9000,5300,2690,1450,870,590,410,196,114,78
+20,5000,3500,1880,1100,710,495,355,185,110,77
+25,3000,2210,1350,860,585,425,320,174,106,76
+30,1940,1460,955,660,480,365,285,162,102,74
+35,1290,990,710,530,400,310,250,151,98,73
+40,925,735,545,415,325,264,220,140,94,72
+45,710,570,435,345,278,228,195,130,91,70
+60,395,345,275,228,190,163,143,105,81,67
+75,264,248,210,177,153,134,118,91,73,64
+90,202,196,176,151,130,115,103,81,67,62
+105,166,164,154,133,117,104,93,75,64,60
+120,147,145,138,120,108,98,88,70,60,58
+135,140,139,130,115,105,95,86,70,60,57
+150,140,139,129,116,107,99,91,75,62,56
+165,153,150,140,129,118,110,102,81,64,56
+180,180,166,152,139,127,116,105,82,65,56

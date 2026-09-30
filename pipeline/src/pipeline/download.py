@@ -7,6 +7,7 @@ date are recorded in data/raw/_downloads.json so SourceRecords can cite exactly 
 from __future__ import annotations
 
 import datetime as _dt
+import fcntl
 import hashlib
 import json
 import time
@@ -27,7 +28,9 @@ def _load_ledger() -> dict:
 
 
 def _save_ledger(ledger: dict) -> None:
-    _LEDGER.write_text(json.dumps(ledger, indent=2, sort_keys=True))
+    tmp = _LEDGER.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(ledger, indent=2, sort_keys=True))
+    tmp.replace(_LEDGER)  # atomic: concurrent readers never see a half-written ledger
 
 
 def sha256_file(path: Path) -> str:
@@ -72,13 +75,18 @@ def fetch(url: str, subdir: str, name: str | None = None, *, params: dict | None
             time.sleep(delay)
             delay *= 2
     tmp.replace(dest)
-    ledger[key] = {
+    entry = {
         "url": url if not params else f"{url}?{requests.compat.urlencode(params)}",
         "sha256": sha256_file(dest),
         "retrieved": _dt.date.today().isoformat(),
         "bytes": dest.stat().st_size,
     }
-    _save_ledger(ledger)
+    # Re-read under a lock: other processes may have recorded downloads while this one was transferring.
+    with (RAW / "_downloads.lock").open("w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        ledger = _load_ledger()
+        ledger[key] = entry
+        _save_ledger(ledger)
     return dest
 
 

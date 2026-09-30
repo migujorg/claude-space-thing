@@ -297,3 +297,110 @@ export interface BinaryRoute {
   sources: string[];
   method: string;
 }
+
+/**
+ * A star tier split into HEALPix tiles (stars/deep.json): every tile file holds records with the header's fields
+ * and stride, sorted brightest first (by Y), so reading a prefix of a tile loads it to a magnitude limit.
+ */
+export interface TiledBinaryTableHeader extends Omit<BinaryTableHeader, 'bin'> {
+  /** Tile file name pattern, e.g. "deep-o3-{pix:03d}.bin" (next to the header). */
+  binPattern: string;
+  tiling: {
+    scheme: 'HEALPix';
+    ordering: 'NESTED';
+    order: number;
+    nside: number;
+    frame: 'ICRS';
+    assignment: string;
+    sort: string;
+    /** Y thresholds (lux) for StarTile.prefixCounts. */
+    prefixY: number[];
+    prefixNote: string;
+  };
+  tiles: StarTile[];
+  tier: { name: string; gaiaGMin: number; gaiaGMax: number; brighterTier: string };
+}
+
+export interface StarTile {
+  pix: number;
+  bin: string;
+  count: number;
+  /** ICRF unit vector of the HEALPix pixel centre. */
+  center: [number, number, number];
+  /** Every record of the tile lies within this angle of `center` (degrees). */
+  radiusDeg: number;
+  yMax: number | null;
+  yMin: number | null;
+  /** Number of leading records with Y >= tiling.prefixY[k]. */
+  prefixCounts: number[];
+}
+
+/** One all-sky HEALPix map of radiance (sky/diffuse.json layers). */
+export interface HealpixMapLayer {
+  bin: string;
+  scheme: 'HEALPix';
+  ordering: 'NESTED';
+  order: number;
+  nside: number;
+  npix: number;
+  frame: 'ICRS';
+  /** Channel order within a pixel, e.g. ["X", "Y", "Z", "S"]. */
+  channels: string[];
+  dtype: 'f32';
+  /** e.g. "pixel-major: value[pix * 4 + channel]". */
+  layout: string;
+  unit: string;
+  label: Label;
+  sources: string[];
+  method: string;
+  /** Effective angular resolution (FWHM, degrees) when coarser than the pixels; null = pixel size. */
+  resolutionFwhmDeg: number | null;
+  uncertainty: string;
+  /** Optional per-pixel u8 method codes (labelCodes explains them). */
+  labelBin?: string;
+  labelCodes?: Record<string, string>;
+  pixelSolidAngleSr?: number;
+  stats?: Record<string, unknown>;
+}
+
+export interface SkyMapsFile {
+  kind: 'skyMaps';
+  version: number;
+  layers: Record<string, HealpixMapLayer>;
+  composition: string;
+  bands: Record<string, { centerNm: number; widthNm: number }>;
+}
+
+/** sky/zodiacal.json: measured zodiacal light at 1 AU plus a 3-D dust model for other observer positions. */
+export interface ZodiacalLightModel {
+  kind: 'zodiacalLightModel';
+  version: number;
+  frame: string;
+  at1AU: Sourced<{
+    dlamDeg: number[];
+    betaDeg: number[];
+    /** s10[i][j] in S10sun at 500 nm; null = not tabulated. */
+    s10: (number | null)[][];
+    axes: string;
+    eclipticPoleS10: number;
+  }>;
+  s10ToXYZS: Sourced<{ eps30: number[]; eps90: number[]; solarColour: number[]; use: string }>;
+  cloud: Sourced<{
+    model: string;
+    components: Record<string, unknown>;
+    equations: Record<string, string>;
+    rOutAU: number;
+    densityUnit: string;
+  }>;
+  scattering: Sourced<{
+    phaseFunction: string;
+    C0: number;
+    C1: number;
+    C2: number;
+    N: number;
+    albedo: number;
+    brightness: string;
+    perSolarFluxPerSr: { eps30: number[]; eps90: number[] };
+  }>;
+  notes: string;
+}
