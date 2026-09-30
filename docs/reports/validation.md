@@ -7,6 +7,20 @@ The question each case answers is *"is this what you would actually see?"*: for 
 moon or ring system, the renderer must reproduce the **absolute radiance** in a few well-defined regions of the
 picture, within tolerances that come from the data's own uncertainties.
 
+**Method: the cases test the model; they never select it.** The app's data (albedos, phase curves, spatial laws,
+calibrations) are chosen by the sources' own merits and by their coverage of the geometry: which body, phase angles,
+latitudes, season and wavelengths they measure, and how directly. How a choice scores on these cases plays no part.
+- **Competing published laws:** when two exist, or a published law and an approximation of it, the better-supported
+  one is used even if the other scores better here. For example, Saturn keeps the native Barkstrom law of Dones et
+  al. (1993) although its Minnaert approximation passed the terminator ROI and the exact law fails it (§7).
+- **Sources must exclude the cases:** a source whose data include a validation frame is not used for the quantity
+  that frame tests (e.g. Belgacem's regional Europa fits).
+- **No correction factors from the cases:** a factor derived from a case (e.g. the Galilean LORRI offset) is
+  documented as a bound, not applied.
+
+A choice made after seeing a case must be justifiable without it; otherwise the test leaks into the model and the
+case no longer measures anything.
+
 ## 1. What the renderer must output
 
 **Quantity.** The HDR buffer in absolute **XYZS radiance**, before the eye model: X, Y, Z in cd/m² (K_m = 683.002
