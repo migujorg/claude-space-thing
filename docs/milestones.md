@@ -2,16 +2,24 @@
 
 Each milestone is a **vertical slice**: data pipeline → provenance → rendering → UI, working end to end, before the next begins. Status is updated as work lands.
 
-## M1 — The planets, right now  *(in progress)*
+## M1 — The planets, right now  *(done)*
 
-Fly anywhere among the Sun, planets, Pluto and the Moon at their real positions for now ± ~18 months, under physically correct sunlight, seen through a first human-eye model, against the real naked-eye star field. Click anything to see where every number came from.
+Fly anywhere among the Sun, planets, Pluto and the Moon at their real positions for now ± ~18 months, under physically correct sunlight, seen through a first human-eye model, against the real star field. Click anything to see where every number came from.
 
-- Pipeline: NAIF LSK (time), DE442s (positions), PCK (radii, rotation), GM; CIE observers; measured solar spectrum; planet albedo spectra and phase curves; bright-star catalog.
-- App: f64 ephemeris + light-time, reversed-Z HDR renderer in absolute photometric units (XYZ + scotopic), Sun disk with measured limb darkening, lit ellipsoids, star splats, eye model v0 (adaptation, glare, visibility threshold, mesopic), sRGB output.
-- UI: fly/orbit camera, go-to, time controls, inspector with provenance, reality dials + badge.
-- Verification: ephemeris vs. independent JPL Horizons vectors; screenshot tests.
+What landed:
+- **Time & positions:** NAIF LSK leap seconds; JPL DE442s planetary ephemeris (bit-identical to SPICE); planet centers and every moon from NAIF satellite kernels (M2 work pulled forward). Verified against independent JPL Horizons vectors to ≤ 3 m (Moon, the worst case) and against SPICE bit-for-bit.
+- **Bodies:** radii and IAU rotation models (pck00011), GM (gm_de440); precise Earth (ITRF93, predictions labeled `estimated`) and Moon (DE440 principal axes) orientation.
+- **Light:** official CIE observers; TSIS-1 HSRS measured solar spectrum (Y = 134 647 lux at 1 AU); Neckel & Labs limb darkening; measured albedo spectra and phase curves for the planets, Pluto and the Moon, cross-checked against Horizons magnitudes (most within ±0.03 mag; see docs/reports/planet-colors.md).
+- **Stars:** 482 459 stars complete to V ≈ 9.8; 91 % with color and brightness derived from Gaia DR3 XP, CALSPEC or Pulkovo spectra; positions at the window epoch (docs/reports/stars.md).
+- **Renderer & eye (v1):** reversed-Z HDR renderer in absolute XYZ + scotopic units; analytic ellipsoid ray casting from 1 m to 50 AU; limb-darkened Sun; point sources with per-source color thresholds; Pattanaik et al. 2000 tone reproduction, CIE 146 glare (painted only beyond display range), Crumey 2014 visibility thresholds, CIE 191 mesopic vision, Watson & Yellott pupil (docs/eye-model.md).
+- **App:** orbit/free-flight camera with magic travel, time controls clamped to the data window, inspector showing every attribute's label/method/sources, reality dials with a persistent badge, strict-mode hatching of unmeasured surfaces, labels/orbits/provenance-tint overlays, reproducible URLs.
 
-## M2 — True-color worlds up close
+Known limitations carried forward: planets are uniform-colored ellipsoids (maps come in M2); Earth's disk spectrum is a model (0.75 mag off Mallama & Hilton — measured DSCOVR EPIC data need an Earthdata login); no Milky Way diffuse light or zodiacal light yet (M4); eye adaptation is instantaneous.
+
+## M2 — True-color worlds up close  *(in progress)*
+
+Done so far: every known moon (459 besides the Moon) with kernel-exact positions; measured photometry for 39 bodies; ring optical-depth profiles for Saturn, Uranus and Neptune; lazy-loaded moon systems and a body browser.
+
 
 Surface maps from mission mosaics, major moons of every planet, Saturn's rings from Cassini profiles, measured photometric models, shadows and eclipses, planetshine.
 
