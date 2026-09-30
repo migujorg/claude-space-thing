@@ -140,7 +140,7 @@ def ozone_cross_sections() -> tuple[np.ndarray, np.ndarray]:
     bin of the CIE (standard-air) grid; vacuum wavelengths converted with Edlén (1966)."""
     path = SERDYUCHENKO.fetch()
     rows = []
-    with path.open() as f:
+    with path.open(encoding="utf-8") as f:
         for line in f:
             parts = line.split()
             if len(parts) != 12:

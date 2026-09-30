@@ -50,7 +50,7 @@ def test_all_segments_extracted_bit_identical(kernel):
         same_records(s, theirs[k])
         assert s.label == "measured" and s.sources == [SRC_PLANETARY]
     # The products cover the manifest window with the light-time margin.
-    w = json.loads((OUT / "manifest.json").read_text())["window"]
+    w = json.loads((OUT / "manifest.json").read_text(encoding="utf-8"))["window"]
     lo, hi = coverage(ours.values())
     assert lo <= w["startEt"] - MARGIN_S + 1e-3 and hi >= w["endEt"] + MARGIN_S - 1e-3
 

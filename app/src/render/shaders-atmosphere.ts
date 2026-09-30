@@ -23,7 +23,7 @@ export const ATMOSPHERE_WGSL = /* wgsl */ `
 struct Atm {
   geo: vec4f,     // bottom radius, top radius (km), K4, Sun's angular radius (rad)
   sunE: vec4f,    // solar illuminance at the body over π (cd/m² per unit radiance factor), XYZS
-  quad: vec4f,    // shell quad half-extent (tan units), 1 = full-screen (camera near or inside), steps, unused
+  quad: vec4f,    // shell quad half-extent (tan units), 1 = full-screen (camera near or inside), steps, 1 = scattering not measured
   w: array<vec4f, 16>,     // fold weights: channel c, bins 4j..4j+3 at w[4c + j]
   depol: array<vec4f, 4>,  // Rayleigh depolarisation ratio per bin
 };

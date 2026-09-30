@@ -5,6 +5,8 @@
 //   scene=moon-data&sunlon=Sun selenographic longitude° (east +: waxing)&lib=lat,lon (observer)&rolo=0|1&hapke=0|1 (per-texel law)
 //   (both: nomodel=1 drops the reflectance model / disk model to show the not-measured treatment)
 //   scene=earth-data&sun=lat,lon (sub-solar)&obs=lat,lon (sub-observer)&dist=km&fovdeg=°&map|clouds|water|night|wind|atm=0
+//   scene=atm-data&body=499|299|999|606&sun=lat,lon&obs=lat,lon&dist=km&fovdeg=°&et=s past J2000 (Mars dust season)&map|atm=0
+//   (a body drawn from its disk photometry, with its surface maps if any, under its atmosphere; docs/rendering-earth.md §8)
 
 import { LABEL_ORDER, type AtmosphereFile, type Label, type RingsFile, type SurfaceLayerHeader, type Sourced, type LightData, type Body, type PhotometryFile } from '../data/schema';
 import type { Mat3, SceneBody, SceneSnapshot, SurfaceLayerRef, Vec3 } from '../render/scene';
@@ -21,7 +23,8 @@ async function json<T>(path: string): Promise<T> {
 }
 async function layer(path: string): Promise<SurfaceLayerRef | undefined> {
   const r = await fetch(`${DATA}/${path}`);
-  if (!r.ok) return undefined;
+  // A missing file may come back as the dev server's HTML fallback.
+  if (!r.ok || !(r.headers.get('content-type') ?? '').includes('json')) return undefined;
   return { url: DATA, header: (await r.json()) as SurfaceLayerHeader };
 }
 
@@ -176,6 +179,40 @@ export async function buildDataScene(p: URLSearchParams): Promise<TestScene> {
     const phase = Math.acos(Math.max(-1, Math.min(1, toObs[0] * bf(sLat, sLon)[0] + toObs[1] * bf(sLat, sLon)[1] + toObs[2] * bf(sLat, sLon)[2]))) * 180 / Math.PI;
     return {
       title: `Earth (REAL DATA: surface, clouds, water, night layers) · sub-solar ${sLat}°, ${sLon}° · sub-observer ${oLat}°, ${oLon}° · phase ${phase.toFixed(1)}° · ${dist} km`,
+      stars: null, snapshot, realData: true,
+    };
+  }
+  if (name === 'atm-data') {
+    const id = Number(p.get('body') ?? 499);
+    const [sLat, sLon] = (p.get('sun') ?? '0,0').split(',').map(Number);
+    const [oLat, oLon] = (p.get('obs') ?? '0,-30').split(',').map(Number);
+    const bf = (la: number, lo: number): Vec3 => [Math.cos(rad(la)) * Math.cos(rad(lo)), Math.cos(rad(la)) * Math.sin(rad(lo)), Math.sin(rad(la))];
+    const toObs = bf(oLat, oLon);
+    const b0 = pr.bodies.find((x) => x.id === id);
+    if (!b0 || !b0.radii.value) throw new Error(`bodies.json: no radii for ${id}`);
+    const dist = Number(p.get('dist') ?? 8 * Math.max(...b0.radii.value));
+    const pos = mul(toObs, -dist);
+    const sunAu = Number(p.get('au') ?? 1.52);
+    const toSun = mul(bf(sLat, sLon), sunAu * AU_KM);
+    const I: Mat3 = [1, 0, 0, 0, 1, 0, 0, 0, 1];
+    const off = (k: string) => p.get(k) === '0';
+    const [albedo, height] = off('map') ? [undefined, undefined] : await Promise.all([layer(`surfaces/${id}/albedo.json`), layer(`surfaces/${id}/height.json`)]);
+    const atmFile = off('atm') ? null : await json<AtmosphereFile>('atmospheres.json');
+    const atmBody = atmFile?.bodies[String(id)];
+    const body = bodyOf(pr, id, pos, toSun, I, {
+      surface: albedo || height ? { albedo, height } : undefined,
+      atmosphere: atmFile && atmBody ? {
+        wavelengthsNm: atmFile.wavelengthsNm, foldWeights: atmFile.foldWeights.value!, body: atmBody,
+        worstLabel: atmBody.components.map((c) => c.extinctionPerKm.label).reduce(worse, 'measured'),
+      } : null,
+    });
+    const fwd = mul(toObs, -1);
+    const cam = { orient: lookAlong(fwd, [0, 0, 1]), fovY: rad(Number(p.get('fovdeg') ?? 20)), width: 0, height: 0 };
+    const et = Number(p.get('et') ?? 844000000);
+    const snapshot: SceneSnapshot = { et, camera: cam, sun: sunOf(pr.light, add(pos, toSun)), bodies: [body], view, orbits: [] };
+    const phase = Math.acos(Math.max(-1, Math.min(1, toObs[0] * bf(sLat, sLon)[0] + toObs[1] * bf(sLat, sLon)[1] + toObs[2] * bf(sLat, sLon)[2]))) * 180 / Math.PI;
+    return {
+      title: `${body.name} (REAL DATA${atmBody && atmFile ? ', atmosphere' : ''}) · sub-solar ${sLat}°, ${sLon}° · sub-observer ${oLat}°, ${oLon}° · phase ${phase.toFixed(1)}° · ${dist.toFixed(0)} km · Sun ${sunAu} AU`,
       stars: null, snapshot, realData: true,
     };
   }

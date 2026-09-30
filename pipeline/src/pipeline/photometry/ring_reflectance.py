@@ -105,7 +105,7 @@ def _num(v: str) -> float:
 
 def voyager_profile(pair, ctx: BuildContext | None = None) -> VoyagerProfile:
     lbl, tab = pair
-    text = lbl.fetch().read_text(errors="replace")
+    text = lbl.fetch().read_text(errors="replace", encoding="utf-8")
     meta = {m.group(1): m.group(2).strip() for m in re.finditer(r"^\s*([A-Z_]+)\s*=\s*(.+?)\s*$", text, flags=re.M)}
     d = np.loadtxt(tab.fetch(), delimiter=",")
     inc, emi = _num(meta["INCIDENCE_ANGLE"]), _num(meta["EMISSION_ANGLE"])

@@ -10,7 +10,7 @@
 //    the disk is then an assumption (labelled by the shell); the disk-integrated brightness is not.
 // With albedoXYZS = p·E_sun(1 AU), the Lambert radiance is L = 1.5·albedoXYZS·cos i / (π·d²).
 
-import type { DiskReflectanceModel, PhaseFunction } from '../data/schema';
+import type { DiskReflectanceModel, PhaseFunction, RoloDiskModel } from '../data/schema';
 
 export type XYZS = [number, number, number, number];
 
@@ -147,7 +147,7 @@ export function limbDarkenedI0(E: number, coeffs: number[], radiusKm: number, di
  * θ, φ the observer's selenographic latitude and longitude in degrees. Returns null outside the model's
  * domain (phase range, observer libration range).
  */
-export function roloReflectance(m: DiskReflectanceModel, gDeg: number, sunLonDeg: number, obsLatDeg: number, obsLonDeg: number): XYZS | null {
+export function roloReflectance(m: RoloDiskModel, gDeg: number, sunLonDeg: number, obsLatDeg: number, obsLonDeg: number): XYZS | null {
   if (!(gDeg >= m.minPhaseDeg && gDeg <= m.maxPhaseDeg)) return null;
   if (!(Math.abs(obsLatDeg) <= m.maxObserverLatitudeDeg && Math.abs(obsLonDeg) <= m.maxObserverLongitudeDeg)) return null;
   const g = (gDeg * Math.PI) / 180;
@@ -195,6 +195,7 @@ export function diskModelPPhi(
   m: DiskReflectanceModel | null | undefined, orient: readonly number[] | null, meanRadiusKm: number,
   toSun: Vec3, toObserver: Vec3, sunIrradianceXYZS_1AU: readonly number[] | null,
 ): XYZS | null {
+  if (m?.kind === 'rotation-slices-v1') return rotationSlicesPPhi(m, orient, meanRadiusKm, toSun, toObserver);
   if (!m || m.kind !== 'rolo-v1' || !orient || !sunIrradianceXYZS_1AU) return null;
   const ls = Math.hypot(...toSun), lo = Math.hypot(...toObserver);
   const cosg = (toSun[0] * toObserver[0] + toSun[1] * toObserver[1] + toSun[2] * toObserver[2]) / (ls * lo);
@@ -204,4 +205,44 @@ export function diskModelPPhi(
   if (!A) return null;
   const k = (m.radiusKm / meanRadiusKm) ** 2;
   return A.map((a, c) => a * sunIrradianceXYZS_1AU[c] * k) as XYZS;
+}
+
+// ── Rotational variation, kind 'rotation-slices-v1' (schema.ts RotationSlicesDiskModel; the Galilean moons) ─────
+
+/**
+ * Orange-slice factor F (schema.ts RotationSlicesDiskModel): the disk-integrated brightness of a sphere whose
+ * longitude slices have albedos `rel` (relative to their mean) over that of a uniform sphere, for an observer and the
+ * Sun above the equator at east longitudes lonObs and lonSun (radians). Lambertian slices (Mayorga et al. 2020
+ * Eq. 4, PlanetSlicer getG): each slice is clipped to the lit and visible hemispheres. 1 when nothing is lit and
+ * visible.
+ */
+export function sliceFactor(edgesDeg: readonly number[], rel: readonly number[], lonObs: number, lonSun: number): number {
+  const wrapTo = (x: number, c: number) => x - 2 * Math.PI * Math.round((x - c) / (2 * Math.PI));
+  let num = 0, den = 0;
+  for (let j = 0; j < rel.length; j++) {
+    const a = (edgesDeg[j] * Math.PI) / 180, b = (edgesDeg[j + 1] * Math.PI) / 180, c = (a + b) / 2;
+    const o = wrapTo(lonObs, c), s = wrapTo(lonSun, c);
+    const lo = Math.max(a, o - Math.PI / 2, s - Math.PI / 2), hi = Math.min(b, o + Math.PI / 2, s + Math.PI / 2);
+    if (!(hi > lo)) continue;
+    const prim = (p: number) => 2 * p * Math.cos(s - o) - Math.sin(s + o - 2 * p);
+    const g = (prim(hi) - prim(lo)) / 3;
+    num += rel[j] * g;
+    den += g;
+  }
+  return den > 0 ? num / den : 1;
+}
+
+function rotationSlicesPPhi(
+  m: Extract<DiskReflectanceModel, { kind: 'rotation-slices-v1' }>, orient: readonly number[] | null, meanRadiusKm: number,
+  toSun: Vec3, toObserver: Vec3,
+): XYZS | null {
+  if (!orient) return null;
+  const ls = Math.hypot(...toSun), lo = Math.hypot(...toObserver);
+  const cosg = (toSun[0] * toObserver[0] + toSun[1] * toObserver[1] + toSun[2] * toObserver[2]) / (ls * lo);
+  const ph = evalPhase(m.phase, Math.acos(Math.max(-1, Math.min(1, cosg))));
+  if (!ph.ok) return null;
+  const geo = selenographicGeometry(orient, toSun, toObserver);
+  const F = sliceFactor(m.sliceEdgesEastLonDeg, m.relativeAlbedo, (geo.obsLonDeg * Math.PI) / 180, (geo.sunLonDeg * Math.PI) / 180);
+  const k = (m.radiusKm / meanRadiusKm) ** 2;
+  return m.albedoXYZS.map((a) => a * ph.phi * F * k) as XYZS;
 }

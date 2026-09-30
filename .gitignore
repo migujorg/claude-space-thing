@@ -1,7 +1,7 @@
 # Raw downloads and generated data are rebuilt by the pipeline (NORTH_STAR 3.8)
 /data/raw/
 /data/cache/
-/app/public/data/
+/app/public/data
 # Tooling
 node_modules/
 dist/

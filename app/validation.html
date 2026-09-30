@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Validation runner</title>
+    <style>
+      html, body { margin: 0; height: 100%; background: #000; color: #8fa3b8; font: 12px/1.4 ui-monospace, monospace; }
+      p { margin: 8px; }
+    </style>
+  </head>
+  <body>
+    <p>Validation runner: driven by <code>npm run validate</code> (scripts/validate.mjs). Renders the cases in
+      validation/cases with the real renderer and data, offscreen, and compares the HDR buffer with them.</p>
+    <script type="module" src="/src/validation/main.ts"></script>
+  </body>
+</html>

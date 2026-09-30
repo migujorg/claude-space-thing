@@ -27,3 +27,8 @@ The May 2008 sequence was not used because the Moon transits the Earth in it. Th
 - Different years, seasons and hemispheres from the Himawari scene.
 - The 2009 aperture is clipped.
 - The HRIV absolute calibration is as archived.
+
+**Validation use (case `earth-moon-epoxi-2008`, `docs/reports/validation.md`):** five more RAD images of the May 2008 sequence, 2008-05-29 02:03:44–02:03:58 UTC (hv08052902_1000117 VIOLET, _1000115 BLUE, _1000116 GREEN, _1000121 ORANGE, _1000119 RED; `data/rad/2008/150/`; 2.4 MB each), when the Moon stood 363 µrad (180 pixels) from the Earth's centre, 11 hours before its transit. Earth and Moon are in the same frames, so their brightness ratio is free of the absolute calibration. I/F = radiance × `MULT2IOF`; mid-time `OBSMIDDT`.
+- Calibration accuracy: *EPOXI Calibration Pipeline Summary* (last revised 2014-05-11; DI-C-HRII/HRIV/MRI/ITS-6-DOC-SET-V4.0, `document/calibration/calibration_docs/epoxical_v5_10/epoxi_cal_pipeline_summ.pdf`, `epoxi-cal-pipeline-summary-2014`): "The uncertainty in conversion to absolute radiometric units is estimated to be 5% for HRI-VIS except for the 950-nm filter"; the HRI-VIS is out of focus with a PSF FWHM of ~9 pixels; the 350, 550, 650 and 850 nm filters have red leaks.
+- Pixel scale 2.000 µrad (index: 99 034 m per pixel at 49 517 107 km).
+

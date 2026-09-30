@@ -12,6 +12,7 @@ import { attributeRows, derivedLabel, shapeRow, sunRows, sunWhy, type AttrRow } 
 import { buildSun } from '../app/snapshot';
 import { sbRow } from '../app/smallbodies';
 import { brightnessInputs, smallBodyFacts, smallBodyLegend, smallBodyWhy } from './smallBodyInspect';
+import { syntheticFacts, syntheticWhy } from './syntheticInspect';
 
 interface LiveCell {
   value: HTMLElement;
@@ -65,10 +66,13 @@ export class Inspector {
     const sb = body.id < 0 ? m.smallBodies : null;
     const sbRowId = sb ? sbRow(body.id) : null;
     const sbSummary = sb && sbRowId !== null ? sb.summary(sbRowId) : null;
-    const spkid = sbRowId !== null ? m.names?.spkidOf(sbRowId) ?? null : null;
-    const subtitle = sbSummary
-      ? `${sbSummary.comet ? 'comet' : 'asteroid'}${sbSummary.orbitClass ? ` · ${sbSummary.orbitClass.name} (${sbSummary.orbitClass.code})` : ''}${spkid !== null ? ` · SPK-ID ${spkid}` : ''}`
-      : `${body.kind}${parent ? ` of ${parent.name}` : ''} · NAIF ${body.id}`;
+    const synthetic = !!sb && sbRowId !== null && sb.isSynthetic(sbRowId);
+    const spkid = sbRowId !== null && !synthetic ? m.names?.spkidOf(sbRowId) ?? null : null;
+    const subtitle = synthetic
+      ? `synthetic ${sbSummary?.orbitClass?.name ?? 'object'} · not a real object`
+      : sbSummary
+        ? `${sbSummary.comet ? 'comet' : 'asteroid'}${sbSummary.orbitClass ? ` · ${sbSummary.orbitClass.name} (${sbSummary.orbitClass.code})` : ''}${spkid !== null ? ` · SPK-ID ${spkid}` : ''}`
+        : `${body.kind}${parent ? ` of ${parent.name}` : ''} · NAIF ${body.id}`;
 
     const liveRow = (key: string, name: string, tip: string) => {
       const cell = { value: h('span', { class: 'st-mono' }), chip: h('span', { class: 'st-chip st-chip-unknown', style: 'min-width:0;margin-right:6px' }) };
@@ -106,6 +110,18 @@ export class Inspector {
     this.setWhy(isSun || sb ? '' : whyLine(f, level) + shapeWhy);
 
     this.builtKey = this.stateKey(body.id);
+    if (sb && sbRowId !== null && synthetic) {
+      const f = syntheticFacts(sb.synthetic!, sb.syntheticIndex(sbRowId), level, sb.tables.core.header.epochTdb);
+      this.el.append(
+        h('div', { class: 'st-attr' }, h('div', { class: 'st-attr-head' }, chip('synthetic'), h('span', { class: 'st-attr-name' }, 'What this is')), h('div', { class: 'st-attr-val' }, f.what)),
+        h('h3', null, `Attributes (at ${EXISTS_TEXT[level].name})`),
+      );
+      this.appendRows(f.rows, body.name);
+      this.appendSourcesButton(f.rows, body.name);
+      this.lastLive = 0;
+      this.updateLive(true);
+      return;
+    }
     if (sb && sbRowId !== null) {
       const facts = smallBodyFacts(sb.tables, sbRowId, level);
       const sr = shapeRow(m.shapeStatus(body.id), level);
@@ -210,6 +226,10 @@ export class Inspector {
     if (!sb) return;
     const row = sbRow(id);
     const level = m.reality.exists;
+    if (sb.isSynthetic(row)) {
+      this.setWhy(syntheticWhy(level, !!sb.field, !!sb.field?.syntheticCount));
+      return;
+    }
     const closeup = !!m.snapshot?.bodies.some((b) => b.id === id);
     this.setWhy(
       smallBodyWhy({

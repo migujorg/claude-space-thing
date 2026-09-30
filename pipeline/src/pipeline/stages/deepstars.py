@@ -80,7 +80,7 @@ def run(ctx: BuildContext) -> None:
     if abs(bh["epochEt"] - epoch_et) > 86400.0:
         raise RuntimeError("stars/bright was built for another window: rebuild `stars` first")
 
-    paths = sg.fetch_gaia_deep(st.G_LIMIT, DEEP_G_MAX, log=log)
+    paths = sg.fetch_gaia_deep(st.G_LIMIT, DEEP_G_MAX, log=log, workers=ctx.param("gaia.tapWorkers"))
     g = load_deep(paths)
     n0 = g["source_id"].size
     log(f"{sg.REL.label} sources {st.G_LIMIT} <= G < {DEEP_G_MAX}: {n0}")
@@ -113,7 +113,7 @@ def run(ctx: BuildContext) -> None:
     diag["posRoutes"] = {str(k): int((pos_route == k).sum()) for k in range(3)}
 
     # ------------------------------------------------------------------------------------ XP reductions
-    xp_paths, xp_ledger = sd.stream_deep_xp(log=log)
+    xp_paths, xp_ledger = sd.stream_deep_xp(log=log, workers=ctx.param("gaia.xpWorkers"))
     xsid, xred = sg.load_xp_reduced(xp_paths)
     k = np.clip(np.searchsorted(xsid, sid), 0, xsid.size - 1)
     has_xp = xsid[k] == sid
@@ -294,13 +294,13 @@ def run(ctx: BuildContext) -> None:
     }
     write_json(ctx, "stars/deep.json", header, "deepstars")
     (CACHE / "stars").mkdir(parents=True, exist_ok=True)
-    (CACHE / "stars" / "deep_diagnostics.json").write_text(json.dumps(st._jsonable(diag), indent=1))
+    (CACHE / "stars" / "deep_diagnostics.json").write_text(json.dumps(st._jsonable(diag), indent=1), encoding="utf-8", newline="\n")
     log(f"wrote {n} stars in {hp.npix(TILE_ORDER)} tiles ({total_bytes / 1e6:.0f} MB), {time.time() - t0:.0f} s")
 
 
 def _register_sources(ctx: BuildContext, paths, xp_ledger, tp_path) -> None:
     rec0 = record(paths[0])
-    q0 = paths[0].with_name(paths[0].name + ".adql").read_text()
+    q0 = paths[0].with_name(paths[0].name + ".adql").read_text(encoding="utf-8")
     ctx.add_source(SourceRecord(
         id=SRC_DEEP, title=f"{sg.REL.label} main source catalogue ({sg.REL.schema}.gaia_source), "
                            f"{st.G_LIMIT:g} <= G < {DEEP_G_MAX:g}",
@@ -310,7 +310,7 @@ def _register_sources(ctx: BuildContext, paths, xp_ledger, tp_path) -> None:
         url=sg.TAP_URL, retrieved=rec0["retrieved"], sha256=st._digest(paths), version=sg.REL.label,
         license="ESA/Gaia/DPAC, CC BY-SA 3.0 IGO",
         notes=(f"{len(paths)} synchronous TAP queries (FITS), one per HEALPix level-{sg.DEEP_LEVEL} source_id range; "
-               f"first: {q0}. Files data/raw/{paths[0].parent.relative_to(RAW)}/*.fits with .adql sidecars; per-file "
+               f"first: {q0}. Files data/raw/{paths[0].parent.relative_to(RAW).as_posix()}/*.fits with .adql sidecars; per-file "
                "url/sha256 in data/raw/_downloads.json; this sha256 is over the per-file sha256s.")))
     ctx.add_source(SourceRecord(
         id=SRC_XP_ALL, title=f"{sg.REL.label} BP/RP externally calibrated sampled mean spectra, all sources",
@@ -329,4 +329,4 @@ def _register_sources(ctx: BuildContext, paths, xp_ledger, tp_path) -> None:
                  "Marrese P. M. et al. 2019, Gaia DR2 cross-match with external catalogues, A&A 621, A144, "
                  "DOI:10.1051/0004-6361/201834142.",
         url=sg.TAP_URL, retrieved=r["retrieved"], sha256=r["sha256"], version=sg.REL.label,
-        notes="ADQL: " + tp_path.with_name(tp_path.name + ".adql").read_text()))
+        notes="ADQL: " + tp_path.with_name(tp_path.name + ".adql").read_text(encoding="utf-8")))

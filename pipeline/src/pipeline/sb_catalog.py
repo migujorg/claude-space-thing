@@ -71,7 +71,7 @@ def load_orbits(pages: list[Path]) -> Catalog:
     fields = None
     dup = 0
     for p in pages:
-        d = json.loads(p.read_text())
+        d = json.loads(p.read_text(encoding="utf-8"))
         fields = d["fields"]
         for r in d["data"]:
             k = int(r[0])
@@ -105,7 +105,7 @@ def attach_nongrav(cat: Catalog, ng_files: dict[int, Path]) -> None:
             i = cat.row_of(spk)
         except KeyError:
             continue
-        d = json.loads(path.read_text())
+        d = json.loads(path.read_text(encoding="utf-8"))
         orbit = d.get("orbit", {})
         pars = {m["name"]: m for m in orbit.get("model_pars", []) or []}
         # Consistency: the single-object answer must be the same solution as the bulk row.

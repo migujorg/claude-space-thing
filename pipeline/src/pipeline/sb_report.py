@@ -13,8 +13,8 @@ def _fmt(n) -> str:
 
 
 def main() -> None:
-    rep = json.loads((CACHE / "smallbodies_report.json").read_text())
-    core = json.loads((OUT / "smallbodies" / "core.json").read_text())
+    rep = json.loads((CACHE / "smallbodies_report.json").read_text(encoding="utf-8"))
+    core = json.loads((OUT / "smallbodies" / "core.json").read_text(encoding="utf-8"))
     st = rep["statistics"]
     print(f"Objects: {st['objects']:,} (snapshot {core['snapshot']}, epoch {core['epochTdb']} TDB)\n")
     k = st["kinds"]

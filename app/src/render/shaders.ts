@@ -329,7 +329,7 @@ struct Body {
   earthN: vec4f, // emitted-radiance (night) layer: base, max level, enabled, unused
   absR: vec4f,   // the albedo map's absoluteDiskMean (XYZS): texel × absR = absolute reflectance
   nightK: vec4f, // night lights: luminance (cd/m², XYZS) per unit of the layer's radiance
-  atm: vec4f,    // atmosphere (shaders-atmosphere.ts): 1 = drawn, march steps, unused, unused
+  atm: vec4f,    // atmosphere (shaders-atmosphere.ts): 1 = drawn (shell), march steps, 1 = over the disk too, unused
 };
 `;
 
@@ -456,7 +456,12 @@ fn ringViewT(b: Body, p: vec3f, dirN: vec3f, range: f32) -> f32 {
 }
 `;
 
-const bodyShader = (earth: boolean) => COMMON + BODY_COMMON + RING_COMMON + LAW_WGSL + SURFACE_WGSL + (earth ? EARTH_WGSL + ATMOSPHERE_WGSL : '') + /* wgsl */ `
+/**
+ * Body shader variants: 'plain'; 'earth' (Earth's layers, earth.ts, with its atmosphere); 'atm' (a body drawn
+ * from its disk photometry under an atmosphere: Mars, Venus, Pluto; docs/rendering-earth.md §8).
+ */
+type BodyVariant = 'plain' | 'earth' | 'atm';
+const bodyShader = (v: BodyVariant) => { const earth = v === 'earth'; const atm = v !== 'plain'; return COMMON + BODY_COMMON + RING_COMMON + LAW_WGSL + SURFACE_WGSL + (earth ? EARTH_WGSL : '') + (atm ? ATMOSPHERE_WGSL : '') + /* wgsl */ `
 @group(0) @binding(2) var<storage, read> pageTable: array<u32>;
 @group(0) @binding(3) var albedoPages: texture_2d_array<f32>;
 @group(0) @binding(4) var heightPages: texture_2d_array<f32>;
@@ -465,11 +470,11 @@ const bodyShader = (earth: boolean) => COMMON + BODY_COMMON + RING_COMMON + LAW_
 @group(0) @binding(7) var<storage, read> ringProf: array<vec4f>;
 @group(0) @binding(8) var texelLaw: texture_2d_array<f32>;   // per-texel Hapke (texelLaw.ts): w, b, c, B_S0, h_S of 4 bands, denominator XYZS
 @group(0) @binding(9) var<uniform> TL: TexelLawInfo;
+${atm ? `@group(0) @binding(12) var<uniform> A: Atm;
+@group(0) @binding(13) var atmTex: texture_2d_array<f32>;
+@group(0) @binding(14) var atmSamp: sampler;` : ''}
 ${earth ? `@group(0) @binding(10) var cloudPages: texture_2d_array<f32>;
 @group(0) @binding(11) var rg16Pages: texture_2d_array<f32>;
-@group(0) @binding(12) var<uniform> A: Atm;
-@group(0) @binding(13) var atmTex: texture_2d_array<f32>;
-@group(0) @binding(14) var atmSamp: sampler;
 @group(0) @binding(15) var windTex: texture_2d<f32>;
 
 /** Wind layer (one whole level, NaN = unknown): bilinear over known texels per channel. */
@@ -645,7 +650,7 @@ struct FOut {
     let mu = dot(N, V);
     ${earth ? `if (b.earthC.w > 0.5) {
       // Earth (earth.ts): sunlight, then moonshine (planetshine sources), then night lights.
-      if (mu > 0.0 && b.atm.x > 0.5) {
+      if (mu > 0.0 && b.atm.z > 0.5) {
         ${EARTH_WITH_ATMOSPHERE}
       } else if (mu > 0.0) {
         // ρ carries max(μ0, 0): zero on the night side, where the emission and moonshine remain.
@@ -669,9 +674,11 @@ struct FOut {
       }
       L = b.rad * M * r4 * (sunVisible(b, p) * selfShadow * ringShadowT(b, p));
     }
+    var psT = vec4f(1.0);
+    ${atm && !earth ? ATM_OVER_PHOTOMETRY : ''}
     // Planetshine (Lambert, measured albedos of both bodies; planetshine.ts).
-    if (b.ps0.w > 0.5) { L += b.psK0 * M * max(dot(N, b.ps0.xyz), 0.0); }
-    if (b.ps1.w > 0.5) { L += b.psK1 * M * max(dot(N, b.ps1.xyz), 0.0); }
+    if (b.ps0.w > 0.5) { L += b.psK0 * M * max(dot(N, b.ps0.xyz), 0.0) * psT; }
+    if (b.ps1.w > 0.5) { L += b.psK1 * M * max(dot(N, b.ps1.xyz), 0.0) * psT; }
     ${earth ? '}' : ''}
     L *= ringViewT(b, p, dirN, range);
   }
@@ -682,6 +689,41 @@ struct FOut {
   o.depth = depthOf(hit.t, hit.dir);
   return o;
 }
+`; };
+
+/**
+ * A body drawn from its disk photometry under its atmosphere (docs/rendering-earth.md §8). The surface term
+ * (b.rad·M·r4, with b.rad renormalized in frame.ts so that the whole disk still reflects the measured p·Φ) is
+ * dimmed by the sunlight's and the view's paths through the air and gains skylight on a Lambert surface of the
+ * same scale; the air adds its own path radiance. Each channel folds per bin (the channel's b.rad, M and r4 are
+ * constant over its bins), as atmosphereDiskFactors (atmosphere.ts) does on the CPU.
+ */
+const ATM_OVER_PHOTOMETRY = /* wgsl */ `
+    if (b.atm.z > 0.5) {
+      let e = -dirN;
+      let pe = dot(p, e);
+      let Hk = A.geo.y - A.geo.x;
+      let rS = length(p);
+      let sTop = min(-pe + sqrt(max(pe * pe + 2.0 * rS * Hk + Hk * Hk, 0.0)), range);
+      let path = atmMarch(p, dirN, sTop, 0.0, i32(b.atm.y), S, b.m0.xyz, b.m1.xyz, b.m2.xyz, -1.0);
+      let muSg = dot(p, S) / rS;
+      var T2 = vec4f(0.0);
+      var Sky = vec4f(0.0);
+      var Lp = vec4f(0.0);
+      psT = vec4f(0.0);
+      for (var j = 0; j < atmK4(); j++) {
+        let ts = atmTsun(A.geo.x, muSg, j) * path.T[j];
+        let es = atmIrr(0.0, muSg, j) * path.T[j];
+        for (var c = 0; c < 4; c++) {
+          let w = A.w[4 * c + j];
+          T2[c] += dot(w, ts);
+          Sky[c] += dot(w, es);
+          Lp[c] += dot(w, path.L[j]);
+          psT[c] += dot(w, path.T[j]);
+        }
+      }
+      L = L * T2 + (b.rad * M * Sky + PI * A.sunE * Lp) * sunVisible(b, p);
+    }
 `;
 
 /**
@@ -766,7 +808,7 @@ const EARTH_SAMPLE = /* wgsl */ `
     }
 `;
 
-export const BODY_SHADER = bodyShader(false);
+export const BODY_SHADER = bodyShader('plain');
 
 /**
  * The atmosphere around a body, for rays that miss the solid body (limb, twilight arcs): the chord through
@@ -833,18 +875,26 @@ struct SOut {
   let chord = sqrt(Rt * Rt - rq2);
   let sNearQ = max(-chord, -tCam);
   if (chord <= sNearQ) { discard; }
-  let pFar = q + dirN * chord;
-  let path = atmMarch(pFar, dirN, chord - sNearQ, 0.0, i32(b.atm.y), b.sun.xyz, b.m0.xyz, b.m1.xyz, b.m2.xyz, -1.0);
   var o: SOut;
-  o.ext = toStore(F, A.sunE * PI * atmFold(path.L) * (1.0 - cov));
   o.w = 1.0;
-  o.mask = 0.0;
+  if (A.quad.w > 0.5) {
+    // Scattering not measured (Titan's haze): no light; the air beyond the disk is marked "not measured".
+    o.ext = vec4f(0.0);
+    o.mask = 1.0 - cov;
+  } else {
+    let pFar = q + dirN * chord;
+    let path = atmMarch(pFar, dirN, chord - sNearQ, 0.0, i32(b.atm.y), b.sun.xyz, b.m0.xyz, b.m1.xyz, b.m2.xyz, -1.0);
+    o.ext = toStore(F, A.sunE * PI * atmFold(path.L) * (1.0 - cov));
+    o.mask = 0.0;
+  }
   o.depth = depthOf(max(tCam + sNearQ, 0.0) + 1e-3, dirN);
   return o;
 }
 `;
 /** The body shader with Earth's layers (clouds, water, night lights; earth.ts). */
-export const EARTH_BODY_SHADER = bodyShader(true);
+export const EARTH_BODY_SHADER = bodyShader('earth');
+/** Bodies drawn from their photometry under an atmosphere (ATM_OVER_PHOTOMETRY). */
+export const ATM_BODY_SHADER = bodyShader('atm');
 
 /** Display-space overlay for resolved bodies: "not measured" hatch and provenance tint. */
 export const BODY_OVERLAY_SHADER = COMMON + BODY_COMMON + /* wgsl */ `

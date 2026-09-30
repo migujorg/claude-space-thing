@@ -151,7 +151,7 @@ def compare(results: dict[int, BodyResult], texts: dict[int, str] | None = None)
         if texts is not None:
             text = texts[naif]
         else:
-            text = download(naif).read_text()
+            text = download(naif).read_text(encoding="utf-8")
             time.sleep(1.0)  # be polite to the Horizons API (only matters for uncached fetches)
         for row in parse(text):
             mh, note = mh_prediction(naif, row)
@@ -162,9 +162,9 @@ def compare(results: dict[int, BodyResult], texts: dict[int, str] | None = None)
 def save_fixtures(ids=None) -> None:
     FIXTURES.mkdir(parents=True, exist_ok=True)
     for naif in (ids or BODIES):
-        (FIXTURES / fixture_name(naif)).write_text(download(naif).read_text())
+        (FIXTURES / fixture_name(naif)).write_text(download(naif).read_text(encoding="utf-8"), encoding="utf-8", newline="\n")
         time.sleep(1.0)
 
 
 def load_fixtures(ids=None) -> dict[int, str]:
-    return {naif: (FIXTURES / fixture_name(naif)).read_text() for naif in (ids or BODIES)}
+    return {naif: (FIXTURES / fixture_name(naif)).read_text(encoding="utf-8") for naif in (ids or BODIES)}

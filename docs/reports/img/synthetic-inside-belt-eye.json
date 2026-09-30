@@ -1,0 +1,20 @@
+{
+ "scene": "inside",
+ "mode": "eye",
+ "level": "complete",
+ "lit": 1570333,
+ "brightestY": 1.8454656691702098e-09,
+ "brightestV": 7.846819365266872,
+ "smallBodiesAboveThreshold": 0,
+ "pointsDrawn": 4650,
+ "limitingV": 7.601985293005745,
+ "adaptation": 1e-05,
+ "synthetic": {
+  "objects": 2948454,
+  "lit": 2948352,
+  "brightestV": 14.111662930851406,
+  "aboveThreshold": 0,
+  "falseColour": false
+ },
+ "query": "mode=render&scene=inside&level=complete"
+}

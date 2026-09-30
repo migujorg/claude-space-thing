@@ -18,9 +18,9 @@ import re
 from pathlib import Path
 
 import numpy as np
-import requests
 import tifffile
 
+from . import download
 from . import surf_color as sc
 from . import surf_grid as sg
 from . import surf_layers as sl
@@ -46,7 +46,7 @@ def mdr_tiles() -> list[str]:
     """Stems of the 64 px/deg MDR tiles (highest version per quadrant), from the archive's directory listings."""
     stems = []
     for h in range(1, 16):
-        html = requests.get(f"{MDR}H{h:02d}/", timeout=60).text
+        html = download.request("GET", f"{MDR}H{h:02d}/", timeout=60).text
         names = set(re.findall(r'href="(MDIS_MDR_064PPD_(?:2700_)?H\d\d[A-Z]{2}\d)\.IMG"', html))
         best: dict[str, str] = {}
         for n in names:
@@ -79,7 +79,7 @@ def mdr_bands(work: Path) -> tuple[list[np.ndarray], np.ndarray, dict, int]:
     meta_p = work / "mdr_bands.json"
     paths = [work / f"mdr_band{b}.f32" for b in range(VIS_BANDS)]
     if meta_p.exists() and all(p.exists() for p in paths):
-        meta = json.loads(meta_p.read_text())
+        meta = json.loads(meta_p.read_text(encoding="utf-8"))
         bands = [np.fromfile(p, np.float32).reshape(h, w) for p in paths]
         known = np.ones((h, w), bool)
         for b in bands:
@@ -152,7 +152,7 @@ def mdr_bands(work: Path) -> tuple[list[np.ndarray], np.ndarray, dict, int]:
     del num, den
     for b, p in zip(bands, paths):
         np.where(known, b, 0).astype(np.float32).tofile(p)
-    meta_p.write_text(json.dumps({"files": files, "filled": filled}))
+    meta_p.write_text(json.dumps({"files": files, "filled": filled}), encoding="utf-8", newline="\n")
     return [np.where(known, b, 0).astype(np.float32) for b in bands], known, files, filled
 
 

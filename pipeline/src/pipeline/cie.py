@@ -65,7 +65,7 @@ def _fetch(source_id: str) -> tuple[Path, Path]:
 def _validate(csv: Path, meta_path: Path, data: np.ndarray) -> None:
     """Check the file against the checksum and column sums the CIE publishes with it."""
     from .download import sha256_file
-    meta = json.loads(meta_path.read_text())
+    meta = json.loads(meta_path.read_text(encoding="utf-8"))
     sums = [c for c in meta.get("checksums", []) if c.get("hashMethod") == "sha256"]
     if sums and sums[0]["checksum"] != sha256_file(csv):
         raise ValueError(f"{csv.name}: sha256 does not match the CIE metadata")

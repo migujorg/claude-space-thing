@@ -122,7 +122,7 @@ def dust_seasonal(ref_ls0_et: float) -> dict:
 @lru_cache(maxsize=1)
 def dust_optics() -> dict:
     """LMD optprop_dustvis_TM.dat: wavelength (m), Q_ext, SSA, g for r_eff = 1.5 µm."""
-    txt = LMD_DUST_OPTPROP.fetch().read_text()
+    txt = LMD_DUST_OPTPROP.fetch().read_text(encoding="utf-8")
     blocks = [b for b in re.split(r"#.*\n", txt) if b.strip()]
     nums = [np.array(b.split(), float) for b in blocks]
     nw = int(nums[0][0])

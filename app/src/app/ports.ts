@@ -6,9 +6,10 @@
 // where this port says `eph: EphemerisSetPort`, even if the concrete class has extra/private members.
 
 import type {
-  EphemHeader, IauRotation, Label, OrientationHeader, SmallBodyCoreHeader, SmallBodyPhotometry, SmallBodyPhysicalHeader, SmallBodyTableHeader, Sourced, TimeData,
+  EphemHeader, IauRotation, Label, OrientationHeader, SmallBodyCoreHeader, SmallBodyPhotometry, SmallBodyPhysicalHeader, SmallBodyTableHeader, Sourced, SyntheticObjectsHeader, TimeData,
 } from '../data/schema';
 import type { Mat3, RendererStats, SceneSnapshot, StarCatalog, Vec3 } from '../render/scene';
+import type { SkyBackgroundHook } from '../render/sky/background';
 
 export type { Mat3, Vec3 };
 
@@ -131,6 +132,8 @@ export interface SmallBodyTablesInput {
   nongravHeader?: SmallBodyTableHeader;
   /** smallbodies/photometry.json: magnitude laws and colours. Without it the field knows no brightness (draws nothing). */
   photometry?: SmallBodyPhotometry;
+  /** synthetic/objects (the COMPLETE level): drawn after the catalogue, index = core count + object. */
+  synthetic?: { objects: ArrayBuffer; header: SyntheticObjectsHeader };
 }
 
 /** GPU buffer of point sources the renderer draws with the stars (layout owned by the field and renderer). */
@@ -147,12 +150,16 @@ export interface PointSourceBuffer {
 export interface SmallBodyFieldPort {
   update(encoder: GPUCommandEncoder, et: number, cameraSSB: Vec3, allowed: { brightness: 'strict' | 'best' | 'complete' }): void;
   readonly pointSources: PointSourceBuffer;
-  /** Index (core row) of the small body nearest the ray within the tolerance, or null. */
+  /** Index (core row; core count + j for synthetic object j) of the small body nearest the ray within the tolerance, or null. */
   pick(dirICRF: Vec3, toleranceRad: number): Promise<number | null>;
-  /** Heliocentric f64 state at et (CPU reference propagator), or null (position unknown / not covered). */
+  /** Heliocentric f64 state at et (CPU reference propagator; two-body for synthetic objects), or null (position unknown / not covered). */
   stateOf(index: number, et: number): { pos: Vec3; vel: Vec3 } | null;
-  /** Optional: counts at the last update, for the HUD ("N drawn / M withheld at this level"). */
-  readonly stats?: { drawn: number; withheld: number };
+  /** Optional: counts at the last update, for the HUD ("N drawn / M withheld at this level"); `synthetic`: the synthetic layer's. */
+  readonly stats?: { drawn: number; withheld: number; synthetic?: { drawn: number; withheld: number } };
+  /** Optional: synthetic objects the field draws at `complete` (0 when the layer is absent or does not fit the device). */
+  readonly syntheticCount?: number;
+  /** Optional: why a synthetic layer that was given is not drawn (e.g. larger than the device's buffers), else null. */
+  readonly syntheticNote?: string | null;
   /** Optional: objects the shell draws itself (a resolved close-up) — the field must not also draw them as points. */
   exclude?(indices: number[]): void;
 }
@@ -182,6 +189,8 @@ export interface RendererPort {
   readonly gpuDevice?: GPUDevice;
   /** Optional (M3): extra point sources (small bodies) drawn with the stars; null removes them. */
   setExtraPointSources?(src: PointSourceBuffer | null): void;
+  /** Optional (M4): sky background (Milky Way, faint stars, zodiacal light) drawn behind the bodies. */
+  setBackground?(b: SkyBackgroundHook | null): void;
 }
 export interface RendererFactory {
   create(canvas: HTMLCanvasElement): Promise<RendererPort>;

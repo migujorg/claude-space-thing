@@ -18,7 +18,6 @@ See docs/reports/stars.md for the data-driven choices (XP_G_MIN, cross-match rad
 from __future__ import annotations
 
 import datetime as _dt
-import os
 import hashlib
 import json
 from dataclasses import dataclass, field
@@ -28,6 +27,7 @@ from scipy.spatial import cKDTree
 
 from .. import cie
 from .. import stars_astrometry as sa
+from .. import stars_deep as sd
 from .. import stars_catalogs as sc
 from .. import stars_format as sf
 from .. import stars_gaia as sg
@@ -518,8 +518,11 @@ def run(ctx: BuildContext) -> None:
 
     # 2. Gaia XP
     xp_wanted = g_sid[(g_mag < G_LIMIT) & gaia["has_xp_sampled"]]
-    dev_partial = os.environ.get("STARS_XP_NO_STREAM") == "1"  # development only: use XP files streamed so far
-    xp_paths, xp_ledger = sg.stream_xp(xp_wanted, log=log, stream=not dev_partial)
+    dev_partial = ctx.param("stars.xpNoStream")  # development only: use XP files streamed so far
+    # When this build also runs the deep tiers, fill their XP reductions in the same pass (one read of 114 GB).
+    share = {"deepstars", "sky"} & set(ctx.plan)
+    xp_paths, xp_ledger = sg.stream_xp(xp_wanted, log=log, stream=not dev_partial, workers=ctx.param("gaia.xpWorkers"),
+                                       also_reduce=(*sd.xp_operator(), sd.XP_TAG) if share else None)
     if dev_partial:
         diag["WARNING"] = "built with a partial XP set (STARS_XP_NO_STREAM=1); not a release product"
     xsid, xflux, xerr = sg.load_xp(xp_paths, xp_wanted)
@@ -918,7 +921,7 @@ def run(ctx: BuildContext) -> None:
     names = _names(ctx, r_hip, gi, g_sid, inv, kind)
     write_json(ctx, "stars/names.json", names, "stars")
     (CACHE / "stars").mkdir(parents=True, exist_ok=True)
-    (CACHE / "stars" / "diagnostics.json").write_text(json.dumps(_jsonable(diag), indent=1))
+    (CACHE / "stars" / "diagnostics.json").write_text(json.dumps(_jsonable(diag), indent=1), encoding="utf-8", newline="\n")
     log(f"wrote {n} stars ({n * sf.STRIDE / 1e6:.1f} MB), {len(names['stars'])} named")
 
 
@@ -1030,12 +1033,12 @@ def _diagnostics(kind, r_G, r_V, r_BV, r_BPRP, rec_xp, has_xp, rel_V, pk_diag, x
 def _digest(paths) -> str:
     h = hashlib.sha256()
     for p in paths:
-        h.update(f"{p.relative_to(RAW)} {record(p)['sha256']}\n".encode())
+        h.update(f"{p.relative_to(RAW).as_posix()} {record(p)['sha256']}\n".encode())
     return h.hexdigest()
 
 
 def _files_note(paths) -> str:
-    return "; ".join(f"{p.relative_to(RAW)} sha256={record(p)['sha256']} ({record(p)['url'][:200]})" for p in paths)
+    return "; ".join(f"{p.relative_to(RAW).as_posix()} sha256={record(p)['sha256']} ({record(p)['url'][:200]})" for p in paths)
 
 
 def _register_sources(ctx, today, gaia, xp_ledger, tyc_path, hip2, hipm, pk, cal, cal_page) -> list[str]:
@@ -1044,7 +1047,7 @@ def _register_sources(ctx, today, gaia, xp_ledger, tyc_path, hip2, hipm, pk, cal
     ty_path = sg.fetch_tycho_unmatched(VT_QUERY)
     tp_path = sg.fetch_tycho_pm_for_2p(G_LIMIT)
     rec0 = record(gaia_paths[0])
-    queries = " || ".join((p.with_name(p.name + ".adql")).read_text() for p in gaia_paths)
+    queries = " || ".join((p.with_name(p.name + ".adql")).read_text(encoding="utf-8") for p in gaia_paths)
     ctx.add_source(SourceRecord(
         id=SRC_GAIA, title="Gaia Data Release 3, main source catalogue (gaiadr3.gaia_source)",
         citation="Gaia Collaboration, Vallenari A. et al. 2023, Gaia Data Release 3: Summary of the content and survey "
@@ -1073,7 +1076,7 @@ def _register_sources(ctx, today, gaia, xp_ledger, tyc_path, hip2, hipm, pk, cal
         citation="Gaia Collaboration, Vallenari A. et al. 2023, A&A 674, A1, DOI:10.1051/0004-6361/202243940; "
                  "cross-match algorithm: Marrese P. M. et al. 2019, A&A 621, A144, DOI:10.1051/0004-6361/201834142.",
         url=sg.TAP_URL, retrieved=record(xm_path)["retrieved"], sha256=record(xm_path)["sha256"], version="Gaia DR3",
-        notes="ADQL: " + xm_path.with_name(xm_path.name + ".adql").read_text() +
+        notes="ADQL: " + xm_path.with_name(xm_path.name + ".adql").read_text(encoding="utf-8") +
               f". Hipparcos stars not in this table are matched by position at J2016.0 (<= {XM_RADIUS_HIP}\" with "
               f"G - Hp < {XM_DMAG}, then <= {XM_RADIUS_HIP2}\" with |G - Hp| < {XM_DMAG2}); pairings > {XM_DMAG2} "
               f"mag off in G are moved to an unclaimed source within {XM_RADIUS_HIP2}\" that agrees with Hp to 0.75 mag."))
@@ -1083,9 +1086,9 @@ def _register_sources(ctx, today, gaia, xp_ledger, tyc_path, hip2, hipm, pk, cal
                  "(bibcode 2000A&A...355L..27H); Fabricius C. et al. 2002, The Tycho double star catalogue, A&A 384, "
                  "180, DOI:10.1051/0004-6361:20011822; cross-match: Marrese P. M. et al. 2019, A&A 621, A144.",
         url=sg.TAP_URL, retrieved=record(ty_path)["retrieved"], sha256=_digest([ty_path, tp_path]),
-        notes="(1) ADQL: " + ty_path.with_name(ty_path.name + ".adql").read_text() +
+        notes="(1) ADQL: " + ty_path.with_name(ty_path.name + ".adql").read_text(encoding="utf-8") +
               f". Kept only stars with no Gaia DR3 source within {XM_RADIUS_TYC}\" (J2016.0) and no Hipparcos entry. "
-              "(2) ADQL: " + tp_path.with_name(tp_path.name + ".adql").read_text() +
+              "(2) ADQL: " + tp_path.with_name(tp_path.name + ".adql").read_text(encoding="utf-8") +
               " (proper motions for Gaia 2-parameter sources). " + _files_note([ty_path, tp_path])))
     r = record(hip2.path)
     ctx.add_source(SourceRecord(

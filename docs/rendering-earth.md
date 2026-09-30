@@ -174,8 +174,10 @@ stored as rgba16float, four bins per texel:
 - a per-altitude profile, 256 samples;
 - the particle phase table.
 
-The ground reflectance under the atmosphere, for Ψ_ms, is the Lambert-equivalent 1.5·p_Y of the measured
-disk photometry, the relation planetshine.ts uses. It includes the air itself, a small double count.
+The ground reflectance under the atmosphere, for Ψ_ms, is the Lambert-equivalent 1.5·p of the measured
+disk photometry, the relation planetshine.ts uses, per channel: each bin takes the value of the X, Y or Z
+channel whose fold weight is largest there, capped at 1 (1.5·p exceeds 1 for Venus). It includes the air
+itself, a small double count.
 
 **Per pixel.** The view segment from the surface point back to the top of the atmosphere is marched in 32
 steps. Each step adds single scattering (the species' phase functions, sunlight through the
@@ -197,9 +199,7 @@ the top sphere from its closest point to the centre, computed without cancellati
 Pixels partly covered by the Earth get the uncovered share. The shell is additive and depth-tested, with no
 depth write.
 
-**Titan.** The haze's single-scattering albedo and phase function are unknown, so no scattering could be
-computed and its atmosphere is not drawn. Its disk keeps its measured photometry, which includes the haze's
-light.
+**Titan.** See §8.
 
 **Not modelled.**
 
@@ -229,11 +229,11 @@ claim, so it is not marked: marking it would hatch most of the night side.
 | Model | A (X, Y, Z, S) | Ratio to measured |
 |---|---|---|
 | Surface + clouds, no atmosphere (level 1) | 0.179 0.178 0.182 0.180 | 0.74 0.75 0.59 0.67 |
-| + atmosphere, glint, sky reflection (level 0) | 0.210 0.210 0.262 0.236 | 0.87 0.88 0.85 0.88 |
+| + atmosphere, glint, sky reflection (level 0) | 0.212 0.211 0.268 0.240 | 0.88 0.89 0.87 0.89 |
 | Measured p·Φ(2.42°) | 0.241 0.238 0.308 0.269 | 1 |
 
-With the atmosphere the colour matches: all four channels come out 0.85–0.88 of the measurement. The
-remaining 12–15 % is within the photometry's stated variability: the disk reflectance changes by 10–20 %
+With the atmosphere the colour matches: all four channels come out 0.87–0.89 of the measurement. The
+remaining 11–13 % is within the photometry's stated variability: the disk reflectance changes by 10–20 %
 with clouds and the hemisphere in view, and the clouds here are from a different day, 2026-09-28. Model
 approximations also contribute:
 
@@ -255,11 +255,83 @@ few samples per pixel; it is the next optimisation.
 
 ## 8. Other atmospheres
 
-atmospheres.json also has Mars (CO₂ + dust, scaled by the dust column), Venus (haze above the 60 km deck,
-tabulated phase), Pluto (haze) and Titan (see §4). The renderer draws an atmosphere only with Earth's layers
-for now.
+atmospheres.json has Mars (CO₂ + dust), Venus (the haze above 60 km), Pluto (haze) and Titan (N₂ +
+haze). The giant planets have scale heights only, so they get no atmosphere. These bodies are drawn from
+their disk photometry, which already contains the light of their air. The same tables (§4) add the air,
+and the surface is renormalised so that the measurement is kept.
 
-Mars's and Pluto's disks are drawn from their disk photometry, which already includes their air. Adding a
-scattering atmosphere on top would count it twice. The consistent way is the renormalisation of
-rendering-m2.md §2 with the atmosphere inside the disk integral; it is not done yet. The tables and the
-adapter already handle their phase functions: double HG for Mars, tabulated for Venus and Pluto.
+**Renormalisation** (frame.ts, `atmosphereDiskFactors` in atmosphere.ts). Four disk integrals per channel,
+as reflectances (1/πR²)∫ρ dA, for the body's law on a uniform surface:
+
+- I0: the surface alone;
+- Iatm: the surface under the air, i.e. ρ·T_sun·T_view plus skylight on a Lambert surface of the same scale;
+- Apath: the air's own light over the disk;
+- Ashell: the air's light beyond the disk edge, the shell pipeline's chords.
+
+The surface scale K is multiplied by (1 − (Apath + Ashell)/pΦ)·I0/Iatm, so the rendered body (surface
+under the air, plus the air on and beyond the disk) still reflects the measured p·Φ(α). The integrals are
+cached in 1° phase bins, interpolated linearly, one integral of a few ms per new bin. The map's weighting
+of the ratio I0/Iatm is left out: it is second order. The shader (`ATM_OVER_PHOTOMETRY`) draws the surface
+term × T_sun·T_view, the skylight term and the path radiance, per bin, folded to XYZS.
+
+Three outcomes, each with a warning where it applies:
+
+1. **Over the disk and beyond** (Mars and Pluto at most phases).
+2. **Beyond the disk only**, when the renormalised surface would reflect more than it receives (Bond
+   albedo > 1; `lawBond` = 2∫I(α) sin α dα per unit scale). Then the surface cannot be seen under the air
+   in the model, and the disk keeps its measured photometry. Only the shell is drawn, and K is reduced by
+   its share, Ashell/pΦ. This is Venus: atmospheres.json starts the profile at 60 km, inside the deck, with
+   τ ≈ 12 above it (the file says to use photometry.json for the reflectance there).
+3. **Not drawn**, when the air alone is brighter than the measured body in any channel
+   (Apath + Ashell ≥ pΦ). This is Mars beyond α ≈ 65–70°, first in Z. (Apath + Ashell)/pΦ for X, Y, Z, S
+   is 0.37 / 0.40 / 0.58 / 0.48 at α = 0°, 0.61 / 0.65 / 0.94 / 0.78 at 60° and 0.94 / 1.00 / 1.49 / 1.22
+   at 95° (dust at L_s ≈ 0°, scale 0.95). In blue the dust (ω ≈ 0.8) is brighter than the dark surface, so
+   the dust's light approaching the whole measured blue light at high phase is plausible, and the overshoot
+   is within the climatology's spread. Two approximations also push that way: dust forward scattering of
+   the surface's light sits in Hillaire's isotropic Ψ_ms, and the dust phase function has no wavelength
+   dependence in the data. The data are not adjusted to make it fit.
+
+**Beyond the measured phase range.** The photometry there is the spatial law's extrapolation
+(rendering-m2.md §2), a surface model that knows nothing of the air. The surface scale is then found at
+the range's edge, with the measured p·Φ there, and the air's light at α is added on top. For Pluto
+(measured to 1.74°) this gives the blue forward-scattering haze ring at high phase, which the
+extrapolated disk could not contain.
+
+**Per body.**
+
+| Body | Components | Outcome in the test views |
+|---|---|---|
+| Mars | CO₂ Rayleigh; dust, double HG, ω 0.71–0.98 | Over the disk to α ≈ 65°: haze softens the terminator and lowers contrast. At α = 36° the surface scale is ×0.82 / 0.74 / 0.22 / 0.52 (X, Y, Z, S): the blue of the disk is mostly dust light. Not drawn beyond (3.). |
+| Venus | the cloud and upper haze above 60 km | Beyond the disk only. Near inferior conjunction (α = 172°) the haze alone outshines the measured p·Φ: not drawn. |
+| Pluto | haze (tabulated Mie phase, ω 0.944) | Over the disk; the haze is 1–2 % of the disk at low phase and forms a ring at high phase. |
+| Titan | N₂ Rayleigh; haze with ω and phase unknown | See below. |
+
+**Mars dust.** atmospheres.json gives the annual global-mean column and a table of global-mean column
+optical depth by solar longitude (5° bins; Montabone et al. 2015, 2020 climatology), with L_s against
+ephemeris time. `marsDustScale` takes L_s at the snapshot's time, the nearest bin (on the circle) and scales
+the dust extinction by the bin's mean over the annual mean. Each bin has its own tables (a few seconds in
+the worker when the season changes). The latitude dependence of the column is left out: the tables are
+spherically symmetric.
+
+**Titan.** The haze's single-scattering albedo and phase function are unknown, so its scattering cannot be
+computed and no light is drawn for it. The disk keeps its measured photometry, which includes the haze's
+light. The air beyond the disk edge, up to the top of the tabulated extinction (500 km), is marked "not
+measured" (the shell writes the hatch mask and no light). Extinction alone is known. The one visible
+effect of extinction only would be the dimming of what lies behind the limb, which is not drawn (see §4,
+"Not modelled").
+
+**Altitude reference.** The drawn ellipsoid (bodies.json radii) is taken as the profile's lower boundary.
+For Venus this puts the haze 60 km (1 %) lower than it is: the disk is drawn at the solid radius, as it
+was before, and the shell adds the 50 km of haze above it.
+
+**Shell app use.** extras.ts attaches an admitted atmosphere to any lit body with photometry. Admission
+needs every known label admitted at the reality level and a known extinction. Unknown scattering does not
+withhold it: the renderer handles that as above.
+
+**Not done.**
+
+- δ-scaling of forward-peaked phase functions (Wiscombe 1977) for the view transmittance of surface
+  light. Mars's surface contrast under the dust is therefore somewhat low. The disk total is kept by the
+  renormalisation.
+- Refraction and the Venus aureole.
+- Latitude-dependent dust and seasonal hazes.

@@ -116,7 +116,7 @@ PAPER_VS_CODE = {("699", "12", 3): -1.506e-06}
 
 def verify_against_code() -> list[str]:
     """Every coefficient in the transcription must appear in the downloaded Ap_Mag_V3.f90 (returns problems)."""
-    text = APMAG_CODE.fetch().read_text(errors="replace")
+    text = APMAG_CODE.fetch().read_text(errors="replace", encoding="utf-8")
     nums = {float(m.group().lower().replace("d", "e"))
             for m in re.finditer(r"(?<![\w.])[-+]?\d+\.\d*(?:[eEdD][-+]?\d+)?", text)}
     nums |= {-x for x in nums}
@@ -286,7 +286,11 @@ def _moon(ctx: BuildContext | None) -> Phase:
         "ROLO: mean absolute fit residual 0.0096 in ln A; absolute scale uncertain by several percent (paper Sec. "
         "4.3, 5). Beyond 97°: Lane & Irvine ~0.05 mag per observation plus the join. Libration changes the "
         "brightness by up to 7 % or more over a Saros cycle (paper Sec. 4.1) and waxing vs waning by ~10 % at 60° (use "
-        "diskReflectanceModel for those).",
+        "diskReflectanceModel for those). Near side only: the far side, with less mare, is brighter; EPOXI's "
+        "calibrated 2008 image of the far side (sub-observer longitude 175° E, α = 75°) has 1.40 times this curve's "
+        "disk-integrated brightness (validation case earth-moon-epoxi-2008, docs/reports/validation.md). The global "
+        "LRO WAC albedo and Hapke maps (surfaces/301) carry the far side's brightness relative to the near side when "
+        "normalized at this curve's reference view (zero libration).",
         zero_phase_V10=None)
 
 

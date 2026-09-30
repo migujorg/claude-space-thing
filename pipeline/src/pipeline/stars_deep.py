@@ -34,6 +34,8 @@ def xp_operator() -> tuple[np.ndarray, np.ndarray]:
     return W, cover
 
 
-def stream_deep_xp(*, workers: int = 3, log=print):
+def stream_deep_xp(*, workers: int = 4, log=print):
+    """The deep tiers' XP reductions (cached; the stars stage fills the cache in its own pass when the build runs
+    the deep tiers too, see stars_gaia.stream_xp)."""
     W, cover = xp_operator()
     return sg.stream_xp_reduced(W, cover, XP_TAG, workers=workers, log=log)

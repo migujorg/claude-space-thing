@@ -1,0 +1,41 @@
+{
+ "query": "mode=render&scene=above-off&nosun=1&nostars=1&boost=24&fov=8&level=best|complete",
+ "best": {
+  "scene": "above-off",
+  "mode": "enhanced",
+  "level": "best",
+  "lit": 1570433,
+  "brightestY": 3.6867711661336955e-10,
+  "brightestV": 9.59546883590558,
+  "smallBodiesAboveThreshold": 1263679,
+  "pointsDrawn": 40797,
+  "limitingV": 25.663785032844615,
+  "adaptation": 1e-05,
+  "synthetic": {
+   "objects": 2948454,
+   "lit": 0,
+   "brightestV": null,
+   "aboveThreshold": 0,
+   "falseColour": false
+  }
+ },
+ "complete": {
+  "scene": "above-off",
+  "mode": "enhanced",
+  "level": "complete",
+  "lit": 1570433,
+  "brightestY": 3.6867711661336955e-10,
+  "brightestV": 9.59546883590558,
+  "smallBodiesAboveThreshold": 1263679,
+  "pointsDrawn": 62125,
+  "limitingV": 25.663785032844615,
+  "adaptation": 1e-05,
+  "synthetic": {
+   "objects": 2948454,
+   "lit": 2948454,
+   "brightestV": 18.86114952693644,
+   "aboveThreshold": 406430,
+   "falseColour": false
+  }
+ }
+}

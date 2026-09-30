@@ -36,7 +36,7 @@ def capabilities(day: str | None = None) -> Path:
 
 
 def layer_info(caps: Path, layer: str) -> dict:
-    x = caps.read_text()
+    x = caps.read_text(encoding="utf-8")
     blk = next(b for b in re.findall(r"<Layer>(.*?)</Layer>", x, re.S) if f"<ows:Identifier>{layer}</ows:Identifier>" in b)
     title = re.search(r"<ows:Title[^>]*>([^<]+)</ows:Title>", blk).group(1)
     cmaps = re.findall(r"xlink:href='(https://gibs.earthdata.nasa.gov/colormaps/v1.3/[^']+)'", blk)
