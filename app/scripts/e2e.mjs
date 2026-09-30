@@ -8,6 +8,7 @@
 //   npm run e2e                          render all scenes, compare with the baseline (exit 1 on a regression)
 //   npm run e2e -- --only earth-day,sun-1au
 //   npm run e2e -- --accept              render, then make this run the new baseline (all or --only scenes)
+//   npm run e2e -- --accept-last         make the last run (app/shots/e2e/report.json) the baseline, no rendering
 //   npm run e2e -- --no-compare          render and report only
 //   options: --jobs 1|2  --timeout <s per scene>  --base http://localhost:5173 (use a running server)
 
@@ -33,6 +34,7 @@ const opt = (k) => {
 };
 const only = opt('only')?.split(',').filter(Boolean);
 const accept = flag('accept');
+const acceptLast = flag('accept-last');
 const jobs = Math.max(1, Math.min(2, Number(opt('jobs') ?? 2)));
 const timeoutMs = 1000 * Number(opt('timeout') ?? 420);
 
@@ -56,6 +58,38 @@ const gitRev = (() => {
     return null;
   }
 })();
+
+/** Write baseline/stats.json and the thumbnails for these results (merged with the other scenes' baseline). */
+function writeBaseline(rs, meta) {
+  const bad = rs.filter((r) => r.error || !r.stats);
+  if (bad.length) {
+    console.log(`Not accepting: ${bad.map((r) => r.id).join(', ')} did not render.`);
+    process.exit(1);
+  }
+  mkdirSync(BASE_DIR, { recursive: true });
+  const prev = baseline ?? { scenes: {} };
+  const accepted = { ...meta, scenes: { ...prev.scenes } };
+  for (const r of rs) {
+    accepted.scenes[r.id] = { query: r.query, stats: r.stats, consoleErrors: r.consoleErrors ?? [], readyMs: r.readyMs };
+    if (r.thumb) writeFileSync(resolve(BASE_DIR, `${r.id}.png`), encodePng(r.thumb, THUMB_W, THUMB_H));
+  }
+  // Drop scenes that no longer exist in scenes.json.
+  for (const id of Object.keys(accepted.scenes)) if (!suite.scenes.some((s) => s.id === id)) delete accepted.scenes[id];
+  writeFileSync(baselinePath, JSON.stringify(accepted, null, 1) + '\n');
+  console.log(`Accepted ${rs.length} scene(s) as the baseline in ${BASE_DIR}. Review the diff, then commit it.`);
+  process.exit(0);
+}
+
+if (acceptLast) {
+  // The last run's report and thumbnails, after reviewing its screenshots: no need to render again.
+  const last = JSON.parse(readFileSync(resolve(OUT, 'report.json'), 'utf8'));
+  const rs = last.scenes.filter((r) => scenes.some((s) => s.id === r.id));
+  for (const r of rs) {
+    const png = resolve(OUT, `${r.id}.thumb.png`);
+    if (existsSync(png)) r.thumb = decodePng(readFileSync(png)).rgba;
+  }
+  writeBaseline(rs, { acceptedAt: last.generatedAt, git: last.git, data: last.data, viewport: last.viewport });
+}
 
 mkdirSync(OUT, { recursive: true });
 let server;
@@ -198,25 +232,7 @@ console.log(`\nreport: ${resolve(OUT, 'report.json')}  screenshots: ${OUT}`);
 
 // ---- accept ----------------------------------------------------------------------------------------------------
 
-if (accept) {
-  const bad = results.filter((r) => r.error);
-  if (bad.length) {
-    console.log(`Not accepting: ${bad.map((r) => r.id).join(', ')} did not render.`);
-    process.exit(1);
-  }
-  mkdirSync(BASE_DIR, { recursive: true });
-  const prev = baseline ?? { scenes: {} };
-  const accepted = { acceptedAt: report.generatedAt, git: gitRev, data: dataInfo, viewport: vp, scenes: { ...prev.scenes } };
-  for (const r of results) {
-    accepted.scenes[r.id] = { query: r.query, stats: r.stats, consoleErrors: r.consoleErrors, readyMs: r.readyMs };
-    if (r.thumb) writeFileSync(resolve(BASE_DIR, `${r.id}.png`), encodePng(r.thumb, THUMB_W, THUMB_H));
-  }
-  // Drop scenes that no longer exist in scenes.json.
-  for (const id of Object.keys(accepted.scenes)) if (!suite.scenes.some((s) => s.id === id)) delete accepted.scenes[id];
-  writeFileSync(baselinePath, JSON.stringify(accepted, null, 1) + '\n');
-  console.log(`Accepted ${results.length} scene(s) as the baseline in ${BASE_DIR}. Review the diff, then commit it.`);
-  process.exit(0);
-}
+if (accept) writeBaseline(results, { acceptedAt: report.generatedAt, git: gitRev, data: dataInfo, viewport: vp });
 
 const failed = results.filter((r) => r.error || (r.compare && !r.compare.pass));
 process.exit(failed.length ? 1 : 0);

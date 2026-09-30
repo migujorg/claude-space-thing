@@ -74,6 +74,8 @@ Accept a new baseline when a change is intended. Examples: a renderer improvemen
    ```
    This renders again and writes `baseline/stats.json` and `baseline/<id>.png` from that run. With `--only`, the other scenes keep their baseline. Scenes removed from `scenes.json` are dropped.
 
+   To accept the run you just reviewed without rendering it again, use `npm run e2e -- --accept-last`. It takes `--only` too, and reads `app/shots/e2e/report.json` and the thumbnails.
+
    Nothing is accepted if any scene fails to render.
 3. Review `git diff app/e2e/baseline`. The stats diff says what changed, for example a pupil diameter or a set of warnings. Commit the baseline together with the change that caused it, and say why in the commit message.
 

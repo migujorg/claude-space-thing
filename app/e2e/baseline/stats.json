@@ -1,9 +1,9 @@
 {
- "acceptedAt": "2026-09-30T13:56:52.043Z",
- "git": "bc84a6e",
+ "acceptedAt": "2026-09-30T14:32:24.671Z",
+ "git": "35fed92",
  "data": {
-  "manifestGeneratedAt": "2026-09-30T13:25:03+00:00",
-  "manifestSha256": "8378914bf9fad8fab8977f939a7e847d64625b04cb923f4a5491d53e4dcc759d"
+  "manifestGeneratedAt": "2026-09-30T14:10:10+00:00",
+  "manifestSha256": "911a6bb1853c549e33ada45de34b8b8cdf42ea4728b9c8d6c1d7f6e55354779d"
  },
  "viewport": {
   "width": 1280,
@@ -13,12 +13,12 @@
   "earth-day": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&target=399&dist=20000&az=0&el=0",
    "stats": {
-    "adaptationLuminance": 2843.109541035179,
-    "scotopicAdaptationLuminance": 18344.269541570793,
+    "adaptationLuminance": 6960.946144440834,
+    "scotopicAdaptationLuminance": 25711.410486641467,
     "pupilDiameterMm": 2.3110914902260857,
     "mesopicM": 1,
-    "limitingMagnitude": -3.305396237453668,
-    "starsDrawn": 0,
+    "limitingMagnitude": -4.169296751003967,
+    "starsDrawn": 1,
     "bodiesDrawn": 310,
     "bodies": [
      {
@@ -348,7 +348,7 @@
     "badge": []
    },
    "consoleErrors": [],
-   "readyMs": 60185
+   "readyMs": 81448
   },
   "earth-day-strict": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&target=399&dist=20000&az=0&el=0&exists=strict",
@@ -692,17 +692,17 @@
     ]
    },
    "consoleErrors": [],
-   "readyMs": 64723
+   "readyMs": 79483
   },
   "earth-night": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&target=399&dist=20000&az=180&el=0",
    "stats": {
-    "adaptationLuminance": 0.00001797683687058951,
-    "scotopicAdaptationLuminance": 0.000038683129299762346,
-    "pupilDiameterMm": 7.451226420782973,
+    "adaptationLuminance": 0.00002451304186392456,
+    "scotopicAdaptationLuminance": 0.00005215320150156774,
+    "pupilDiameterMm": 7.451210477319296,
     "mesopicM": 0,
-    "limitingMagnitude": 7.106831961811045,
-    "starsDrawn": 1692,
+    "limitingMagnitude": 6.963519083358695,
+    "starsDrawn": 1877,
     "bodiesDrawn": 4,
     "bodies": [
      {
@@ -731,16 +731,16 @@
     "badge": []
    },
    "consoleErrors": [],
-   "readyMs": 58513
+   "readyMs": 106382
   },
   "moon-quarter": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&target=301&dist=6000&az=90&el=0",
    "stats": {
-    "adaptationLuminance": 335.22512365765533,
-    "scotopicAdaptationLuminance": 796.2735350841349,
-    "pupilDiameterMm": 2.0452727299634255,
+    "adaptationLuminance": 352.7751817164463,
+    "scotopicAdaptationLuminance": 837.963013904737,
+    "pupilDiameterMm": 2.0452727299632447,
     "mesopicM": 1,
-    "limitingMagnitude": -1.3281353498520252,
+    "limitingMagnitude": -1.373768946986755,
     "starsDrawn": 1,
     "bodiesDrawn": 121,
     "bodies": [
@@ -879,17 +879,17 @@
     "badge": []
    },
    "consoleErrors": [],
-   "readyMs": 53659
+   "readyMs": 75235
   },
   "jupiter-galileans": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&target=599&dist=4000000",
    "stats": {
-    "adaptationLuminance": 660.3139880190787,
-    "scotopicAdaptationLuminance": 1473.0708866728876,
-    "pupilDiameterMm": 5.487553434292559,
+    "adaptationLuminance": 563.2446810472869,
+    "scotopicAdaptationLuminance": 1264.7931771007613,
+    "pupilDiameterMm": 5.487543916077672,
     "mesopicM": 1,
-    "limitingMagnitude": -1.94089970510112,
-    "starsDrawn": 0,
+    "limitingMagnitude": -1.7959288615248883,
+    "starsDrawn": 210,
     "bodiesDrawn": 36,
     "bodies": [
      {
@@ -965,17 +965,17 @@
     "badge": []
    },
    "consoleErrors": [],
-   "readyMs": 65284
+   "readyMs": 69354
   },
   "saturn-rings": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&target=699&dist=400000&el=25",
    "stats": {
-    "adaptationLuminance": 194.71314691141973,
-    "scotopicAdaptationLuminance": 389.86942899484177,
-    "pupilDiameterMm": 3.866641441780978,
+    "adaptationLuminance": 130.80730882297624,
+    "scotopicAdaptationLuminance": 269.27690294941436,
+    "pupilDiameterMm": 3.866641116997001,
     "mesopicM": 1,
-    "limitingMagnitude": -0.8474166221539547,
-    "starsDrawn": 0,
+    "limitingMagnitude": -0.5014886228518943,
+    "starsDrawn": 92,
     "bodiesDrawn": 60,
     "bodies": [
      {
@@ -1082,17 +1082,17 @@
     "badge": []
    },
    "consoleErrors": [],
-   "readyMs": 57930
+   "readyMs": 70440
   },
   "uranus": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&target=799&dist=150000",
    "stats": {
-    "adaptationLuminance": 58.361872416101235,
-    "scotopicAdaptationLuminance": 151.92195362246127,
-    "pupilDiameterMm": 4.244357604551268,
+    "adaptationLuminance": 47.051069646409154,
+    "scotopicAdaptationLuminance": 125.6685042586786,
+    "pupilDiameterMm": 4.244355848486163,
     "mesopicM": 1,
-    "limitingMagnitude": 0.1840497800679788,
-    "starsDrawn": 2,
+    "limitingMagnitude": 0.3632777263208602,
+    "starsDrawn": 187,
     "bodiesDrawn": 16,
     "bodies": [
      {
@@ -1147,17 +1147,17 @@
     "badge": []
    },
    "consoleErrors": [],
-   "readyMs": 49606
+   "readyMs": 108056
   },
   "neptune": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&target=899&dist=150000",
    "stats": {
-    "adaptationLuminance": 19.190503184046978,
-    "scotopicAdaptationLuminance": 55.87011732508276,
-    "pupilDiameterMm": 4.935546986685076,
+    "adaptationLuminance": 15.900640085953063,
+    "scotopicAdaptationLuminance": 45.918856690609886,
+    "pupilDiameterMm": 4.935544511980392,
     "mesopicM": 1,
-    "limitingMagnitude": 1.0920506319025527,
-    "starsDrawn": 0,
+    "limitingMagnitude": 1.241298742795691,
+    "starsDrawn": 137,
     "bodiesDrawn": 10,
     "bodies": [
      {
@@ -1215,17 +1215,17 @@
     "badge": []
    },
    "consoleErrors": [],
-   "readyMs": 56131
+   "readyMs": 116535
   },
   "pluto-charon": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&target=999&dist=60000",
    "stats": {
-    "adaptationLuminance": 19.580026418478628,
-    "scotopicAdaptationLuminance": 40.571805807553645,
-    "pupilDiameterMm": 6.997164697194261,
+    "adaptationLuminance": 15.262523201646461,
+    "scotopicAdaptationLuminance": 31.769274254262125,
+    "pupilDiameterMm": 6.996962585606309,
     "mesopicM": 1,
-    "limitingMagnitude": 1.0760295563465876,
-    "starsDrawn": 0,
+    "limitingMagnitude": 1.2736406200839088,
+    "starsDrawn": 933,
     "bodiesDrawn": 3,
     "bodies": [
      {
@@ -1261,7 +1261,7 @@
     "badge": []
    },
    "consoleErrors": [],
-   "readyMs": 63548
+   "readyMs": 120246
   },
   "starfield": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&target=999&dist=3000000000&labels=0",
@@ -1306,17 +1306,17 @@
     "badge": []
    },
    "consoleErrors": [],
-   "readyMs": 69661
+   "readyMs": 101036
   },
   "starfield-enhanced": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&target=999&dist=3000000000&labels=0&view=enhanced&boost=6",
    "stats": {
     "adaptationLuminance": 0.00001,
-    "scotopicAdaptationLuminance": 0.000014658435944488791,
-    "pupilDiameterMm": 7.864578102123291,
+    "scotopicAdaptationLuminance": 0.00001539828283605428,
+    "pupilDiameterMm": 7.864578058886922,
     "mesopicM": 0,
-    "limitingMagnitude": 12.097440019094762,
-    "starsDrawn": 27325,
+    "limitingMagnitude": 12.073013035054434,
+    "starsDrawn": 27326,
     "bodiesDrawn": 6,
     "bodies": [],
     "points": [
@@ -1353,16 +1353,16 @@
     ]
    },
    "consoleErrors": [],
-   "readyMs": 81357
+   "readyMs": 375036
   },
   "sun-1au": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&target=10&dist=149597871",
    "stats": {
-    "adaptationLuminance": 76339107.50494003,
-    "scotopicAdaptationLuminance": 179352190.46607557,
+    "adaptationLuminance": 2265.9714598428423,
+    "scotopicAdaptationLuminance": 5382.323483329766,
     "pupilDiameterMm": 2.0460950060055585,
     "mesopicM": 1,
-    "limitingMagnitude": -13.828848092459065,
+    "limitingMagnitude": -3.0895814985125525,
     "starsDrawn": 0,
     "bodiesDrawn": 3,
     "bodies": [
@@ -1383,17 +1383,17 @@
     "badge": []
    },
    "consoleErrors": [],
-   "readyMs": 23023
+   "readyMs": 54848
   },
   "juno-closeup": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=1&target=20000003",
    "stats": {
-    "adaptationLuminance": 1515.820109925576,
-    "scotopicAdaptationLuminance": 3379.6552151624833,
+    "adaptationLuminance": 1239.257572755372,
+    "scotopicAdaptationLuminance": 2763.0355979618553,
     "pupilDiameterMm": 2.9327637948475918,
     "mesopicM": 1,
-    "limitingMagnitude": -2.7104497519753172,
-    "starsDrawn": 0,
+    "limitingMagnitude": -2.5221186593559874,
+    "starsDrawn": 16,
     "bodiesDrawn": 24,
     "bodies": [
      {
@@ -1443,17 +1443,17 @@
     "badge": []
    },
    "consoleErrors": [],
-   "readyMs": 27148
+   "readyMs": 236052
   },
   "mars-map": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&target=499&dist=15000&az=0&el=10",
    "stats": {
-    "adaptationLuminance": 1336.740879558765,
-    "scotopicAdaptationLuminance": 2034.154662615085,
+    "adaptationLuminance": 1811.0956854743959,
+    "scotopicAdaptationLuminance": 3024.7222263314347,
     "pupilDiameterMm": 2.673500153702155,
     "mesopicM": 1,
-    "limitingMagnitude": -2.592781130226667,
-    "starsDrawn": 0,
+    "limitingMagnitude": -2.877753992686131,
+    "starsDrawn": 22,
     "bodiesDrawn": 32,
     "bodies": [
      {
@@ -1520,17 +1520,17 @@
     "badge": []
    },
    "consoleErrors": [],
-   "readyMs": 37864
+   "readyMs": 123641
   },
   "mercury-map": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&target=199&dist=8000&az=0&el=10",
    "stats": {
-    "adaptationLuminance": 2.5394990946180935,
-    "scotopicAdaptationLuminance": 5.349404996511292,
+    "adaptationLuminance": 4589.217474866931,
+    "scotopicAdaptationLuminance": 9666.644163518864,
     "pupilDiameterMm": 2.8884867204772333,
-    "mesopicM": 0.9080760215678223,
-    "limitingMagnitude": 2.6127482714469674,
-    "starsDrawn": 13,
+    "mesopicM": 1,
+    "limitingMagnitude": -3.765008082034858,
+    "starsDrawn": 41,
     "bodiesDrawn": 7,
     "bodies": [
      {
@@ -1554,7 +1554,7 @@
     "badge": []
    },
    "consoleErrors": [],
-   "readyMs": 32885
+   "readyMs": 148254
   }
  }
 }
