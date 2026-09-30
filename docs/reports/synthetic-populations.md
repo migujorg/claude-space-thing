@@ -134,7 +134,7 @@ Pick finds a synthetic object at Complete and returns nothing at Best. With the 
   - float64 two-body positions and a Kepler orbit track;
   - no resolved shape, and a navigation radius from D(H, p_V).
 - The HUD reads "N catalogued + M synthetic small bodies drawn / K withheld at Complete". The Data panel lists the layer per population.
-- **Complete is the default level** when the build has a synthetic layer (reality.ts `defaultReality({ syntheticLayerAvailable })`, driven by the manifest). A level chosen by the user or the URL is kept.
+- **Complete is the default level** when the build has a synthetic layer and small bodies are enabled (reality.ts `defaultReality({ syntheticLayerAvailable })`, driven by the manifest; with `smallbodies=0` Best estimate stays the default). A level chosen by the user or the URL is kept.
 - The **inspector** of a synthetic object opens with "What this is", for example: "Not a real object. It stands in for one of ~N undiscovered main-belt asteroids in its cell (a …, e …, i …, H …). The model (…) expects X objects there; the catalogue has Y, complete down to H_lim at this a, so D are missing and S synthetic objects are shown in this cell. When surveys find more, …". It then lists the rows "Stands in for", "Survey completeness limit here", "Seed and place in the cell" (the stream string and candidate number), orbit, H, G, p_V, diameter and rotation, each with the `synthetic` chip, its method and sources.
 
 ## 9. Verification
