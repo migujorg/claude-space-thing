@@ -138,6 +138,8 @@ describe('AppModel', () => {
     const d = len(sub(model.pose.pos, model.bodyPos(399)!));
     expect(d).toBeGreaterThan(6400);
     expect(model.debugState().camera.anchor).toBe(399);
+    for (let i = 0; i < 200; i++) { model.wheel(-10); model.frame(0); }
+    expect(len(sub(model.pose.pos, model.bodyPos(399)!))).toBeGreaterThan(6400);
   });
 
   it('snapshot uses the current reality level', () => {

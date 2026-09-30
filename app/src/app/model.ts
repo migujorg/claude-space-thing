@@ -389,8 +389,12 @@ export class AppModel {
     if (this.travel) this.cancelTravel();
     if (this.cam.mode === 'orbit') this.cam = orbitZoom(this.cam, notches, this.radiusOf(this.cam.target));
     else {
-      const alt = nearestAltitude(this.pose.pos, this.spheres()).alt;
-      this.cam = freeMove(this.cam, [0, 0, 1], Math.abs(notches) * 0.15, Math.sign(notches) * flySpeed(alt));
+      const spheres = this.spheres();
+      const alt = nearestAltitude(this.pose.pos, spheres).alt;
+      const anchorPos = this.cam.anchor !== null ? this.bodyPos(this.cam.anchor) : null;
+      const moved = freeMove(this.cam, [0, 0, 1], Math.abs(notches) * 0.15, Math.sign(notches) * flySpeed(alt));
+      const safe = pushOutside(freePose(moved, anchorPos).pos, spheres);
+      this.cam = { ...moved, rel: anchorPos ? sub(safe, anchorPos) : safe };
     }
     this.emit('camera');
   }
