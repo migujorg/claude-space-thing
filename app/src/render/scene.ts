@@ -249,6 +249,13 @@ export interface RendererStats {
   /** Faintest point source visible at the adaptation state (V mag, for a 2850 K-coloured point). */
   limitingMagnitude?: number;
   /**
+   * Faintest point source visible anywhere in the frame (V mag, 2850 K-coloured): the eye looking at the
+   * darkest background in the frame, adapted to it, with the current pigment state. Point sources are culled
+   * against their own background (eye-model.md §2 "Fixations"), so this, not limitingMagnitude, bounds
+   * which catalogue stars can be drawn at all.
+   */
+  pointLimitingMagnitude?: number;
+  /**
    * Dark adaptation (eye/bleaching.ts): share of the excess rod bleach regenerated (1 = adapted to the
    * current light), minutes until the rod threshold is within 0.1 log unit of adapted if the light stays,
    * rod threshold elevation (log₁₀), cone photon catch relative to adapted, and a HUD line.

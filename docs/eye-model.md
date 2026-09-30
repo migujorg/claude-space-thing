@@ -424,12 +424,18 @@ against black sky". That holds for one fixation, but it is not how a scene is lo
 **Test of the whole chain.** Under a dark sky of 21.5–22 mag/arcsec² (sky S/P 1.38, Crumey §1.3), the
 model gives naked-eye limits between V ≈ 6.0 and 7.0 for star colours B−V = 0 … 1.5 (S/P from
 Crumey Eq. 13), and 6.18 for a 2850 K-coloured star at 21.83 (tests). In space with no sky
-background (v0 has no zodiacal light or diffuse Galactic light yet), the zero-background cut-off gives
-V ≈ 7.6 with F = 2.
+background, the zero-background cut-off gives V ≈ 7.6 with F = 2. With the M4 sky (zodiacal light,
+Galactic light, unresolved stars) the regression suite's star field beyond Pluto has a background of
+6·10⁻⁵ cd/m² and a limit of V ≈ 6.5.
 
 **Culling.** On the GPU, each star whose Blackwell-equivalent illuminance is below F·ΔI(B) (÷ the
 enhanced boost) at its own background is not drawn. Unresolved bodies are tested in the point shader.
-The CPU only drops those invisible even against a zero background.
+The renderer also reports `pointLimitingMagnitude`: the limit for the eye looking at the darkest
+background in the frame (the minimum retinal luminance, reduced on the GPU with the adaptation
+measurement), with the current pigment state. It bounds which catalogue stars can be drawn at all, and
+the app's sky (app/sky.ts) cuts points from background light there (M5). Cutting at the global limit
+hid every star as soon as a bright planet was in view: Jupiter's frame adapts to 650 cd/m² (limit
+V ≈ −1.9), while the dark sky around it shows stars to V ≈ 6.5 (regression suite).
 
 ### 6.3 How point sources are shown (`eye/points.ts`)
 
@@ -602,8 +608,6 @@ checks that the Sun's light on the bodies is unaffected.
   shows the Sun's veil from just outside the frame). Starlight outside the frame does not scatter
   into it, so the veil darkens slightly within the pyramid's reach of the frame edges (visible only in
   dense star fields with enhanced mode). A guard band would fix it.
-- **No sky background yet** (zodiacal light, diffuse Galactic light, Milky Way; M4). In space this
-  makes the dark-adapted limit V ≈ 7.6 instead of ~7.
 - **Rod hue shift** (Cao et al. 2008 / Kirk & O'Brien 2011) not implemented; mesopic scenes lose colour
   toward white rather than shifting toward blue.
 - **Cone desensitisation after a bleach** is only the loss of photon catch (§2 "Time"). The cone

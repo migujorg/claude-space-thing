@@ -31,7 +31,8 @@ import { cameraGeom, prepareFrame, type PreparedFrame } from './frame';
 import { ExtraPointSources, type PointSourceBuffer } from './extraPoints';
 import { HdrReadback, type HdrImage, type HdrRect, type HdrRegionStats } from './hdrReadback';  // validation hook
 import { orbitVertices } from './overlays';
-import { AdaptationState, computeEyeFrame, type EyeFrame } from '../eye/model';
+import { AdaptationState, computeEyeFrame, localObserver, type EyeFrame } from '../eye/model';
+import { magnitudeFromLux } from '../eye/crumey';
 import { DEFAULT_EYE_SETTINGS, type EyeSettings } from '../eye/settings';
 import { fitScatterKernel } from '../eye/glare';
 import { DEG2_PER_SR, pupilDiameterMm } from '../eye/pupil';
@@ -93,6 +94,8 @@ interface Targets {
   zero: GPUTexture;
   zero2: GPUTexture;
   partials: GPUBuffer;
+  /** Per adaptation block: the darkest retinal luminance (photopic, scotopic). */
+  darkest: GPUBuffer;
   tilesX: number;
   tilesY: number;
 }
@@ -464,6 +467,7 @@ export class Renderer {
       zero2: tex(1, 1, 'rgba32float', ST, 'zero2'),
       // One partial per adaptation invocation (8 × 8 per workgroup).
       partials: d.createBuffer({ size: tilesX * tilesY * 64 * 16, usage: GPUBufferUsage.STORAGE }),
+      darkest: d.createBuffer({ size: tilesX * tilesY * 64 * 16, usage: GPUBufferUsage.STORAGE }),
       tilesX, tilesY,
     };
     this.glareCache.key = '';
@@ -526,6 +530,7 @@ export class Renderer {
     for (const x of [t.ext, t.pt, t.ptEx, t.ptDisp, t.w, t.mask, t.depth, t.acu, t.zero, t.zero2]) x.destroy();
     for (const l of t.levels) { l.lvl.destroy(); l.tmp.destroy(); l.blur.destroy(); l.acc.destroy(); l.accR.destroy(); l.ub.destroy(); l.ubR.destroy(); }
     t.partials.destroy();
+    t.darkest.destroy();
     this.targets = null;
   }
 
@@ -901,6 +906,7 @@ export class Renderer {
           { binding: 4, resource: veilView },
           { binding: 5, resource: { buffer: t.partials } },
           { binding: 6, resource: { buffer: this.srcs } },
+          { binding: 7, resource: { buffer: t.darkest } },
         ],
       }));
       pass.dispatchWorkgroups(t.tilesX, t.tilesY);
@@ -913,6 +919,7 @@ export class Renderer {
           { binding: 1, resource: { buffer: this.result } },
           { binding: 2, resource: { buffer: this.reduceUB } },
           { binding: 3, resource: { buffer: this.args } },
+          { binding: 4, resource: { buffer: t.darkest } },
         ],
       }));
       pass.dispatchWorkgroups(1);
@@ -1033,7 +1040,7 @@ export class Renderer {
 
     if (doReadback) {
       this.readbackBusy = true;
-      const used = { cone: eye.Acone, rod: eye.Arod, offFrameFlux: prep.offFrameFluxDeg2 };
+      const used = { cone: eye.Acone, rod: eye.Arod, offFrameFlux: prep.offFrameFluxDeg2, eye };
       this.readback.mapAsync(GPUMapMode.READ).then(() => {
         const r = new Float32Array(this.readback.getMappedRange().slice(0));
         this.readback.unmap();
@@ -1043,7 +1050,7 @@ export class Renderer {
     }
   }
 
-  private handleMeasurement(r: Float32Array, used: { cone: number; rod: number; offFrameFlux: number }): void {
+  private handleMeasurement(r: Float32Array, used: { cone: number; rod: number; offFrameFlux: number; eye: EyeFrame }): void {
     const om = r[2];
     const goal = {
       coneCdM2: om > 0 ? Math.exp(r[0] / om) - DARK_LIGHT_CONE : 0,
@@ -1051,6 +1058,12 @@ export class Renderer {
       cornealFlux: r[3] * DEG2_PER_SR + used.offFrameFlux,
     };
     this.stats.starsDrawn = Math.round(r[4]);
+    // The faintest point any part of this frame could show: the eye looking at the darkest background there
+    // (the same local observer the star cull uses, eye-model.md §2 "Fixations").
+    if (Number.isFinite(r[5]) && r[5] < 1e37) {
+      const e = used.eye;
+      this.stats.pointLimitingMagnitude = magnitudeFromLux(localObserver(this.settings, e.display, r[5], r[6], e.exposure, e.dark).thresholdBwLux);
+    }
     const now = performance.now();
     // Real elapsed time, at most 2 s per measurement (a longer gap is a hidden tab, not a stare).
     const dt = this.lastMeasurementTime ? Math.min((now - this.lastMeasurementTime) / 1000, 2) : 0;

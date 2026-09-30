@@ -1314,18 +1314,25 @@ export const ADAPT_SHADER = COMMON + /* wgsl */ `
 @group(0) @binding(4) var veilTex: texture_2d<f32>;
 @group(0) @binding(5) var<storage, read_write> partials: array<vec4f>;
 ${SRCS(0, 6)}
+@group(0) @binding(7) var<storage, read_write> darkest: array<vec4f>;
 ${VEIL}
 
-/** One pixel's contribution: (log cone · w, log rod · w, w, flux) (eye-model.md §2). */
-fn adaptSample(p: vec2i) -> vec4f {
+struct AdaptSample { acc: vec4f, ret: vec4f };
+
+/**
+ * One pixel's contribution: (log cone · w, log rod · w, w, flux) (eye-model.md §2), and its retinal
+ * luminance (object + veil), for the darkest background in the frame.
+ */
+fn adaptSample(p: vec2i) -> AdaptSample {
   var acc = vec4f(0.0);
+  var ret = vec4f(0.0);
   {
     let ndc = ndcFromFrag(F, vec2f(p) + 0.5);
     let dir = normalize(worldDirNdc(F, ndc));
     let om = pixelSolidAngle(F, ndc);
     let ext = textureLoad(extTex, p, 0) / F.proj.w;
     let pt = textureLoad(ptTex, p, 0) / F.proj.w;
-    let ret = E.glare.x * ext + textureLoad(veilTex, p, 0) / F.proj.w + analyticVeil(E, dir);
+    ret = E.glare.x * ext + textureLoad(veilTex, p, 0) / F.proj.w + analyticVeil(E, dir);
     let lc = log(max(ret.y, 0.0) + E.dark.x);
     let lr = log(max(ret.w, 0.0) + E.dark.y);
     if (E.flags.z > 0.5) {
@@ -1341,7 +1348,7 @@ fn adaptSample(p: vec2i) -> vec4f {
     }
     acc.w = (ext.y + pt.y) * om;
   }
-  return acc;
+  return AdaptSample(acc, ret);
 }
 
 // Each invocation sums an ADAPT_BLOCK² block of pixels into its own partial: no workgroup barriers or
@@ -1349,14 +1356,20 @@ fn adaptSample(p: vec2i) -> vec4f {
 // GPUs), and the partials are few enough for the single-workgroup reduction below.
 @compute @workgroup_size(8, 8) fn tiles(@builtin(global_invocation_id) g: vec3u, @builtin(num_workgroups) nw: vec3u) {
   var acc = vec4f(0.0);
+  var lo = vec2f(3.0e38);
   let o = vec2i(g.xy) * ${ADAPT_BLOCK};
   for (var j = 0; j < ${ADAPT_BLOCK}; j++) {
     for (var i = 0; i < ${ADAPT_BLOCK}; i++) {
       let p = o + vec2i(i, j);
-      if (f32(p.x) < F.size.x && f32(p.y) < F.size.y) { acc += adaptSample(p); }
+      if (f32(p.x) < F.size.x && f32(p.y) < F.size.y) {
+        let s = adaptSample(p);
+        acc += s.acc;
+        lo = min(lo, max(s.ret.yw, vec2f(0.0)));
+      }
     }
   }
   partials[g.x + g.y * nw.x * 8u] = acc;
+  darkest[g.x + g.y * nw.x * 8u] = vec4f(lo, 0.0, 0.0);
 }
 `;
 
@@ -1365,19 +1378,24 @@ export const ADAPT_REDUCE_SHADER = /* wgsl */ `
 @group(0) @binding(1) var<storage, read_write> result: array<vec4f, 2>;
 @group(0) @binding(2) var<uniform> n: vec4u;
 @group(0) @binding(3) var<storage, read> args: array<u32, 4>;
+@group(0) @binding(4) var<storage, read> darkest: array<vec4f>;
 var<workgroup> sh: array<vec4f, 256>;
+var<workgroup> shLo: array<vec2f, 256>;
 @compute @workgroup_size(256) fn main(@builtin(local_invocation_index) li: u32) {
   var acc = vec4f(0.0);
-  for (var i = li; i < n.x; i += 256u) { acc += partials[i]; }
+  var lo = vec2f(3.0e38);
+  for (var i = li; i < n.x; i += 256u) { acc += partials[i]; lo = min(lo, darkest[i].xy); }
   sh[li] = acc;
+  shLo[li] = lo;
   workgroupBarrier();
   for (var s = 128u; s > 0u; s = s >> 1u) {
-    if (li < s) { sh[li] += sh[li + s]; }
+    if (li < s) { sh[li] += sh[li + s]; shLo[li] = min(shLo[li], shLo[li + s]); }
     workgroupBarrier();
   }
   if (li == 0u) {
     result[0] = sh[0];
-    result[1] = vec4f(f32(args[1]), 0.0, 0.0, 0.0);
+    // Stars drawn, and the darkest retinal luminance in the frame (photopic, scotopic; cd/m²).
+    result[1] = vec4f(f32(args[1]), shLo[0], 0.0);
   }
 }
 `;
