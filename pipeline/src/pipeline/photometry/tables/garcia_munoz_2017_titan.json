@@ -1,0 +1,9 @@
+{
+ "_citation": "García Muñoz, A., Lavvas, P. & West, R. A. (2017), 'Titan brighter at twilight than in daylight', Nature Astronomy 1, 0114. DOI:10.1038/s41550-017-0114. Text source: arXiv:1704.07460v1, Methods, 'Geometric albedo, Ag(λ)' (p. 34).",
+ "quote": "we adopted the spectrally-resolved Ag(λ) data [14] multiplied by 1.02. Our models show that 1.02 is a reasonable correction for the phase law Φ(α) from α=5.7° to α=0. This correction factor is consistent with the solar phase angle variation reported in a multi-decade ground-based photometric investigation [37].",
+ "reference_14": "Karkoschka, E. (1998), Icarus 133, 134 (the 1995 full-disk albedo at 5.7 deg phase, PDS 1995LOW.TAB)",
+ "zero_phase_factor": 1.02,
+ "from_phase_deg": 5.7,
+ "normalization_radius_km": 2575,
+ "uncertainty": "For λ<1050 nm the geometric albedos are likely accurate to a few percent, and we assume δAg/Ag ∼5%."
+}

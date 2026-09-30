@@ -3,7 +3,7 @@
 Writes
   light.json       LightData: Sun (X, Y, Z, S) at 1 AU from TSIS-1 HSRS, IAU 2015 B3 radius, per-channel limb
                    darkening from Neckel & Labs (1994); the CIE constants used.
-  photometry.json  PhotometryFile: NAIF id -> BodyPhotometry for Mercury..Pluto and the Moon.
+  photometry.json  PhotometryFile: NAIF id -> BodyPhotometry for Mercury..Pluto, the Moon and the major moons.
 
 All inputs are fetched through pipeline.download.fetch (sha256-recorded) or transcribed published tables under
 pipeline/src/pipeline/photometry/tables/ (see docs/sources/). Diagnostics are printed and summarized in
@@ -39,7 +39,12 @@ def run(ctx: BuildContext) -> None:
     results = bodies.build_all(ctx)
     write_json(ctx, "photometry.json", bodies.photometry_json(results), "light")
     for n, r in results.items():
+        labels = (f"albedo:{r.entry['geometricAlbedoXYZS']['label']} phase:{r.entry['phaseFunction']['label']}")
+        if r.xyzs is None:
+            print(f"[light] {r.name:9s} albedo and colour unknown; {labels}")
+            continue
         x, y = r.xyzs[0] / r.xyzs[:3].sum(), r.xyzs[1] / r.xyzs[:3].sum()
         pub = f"{r.v10_published:+.3f}" if r.v10_published is not None else "   n/a"
-        print(f"[light] {r.name:8s} p_V={r.p_v:.4f} xy=({x:.4f}, {y:.4f}) V(1,0)={r.v10:+.3f} (published {pub}) "
-              f"albedo:{r.entry['geometricAlbedoXYZS']['label']} phase:{r.entry['phaseFunction']['label']}")
+        print(f"[light] {r.name:9s} p_V={r.p_v:.4f} xy=({x:.4f}, {y:.4f}) V(1,0)={r.v10:+.3f} (published {pub}) "
+              f"{labels}")
+

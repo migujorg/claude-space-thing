@@ -8,7 +8,7 @@ from pipeline.photometry import bodies, filters, phase, solar
 from pipeline.photometry.common import read_table_csv
 from pipeline.schema import BuildContext, LABEL_ORDER
 
-NAIF = (199, 299, 399, 301, 499, 599, 699, 799, 899, 999)
+NAIF = tuple(bodies.BODIES)     # planets, the Moon, Pluto and the major moons (moons: see test_photometry_moons.py)
 
 
 @pytest.fixture(scope="module")
@@ -20,8 +20,9 @@ def built():
 def _check_sourced(s, ctx):
     assert s["label"] in LABEL_ORDER
     assert (s["value"] is None) == (s["label"] == "unknown")
-    assert s["sources"] and all(sid in ctx.sources for sid in s["sources"])
-    assert s.get("method")
+    if s["label"] != "unknown":
+        assert s["sources"] and all(sid in ctx.sources for sid in s["sources"])
+    assert s.get("method")      # unknown entries say why
 
 
 def test_entries_match_schema(built):
@@ -33,9 +34,14 @@ def test_entries_match_schema(built):
         for s in e.values():
             _check_sourced(s, ctx)
         v = e["geometricAlbedoXYZS"]["value"]
-        assert len(v) == 4 and all(isinstance(x, float) and x > 0 for x in v)
-        assert isinstance(e["geometricAlbedoV"]["value"], float)
+        if v is not None:
+            assert len(v) == 4 and all(isinstance(x, float) and x > 0 for x in v)
+            assert isinstance(e["geometricAlbedoV"]["value"], float)
+        else:
+            assert e["geometricAlbedoV"]["value"] is None
         pf = e["phaseFunction"]["value"]
+        if pf is None:
+            continue
         assert pf["kind"] in ("poly-mag", "tabulated", "lambert")
         if pf["kind"] == "poly-mag":
             assert set(pf) == {"kind", "coeffs", "minDeg", "maxDeg"} and pf["minDeg"] < pf["maxDeg"]
@@ -70,6 +76,8 @@ def test_phase_functions_start_at_zero(built):
     _, res = built
     for n, r in res.items():
         pf = r.entry["phaseFunction"]["value"]
+        if pf is None:
+            continue
         if n == 199:
             # Mercury: surge-exclusive polynomial referenced to the surge-inclusive V(1,0); valid from 2 deg.
             assert pf["minDeg"] == 2.0 and pf["coeffs"][0] == pytest.approx(0.081)
@@ -83,6 +91,8 @@ def test_y_channel_matches_visual_albedo(built):
     _, res = built
     ey = solar.irradiance_xyzs()[1]
     for n, r in res.items():
+        if r.xyzs is None:
+            continue
         py = r.xyzs[1] / ey
         assert py == pytest.approx(r.p_v, rel=0.06), n
 
