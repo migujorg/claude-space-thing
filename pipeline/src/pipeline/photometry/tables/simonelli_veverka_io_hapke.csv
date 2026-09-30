@@ -1,0 +1,11 @@
+# Io's Hapke parameters from disk-integrated Voyager photometry in the narrow-angle camera violet filter (~0.42 um),
+#   derived by Simonelli, D. P. & Veverka, J. (1986), "Phase curves of materials on Io: interpretation in terms of
+#   Hapke's function", Icarus 68, and quoted in Simonelli, D. P. & Veverka, J. (1987), "Io: comparison of photometric
+#   scans produced by the Minnaert and Hapke functions", Reports of Planetary Geology and Geophysics Program 1986,
+#   NASA (NTRS 19870014003), Fig. 1 caption: w0 = 0.68, h = 0.24, g = -0.14, theta = 25 deg. The report says the
+#   orange-filter (~0.59 um) results are qualitatively similar but does not print them.
+# Model: Hapke (1981, 1984): single-term Henyey-Greenstein particle phase function with asymmetry g (negative =
+#   backscattering), shadow-hiding opposition effect of width h with amplitude B0 = exp(-w0^2/2) (Hapke 1981),
+#   macroscopic roughness theta (Hapke 1984), H function of Hapke (1981).
+moon,naif,filter,wavelength_um,w0,h,g,theta_deg
+Io,501,violet,0.42,0.68,0.24,-0.14,25

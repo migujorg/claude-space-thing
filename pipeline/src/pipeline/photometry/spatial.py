@@ -12,6 +12,9 @@ Sources (all published fits; none from the project's own validation images, whic
     reproduction in Belgacem (2019).
   * Pluto, Charon, Triton: Hapke (2012) parameters of Verbiscer et al. (2022) Table 14 (disk-integrated phase curves
     from Earth, HST and New Horizons).
+  * Saturn additionally: the measured phase dependence of its limb darkening from Pioneer 11 (Barkstrom law of Dones et
+    al. 1993, via Dyudina et al. 2016), converted to a Minnaert k(α) table.
+  * Io: Hapke (1981/1984) parameters of Simonelli & Veverka (1986), Voyager violet filter.
   * Mars: the mean Martian surface BRDF of Vincendon (2013) in Hapke (1993) form (OMEGA and CRISM, aerosols removed).
 
 Label criterion. A spatial law would be 'measured' only if (i) it was fitted to disk-resolved images of that body,
@@ -23,9 +26,10 @@ assumption. The phase-angle range the source data cover is stated in the method;
 renderer uses the law at every phase angle rather than falling back to Lambert.
 
 Not covered (no published fit available to scripted clients, or the law's form is not one the renderer supports):
-Mercury (MESSENGER MDIS Hapke/Kaasalainen-Shkuratov fits of Domingue et al. 2016 are behind a publisher bot check;
-the MDIS archive SIS names the models but gives no parameter values), Io, the Saturnian mid-sized moons (Filacchione
-et al. 2022 fit an Akimov disk function, which the renderer does not implement), the Uranian moons and the rest.
+Mercury (MESSENGER MDIS Hapke/Kaasalainen-Shkuratov fits of Domingue et al. 2016 are behind a publisher bot check
+and not on arXiv; the MDIS archive SIS names the models but gives no parameter values), the Saturnian mid-sized
+moons (Filacchione et al. 2022 fit an Akimov disk function, which the renderer does not implement yet), the Uranian
+moons and the rest.
 """
 
 from __future__ import annotations
@@ -62,6 +66,29 @@ VINCENDON = Download(
              "Space Science 76, 87-95 (accepted manuscript arXiv:1208.4518v3).",
     notes="Abstract and Sec. 3: omega = 0.85, theta = 17 deg, c = 0.6, b = 0.12, B0 = 1, h = 0.05, with c the "
           "backward fraction (1 + c_Hapke)/2 of Johnson et al. (2006a).")
+
+
+DYUDINA_2016 = Download(
+    id="dyudina-2016", url="https://arxiv.org/pdf/1511.04415v3", subdir="papers", name="arXiv-1511.04415v3.pdf",
+    title="Saturn's Barkstrom-law coefficients A(α), B(α) from Pioneer 11 (Dones et al. 1993), Table 3",
+    citation="Dyudina, U., Zhang, X., Li, L., Kopparla, P., Ingersoll, A. P., Dones, L., Verbiscer, A. & Yung, Y. L. "
+             "(2016). Reflected light curves, spherical and Bond albedos of Jupiter- and Saturn-like exoplanets. "
+             "Astrophysical Journal (accepted manuscript arXiv:1511.04415v3). Table 3 reproduces Dones, L., Cuzzi, "
+             "J. N. & Showalter, M. R. (1993), Icarus 105, 184, Table V (fits to the Pioneer 11 reflectance tables "
+             "of Tomasko, M. G. & Doose, L. R. (1984), Icarus 58, 1).",
+    notes="Transcribed to photometry/tables/dones_1993_saturn_barkstrom.csv (docs/sources/spatial-photometry.md).")
+
+SIMONELLI_1987 = Download(
+    id="simonelli-veverka-1987", url="https://ntrs.nasa.gov/api/citations/19870014003/downloads/19870014003.pdf",
+    subdir="papers", name="NTRS-19870014003.pdf",
+    title="Io's Hapke parameters (Voyager violet filter) of Simonelli & Veverka (1986), quoted in Fig. 1",
+    citation="Simonelli, D. P. & Veverka, J. (1987). Io: comparison of photometric scans produced by the Minnaert and "
+             "Hapke functions. In: Reports of Planetary Geology and Geophysics Program 1986, NASA (NTRS 19870014003). "
+             "The parameters are those of Simonelli, D. P. & Veverka, J. (1986), Phase curves of materials on Io: "
+             "interpretation in terms of Hapke's function, Icarus 68.",
+    notes="Transcribed to photometry/tables/simonelli_veverka_io_hapke.csv. The report also states that Minnaert k "
+          "'generally increases toward higher phase angles' (citing Harris 1961; Goguen 1981; McEwen & Soderblom "
+          "1984).")
 
 
 def opal_readme_download(naif: int) -> Download:
@@ -112,18 +139,101 @@ def k_at(table: dict[str, float], lam_nm: float) -> float:
     return float(np.interp(lam_nm, [centre_nm(f) for f in fs], [table[f] for f in fs]))
 
 
+def minnaert_equivalent_k(B: float, alpha_deg: float, n: int = 400) -> tuple[float, float]:
+    """The Minnaert k closest to the Barkstrom law r ∝ (μμ0/(μ+μ0))^B / μ over the lit, visible disk at phase α:
+    weighted least squares of ln r = c + k ln μ0 + (k−1) ln μ with the Barkstrom radiance × projected area as the
+    weight (so the fit follows where the light is). Returns (k, flux-weighted rms of the ln-residual)."""
+    a = math.radians(alpha_deg)
+    xs = (np.arange(n) + 0.5) / n * 2 - 1
+    X, Y = np.meshgrid(xs, xs)
+    inside = X ** 2 + Y ** 2 < 1
+    X, Y = X[inside], Y[inside]
+    mu = np.sqrt(1 - X ** 2 - Y ** 2)                     # observer along +z
+    mu0 = X * math.sin(a) + mu * math.cos(a)              # Sun in the x-z plane at phase α
+    lit = mu0 > 1e-4
+    mu, mu0 = mu[lit], mu0[lit]
+    r = (mu * mu0 / (mu + mu0)) ** B / mu
+    y, x, w = np.log(r * mu), np.log(mu0 * mu), r        # ln(r μ) = c + k ln(μ0 μ)
+    xm, ym = np.average(x, weights=w), np.average(y, weights=w)
+    k = float(np.sum(w * (x - xm) * (y - ym)) / np.sum(w * (x - xm) ** 2))
+    res = y - ym - k * (x - xm)
+    return k, float(np.sqrt(np.average(res ** 2, weights=w)))
+
+
+@lru_cache(maxsize=None)
+def _barkstrom() -> dict[str, list[dict]]:
+    out: dict[str, list[dict]] = {}
+    for r in read_table_csv("dones_1993_saturn_barkstrom.csv"):
+        if r["measured"] == "1":
+            out.setdefault(r["band"], []).append(r)
+    return out
+
+
+def saturn_k_table(lam_nm: float) -> tuple[list[float], list[float], list[float], list[float]]:
+    """Pioneer 11 phase dependence for Saturn: B(α) interpolated linearly in wavelength between the blue (440 nm) and
+    red (640 nm) passbands to lam_nm, and its Minnaert-equivalent k at each tabulated α (0-150°)."""
+    t = _barkstrom()
+    red, blue = t["red"], t["blue"]
+    lr, lb = 1e3 * float(red[0]["wavelength_um"]), 1e3 * float(blue[0]["wavelength_um"])
+    u = min(1.0, max(0.0, (lam_nm - lb) / (lr - lb)))
+    alphas, Bs, ks, rms = [], [], [], []
+    for rr, rb in zip(red, blue):
+        assert rr["alpha_deg"] == rb["alpha_deg"]
+        B = float(rb["B"]) + u * (float(rr["B"]) - float(rb["B"]))
+        k, e = minnaert_equivalent_k(B, float(rr["alpha_deg"]))
+        alphas.append(float(rr["alpha_deg"]))
+        Bs.append(B)
+        ks.append(k)
+        rms.append(e)
+    return alphas, Bs, ks, rms
+
+
 def giant_minnaert(naif: int, p_grid: np.ndarray, ctx: BuildContext | None = None) -> dict:
     lam = y_effective_wavelength(p_grid)
     k, table, sid = opal_k(naif, lam, ctx)
     listing = ", ".join(f"{f} {v:g}" for f, v in table.items())
+    opal = (f"the k the Hubble OPAL team used to remove the limb darkening of the maps the app shows (cycle README, "
+            f"per WFC3/UVIS filter: {listing}; methane-band filters and filters without a correction left out), "
+            f"interpolated linearly in wavelength to {lam:.0f} nm, the mean wavelength of the Y-channel signal "
+            "(sunlight × ȳ × the body's albedo spectrum)")
+    if naif == 699:
+        # Measured phase dependence (Pioneer 11) where it exists; OPAL at small phase; held beyond 150°.
+        alphas, Bs, ks, rms = saturn_k_table(lam)
+        nodes = [0.0] + alphas[1:] + [180.0]
+        values = [k] + ks[1:] + [ks[-1]]
+        pio = ", ".join(f"{a:.0f}° B {b:.3f} → k {kk:.3f}" for a, b, kk in zip(alphas, Bs, ks))
+        return sourced(
+            {"kind": "minnaert", "k": {"alphaDeg": nodes, "values": [round(v, 4) for v in values]}},
+            "estimated", [sid, _src(ctx, DYUDINA_2016)],
+            method=(f"Minnaert law r ∝ μ0^k μ^(k−1) with a phase-dependent k. At 0° (the Earth-based OPAL images, "
+                    f"small phase): {opal}, k = {k:.3f}. From 30° to 150°: the measured phase dependence of Saturn's "
+                    "disk-resolved reflectance from Pioneer 11 (Tomasko & Doose 1984), as the Barkstrom law "
+                    "I/F = (A/μ)(μμ0/(μ+μ0))^B of Dones et al. (1993, Table V; reproduced in Dyudina et al. 2016, "
+                    f"Table 3), B interpolated linearly in wavelength from the blue (440 nm) and red (640 nm) "
+                    f"passbands to {lam:.0f} nm and converted to the closest Minnaert k over the lit, visible disk "
+                    f"(flux-weighted least squares in ln I/F; rms {min(rms[1:]):.2f}-{max(rms[1:]):.2f} in ln): {pio}. "
+                    "Between 0° and 30° k is interpolated linearly; beyond 150° (no Pioneer data) it is held at the "
+                    "150° value."),
+            uncertainty=("k varies with wavelength (the OPAL table; Pioneer blue vs red) and between belts and zones; "
+                         "the Minnaert form approximates the Barkstrom law to the rms quoted; OPAL (2025) and Pioneer "
+                         "(1979) are different epochs, both near equinox."))
+    if naif == 599:
+        # Pioneer 10/11 disk-resolved photometry supports a phase-independent law close to k = 1 (Dyudina et al. 2016).
+        phase_note = ("The OPAL images are taken from Earth (phase ≤ 11°). Beyond that, k is assumed independent of "
+                      "phase angle: Dyudina et al. (2016, Sec. 2.1.1, Fig. 1) found that I/F ∝ μ0 (Minnaert k = 1 at "
+                      "every phase) fits the Pioneer 10 and 11 red-filter belt and zone reflectances of Tomasko et al. "
+                      "(1978) and Smith & Tomasko (1984) reasonably well up to 150° phase (their Cassini near-infrared "
+                      "images show limb brightening at slanted geometry that this form misses). No quantitative "
+                      "phase-dependent limb-darkening law of Jupiter was found.")
+        srcs = [sid, _src(ctx, DYUDINA_2016)]
+    else:
+        phase_note = ("The OPAL images are taken from Earth (small phase angles); no measured phase dependence of "
+                      "the limb darkening was found for this planet, so k is assumed independent of phase angle "
+                      "elsewhere.")
+        srcs = [sid]
     return sourced(
-        {"kind": "minnaert", "k": round(k, 4)}, "estimated", [sid],
-        method=(f"Minnaert law r ∝ μ0^k μ^(k−1) with the k the Hubble OPAL team used to remove the limb darkening "
-                f"of the maps the app shows (cycle README, per WFC3/UVIS filter: {listing}; methane-band filters and "
-                f"filters without a correction left out), interpolated linearly in wavelength to {lam:.0f} nm, the "
-                "mean wavelength of the Y-channel signal (sunlight × ȳ × the body's albedo spectrum). One k serves "
-                "all four channels. The OPAL images are taken from Earth (phase ≤ 11° for Jupiter, less beyond), "
-                "and k is assumed independent of phase angle elsewhere."),
+        {"kind": "minnaert", "k": round(k, 4)}, "estimated", srcs,
+        method=f"Minnaert law r ∝ μ0^k μ^(k−1) with {opal}. One k serves all four channels. {phase_note}",
         uncertainty=("k varies with wavelength across the visible (the table above) and with season and latitude "
                      "(each OPAL epoch has its own); the renderer's single k is exact only near the Y-channel "
                      "wavelength and near the OPAL phase angles."))
@@ -206,6 +316,26 @@ def verbiscer_hapke(naif: int, ctx: BuildContext | None = None) -> dict:
                      "instead of anisotropic multiple scattering; θ̄p is the photometrically detectable roughness."))
 
 
+def io_hapke(ctx: BuildContext | None = None) -> dict:
+    r = read_table_csv("simonelli_veverka_io_hapke.csv")[0]
+    w, h, g, th = (float(r[k]) for k in ("w0", "h", "g", "theta_deg"))
+    bs0 = math.exp(-w * w / 2)
+    return sourced(
+        {"kind": "hapke", "w": w, "b": abs(g), "c": 1.0 if g <= 0 else -1.0, "bs0": round(bs0, 4), "hs": h,
+         "thetaBarDeg": th, "K": 1.0, "hFunction": "hapke1981"},
+        "estimated", [_src(ctx, SIMONELLI_1987)],
+        method=(f"Hapke (1981, 1984) law of Simonelli & Veverka (1986, Icarus 68) for Io from disk-integrated Voyager "
+                f"photometry in the violet filter (~0.42 µm), as quoted by Simonelli & Veverka (1987, NTRS "
+                f"19870014003): w = {w}, h = {h}, single-term Henyey–Greenstein asymmetry g = {g} (written here as the "
+                f"backward lobe alone, b = {abs(g)}, c = 1), θ̄ = {th}°, and the Hapke (1981) opposition amplitude "
+                f"B0 = exp(−w²/2) = {bs0:.3f}. The renderer's SHOE form 1/(1 + tan(g/2)/h) approximates Hapke's (1981) "
+                "function of the same width; the H function is Hapke's (1981). The violet-filter fit is applied at all "
+                "wavelengths (the orange-filter values are not printed in the available source)."),
+        uncertainty=("Io's reflectance is much higher in the visible than at 0.42 µm, so its multiple scattering and "
+                     "thus its limb brightening are probably underestimated; a disk-integrated fit constrains the "
+                     "disk-resolved distribution only through the model."))
+
+
 def vincendon_mars(ctx: BuildContext | None = None) -> dict:
     return sourced(
         {"kind": "hapke", "w": 0.85, "b": 0.12, "c": 0.2, "bs0": 1.0, "hs": 0.05, "thetaBarDeg": 17.0, "K": 1.0,
@@ -231,6 +361,8 @@ def spatial_model_for(naif: int, p_grid: np.ndarray | None, ctx: BuildContext | 
         return giant_minnaert(naif, p_grid, ctx)
     if naif in GALILEAN_ICY:
         return dv1997_hapke(naif, ctx)
+    if naif == 501:
+        return io_hapke(ctx)
     if naif in VERBISCER_BODIES:
         return verbiscer_hapke(naif, ctx)
     if naif == 499:
