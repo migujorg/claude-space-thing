@@ -140,3 +140,29 @@ def test_ice_giant_coverage_follows_the_seasons():
         north = known[lat > 45].mean()
         south = known[lat < -45].mean()
         assert (north - south) * hemi > 0.3, (naif, north, south)
+
+
+@pytest.mark.skipif(not HEADERS, reason="surfaces not built")
+def test_panchromatic_maps_pass_their_feature_checks():
+    pans = [json.loads(p.read_text()) for p in HEADERS]
+    pans = [h for h in pans if h.get("diagnostics", {}).get("georeferencing")]
+    if not pans:
+        pytest.skip("no panchromatic maps built")
+    for h in pans:
+        g = h["diagnostics"]["georeferencing"]
+        assert g["passed"] in (True, None), (h["bodyName"], g)
+        assert h["color"]["label"] == "estimated" and h["brightness"]["label"] == "estimated"
+
+
+def test_opal_longitude_direction_from_jet_drift():
+    h = _header(599, "albedo")
+    c = h["diagnostics"]["longitudeDirectionCheck"]
+    assert c["passed"] and 2.0 < c["eastwardShiftDeg"] < 7.0, c
+
+
+def test_opal_limb_cut_recorded():
+    for naif in (599, 699, 799, 899):
+        h = _header(naif, "albedo")
+        cut = h["diagnostics"]["limbCut"]
+        lo, hi = cut["keptPlanetographicLatitudes"]
+        assert hi - lo <= 2 * 72.5 + 1 and lo <= cut["subEarthLatitudeDeg"] <= hi

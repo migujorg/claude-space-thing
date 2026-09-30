@@ -29,6 +29,10 @@ DEPENDS: tuple[str, ...] = ("light",)
 # (module, naif ids it builds)
 BUILDERS: list[tuple[str, tuple[int, ...]]] = [
     ("surf_moon", (301,)),
+    ("surf_giants", (599, 699, 799, 899)),
+    ("surf_mars", (499,)),
+    ("surf_mercury", (199,)),
+    ("surf_pan", (501, 502, 503, 504, 999, 901)),
 ]
 
 # Bodies whose surface the naked eye cannot see: no visible-light surface map is produced for them.
@@ -38,6 +42,21 @@ EXCLUDED = {
          "overlay, never in naked-eye rendering.",
     606: "Titan: the eye sees an orange haze ball; the surface is visible only in near-infrared methane windows "
          "(Cassini ISS 938 nm, VIMS), so the ISS/VIMS surface mosaics are not visible-light maps and are not used.",
+}
+
+# Bodies with a candidate map that failed a check (so they are rendered from photometry only for now).
+REJECTED = {
+    608: "Iapetus: the USGS/CICLOPS Cassini-Voyager global mosaic (783 m) implies a leading/trailing brightness ratio "
+         "of only 0.84 (0.18 mag) at zero phase, against the ~2 mag asymmetry observed since Cassini (1671): its "
+         "large-scale contrast is compressed, so it is not a reflectance map.",
+    604: "Dione: the USGS/CICLOPS global mosaic (154 m) implies a leading/trailing ratio of 1.04 and the bright ray "
+         "crater Creusa does not stand out; same map series as Iapetus, brightness scaling unverified.",
+    603: "Tethys: USGS/CICLOPS global mosaic (293 m) from the same map series as Iapetus and Dione; brightness scaling "
+         "unverified (implied leading/trailing ratio 1.09).",
+    605: "Rhea: USGS/CICLOPS global mosaic (417 m), same map series; brightness scaling unverified (implied "
+         "leading/trailing ratio 1.17).",
+    602: "Enceladus: the 110 m mosaic (Bland et al. 2018; non-HPF version) derives from the same CICLOPS map series; "
+         "brightness scaling unverified.",
 }
 
 
@@ -60,9 +79,11 @@ def run(ctx: BuildContext) -> None:
             b["layers"][h["layer"]] = f"surfaces/{h['body']}/{h['layer']}.json"
             built.add(h["body"])
         print(f"[surfaces] {modname}: {time.time() - t:.0f} s")
+        index.setdefault("buildSeconds", {})[modname] = round(time.time() - t, 1)
     if only:
         _carry_over(ctx, built)
     index["excluded"] = {str(k): v for k, v in EXCLUDED.items()}
+    index["rejected"] = {str(k): v for k, v in REJECTED.items()}
     index["notes"] = ("Tiles hold relative reflectance (albedo layers), heights or photometric parameters; see each "
                       "layer header. Bodies not listed have no surface map yet (rendered from photometry.json only).")
     write_json(ctx, "surfaces/index.json", index, "surfaces")

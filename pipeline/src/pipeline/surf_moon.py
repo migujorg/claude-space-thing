@@ -111,6 +111,36 @@ def wac_band(band: int, work: Path) -> tuple[np.ndarray, dict]:
     return _memmap(arr_p, shape), meta
 
 
+def hapke_consistency(params: np.ndarray, pgrid: sg.EquirectGrid, band_index: int, a60: np.ndarray) -> dict:
+    """Check of our Hapke implementation against the product: the mosaic's mean I/F over the central 40 × 40
+    texels of 1° cells (every 10th cell) divided by the model's RADF(60°, 0°, 60°) for that cell's parameters."""
+    h, w = a60.shape
+    wp, bp, cp, bc0, hc, bs0, hs = (params[band_index, k] for k in range(7))
+    model = hk.radf(60, 0, 60, wp, bp, cp, bs0, np.maximum(hs, 1e-6), bc0, hc)
+    ratios = []
+    for li in range(5, pgrid.lines, 10):
+        j = int((90 - (pgrid.lat0 - li * pgrid.dlat)) / 180 * h)
+        for si in range(0, pgrid.samples, 10):
+            lon = ((pgrid.lon0 + si * pgrid.dlon + 180) % 360) - 180
+            i = int((lon + 180) / 360 * w)
+            blk = np.asarray(a60[j - 20:j + 20, i - 20:i + 20])
+            if (blk > 0).all():
+                ratios.append(float(blk.mean() / model[li, si]))
+    r = np.array(ratios)
+    return {"median": float(np.median(r)), "p5": float(np.percentile(r, 5)), "p95": float(np.percentile(r, 95)),
+            "cells": int(r.size)}
+
+
+def surge_sensitivity(params: np.ndarray, band_index: int) -> dict:
+    """How much the normal-albedo pattern would change if the fitted opposition surge were included at g = 0:
+    percentiles of [RADF(0,0,0) with surge / RADF(0,0,0) without], normalized to its median."""
+    wp, bp, cp, bc0, hc, bs0, hs = (params[band_index, k] for k in range(7))
+    hs = np.maximum(hs, 1e-6)
+    q = hk.radf(0, 0, 0, wp, bp, cp, bs0, hs, bc0, hc) / hk.radf(0, 0, 0, wp, bp, cp, 0 * bs0, hs, bc0, hc)
+    q = q / np.median(q)
+    return {"p1": float(np.percentile(q, 1)), "p99": float(np.percentile(q, 99)), "relStd": float(np.std(q))}
+
+
 def normal_factor(params: np.ndarray, pgrid: sg.EquirectGrid, band_index: int, level: int,
                   rows: slice) -> tuple[np.ndarray, np.ndarray]:
     """RADF(0,0,0; B_S0 = 0) / RADF(60,0,60) per 1° cell, bilinear to the texel centres of `rows` at `level`.
@@ -171,10 +201,13 @@ def build_albedo(ctx: BuildContext, work: Path) -> dict:
     wac_rows = slice(int(np.argmax(in_wac)), int(len(lat) - np.argmax(in_wac[::-1])))
 
     band_paths, wac_files, emp_files, ring_stats, factor_stats = [], {}, {}, {}, {}
+    model_check, surge = {}, {}
     known = np.zeros((h, wdt), bool)
     for bi, band in enumerate(BANDS):
         a60, meta = wac_band(band, work)
         wac_files.update(meta["files"])
+        model_check[band] = hapke_consistency(params, pgrid, bi, a60)
+        surge[band] = surge_sensitivity(params, bi)
         an_p = work / f"normal_{band}.f32"
         an = _memmap(an_p, (h, wdt), "w+")
         kb = np.zeros((h, wdt), bool)
@@ -337,6 +370,11 @@ def build_albedo(ctx: BuildContext, work: Path) -> dict:
                        "texelDiskMeanCheck": [round(float(x), 5) for x in check]},
         diagnostics={"color": diag.to_json(), "interpolationSpread": spread,
                      "normalOver60Factor": {str(b): v for b, v in factor_stats.items()},
+                     "hapkeModelCheck": {"what": "mosaic I/F / our Hapke RADF(60,0,60) per 1° cell (should be ~1)",
+                                         **{str(b): v for b, v in model_check.items()}},
+                     "surgeSensitivity": {"what": "texel change if the fitted surge were kept at g = 0 "
+                                                  "(RADF(0,0,0) with/without B_S0, per 1° cell, median-normalized)",
+                                          **{str(b): v for b, v in surge.items()}},
                      "polarScale": rs, "polarRing": {str(b): v for b, v in ring_stats.items()}},
         notes=["The Hapke-normalized mosaic is photometrically normalized, so the map carries no shading from the "
                "Sun at the time of imaging; topographic shading comes from the height layer.",
