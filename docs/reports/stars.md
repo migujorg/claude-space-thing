@@ -344,8 +344,16 @@ answer is a FITS table. `--set stars.xpSource=bulk` keeps the bulk stream.
 | bright tier: flux samples (float32) | 151 160 786 | all, bit for bit (0 null samples) |
 | bright tier: X, Y, Z, S as the stars stage computes them | 440 702 stars | all, bit for bit (max relative difference 0) |
 | bright tier: reductions X, Y, Z, S, Pioneer B, R (deep and sky stages) | 440 702 × 6 | all, bit for bit |
-| deep tier: reductions, 8 HEALPix level-2 pixels | 711 301 × 6 | all, bit for bit |
+| deep stages' XP reductions: every deep-tier source with XP plus the XP-lit bright stars | 15 741 252 × 6 | all, bit for bit; all 15 741 252 found in the bulk cache, none missing from ARI |
 | stars stage products `bright.bin`, `bright.json`, `names.json` | built both ways from the same data/raw | byte-identical |
+| deepstars products `stars/deep.json` + 768 tiles | archive build vs the bulk-route release build | byte-identical (769 files) |
+| sky products (`sky/diffuse*`, `deep-aggregate-o8`, `deep-remainder-o7`, `faint-stars-o8`, `zodiacal.json`) | archive build vs the release build | byte-identical (7 files) |
+
+The deep stages' XP reductions cover 15 303 880 deep-tier sources, queried in 3158 queries (21.1 GB of FITS
+responses, ≈ 55 min at 4 queries at a time, ≈ 6.5 MB/s). They also cover 437 372 bright-tier stars lit by XP,
+which are reduced from the stars stage's raw responses without being downloaded again. The cache holds 0.5 GB
+(the bulk route's covers all 34.5 M spectra, 1.1 GB). A build interrupted by a container restart resumed where it
+stopped: only the 287 queries not yet recorded in `_fetched.json` were repeated.
 
 The reductions are identical only because the archive route reproduces how the bulk route reads the numbers. The
 bulk files print every sample as the shortest decimal that round-trips to its float32, and the bulk route parses

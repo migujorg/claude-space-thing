@@ -189,28 +189,43 @@ COSTS: dict[str, Cost] = {
     "sbphotometry": Cost(0.002, 0.002, 0.002, 0.00003, 0.5, 0.2,
                          "estimated from its inputs: one 1.3 MB source archive, a few Horizons queries"),
     "synthetic": Cost(0.03, 0.03, 0.2, 0.15, 1.5, 1, "docs/reports/synthetic-populations.md"),
+    "stars": Cost(0.95, 0.9, 1.0, 0.024, 20, 1, "docs/reports/stars.md section 8 (measured 2026-09-30)",
+                  "XP spectra of the 440 702 selected sources by source_id (207 queries on ARI's Gaia TAP, 0.6 GB); "
+                  "stars.xpSource=bulk streams all 114 GB of ESA's bulk files instead"),
+    "deepstars": Cost(22, 1.1, 3.0, 0.79, 85, 4, "docs/reports/stars.md section 8, docs/reports/sky.md",
+                      "192 Gaia archive queries (1.0 GB) + XP spectra of 15.3 M sources (3158 queries, 21 GB, reduced "
+                      "on the fly, 0.5 GB cache; ~55 min at 4 queries at a time); fetched again if data/cache is "
+                      "deleted"),
+    "sky": Cost(0.11, 0.11, 0.2, 0.04, 30, 2, "docs/reports/sky.md",
+                "96 all-sky aggregation queries on the Gaia archive (10-19 min per 48)"),
+}
+
+
+#: The same stages with stars.xpSource=bulk (docs/reports/stars.md, sky.md): the stars stage streams all 114 GB of
+#: XP bulk files once and, with deepstars or sky in the build, fills their XP cache in that pass.
+BULK_XP_COSTS: dict[str, Cost] = {
     "stars": Cost(116, 1.6, 3.2, 0.024, 50, 1, "docs/reports/stars.md",
                   "streams all 114 GB of Gaia DR3 XP spectra once (only 1.2 GB kept); with deepstars or sky in the "
                   "same build it also fills their 1.1 GB XP cache in that pass"),
     "deepstars": Cost(1.1, 1.1, 3.0, 0.79, 30, 3, "docs/reports/sky.md",
                       "192 Gaia archive queries; +114 GB / ~75 min of XP streaming if the stars stage did not "
                       "fill the XP cache (e.g. data/cache deleted)"),
-    "sky": Cost(0.11, 0.11, 0.2, 0.04, 30, 2, "docs/reports/sky.md",
-                "96 all-sky aggregation queries on the Gaia archive (10-19 min per 48)"),
 }
-
 
 #: surfaces products by level cap (GB), summed from the tiles of a full build (levels 0..cap of every layer).
 SURFACES_GB_BY_CAP = {0: 0.03, 1: 0.10, 2: 0.37, 3: 1.26, 4: 3.10}
-CACHE_GB = 1.5   # data/cache after a full build (XP reductions 1.1 GB, small-body states, shapes)
+CACHE_GB = 1.0   # data/cache after a full build (XP reductions 0.5 GB, 1.1 GB with stars.xpSource=bulk; small-body
+#                  states, shapes)
 
 
 def stage_cost(stage: str, params: dict[str, Any]) -> Cost | None:
-    """COSTS[stage], adjusted for the parameters that change it (surface level cap, DAMIT)."""
+    """COSTS[stage], adjusted for the parameters that change it (surface level cap, DAMIT, XP source)."""
     from dataclasses import replace
     c = COSTS.get(stage)
     if c is None:
         return None
+    if params.get("stars.xpSource") == "bulk":
+        c = BULK_XP_COSTS.get(stage, c)
     if stage == "surfaces" and params.get("surfaces.maxLevel") is not None:
         gb = SURFACES_GB_BY_CAP.get(int(params["surfaces.maxLevel"]), c.product_gb)
         c = replace(c, product_gb=gb, peak_gb=c.peak_gb - c.product_gb + gb)
