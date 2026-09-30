@@ -20,6 +20,8 @@ export interface BodySurfaces {
   photometry?: LayerRef;
   /** Earth's dated layers (render/earth.ts): 'cloud-properties', 'surface-water', 'emitted-radiance', 'surface-wind'. */
   clouds?: LayerRef;
+  /** 'cloud-optical-thickness-moments' (render/earth.ts cloudLogNormal). */
+  cloudTau?: LayerRef;
   water?: LayerRef;
   night?: LayerRef;
   wind?: LayerRef;
@@ -53,6 +55,7 @@ export function surfaceRefs(layers: SurfaceLayer[], dataRoot: string): Map<numbe
     else if (l.layer === 'height') e.height = { ref, label: headerLabel(h, 'brightness') };
     else if (h.kind === 'photometric-parameters') e.photometry = { ref, label: headerLabel(h, 'brightness') };
     else if (h.kind === 'cloud-properties') e.clouds = { ref, label: headerLabel(h, 'brightness') };
+    else if (h.kind === 'cloud-optical-thickness-moments') e.cloudTau = { ref, label: headerLabel(h, 'brightness') };
     else if (h.kind === 'surface-water') e.water = { ref, label: headerLabel(h, 'brightness') };
     else if (h.kind === 'emitted-radiance') e.night = { ref, label: worstOf([headerLabel(h, 'brightness'), headerLabel(h, 'color')]) };
     else if (h.kind === 'surface-wind') e.wind = { ref, label: headerLabel(h, 'brightness') };
@@ -130,7 +133,7 @@ export function applyExtras(sb: SceneBody, body: Body, extras: SceneExtras | und
       if (earthOk) {
         sb.atmosphere = atm;
         used.push(atm!.worstLabel);
-        for (const k of ['clouds', 'water', 'night', 'wind'] as const) {
+        for (const k of ['clouds', 'cloudTau', 'water', 'night', 'wind'] as const) {
           const l = s[k];
           if (l && labelAllowed(l.label, level)) {
             surface[k] = l.ref;

@@ -116,6 +116,8 @@ struct EarthIn {
   u10: f32,         // 10 m wind speed (m/s)
   windKnown: f32,   // 1 known, 0 unknown
   glint: f32,       // 1: wind layer bound (glint drawn, or marked unknown where the wind is)
+  tauMom: vec4f,    // cloudTau layer: f_τ, Σ ln τ / N, Σ (ln τ)² / N, ice-retrieval share (earth.ts EarthSample.tauMoments)
+  tauMomKnown: f32, // 1: tauMom known (it replaces tau, tauKnown and fice)
 };
 
 /** One part of the pixel (earth.ts EarthPart): share, direct and diffuse radiance factors, emission transmission. */
@@ -130,11 +132,25 @@ fn earthParts(e: EarthIn, mu0: f32, mu: f32, cosBeta: f32, cosOmega: f32) -> Ear
   let surfaceGap = select(1.0 - ai, 0.0, e.surfKnown > 0.5);
   var C = clamp(e.C, 0.0, 1.0);
   if (e.cKnown < 0.5) { C = 0.0; gap = 1.0; }
+  // earth.ts cloudLogNormal: the retrieved share f_τ as a log-normal in τ (three nodes), the rest of the cloud with no
+  // measured thickness (no light, marked); without the moments, the clouds layer's mean τ.
   var cloudy = C;
-  var tau = max(e.tau, 0.0);
-  if (C > 0.0 && e.tauKnown < 0.5) { gap = max(gap, C); cloudy = 0.0; tau = 0.0; }
+  var taus = vec3f(max(e.tau, 0.0), 0.0, 0.0);
+  var wts = vec3f(1.0, 0.0, 0.0);
+  var fice = clamp(e.fice, 0.0, 1.0);
+  if (e.tauMomKnown > 0.5 && e.cKnown > 0.5) {
+    let f = clamp(e.tauMom.x, 0.0, C);
+    cloudy = f;
+    gap = max(gap, C - f);
+    if (e.tauMom.x > 0.0) {
+      let mu = e.tauMom.y / e.tauMom.x;
+      let sd = sqrt(max(e.tauMom.z / e.tauMom.x - mu * mu, 0.0));
+      taus = exp(vec3f(mu, mu + ${Math.sqrt(3).toPrecision(9)} * sd, mu - ${Math.sqrt(3).toPrecision(9)} * sd));
+      wts = vec3f(2.0 / 3.0, 1.0 / 6.0, 1.0 / 6.0);
+      fice = clamp(e.tauMom.w / e.tauMom.x, 0.0, 1.0);
+    }
+  } else if (C > 0.0 && e.tauKnown < 0.5) { gap = max(gap, C); cloudy = 0.0; taus = vec3f(0.0); }
   let gapEmit = gap;
-  let fice = clamp(e.fice, 0.0, 1.0);
   let g = (1.0 - fice) * CLOUD_G_LIQUID + fice * CLOUD_G_ICE;
   let clearW = 1.0 - C;
   gap = max(gap, clearW * surfaceGap);
@@ -149,21 +165,26 @@ fn earthParts(e: EarthIn, mu0: f32, mu: f32, cosBeta: f32, cosOmega: f32) -> Ear
   }
   o.clear = EarthPart(clearW, Rs * m0 + ow * rg, Rs + ow * FRESNEL_DIFFUSE, vec4f(1.0));
   o.cloudy = EarthPart(cloudy, vec4f(0.0), vec4f(0.0), vec4f(0.0));
+  // Each τ node is a sub-pixel of its own (independent pixel approximation), weighted.
   if (cloudy > 0.0) {
-    let tp = (1.0 - g * g) * tau;
-    var rbar = 0.0;
-    var tdir = 0.0;
-    for (var k = 0; k < 4; k++) {
-      rbar += 2.0 * G4W[k] * G4X[k] * cloudPlaneAlbedo(tau, g, G4X[k]);
-      tdir += 2.0 * G4W[k] * G4X[k] * exp(-tp / G4X[k]);
+    for (var n = 0; n < 3; n++) {
+      if (wts[n] <= 0.0) { continue; }
+      let tau = taus[n];
+      let tp = (1.0 - g * g) * tau;
+      var rbar = 0.0;
+      var tdir = 0.0;
+      for (var k = 0; k < 4; k++) {
+        rbar += 2.0 * G4W[k] * G4X[k] * cloudPlaneAlbedo(tau, g, G4X[k]);
+        tdir += 2.0 * G4W[k] * G4X[k] * exp(-tp / G4X[k]);
+      }
+      let R0 = cloudPlaneAlbedo(tau, g, mu0);
+      let through = exp(-tp / max(mu, 1e-4)) + max(1.0 - rbar - tdir, 0.0) * escapeFn(mu);
+      let multi = 1.0 / (1.0 - Rs * rbar);
+      let glintThrough = ow * rg * exp(-tp / max(m0, 1e-4)) * exp(-tp / max(mu, 1e-4));
+      o.cloudy.dir += wts[n] * (m0 * (R0 * escapeFn(mu) + (1.0 - R0) * multi * Rs * through) + glintThrough);
+      o.cloudy.dif += wts[n] * (rbar * escapeFn(mu) + (1.0 - rbar) * multi * Rs * through);
+      o.cloudy.emit += wts[n] * multi * through;
     }
-    let R0 = cloudPlaneAlbedo(tau, g, mu0);
-    let through = exp(-tp / max(mu, 1e-4)) + max(1.0 - rbar - tdir, 0.0) * escapeFn(mu);
-    let multi = 1.0 / (1.0 - Rs * rbar);
-    let glintThrough = ow * rg * exp(-tp / max(m0, 1e-4)) * exp(-tp / max(mu, 1e-4));
-    o.cloudy.dir = m0 * (R0 * escapeFn(mu) + (1.0 - R0) * multi * Rs * through) + glintThrough;
-    o.cloudy.dif = rbar * escapeFn(mu) + (1.0 - rbar) * multi * Rs * through;
-    o.cloudy.emit = multi * through;
   }
   o.gap = gap;
   o.gapEmit = gapEmit;

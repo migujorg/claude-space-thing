@@ -32,6 +32,8 @@ export interface SurfaceBinding {
   height?: { base: number; maxLevel: number };
   /** Earth's cloud-properties, surface-water and emitted-radiance layers (earth.ts). */
   clouds?: { base: number; maxLevel: number };
+  /** Earth's cloud optical-thickness moments (earth.ts cloudLogNormal), in the clouds atlas. */
+  cloudTau?: { base: number; maxLevel: number };
   water?: { base: number; maxLevel: number };
   night?: { base: number; maxLevel: number };
   /** Earth's wind layer, one whole level in its own texture (rgba16float: ascending, daily mean, passes). */
@@ -397,7 +399,7 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
     // by the disk photometry (which includes clouds and air). Without the cloud layer it is not used.
     const earth = earthMode(b, surface, irr, warnings);
     if (!earth && surface?.albedo && b.surface?.albedo?.header.normalization?.absoluteDiskMean) surface = { ...surface, albedo: undefined };
-    if (!earth && surface && (surface.clouds || surface.water || surface.night || surface.wind)) surface = { ...surface, clouds: undefined, water: undefined, night: undefined, wind: undefined };
+    if (!earth && surface && (surface.clouds || surface.cloudTau || surface.water || surface.night || surface.wind)) surface = { ...surface, clouds: undefined, cloudTau: undefined, water: undefined, night: undefined, wind: undefined };
     // Disk-integrated p·Φ per channel: from the body's disk reflectance model (the Moon: ROLO) inside its
     // domain, else albedoXYZS·Φ(α) (architecture §4.3).
     // The measured phase range's edge when α lies beyond it (the photometry is then the law's extrapolation).

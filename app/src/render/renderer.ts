@@ -1375,10 +1375,10 @@ export class Renderer {
     return this.windDummyTex.createView();
   }
 
-  /** Body records: 39 vec4 each (struct Body in shaders.ts). */
+  /** Body records: 40 vec4 each (struct Body in shaders.ts). */
   private writeBodies(prep: PreparedFrame): void {
     const n = prep.resolved.length;
-    const STRIDE = 156;
+    const STRIDE = 160;
     const a = new Float32Array(n * STRIDE);
     const u = new Uint32Array(a.buffer);
     prep.resolved.forEach((r, i) => {
@@ -1414,6 +1414,7 @@ export class Renderer {
       a.set(e ? [...e.absR, ...e.nightK] : [0, 0, 0, 0, 0, 0, 0, 0], o + 144);
       // x: the atmosphere is drawn (the shell beyond the disk), z: over the disk too.
       a.set([this.atmOf.has(i) ? 1 : 0, ATM_STEPS, this.atmOf.has(i) && r.atmosphere?.onDisk ? 1 : 0, 0], o + 152);
+      layer(156, e ? s?.cloudTau : undefined, 0);
     });
     const buf = this.ensure('bodiesBuf', a.byteLength);
     this.device.queue.writeBuffer(buf, 0, a);

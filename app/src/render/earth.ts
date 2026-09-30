@@ -190,6 +190,31 @@ export interface EarthSample {
   nightRadiance?: number;
   /** 10 m wind speed over open water (m/s); NaN or absent: unknown (no glint, and marked unknown in the glint zone). */
   windSpeed?: number;
+  /**
+   * The cloudTau layer (per-sample averages over the texel's samples; NaN = unknown): the share of samples with an
+   * optical-thickness retrieval f_τ ≤ cloudFraction, Σ ln τ / N, Σ (ln τ)² / N, and the share with an ice-phase
+   * retrieval. When known it replaces opticalThickness and iceFraction (cloudLogNormal).
+   */
+  tauMoments?: { fTau: number; m1: number; m2: number; iceTau: number };
+}
+
+/** Nodes and weights of the 3-point Gauss–Hermite rule for a normal variable: μ, μ ± √3σ with 2/3, 1/6, 1/6. */
+export const LOGNORMAL_NODES = [0, Math.sqrt(3), -Math.sqrt(3)];
+export const LOGNORMAL_WEIGHTS = [2 / 3, 1 / 6, 1 / 6];
+
+/**
+ * The retrieved cloud as a log-normal distribution of τ from the cloudTau moments: its share of the texel f_τ,
+ * mean ln τ = m1/f_τ, var ln τ = m2/f_τ − mean² (≥ 0), the ice share among the retrievals, and the three τ nodes
+ * (weights LOGNORMAL_WEIGHTS). null when the moments are unknown.
+ */
+export function cloudLogNormal(t: EarthSample['tauMoments'], cloudFraction: number): { f: number; taus: number[]; ice: number } | null {
+  if (!t || !fin(t.fTau) || !fin(t.m1) || !fin(t.m2) || !fin(cloudFraction)) return null;
+  const f = Math.min(Math.max(t.fTau, 0), Math.max(cloudFraction, 0));
+  if (!(f > 0)) return { f: 0, taus: [0, 0, 0], ice: 0 };
+  const mu = t.m1 / t.fTau;
+  const sd = Math.sqrt(Math.max(t.m2 / t.fTau - mu * mu, 0));
+  const ice = fin(t.iceTau) ? Math.min(Math.max(t.iceTau / t.fTau, 0), 1) : 0;
+  return { f, taus: LOGNORMAL_NODES.map((x) => Math.exp(mu + x * sd)), ice };
 }
 
 /** Sun–view geometry for the glint: cos β = h·N and cos ω = h·S with h the half vector of S and V. */
@@ -258,12 +283,27 @@ export function earthParts(s: EarthSample, mu0: number, mu: number, glint?: Glin
   let C = s.cloudFraction;
   if (!fin(C)) { C = 0; gap = 1; }
   C = Math.min(Math.max(C, 0), 1);
-  let tau = s.opticalThickness;
-  let cloudy = C;
-  if (C > 0 && !fin(tau)) { gap = Math.max(gap, C); cloudy = 0; tau = 0; }
-  // What stays unknown for light emitted at the surface: the cloud state only.
+  // The cloud's optical thickness: with the cloudTau moments, the retrieved share f_τ as a log-normal in τ (three
+  // nodes, independent pixels); the rest of the cloud, C − f_τ, has no measured thickness: no reflected light, marked
+  // unknown. Without them, the clouds layer's mean τ over the whole cloud (unknown where NaN).
+  const ln = cloudLogNormal(s.tauMoments, C);
+  let taus: number[], wts: number[], cloudy: number, fice: number;
+  if (ln) {
+    cloudy = ln.f;
+    gap = Math.max(gap, C - ln.f);
+    taus = ln.taus;
+    wts = LOGNORMAL_WEIGHTS;
+    fice = ln.ice;
+  } else {
+    const tau = s.opticalThickness;
+    cloudy = C;
+    if (C > 0 && !fin(tau)) { gap = Math.max(gap, C); cloudy = 0; }
+    taus = [fin(tau) ? Math.max(tau, 0) : 0];
+    wts = [1];
+    fice = fin(s.iceFraction) ? Math.min(Math.max(s.iceFraction, 0), 1) : 0;
+  }
+  // What stays unknown for light emitted at the surface: the cloud state and the cloud of unknown thickness.
   const gapEmit = gap;
-  const fice = fin(s.iceFraction) ? Math.min(Math.max(s.iceFraction, 0), 1) : 0;
   const g = (1 - fice) * CLOUD_G_LIQUID + fice * CLOUD_G_ICE;
   const clearW = 1 - C;
   gap = Math.max(gap, clearW * surfaceGap);
@@ -278,17 +318,19 @@ export function earthParts(s: EarthSample, mu0: number, mu: number, glint?: Glin
     : { share: 0, maxRho: 0 };
   const clear: EarthPart = { w: clearW, dir: Rs.map((r) => r * m0 + ow * rg) as XYZS, dif: Rs.map((r) => r + ow * FRESNEL_DIFFUSE) as XYZS, emit: [1, 1, 1, 1] };
   const cl: EarthPart = { w: cloudy, dir: [0, 0, 0, 0], dif: [0, 0, 0, 0], emit: [0, 0, 0, 0] };
-  if (cloudy > 0) {
-    const o = cloudOptics(Math.max(tau, 0), g, mu0, mu);
+  // Each τ node is a sub-pixel of its own (independent pixel approximation), weighted.
+  if (cloudy > 0) for (let k = 0; k < taus.length; k++) {
+    const tau = taus[k], wk = wts[k];
+    const o = cloudOptics(tau, g, mu0, mu);
     const through = o.tView + o.tViewDiffuse;
     // The glint seen through a thin cloud: the unscattered beam both ways.
-    const tp = (1 - g * g) * Math.max(tau, 0);
+    const tp = (1 - g * g) * tau;
     const glintThrough = ow * rg * Math.exp(-tp / Math.max(m0, 1e-4)) * o.tView;
     for (let c = 0; c < 4; c++) {
       const multi = 1 / (1 - Rs[c] * o.rbar);
-      cl.dir[c] = m0 * (o.R0 * escape(mu) + (1 - o.R0) * multi * Rs[c] * through) + glintThrough;
-      cl.dif[c] = o.rbar * escape(mu) + (1 - o.rbar) * multi * Rs[c] * through;
-      cl.emit[c] = multi * through;
+      cl.dir[c] += wk * (m0 * (o.R0 * escape(mu) + (1 - o.R0) * multi * Rs[c] * through) + glintThrough);
+      cl.dif[c] += wk * (o.rbar * escape(mu) + (1 - o.rbar) * multi * Rs[c] * through);
+      cl.emit[c] += wk * multi * through;
     }
   }
   return { clear, cloudy: cl, gap, gapEmit, glintUnknown };

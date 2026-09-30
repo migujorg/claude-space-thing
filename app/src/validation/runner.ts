@@ -65,7 +65,7 @@ function usesOf(sb: SceneBody): string[] {
   if (sb.albedoXYZS && sb.phase) u.push('disk photometry');
   if (sb.diskReflectanceModel) u.push(`disk model ${sb.diskReflectanceModel.kind}`);
   if (sb.spatialModel) u.push('spatial model');
-  for (const k of ['albedo', 'height', 'photometry', 'clouds', 'water', 'night', 'wind'] as const) if (sb.surface?.[k]) u.push(`map ${k}`);
+  for (const k of ['albedo', 'height', 'photometry', 'clouds', 'cloudTau', 'water', 'night', 'wind'] as const) if (sb.surface?.[k]) u.push(`map ${k}`);
   if (sb.rings) u.push(`rings${sb.rings.reflectance ? '' : ' (absorbing only)'}`);
   if (sb.atmosphere) u.push('atmosphere');
   if (sb.surfaceUnknown) u.push('surface unknown (hatched)');

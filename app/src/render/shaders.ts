@@ -358,6 +358,7 @@ struct Body {
   absR: vec4f,   // the albedo map's absoluteDiskMean (XYZS): texel × absR = absolute reflectance
   nightK: vec4f, // night lights: luminance (cd/m², XYZS) per unit of the layer's radiance
   atm: vec4f,    // atmosphere (shaders-atmosphere.ts): 1 = drawn (shell), march steps, 1 = over the disk too, unused
+  earthT: vec4f, // cloud optical-thickness moments layer (earth.ts cloudLogNormal): base, max level, enabled, unused
 };
 `;
 
@@ -824,6 +825,12 @@ const EARTH_SAMPLE = /* wgsl */ `
       ein.tauKnown = select(0.0, 1.0, sC.known.y > 0.0);
       ein.fice = sC.v.w;
       ein.cthKm = select(0.0, max(sC.v.z, 0.0) * 1e-3, sC.known.z > 0.0);
+      if (b.earthT.z > 0.5) {
+        // Optical-thickness moments of the same samples (earth.ts cloudLogNormal), in the clouds atlas.
+        let baseT = bitcast<u32>(b.earthT.x);
+        let sT = sampleLayer(cloudPages, SI.cloudsPerRow, baseT, residentLevel(baseT, surfLevel(b.surfA.w, fp, b.earthT.y), uv), uv, false);
+        if (all(sT.known.xyz > vec3f(0.0))) { ein.tauMom = sT.v; ein.tauMomKnown = 1.0; }
+      }
       if (b.earthW.z > 0.5) {
         let baseW = bitcast<u32>(b.earthW.x);
         let sW = sampleLayer(rg16Pages, SI.rg16PerRow, baseW, residentLevel(baseW, surfLevel(b.surfA.w, fp, b.earthW.y), uv), uv, false);

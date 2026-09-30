@@ -58,6 +58,12 @@ export interface SceneBody {
      * A surface-only map without this layer is not used.
      */
     clouds?: SurfaceLayerRef;
+    /**
+     * Earth: a layer of kind 'cloud-optical-thickness-moments' (tauRetrievedFraction, lnTauMoment1, lnTauMoment2,
+     * iceTauFraction; the clouds layer's samples): which share of the cloud has a measured optical thickness, and
+     * its ln τ distribution. Used with `clouds`; without it the clouds layer's mean τ is used.
+     */
+    cloudTau?: SurfaceLayerRef;
     /** Earth: a layer of kind 'surface-water' (waterFraction, seaIceFraction): sea ice, and later glint. */
     water?: SurfaceLayerRef;
     /** Earth: a layer of kind 'emitted-radiance' (dnbRadiance, censoredFraction; night lights). */

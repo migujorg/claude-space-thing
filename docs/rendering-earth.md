@@ -28,7 +28,7 @@ columns, `skip=limb` leaves stars undimmed, `stars=N` adds N TEST FIXTURE stars,
 |---|---|---|
 | Surface reflectance | `surfaces/399/albedo`: kind `relative-reflectance`, header `normalization.absoluteDiskMean` | texel × absoluteDiskMean = absolute reflectance factor (MODIS NBAR on land; water-leaving reflectance π·Rrs over water) |
 | Clouds | `surfaces/399/clouds`: kind `cloud-properties` (cloudFraction, opticalThickness, cloudTopHeightM, iceFraction; VIIRS CLDPROP, 2026-09-28 daytime overpass) | cloud reflection and transmission (§2) |
-| Cloud τ statistics | `surfaces/399/cloudTau`: kind `cloud-optical-thickness-moments` (tauRetrievedFraction, lnTauMoment1, lnTauMoment2, iceTauFraction; the same samples) | which share of the cloud has an optical thickness, and its ln τ distribution (§2; not used by the renderer yet) |
+| Cloud τ statistics | `surfaces/399/cloudTau`: kind `cloud-optical-thickness-moments` (tauRetrievedFraction, lnTauMoment1, lnTauMoment2, iceTauFraction; the same samples) | which share of the cloud has an optical thickness, and its ln τ distribution (§2) |
 | Water | `surfaces/399/water`: kind `surface-water` (waterFraction, seaIceFraction) | glint, sky reflection, sea ice (§1, §3) |
 | Wind | `surfaces/399/wind`: kind `surface-wind` (10 m speed: AMSR3 ascending ~13:30, daily mean, passes) | glint width (§3) |
 | Night lights | `surfaces/399/night`: kind `emitted-radiance` (VIIRS Black Marble DNB radiance; header `constants.toXYZS`) | emitted light (§5) |
@@ -98,7 +98,9 @@ cloud base, and is seen through the direct view path plus the diffuse part (1 �
 
 - Cloud state unknown (all NaN, poleward of the daylit band: north of 78.8° N and south of 82.5° S on
   2026-09-28): the pixel is drawn clear and marked.
-- Cloudy but no optical thickness (2.5 % of the cloud cover): that share contributes nothing and is marked.
+- Cloudy but no optical thickness: that share contributes no reflected light and is marked. With the
+  `cloudTau` layer this is cloudFraction − f_τ, 39 % of the daylit cloud (below); without it, only the texels
+  with no retrieval at all (2.5 % of the cloud cover). It is hatched where it is over half the pixel.
 - The marks count only where the pixel is lit. At night only the cloud state matters, and only where
   there are lights to hide.
 
@@ -123,7 +125,7 @@ of the cloudy share is then unknown), and preferably the mean of ln τ (Cahalan 
 thickness). The renderer change is then small. The 8-px blocks in the rendered case are the glint: the wind
 layer's resolution and swath gaps (§3; clear water where the wind is unknown gets no glint).
 
-**The `cloudTau` layer (pipeline side of that fix; the renderer does not use it yet).** It is built from the
+**The `cloudTau` layer.** It is built from the
 same 16 samples per texel as `clouds` (the rebuilt `clouds` tiles are bit-identical to the previous build),
 float16 × 4:
 
@@ -156,6 +158,35 @@ are bias, then the mean absolute error per texel:
 
 The first row is the plane-parallel bias. The log-mean alone is nearly unbiased; the log-normal from both
 moments also holds per texel at coarse levels.
+
+**How the renderer uses it (M5).** Where the moments are known (`earth.ts cloudLogNormal`, mirrored in
+`shaders-earth.ts`):
+
+- The retrieved share f_τ of the pixel is a log-normal in τ: ln τ has mean m1/f_τ and variance m2/f_τ −
+  mean². It is drawn as three sub-pixels at τ = exp(μ), exp(μ ± √3σ) with weights 2/3, 1/6, 1/6 (the 3-point
+  Gauss–Hermite rule), each with the full two-stream cloud (reflection, transmission to and from the surface,
+  multiple reflection, glint through thin cloud). Against a 400-point integral of the plane albedo it is within
+  0.05 % for σ(ln τ) = 0.5 and within 0.6 % for σ = 1 (τ ≥ 3); for σ = 1.4 on thin cloud it reaches 1–3 %. The
+  ice share among the retrievals (iceTauFraction/f_τ) sets g.
+- The rest of the cloud, cloudFraction − f_τ, has no measured thickness. It gets no guessed τ: it reflects
+  nothing and is marked unknown (hatched where it is over half the pixel). GIBS serves no partly-cloudy
+  thickness, so no measured statistic is available for it.
+- Without the layer (older data), the clouds layer's mean τ applies to the whole cloud, as before.
+
+Validation (`earth-himawari9-2026`, Himawari-9 over the cloud layer's own overpass):
+
+| ROI | before | after |
+|---|---|---|
+| disk centre | 2.08 | 1.03 |
+| near-centre points | 1.17–1.25 | 0.79, 0.91, 0.99 |
+| limb | 0.99 | 0.99 |
+
+The disk centre's agreement is partly coincidental: at (0°, 140.7° E) the texel has cloudFraction 0.94 and
+f_τ 0.06, so most of that pixel is unknown and hatched. It shows only the retrieved cloud, the clear sea and
+the air. For the same reason the EPOXI Earth of 2008 (whole disk at 75° phase, the app's cloud day standing
+in for 2008) now renders at 0.85 of its measured disk brightness and 0.62 at its centre, against 1.07 and
+1.01 when the clouds layer's mean τ was spread over the whole cloud. That was the overestimate this layer
+removes. What is missing now is the light of the cloud whose thickness is not measured.
 
 **Not modelled.** Cloud parallax and cloud shadows on the ground. The cloud-top height is used only to
 place the cloud's reflection inside the atmosphere (§4). Also not modelled: 3D cloud effects, the glory,
