@@ -19,8 +19,9 @@ import type { RendererStats, SceneBody, SceneSnapshot, StarCatalog } from './sce
 import {
   ADAPT_REDUCE_SHADER, ADAPT_SHADER, ADAPT_TILE_PX, AP_COLUMNS_SHADER, ATM_BODY_SHADER, ATMOSPHERE_SHELL_SHADER, BODY_OVERLAY_SHADER, BODY_SHADER, CLAMP_ARGS_SHADER, COMPOSITE_SHADER, EARTH_BODY_SHADER,
   CULL_SHADER, LINE_SHADER, MASK_HATCH_SHADER, OVERFLOW_SHADER, POINT_SHADER, PYRAMID_BLUR_SIGMA, PYRAMID_SHADER,
-  RING_SHADER, SUN_SHADER,
+  LIMB_MAX, LIMBS_UB_BYTES, RING_SHADER, SUN_SHADER,
 } from './shaders';
+import { LIMB_N, limbChordTable } from './atmosphere';
 import { SurfaceGpu } from './surfaceGpu';
 import { AtmosphereGpu, ATM_UB_BYTES, type ApColumns, type AtmosphereBinding } from './atmosphereGpu';
 import type { RingPrep } from './rings';
@@ -147,6 +148,7 @@ export class Renderer {
   private eyeUB: GPUBuffer;
   private sunUB: GPUBuffer;
   private clampUB: GPUBuffer;
+  private limbsUB: GPUBuffer;
   private reduceUB: GPUBuffer;
   private args: GPUBuffer;
   private srcs: GPUBuffer;
@@ -212,6 +214,7 @@ export class Renderer {
     this.eyeUB = ub(17 * 16);  // 17 vec4 (struct Eye)
     this.sunUB = ub(11 * 16);
     this.clampUB = ub(16);
+    this.limbsUB = ub(LIMBS_UB_BYTES);
     this.reduceUB = ub(16);
     this.args = d.createBuffer({ size: 16, usage: GPUBufferUsage.INDIRECT | GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
     this.srcs = d.createBuffer({ size: MAX_GLARE_SOURCES * 32, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
@@ -600,6 +603,7 @@ export class Renderer {
     });
     this.atmOf = atmOf;
     this.apOf = apOf;
+    this.writeLimbs(prep, this.debugSkip.has('atmosphere') || this.debugSkip.has('limb'));
     this.stats.cpuPrepMs = performance.now() - t0;
 
     // Scatter kernel (CIE 146) fitted to this pyramid and field of view.
@@ -776,11 +780,12 @@ export class Renderer {
             { binding: 5, resource: bgView },
             { binding: 6, resource: { buffer: c.info } },
             { binding: 7, resource: { buffer: this.srcs } },
+            { binding: 8, resource: { buffer: this.limbsUB } },
           ],
         }));
         pass.dispatchWorkgroups(gx, gy);
       }
-      this.extraPts?.cull(pass, this.cullPipe, { frameUB: this.frameUB, eyeUB: this.eyeUB, visible: this.visible, args: this.args, bgView, srcs: this.srcs, maxVisible: this.maxVisible });
+      this.extraPts?.cull(pass, this.cullPipe, { frameUB: this.frameUB, eyeUB: this.eyeUB, visible: this.visible, args: this.args, bgView, srcs: this.srcs, limbs: this.limbsUB, maxVisible: this.maxVisible });
       d.queue.writeBuffer(this.clampUB, 0, new Uint32Array([this.maxVisible, 0, 0, 0]));
       pass.setPipeline(this.clampPipe);
       pass.setBindGroup(0, d.createBindGroup({ layout: this.clampPipe.getBindGroupLayout(0), entries: [{ binding: 0, resource: { buffer: this.args } }, { binding: 1, resource: { buffer: this.clampUB } }] }));
@@ -1204,6 +1209,36 @@ export class Renderer {
   }
 
   private atmOf = new Map<number, AtmosphereBinding>();
+
+  /**
+   * Point sources seen through an atmosphere's limb are dimmed by the chord's transmittance (CULL_SHADER
+   * limbTransmittance): the drawn, measured atmospheres with the camera above their top, nearest first.
+   */
+  private writeLimbs(prep: PreparedFrame, off: boolean): void {
+    const limbs: { f: PreparedFrame['resolved'][number]['frame']; H: number; tab: Float32Array }[] = [];
+    if (!off) {
+      for (const [i, b] of this.atmOf) {
+        if (b.unmeasured) continue;
+        const f = prep.resolved[i].frame;
+        const H = b.model.topKm - b.model.bottomKm;
+        const lo = Math.hypot(...f.o);
+        if (f.D * (1 - 1 / lo) <= H) continue; // camera inside the shell: not a limb view
+        limbs.push({ f, H, tab: limbChordTable(b.model, b.grid) });
+      }
+      limbs.sort((a, b) => a.f.D - b.f.D);
+    }
+    const n = Math.min(limbs.length, LIMB_MAX);
+    const a = new Float32Array(LIMBS_UB_BYTES / 4);
+    a[0] = n;
+    const per = (5 + LIMB_N) * 4;
+    limbs.slice(0, n).forEach(({ f, H, tab }, k) => {
+      const o = 4 + k * per;
+      const M = f.M;
+      a.set([...f.pos, H, ...f.o, 0, M[0], M[1], M[2], 0, M[3], M[4], M[5], 0, M[6], M[7], M[8], 0], o);
+      a.set(tab, o + 20);
+    });
+    this.device.queue.writeBuffer(this.limbsUB, 0, a);
+  }
   private apOf = new Map<number, { cols: ApColumns; tex: GPUTexture }>();
   private apTextures = new Map<string, GPUTexture>();
   private apPipe: GPUComputePipeline | null = null;

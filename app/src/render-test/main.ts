@@ -6,14 +6,15 @@
 //   shield=1 (Sun shield viewing aid: an occulting disc over the Sun),
 //   M2: scene=vt|lowsun|hapke|rings|earthshine, cache=MiB (surface tile budget, default 96), side=lit|unlit (rings),
 //   nomodel=1 (rings without a reflectance model); real data (pipeline products under /data):
-//   scene=rings-data|moon-data (see dataScenes.ts);
+//   scene=rings-data|moon-data (see dataScenes.ts); stars=N adds N fixture stars to a data scene;
 //   bench=N (the stats then carry the median GPU time of each pass over N more frames), benchab=<skip> (A/B);
-//   skip=ap|acuity|…
+//   skip=ap|limb|acuity|…
 
 import { Renderer } from '../render/renderer';
 import { buildScene } from './scenes';
 import { buildDataScene } from './dataScenes';
 import { fixtureTile } from './fixtures/surfaces';
+import { fixtureStars } from './fixtures';
 
 // Surface-map fixture tiles (TEST FIXTURES) are served from fixture:// URLs; everything else is fetched.
 const realFetch = window.fetch.bind(window);
@@ -48,6 +49,12 @@ async function main(): Promise<void> {
   });
   renderer.resize(window.innerWidth, window.innerHeight, window.devicePixelRatio || 1);
   const scene = (params.get('scene') ?? '').endsWith('-data') ? await buildDataScene(params) : buildScene(params);
+  // Data scenes carry no stars; stars=N adds N TEST FIXTURE stars (e.g. to see them set behind a limb).
+  const fixtureCount = Number(params.get('stars') ?? 0);
+  if (scene.realData && fixtureCount > 0) {
+    scene.stars = fixtureStars(fixtureCount);
+    scene.title += ` + ${fixtureCount} TEST FIXTURE stars (not data)`;
+  }
   if (scene.stars) renderer.setStars(scene.stars);
   // Eye history (docs/eye-model.md §2 "Time"): adaptfrom=<cd/m²>,<exposure s>,<elapsed s>.
   const adaptFrom = params.get('adaptfrom');

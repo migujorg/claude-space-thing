@@ -13,13 +13,13 @@ Code:
 - `atmosphere.worker.ts`: computes the tables off the main thread.
 - `atmosphereGpu.ts`: packs the tables into a texture.
 - `shaders-atmosphere.ts`: the per-pixel march.
-- `shaders.ts`: the Earth body variant `EARTH_BODY_SHADER`, `ATMOSPHERE_SHELL_SHADER` and the aerial-perspective
-  columns `AP_COLUMNS_SHADER`.
+- `shaders.ts`: the Earth body variant `EARTH_BODY_SHADER`, `ATMOSPHERE_SHELL_SHADER`, the aerial-perspective
+  columns `AP_COLUMNS_SHADER` and the limb transmittance of point sources (`CULL_SHADER`).
 
 Tests: `app/tests/render-earth.test.ts`, `render-atmosphere.test.ts` (TEST FIXTURE atmosphere) and
 `render-earth-energy.test.ts` (real products, §6). Test page: `render-test.html?scene=earth-data&sun=lat,lon&obs=lat,lon&dist=km`.
 Any of `map|clouds|water|night|wind|atm=0` switches a part off; `skip=ap` marches every pixel instead of the
-columns, `bench=N` reports median pass times.
+columns, `skip=limb` leaves stars undimmed, `stars=N` adds N TEST FIXTURE stars, `bench=N` reports median pass times.
 
 ## 0. Inputs
 
@@ -227,15 +227,35 @@ the top sphere from its closest point to the centre, computed without cancellati
 Pixels partly covered by the Earth get the uncovered share. The shell is additive and depth-tested, with no
 depth write.
 
+**Stars behind the limb (M5).** A star seen through the shell is dimmed by the transmittance of its chord.
+The optical depth of the chord through the shell, for a ray whose closest approach is at impact altitude h, is
+
+  τ_k(h) = 2 ∫₀^L σ_ext,k(√(r_h² + s²) − R) ds, with r_h = R + h and L = √(r_top² − r_h²).
+
+`atmosphere.ts limbChordTable` tabulates it at 64 altitudes from the bottom to the top. It uses full
+extinction, not δ-scaled: the forward peak is degrees wide and spreads a star's light far beyond its image.
+The table is folded to XYZS as the effective optical depth −ln Σ_k w_ck·e^{−τ_k}. The fold weights make this
+exact for a spectrum like the Sun's; for other stars it is an approximation. The star cull (`CULL_SHADER
+limbTransmittance`) finds each point source's closest approach in the body's unit-sphere frame, reads the
+table (log-linear in h), and multiplies the source's XYZS. A ray that meets the solid body gives 0.
+
+This applies to the nearest four measured atmospheres that are drawn, with the camera above their top. Stars
+seen from inside an atmosphere are not dimmed (extinction by airmass is not modelled). The test page's
+`stars=N&skip=limb` compares with and without. From 8 000 km with 500 000 TEST FIXTURE stars, a star just
+outside the solid limb is no longer drawn, and the stars behind the disk are dropped at the cull instead of
+by the depth test (57 871 → 19 944 drawn). The test checks the table against the Chapman grazing
+approximation τ ≈ σ(h)·√(2π r_h H_s) for an exponential TEST FIXTURE atmosphere, within 2 % in transmittance.
+
 **Titan.** See §8.
 
 **Not modelled.**
 
 - Refraction: the eclipse ring comes out blue from high-altitude Rayleigh scattering, not red from light
-  refracted into the shadow.
+  refracted into the shadow. Stars behind the limb are dimmed but not displaced or flattened, although a
+  ray grazing the surface is bent by about twice the refraction at the horizon (≈ 35′), over a degree.
+  atmospheres.json gives extinction and scattering, not refractivity.
 - O₂ and H₂O bands (omitted in the data).
 - Multiple bounces between the surface and the air, beyond the ground term of Ψ_ms.
-- Stars seen through the limb are not dimmed.
 - Clouds affect only their own pixel, not the air around them.
 
 ## 5. Night lights

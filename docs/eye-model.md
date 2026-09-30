@@ -370,10 +370,18 @@ equations; σ_rod of the display is unused.
 - **CIE 191:2010** mesopic photometry (m = 0.767 + 0.3334·log10 L_mes, iterated from m = 0.5,
   V′(λ0) = 683/1699) sets how photopic and scotopic quantities combine for *visual performance*, i.e.
   the visibility thresholds (§6).
-- **Not in v0:** the rod-induced hue shift toward blue at mesopic levels (Cao, Pokorny, Smith &
-  Zele 2008; used for tone mapping by Kirk & O'Brien 2011). Kirk & O'Brien's formulation needs rod and
-  cone signals on an absolute scale that the paper leaves as a user exposure parameter. Implementing
-  it properly needs Cao et al.'s troland-based gains, and is the next step for colour at low light.
+- **Not implemented (reviewed again in M5):** the rod-induced hue shift toward blue at mesopic levels
+  (Cao, Pokorny, Smith & Zele 2008; used for tone mapping by Kirk & O'Brien 2011). Kirk & O'Brien add a
+  rod term to each opponent channel (their Eqs. 5.3–5.6, in the thesis version, UCB/EECS-2011-91):
+  - sensitivity regulation g = 1/(1 + 0.33(q + κ·q_rod))^0.5, with κ₁ = 0.25 and κ₂ = 0.4 for full
+    scotopic adaptation (from Cao et al.);
+  - opponent weights ρ and α fitted to Cao et al.'s data.
+
+  Two things in it are not measurements. The receptor signals q are normalised to the image, with
+  exposure left to the user ("too sensitive to exposure"), so the 0.33 has no absolute scale here. The
+  channel gains x = y = 15 and z = 5 are the values the authors chose for their figures. Using it would
+  mean inventing the scale of q in cd/m² or trolands. A principled version needs Cao et al.'s gains on
+  an absolute (troland) scale. This is the next step for colour at low light.
 
 ## 6. Visibility of point sources
 
@@ -569,7 +577,7 @@ checks that the Sun's light on the bodies is unaffected.
 | Crumey 2014 | r₁…r₄, a₁…a₅, k₁…k₄, b₁…b₅, split points, 10⁻⁵ cd/m², ρ₂₈₅₀, F = 2, Z_V | verified against arXiv:1405.4209v1 |
 | Pattanaik et al. 2000 | n, cone σ/B formulas, ref. white/black, Eq. 3 colour exponent, time constants | verified against the paper (rod Eq. 4 no longer used, see §4) |
 | Hunt (2004) via Fairchild (2013) | F_LS (3800, 0.2, 10⁻⁵, 2.26, exponent 4), B_S (0.3, 0.3, 5), f_n half-point 2, HPE matrix | cross-checked against colour-science `colour.appearance.hunt` (which writes the F_LS exponent as 0.4; we follow Fairchild's 4) and against Pattanaik's cone path (tested equal) |
-| Kirk & O'Brien 2011 | (not used in v0) | read |
+| Kirk & O'Brien 2011 | (not used: §5) | read (thesis version UCB/EECS-2011-91, Eqs. 5.3–5.9) |
 | Watson & Yellott 2012 | 7.75, 5.75, 846, 0.41, 2, 28.58, 0.021323, 0.0095623, 0.1 | verified against the reference MATLAB implementation (Wheatley & Spitschan) |
 | CIE 146:2002 | 10, 5, 0.1, 62.5, exponent 4, 0.0025, 0.1°–100° | **secondary-verified**: every constant matches the equation as reprinted in ch. 2 ("Introduction to straylight") of an Erasmus MC Rotterdam thesis (hdl.handle.net/1765/102424). The CIE report itself was not obtainable. |
 | Watson 2013 | 21.95, −5.512, 0.3922, −0.62, 555 nm, √D | **secondary-verified** against an independent open implementation of Eqs. 4–5 (ISETBio/isetvalidate); the journal page was not retrievable. v1 fixed the missing square root. Fitted for 2–6 mm pupils. |

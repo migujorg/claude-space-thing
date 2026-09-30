@@ -8,6 +8,12 @@ import { LAW_WGSL, MASK_HATCH_SHADER, RING_COMMON, RING_SHADER as RING_SHADER_OF
 import { FORESHORTEN_MIN_MU } from './surface';
 import { EARTH_WGSL } from './shaders-earth';
 import { AP_READ_WGSL, ATMOSPHERE_WGSL } from './shaders-atmosphere';
+import { LIMB_N } from './atmosphere';
+
+/** Atmospheres whose limb can dim point sources (CULL_SHADER Limbs; the nearest are kept). */
+export const LIMB_MAX = 4;
+/** Bytes of the Limbs uniform: a count, then per limb 5 vec4 and the LIMB_N-entry table. */
+export const LIMBS_UB_BYTES = 16 + LIMB_MAX * (5 + LIMB_N) * 16;
 
 // Relief self-shadowing: horizon search toward the Sun in geometrically growing steps from one texel
 // (a numerical choice, not a physical constant: 40 steps growing by 15% reach ~230 texels, capped at
@@ -957,14 +963,46 @@ ${SRCS(0, 7)}
 ${VEIL}
 ${BG}
 
+// Atmospheres in front of the camera whose limb a point source may be seen through (renderer.ts
+// writeLimbs; docs/rendering-earth.md §4 "Stars behind the limb"). Per limb: the body centre relative to
+// the camera (km, ICRF) with w = the shell's thickness H (km), the camera in the body's unit-sphere frame,
+// the rows of M (ICRF → unit-sphere frame), and ln τ per XYZS channel of the chord at impact altitude
+// h_i = H·i/(LIMB_N − 1) (atmosphere.ts limbChordTable).
+struct Limb { c: vec4f, o: vec4f, m0: vec4f, m1: vec4f, m2: vec4f, tab: array<vec4f, ${LIMB_N}> };
+struct Limbs { count: vec4f, l: array<Limb, ${LIMB_MAX}> };
+@group(0) @binding(8) var<uniform> LB: Limbs;
+
+/** Transmittance (XYZS) of the atmospheres' limbs along the unit direction u from the camera; 0 behind a solid body. */
+fn limbTransmittance(u: vec3f) -> vec4f {
+  var T = vec4f(1.0);
+  for (var i = 0; i < i32(LB.count.x); i++) {
+    let qu = vec3f(dot(LB.l[i].m0.xyz, u), dot(LB.l[i].m1.xyz, u), dot(LB.l[i].m2.xyz, u));
+    // Closest approach to the centre in the unit-sphere frame (the lowest point of the ray, for a sphere).
+    let s = -dot(LB.l[i].o.xyz, qu) / dot(qu, qu);
+    if (s <= 0.0) { continue; }
+    let q = LB.l[i].o.xyz + s * qu;
+    let p = s * u - LB.l[i].c.xyz;
+    let h = length(p) * (1.0 - 1.0 / length(q));
+    let H = LB.l[i].c.w;
+    if (h >= H) { continue; }
+    if (h <= 0.0) { return vec4f(0.0); }
+    let x = h / H * ${f(LIMB_N - 1)};
+    let k = min(i32(x), ${LIMB_N - 2});
+    T *= exp(-exp(mix(LB.l[i].tab[k], LB.l[i].tab[k + 1], x - f32(k))));
+  }
+  return T;
+}
+
 @compute @workgroup_size(256) fn main(@builtin(global_invocation_id) gid: vec3u) {
   let i = gid.x + gid.y * info.groupsX * 256u;
   if (i >= info.count) { return; }
   let base = i * info.stride;
   let u = vec3f(stars[base], stars[base + 1u], stars[base + 2u]);
-  let e = vec4f(stars[base + 3u], stars[base + 4u], stars[base + 5u], stars[base + 6u]);
+  var e = vec4f(stars[base + 3u], stars[base + 4u], stars[base + 5u], stars[base + 6u]);
   let c = toCam(F, u);
   if (c.z >= 0.0 || occulted(F, u)) { return; }
+  e *= limbTransmittance(u);
+  if (e.y <= 0.0 && e.w <= 0.0) { return; }
   let ndc = vec2f(c.x * F.proj.x, c.y * F.proj.y) / (-c.z);
   let marg = E.misc2.x * 2.0 * F.size.zw;
   if (abs(ndc.x) > 1.0 + marg.x || abs(ndc.y) > 1.0 + marg.y) { return; }

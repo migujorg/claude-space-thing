@@ -252,6 +252,60 @@ function computeDeltaFraction(m: AtmosphereModel): number[] {
   });
 }
 
+/** Impact-altitude samples of the limb table (uniform from the bottom to the top). A sampling choice. */
+export const LIMB_N = 64;
+
+/**
+ * Point sources seen through the limb (docs/rendering-earth.md §4 "Stars behind the limb"): the optical depth
+ * of the chord through the shell of a ray whose closest approach to the centre is at impact altitude h,
+ * τ_k(h) = 2∫₀^L σ_ext,k(√(r_h² + s²) − R) ds with r_h = R + h and L = √(r_top² − r_h²), for
+ * h_i = H·i/(n − 1). Full extinction, not δ-scaled: the forward peak (degrees wide) spreads a star's light
+ * far beyond its image. Folded to the XYZS channels as an effective optical depth −ln Σ_k w_ck·e^{−τ_k}
+ * (the model's fold weights: exact for a spectrum like the Sun's). Returns ln τ_c (clamped at 1e-12),
+ * n × 4 values, for log-linear interpolation (τ falls nearly exponentially with h).
+ */
+const limbCache = new WeakMap<AtmosphereModel, Float32Array>();
+export function limbChordTable(m: AtmosphereModel, G?: ProfileGrid, n = LIMB_N, steps = 512): Float32Array {
+  if (n === LIMB_N && limbCache.has(m)) return limbCache.get(m)!;
+  const grid = G ?? new ProfileGrid(m, 512);
+  const K = m.wavelengthsNm.length;
+  const H = m.topKm - m.bottomKm;
+  const buf = new Float64Array(5 * K);
+  const tau = new Float64Array(K);
+  const out = new Float32Array(n * 4);
+  for (let i = 0; i < n; i++) {
+    const rh = m.bottomKm + (H * i) / (n - 1);
+    const L = Math.sqrt(Math.max(m.topKm * m.topKm - rh * rh, 0));
+    tau.fill(0);
+    // Midpoint rule in u with s = L·u² (dense near the closest approach, where the altitude changes slowest).
+    for (let j = 0; j < steps; j++) {
+      const uu = (j + 0.5) / steps;
+      const s = L * uu * uu;
+      const ds = (2 * L * uu) / steps;
+      grid.at(Math.sqrt(rh * rh + s * s) - m.bottomKm, buf);
+      for (let k = 0; k < K; k++) tau[k] += 2 * buf[k * 5] * ds;
+    }
+    for (let c = 0; c < 4; c++) {
+      let T = 0;
+      for (let k = 0; k < K; k++) T += m.weights[c][k] * Math.exp(-tau[k]);
+      out[i * 4 + c] = Math.log(Math.max(-Math.log(Math.max(T, 1e-300)), 1e-12));
+    }
+  }
+  if (n === LIMB_N) limbCache.set(m, out);
+  return out;
+}
+
+/** Channel transmittance of a chord at impact altitude h from limbChordTable (log-linear interpolation). */
+export function limbTransmittance(table: Float32Array, H: number, h: number, c: number): number {
+  const n = table.length / 4;
+  if (h >= H) return 1;
+  if (h < 0) return 0;
+  const x = (h / H) * (n - 1);
+  const i = Math.min(Math.floor(x), n - 2);
+  const f = x - i;
+  return Math.exp(-Math.exp(table[i * 4 + c] * (1 - f) + table[(i + 1) * 4 + c] * f));
+}
+
 /** Precompute all tables (CPU). */
 export function precomputeAtmosphere(m: AtmosphereModel): AtmosphereTables {
   const K = m.wavelengthsNm.length;
