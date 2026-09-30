@@ -18,8 +18,10 @@ Here (derived):
     interpolating the band values linearly in wavelength (350-865 nm bands cover the 360-830 nm grid).
   * `channel_model`: Eq. 10 refitted per channel (a, b, d; c and p are wavelength independent, so they factor out
     exactly) — what the app evaluates (`diskReflectanceModel`).
+  * `reference_spectrum`: the Moon's albedo spectrum (geometricAlbedoXYZS): A_k at g = 1.55°, the model's lower
+    limit (zero libration, waxing/waning mean).
   * `phase_table`: the Moon's α-only phase function: A_Y at zero libration, geometric mean of waxing and waning
-    (the odd Φ terms cancel), divided by the Lane & Irvine albedo p_Y that geometricAlbedoXYZS keeps.
+    (the odd Φ terms cancel), divided by the reference A_Y(1.55°), so Φ(1.55°) = 1.
 """
 
 from __future__ import annotations
@@ -138,10 +140,24 @@ def mean_phase_y(alpha_deg) -> np.ndarray:
     return np.exp(0.5 * (m.ln_a(alpha_deg, alpha_deg)[..., 1] + m.ln_a(alpha_deg, -np.asarray(alpha_deg))[..., 1]))
 
 
+def reference_spectrum() -> tuple[np.ndarray, np.ndarray]:
+    """Band wavelengths and A_k at g = 1.55° (zero libration, geometric mean of waxing and waning): the Moon's
+    reference albedo spectrum (geometricAlbedoXYZS)."""
+    ln = 0.5 * (ln_a_bands(MIN_PHASE, MIN_PHASE) + ln_a_bands(MIN_PHASE, -MIN_PHASE))
+    return WAVELENGTH.copy(), np.exp(ln)
+
+
+def reference_py() -> float:
+    """Photopic (Y) channel of the reference spectrum, the p_Y that Φ(α) is divided by."""
+    wl, a = reference_spectrum()
+    e = solar.spectrum()
+    return float(cie.xyzs(bin_average(wl, a) * e.grid)[1] / cie.xyzs(e.grid)[1])
+
+
 def lane_irvine_py(ctx: BuildContext | None = None) -> float:
-    """Photopic (Y) geometric albedo of the Moon's Lane & Irvine spectrum (what geometricAlbedoXYZS holds)."""
+    """Photopic (Y) geometric albedo of Lane & Irvine's (1973) spectrum (the cross-check)."""
     from . import albedo
-    spec = albedo.spectrum_for(301, ctx)
+    spec = albedo.moon_lane_irvine(ctx)
     e = solar.spectrum()
     return float(cie.xyzs(bin_average(spec.wl, spec.p) * e.grid)[1] / cie.xyzs(e.grid)[1])
 

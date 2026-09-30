@@ -7,7 +7,7 @@
 **What each composite is in 360–830 nm (Payne et al. Secs. 3–5, Tables 1–3):**
 - **Mercury:** MESSENGER/MASCS global-mean reflectance (Izenberg et al. 2014), ×2 to match Mallama et al. (2017) broadband geometric albedos. Disk-resolved and photometrically standardized, not a zero-phase disk integral.
 - **Venus:** MESSENGER/VIRS equatorial I/F from the 2007 flyby (Pérez-Hoyos et al. 2018, a NEMESIS fit), ×1.13 to Venus's p_V = 0.689 (Mallama et al. 2017).
-- **Earth:** Planetary Spectrum Generator simulation (Kofman et al. 2024) of 2022 June 21 driven by MERRA-2 and MODIS, validated against DSCOVR/EPIC narrow bands. A **model**.
+- **Earth:** Planetary Spectrum Generator simulation (Kofman et al. 2024) of 2022 June 21 driven by MERRA-2 and MODIS, validated against DSCOVR/EPIC narrow bands. A **model**. Since the M3 follow-up it is no longer the Earth's albedo, which is now measured (himawari9-ahi.md). Only its relative shape below 0.47 µm is used, where Himawari has no band, and it serves as a cross-check: its p_V of 0.216 is close to the measured 0.239.
 
 All three are labelled **estimated**. The Mars composite (a PSG model) was examined and **not used**: its Johnson B albedo is ~45 % below Mallama et al.'s photometry.
 
