@@ -1,7 +1,8 @@
 // Inspector view-model: pure functions from a body + data + level to display rows. No DOM.
 
-import type { Body, EphemSegment, Label, LightData, Sourced } from '../data/schema';
-import type { LoadedEphemeris } from '../data/load';
+import type { Body, EphemHeader, EphemSegment, Label, LightData, Sourced } from '../data/schema';
+import type { SurfaceLayer } from '../data/surfaces';
+import type { OrientationSourcePort } from '../app/ports';
 import { labelAllowed, worstOf, type ExistsLevel } from '../app/reality';
 import { formatValue } from './format';
 
@@ -23,7 +24,7 @@ export interface ChainLink {
 }
 
 /** Segments from `id` down to the SSB (0), following each segment's center. */
-export function ephemerisChain(ephs: LoadedEphemeris[], id: number): { links: ChainLink[]; complete: boolean; sources: string[] } {
+export function ephemerisChain(ephs: { path: string; header: EphemHeader }[], id: number): { links: ChainLink[]; complete: boolean; sources: string[] } {
   const links: ChainLink[] = [];
   const seen = new Set<number>();
   let cur = id;
@@ -60,7 +61,16 @@ function row<T>(key: string, name: string, s: Sourced<T> | undefined, level: Exi
   };
 }
 
-export function attributeRows(body: Body, level: ExistsLevel, ephs: LoadedEphemeris[]): AttrRow[] {
+export interface AttributeContext {
+  /** Orientation in use at the current epoch (OrientationSet.provenance); undefined → not shown. */
+  orientation?: OrientationSourcePort | null;
+  /** The ephemeris file(s) this body needs are still loading. */
+  loading?: string | null;
+  /** Surface map layers for this body (surfaces/<id>/<layer>.json). */
+  surfaces?: SurfaceLayer[];
+}
+
+export function attributeRows(body: Body, level: ExistsLevel, ephs: { path: string; header: EphemHeader }[], ctx: AttributeContext = {}): AttrRow[] {
   const rows: AttrRow[] = [];
   const chain = ephemerisChain(ephs, body.id);
   if (chain.links.length) {
@@ -72,7 +82,7 @@ export function attributeRows(body: Body, level: ExistsLevel, ephs: LoadedEpheme
       name: 'Position (ephemeris)',
       // A chain is only as grounded as its least grounded segment (e.g. a fitted planet-center offset).
       label: worstOf(chain.links.map((l) => l.seg.label ?? 'unknown')),
-      value: `SPK type ${types} segments ${path}${chain.complete ? ' (SSB)' : ' — chain to the SSB is incomplete'}`,
+      value: `SPK type ${types} segments ${path}${chain.complete ? ' (SSB)' : ' — chain to the SSB is incomplete'}${ctx.loading ? ` — ${ctx.loading}` : ''}`,
       method: `Chebyshev ephemeris from ${files}, evaluated at the light-emission epoch; the light-time correction makes the drawn position derived.`,
       sources: chain.sources,
       withheld: false,
@@ -82,11 +92,39 @@ export function attributeRows(body: Body, level: ExistsLevel, ephs: LoadedEpheme
   }
   rows.push(row('radii', 'Shape (triaxial radii)', body.radii, level, 'radii'));
   rows.push(row('gm', 'GM', body.gm, level));
-  rows.push(row('rotation', 'Rotation model', body.rotation, level, 'rotation'));
+  if (ctx.orientation !== undefined) {
+    const o = ctx.orientation;
+    rows.push(
+      o
+        ? {
+            key: 'orientation',
+            name: o.kind === 'precise' ? `Orientation in use: ${o.frame} (precise product)` : 'Orientation in use: IAU rotation model',
+            label: o.label,
+            value: o.kind === 'precise' ? `${o.frame} body-fixed frame from a binary PCK product, evaluated at the light-emission epoch` : 'IAU/WGCCRE model below, evaluated at the light-emission epoch',
+            ...(o.method ? { method: o.method } : {}),
+            ...(o.uncertainty ? { uncertainty: o.uncertainty } : {}),
+            sources: o.sources,
+            withheld: o.label !== 'unknown' && !labelAllowed(o.label, level),
+          }
+        : { key: 'orientation', name: 'Orientation in use', label: 'unknown', value: 'unknown — no rotation model or precise product covers this epoch', sources: [], withheld: false },
+    );
+  }
+  rows.push(row('rotation', 'Rotation model (IAU)', body.rotation, level, 'rotation'));
   const p = body.photometry;
   rows.push(row('albedoXYZS', 'Geometric albedo (XYZ + scotopic)', p?.geometricAlbedoXYZS, level, 'xyzs'));
   rows.push(row('albedoV', 'Geometric albedo (V)', p?.geometricAlbedoV, level));
   rows.push(row('phase', 'Phase function', p?.phaseFunction, level, 'phase'));
+  for (const sl of ctx.surfaces ?? []) {
+    rows.push({
+      key: `surface:${sl.layer}`,
+      name: `Surface map: ${sl.layer} (not drawn by this renderer version yet)`,
+      label: sl.label,
+      value: `${sl.levels ?? '?'} pyramid levels, ${sl.tiles.count} tiles${sl.epoch ? `, observed ${sl.epoch}` : ''}`,
+      ...(sl.method ? { method: sl.method } : sl.notes ? { method: sl.notes } : {}),
+      sources: sl.sources,
+      withheld: sl.label !== 'unknown' && !labelAllowed(sl.label, level),
+    });
+  }
   return rows;
 }
 

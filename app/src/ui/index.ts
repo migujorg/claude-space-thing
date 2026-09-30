@@ -13,6 +13,7 @@ import { Hud } from './hud';
 import { Input } from './input';
 import { Inspector } from './inspector';
 import { Labels } from './labels';
+import { LoadingPill } from './loading';
 import { Search } from './search';
 import { SourcesPanel } from './sources';
 import { Toasts } from './toasts';
@@ -48,12 +49,13 @@ export function mountUi(container: HTMLElement, model: AppModel, opts: { banner?
   const search = new Search(model);
   const hud = new Hud(model);
   // Labels avoid the areas covered by panels (evaluated per frame, after everything is mounted).
-  const labels = new Labels(model, () => [search.el, dials.el, inspector.el, ...Array.from(hud.el.children), ...Array.from(top.el.children)]);
+  const labels = new Labels(model, () => [search.el, dials.el, inspector.el, loading.el, ...Array.from(hud.el.children), ...Array.from(top.el.children)]);
   const top = new TopBar(model, opts.banner);
   const toasts = new Toasts(model);
+  const loading = new LoadingPill(model, () => data.toggle(true));
   const statusEl = h('div', { class: 'st-panel st-fatal', style: 'display:none' });
   const right = h('div', { class: 'st-right' }, dials.el, inspector.el);
-  root.append(labels.el, search.el, right, hud.el, sources.el, data.el, help.el, toasts.el, statusEl, top.el);
+  root.append(labels.el, search.el, right, hud.el, loading.el, sources.el, data.el, help.el, toasts.el, statusEl, top.el);
   container.appendChild(root);
 
   const applyHidden = () => toggleClass(root, 'st-hidden', model.uiHidden);

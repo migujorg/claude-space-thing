@@ -4,6 +4,7 @@
 //   npm run shot -- --url "/ui-dev.html" --out shots/ui.png
 //   /ui-dev.html?omit=photometry.json,light.json   → exercise the "missing product" states
 //   /ui-dev.html?panel=data,dials                  → open panels for a screenshot
+//   /ui-dev.html?slow=3000                         → delay moon-system files to watch lazy loading
 //   plus every URL view parameter of the real app (t, target, dist, az, el, exists, view, ...)
 
 import { startApp } from '../app/bootstrap';
@@ -15,7 +16,7 @@ async function main() {
   const params = new URLSearchParams(location.search);
   const omit = (params.get('omit') ?? '').split(',').filter(Boolean);
   const nowEt = new FixtureTimeScale({} as never).utcMsToEt(Date.now());
-  const fetch = await fixtureFetch({ nowEt, omit });
+  const fetch = await fixtureFetch({ nowEt, omit, slowSystemsMs: Number(params.get('slow') ?? 0) });
   const canvas = document.getElementById('view') as HTMLCanvasElement;
   const ui = document.getElementById('ui')!;
   const app = await startApp(canvas, ui, {
