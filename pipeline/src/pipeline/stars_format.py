@@ -33,9 +33,10 @@ STRIDE = 48
 
 FLAG_VARIABLE = 1          # flagged variable by Hipparcos (VarFlag) or Gaia DR3 (phot_variable_flag)
 FLAG_MULTIPLE = 2          # Hipparcos double/multiple entry or Gaia DR3 RUWE > 1.4 / non_single_star
-FLAG_XP_REJECTED = 4       # Gaia XP spectrum exists but was not used (too bright to be trusted)
-FLAG_LIGHT_COMBINED = 8    # light is the combined light of a multiple system that the catalogue may also list separately
-FLAG_POS_2016_NO_PM = 16   # Gaia 2-parameter solution: position measured, proper motion unknown
+FLAG_XP_REJECTED = 4       # Gaia XP spectrum present but not used (too bright, or non-positive integral)
+FLAG_LIGHT_COMBINED = 8    # light is a Hipparcos multiple entry's combined light (minus components listed separately)
+FLAG_POS_2016_NO_PM = 16   # Gaia DR3 2-parameter solution (no Gaia proper motion)
+FLAG_XP_BLENDED = 32       # Gaia BP/RP blended by a neighbour within 2" (XP spectrum not used)
 
 _NP = {"f32": "<f4", "f64": "<f8", "u32": "<u4", "u16": "<u2", "u8": "u1", "i32": "<i4"}
 

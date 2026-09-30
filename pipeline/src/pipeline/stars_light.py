@@ -87,9 +87,9 @@ class PhotometricRelation:
                 "medianScatterMag": float(np.median(self.scatter_mag))}
 
 
-def fit_relation(system: str, m: np.ndarray, c: np.ndarray, xyzs: np.ndarray, *, per_bin: int = 200,
+def fit_relation(system: str, m: np.ndarray, c: np.ndarray, xyzs: np.ndarray, *, per_bin: int = 50,
                  max_width: float = 0.25) -> PhotometricRelation:
-    ok = np.isfinite(m) & np.isfinite(c) & np.isfinite(xyzs).all(axis=1) & (xyzs[:, 1] > 0)
+    ok = np.isfinite(m) & np.isfinite(c) & np.isfinite(xyzs).all(axis=1) & (xyzs > 0).all(axis=1)
     m, c, xyzs = m[ok], c[ok], xyzs[ok]
     o = np.argsort(c)
     m, c, xyzs = m[o], c[o], xyzs[o]

@@ -311,6 +311,16 @@ def fetch_hip_xmatch() -> Path:
                      "gaiadr3.hipparcos2_best_neighbour", "", SUBDIR, "hipparcos2_best_neighbour", "source_id")
 
 
+def fetch_tycho_pm_for_2p(g_max: float) -> Path:
+    """Tycho-2 proper motions of the Gaia DR3 sources that have only a 2-parameter solution (no proper motion)."""
+    return tap_query(
+        "g.source_id, t.id, t.pm_ra, t.pm_de, t.e_pm_ra, t.e_pm_de, b.angular_distance",
+        "gaiadr3.gaia_source AS g JOIN gaiadr3.tycho2tdsc_merge_best_neighbour AS b ON b.source_id = g.source_id "
+        "JOIN gaiadr3.tycho2tdsc_merge AS t ON t.id = b.original_ext_source_id",
+        f"g.astrometric_params_solved = 3 AND g.phot_g_mean_mag < {g_max}",
+        SUBDIR, f"tycho2_pm_for_gaia2p_G{g_max}", "source_id")
+
+
 def fetch_tycho_unmatched(vt_max: float) -> Path:
     """Tycho-2 (+TDSC) stars brighter than vt_max with no Gaia DR3 best neighbour (candidates Gaia misses)."""
     return tap_query(

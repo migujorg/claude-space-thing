@@ -85,6 +85,7 @@ class HipMain:
     varflag: np.ndarray     # 0 none, 1..3 coarse variability flag
     r_vmag: np.ndarray      # G ground-based, H from Hp, T from Tycho
     bv: np.ndarray          # Johnson B-V
+    vi: np.ndarray          # Cousins V-I
     r_bv: np.ndarray
     bt: np.ndarray
     vt: np.ndarray
@@ -92,6 +93,8 @@ class HipMain:
     ccdm: np.ndarray
     ncomp: np.ndarray
     multflag: np.ndarray
+    rho: np.ndarray         # arcsec, separation between the components of a multiple entry
+    dhp: np.ndarray         # mag, Hp difference between those components
     hd: np.ndarray
     sptype: np.ndarray
     combmag: np.ndarray     # '*' when Vmag, B-V refer to the combined light of a multiple entry
@@ -104,14 +107,14 @@ def load_hip_main() -> HipMain:
     p = fetch(CDS + "I/239/hip_main.dat", f"{SUB}/hipparcos1997")
     L = [ln for ln in _read_lines(p) if ln.startswith("H|")]
     # I/239 ReadMe, hip_main.dat: HIP 9-14, Vmag 42-46, VarFlag 48, r_Vmag 50, BTmag 218-223, VTmag 231-236,
-    # B-V 246-251, r_B-V 259, CombMag 273, Hpmag 275-281, CCDM 328-337, Ncomp 344-345, MultFlag 347,
-    # HD 391-396, SpType 436-447
+    # B-V 246-251, r_B-V 259, V-I 261-264, CombMag 273, Hpmag 275-281, CCDM 328-337, Ncomp 344-345, MultFlag 347,
+    # rho 360-366, dHp 374-378, HD 391-396, SpType 436-447
     return HipMain(
         hip=_col(L, 9, 14, "i"), vmag=_col(L, 42, 46), varflag=_col(L, 48, 48, "i"), r_vmag=_col(L, 50, 50, "s"),
-        bt=_col(L, 218, 223), vt=_col(L, 231, 236), bv=_col(L, 246, 251), r_bv=_col(L, 259, 259, "s"),
+        bt=_col(L, 218, 223), vt=_col(L, 231, 236), bv=_col(L, 246, 251), r_bv=_col(L, 259, 259, "s"), vi=_col(L, 261, 264),
         combmag=_col(L, 273, 273, "s"), hpmag=_col(L, 275, 281), ccdm=_col(L, 328, 337, "s"),
-        ncomp=_col(L, 344, 345, "i"), multflag=_col(L, 347, 347, "s"), hd=_col(L, 391, 396, "i"),
-        sptype=_col(L, 436, 447, "s"), path=p, readme=readme)
+        ncomp=_col(L, 344, 345, "i"), multflag=_col(L, 347, 347, "s"), rho=_col(L, 360, 366), dhp=_col(L, 374, 378),
+        hd=_col(L, 391, 396, "i"), sptype=_col(L, 436, 447, "s"), path=p, readme=readme)
 
 
 # --------------------------------------------------------------------- Pulkovo spectrophotometry (III/201)
