@@ -35,7 +35,7 @@ from functools import lru_cache
 import numpy as np
 
 from ..download import fetch
-from ..schema import BuildContext
+from ..schema import BuildContext, sourced
 from . import albedo, diskint, filters, phase
 from .albedo import PCK, AlbedoSpectrum, _src, mean_radius, sun_mag
 from .common import AU_KM, Download, read_table_csv, read_table_json
@@ -243,8 +243,83 @@ def galilean_phase(naif: int, ctx: BuildContext | None = None) -> Phase:
         "f(α)/f(0), tabulated every 0.5° over 0-130° (the paper's stated validity; no data 30-60° and beyond 135°). "
         f"The same curve is applied at all wavelengths (the paper's VIO and RED curves differ from GRN by up to "
         f"{_filter_spread(naif):.2f} mag within 0-130°). Rotational (orbital-longitude) variations, fitted "
-        "separately in the paper (Table 4), are not represented: the curve is their longitude average.",
+        "separately in the paper (Table 4), are in diskReflectanceModel: this curve is their longitude average.",
         "rotational variation up to 16 % peak to peak at low phase and 38 % at high phase (Io, GRN; paper Sec. 5)")
+
+
+GALILEAN = (501, 502, 503, 504)
+ROTATION_FILTER = "GRN"     # the filter of the phase curve (568 nm), nearest the photopic peak
+SLICE_EDGES_DEG = [-180.0, -120.0, -60.0, 0.0, 60.0, 120.0, 180.0]   # PlanetSlicer getPhi/getG with 6 slices
+ROTATION_FORMULA = (
+    "p·Φ = albedoXYZS · Φ(α) · F; F = Σ_j a_j G_j / Σ_j G_j with G_j = [2λ cos(λs − λo) − sin(λs + λo − 2λ)]/3 "
+    "evaluated between the slice's edges clipped to [λo − 90°, λo + 90°] and [λs − 90°, λs + 90°] (radians; each "
+    "longitude wrapped to within 180° of the slice centre); λo, λs the planetocentric east longitudes of the "
+    "sub-observer and sub-solar points; a_j the relative slice albedos (mean 1). Illuminance at the observer "
+    "E = p·Φ · (1/d²)(radiusKm/Δ)²."
+)
+
+
+def slice_factor(edges_deg, rel, lon_obs: float, lon_sun: float) -> float:
+    """F of ROTATION_FORMULA (the renderer's sliceFactor, render/photometry.ts): disk-integrated brightness of the
+    sliced sphere over a uniform one, for the observer and the Sun above the equator at east longitudes lon_obs and
+    lon_sun (radians). 1 when nothing is both lit and visible."""
+    num = den = 0.0
+    for j, a_j in enumerate(rel):
+        a, b = math.radians(edges_deg[j]), math.radians(edges_deg[j + 1])
+        c = 0.5 * (a + b)
+        o = lon_obs - 2 * math.pi * round((lon_obs - c) / (2 * math.pi))
+        s = lon_sun - 2 * math.pi * round((lon_sun - c) / (2 * math.pi))
+        lo, hi = max(a, o - math.pi / 2, s - math.pi / 2), min(b, o + math.pi / 2, s + math.pi / 2)
+        if not hi > lo:
+            continue
+
+        def prim(p):
+            return 2 * p * math.cos(s - o) - math.sin(s + o - 2 * p)
+        g = (prim(hi) - prim(lo)) / 3.0
+        num += a_j * g
+        den += g
+    return num / den if den > 0 else 1.0
+
+
+@lru_cache(maxsize=None)
+def mayorga_slices(naif: int) -> dict[str, tuple[float, ...]]:
+    """Mayorga et al. (2020) Table 4: the six slice albedos J0..J5 per filter."""
+    return {r["filter"]: tuple(float(r[f"J{j}"]) for j in range(6))
+            for r in read_table_csv("mayorga_2020_table4.csv") if int(r["naif"]) == naif}
+
+
+def galilean_rotation_model(naif: int, xyzs, phase_function: dict, radius_km: float,
+                            ctx: BuildContext | None = None) -> dict:
+    """photometry.json → diskReflectanceModel (kind 'rotation-slices-v1') for Io..Callisto: the measured rotational
+    (orbital-longitude) variation of Mayorga et al. (2020) Table 4 on top of the body's albedo and phase function."""
+    J = np.array(mayorga_slices(naif)[ROTATION_FILTER])
+    rel = J / J.mean()
+    amp = 100.0 * (J.max() - J.min()) / J.mean()
+    value = {
+        "kind": "rotation-slices-v1",
+        "formula": ROTATION_FORMULA,
+        "albedoXYZS": [float(v) for v in xyzs],
+        "phase": phase_function,
+        "radiusKm": round(radius_km, 2),
+        "sliceEdgesEastLonDeg": SLICE_EDGES_DEG,
+        "relativeAlbedo": [round(float(v), 6) for v in rel],
+    }
+    return sourced(
+        value, "estimated", [_src(ctx, MAYORGA)],
+        method=(
+            f"Rotational variation: Mayorga et al.'s (2020) Table 4 CL1{ROTATION_FILTER} (568 nm) slice albedos, six "
+            f"60° longitude slices of a Lambertian sphere fitted with PlanetSlicer to the Cassini ISS WAC rotational "
+            f"light curves at 14-24° phase ({', '.join(f'{v:.4f}' for v in J)}), divided by their mean "
+            f"(slice contrast {amp:.0f} % of the mean). Slice j spans east longitude -180 + 60j to -120 + 60j "
+            "(PlanetSlicer's convention; east-positive assumed, see the table's header). F multiplies "
+            "geometricAlbedoXYZS · Φ(α) (both included here unchanged), and its rotation average is 1, so those "
+            "stay the longitude average. The renderer uses p·Φ·F in place of p·Φ and normalizes surface maps at "
+            "the viewing geometry, so a map's own longitude contrast is not counted twice."),
+        uncertainty=(
+            "estimated: the Lambertian orange-slice inversion is a model assumption (the paper finds the moons "
+            "non-Lambertian); fitted at 14-24° phase, while at 125° phase the paper finds the variation about twice "
+            "as large (Io, GRN, 38 %); the GRN slices are applied at all wavelengths; the equatorial view "
+            "ignores the sub-observer latitude."))
 
 
 # ---------------------------------------------------------------------------------------------- mid-sized Saturnian moons

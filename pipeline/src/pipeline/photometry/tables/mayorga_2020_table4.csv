@@ -1,0 +1,29 @@
+# Transcribed from: Mayorga, L. C., Charbonneau, D. & Thorngren, D. P. (2020), "Reflected light observations of the
+#   Galilean satellites from Cassini: a test bed for cold terrestrial exoplanets", Astronomical Journal 160, 238.
+#   DOI:10.3847/1538-3881/abb8df. Text source: arXiv:2009.05467v1 (accepted manuscript), Table 4 ("The slice
+#   brightness values derived by PlanetSlicer"), checked against the PDF text line by line.
+# J0..J5 are the surface albedos of six longitudinal ("orange") slices of a Lambertian sphere fitted to the rotational
+#   light curves at 14-24 deg phase (Sec. 3, 3.1 and 4.1; Cowan & Agol 2008 model extended to reflected light).
+# Slice convention (PlanetSlicer, Thorngren 2019, slicer.py getPhi/getG): slice j covers planetocentric longitude
+#   [-180 + 60 j, -120 + 60 j] deg; the paper's longitudes are in the -180..180 E-W system. East-positive is the
+#   convention adopted here (SPICE planetocentric longitude, which the paper computed with SpiceyPy). With it the
+#   leading hemisphere (centred on 90 W = -90 E) is the brighter one for Io, Europa and Ganymede and the darker one
+#   for Callisto, as known from ground-based rotational light curves; the other sign would invert all four.
+moon,naif,filter,J0,J1,J2,J3,J4,J5
+Io,501,VIO,0.117327,0.126080,0.109350,0.076307,0.107476,0.127953
+Io,501,GRN,0.250041,0.273365,0.228565,0.215799,0.244837,0.236488
+Io,501,RED,0.264435,0.292585,0.243468,0.235477,0.272270,0.246266
+Io,501,CB2,0.285379,0.306900,0.268862,0.271947,0.309278,0.269084
+Io,501,CB3,0.275214,0.295680,0.263344,0.260699,0.301027,0.259521
+Europa,502,VIO,0.232966,0.246369,0.221652,0.146874,0.179195,0.209323
+Europa,502,GRN,0.313415,0.341145,0.287923,0.222243,0.245618,0.273885
+Europa,502,RED,0.312869,0.336263,0.286555,0.228525,0.264607,0.268065
+Europa,502,CB2,0.320300,0.339759,0.305061,0.260918,0.301074,0.289561
+Ganymede,503,VIO,0.126857,0.157164,0.139248,0.122491,0.130721,0.121970
+Ganymede,503,GRN,0.168968,0.203035,0.178112,0.155621,0.166954,0.147735
+Ganymede,503,RED,0.169613,0.205668,0.180834,0.156233,0.168460,0.152404
+Ganymede,503,CB2,0.172505,0.209228,0.182066,0.170910,0.177491,0.163869
+Ganymede,503,CB3,0.166920,0.204552,0.175288,0.162750,0.168631,0.160370
+Callisto,504,VIO,0.042274,0.046918,0.047588,0.048241,0.062808,0.044274
+Callisto,504,GRN,0.056125,0.070270,0.060978,0.063225,0.074481,0.063077
+Callisto,504,RED,0.065258,0.065042,0.066643,0.061564,0.082743,0.057380
