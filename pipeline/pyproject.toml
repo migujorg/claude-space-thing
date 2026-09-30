@@ -11,6 +11,8 @@ dependencies = [
   "requests>=2.31",
   "scipy>=1.17.1",
   "h5py>=3.16.0",
+  "pillow>=12.3.0",
+  "tifffile>=2026.3.3",
 ]
 
 [dependency-groups]
