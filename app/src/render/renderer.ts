@@ -120,7 +120,7 @@ export class Renderer {
   private glareCache = { key: '', weights: [] as number[], unscattered: 1 };
   private lastMeasurementTime = 0;
   private persistentWarnings: string[] = [];
-  /** Debug: names of passes to skip ('bodies', 'cull', 'points', 'pyramid', 'sun', 'adapt', 'composite', 'overlays'). */
+  /** Debug: names of passes to skip ('bodies', 'cull', 'points', 'pyramid', 'sun', 'adapt', 'composite', 'overlays', 'meshShadow'). */
   debugSkip = new Set<string>();
   /** Optional debug hook, called with each adaptation measurement. */
   onMeasurement?: (info: { goal: { coneCdM2: number; rodCdM2: number; cornealFlux: number }; used: { cone: number; rod: number }; converged: boolean; starsDrawn: number }) => void;
@@ -557,7 +557,7 @@ export class Renderer {
     this.atmOf = atmOf;
     // Shape meshes (meshes/meshBodies.ts): bodies whose mesh is resident are drawn from it, not as ellipsoids.
     if (!this.meshes && prep.resolved.some((r) => r.body.shape)) this.meshes = new MeshBodies(d, this.hdrFormat, this.weightFormat, this.meshCacheMiB);
-    const meshSet = this.meshes ? this.meshes.prepare(prep, g) : null;
+    const meshSet = this.meshes ? this.meshes.prepare(prep, g, { selfShadow: !this.debugSkip.has('meshShadow') }) : null;
     if (this.meshes) this.stats.meshes = this.meshes.stats();
     this.stats.cpuPrepMs = performance.now() - t0;
 

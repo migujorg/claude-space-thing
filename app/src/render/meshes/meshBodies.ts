@@ -97,7 +97,7 @@ export class MeshBodies {
    * Choose the drawn meshes and write their uniforms. Returns the indices (into prep.resolved) drawn as meshes;
    * the renderer draws the others as ellipsoids.
    */
-  prepare(prep: PreparedFrame, g: CameraGeom): Set<number> {
+  prepare(prep: PreparedFrame, g: CameraGeom, opts: { selfShadow?: boolean } = {}): Set<number> {
     this.frame++;
     this.draws = [];
     const drawn: MeshFrameStats['drawn'] = [];
@@ -133,7 +133,7 @@ export class MeshBodies {
       const R = meanRadius(r.body.radii);
       cand.push({ i, e, k, sk, px: (2 * bound * ppr) / Math.max(r.frame.D, bound), energy: (Math.PI * R * R) / (e.meanProjectedArea * s * s) });
     });
-    const shadowed = new Set(cand.filter((c) => prep.resolved[c.i].lit && c.px >= SHADOW_MIN_PX).sort((a, b) => b.px - a.px).slice(0, MAX_SHADOW_MAPS).map((c) => c.i));
+    const shadowed = new Set(cand.filter((c) => opts.selfShadow !== false && prep.resolved[c.i].lit && c.px >= SHADOW_MIN_PX).sort((a, b) => b.px - a.px).slice(0, MAX_SHADOW_MAPS).map((c) => c.i));
     let sIdx = 0;
     for (const c of cand) {
       const r = prep.resolved[c.i];
