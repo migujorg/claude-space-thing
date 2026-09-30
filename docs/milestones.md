@@ -64,3 +64,35 @@ Time-dependent adaptation, HDR output, acuity limits, refinement against publish
 The synthetic layer (NORTH_STAR 3.3) for small bodies: 2,948,454 synthetic objects — NEOs (Granvik et al. 2018), Hungarias, main belt and Hildas (catalogue + measured SFD slopes: Maeda et al. 2021, Terai & Yoshida 2018), Jupiter Trojans (Yoshida & Terai 2017), TNOs (CFEPS L7) — filling only each (a, e, i, H) cell's deficit below the survey completeness limit refitted to the current catalogue (Hendler & Malhotra 2020 form). Deterministic per-cell streams make it yield to discoveries: removing N catalogued objects adds ~N synthetic ones and keeps the rest. Every synthetic value is labelled `synthetic`; the inspector explains which model/cell/deficit an object stands in for. `Complete` is now the default level. From inside the main belt it still looks empty to the naked eye — the brightest synthetic object is V 14.1 (docs/reports/synthetic-populations.md).
 
 Next populations: irregular moons, Centaurs, comets' reservoirs, interplanetary dust (already modelled optically as zodiacal light).
+
+## Moments — real events in the data window  *(done)*
+
+`E` opens Moments. It lists notable configurations inside the data window, computed in a Web Worker from the loaded ephemerides, radii and orientation models only (light-time corrected; scan, then bisection or golden-section search):
+
+- solar and lunar eclipses;
+- Galilean-moon transits, shadow transits, occultations, eclipses and double or triple shadows;
+- Saturn's ring-plane crossings;
+- oppositions, conjunctions, elongations and close planet pairs;
+- Pluto–Charon mutual events (none in this window);
+- near-Earth-object approaches to the Earth and the Moon, propagated with the reference propagator.
+
+Each event has a "go there" camera and a method line, and shows its provenance: its files, its sources and its worst input label. Results are cached in IndexedDB per data build (src/app/events).
+
+Checked against published predictions (tests/app-events-real.test.ts):
+
+- The 2027-08-02 total eclipse: greatest eclipse within 30 s of 10:07:50 TD, at 25.5°N 33.2°E, gamma 0.1421, duration 6 min 23 s ± 10 s. Published durations use a slightly smaller lunar radius.
+- The other five solar eclipses of the window, and the lunar totals of 2025-09-07 and 2026-03-03 within 60 s. The lunar shadow is geometric, so its magnitudes are a little smaller than published ones.
+- Saturn's equinox on 2025-05-06, and oppositions and elongations on their almanac dates.
+- The JPL CNEOS close approaches: all 2,816 Earth approaches in the window reproduced (median 0.1 s, relative distance 5e-9).
+
+Curated views start with the longest total solar and lunar eclipses, then:
+
+- Saturn at equinox, and its rings nearly edge-on from the Earth;
+- a double shadow transit on Jupiter;
+- Mars at opposition;
+- a planet pair, and the closest pair to the Sun with the Sun shield on;
+- the Earth over the lunar horizon, the Jovian system now, and Pluto with Charon.
+
+A view may ask for the Sun shield (`K`, badged). The first run (no URL parameters) frames the Earth, with the Moon beside it, now and in real time, with a hint line. The scene suite adds that composition, the eclipse from the shadow axis and from above the atmosphere, and the double shadow transit.
+
+Dropped: an asteroid belt seen from above. From 2–14 AU at +8 to +14 stops, the asteroids were lost among the background stars.

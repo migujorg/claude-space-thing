@@ -28,8 +28,12 @@ import { buildSnapshot, buildSun, filtered, sceneBodyOf, type OverlayOnlyBody } 
 import { SmallBodies, sbId, sbRow, type ShapeSize, type SmallBodyCounts } from './smallbodies';
 import { GridWorkerClient, type GridWorkerPort } from './sbgrid';
 import { parseIsoUtc, type UrlView } from './url';
-import { DEG, IDENTITY, len, matFromQuat, norm, quatFromMat, slerpQuat, sub } from './vec';
+import { DEG, IDENTITY, len, matFromQuat, norm, perpComponent, quatFromMat, slerpQuat, sub } from './vec';
 import { computeWorld, copy, findSunId, isPhysical, navRadius, type World } from './world';
+import { EventService, EventWorkerClient, FINDER_VERSION, hashKey, InProcessEvents, type EventCache, type EventComputePort, type Readiness } from './events/service';
+import { EventEngine, type Category, type EngineInit } from './events/engine';
+import type { EventView, FinderInput, SkyEvent } from './events/finder';
+import { eventBookmarks, staticBookmarks, type Bookmark } from './events/curated';
 
 export interface ViewportSize {
   /** CSS pixels */
@@ -50,7 +54,7 @@ export interface FlyInput {
  * 'loading': background loading of moon systems or the small-body catalogue progressed (UI indicator, search list).
  * 'smallbodies': the small-body catalogue, its name index or its GPU field changed state.
  */
-export type AppEvent = 'data' | 'selection' | 'reality' | 'time' | 'camera' | 'message' | 'loading' | 'smallbodies';
+export type AppEvent = 'data' | 'selection' | 'reality' | 'time' | 'camera' | 'message' | 'loading' | 'smallbodies' | 'events';
 
 /** Where the small-body catalogue stands. */
 export interface SmallBodyLoad {
@@ -94,6 +98,10 @@ const perfNow = (): number => (typeof performance !== 'undefined' ? performance.
 const DEFAULT_FOV_DEG = 50;
 /** Preferred initial target (NAIF id of Earth, a naming convention — not a physical value). */
 const DEFAULT_TARGET = 399;
+/** NAIF id of the Moon (the first-run view frames it beside the Earth). */
+const FIRST_RUN_COMPANION = 301;
+/** First run: the Moon this far from the centre of view (a framing choice), degrees. */
+const FIRST_RUN_MOON_OFFSET_DEG = 14;
 
 interface Turn {
   from: Mat3Q;
@@ -162,20 +170,34 @@ export class AppModel {
   private deferred = new Map<string, DeferredEphemeris>();
   private loader: DeferredLoader | null = null;
   private idleWaiters: (() => void)[] = [];
-  private pendingGoTo: { id: number; dist?: number; opts: { azDeg?: number; elDeg?: number; instant?: boolean }; resolve: () => void; reject: (e: Error) => void } | null = null;
+  private pendingGoTo: { id: number; dist?: number; opts: { azDeg?: number; elDeg?: number; dir?: Vec3; up?: Vec3; instant?: boolean }; resolve: () => void; reject: (e: Error) => void } | null = null;
   private chainCache = new Map<number, { et: number; label: Label }>();
   private lastPriorityUpdate = -Infinity;
   private starCache = new Map<string, StarFilterResult>();
   private listeners = new Map<AppEvent, Set<() => void>>();
   private readonly now: () => number;
+  /** Every ephemeris file in the set, in load order (the event finder gets the same chain). */
+  private loadedEphem: LoadedEphemeris[] = [];
+  /** Opened without URL parameters (first-run view and hint). */
+  firstRun = false;
+  /** Event finder ("Moments"); computes on demand (the Moments panel, scripts). */
+  events: EventService | null = null;
+  private readonly eventWorker: (() => Worker) | null;
+  private staticViews: { key: string; list: Bookmark[] } | null = null;
+  private readonly eventCache: EventCache | null;
 
-  constructor(core: CoreDeps, opts: { now?: () => number; syntheticLayerAvailable?: boolean } = {}) {
+  constructor(core: CoreDeps, opts: { now?: () => number; syntheticLayerAvailable?: boolean; eventWorker?: () => Worker; eventCache?: EventCache | null } = {}) {
     this.core = core;
     this.now = opts.now ?? Date.now;
     this.syntheticLayerAvailable = !!opts.syntheticLayerAvailable;
     this.realityDefaults = defaultReality({ syntheticLayerAvailable: opts.syntheticLayerAvailable });
     this.reality = structuredClone(this.realityDefaults);
     this.orientations = buildOrientation(core, [], []).set;
+    this.eventWorker = opts.eventWorker ?? null;
+    this.eventCache = opts.eventCache ?? null;
+    // A category of events may be waiting for a moon system or the small-body catalogue.
+    this.on('loading', () => this.events?.inputsChanged());
+    this.on('smallbodies', () => this.events?.inputsChanged());
   }
 
   // ---- events -----------------------------------------------------------------------------------
@@ -226,12 +248,14 @@ export class AppModel {
       }
     }
     let ephWindow: TimeWindow | null = null;
+    this.loadedEphem = [];
     if (d.ephemerides.length || d.deferred?.length) {
       const set = new this.core.EphemerisSet();
       let added = 0;
       for (const e of d.ephemerides) {
         try {
           set.add(new this.core.Ephemeris(e.header, e.data));
+          this.loadedEphem.push(e);
           added++;
         } catch (err) {
           this.coreErrors.push(`${e.path} could not be used: ${(err as Error).message ?? err}`);
@@ -273,6 +297,9 @@ export class AppModel {
     this.smallBodies = null;
     this.sbExcluded = '';
     this.sb = { status: d.smallBodies ? 'waiting' : 'absent', got: 0, total: d.smallBodies?.tableBytes ?? 0, message: null, ms: null };
+    this.events?.dispose();
+    this.events = new EventService(this.eventHost(), (init) => this.eventPort(init), this.eventCache);
+    this.events.onChange(() => this.emit('events'));
     this.setSyntheticLayerAvailable(!!d.smallBodies?.synthetic);
     this.emit('data');
     this.emit('time');
@@ -554,6 +581,8 @@ export class AppModel {
       this.coreErrors.push(`${e.path} could not be used: ${(err as Error).message ?? err}`);
       return false;
     }
+    this.loadedEphem.push(e);
+    if (this.eventFiles([...this.loadedEphem]).includes(e)) this.events?.addEphem({ path: e.path, header: e.header, data: e.data });
     this.chainCache.clear();
     const d = this.deferred.get(e.path);
     this.orbits?.invalidate(d?.bodies);
@@ -826,7 +855,7 @@ export class AppModel {
    * Magic travel to a body; ends in orbit mode on the sunlit side (or at az/el given in `opts`).
    * Resolves when the travel completes (or is superseded). Returns an error string if impossible.
    */
-  goTo(id: number, dist?: number, opts: { azDeg?: number; elDeg?: number; instant?: boolean } = {}): Promise<void> | string {
+  goTo(id: number, dist?: number, opts: { azDeg?: number; elDeg?: number; dir?: Vec3; up?: Vec3; instant?: boolean } = {}): Promise<void> | string {
     const twin = this.planetaryTwin(id);
     if (twin !== null) return this.goTo(twin, dist, opts);
     const body = this.bodyOf(id);
@@ -875,11 +904,12 @@ export class AppModel {
     const endDist = clampDist(dist ?? this.defaultDistance(id), radius);
     let dir: Vec3;
     const toSun = this.toSunAt(id);
-    if (opts.azDeg !== undefined || opts.elDeg !== undefined)
+    if (opts.dir) dir = norm(opts.dir);
+    else if (opts.azDeg !== undefined || opts.elDeg !== undefined)
       dir = dirFromAzEl(sunFrame(toSun), (opts.azDeg ?? CAMERA_TUNING.viewAzDeg) * DEG, (opts.elDeg ?? CAMERA_TUNING.viewElDeg) * DEG);
     else if (this.cam.mode === 'orbit' && this.cam.target === id && !this.travel) dir = this.cam.dir;
     else dir = sunlitDirection(toSun);
-    const up = defaultUp(dir);
+    const up = opts.up ? perpComponent(opts.up, dir) : defaultUp(dir);
     this.finishTravel();
     this.turn = null;
     this.select(id);
@@ -1231,10 +1261,183 @@ export class AppModel {
     return row !== null && sb.has(row) ? sbId(row) : null;
   }
 
+  // ---- events ("Moments") ------------------------------------------------------------------------
+
+  private eventPort(init: EngineInit): EventComputePort {
+    if (this.eventWorker) {
+      try {
+        return new EventWorkerClient(this.eventWorker(), init);
+      } catch (e) {
+        this.coreErrors.push(`event finder worker: ${(e as Error).message ?? e} (computing on the main thread)`);
+      }
+    }
+    const inp = this.finderInput();
+    if (!inp) throw new Error('no ephemerides');
+    return new InProcessEvents(new EventEngine(inp));
+  }
+
+  private eventHost() {
+    return {
+      readiness: (c: Category) => this.eventReadiness(c),
+      engineInit: (): EngineInit => ({
+        ephem: this.eventFiles(this.loadedEphem).map((e) => ({ path: e.path, header: e.header, data: e.data })),
+        bodies: this.bodies.map((b) => ({ id: b.id, radii: b.radii, rotation: b.rotation })),
+        orientations: (this.data?.orientations ?? []).map((o) => ({ path: o.path, header: o.header, data: o.data })),
+        window: this.clock.window ?? { startEt: 0, endEt: 0 },
+        atmospheres: [...this.atmosphereTops()].map(([id, topKm]) => ({ id, topKm })),
+      }),
+      smallBodies: () => {
+        const sb = this.smallBodies, c = sb?.closeApproachCandidates();
+        if (!sb || !c) return null;
+        const h = sb.tables.core.header;
+        return { forceModel: h.forceModel, epochEt: h.epochEt, window: h.window, maxKm: c.maxKm, candidates: c.candidates };
+      },
+      cacheKey: (c: Category) => this.eventCacheKey(c),
+    };
+  }
+
+  /**
+   * The ephemeris files the event finder needs (copied to its worker): in load order, each file that brings a
+   * body the finder uses (barycentres, Sun, planets, the Moon, the Galilean moons, Charon) not already brought by
+   * an earlier one. The other moon systems (tens of MB) stay on this thread.
+   */
+  private eventFiles(files: LoadedEphemeris[]): LoadedEphemeris[] {
+    const used = new Set([...Array.from({ length: 11 }, (_, i) => i), 199, 299, 301, 399, 499, 599, 699, 799, 899, 999, 501, 502, 503, 504, 901]);
+    const have = new Set<number>();
+    return files.filter((f) => {
+      const brings = f.header.segments.map((s) => s.target).filter((t) => used.has(t) && !have.has(t));
+      brings.forEach((t) => have.add(t));
+      return brings.length > 0;
+    });
+  }
+
+  /** Whether the inputs of a category of events are loaded. */
+  eventReadiness(c: Category): Readiness {
+    const w = this.clock.window;
+    const eph = this.eph;
+    if (!eph || !w) return { state: 'no', why: 'No ephemerides are loaded.' };
+    const mid = 0.5 * (w.startEt + w.endEt);
+    const need = (ids: number[], opts: { radii?: number[]; rotation?: number[] } = {}): Readiness => {
+      for (const id of ids) {
+        if (!this.byId.has(id)) return { state: 'no', why: `The data has no body ${id}.` };
+        const st = this.bodyLoadState(id);
+        if (st === 'error') return { state: 'no', why: `The ephemeris of ${this.bodyName(id)} could not be loaded.` };
+        if (st !== 'loaded') return { state: 'wait', why: `Waiting for ${this.systems?.pendingFor(id).map((s) => s.title).join(', ') || 'its ephemeris'} to load.` };
+        if (!eph.positionSSB(id, mid)) return { state: 'no', why: `No position for ${this.bodyName(id)} in the data window.` };
+      }
+      for (const id of opts.radii ?? []) if (!this.byId.get(id)?.radii?.value) return { state: 'no', why: `${this.bodyName(id)} has no radii in the data.` };
+      for (const id of opts.rotation ?? []) if (!this.byId.get(id)?.rotation?.value) return { state: 'no', why: `${this.bodyName(id)} has no rotation model in the data.` };
+      return { state: 'ready' };
+    };
+    switch (c) {
+      case 'eclipses':
+        return need([10, 399, 301], { radii: [10, 399, 301] });
+      case 'planets': {
+        const r = need([10, 399], { radii: [10] });
+        // The ecliptic pole comes from the Earth–Moon barycentre's orbit.
+        return r.state === 'ready' && !eph.positionSSB(3, mid) ? { state: 'no', why: 'No Earth–Moon barycentre in the ephemerides.' } : r;
+      }
+      case 'saturn':
+        return need([10, 399, 699], { rotation: [699] });
+      case 'jovian':
+        return need([10, 399, 599, 501, 502, 503, 504], { radii: [599], rotation: [599] });
+      case 'pluto':
+        return need([399, 999, 901], { radii: [999, 901] });
+      case 'neo': {
+        const s = this.sb.status;
+        if (s === 'ready') return this.smallBodies?.closeApproachCandidates() ? { state: 'ready' } : { state: 'no', why: 'The small-body catalogue does not flag close approaches (or not with a stated distance).' };
+        if (s === 'waiting' || s === 'loading') return { state: 'wait', why: 'Waiting for the small-body catalogue to load.' };
+        if (s === 'off') return { state: 'no', why: 'Small bodies are disabled by the URL (smallbodies=0).' };
+        return { state: 'no', why: s === 'absent' ? 'The data has no small-body catalogue.' : 'The small-body catalogue could not be loaded.' };
+      }
+    }
+  }
+
+  /** Cache key for a category: the finder version and the sha256 of every input file (null without a manifest). */
+  private eventCacheKey(c: Category): string | null {
+    const man = this.data?.manifest;
+    if (!man) return null;
+    const inputs = Object.keys(man.products)
+      .filter((p) => /^(ephem|orient)\//.test(p) || p === 'bodies.json' || (c === 'neo' && /^smallbodies\/(core|nongrav)\.(json|bin)$/.test(p)))
+      .sort();
+    const parts = inputs.map((p) => `${p}=${man.products[p].sha256 ?? ''}`);
+    if (!parts.length || parts.some((x) => x.endsWith('='))) return null;
+    return `v${FINDER_VERSION}:${c}:${hashKey(parts.join(';'))}`;
+  }
+
+  /** The finder's geometry on this thread (curated views are placed with it). */
+  finderInput(): FinderInput | null {
+    const eph = this.eph, w = this.clock.window;
+    if (!eph || !w) return null;
+    const radii = new Map<number, Vec3>();
+    for (const b of this.bodies) if (b.radii?.value) radii.set(b.id, [b.radii.value[0], b.radii.value[1], b.radii.value[2]]);
+    return { eph: { positionSSB: (id, et) => copy(eph.positionSSB(id, et)) }, radii, orientation: (id, et) => this.orientations.orientation(id, et), window: w, atmosphereTopKm: this.atmosphereTops() };
+  }
+
+  /** Top of each drawn atmosphere above its body's largest radius, km (as the renderer draws the shell). */
+  private atmosphereTops(): Map<number, number> {
+    const out = new Map<number, number>();
+    for (const a of Object.values(this.data?.atmospheres?.bodies ?? {})) {
+      if (a.topAltitudeKm === null || a.topAltitudeKm === undefined) continue;
+      out.set(a.naifId, a.topAltitudeKm - (a.altitudesKm?.[0] ?? 0));
+    }
+    return out;
+  }
+
+  /** Curated views: the most striking events found so far, and a few placed near the current time. */
+  curatedViews(): Bookmark[] {
+    const now = this.nowEt() ?? this.clock.et;
+    const key = `${this.data?.manifest?.generatedAt ?? ''}:${this.loadedEphem.length}:${Math.round(now / 86400)}`;
+    if (this.staticViews?.key !== key) {
+      const inp = this.finderInput();
+      let list: Bookmark[] = [];
+      try {
+        list = inp ? staticBookmarks(inp, now) : [];
+      } catch (e) {
+        this.coreErrors.push(`curated views: ${(e as Error).message ?? e}`);
+      }
+      this.staticViews = { key, list };
+    }
+    return [...eventBookmarks(this.events?.all() ?? [], now), ...this.staticViews.list];
+  }
+
+  /**
+   * Show an event: jump to its time (paused) and place the camera as the view says — orbiting its target, or
+   * fixed near a surface looking at another body. Resolves when the camera is there.
+   */
+  goToEvent(ev: SkyEvent, viewIndex = 0, opts: { instant?: boolean } = {}): Promise<void> | string {
+    const v = ev.views[viewIndex];
+    if (!v) return `${ev.title}: no such view.`;
+    return this.showView(v, v.et ?? ev.et, opts);
+  }
+
+  showView(v: EventView, et: number, opts: { instant?: boolean } = {}): Promise<void> | string {
+    this.clock.pause();
+    this.setEt(et);
+    this.setFovDeg(v.fovDeg ?? DEFAULT_FOV_DEG);
+    if (v.enhancedStops !== undefined) this.setReality({ view: 'enhanced', exposureBoostStops: v.enhancedStops });
+    if (v.sunShield) this.setReality({ sunShield: true });
+    const rel = v.rel, d = len(rel);
+    if (v.lookAt === undefined) return this.goTo(v.target, d, { dir: norm(rel), up: v.up, instant: opts.instant });
+    // A fixed viewpoint (near a surface): the camera keeps its offset from `target` and looks at `lookAt`.
+    const tp = this.bodyPos(v.target), lp = this.bodyPos(v.lookAt);
+    if (!tp || !lp) return `No position for ${this.bodyName(tp ? v.lookAt : v.target)} at this time.`;
+    const pos: Vec3 = [tp[0] + rel[0], tp[1] + rel[1], tp[2] + rel[2]];
+    const fwd = norm(sub(lp, pos));
+    this.finishTravel();
+    this.turn = null;
+    this.cam = { mode: 'free', anchor: v.target, rel: [rel[0], rel[1], rel[2]], orient: lookRotation(fwd, v.up ?? defaultUp(fwd)) };
+    this.pose = freePose(this.cam, tp);
+    this.select(v.lookAt);
+    this.emit('camera');
+    return Promise.resolve();
+  }
+
   // ---- URL & debug --------------------------------------------------------------------------------
 
   /** Apply URL view parameters (after setData). */
   applyUrl(v: UrlView): void {
+    this.firstRun = Object.keys(v).length === 0;
     if (v.smallbodies === false) this.setSyntheticLayerAvailable(false);   // no small bodies: no synthetic layer
     if (v.fov !== undefined) this.fovY = Math.min(120, Math.max(1, v.fov)) * DEG;
     const patch: Parameters<AppModel['setReality']>[0] = { overlays: {} };
@@ -1258,6 +1461,7 @@ export class AppModel {
       if (this.goNow()) this.clock.play();
     }
     this.emit('time');
+    if (this.firstRun && this.firstRunView()) return;
 
     // Requested target first; if it cannot be shown now, fall back (and say so).
     const fallbacks = [DEFAULT_TARGET, ...this.bodies.filter((b) => b.kind === 'planet').map((b) => b.id), this.sunId];
@@ -1276,6 +1480,40 @@ export class AppModel {
       if (typeof r !== 'string') return;
       this.message(r, 'warn');
     }
+  }
+
+  /**
+   * The first-run view: the Earth framed as a go-to would, with the Moon beside it (FIRST_RUN_MOON_OFFSET_DEG from
+   * the centre) — the camera on the cone around the anti-Moon direction that gives that offset, turned as far
+   * toward the Sun as the cone allows (the most lit Earth this configuration offers). False if impossible.
+   */
+  firstRunView(): boolean {
+    const E = this.bodyPos(DEFAULT_TARGET), M = this.bodyPos(FIRST_RUN_COMPANION), r = this.radiusOf(DEFAULT_TARGET);
+    if (!E || !M || !r) return false;
+    const dist = this.defaultDistance(DEFAULT_TARGET);
+    const um = norm(sub(M, E));
+    const ts = this.toSunAt(DEFAULT_TARGET);
+    const w = perpComponent(ts ?? [0, 0, 1], um);
+    const dirAt = (b: number): Vec3 => norm([-um[0] * Math.cos(b) + w[0] * Math.sin(b), -um[1] * Math.cos(b) + w[1] * Math.sin(b), -um[2] * Math.cos(b) + w[2] * Math.sin(b)]);
+    const moonOff = (b: number) => {
+      const d = dirAt(b);
+      const C: Vec3 = [E[0] + d[0] * dist, E[1] + d[1] * dist, E[2] + d[2] * dist];
+      const a = norm(sub(M, C)), e = norm(sub(E, C));
+      return Math.acos(Math.max(-1, Math.min(1, a[0] * e[0] + a[1] * e[1] + a[2] * e[2])));
+    };
+    // The offset grows with the cone angle (0: the Moon hidden behind the Earth); bisection.
+    let lo = 0, hi = Math.PI / 2;
+    const want = FIRST_RUN_MOON_OFFSET_DEG * DEG;
+    if (moonOff(hi) < want) lo = hi;
+    for (let i = 0; i < 60; i++) {
+      const mid = 0.5 * (lo + hi);
+      if (moonOff(mid) < want) lo = mid; else hi = mid;
+    }
+    const r2 = this.goTo(DEFAULT_TARGET, dist, { dir: dirAt(0.5 * (lo + hi)), instant: true });
+    if (typeof r2 === 'string') return false;
+    // Nothing selected: the view is uncluttered, and the hint invites a click.
+    this.select(null);
+    return true;
   }
 
   currentUrlView(): UrlView {

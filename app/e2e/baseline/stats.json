@@ -1,9 +1,9 @@
 {
- "acceptedAt": "2026-09-30T21:53:15.458Z",
- "git": "0af63fb",
+ "acceptedAt": "2026-09-30T22:18:36.114Z",
+ "git": "c541fca",
  "data": {
-  "manifestGeneratedAt": "2026-09-30T20:55:28+00:00",
-  "manifestSha256": "90fe552b64c38be8372217905a8bb65962ead42deb6d1a2d4a178f77247d705f"
+  "manifestGeneratedAt": "2026-09-30T22:06:28+00:00",
+  "manifestSha256": "65e48511f67b3c347010a3b34f607e6513f3b2ed211838d486fa486180116508"
  },
  "viewport": {
   "width": 1280,
@@ -342,7 +342,7 @@
     "bodiesInSnapshot": 75,
     "sun": true,
     "warnings": [
-     "Neptune rings: reflectance not measured \u2192 rings absorb and cast shadows only; their material is hatched as not measured"
+     "Neptune rings: reflectance not measured → rings absorb and cast shadows only; their material is hatched as not measured"
     ],
     "badge": []
    },
@@ -352,8 +352,8 @@
   "earth-day-strict": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&target=399&dist=20000&az=0&el=0&exists=strict",
    "stats": {
-    "adaptationLuminance": 1e-05,
-    "scotopicAdaptationLuminance": 1.408e-05,
+    "adaptationLuminance": 0.00001,
+    "scotopicAdaptationLuminance": 0.00001408,
     "pupilDiameterMm": 7.892612754887529,
     "mesopicM": 0,
     "limitingMagnitude": 7.601985293005745,
@@ -681,10 +681,10 @@
     "bodiesInSnapshot": 75,
     "sun": true,
     "warnings": [
-     "Earth: orientation unknown \u2192 drawn as a sphere of mean radius",
-     "Neptune rings: reflectance not measured \u2192 rings absorb and cast shadows only; their material is hatched as not measured",
-     "Saturn rings: reflectance not measured \u2192 rings absorb and cast shadows only; their material is hatched as not measured",
-     "Sun: limb darkening unknown \u2192 drawn as an unresolved point of the correct illuminance (no uniform disk assumed)"
+     "Earth: orientation unknown → drawn as a sphere of mean radius",
+     "Neptune rings: reflectance not measured → rings absorb and cast shadows only; their material is hatched as not measured",
+     "Saturn rings: reflectance not measured → rings absorb and cast shadows only; their material is hatched as not measured",
+     "Sun: limb darkening unknown → drawn as an unresolved point of the correct illuminance (no uniform disk assumed)"
     ],
     "badge": [
      "STRICT: measured + derived only"
@@ -724,7 +724,7 @@
     "bodiesInSnapshot": 75,
     "sun": true,
     "warnings": [
-     "Earth: phase extrapolated beyond measured range (0\u2013170\u00b0) with the spatial law \u2192 estimated"
+     "Earth: phase extrapolated beyond measured range (0–170°) with the spatial law → estimated"
     ],
     "badge": []
    },
@@ -942,7 +942,7 @@
     "bodiesInSnapshot": 75,
     "sun": true,
     "warnings": [
-     "Sinope: phase extrapolated beyond measured range (0\u201312\u00b0) with the spatial law \u2192 estimated"
+     "Sinope: phase extrapolated beyond measured range (0–12°) with the spatial law → estimated"
     ],
     "badge": []
    },
@@ -1041,8 +1041,8 @@
     "bodiesInSnapshot": 75,
     "sun": true,
     "warnings": [
-     "Neptune rings: reflectance not measured \u2192 rings absorb and cast shadows only; their material is hatched as not measured",
-     "Triton: phase extrapolated beyond measured range (0\u20131.26\u00b0) with the spatial law \u2192 estimated"
+     "Neptune rings: reflectance not measured → rings absorb and cast shadows only; their material is hatched as not measured",
+     "Triton: phase extrapolated beyond measured range (0–1.26°) with the spatial law → estimated"
     ],
     "badge": []
    },
@@ -1087,7 +1087,7 @@
     "bodiesInSnapshot": 75,
     "sun": true,
     "warnings": [
-     "Uranus rings: reflectance not measured \u2192 rings absorb and cast shadows only; their material is hatched as not measured"
+     "Uranus rings: reflectance not measured → rings absorb and cast shadows only; their material is hatched as not measured"
     ],
     "badge": []
    },
@@ -1131,7 +1131,7 @@
     "bodiesInSnapshot": 75,
     "sun": true,
     "warnings": [
-     "Neptune rings: reflectance not measured \u2192 rings absorb and cast shadows only; their material is hatched as not measured"
+     "Neptune rings: reflectance not measured → rings absorb and cast shadows only; their material is hatched as not measured"
     ],
     "badge": []
    },
@@ -1168,8 +1168,8 @@
     "bodiesInSnapshot": 75,
     "sun": true,
     "warnings": [
-     "Charon: phase extrapolated beyond measured range (0\u20131.74\u00b0) with the spatial law \u2192 estimated",
-     "Pluto: phase extrapolated beyond measured range (0\u20131.74\u00b0) with the spatial law \u2192 estimated"
+     "Charon: phase extrapolated beyond measured range (0–1.74°) with the spatial law → estimated",
+     "Pluto: phase extrapolated beyond measured range (0–1.74°) with the spatial law → estimated"
     ],
     "badge": []
    },
@@ -1179,7 +1179,7 @@
   "starfield": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&target=999&dist=3000000000&labels=0",
    "stats": {
-    "adaptationLuminance": 5.4438933694600595e-05,
+    "adaptationLuminance": 0.000054438933694600595,
     "scotopicAdaptationLuminance": 0.00011576808711704343,
     "pupilDiameterMm": 7.8372675848035955,
     "mesopicM": 0,
@@ -1198,8 +1198,8 @@
     "bodiesInSnapshot": 75,
     "sun": true,
     "warnings": [
-     "Charon: phase extrapolated beyond measured range (0\u20131.74\u00b0) with the spatial law \u2192 estimated",
-     "Pluto: phase extrapolated beyond measured range (0\u20131.74\u00b0) with the spatial law \u2192 estimated"
+     "Charon: phase extrapolated beyond measured range (0–1.74°) with the spatial law → estimated",
+     "Pluto: phase extrapolated beyond measured range (0–1.74°) with the spatial law → estimated"
     ],
     "badge": []
    },
@@ -1209,8 +1209,8 @@
   "starfield-enhanced": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&target=999&dist=3000000000&labels=0&view=enhanced&boost=6",
    "stats": {
-    "adaptationLuminance": 4.1874230654980764e-05,
-    "scotopicAdaptationLuminance": 8.768460527018937e-05,
+    "adaptationLuminance": 0.000041874230654980764,
+    "scotopicAdaptationLuminance": 0.00008768460527018937,
     "pupilDiameterMm": 7.836671633337503,
     "mesopicM": 0,
     "limitingMagnitude": 11.233768377814057,
@@ -1228,8 +1228,8 @@
     "bodiesInSnapshot": 75,
     "sun": true,
     "warnings": [
-     "Charon: phase extrapolated beyond measured range (0\u20131.74\u00b0) with the spatial law \u2192 estimated",
-     "Pluto: phase extrapolated beyond measured range (0\u20131.74\u00b0) with the spatial law \u2192 estimated"
+     "Charon: phase extrapolated beyond measured range (0–1.74°) with the spatial law → estimated",
+     "Pluto: phase extrapolated beyond measured range (0–1.74°) with the spatial law → estimated"
     ],
     "badge": [
      "ENHANCED +6 stops"
@@ -1314,8 +1314,8 @@
     "bodiesInSnapshot": 76,
     "sun": true,
     "warnings": [
-     "Neptune rings: reflectance not measured \u2192 rings absorb and cast shadows only; their material is hatched as not measured",
-     "Triton: phase extrapolated beyond measured range (0\u20131.26\u00b0) with the spatial law \u2192 estimated"
+     "Neptune rings: reflectance not measured → rings absorb and cast shadows only; their material is hatched as not measured",
+     "Triton: phase extrapolated beyond measured range (0–1.26°) with the spatial law → estimated"
     ],
     "badge": []
    },
@@ -1381,7 +1381,7 @@
     "bodiesInSnapshot": 75,
     "sun": true,
     "warnings": [
-     "Uranus rings: reflectance not measured \u2192 rings absorb and cast shadows only; their material is hatched as not measured"
+     "Uranus rings: reflectance not measured → rings absorb and cast shadows only; their material is hatched as not measured"
     ],
     "badge": []
    },
@@ -1425,7 +1425,7 @@
   "starfield-dark-2min": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&target=999&dist=3000000000&labels=0&adaptfrom=10000%2C600%2C120",
    "stats": {
-    "adaptationLuminance": 6.353122935205967e-05,
+    "adaptationLuminance": 0.00006353122935205967,
     "scotopicAdaptationLuminance": 0.00013639825588356635,
     "pupilDiameterMm": 7.836907429178297,
     "mesopicM": 0,
@@ -1444,8 +1444,8 @@
     "bodiesInSnapshot": 75,
     "sun": true,
     "warnings": [
-     "Charon: phase extrapolated beyond measured range (0\u20131.74\u00b0) with the spatial law \u2192 estimated",
-     "Pluto: phase extrapolated beyond measured range (0\u20131.74\u00b0) with the spatial law \u2192 estimated"
+     "Charon: phase extrapolated beyond measured range (0–1.74°) with the spatial law → estimated",
+     "Pluto: phase extrapolated beyond measured range (0–1.74°) with the spatial law → estimated"
     ],
     "badge": []
    },
@@ -1455,7 +1455,7 @@
   "starfield-dark-12min": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&target=999&dist=3000000000&labels=0&adaptfrom=10000%2C600%2C720",
    "stats": {
-    "adaptationLuminance": 6.292023092925444e-05,
+    "adaptationLuminance": 0.00006292023092925444,
     "scotopicAdaptationLuminance": 0.0001349682279289137,
     "pupilDiameterMm": 7.836805452471469,
     "mesopicM": 0,
@@ -1474,8 +1474,8 @@
     "bodiesInSnapshot": 75,
     "sun": true,
     "warnings": [
-     "Charon: phase extrapolated beyond measured range (0\u20131.74\u00b0) with the spatial law \u2192 estimated",
-     "Pluto: phase extrapolated beyond measured range (0\u20131.74\u00b0) with the spatial law \u2192 estimated"
+     "Charon: phase extrapolated beyond measured range (0–1.74°) with the spatial law → estimated",
+     "Pluto: phase extrapolated beyond measured range (0–1.74°) with the spatial law → estimated"
     ],
     "badge": []
    },
@@ -1485,7 +1485,7 @@
   "starfield-dark-30min": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&target=999&dist=3000000000&labels=0&adaptfrom=10000%2C600%2C1800",
    "stats": {
-    "adaptationLuminance": 5.643685173969456e-05,
+    "adaptationLuminance": 0.00005643685173969456,
     "scotopicAdaptationLuminance": 0.00012029729981232895,
     "pupilDiameterMm": 7.836527323888276,
     "mesopicM": 0,
@@ -1504,8 +1504,8 @@
     "bodiesInSnapshot": 75,
     "sun": true,
     "warnings": [
-     "Charon: phase extrapolated beyond measured range (0\u20131.74\u00b0) with the spatial law \u2192 estimated",
-     "Pluto: phase extrapolated beyond measured range (0\u20131.74\u00b0) with the spatial law \u2192 estimated"
+     "Charon: phase extrapolated beyond measured range (0–1.74°) with the spatial law → estimated",
+     "Pluto: phase extrapolated beyond measured range (0–1.74°) with the spatial law → estimated"
     ],
     "badge": []
    },
@@ -1591,7 +1591,7 @@
     "bodiesInSnapshot": 75,
     "sun": true,
     "warnings": [
-     "Uranus rings: reflectance not measured \u2192 rings absorb and cast shadows only; their material is hatched as not measured"
+     "Uranus rings: reflectance not measured → rings absorb and cast shadows only; their material is hatched as not measured"
     ],
     "badge": []
    },
@@ -1601,7 +1601,7 @@
   "hyperion-fallback": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&target=607&dist=900&az=30&el=10",
    "stats": {
-    "adaptationLuminance": 4.770213430591739e-05,
+    "adaptationLuminance": 0.00004770213430591739,
     "scotopicAdaptationLuminance": 0.00010410755386802757,
     "pupilDiameterMm": 7.841625821235505,
     "mesopicM": 0,
@@ -1654,7 +1654,7 @@
     "bodiesInSnapshot": 75,
     "sun": true,
     "warnings": [
-     "Hyperion: orientation unknown \u2192 drawn as a sphere of mean radius"
+     "Hyperion: orientation unknown → drawn as a sphere of mean radius"
     ],
     "badge": []
    },
@@ -1690,14 +1690,518 @@
     "bodiesInSnapshot": 76,
     "sun": true,
     "warnings": [
-     "Charon: phase extrapolated beyond measured range (0\u20131.74\u00b0) with the spatial law \u2192 estimated",
-     "Pluto: phase extrapolated beyond measured range (0\u20131.74\u00b0) with the spatial law \u2192 estimated"
+     "Charon: phase extrapolated beyond measured range (0–1.74°) with the spatial law → estimated",
+     "Pluto: phase extrapolated beyond measured range (0–1.74°) with the spatial law → estimated"
     ],
     "badge": []
    },
    "consoleErrors": [],
    "readyMs": 201985
+  },
+  "earth-moon-first-run": {
+   "query": "t=2026-09-30T17:00:00Z&smallbodies=0&target=399&dist=45828.8&az=32.84&el=-17.26",
+   "stats": {
+    "adaptationLuminance": 10258.014754668455,
+    "scotopicAdaptationLuminance": 26994.47994293799,
+    "pupilDiameterMm": 2.481410428561268,
+    "mesopicM": 1,
+    "limitingMagnitude": -4.549024908505142,
+    "starsDrawn": 7,
+    "bodiesDrawn": 341,
+    "bodies": [
+     {
+      "id": 301,
+      "name": "Moon",
+      "worstLabel": "estimated",
+      "surfaceUnknown": false
+     },
+     {
+      "id": 399,
+      "name": "Earth",
+      "worstLabel": "estimated",
+      "surfaceUnknown": false
+     }
+    ],
+    "points": [
+     "601:estimated",
+     "602:estimated",
+     "603:estimated",
+     "604:estimated",
+     "605:estimated",
+     "606:estimated",
+     "607:derived",
+     "608:derived",
+     "609:estimated",
+     "610:derived",
+     "611:derived",
+     "612:derived",
+     "613:derived",
+     "614:derived",
+     "615:derived",
+     "616:derived",
+     "617:derived",
+     "618:derived",
+     "619:derived:marker",
+     "620:derived:marker",
+     "621:derived:marker",
+     "622:derived:marker",
+     "623:derived:marker",
+     "624:derived:marker",
+     "625:derived:marker",
+     "626:derived:marker",
+     "627:derived:marker",
+     "628:derived:marker",
+     "629:derived:marker",
+     "630:derived:marker",
+     "631:derived:marker",
+     "632:derived",
+     "633:derived",
+     "634:derived",
+     "636:derived:marker",
+     "637:derived:marker",
+     "638:derived:marker",
+     "639:derived:marker",
+     "640:derived:marker",
+     "641:derived:marker",
+     "642:derived:marker",
+     "643:derived:marker",
+     "644:derived:marker",
+     "645:derived:marker",
+     "646:derived:marker",
+     "647:derived:marker",
+     "648:derived:marker",
+     "649:derived",
+     "650:derived:marker",
+     "651:derived:marker",
+     "652:derived:marker",
+     "653:derived",
+     "654:derived:marker",
+     "655:derived:marker",
+     "656:derived:marker",
+     "657:derived:marker",
+     "658:derived:marker",
+     "659:derived:marker",
+     "660:derived:marker",
+     "661:derived:marker",
+     "662:derived:marker",
+     "663:derived:marker",
+     "664:derived:marker",
+     "665:derived:marker",
+     "666:derived:marker",
+     "699:estimated",
+     "701:estimated",
+     "702:estimated",
+     "703:derived",
+     "704:derived",
+     "705:derived",
+     "706:derived",
+     "707:derived",
+     "708:derived",
+     "709:derived",
+     "710:derived",
+     "711:derived",
+     "712:derived",
+     "713:derived",
+     "714:derived",
+     "715:derived",
+     "716:derived:marker",
+     "717:derived:marker",
+     "718:derived:marker",
+     "719:derived:marker",
+     "720:derived:marker",
+     "721:derived:marker",
+     "722:derived:marker",
+     "723:derived:marker",
+     "724:derived:marker",
+     "725:derived:marker",
+     "726:derived:marker",
+     "727:derived:marker",
+     "799:estimated",
+     "801:estimated",
+     "802:derived",
+     "803:derived",
+     "804:derived",
+     "805:derived",
+     "806:derived",
+     "807:derived",
+     "808:derived",
+     "809:derived:marker",
+     "810:derived:marker",
+     "811:derived:marker",
+     "812:derived:marker",
+     "813:derived:marker",
+     "814:derived:marker",
+     "899:estimated",
+     "65067:derived:marker",
+     "65070:derived:marker",
+     "65077:derived:marker",
+     "65079:derived:marker",
+     "65081:derived:marker",
+     "65082:derived:marker",
+     "65084:derived:marker",
+     "65085:derived:marker",
+     "65086:derived:marker",
+     "65087:derived:marker",
+     "65088:derived:marker",
+     "65089:derived:marker",
+     "65090:derived:marker",
+     "65091:derived:marker",
+     "65092:derived:marker",
+     "65093:derived:marker",
+     "65094:derived:marker",
+     "65095:derived:marker",
+     "65096:derived:marker",
+     "65097:derived:marker",
+     "65098:derived:marker",
+     "65100:derived:marker",
+     "65101:derived:marker",
+     "65102:derived:marker",
+     "65103:derived:marker",
+     "65104:derived:marker",
+     "65105:derived:marker",
+     "65106:derived:marker",
+     "65107:derived:marker",
+     "65108:derived:marker",
+     "65109:derived:marker",
+     "65110:derived:marker",
+     "65111:derived:marker",
+     "65112:derived:marker",
+     "65113:derived:marker",
+     "65114:derived:marker",
+     "65115:derived:marker",
+     "65116:derived:marker",
+     "65117:derived:marker",
+     "65118:derived:marker",
+     "65119:derived:marker",
+     "65120:derived:marker",
+     "65121:derived:marker",
+     "65122:derived:marker",
+     "65123:derived:marker",
+     "65124:derived:marker",
+     "65125:derived:marker",
+     "65126:derived:marker",
+     "65127:derived:marker",
+     "65128:derived:marker",
+     "65129:derived:marker",
+     "65130:derived:marker",
+     "65131:derived:marker",
+     "65132:derived:marker",
+     "65133:derived:marker",
+     "65134:derived:marker",
+     "65135:derived:marker",
+     "65136:derived:marker",
+     "65137:derived:marker",
+     "65138:derived:marker",
+     "65139:derived:marker",
+     "65140:derived:marker",
+     "65141:derived:marker",
+     "65142:derived:marker",
+     "65143:derived:marker",
+     "65144:derived:marker",
+     "65145:derived:marker",
+     "65146:derived:marker",
+     "65147:derived:marker",
+     "65148:derived:marker",
+     "65149:derived:marker",
+     "65150:derived:marker",
+     "65151:derived:marker",
+     "65152:derived:marker",
+     "65153:derived:marker",
+     "65154:derived:marker",
+     "65155:derived:marker",
+     "65156:derived:marker",
+     "65157:derived:marker",
+     "65158:derived:marker",
+     "65159:derived:marker",
+     "65160:derived:marker",
+     "65161:derived:marker",
+     "65162:derived:marker",
+     "65163:derived:marker",
+     "65164:derived:marker",
+     "65165:derived:marker",
+     "65166:derived:marker",
+     "65167:derived:marker",
+     "65168:derived:marker",
+     "65169:derived:marker",
+     "65170:derived:marker",
+     "65171:derived:marker",
+     "65172:derived:marker",
+     "65173:derived:marker",
+     "65174:derived:marker",
+     "65175:derived:marker",
+     "65176:derived:marker",
+     "65177:derived:marker",
+     "65178:derived:marker",
+     "65179:derived:marker",
+     "65180:derived:marker",
+     "65181:derived:marker",
+     "65182:derived:marker",
+     "65183:derived:marker",
+     "65184:derived:marker",
+     "65185:derived:marker",
+     "65186:derived:marker",
+     "65187:derived:marker",
+     "65188:derived:marker",
+     "65189:derived:marker",
+     "65190:derived:marker",
+     "65191:derived:marker",
+     "65192:derived:marker",
+     "65193:derived:marker",
+     "65194:derived:marker",
+     "65195:derived:marker",
+     "65196:derived:marker",
+     "65197:derived:marker",
+     "65198:derived:marker",
+     "65199:derived:marker",
+     "65200:derived:marker",
+     "65201:derived:marker",
+     "65202:derived:marker",
+     "65203:derived:marker",
+     "65204:derived:marker",
+     "65205:derived:marker",
+     "65206:derived:marker",
+     "65207:derived:marker",
+     "65208:derived:marker",
+     "65209:derived:marker",
+     "65210:derived:marker",
+     "65211:derived:marker",
+     "65212:derived:marker",
+     "65213:derived:marker",
+     "65214:derived:marker",
+     "65215:derived:marker",
+     "65216:derived:marker",
+     "65217:derived:marker",
+     "65218:derived:marker",
+     "65219:derived:marker",
+     "65220:derived:marker",
+     "65221:derived:marker",
+     "65222:derived:marker",
+     "65223:derived:marker",
+     "65224:derived:marker",
+     "65225:derived:marker",
+     "65226:derived:marker",
+     "65227:derived:marker",
+     "65228:derived:marker",
+     "65229:derived:marker",
+     "65230:derived:marker",
+     "65231:derived:marker",
+     "65232:derived:marker",
+     "65233:derived:marker",
+     "65234:derived:marker",
+     "65235:derived:marker",
+     "65236:derived:marker",
+     "65237:derived:marker",
+     "65238:derived:marker",
+     "65239:derived:marker",
+     "65240:derived:marker",
+     "65241:derived:marker",
+     "65242:derived:marker",
+     "65243:derived:marker",
+     "65244:derived:marker",
+     "65245:derived:marker",
+     "65246:derived:marker",
+     "65247:derived:marker",
+     "65248:derived:marker",
+     "65249:derived:marker",
+     "65250:derived:marker",
+     "65251:derived:marker",
+     "65252:derived:marker",
+     "65253:derived:marker",
+     "65254:derived:marker",
+     "65255:derived:marker",
+     "65256:derived:marker",
+     "65257:derived:marker",
+     "65258:derived:marker",
+     "65259:derived:marker",
+     "65260:derived:marker",
+     "65261:derived:marker",
+     "65262:derived:marker",
+     "65263:derived:marker",
+     "65264:derived:marker",
+     "65265:derived:marker",
+     "65266:derived:marker",
+     "65267:derived:marker",
+     "65268:derived:marker",
+     "65269:derived:marker",
+     "65270:derived:marker",
+     "65271:derived:marker",
+     "65272:derived:marker",
+     "65273:derived:marker",
+     "65274:derived:marker",
+     "65275:derived:marker",
+     "65276:derived:marker",
+     "65277:derived:marker",
+     "65278:derived:marker",
+     "65279:derived:marker",
+     "65280:derived:marker",
+     "65281:derived:marker",
+     "65282:derived:marker",
+     "65283:derived:marker",
+     "65284:derived:marker",
+     "65285:derived:marker",
+     "65286:derived:marker",
+     "65287:derived:marker",
+     "65288:derived:marker",
+     "65289:derived:marker",
+     "65290:derived:marker",
+     "65291:derived:marker",
+     "65292:derived:marker",
+     "65293:derived:marker",
+     "65294:derived:marker",
+     "65295:derived:marker",
+     "65296:derived:marker",
+     "65297:derived:marker",
+     "65298:derived:marker",
+     "65299:derived:marker",
+     "65300:derived:marker",
+     "65301:derived:marker",
+     "65302:derived:marker",
+     "65303:derived:marker",
+     "65304:derived:marker",
+     "75051:derived:marker",
+     "75052:derived:marker",
+     "85051:derived:marker",
+     "85052:derived:marker"
+    ],
+    "bodiesInSnapshot": 75,
+    "sun": true,
+    "warnings": [
+     "Neptune rings: reflectance not measured → rings absorb and cast shadows only; their material is hatched as not measured",
+     "Uranus rings: reflectance not measured → rings absorb and cast shadows only; their material is hatched as not measured"
+    ],
+    "badge": []
+   },
+   "consoleErrors": [],
+   "readyMs": 103832
+  },
+  "eclipse-2027-above": {
+   "query": "t=2027-08-02T10:06:41.000Z&smallbodies=0&target=399&dist=28715.92&az=0.65&el=1.69",
+   "stats": {
+    "adaptationLuminance": 9227.039483164308,
+    "scotopicAdaptationLuminance": 24224.80697052702,
+    "pupilDiameterMm": 2.3320268678901312,
+    "mesopicM": 1,
+    "limitingMagnitude": -4.4449749385570545,
+    "starsDrawn": 1,
+    "bodiesDrawn": 7,
+    "bodies": [
+     {
+      "id": 399,
+      "name": "Earth",
+      "worstLabel": "estimated",
+      "surfaceUnknown": false
+     }
+    ],
+    "points": [
+     "901:estimated",
+     "902:derived:marker",
+     "903:derived:marker",
+     "904:derived:marker",
+     "905:derived:marker",
+     "999:estimated"
+    ],
+    "bodiesInSnapshot": 75,
+    "sun": true,
+    "warnings": [],
+    "badge": []
+   },
+   "consoleErrors": [],
+   "readyMs": 98969
+  },
+  "eclipse-2027-totality": {
+   "query": "t=2027-08-02T10:06:41.000Z&smallbodies=0&target=301&dist=350939.1&az=179.99&el=0&fov=6",
+   "stats": {
+    "adaptationLuminance": 2.9331024617680463,
+    "scotopicAdaptationLuminance": 6.687330831552101,
+    "pupilDiameterMm": 7.208775196801148,
+    "mesopicM": 0.9282843735190336,
+    "limitingMagnitude": 2.5083173280968096,
+    "starsDrawn": 1,
+    "bodiesDrawn": 3,
+    "bodies": [
+     {
+      "id": 10,
+      "name": "Sun",
+      "worstLabel": "n/a",
+      "surfaceUnknown": false
+     },
+     {
+      "id": 301,
+      "name": "Moon",
+      "worstLabel": "estimated",
+      "surfaceUnknown": false
+     }
+    ],
+    "points": [
+     "299:estimated"
+    ],
+    "bodiesInSnapshot": 75,
+    "sun": true,
+    "warnings": [
+     "Moon: phase extrapolated beyond measured range (1.55–120°) with the spatial law → estimated"
+    ],
+    "badge": []
+   },
+   "consoleErrors": [],
+   "readyMs": 40059
+  },
+  "jupiter-double-shadow": {
+   "query": "t=2027-01-30T15:12:07.461Z&smallbodies=0&target=599&dist=300266.4&az=2.32&el=0.58",
+   "stats": {
+    "adaptationLuminance": 902.0846224452747,
+    "scotopicAdaptationLuminance": 2031.6965436386147,
+    "pupilDiameterMm": 2.7445898150206087,
+    "mesopicM": 1,
+    "limitingMagnitude": -2.227521407617971,
+    "starsDrawn": 8,
+    "bodiesDrawn": 28,
+    "bodies": [
+     {
+      "id": 599,
+      "name": "Jupiter",
+      "worstLabel": "estimated",
+      "surfaceUnknown": false
+     }
+    ],
+    "points": [
+     "505:derived",
+     "509:estimated",
+     "512:estimated",
+     "514:derived",
+     "515:derived",
+     "516:derived",
+     "523:derived:marker",
+     "525:derived:marker",
+     "540:derived:marker",
+     "544:derived:marker",
+     "547:derived:marker",
+     "551:derived:marker",
+     "554:derived:marker",
+     "560:derived:marker",
+     "561:derived:marker",
+     "564:derived:marker",
+     "570:derived:marker",
+     "572:derived:marker",
+     "55512:derived:marker",
+     "55513:derived:marker",
+     "55517:derived:marker",
+     "55520:derived:marker",
+     "55521:derived:marker",
+     "55522:derived:marker",
+     "55530:derived:marker",
+     "55540:derived:marker",
+     "55542:derived:marker"
+    ],
+    "bodiesInSnapshot": 75,
+    "sun": true,
+    "warnings": [
+     "Ananke: phase extrapolated beyond measured range (0–12°) with the spatial law → estimated",
+     "Sinope: phase extrapolated beyond measured range (0–12°) with the spatial law → estimated"
+    ],
+    "badge": []
+   },
+   "consoleErrors": [],
+   "readyMs": 41143
   }
- },
- "notes": "Merged baseline (M5 branch + mesh branch scenes). Needs a full re-run and re-accept on the integrated tree."
+ }
 }
