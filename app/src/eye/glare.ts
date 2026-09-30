@@ -87,28 +87,38 @@ export function fitScatterKernel(
   // Fitted from half a pixel outward. Inside 0.1° (below the CIE validity range) the kernel is held at
   // its 0.1° value: a bounded continuation, so that at fine pixel scales the narrowest Gaussians are
   // constrained instead of free to carry unphysical energy inside 0.1° (docs/eye-model.md §3).
+  // Outward, the fit covers the whole support of every Gaussian (4σ of the widest), with the kernel's
+  // own zero beyond 100°: otherwise, in a wide field (100° reached within the frame), the widest levels
+  // are free to carry energy beyond 100° — at fovY 130° the weights summed to 1.2 and the unscattered
+  // fraction went negative (a black frame). The target itself is the CIE kernel only out to 100°, and
+  // only the part of it the frame can hold is compared (`target`, `fittedInRange` up to rMax).
   const rMin = 0.5;
   const rMax = Math.min(maxRadiusPx, CIE146.maxDeg / pixelAngleDeg);
+  const sigmaMax = levels.reduce((m, l) => Math.max(m, l.sigmaPx), 0);
+  const rEnd = Math.max(rMax, 4 * sigmaMax);
   const samples: number[] = [];
   const nS = 400;
   if (rMax <= rMin) return { weights: levels.map(() => 0), total: 0, target: 0, fittedInRange: 0 };
-  for (let i = 0; i < nS; i++) samples.push(rMin * Math.pow(rMax / rMin, (i + 0.5) / nS));
+  for (let i = 0; i < nS; i++) samples.push(rMin * Math.pow(rEnd / rMin, (i + 0.5) / nS));
   // Design matrix rows: energy in annulus [r_i ± dr/2] (log-spaced), per unit weight.
   const A: number[][] = [];
   const b: number[] = [];
+  const inRange: boolean[] = [];
   let target = 0;
   for (let i = 0; i < nS; i++) {
     const r = samples[i];
-    const dr = r * Math.log(rMax / rMin) / nS;
+    const dr = r * Math.log(rEnd / rMin) / nS;
     const ring = 2 * Math.PI * r * dr;
-    const f = cie146(Math.max(r * pixelAngleDeg, CIE146.minDeg), ageYears, p) * pxSr;
+    const theta = r * pixelAngleDeg;
+    const f = theta > CIE146.maxDeg ? 0 : cie146(Math.max(theta, CIE146.minDeg), ageYears, p) * pxSr;
     b.push(f * ring);
-    target += f * ring;
+    inRange.push(r <= rMax);
+    if (r <= rMax) target += f * ring;
     A.push(levels.map((l) => (Math.exp(-(r * r) / (2 * l.sigmaPx * l.sigmaPx)) / (2 * Math.PI * l.sigmaPx * l.sigmaPx)) * ring));
   }
   const weights = nnls(A, b);
   let fittedInRange = 0;
-  for (let i = 0; i < nS; i++) for (let k = 0; k < levels.length; k++) fittedInRange += A[i][k] * weights[k];
+  for (let i = 0; i < nS; i++) if (inRange[i]) for (let k = 0; k < levels.length; k++) fittedInRange += A[i][k] * weights[k];
   // `total` is what the pyramid actually redistributes (including the parts of the narrowest and
   // widest Gaussians that land inside 0.1° or beyond the screen); the composite keeps 1 − total
   // of the light unscattered, so energy is conserved exactly.
