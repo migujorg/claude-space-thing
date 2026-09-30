@@ -150,10 +150,16 @@ export function buildScene(p: URLSearchParams): TestScene {
       const sunDir = rotateToward(mul(fwd, -1), side, phaseDeg);
       const toSun = mul(sunDir, AU_KM);
       const a = planet(1, 'Lambert', pos1, toSun, 6000, fixtureGreyAlbedo(0.12));
-      const b = planet(2, 'Hapke', pos2, toSun, 6000, fixtureGreyAlbedo(0.12), { spatialModel: FIXTURE_HAPKE });
+      // law2=akimov: the parameter-free Akimov disk function on the right instead; law2=barkstrom&B=<exponent>
+      // (TEST VALUE): the Barkstrom law.
+      const law2 = p.get('law2');
+      const B = Number(p.get('B') ?? 0.9);
+      const name2 = law2 === 'akimov' ? 'Akimov' : law2 === 'barkstrom' ? `Barkstrom B = ${B}` : 'Hapke';
+      const model2: SceneBody['spatialModel'] = law2 === 'akimov' ? { kind: 'akimov' } : law2 === 'barkstrom' ? { kind: 'barkstrom', B } : FIXTURE_HAPKE;
+      const b = planet(2, name2, pos2, toSun, 6000, fixtureGreyAlbedo(0.12), { spatialModel: model2 });
       // Adapt to the whole field (both disks), not to the dark gap at the centre.
       const v2 = { ...view, eye: { adaptationFieldDeg: 25 } };
-      return { title: `Lambert (left) vs Hapke (right) at phase ${phaseDeg}°`, stars, snapshot: { et: 0, camera: cam(deg(Number(p.get('fovdeg') ?? 25))), sun: sunAt(add(pos1, toSun)), bodies: [a, b], view: v2, orbits: [] } };
+      return { title: `Lambert (left) vs ${name2} (right) at phase ${phaseDeg}°`, stars, snapshot: { et: 0, camera: cam(deg(Number(p.get('fovdeg') ?? 25))), sun: sunAt(add(pos1, toSun)), bodies: [a, b], view: v2, orbits: [] } };
     }
     case 'rings': {
       // Saturn-like planet with fixture rings, seen from the lit (default) or unlit face; Sun 12° above

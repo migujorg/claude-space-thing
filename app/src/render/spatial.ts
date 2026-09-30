@@ -17,12 +17,12 @@ import type { V3 } from './raycast';
 export type XYZS = [number, number, number, number];
 
 /** Numeric codes shared with the WGSL body shader. */
-export const LAW = { lambert: 0, lommelSeeliger: 1, lunarLambert: 2, minnaert: 3, hapke: 4, texelHapke: 5 } as const;
+export const LAW = { lambert: 0, lommelSeeliger: 1, lunarLambert: 2, minnaert: 3, hapke: 4, texelHapke: 5, akimov: 6, barkstrom: 7 } as const;
 
 /** A spatial model with its phase-dependent parameters evaluated at one phase angle. */
 export interface ResolvedLaw {
   kind: number;
-  /** lunar-lambert L, minnaert k, or hapke w. */
+  /** lunar-lambert L, minnaert k, barkstrom B, or hapke w. */
   p: number;
   b: number;
   c: number;
@@ -74,6 +74,12 @@ export function resolveLaw(m: SpatialPhotometricModel | null | undefined, alpha:
       const k = evalPhaseDependent(m.k, deg);
       return k === null ? { error: `Minnaert k not tabulated at ${deg.toFixed(1)}°` } : { law: { ...LAMBERT_LAW, kind: LAW.minnaert, p: k } };
     }
+    case 'akimov':
+      return { law: { ...LAMBERT_LAW, kind: LAW.akimov } };
+    case 'barkstrom': {
+      const B = evalPhaseDependent(m.B, deg);
+      return B === null ? { error: `Barkstrom B not tabulated at ${deg.toFixed(1)}°` } : { law: { ...LAMBERT_LAW, kind: LAW.barkstrom, p: B } };
+    }
     case 'hapke':
       return {
         law: {
@@ -81,7 +87,31 @@ export function resolveLaw(m: SpatialPhotometricModel | null | undefined, alpha:
           thetaBar: (m.thetaBarDeg * Math.PI) / 180, K: m.K ?? 1, hFn: m.hFunction === 'hapke1981' ? 1 : 0,
         },
       };
+    default:
+      // A kind this renderer does not know (a newer data build): the caller falls back to Lambert and says so.
+      return { error: `spatial model kind '${(m as { kind: string }).kind}' not supported by the renderer` };
   }
+}
+
+/**
+ * Akimov disk function (Shkuratov et al. 1999, Icarus 141, 132; as written by Filacchione et al. 2022,
+ * arXiv:2111.15541, §4 Eqs. 4–6, for Saturn's mid-sized moons), parameter-free:
+ *   D = cos(g/2)·cos[π/(π − g)·(γ − g/2)]·(cos β)^{g/(π − g)} / cos γ,
+ *   γ = arctan[(cos i − cos e cos g)/(cos e sin g)],  β = arccos(cos e / cos γ),
+ * with γ, β the photometric longitude and latitude. I/F = D·F(g) (their Eq. 3); D = 1 at g = 0 and
+ * 0 at the terminator (γ = g − π/2). At the bright limb (γ → π/2) the ratio cos[π(γ − g/2)/(π − g)]/cos γ
+ * is 0/0; with ε = π/2 − γ it is exactly sin(kε)/sin ε, k = π/(π − g), → k. g is clamped below π.
+ */
+export function akimovDisk(mu0: number, mu: number, gIn: number): number {
+  if (!(mu0 > 0) || !(mu > 0)) return 0;
+  const g = Math.min(Math.max(gIn, 0), Math.PI - 1e-4);
+  if (g < 1e-6) return 1;
+  const gam = Math.atan2(mu0 - mu * Math.cos(g), mu * Math.sin(g));
+  const eps = Math.PI / 2 - gam;
+  const k = Math.PI / (Math.PI - g);
+  const ratio = eps > 1e-6 ? Math.sin(k * eps) / Math.sin(eps) : k;
+  const cosBeta = Math.min(1, Math.max(mu / Math.max(Math.cos(gam), 1e-300), 1e-300));
+  return Math.max(0, Math.cos(g / 2) * ratio * Math.pow(cosBeta, g / (Math.PI - g)));
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -178,6 +208,11 @@ export function lawRadf(law: ResolvedLaw, mu0: number, mu: number, g: number): n
       return Math.pow(mu0, law.p) * Math.pow(mu, law.p - 1);
     case LAW.hapke:
       return hapkeRadf(Math.acos(Math.min(mu0, 1)), Math.acos(Math.min(mu, 1)), g, law);
+    case LAW.akimov:
+      return akimovDisk(mu0, mu, g);
+    case LAW.barkstrom:
+      // Barkstrom (1973): I/F ∝ (1/μ)(μ0μ/(μ0 + μ))^B; μ floored at 1e-3 as for Minnaert (B < 1 diverges at the limb).
+      return Math.pow((mu0 * mu) / (mu0 + mu), law.p) / Math.max(mu, 1e-3);
     default:
       return mu0;
   }

@@ -6,6 +6,7 @@ import { P3_TO_XYZ, SRGB_TO_XYZ, XYZ_TO_P3, inv3 } from '../eye/display';
 import { XYZ_TO_HPE } from '../eye/tonemap';
 import { LAW_WGSL, MASK_HATCH_SHADER, RING_COMMON, RING_SHADER as RING_SHADER_OF, SURFACE_WGSL } from './shaders-m2';
 import { FORESHORTEN_MIN_MU } from './surface';
+import { LAW } from './spatial';
 import { EARTH_WGSL } from './shaders-earth';
 import { AP_READ_WGSL, ATMOSPHERE_WGSL } from './shaders-atmosphere';
 import { LIMB_N } from './atmosphere';
@@ -684,7 +685,7 @@ struct FOut {
     if (mu0 > 0.0 && mu > 0.0) {
       let gph = acos(clamp(dot(S, V), -1.0, 1.0));
       var r4: vec4f;
-      if (b.law0.x > 4.5) {
+      if (abs(b.law0.x - ${LAW.texelHapke}.0) < 0.5) {
         // Per-texel law (the Moon's Hapke maps): parameters of the texel under this point.
         r4 = texelRadf(uvOfBf(hit.h * vec3f(b.rot0.w, b.rot1.w, b.rot2.w)), mu0, mu, gph);
       } else {

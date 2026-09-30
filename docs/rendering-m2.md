@@ -108,6 +108,17 @@ Available models (`schema.ts` `SpatialPhotometricModel`; float64 reference in `s
 - Minnaert (1941), with k constant or tabulated vs α.
 - Hapke (2012): the IMSA form with SHOE, CBOE, double Henyey–Greenstein p(g) (b, c), porosity K,
   Hapke's (1984) macroscopic roughness θ̄, and the Hapke (2002) or (1981) H function.
+- Akimov (M5), parameter-free: the disk function of Shkuratov et al. (1999), as Filacchione et al.
+  (2022, arXiv:2111.15541, §4 Eqs. 4–6) apply it to Saturn's mid-sized moons:
+  D = cos(g/2)·cos[π/(π − g)·(γ − g/2)]·(cos β)^{g/(π − g)}/cos γ, with the photometric longitude
+  γ = arctan[(cos i − cos e cos g)/(cos e sin g)] and latitude β = arccos(cos e/cos γ). I/F = D·F(g).
+  - D = 1 at g = 0 (a uniform disk) and 0 at the terminator (γ = g − π/2).
+  - At the bright limb (γ → π/2) the ratio cos[π(γ − g/2)/(π − g)]/cos γ is 0/0. With ε = π/2 − γ it
+    equals sin(kε)/sin ε exactly (k = π/(π − g)), which is how it is evaluated; its limit is k.
+  - g is clamped below 180°.
+- Barkstrom (1973) (M5): I/F ∝ (1/μ)·(μ0μ/(μ0 + μ))^B, with B constant or tabulated vs α (the form of
+  Dones et al.'s fits for Saturn). B = 1 is Lommel–Seeliger. μ is floored at 10⁻³ as for Minnaert, since
+  B < 1 diverges at the limb.
 
 These are per-body constant parameter sets. Per-texel parameters (the Moon's `hapke` layer, Sato et al.
 2014 at 1°, 7 bands) are a surface layer of their own (§2b).
@@ -138,7 +149,12 @@ normalization ignores relief (height maps).
 - The Hapke (2002) H approximation is within 1 % of Chandrasekhar's H. The exact H is solved in the
   test, and the solver itself is checked against the moment identity ∫H dμ = (2/w)(1 − √(1 − w)).
 - Disk integrals match closed forms: Lambert (2/3)Φ_L; Lommel–Seeliger ½[1 − sin(α/2)tan(α/2)ln cot(α/4)];
-  Minnaert geometric albedo 2/(2k + 1).
+  Minnaert geometric albedo 2/(2k + 1); Akimov 1 at g = 0; Barkstrom with B = 1 equals Lommel–Seeliger.
+- Akimov matches Eq. 4 evaluated directly at points given by their photometric latitude and longitude
+  (5–150° phase, to 10 digits), including the terminator and bright-limb limits.
+  `render-test.html?scene=hapke&law2=akimov&phase=5` shows it against Lambert: flat from pole to pole.
+  `law2=barkstrom&B=0.8` shows the Barkstrom law (limb 1.2× the centre at 5°, against 1.05× for B = 1).
+- A model kind the renderer does not know is reported, and the spatial distribution falls back to Lambert.
 - Outside a model's `validPhaseDeg` or its parameter tables, the spatial distribution falls back to
   Lambert, with a warning.
 
