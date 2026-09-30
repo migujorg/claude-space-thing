@@ -10,7 +10,7 @@
 //    the disk is then an assumption (labelled by the shell); the disk-integrated brightness is not.
 // With albedoXYZS = p·E_sun(1 AU), the Lambert radiance is L = 1.5·albedoXYZS·cos i / (π·d²).
 
-import type { PhaseFunction } from '../data/schema';
+import type { DiskReflectanceModel, PhaseFunction } from '../data/schema';
 
 export type XYZS = [number, number, number, number];
 
@@ -135,4 +135,73 @@ export function limbDarkenedI0(E: number, coeffs: number[], radiusKm: number, di
     integral += p * 2 * Math.PI * Math.sin(th) * (rho / n);
   }
   return integral > 0 ? E / integral : 0;
+}
+
+/**
+ * ROLO whole-disk reflectance A_c (Kieffer & Stone 2005, Eq. 10; product kind 'rolo-v1', formula in
+ * photometry.json and architecture §4.3), per channel X, Y, Z, S:
+ *   ln A_c = Σ a_i g^i + b1 Φ + b2 Φ³ + b3 Φ⁵ + c1 θ + c2 φ + c3 Φ θ + c4 Φ φ
+ *            + d1 exp(−g°/p1) + d2 exp(−g°/p2) + d3 cos((g° − p3)/p4)
+ * g phase angle and Φ the Sun's selenographic longitude (east positive) in radians in the polynomial
+ * terms; g° in degrees in the exponential and cosine terms (the cosine's argument then in radians);
+ * θ, φ the observer's selenographic latitude and longitude in degrees. Returns null outside the model's
+ * domain (phase range, observer libration range).
+ */
+export function roloReflectance(m: DiskReflectanceModel, gDeg: number, sunLonDeg: number, obsLatDeg: number, obsLonDeg: number): XYZS | null {
+  if (!(gDeg >= m.minPhaseDeg && gDeg <= m.maxPhaseDeg)) return null;
+  if (!(Math.abs(obsLatDeg) <= m.maxObserverLatitudeDeg && Math.abs(obsLonDeg) <= m.maxObserverLongitudeDeg)) return null;
+  const g = (gDeg * Math.PI) / 180;
+  const P = (sunLonDeg * Math.PI) / 180;
+  const [c1, c2, c3, c4] = m.c;
+  const [p1, p2, p3, p4] = m.p;
+  const lib = c1 * obsLatDeg + c2 * obsLonDeg + c3 * P * obsLatDeg + c4 * P * obsLonDeg;
+  return [0, 1, 2, 3].map((k) => {
+    const [a0, a1, a2, a3] = m.a[k];
+    const [b1, b2, b3] = m.b[k];
+    const [d1, d2, d3] = m.d[k];
+    const lnA = a0 + a1 * g + a2 * g * g + a3 * g * g * g + b1 * P + b2 * P ** 3 + b3 * P ** 5 + lib
+      + d1 * Math.exp(-gDeg / p1) + d2 * Math.exp(-gDeg / p2) + d3 * Math.cos((gDeg - p3) / p4);
+    return Math.exp(lnA);
+  }) as XYZS;
+}
+
+type Vec3 = [number, number, number];
+
+/**
+ * Geometry for roloReflectance from the renderer's vectors: the Sun's selenographic longitude and the
+ * sub-observer latitude/longitude (degrees) in the body-fixed frame `orient` (body-fixed → ICRF,
+ * row-major), from the directions `toSun` and `toObserver` (ICRF, from the body centre).
+ */
+export function selenographicGeometry(orient: readonly number[], toSun: Vec3, toObserver: Vec3): { sunLonDeg: number; obsLatDeg: number; obsLonDeg: number } {
+  const bf = (v: Vec3) => {
+    const l = Math.hypot(v[0], v[1], v[2]);
+    return [0, 1, 2].map((j) => (orient[j] * v[0] + orient[3 + j] * v[1] + orient[6 + j] * v[2]) / l); // orientᵀ·v
+  };
+  const s = bf(toSun), o = bf(toObserver);
+  const deg = 180 / Math.PI;
+  return {
+    sunLonDeg: Math.atan2(s[1], s[0]) * deg,
+    obsLatDeg: Math.asin(Math.max(-1, Math.min(1, o[2]))) * deg,
+    obsLonDeg: Math.atan2(o[1], o[0]) * deg,
+  };
+}
+
+/**
+ * p·Φ per channel (what albedoXYZS·Φ(α) gives, "lux at 1 AU" for the contract's mean radius R) from a
+ * body's disk reflectance model, or null when it has none or the geometry is outside its domain:
+ * A_c·E☉,c(1 AU)·(radiusKm/R)² (architecture §4.3).
+ */
+export function diskModelPPhi(
+  m: DiskReflectanceModel | null | undefined, orient: readonly number[] | null, meanRadiusKm: number,
+  toSun: Vec3, toObserver: Vec3, sunIrradianceXYZS_1AU: readonly number[] | null,
+): XYZS | null {
+  if (!m || m.kind !== 'rolo-v1' || !orient || !sunIrradianceXYZS_1AU) return null;
+  const ls = Math.hypot(...toSun), lo = Math.hypot(...toObserver);
+  const cosg = (toSun[0] * toObserver[0] + toSun[1] * toObserver[1] + toSun[2] * toObserver[2]) / (ls * lo);
+  const gDeg = (Math.acos(Math.max(-1, Math.min(1, cosg))) * 180) / Math.PI;
+  const geo = selenographicGeometry(orient, toSun, toObserver);
+  const A = roloReflectance(m, gDeg, geo.sunLonDeg, geo.obsLatDeg, geo.obsLonDeg);
+  if (!A) return null;
+  const k = (m.radiusKm / meanRadiusKm) ** 2;
+  return A.map((a, c) => a * sunIrradianceXYZS_1AU[c] * k) as XYZS;
 }

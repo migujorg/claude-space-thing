@@ -4,7 +4,7 @@
 
 import type { SceneBody, SceneSnapshot } from './scene';
 import { AU_KM } from './constants';
-import { diskIlluminance, evalPhase, extrapolatePhase, lambertPhase, limbDarkenedI0, meanRadius, phaseRangeDeg, type XYZS } from './photometry';
+import { diskIlluminance, diskModelPPhi, evalPhase, extrapolatePhase, lambertPhase, limbDarkenedI0, meanRadius, phaseRangeDeg, type XYZS } from './photometry';
 import { LAMBERT_LAW, LAW, lawDiskIntegral, NormalizationCache, photometricFrame, resolveLaw, type ResolvedLaw, type ZonalProfile } from './spatial';
 import { planetshineSources, type PlanetshineSource } from './planetshine';
 import { prepareRings, type RingPrep } from './rings';
@@ -272,7 +272,11 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
     // Surface maps need the body-fixed frame.
     const surface = b.orient && b.surface && opts.surfaces ? opts.surfaces(b) : null;
     if (!b.orient && b.surface && (b.surface.albedo || b.surface.height)) warnings.push(`${b.name}: orientation unknown → surface maps not shown`);
-    if (!b.surfaceUnknown && b.albedoXYZS && b.phase) {
+    // Disk-integrated p·Φ per channel: from the body's disk reflectance model (the Moon: ROLO) inside its
+    // domain, else albedoXYZS·Φ(α) (architecture §4.3).
+    let pPhi: XYZS | null = b.surfaceUnknown ? null
+      : diskModelPPhi(b.diskReflectanceModel, b.orient, R, b.toSun, scale(b.pos, -1), irr);
+    if (!pPhi && !b.surfaceUnknown && b.albedoXYZS && b.phase) {
       const ph = evalPhase(b.phase, alpha);
       let phi: number | null = ph.ok ? ph.phi : null;
       if (!ph.ok) {
@@ -291,21 +295,22 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
           warnings.push(`${b.name}: ${ph.reason} → sunlit part drawn as not measured (night side black)`);
         }
       }
-      if (phi !== null) {
-        E = diskIlluminance(b.albedoXYZS, dAU, R, D, phi);
-        // Normalization: the disk integral of law × map (zonal mean, rotation-averaged) equals p·Φ(α).
-        let zonal: { profile: ZonalProfile; pole: V3 } | undefined;
-        if (surface?.albedo?.zonal && b.orient) {
-          const Rm = b.orient;
-          const [px, py, pz] = photometricFrame(normalize(scale(b.pos, -1)), sunDir);
-          const P: V3 = [Rm[2], Rm[5], Rm[8]];
-          zonal = { profile: surface.albedo.zonal, pole: [dot(P, px), dot(P, py), dot(P, pz)] };
-        }
-        const I = lawIntegral(law, alpha, zonal);
-        if (I[1] > 0) {
-          K = [0, 1, 2, 3].map((k) => (I[k] > 0 ? (b.albedoXYZS![k] * phi!) / (Math.PI * dAU * dAU * I[k]) : 0)) as XYZS;
-          lit = true;
-        }
+      if (phi !== null) pPhi = b.albedoXYZS.map((a) => a * phi!) as XYZS;
+    }
+    if (pPhi) {
+      E = diskIlluminance(pPhi, dAU, R, D, 1);
+      // Normalization: the disk integral of law × map (zonal mean, rotation-averaged) equals p·Φ(α).
+      let zonal: { profile: ZonalProfile; pole: V3 } | undefined;
+      if (surface?.albedo?.zonal && b.orient) {
+        const Rm = b.orient;
+        const [px, py, pz] = photometricFrame(normalize(scale(b.pos, -1)), sunDir);
+        const P: V3 = [Rm[2], Rm[5], Rm[8]];
+        zonal = { profile: surface.albedo.zonal, pole: [dot(P, px), dot(P, py), dot(P, pz)] };
+      }
+      const I = lawIntegral(law, alpha, zonal);
+      if (I[1] > 0) {
+        K = [0, 1, 2, 3].map((k) => (I[k] > 0 ? pPhi![k] / (Math.PI * dAU * dAU * I[k]) : 0)) as XYZS;
+        lit = true;
       }
     }
     const tint = tintOn ? ([...PROVENANCE_TINT[label], PROVENANCE_TINT_ALPHA] as [number, number, number, number]) : null;

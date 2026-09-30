@@ -5,7 +5,7 @@
 // anything not allowed at the current `exists` level arrives here as null / flagged, so the renderer
 // never needs to reason about provenance labels except for the provenance-tint overlay.
 
-import type { Label, PhaseFunction, SpatialPhotometricModel, SurfaceLayerHeader } from '../data/schema';
+import type { DiskReflectanceModel, Label, PhaseFunction, SpatialPhotometricModel, SurfaceLayerHeader } from '../data/schema';
 import type { EyeSettings } from '../eye/settings';
 
 export type { EyeSettings };
@@ -56,6 +56,13 @@ export interface SceneBody {
    * sunlit part is hatched as not measured.
    */
   allowPhaseExtrapolation?: boolean;
+  /**
+   * photometry.json `diskReflectanceModel.value` (the Moon: ROLO, kind 'rolo-v1') when admitted at the
+   * reality level. Inside its domain (phase range and observer libration range; it needs `orient` and
+   * the Sun's irradiance) it gives the disk-integrated brightness in place of albedoXYZS·Φ(α)
+   * (architecture §4.3); outside, `phase` applies as usual. Include its label in `worstLabel`.
+   */
+  diskReflectanceModel?: DiskReflectanceModel | null;
 }
 
 /**
