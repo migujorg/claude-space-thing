@@ -11,7 +11,6 @@ declare global {
   interface Window {
     __frameReady?: boolean;
     __frameError?: string;
-    __app?: unknown;
   }
 }
 
@@ -58,7 +57,7 @@ async function main(): Promise<void> {
       ...(s.warnings ?? []).map((w) => `⚠ ${w}`),
     ].join('\n');
   }
-  window.__app = { renderer, debugState: () => ({ ...renderer.stats, scene: scene.title }) };
+  (window as unknown as { __app: unknown }).__app = { renderer, debugState: () => ({ ...renderer.stats, scene: scene.title }) };
   window.__frameReady = true;
 }
 

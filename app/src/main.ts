@@ -1,22 +1,23 @@
-// Entry point. Wiring only; see docs/architecture.md §5.1 for module layout.
-async function main(): Promise<void> {
-  const canvas = document.getElementById('view') as HTMLCanvasElement;
-  if (!navigator.gpu) {
-    document.body.insertAdjacentHTML('beforeend', '<p style="position:fixed;top:1em;left:1em">WebGPU is not available in this browser.</p>');
-    return;
-  }
-  const adapter = await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' });
-  if (!adapter) throw new Error('No WebGPU adapter');
-  const device = await adapter.requestDevice();
-  const ctx = canvas.getContext('webgpu')!;
-  ctx.configure({ device, format: navigator.gpu.getPreferredCanvasFormat(), alphaMode: 'opaque' });
-  const enc = device.createCommandEncoder();
-  enc.beginRenderPass({ colorAttachments: [{ view: ctx.getCurrentTexture().createView(), loadOp: 'clear', storeOp: 'store', clearValue: { r: 0, g: 0, b: 0, a: 1 } }] }).end();
-  device.queue.submit([enc.finish()]);
-  (window as any).__frameReady = true;
-}
+// Entry point: wires the real core, renderer and data into the app shell (docs/architecture.md §5.1).
+import { startApp } from './app/bootstrap';
+import { OffscreenPresenter } from './app/offscreenPresenter';
+import { Ephemeris, EphemerisSet } from './core/ephemeris';
+import { apparentPosition } from './core/lighttime';
+import { bodyToIcrf } from './core/rotation';
+import { TimeScale, formatUtc } from './core/time';
+import { Renderer } from './render/renderer';
 
-main().catch((e) => {
+const offscreen = new URLSearchParams(location.search).get('present') === 'offscreen';
+const canvas = document.getElementById('view') as HTMLCanvasElement;
+startApp(canvas, document.getElementById('ui')!, {
+  Renderer: offscreen ? OffscreenPresenter : Renderer,
+  TimeScale,
+  formatUtc,
+  Ephemeris,
+  EphemerisSet,
+  bodyToIcrf,
+  apparentPosition,
+}).catch((e) => {
   console.error(e);
   (window as any).__frameError = String(e);
 });
