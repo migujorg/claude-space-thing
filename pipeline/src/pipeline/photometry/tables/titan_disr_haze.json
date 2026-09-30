@@ -1,0 +1,25 @@
+{
+ "_citation": "Huygens DISR haze extinction model of Tomasko, M. G., Doose, L., Engel, S., et al. (2008), A model of Titan's aerosols based on measurements made inside the atmosphere, Planetary and Space Science 56, 669-707 (DOI:10.1016/j.pss.2007.11.019; paywalled, not accessible to this pipeline), as transcribed from its Fig. 47 by Bazzon, A., Schmid, H. M. & Buenzli, E. (2014), HST observations of the limb polarization of Titan, Astronomy & Astrophysics 572, A6, DOI:10.1051/0004-6361/201323139; text source arXiv:1409.3421v1, Appendix A.4, eqs. A.8-A.13 (p. 13).",
+ "bazzon_A4": {
+  "_quote": "tau_h is given for three altitude regions, above 80 km, 30-80 km, and below 30 km (see Figs. 47, 50). Above 80 km, the cumulative optical depth increases with decreasing altitude with a scale height of 65 km. Between 80 and 30 km, and below 30 km the variation is linear with two different slopes. The wavelength dependence for the three regions is taken from Figure 47 of Tomasko et al. (2008)",
+  "lambda_unit": "nm",
+  "tau80": {"coefficient": 1.012e7, "exponent": -2.339, "eq": "A.8 tau80(lambda) = 1.012e7 lambda^-2.339"},
+  "tau30": {"coefficient": 2.029e4, "exponent": -1.409, "eq": "A.9 tau30(lambda) = 2.029e4 lambda^-1.409"},
+  "tau0": {"coefficient": 6.270e2, "exponent": -0.9706, "eq": "A.10 tau0(lambda) = 6.270e2 lambda^-0.9706"},
+  "eq_A11": "tau(h > 80 km) = tau80 exp(-(h - 80 km) / 65 km)",
+  "eq_A12": "tau(30 <= h <= 80 km) = tau80 + tau30 (1 - (h - 30 km) / 50 km)",
+  "eq_A13": "tau(h < 30 km) = tau80 + tau30 + tau0 (1 - h / 30 km)",
+  "scale_height_above_80_km": 65.0,
+  "valid_nm": [400, 1600],
+  "_valid_where": "Section 7.1: 'the Tomasko et al. (2008) values for tau_haze(h, lambda) and omega_haze(h, lambda), which are only given for a wavelength range of 400-1600 nm'",
+  "ssa_statement": "Section 7.1 / A.4: omega_haze from Tomasko et al. (2008) Table 2 and Fig. 48 for three regions (above 144 km, 30-80 km, below 30 km; linear in altitude between 80 and 144 km); 'typically omega_haze(h, lambda) ~ 0.8-1'. The values themselves are not reproduced there.",
+  "phase_statement": "Section 7.1: phase functions F11 tabulated by Tomasko et al. (2008) for two altitude regions (above and below 80 km), 355-5166 nm. Not reproduced there."
+ },
+ "vincendon_langevin_2010": {
+  "_citation": "Vincendon, M. & Langevin, Y. (2010). A spherical Monte-Carlo model of aerosols: Validation and first applications to Mars and Titan. Icarus 207, 923-931. DOI:10.1016/j.icarus.2009.12.018; text source arXiv:1103.3215, section 3.1 (p. 16-17).",
+  "_quote": "The retrieved optical depth at 1.08 um is 2.3 +/- 0.5, which is consistent with the value of 2.6 derived from Huygens probe entry dataset of January 2005 (Tomasko et al., 2008). ... Tomasko et al. (2008) obtained a value of 0.97 below 30 km, 1.41 between 30 km and 80 km and 2.43 above 80 km.",
+  "tau_total_1080nm_tomasko": 2.6,
+  "exponents_quoted": {"below_30": 0.97, "30_80": 1.41, "above_80": 2.43},
+  "scale_height_vims_km": [80, 10]
+ }
+}

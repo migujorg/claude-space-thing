@@ -301,9 +301,20 @@ against direct quadrature (0.5 %) and shows that the planet's occultation and sh
 **Occlusion:** the planet's shadow on the rings uses its ellipsoid, with the solar-disk overlap as
 penumbra. The rings depth-test against bodies but do not write depth.
 
-**Not modelled:** self-gravity wakes (azimuth-dependent τ and brightness), spokes, Saturn-shine on the
-rings, ringshine on the planet, and ring shadows or occultation of the globe in the *point* brightness
-of an unresolved Saturn.
+**Not modelled:** self-gravity wakes (azimuth-dependent τ and brightness), spokes, and ring shadows or
+occultation of the globe in the *point* brightness of an unresolved Saturn.
+
+Saturn-shine on the rings and ringshine on the globe are deliberately left out. Both are light
+scattered between the planet and the rings, which lie in the same plane:
+
+- Saturn-shine reaches a ring particle from a direction within ±37° of the ring plane (the globe seen
+  from the B ring).
+- The rings light the globe (and its night side) at scattering angles that are, for most viewpoints,
+  beyond the 47° phase limit of the reflectance model's particle phase function (`maxPhaseDeg`).
+
+Beyond 47° the model states that ring brightness is unknown (forward scattering by dust), so computing
+either term would mean inventing the particle phase function. The in-domain part alone would be a
+viewpoint-dependent patch. This is left for a model that covers the full phase range.
 
 ## 7. Best-estimate phase extrapolation
 
@@ -367,8 +378,9 @@ every star was black.
   the view ray.
 - **Planetshine** uses the Lambert law, only two sources per body, and point-source illuminators
   without eclipses.
-- **Rings:** see §6 (no wakes or spokes, no Saturn-shine or ringshine, and the unresolved-planet point
-  omits ring shadows on the globe).
+- **Rings:** see §6. There are no wakes or spokes, and the unresolved-planet point omits ring shadows on
+  the globe. Saturn-shine and ringshine are left out because they fall outside the particle phase
+  function's measured 0.25–47°.
 - **Data:** Saturn's occultation profile has τ ≈ 0.03–0.10 at 145 000–151 700 km, beyond the F ring,
   where the rings are essentially empty. It is probably a background artefact of that occultation. The
   renderer shows it as material of unknown reflectance (a hatched outer band) and it slightly dims

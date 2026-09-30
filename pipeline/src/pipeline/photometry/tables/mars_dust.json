@@ -1,0 +1,48 @@
+{
+ "_what": "Mars airborne-dust facts transcribed from the documents that accompany the data files used (see docs/sources/mars-dust.md).",
+ "lmd_climatology_page": {
+  "_citation": "Montabone, L., Forget, F., Millour, E., et al. (2015). Eight-year climatology of dust optical depth on Mars. Icarus 251, 65-95. DOI:10.1016/j.icarus.2014.12.034; data-set page 'Climatologies of the Martian Atmospheric Dust Optical Depth', http://www-mars.lmd.jussieu.fr/mars/dust_climatology/index.html ('Important notes').",
+  "_quote": "To get the extinction optical depth, you can multiply the absorption optical depth by 1.3. Equivalent visible column optical depths can be obtained by multiplying the 9.3 um absorption column dust optical depth by 2.6. See detailed discussion in Montabone et al., Icarus, 2015, Section 2.3.4",
+  "visible_per_9um_absorption": 2.6,
+  "extinction_per_absorption_9um": 1.3,
+  "reference_pressure_Pa": 610.0,
+  "pressure_scaling_quote": "If you require a local column optical depth, you could ... multiply the provided variable normalized to 610 Pa by 'surface pressure (Pa)/610'"
+ },
+ "montabone_2020": {
+  "_citation": "Montabone, L., Spiga, A., Kass, D. M., Kleinboehl, A., Forget, F. & Millour, E. (2020). Martian Year 34 column dust climatology from Mars Climate Sounder observations: reconstructed maps and model simulations. J. Geophys. Res. Planets 125, e2019JE006111. DOI:10.1029/2019JE006111; text source arXiv:1907.08187v1, Fig. 5 caption.",
+  "_quote": "We used a factor of 2.6 to convert 9.3 um absorption CDOD into equivalent visible ones.",
+  "gde_quote": "The visible opacity quickly reached a very high value of 10.8 (Opportunity, MY 34 global dust event; Introduction)"
+ },
+ "mcd_user_manual": {
+  "_citation": "Millour, E., Forget, F., et al. Mars Climate Database v6.1 User Manual (ESTEC Contract No. 4000128572/19/NL/AS), LMD, http://www-mars.lmd.jussieu.fr/mars/info_web/user_manual_6.1.pdf, section 1.2.",
+  "climatology_quote": "The 'Climatology' (clim) scenario, which is a simulations ran using the latest version of the Mars PCM forced by a dust distribution reconstructed from observations over Mars Years 24 to 35, and thus representative of a standard (i.e.: devoided of a planet-encircling global dust storm) Martian year.",
+  "dust_properties_quote": "(in practice for these runs, Ockert-Bell et al. dust properties were used, rather than the more recently derived Wolff et al. ones)",
+  "storm_quote": "The dust storm scenario represents Mars during a global dust storm (dust opacity set to tau = 5 at all times and over the whole planet) ... only provided for when such storms are likely to happen, during northern fall and winter (Ls=180-360)"
+ },
+ "chen_chen_2019_phase_function": {
+  "_citation": "Chen-Chen, H., Perez-Hoyos, S. & Sanchez-Lavega, A. (2019). Characterisation of Martian dust aerosol phase function from sky radiance measurements by MSL engineering cameras. Icarus 330, 16-29. DOI:10.1016/j.icarus.2019.04.004; text source arXiv:1905.01074v1 (abstract; eq. 1 p. 5-6; Table 2 p. 7; section 4 p. 7-8).",
+  "formula": "P(theta) = alpha (1 - g1^2) / (1 - 2 g1 cos theta + g1^2)^(3/2) + (1 - alpha) (1 - g2^2) / (1 - 2 g2 cos theta + g2^2)^(3/2)   (eq. 1; normalized so that its mean over the sphere is 1)",
+  "g1": 0.889,
+  "g1_sigma": 0.098,
+  "g2": 0.094,
+  "g2_sigma": 0.25,
+  "alpha": 0.743,
+  "alpha_sigma": 0.106,
+  "asymmetry_text": 0.687,
+  "asymmetry_abstract": 0.673,
+  "asymmetry_sigma": 0.081,
+  "_asymmetry_note": "The abstract gives g = 0.673 +/- 0.081, section 4 gives 0.687 +/- 0.081; alpha g1 + (1 - alpha) g2 = 0.685.",
+  "effective_wavelength_nm": 650,
+  "ssa_assumed": 0.975,
+  "_ssa_note": "Table 2: omega0 fixed to 0.975 'based on results derived from surface-orbit combined observations by Wolff et al. (2009) and particularised for MSL engineering cameras effective wavelength (~650 nm)'",
+  "measurements": "MSL Navcam and Hazcam sky radiance in the solar almucantar, scattering angles ~10-150 deg, Gale crater, MY 32-34"
+ },
+ "vincendon_langevin_2010_scale_height": {
+  "_citation": "Vincendon, M. & Langevin, Y. (2010). Icarus 207, 923-931. DOI:10.1016/j.icarus.2009.12.018; text source arXiv:1103.3215, abstract.",
+  "_quote": "On Mars, we find the scale height of dust particles to vary between 6 km and 12 km depending on season.",
+  "range_km": [
+   6,
+   12
+  ]
+ }
+}

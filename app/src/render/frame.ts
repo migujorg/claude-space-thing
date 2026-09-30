@@ -17,6 +17,8 @@ import { blackwellEquivalent } from '../eye/mesopic';
 import type { EyeFrame } from '../eye/model';
 import { pointObserver } from '../eye/points';
 import { CIE146 } from '../eye/constants';
+import { cie146 } from '../eye/glare';
+import { DARK_LIGHT_CONE } from '../eye/tonemap';
 import { DEG2_PER_SR } from '../eye/pupil';
 
 /** GPU page-table bindings of a body's surface-map layers (renderer supplies them; surface.ts). */
@@ -427,7 +429,20 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
   const inField = glare.filter((gs) => (angle(gs.dir, fwd) * 180) / Math.PI <= CIE146.maxDeg);
   // Illuminance E (lux = cd·sr·m⁻²) of a small source equals its ∫L dΩ; convert sr → deg².
   const offFrameFluxDeg2 = inField.reduce((a, gs) => a + (gs.inFrame ? 0 : gs.E[1] * DEG2_PER_SR), 0);
-  return { resolved, points, sun, glare: inField, overlay, warnings, adaptedWhite, rings, offFrameFluxDeg2 };
+  // The analytic veil is evaluated per pixel for every source, so keep only sources whose veil can reach
+  // 1 % of the dark light somewhere in the frame (a numerical tolerance: fainter veils cannot change what
+  // is seen), strongest first; the renderer binds at most MAX_GLARE_SOURCES of them.
+  const halfDiagDeg = (Math.atan(Math.hypot(g.tanX, g.tanY)) * 180) / Math.PI;
+  const veilMax = (gs: GlareSource) => {
+    const th = gs.inFrame ? gs.minDeg : Math.max((angle(gs.dir, fwd) * 180) / Math.PI - halfDiagDeg, gs.minDeg);
+    return gs.E[1] * cie146(Math.min(Math.max(th, CIE146.minDeg), CIE146.maxDeg), eye.settings.ageYears, eye.settings.pigmentation);
+  };
+  const veiling = inField
+    .map((gs) => ({ gs, v: veilMax(gs) }))
+    .filter((x) => x.gs.inFrame || x.v >= 0.01 * DARK_LIGHT_CONE)
+    .sort((a, b) => b.v - a.v)
+    .map((x) => x.gs);
+  return { resolved, points, sun, glare: veiling, overlay, warnings, adaptedWhite, rings, offFrameFluxDeg2 };
 }
 
 function tangent(n: V3): [V3, V3] {

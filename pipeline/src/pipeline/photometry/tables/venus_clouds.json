@@ -1,0 +1,26 @@
+{
+ "_what": "Venus cloud-top and upper-haze facts for resolved/limb rendering (docs/sources/venus-clouds.md).",
+ "hansen_hovenier_1974": {
+  "_citation": "Hansen, J. E. & Hovenier, J. W. (1974). Interpretation of the polarization of Venus. Journal of the Atmospheric Sciences 31, 1137-1160. DOI:10.1175/1520-0469(1974)031<1137:IOTPOV>2.0.CO;2 (abstract, AMS full-text page).",
+  "_quote": "The refractive index of the particles is 1.44+/-0.015 at lambda=0.55 um with a normal dispersion, the refractive index decreasing from 1.46+/-0.015 at lambda=0.365 um to 1.43+/-0.015 at lambda=0.99 um. The cloud particles have a narrow size distribution with a mean radius of ~1 um; specifically, the effective radius of the size distribution is 1.05+/-0.10 um and the effective variance is 0.07+/-0.02. The particles exist at a high level in the atmosphere, with the optical thickness unity occurring where the pressure is about 50 mb. ... A concentrated solution of sulfuric acid (H2SO4-H2O) provides good agreement with the polarization data.",
+  "refractive_index": {"lambda_um": [0.365, 0.55, 0.99], "n": [1.46, 1.44, 1.43], "sigma": 0.015},
+  "r_eff_um": 1.05, "r_eff_sigma_um": 0.10,
+  "v_eff": 0.07, "v_eff_sigma": 0.02,
+  "tau1_pressure_mb": 50
+ },
+ "lee_2021": {
+  "_citation": "Lee, Y. J., Garcia Munoz, A., Yamazaki, A., Yamada, M., Watanabe, S. & Encrenaz, T. (2021). Investigation of UV absorbers on Venus using the 283 and 365 nm phase curves obtained from Akatsuki. Geophysical Research Letters 48, e2020GL090577. DOI:10.1029/2020GL090577; text source arXiv:2103.09021v2, section 3.2 and Key Points.",
+  "_quote": "The cloud vertical structure above 60 km altitude is reasonably consistent with that used in previous studies, that is, 70 km altitude for the cloud top level (a unity optical thickness, tau = 1, at 365 nm) and 4 km cloud scale height (Figure S2) (Haus et al., 2014; Ignatiev et al., 2009; Lee et al., 2012; Sato et al., 2020).",
+  "cloud_top_km": 70.0,
+  "cloud_top_wavelength_nm": 365,
+  "cloud_scale_height_km": 4.0,
+  "absorber_quote": "All our analyses at 365 nm lead to one conclusion: UA absorption within the 5 km below the cloud top is necessary to explain the observed phase curve. (section 4.1)"
+ },
+ "pere_2016": {
+  "_citation": "Pere, C., Tanga, P., Widemann, Th., et al. (2016). Multilayer modeling of the aureole photometry during the Venus transit: comparison between SDO/HMI and VEx/SOIR data. Astronomy & Astrophysics 595, A115. DOI:10.1051/0004-6361/201628528; text source arXiv:1608.08544v1, abstract.",
+  "_quote": "We obtain an independent constraint of 4.8 +/- 0.5 km for the aerosol scale height in the upper haze region above 80 km.",
+  "upper_haze_scale_height_km": 4.8,
+  "upper_haze_scale_height_sigma_km": 0.5,
+  "above_km": 80.0
+ }
+}

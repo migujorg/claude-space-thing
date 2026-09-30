@@ -364,6 +364,26 @@ def run(ctx: BuildContext) -> None:
                           + (1 - g1 - g2) * eval_basis(basis["phi3"], math.radians(a))}
                          for a in (0.0, 0.2, 1.0, 5.0, 7.5, 10.0, 25.0, 45.0, 90.0, 140.0, 160.0)
                          for g1, g2 in ((0.62, 0.14), (0.25, 0.4), (0.9, 0.05))]
-    FIXTURE.write_text(json.dumps(fx, indent=1))
+    _write_fixture_if_changed(fx)
     print(f"[{STAGE}] photometry.json: {colour['shapeDerived']} derived colour shapes; c_Y p1..p99 = "
           f"{colour['yOverV']['p1']:.4f}..{colour['yOverV']['p99']:.4f}; fixture {FIXTURE.name}")
+
+
+def _stable(obj):
+    """The fixture without fields that change on every query (timestamps, response hashes)."""
+    if isinstance(obj, dict):
+        return {k: _stable(v) for k, v in obj.items() if k not in ("generated", "horizonsSha256")}
+    if isinstance(obj, list):
+        return [_stable(v) for v in obj]
+    return obj
+
+
+def _write_fixture_if_changed(fx: dict) -> None:
+    """Rewrite the committed test fixture only when its values change, so rebuilds don't churn the repository."""
+    if FIXTURE.exists():
+        try:
+            if _stable(json.loads(FIXTURE.read_text())) == _stable(fx):
+                return
+        except ValueError:
+            pass
+    FIXTURE.write_text(json.dumps(fx, indent=1))
