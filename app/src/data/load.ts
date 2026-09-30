@@ -15,6 +15,7 @@ import type {
   OrientationHeader,
   PhotometryFile,
   SourceRecord,
+  AtmosphereFile,
   RingsFile,
   TimeData,
 } from './schema';
@@ -104,6 +105,8 @@ export interface LoadedData {
   rings?: RingsFile | null;
   /** M4 sky headers (stars/deep.json, sky/diffuse.json, sky/zodiacal.json); maps and tiles load later (app/sky.ts). */
   sky?: SkyHeaders;
+  /** atmospheres.json: optical properties for limb/sky rendering. */
+  atmospheres?: AtmosphereFile | null;
   report: DataReport;
   /** Fetches deferred products later; null when the data came from elsewhere (tests). */
   loader: DataLoader | null;
@@ -132,6 +135,7 @@ const CONSEQUENCE: Record<string, string> = {
   'stars/bright.bin': 'No star background.',
   'stars/names.json': 'Star names unavailable in search.',
   'rings.json': 'No ring data: planetary rings are not drawn.',
+  'atmospheres.json': 'No atmosphere data: limbs, haze and Earth\'s sky are not drawn.',
 };
 
 class NotFound extends Error {}
@@ -301,7 +305,7 @@ export async function loadAll(opts: LoadOptions): Promise<LoadedData> {
   const manifest = (L.manifest = await L.get('manifest.json', (b) => validateManifest(json(b))));
   const productPaths = Object.keys(manifest?.products ?? {});
 
-  const [sourcesArr, time, bodiesArr, photometry, light, starHeader, namesJson, rings] = await Promise.all([
+  const [sourcesArr, time, bodiesArr, photometry, light, starHeader, namesJson, rings, atmospheres] = await Promise.all([
     L.get('sources.json', (b) => validateArray<SourceRecord>(json(b), 'sources.json', (s) => typeof s.id === 'string')),
     L.get('time.json', (b) => validateTime(json(b))),
     L.get('bodies.json', (b) => validateArray<Body>(json(b), 'bodies.json', (x) => typeof x.id === 'number' && typeof x.name === 'string')),
@@ -310,6 +314,7 @@ export async function loadAll(opts: LoadOptions): Promise<LoadedData> {
     L.get('stars/bright.json', (b) => json(b) as BinaryTableHeader),
     L.get('stars/names.json', (b) => json(b)),
     L.get('rings.json', (b) => json(b) as RingsFile),
+    L.get('atmospheres.json', (b) => json(b) as AtmosphereFile),
   ]);
 
   const sources = new Map<string, SourceRecord>();
@@ -447,7 +452,7 @@ export async function loadAll(opts: LoadOptions): Promise<LoadedData> {
     if (missing.size) notes.push(`Referenced source ids missing from sources.json: ${[...missing].sort().join(', ')}.`);
   }
 
-  return { manifest, sources, time, ephemerides, deferred, orientations, bodies, light, stars, starNames, surfaces, smallBodies, rings: rings ?? null, sky, report: L.report, loader: L };
+  return { manifest, sources, time, ephemerides, deferred, orientations, bodies, light, stars, starNames, surfaces, smallBodies, rings: rings ?? null, atmospheres: atmospheres ?? null, sky, report: L.report, loader: L };
 }
 
 // ---- light validation (structure only; values are the pipeline's) -------------------------------

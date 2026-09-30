@@ -114,7 +114,12 @@ export class AppModel {
   /** Surface maps and rings the snapshot may attach (filtered per frame by the reality level). */
   extras: SceneExtras | undefined;
   clock = new Clock(0, null);
-  readonly realityDefaults: RealityState;
+  /** Defaults of the reality settings (NORTH_STAR 3.7): Complete once the build has a synthetic layer. */
+  realityDefaults: RealityState;
+  /** The data lists a synthetic layer (synthetic/objects.json): Complete is the default level. */
+  syntheticLayerAvailable = false;
+  /** The existence level was set by the user or the URL (a new default level does not override it). */
+  private levelChosen = false;
   reality: RealityState;
   fovY = DEFAULT_FOV_DEG * DEG;
   cam: CamState = { mode: 'free', anchor: null, rel: [0, 0, 0], orient: IDENTITY };
@@ -166,6 +171,7 @@ export class AppModel {
   constructor(core: CoreDeps, opts: { now?: () => number; syntheticLayerAvailable?: boolean } = {}) {
     this.core = core;
     this.now = opts.now ?? Date.now;
+    this.syntheticLayerAvailable = !!opts.syntheticLayerAvailable;
     this.realityDefaults = defaultReality({ syntheticLayerAvailable: opts.syntheticLayerAvailable });
     this.reality = structuredClone(this.realityDefaults);
     this.orientations = buildOrientation(core, [], []).set;
@@ -194,7 +200,9 @@ export class AppModel {
 
   setData(d: LoadedData, dataBaseUrl = 'data/'): void {
     this.data = d;
-    this.extras = { surfaces: surfaceRefs(d.surfaces ?? [], dataBaseUrl), rings: d.rings ?? null };
+    // atmospheres.json (render/scene.ts SceneBody.atmosphere) once the loader provides it as `atmospheres`.
+    const atmospheres = d.atmospheres ?? null;
+    this.extras = { surfaces: surfaceRefs(d.surfaces ?? [], dataBaseUrl), rings: d.rings ?? null, atmospheres };
     this.bodies = d.bodies;
     this.byId = new Map(d.bodies.map((b) => [b.id, b]));
     this.roots.clear();
@@ -256,8 +264,22 @@ export class AppModel {
     this.smallBodies = null;
     this.sbExcluded = '';
     this.sb = { status: d.smallBodies ? 'waiting' : 'absent', got: 0, total: d.smallBodies?.tableBytes ?? 0, message: null, ms: null };
+    this.setSyntheticLayerAvailable(!!d.smallBodies?.synthetic);
     this.emit('data');
     this.emit('time');
+  }
+
+  /**
+   * Architecture §5.2 / NORTH_STAR 3.7: once a synthetic layer exists, Complete is the default level. A level the user
+   * or the URL chose is kept. The layer exists when the data list it and small bodies are not disabled.
+   */
+  private setSyntheticLayerAvailable(syn: boolean): void {
+    if (syn === this.syntheticLayerAvailable) return;
+    const nd = defaultReality({ syntheticLayerAvailable: syn });
+    if (!this.levelChosen) this.reality = { ...this.reality, exists: nd.exists };
+    this.realityDefaults = { ...this.realityDefaults, exists: nd.exists };
+    this.syntheticLayerAvailable = syn;
+    this.emit('reality');
   }
 
   // ---- small bodies ---------------------------------------------------------------------------------
@@ -280,6 +302,7 @@ export class AppModel {
     if (!p) return;
     this.propagationWorker = opts.propagationWorker ?? null;
     if (opts.enabled === false) {
+      this.setSyntheticLayerAvailable(false);
       this.sb = { ...this.sb, status: 'off', message: 'Disabled by the URL (smallbodies=0).' };
       this.failPendingSpkid('small bodies are disabled by the URL (smallbodies=0)');
       this.emit('smallbodies');
@@ -389,6 +412,7 @@ export class AppModel {
   setSmallBodyField(f: SmallBodyFieldPort | null): void {
     if (!this.smallBodies) return;
     this.smallBodies.field = f;
+    if (f?.syntheticNote) this.message(`Synthetic objects are not drawn: ${f.syntheticNote}.`, 'warn');
     this.sbExcluded = '';
     this.emit('smallbodies');
   }
@@ -437,7 +461,7 @@ export class AppModel {
   private fetchName(row: number): void {
     const sb = this.smallBodies;
     // Search results bring the name but not the SPK-ID (needed for links): ask until both are known.
-    if (!this.names || !sb || (sb.knownName(row) && this.names.spkidOf(row) !== null)) return;
+    if (!this.names || !sb || sb.isSynthetic(row) || (sb.knownName(row) && this.names.spkidOf(row) !== null)) return;
     this.names.display([row]).then(
       ([n]) => {
         if (!n) return;
@@ -698,12 +722,13 @@ export class AppModel {
   // ---- reality ------------------------------------------------------------------------------------
 
   setReality(patch: Partial<Omit<RealityState, 'overlays'>> & { overlays?: Partial<RealityState['overlays']> }): void {
+    if (patch.exists !== undefined) this.levelChosen = true;
     this.reality = { ...this.reality, ...patch, overlays: { ...this.reality.overlays, ...(patch.overlays ?? {}) } };
     this.emit('reality');
   }
 
   badge(): string[] {
-    const parts = badgeParts(this.reality, this.realityDefaults);
+    const parts = badgeParts(this.reality, this.realityDefaults, { syntheticLayerAvailable: this.syntheticLayerAvailable });
     // Away from the default level, say what it does to the asteroids and comets (most brightnesses rest on an
     // assumed phase law, so Strict withholds most of them).
     const c = this.reality.exists !== this.realityDefaults.exists ? this.smallBodyCounts() : null;
@@ -1154,6 +1179,7 @@ export class AppModel {
 
   /** Apply URL view parameters (after setData). */
   applyUrl(v: UrlView): void {
+    if (v.smallbodies === false) this.setSyntheticLayerAvailable(false);   // no small bodies: no synthetic layer
     if (v.fov !== undefined) this.fovY = Math.min(120, Math.max(1, v.fov)) * DEG;
     const patch: Parameters<AppModel['setReality']>[0] = { overlays: {} };
     if (v.exists) patch.exists = v.exists;
@@ -1162,6 +1188,7 @@ export class AppModel {
     if (v.labels !== undefined) patch.overlays!.labels = v.labels;
     if (v.orbits !== undefined) patch.overlays!.orbits = v.orbits;
     if (v.tint !== undefined) patch.overlays!.provenanceTint = v.tint;
+    if (v.shield !== undefined) patch.sunShield = v.shield;
     this.setReality(patch);
     if (v.ui === false) this.uiHidden = true;
 
@@ -1214,6 +1241,7 @@ export class AppModel {
     if (r.overlays.labels !== d.overlays.labels) v.labels = r.overlays.labels;
     if (r.overlays.orbits !== d.overlays.orbits) v.orbits = r.overlays.orbits;
     if (r.overlays.provenanceTint !== d.overlays.provenanceTint) v.tint = r.overlays.provenanceTint;
+    if (!!r.sunShield !== !!d.sunShield) v.shield = !!r.sunShield;
     return v;
   }
 

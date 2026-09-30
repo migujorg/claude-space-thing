@@ -1,9 +1,10 @@
-// GPU side of surface-map virtual texturing (surface.ts has the GPU-agnostic logic): two page atlases
-// (albedo rgba16float, height r32float) as texture arrays of 256×256 pages, one shared page table
-// (u32 storage buffer, CPU mirror, dirty-range uploads), and the per-frame tile requests.
+// GPU side of surface-map virtual texturing (surface.ts has the GPU-agnostic logic): one page atlas per
+// tile format (albedo rgba16float, height r32float, clouds rgba16float, rg16 rg16float) as texture arrays
+// of 256×256 pages, one shared page table (u32 storage buffer, CPU mirror, dirty-range uploads), and the
+// per-frame tile requests.
 //
-// Memory is strictly bounded by the budget given at creation (a renderer option): 2/3 for albedo pages,
-// 1/3 for height pages. Nothing is allocated until the first body with a surface map appears.
+// Memory is strictly bounded by the budget given at creation (a renderer option), split by ATLAS_SHARE.
+// Nothing is allocated until the first body with a layer of that format appears.
 
 import type { SceneBody, SurfaceLayerRef } from './scene';
 import type { CameraGeom } from './overlays';
@@ -12,6 +13,16 @@ import { footprintTiles, httpFetcher, layerFormatProblem, layerKey, TILE, TILE_B
 import { decodeTexelHapke, texelHapkeGpuLayers, texelLawProblem, type TexelHapke } from './texelLaw';
 
 const MIB = 1 << 20;
+
+/** GPU texture format of each atlas. */
+const ATLAS_FORMAT: Record<LayerFormat, GPUTextureFormat> = { albedo: 'rgba16float', height: 'r32float', clouds: 'rgba16float', rg16: 'rg16float' };
+/** Share of the surface-cache budget each atlas may use (they sum to 1). */
+const ATLAS_SHARE: Record<LayerFormat, number> = { albedo: 0.35, height: 0.2, clouds: 0.3, rg16: 0.15 };
+/** Earth's two-channel layers: expected channels by layer kind (architecture §4.4). */
+const RG16_CHANNELS: Record<string, string[]> = {
+  'surface-water': ['waterFraction', 'seaIceFraction'],
+  'emitted-radiance': ['dnbRadiance', 'censoredFraction'],
+};
 
 interface Atlas {
   texture: GPUTexture;
@@ -45,7 +56,7 @@ export class SurfaceGpu {
   constructor(private readonly device: GPUDevice, readonly budgetMiB: number, private readonly fetcher?: Fetcher) {
     this.buffer = this.makeBuffer(1024);
     const tex = (format: GPUTextureFormat) => device.createTexture({ size: [1, 1, 1], format, usage: GPUTextureUsage.TEXTURE_BINDING, label: 'surface dummy' });
-    this.dummy = { albedo: tex('rgba16float'), height: tex('r32float') };
+    this.dummy = { albedo: tex('rgba16float'), height: tex('r32float'), clouds: tex('rgba16float'), rg16: tex('rg16float') };
   }
 
   private makeBuffer(entries: number): GPUBuffer {
@@ -70,7 +81,7 @@ export class SurfaceGpu {
     let c = this.caches[format];
     if (c) return c;
     const d = this.device;
-    const share = format === 'albedo' ? 2 / 3 : 1 / 3;
+    const share = ATLAS_SHARE[format];
     const bytes = TILE_BYTES[format];
     // Strict budget: allocate whole atlas layers only, never more pages than the budget holds.
     const budgetPages = Math.max(4, Math.floor((this.budgetMiB * MIB * share) / bytes));
@@ -79,13 +90,13 @@ export class SurfaceGpu {
     const pages = layers * perRow * perRow;
     const texture = d.createTexture({
       size: [perRow * TILE, perRow * TILE, layers],
-      format: format === 'albedo' ? 'rgba16float' : 'r32float',
+      format: ATLAS_FORMAT[format],
       usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST,
       label: `surface ${format} pages`,
     });
     const atlas: Atlas = { texture, perRow, pages };
     this.atlases[format] = atlas;
-    const bpp = format === 'albedo' ? 8 : 4;
+    const bpp = TILE_BYTES[format] / (TILE * TILE);
     const store: PageStore = {
       pages,
       upload: (page, data) => {
@@ -120,8 +131,8 @@ export class SurfaceGpu {
     const s = b.surface;
     if (!s) return null;
     const out: SurfaceBinding = {};
-    const usable = (ref: SurfaceLayerRef, format: LayerFormat): boolean => {
-      const why = layerFormatProblem(ref, format);
+    const usable = (ref: SurfaceLayerRef, format: LayerFormat, channels?: string[]): boolean => {
+      const why = layerFormatProblem(ref, format, channels);
       if (why) this.problems.add(`${b.name}: ${why} → layer not shown`);
       return !why;
     };
@@ -133,13 +144,28 @@ export class SurfaceGpu {
       const l = this.cache('height').layer(s.height);
       out.height = { base: l.base, maxLevel: l.maxLevel };
     }
+    if (s.clouds && usable(s.clouds, 'clouds')) {
+      const l = this.cache('clouds').layer(s.clouds);
+      out.clouds = { base: l.base, maxLevel: l.maxLevel };
+    }
+    for (const k of ['water', 'night'] as const) {
+      const ref = s[k];
+      if (ref && usable(ref, 'rg16', RG16_CHANNELS[k === 'water' ? 'surface-water' : 'emitted-radiance'])) {
+        const l = this.cache('rg16').layer(ref);
+        out[k] = { base: l.base, maxLevel: l.maxLevel };
+      }
+    }
+    if (s.wind) {
+      const w = this.wholeLayer(s.wind, b.name);
+      if (w) out.wind = w;
+    }
     if (s.photometry && s.albedo && out.albedo) {
       const p = this.photometry(s.photometry, s.albedo, b.name);
       if (p) out.photometry = p;
     } else if (s.photometry && !s.albedo) {
       this.problems.add(`${b.name}: per-texel photometric layer needs the albedo layer (band weights) → not used`);
     }
-    return out.albedo || out.height ? out : null;
+    return out.albedo || out.height || out.clouds || out.water || out.night || out.wind ? out : null;
   }
 
   // ── Per-texel photometric layers (texelLaw.ts): level 0 only, loaded whole, one GPU texture each.
@@ -187,6 +213,59 @@ export class SurfaceGpu {
     return e.state === 'ready' && e.texel && e.texture ? { texel: e.texel, view: e.texture.createView({ dimension: '2d-array' }) } : null;
   }
 
+  // ── Whole small layers (Earth's wind): the finest level ≤ 2 loaded at once into one rgba16float texture.
+  private whole = new Map<string, { state: 'loading' | 'ready' | 'failed'; texture?: GPUTexture }>();
+
+  private wholeLayer(ref: SurfaceLayerRef, name: string): { view: GPUTextureView } | null {
+    const key = layerKey(ref);
+    let e = this.whole.get(key);
+    if (!e) {
+      const h = ref.header;
+      const ch = h.channels?.length ?? 0;
+      if (h.format !== 'float16' || !(ch >= 1 && ch <= 4) || h.bytesPerTexel !== 2 * ch) {
+        this.problems.add(`${name}: ${h.layer ?? 'layer'} is not a float16 layer of 1–4 channels → not used`);
+        e = { state: 'failed' };
+        this.whole.set(key, e);
+        return null;
+      }
+      const L = Math.min(h.maxLevel, 2);
+      const tx = 2 << L, ty = 1 << L;
+      const entry: { state: 'loading' | 'ready' | 'failed'; texture?: GPUTexture } = { state: 'loading' };
+      e = entry;
+      this.whole.set(key, entry);
+      const fetcher = this.fetcher ?? httpFetcher;
+      const missing = new Set((h.missingTiles?.[String(L)] ?? h.missing?.[String(L)] ?? []).map(([x, y]) => `${x},${y}`));
+      this.photoPending++;
+      const jobs: Promise<ArrayBuffer | null>[] = [];
+      for (let y = 0; y < ty; y++) for (let x = 0; x < tx; x++) jobs.push(missing.has(`${x},${y}`) ? Promise.resolve(null) : fetcher(tileUrl(ref, L, y, x)).catch(() => null));
+      Promise.all(jobs).then((tiles) => {
+        const W = tx * TILE, H = ty * TILE;
+        const data = new Uint16Array(W * H * 4).fill(0x7e00); // NaN: unknown
+        tiles.forEach((buf, i) => {
+          if (!buf || buf.byteLength !== TILE * TILE * 2 * ch) return;
+          const src = new Uint16Array(buf);
+          const x0 = (i % tx) * TILE, y0 = Math.floor(i / tx) * TILE;
+          for (let j = 0; j < TILE; j++) for (let q = 0; q < TILE; q++) {
+            const o = ((y0 + j) * W + x0 + q) * 4, si = (j * TILE + q) * ch;
+            for (let c = 0; c < ch; c++) data[o + c] = src[si + c];
+          }
+        });
+        const texture = this.device.createTexture({ size: [W, H], format: 'rgba16float', usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST, label: `${name} ${h.layer}` });
+        this.device.queue.writeTexture({ texture }, data, { bytesPerRow: W * 8, rowsPerImage: H }, [W, H]);
+        entry.texture = texture;
+        entry.state = 'ready';
+      }).catch((err) => {
+        entry.state = 'failed';
+        this.problems.add(`${name}: ${h.layer} could not be loaded (${err}) → not used`);
+      }).finally(() => {
+        this.photoPending--;
+        this.onTile?.();
+        if (this.idle()) { const w = this.idleWaiters; this.idleWaiters = []; for (const f of w) f(); }
+      });
+    }
+    return e.state === 'ready' && e.texture ? { view: e.texture.createView() } : null;
+  }
+
   /** Layers that could not be used (format mismatch), as warnings. */
   readonly problems = new Set<string>();
 
@@ -197,6 +276,9 @@ export class SurfaceGpu {
       if (!r.surface || !s) continue;
       if (s.albedo && r.surface.albedo) this.cache('albedo').request(s.albedo, footprintTiles(r.frame, r.bodyToWorld, g, r.surface.albedo.maxLevel));
       if (s.height && r.surface.height) this.cache('height').request(s.height, footprintTiles(r.frame, r.bodyToWorld, g, r.surface.height.maxLevel));
+      if (s.clouds && r.surface.clouds) this.cache('clouds').request(s.clouds, footprintTiles(r.frame, r.bodyToWorld, g, r.surface.clouds.maxLevel));
+      if (s.water && r.surface.water) this.cache('rg16').request(s.water, footprintTiles(r.frame, r.bodyToWorld, g, r.surface.water.maxLevel));
+      if (s.night && r.surface.night) this.cache('rg16').request(s.night, footprintTiles(r.frame, r.bodyToWorld, g, r.surface.night.maxLevel));
     }
     for (const c of Object.values(this.caches)) c.pump();
   }
@@ -242,7 +324,7 @@ export class SurfaceGpu {
       s.deferredTiles += cs.deferredTiles;
       s.failedFetches += cs.failedFetches;
       const a = this.atlases[fmt];
-      if (a) s.usedMiB += (a.texture.width * a.texture.height * a.texture.depthOrArrayLayers * (fmt === 'albedo' ? 8 : 4)) / MIB;
+      if (a) s.usedMiB += (a.texture.width * a.texture.height * a.texture.depthOrArrayLayers * (TILE_BYTES[fmt] / (TILE * TILE))) / MIB;
     }
     s.usedMiB += (this.bufferEntries * 4) / MIB;
     return s;
@@ -251,8 +333,8 @@ export class SurfaceGpu {
   destroy(): void {
     for (const a of Object.values(this.atlases)) a.texture.destroy();
     for (const p of this.photo.values()) p.texture?.destroy();
-    this.dummy.albedo.destroy();
-    this.dummy.height.destroy();
+    for (const w of this.whole.values()) w.texture?.destroy();
+    for (const t of Object.values(this.dummy)) t.destroy();
     this.buffer.destroy();
   }
 }

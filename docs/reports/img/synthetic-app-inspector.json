@@ -1,0 +1,28 @@
+{
+ "row": 2366899,
+ "id": -2366900,
+ "name": "Synthetic main-belt asteroid #12,346",
+ "counts": {
+  "drawn": 1570423,
+  "withheld": 2529,
+  "noPosition": 61,
+  "from": "field",
+  "synthetic": {
+   "drawn": 2948401,
+   "objects": 2948454
+  }
+ },
+ "reality": {
+  "exists": "complete",
+  "view": "eye",
+  "exposureBoostStops": 0,
+  "overlays": {
+   "labels": true,
+   "orbits": false,
+   "provenanceTint": false
+  },
+  "sunShield": false
+ },
+ "badge": [],
+ "why": "Why does it look like this? A synthetic object, drawn as a point of the brightness its synthetic H gives (H-G law); never drawn resolved. Every attribute is synthetic."
+}
