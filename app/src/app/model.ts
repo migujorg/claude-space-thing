@@ -1081,6 +1081,14 @@ export class AppModel {
       }
       if (!sb.field) overlayOnly.push('marker' in e ? e.marker : { id: g.id, name: g.body.name, pos: g.app.rel, worstLabel: e.body.worstLabel, selected: g.id === this.selectedId });
     }
+    // Comets resolved from the camera: coma and tails (render/comets), no longer points of the field.
+    if (sb.comets) {
+      const pixelAngle = (2 * Math.tan(cam.fovY / 2)) / cam.height;
+      const inView = this.smallBodyIdsInView().map(sbRow);
+      const got = sb.comets.frame(inView, world.cameraPos, world.et, this.core, level, pixelAngle);
+      if (got.comets.length) snap.comets = got.comets;
+      if (sb.field) for (const row of got.rows) if (!excluded.includes(row)) excluded.push(row);
+    }
     const key = excluded.join(',');
     if (key !== this.sbExcluded) {
       this.sbExcluded = key;

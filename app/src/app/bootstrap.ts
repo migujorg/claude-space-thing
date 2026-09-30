@@ -211,6 +211,7 @@ export async function startApp(canvas: HTMLCanvasElement, uiRoot: HTMLElement, d
     const base = deps.dataBaseUrl ?? `${import.meta.env.BASE_URL}data/`;
     const attachSmallBodyField = async () => {
       const sb = model.smallBodies;
+      if (sb?.comets && renderer?.setCometModel) renderer.setCometModel(sb.comets.model);
       const dev = renderer?.gpuDevice;
       if (!sb || !deps.SmallBodyField || !renderer || !dev || !renderer.setExtraPointSources) return;
       try {

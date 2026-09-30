@@ -6,7 +6,7 @@
 // where this port says `eph: EphemerisSetPort`, even if the concrete class has extra/private members.
 
 import type {
-  EphemHeader, IauRotation, Label, OrientationHeader, SmallBodyCoreHeader, SmallBodyPhotometry, SmallBodyPhysicalHeader, SmallBodyTableHeader, Sourced, SyntheticObjectsHeader, TimeData,
+  CometModelProduct, EphemHeader, IauRotation, Label, OrientationHeader, SmallBodyCoreHeader, SmallBodyPhotometry, SmallBodyPhysicalHeader, SmallBodyTableHeader, Sourced, SyntheticObjectsHeader, TimeData,
 } from '../data/schema';
 import type { Mat3, RendererStats, SceneSnapshot, StarCatalog, Vec3 } from '../render/scene';
 
@@ -188,6 +188,8 @@ export interface RendererPort {
   readonly gpuDevice?: GPUDevice;
   /** Optional (M3): extra point sources (small bodies) drawn with the stars; null removes them. */
   setExtraPointSources?(src: PointSourceBuffer | null): void;
+  /** Optional: the physical model of comets (comets/model.json) for SceneSnapshot.comets; null removes it. */
+  setCometModel?(model: CometModelProduct | null): void;
 }
 export interface RendererFactory {
   create(canvas: HTMLCanvasElement): Promise<RendererPort>;

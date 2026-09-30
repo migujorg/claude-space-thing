@@ -4,8 +4,10 @@
 //   /sb-test.html?mode=render&scene=above|inside  real-data frame through the renderer (enhanced / eye)
 //   /sb-test.html?mode=synthetic                   synthetic layer: GPU records vs float64 two-body positions and
 //                                                  photometry, level gating, pick, timing
+//   /sb-test.html?mode=comet                       comet coma shader: rendered flux vs the M1/K1 illuminance
 // Results in window.__sbResult (JSON); render mode sets window.__frameReady.
 
+import { cometGpuFlux } from '../../render/comets/gputest';
 import type { EphemHeader, LightData, SmallBodyCoreHeader, SmallBodyPhotometry, SmallBodyPhysicalHeader, SmallBodyTableHeader, BinaryTableHeader, SyntheticObjectsHeader } from '../../data/schema';
 import { readSynthetic, syntheticState } from '../../core/smallbodySynthetic';
 import { hgPhi, magnitudeToXYZS } from '../../core/smallbodyPhotometry';
@@ -729,7 +731,8 @@ async function synthetic(): Promise<unknown> {
 
 async function main(): Promise<void> {
   const mode = params.get('mode') ?? 'accuracy';
-  const r = mode === 'timing' ? await timing() : mode === 'render' ? await render() : mode === 'unit' ? await unit() : mode === 'synthetic' ? await synthetic() : await accuracy();
+  const r = mode === 'timing' ? await timing() : mode === 'render' ? await render() : mode === 'unit' ? await unit() : mode === 'synthetic' ? await synthetic()
+    : mode === 'comet' ? await cometGpuFlux() : await accuracy();
   window.__sbResult = r;
 }
 
