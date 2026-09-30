@@ -235,9 +235,11 @@ export class SkyController {
       const job = this.queue.shift()!;
       if (this.inflight.has(job.pix)) continue;
       this.inflight.add(job.pix);
+      // Each completion starts the next queued read, so streaming does not wait for frames (a slow frame, e.g. on
+      // a software adapter, would otherwise admit only MAX_INFLIGHT tiles per frame).
       T.ensure(job.pix, job.count).then(
-        () => { this.inflight.delete(job.pix); this.evict(); this.dirty = true; },
-        (e) => { this.inflight.delete(job.pix); T.failures++; console.error(e); },
+        () => { this.inflight.delete(job.pix); this.evict(); this.dirty = true; this.pump(); },
+        (e) => { this.inflight.delete(job.pix); T.failures++; console.error(e); this.pump(); },
       );
     }
     this.stats.pendingTiles = this.queue.length + this.inflight.size;
@@ -408,10 +410,16 @@ export class SkyController {
       const om = 2 * Math.PI * (1 - c);
       const pd = this.pointData;
       const a = [0, 0, 0, 0];
+      // the same for points fainter than V = 6.5 only (Leinert Table 34 removes the brighter stars)
+      const a65 = [0, 0, 0, 0];
+      const y65 = luxFromMagnitude(6.5);
       for (let k = 0; k < this.points.length; k++) {
-        if (pd[k * 7] * d[0] + pd[k * 7 + 1] * d[1] + pd[k * 7 + 2] * d[2] >= c) for (let j = 0; j < 4; j++) a[j] += pd[k * 7 + 3 + j] / om;
+        if (pd[k * 7] * d[0] + pd[k * 7 + 1] * d[1] + pd[k * 7 + 2] * d[2] < c) continue;
+        for (let j = 0; j < 4; j++) a[j] += pd[k * 7 + 3 + j] / om;
+        if (pd[k * 7 + 4] < y65) for (let j = 0; j < 4; j++) a65[j] += pd[k * 7 + 3 + j] / om;
       }
       out.pointStarsInCap = a;
+      out.pointStarsV65InCap = a65;
     }
     out.zodiacal = [0, 0, 0, 0];
     const s = this.lastSnap;
