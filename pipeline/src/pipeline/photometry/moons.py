@@ -7,7 +7,8 @@ Per body (details in each builder's `method` text and in docs/sources/):
   Io..Callisto     Mayorga et al. (2020) Cassini ISS WAC disk-integrated phase curves in up to 5 filters: geometric
                    albedos (reconstruction) and the GRN phase curve.
   Mimas..Rhea      Filacchione et al. (2022) Cassini VIMS photometric model (Akimov disk function × quadratic phase
-                   function) at 64 wavelengths: normal albedo spectrum and the disk-integrated phase curve.
+                   function) at 64 wavelengths: normal albedo spectrum and the disk-integrated phase curve (10-120°);
+                   below 10° the measured opposition-surge shape of Enceladus and Rhea (Deau et al. 2009 fits).
   Titan            Karkoschka (1998) full-disk albedo at 5.7° (PDS) × 1.02 to zero phase (García Muñoz et al. 2017).
   Ariel..Oberon    DeColibus et al. (2026) disk-integrated spectra (Zenodo) scaled to Karkoschka (2001) albedos;
                    Karkoschka (2001) phase function.
@@ -266,12 +267,44 @@ def saturnian_spectrum(naif: int, ctx: BuildContext | None = None) -> AlbedoSpec
         "i, e ≤ 70°, 10° ≤ g ≤ 120°. Because the Akimov disk function is 1 everywhere at g = 0, a0 is the geometric "
         "albedo of the model, independent of the disk radius; linear interpolation between the tabulated wavelengths "
         "(the icy satellites' visible spectra are smooth). By construction the extrapolation to g = 0 EXCLUDES the "
-        "opposition surge (paper Sec. 4), consistently with the phase curve used for this body. Integrated per "
+        "opposition surge (paper Sec. 4); the phase curve adds it (Φ(0) > 1). Integrated per "
         "docs/architecture.md §4.3.",
         f"a0 fit errors ±{np.median(t['a0_err'] / t['a0']) * 100:.0f} % (median); VIMS visible-channel calibration "
         "residuals ('faint peaks'); leading/trailing hemisphere albedo differences of tens of percent (paper Sec. 5) "
-        "averaged; the opposition surge (brighter by tens of percent below a few degrees) is excluded",
+        "averaged; the opposition surge (brighter by tens of percent below a few degrees) is excluded here and "
+        "carried by the phase function",
         notes={"wavelengths_nm": t["wl"].tolist()})
+
+
+DEAU = _arxiv(
+    "deau-2009", "0902.0345v1",
+    "Morphological fits to the opposition phase curves of satellites and rings (Tables 2-3)",
+    "Deau, E., Dones, L., Rodriguez, S., Charnoz, S. & Brahic, A. (2009). The opposition effect in the outer Solar "
+    "system: a comparative study of the phase function morphology. Planetary and Space Science 57, 1282-1301. "
+    "DOI:10.1016/j.pss.2009.05.005 (accepted manuscript arXiv:0902.0345v1).",
+    "Linear-exponential fits of Enceladus (Verbiscer et al. 2005, HST, 439 nm) and Rhea (Domingue et al. 1995; "
+    "Verbiscer & Veverka 1989, ~500 nm) disk-integrated opposition phase curves transcribed to "
+    "photometry/tables/saturnian_opposition.json (docs/sources/deau-2009.md). A 2018 corrigendum (PSS 161, 137) "
+    "could not be accessed.")
+SURGE_JOIN_DEG = 10.0      # where the VIMS fit (10-120°) starts
+
+
+@lru_cache(maxsize=None)
+def _opposition_tables() -> dict:
+    return read_table_json("saturnian_opposition.json")
+
+
+def opposition_shape(key: str, a: float) -> float:
+    """Deau et al.'s linear-exponential fit I = Ib − |Is|·α + Ip·exp(−α/2w) of a measured opposition phase curve."""
+    q = _opposition_tables()["deau_2009"]["linear_exponential"][key]
+    return q["Ib"] - q["slope_abs"] * a + q["Ip"] * math.exp(-a / (2.0 * q["w_deg"]))
+
+
+def surge_factor(naif: int, a: float) -> float:
+    """R(α)/R(10°): the measured opposition curve relative to its value at the join, own curve for Enceladus and
+    Rhea, the mean of the two for Mimas, Tethys and Dione."""
+    keys = [str(naif)] if str(naif) in ("602", "605") else ["602", "605"]
+    return float(np.mean([opposition_shape(k, a) / opposition_shape(k, SURGE_JOIN_DEG) for k in keys]))
 
 
 def saturnian_phase(naif: int, ctx: BuildContext | None = None) -> Phase:
@@ -279,19 +312,38 @@ def saturnian_phase(naif: int, ctx: BuildContext | None = None) -> Phase:
     i = int(np.argmin(np.abs(t["wl"] - PHASE_ROW_NM)))
     a0, a1, a2 = float(t["a0"][i]), float(t["a1"][i]), float(t["a2"][i])
 
-    def dm(a):
-        return -2.5 * math.log10((a0 + a1 * a + a2 * a * a) / a0 * diskint.akimov_integral(a))
+    def phi_vims(a):
+        return (a0 + a1 * a + a2 * a * a) / a0 * diskint.akimov_integral(a)
 
+    def dm(a):
+        if a < SURGE_JOIN_DEG:
+            return -2.5 * math.log10(phi_vims(SURGE_JOIN_DEG) * surge_factor(naif, a))
+        return -2.5 * math.log10(phi_vims(a))
+
+    own = naif in (602, 605)
+    name = {602: "Enceladus", 605: "Rhea"}.get(naif)
+    shape = (f"{name}'s own measured opposition curve" if own else
+             "the mean of Enceladus's and Rhea's measured opposition curves (assumption: no accessible measured "
+             "curve for this moon; Deau et al. find similar surge widths for the Saturnian satellites)")
+    phi0 = phi_vims(SURGE_JOIN_DEG) * surge_factor(naif, 0.0)
+    pv = filters.band_average("V", t["wl"], t["a0"])
+    p_hst = _opposition_tables()["verbiscer_2007"]["geometric_albedo"][str(naif)]
+    fn = _tab(dm, 120.0, extra=(0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.4, 0.6, 0.8, 1.25, 1.75, 2.25, 2.75, 3.5))
     return Phase(
-        _tab(dm, 120.0, extra=(10.0,)), "estimated", [_src(ctx, FILACCHIONE)],
-        f"Disk integral of Filacchione et al.'s (2022) fitted photometric model at {t['wl'][i]:.0f} nm (a0 = {a0}, "
-        f"a1 = {a1} /deg, a2 = {a2} /deg²): Φ(α) = F(α)/a0 · J(α) with J the closed-form disk integral of the Akimov "
-        "disk function (pipeline.photometry.diskint; checked against quadrature). 10-120° is the fitted range "
-        "(derived from measurements); 0-10° is the paper's own extrapolation of the quadratic to zero phase, which "
-        "omits the opposition surge — hence 'estimated' for the curve as a whole. The zero-phase reference is the "
-        "surge-free a0 used for the albedo, so near opposition (every Earth-based view, α < 6.5°) the body is "
-        "predicted too faint by the size of its surge.",
-        "fit uncertainties of a1, a2 (paper Tables .2-.6); opposition surge not represented")
+        fn, "estimated", [_src(ctx, FILACCHIONE), _src(ctx, DEAU)],
+        f"10-120°: disk integral of Filacchione et al.'s (2022) fitted photometric model at {t['wl'][i]:.0f} nm "
+        f"(a0 = {a0}, a1 = {a1} /deg, a2 = {a2} /deg²), Φ(α) = F(α)/a0 · J(α) with J the closed-form disk integral "
+        "of the Akimov disk function (pipeline.photometry.diskint; derived from measurements). 0-10°, the "
+        "opposition surge: Φ(α) = Φ(10°) · R(α)/R(10°) with R the linear-exponential fit (Deau et al. 2009, "
+        f"Table 3) to {shape}; Enceladus's data (Verbiscer et al. 2005, HST) span about 0.25-20°, Rhea's (Domingue "
+        "et al. 1995; Verbiscer & Veverka 1989) a similar range. The zero-phase reference is the surge-free VIMS a0 "
+        f"used for the albedo, so Φ(0) = {phi0:.3f} > 1. The shape is measured but transferred to the VIMS level "
+        "(and, for Mimas, Tethys and Dione, from other moons) — hence 'estimated'. The HST geometric albedo at true "
+        f"opposition (Verbiscer et al. 2007, as quoted by Filacchione et al. 2022: {p_hst}) is {p_hst / (pv * phi0):.2f}× "
+        f"this curve's p_V·Φ(0) = {pv * phi0:.3f}: the HST and VIMS absolute levels differ at all small phase "
+        "angles, not only in the surge (see docs/reports/planet-colors.md).",
+        "fit uncertainties of a1, a2 (paper Tables .2-.6); surge shape from the published fit (the fit quality is "
+        "shown in Deau et al.'s Fig. 1-2); HST vs VIMS absolute level: the HST value is 1.2-1.4× higher")
 
 
 # ---------------------------------------------------------------------------------------------- Titan
@@ -622,8 +674,9 @@ UNKNOWN_SPECTRUM = {
         "strongly with orbital longitude. No machine-readable orbital-longitude lightcurve or disk-integrated spectrum "
         "was accessible to this pipeline (e.g. Millis 1977, Icarus 31, 81; Squyres et al. 1984, Icarus 59, 426; "
         "Buratti & Mosher 1995, Icarus 115, 219; Cassini VIMS leading/trailing phase curves, Icarus 209, 738, 2010, "
-        "are not openly accessible here), and a single albedo would misrepresent it, so albedo and colour are left "
-        "unknown."),
+        "are not openly accessible here; a further search in M3 of arXiv and of VizieR, whose Iapetus tables are "
+        "astrometric only, found none; Deau et al. 2009 give only fit parameters of a trailing-side opposition curve), "
+        "and a single albedo would misrepresent it, so albedo and colour are left unknown."),
     705: Unknown(
         "No disk-integrated photometry of Miranda was accessible to this pipeline in machine-usable form (Karkoschka "
         "2001, Icarus 151, 51, and the Voyager 2 photometry are not openly accessible; the DeColibus et al. 2026 "

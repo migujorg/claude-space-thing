@@ -89,7 +89,39 @@ def test_saturnian_phase_is_disk_integral(res):
         for a in (10.0, 45.0, 90.0, 120.0):
             want = -2.5 * math.log10((a0 + a1 * a + a2 * a * a) / a0 * diskint.akimov_integral(a))
             assert phase.delta_mag(pf, a) == pytest.approx(want, abs=1e-4)
-        assert res[n].entry["phaseFunction"]["label"] == "estimated"   # 0-10° extrapolation without the surge
+        assert res[n].entry["phaseFunction"]["label"] == "estimated"   # 0-10°: surge shape transferred
+
+
+def test_deau_opposition_fits_are_self_consistent():
+    """Deau et al. (2009) Table 3 linear-exponential parameters reproduce their Table 2 A, HWHM, S (Eq. 6), and the
+    fit agrees with their logarithmic fit (Table 3) within 6 % over 0.5-6° (a check of the slope's sign; the two forms part below ~0.3°, where the log diverges)."""
+    tab = read_table_json("saturnian_opposition.json")["deau_2009"]
+    for key, q in tab["linear_exponential"].items():
+        assert (q["Ip"] + q["Ib"]) / q["Ib"] == pytest.approx(q["table2_A"], abs=0.01)
+        assert 2 * math.log(2) * q["w_deg"] == pytest.approx(q["table2_HWHM_deg"], abs=0.01)
+        assert q["slope_abs"] == q["table2_S"]
+        lg = tab["log_fit"][key]
+        for a in (0.5, 1.0, 3.0, 6.0):
+            assert moons.opposition_shape(key, a) == pytest.approx(lg["a0"] + lg["a1"] * math.log(a), rel=0.06)
+
+
+def test_saturnian_opposition_surge(res):
+    """0-10°: the measured surge shape joined continuously to the VIMS curve at 10°; brighter than the surge-free
+    albedo at zero phase, monotonic, and still below the HST true-opposition albedos (the level difference is
+    reported, not hidden)."""
+    hst = read_table_json("saturnian_opposition.json")["verbiscer_2007"]["geometric_albedo"]
+    for n in (601, 602, 603, 604, 605):
+        pf = res[n].entry["phaseFunction"]["value"]
+        a = np.array(pf["alphaDeg"])
+        dm = np.array(pf["deltaMag"])
+        assert np.all(np.diff(dm) > 0), n
+        left, right = phase.delta_mag(pf, 9.99), phase.delta_mag(pf, 10.01)
+        assert abs(right - left) < 0.005, n
+        phi0 = 10 ** (-0.4 * phase.delta_mag(pf, 0.0))
+        assert 1.1 < phi0 < 1.3, n
+        assert 1.2 < hst[str(n)] / (res[n].p_v * phi0) < 1.4, n
+        assert a[0] == 0.0 and 0.05 in pf["alphaDeg"]
+        assert "deau-2009" in res[n].entry["phaseFunction"]["sources"]
 
 
 # ---------------------------------------------------------------------------------------------- Titan

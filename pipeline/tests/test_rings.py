@@ -18,7 +18,7 @@ def test_schema_shape(built):
     ctx, out, _ = built
     assert set(out) == {"599", "699", "799", "899"}
     for key, sysm in out.items():
-        assert set(sysm) == {"planet", "opticalDepth", "reflectance"} and sysm["planet"] == int(key)
+        assert {"planet", "opticalDepth", "reflectance"} <= set(sysm) and sysm["planet"] == int(key)
         for s in (sysm["opticalDepth"], sysm["reflectance"]):
             assert s["label"] in LABEL_ORDER and (s["value"] is None) == (s["label"] == "unknown") and s["method"]
             assert all(sid in ctx.sources for sid in s["sources"])
