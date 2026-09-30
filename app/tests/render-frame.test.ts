@@ -142,4 +142,21 @@ describe('Sun', () => {
     expect(behind.glare.length).toBe(0);
     expect(behind.offFrameFluxDeg2).toBe(0);
   });
+  it('analytic glare sources: strongest first, and those whose veil cannot reach 1 % of the dark light anywhere are dropped', () => {
+    const eye = computeEyeFrame(DEFAULT_EYE_SETTINGS, eyeState(), 'eye', 0, null);
+    const r = (45 * Math.PI) / 180;
+    const s = { ...sun(null), pos: [AU_KM * Math.sin(r), 0, -AU_KM * Math.cos(r)] as [number, number, number] };
+    // 40 faint bodies off frame (V ≈ 12 and fainter) and one bright one, 30° off axis.
+    const faint = Array.from({ length: 40 }, (_, k) => body(3e9, {
+      id: 100 + k, pos: [3e9 * Math.sin(0.5), 0.01 * k * 3e9, -3e9 * Math.cos(0.5)], radii: [5, 5, 5],
+    }));
+    const bright = body(4e5, { id: 99, pos: [4e5 * Math.sin(0.5), 0, -4e5 * Math.cos(0.5)], radii: [1737, 1737, 1737] });
+    const sn = snap([...faint, bright], 20, s);
+    const p = prepareFrame(sn, cameraGeom(sn, W, H, 1e-7), eye, 1e-9);
+    expect(p.glare.length).toBeLessThanOrEqual(3);
+    expect(p.glare[0].E[1]).toBeGreaterThan(1e4); // the Sun first
+    expect(p.glare.some((gs) => gs.E[1] > 1e-3 && gs.E[1] < 1e4)).toBe(true); // the bright body kept
+    // The pupil still counts every source's light.
+    expect(p.offFrameFluxDeg2).toBeGreaterThan(0);
+  });
 });
