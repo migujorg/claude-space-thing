@@ -5,10 +5,10 @@
 // Memory is strictly bounded by the budget given at creation (a renderer option): 2/3 for albedo pages,
 // 1/3 for height pages. Nothing is allocated until the first body with a surface map appears.
 
-import type { SceneBody } from './scene';
+import type { SceneBody, SurfaceLayerRef } from './scene';
 import type { CameraGeom } from './overlays';
 import type { PreparedFrame, SurfaceBinding } from './frame';
-import { footprintTiles, TILE, TILE_BYTES, TileCache, type Fetcher, type LayerFormat, type PageStore } from './surface';
+import { footprintTiles, layerFormatProblem, TILE, TILE_BYTES, TileCache, type Fetcher, type LayerFormat, type PageStore } from './surface';
 
 const MIB = 1 << 20;
 
@@ -119,16 +119,24 @@ export class SurfaceGpu {
     const s = b.surface;
     if (!s) return null;
     const out: SurfaceBinding = {};
-    if (s.albedo) {
+    const usable = (ref: SurfaceLayerRef, format: LayerFormat): boolean => {
+      const why = layerFormatProblem(ref, format);
+      if (why) this.problems.add(`${b.name}: ${why} → layer not shown`);
+      return !why;
+    };
+    if (s.albedo && usable(s.albedo, 'albedo')) {
       const l = this.cache('albedo').layer(s.albedo);
-      out.albedo = { base: l.base, maxLevel: l.maxLevel, zonal: this.cache('albedo').layer(s.albedo).zonal };
+      out.albedo = { base: l.base, maxLevel: l.maxLevel, zonal: l.zonal };
     }
-    if (s.height) {
+    if (s.height && usable(s.height, 'height')) {
       const l = this.cache('height').layer(s.height);
       out.height = { base: l.base, maxLevel: l.maxLevel };
     }
     return out.albedo || out.height ? out : null;
   }
+
+  /** Layers that could not be used (format mismatch), as warnings. */
+  readonly problems = new Set<string>();
 
   /** Request the tiles each resolved body's footprint needs, most urgent first, and start fetches. */
   request(prep: PreparedFrame, g: CameraGeom): void {

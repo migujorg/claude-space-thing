@@ -2,7 +2,7 @@
 // strict budget / LRU / fallback behaviour (GPU replaced by a fake page store).
 import { describe, expect, it } from 'vitest';
 import {
-  f16ToNumber, footprintTiles, layerEntries, levelForFootprint, levelOffset, numberToF16, TILE, TILE_BYTES,
+  f16ToNumber, footprintTiles, layerEntries, layerFormatProblem, layerKey, levelForFootprint, levelOffset, numberToF16, TILE, TILE_BYTES, tileUrl,
   TileCache, tileIndex, tileOf, uvOf, zonalMeanOfLevel0, type PageStore,
 } from '../src/render/surface';
 import { prepareBody, type M3, type V3 } from '../src/render/raycast';
@@ -147,6 +147,45 @@ describe('tile cache', () => {
     }
     expect(fetched.filter((u) => u.endsWith('/1/0/1.bin')).length).toBe(1);
     expect(fetched.some((u) => u.endsWith('/1/1/3.bin'))).toBe(false);
+  });
+});
+
+describe('pipeline layer headers (SurfaceLayerHeader, architecture §4.4)', () => {
+  // Shaped like surfaces/301/albedo.json and height.json (TEST VALUES, only the fields the renderer reads).
+  const albedo: SurfaceLayerRef = {
+    url: '/data/',
+    header: {
+      maxLevel: 1, layer: 'albedo', format: 'float16', channels: ['X', 'Y', 'Z', 'S'], bytesPerTexel: 8, tileSize: 256, minLevel: 0,
+      tilePath: 'surfaces/301/albedo/{level}/{ty}/{tx}.bin', missingTiles: { 1: [[2, 1]] },
+    },
+  };
+  const height: SurfaceLayerRef = {
+    url: '/data',
+    header: { maxLevel: 1, format: 'float32', channels: ['height'], bytesPerTexel: 4, tileSize: 256, minLevel: 0, tilePath: 'surfaces/301/height/{level}/{ty}/{tx}.bin', missingTiles: {} },
+  };
+  it('tile URLs come from tilePath relative to the data root; fixture layers keep the directory form', () => {
+    expect(tileUrl(albedo, 3, 5, 12)).toBe('/data/surfaces/301/albedo/3/5/12.bin');
+    expect(tileUrl({ url: 'fixture://x/albedo', header: { maxLevel: 2 } }, 1, 0, 3)).toBe('fixture://x/albedo/1/0/3.bin');
+    expect(layerKey(albedo)).not.toBe(layerKey(height)); // same data root, different layers
+  });
+  it('missingTiles are never fetched', async () => {
+    const { store } = fakeStore(16);
+    const fetched: string[] = [];
+    const c = new TileCache('albedo', store, () => 0, async (u) => { fetched.push(u); return new ArrayBuffer(TILE_BYTES.albedo); });
+    c.layer(albedo);
+    c.beginFrame();
+    c.request(albedo, [{ L: 0, tx: 0, ty: 0, priority: 0 }, { L: 0, tx: 1, ty: 0, priority: 0 }, { L: 1, tx: 2, ty: 1, priority: 1 }, { L: 1, tx: 1, ty: 1, priority: 1 }]);
+    c.pump();
+    await flush();
+    expect(fetched).toContain('/data/surfaces/301/albedo/1/1/1.bin');
+    expect(fetched.some((u) => u.endsWith('/1/1/2.bin'))).toBe(false);
+  });
+  it('only the formats the renderer decodes are accepted', () => {
+    expect(layerFormatProblem(albedo, 'albedo')).toBeNull();
+    expect(layerFormatProblem(height, 'height')).toBeNull();
+    expect(layerFormatProblem(height, 'albedo')).toMatch(/float32/);
+    expect(layerFormatProblem({ url: '/data', header: { ...albedo.header, channels: ['w', 'b'] } }, 'albedo')).toMatch(/channels/);
+    expect(layerFormatProblem({ url: 'fixture://x', header: { maxLevel: 1 } }, 'albedo')).toBeNull();
   });
 });
 

@@ -151,6 +151,42 @@ export interface PageStore {
   setEntry(index: number, value: number): void;
 }
 
+/**
+ * URL of tile (L, ty, tx) of a layer: the pipeline header's `tilePath` template (relative to the data
+ * root `ref.url`), or `${url}/${L}/${ty}/${tx}.bin` for headers without one (fixtures).
+ */
+export function tileUrl(ref: SurfaceLayerRef, L: number, ty: number, tx: number): string {
+  const t = ref.header.tilePath;
+  if (!t) return `${ref.url}/${L}/${ty}/${tx}.bin`;
+  const path = t.replace('{level}', String(L)).replace('{ty}', String(ty)).replace('{tx}', String(tx));
+  return `${ref.url.replace(/\/+$/, '')}/${path.replace(/^\/+/, '')}`;
+}
+
+/** Identity of a layer in the cache (several layers share one data root). */
+export function layerKey(ref: SurfaceLayerRef): string {
+  return ref.header.tilePath ? `${ref.url}|${ref.header.tilePath}` : ref.url;
+}
+
+/**
+ * Why a layer header cannot be decoded as `format` (albedo: float16 X, Y, Z, S; height: one float32
+ * channel), or null when it can (or the header does not say, as in the fixtures).
+ */
+export function layerFormatProblem(ref: SurfaceLayerRef, format: LayerFormat): string | null {
+  const h = ref.header;
+  const want = format === 'albedo'
+    ? { format: 'float16', channels: ['X', 'Y', 'Z', 'S'], bytes: 8 }
+    : { format: 'float32', channels: 1, bytes: 4 };
+  if (h.format !== undefined && h.format !== want.format) return `${format} layer stored as ${h.format}, renderer decodes ${want.format}`;
+  if (h.bytesPerTexel !== undefined && h.bytesPerTexel !== want.bytes) return `${format} layer has ${h.bytesPerTexel} bytes per texel, expected ${want.bytes}`;
+  if (h.channels !== undefined) {
+    const ok = Array.isArray(want.channels) ? want.channels.join() === h.channels.join() : h.channels.length === want.channels;
+    if (!ok) return `${format} layer channels [${h.channels.join(', ')}] not the expected ones`;
+  }
+  if (h.tileSize !== undefined && h.tileSize !== 256) return `${format} layer tile size ${h.tileSize}, expected 256`;
+  if (h.minLevel !== undefined && h.minLevel !== 0) return `${format} layer starts at level ${h.minLevel}, expected 0`;
+  return null;
+}
+
 export type Fetcher = (url: string) => Promise<ArrayBuffer | null>;
 
 /** Default fetcher: 404 (or any non-OK status) → null, i.e. the tile is absent. */
@@ -216,16 +252,17 @@ export class TileCache {
 
   /** Register (idempotently) a layer and return its page-table base and addressed max level. */
   layer(ref: SurfaceLayerRef): { base: number; maxLevel: number; zonal: ZonalProfile | null } {
-    let l = this.layers.get(ref.url);
+    const key = layerKey(ref);
+    let l = this.layers.get(key);
     if (!l) {
       const maxLevel = Math.max(0, Math.min(ref.header.maxLevel, MAX_ADDRESSED_LEVEL));
       const missing = new Set<number>();
-      for (const [lvl, list] of Object.entries(ref.header.missing ?? {})) {
+      for (const [lvl, list] of Object.entries(ref.header.missingTiles ?? ref.header.missing ?? {})) {
         const L = Number(lvl);
         if (L <= maxLevel) for (const [tx, ty] of list) missing.add(tileIndex(L, tx, ty));
       }
       l = { ref, format: this.format, base: this.allocBase(layerEntries(maxLevel)), maxLevel, missing, level0: [null, null], zonal: null, level0Done: false };
-      this.layers.set(ref.url, l);
+      this.layers.set(key, l);
     }
     return { base: l.base, maxLevel: l.maxLevel, zonal: l.zonal };
   }
@@ -239,7 +276,7 @@ export class TileCache {
 
   /** Request tiles of a layer for this frame (already sorted by priority). */
   request(ref: SurfaceLayerRef, reqs: TileRequest[]): void {
-    const l = this.layers.get(ref.url);
+    const l = this.layers.get(layerKey(ref));
     if (!l) return;
     for (const r of reqs) {
       if (r.L > l.maxLevel) continue;
@@ -263,7 +300,7 @@ export class TileCache {
       if (this.pending.has(key) || this.resident.has(key)) continue;
       if (!this.canAllocate()) { this.stats.deferredTiles += 1 + this.queue.length; this.queue = []; break; }
       this.pending.add(key);
-      const url = `${layer.ref.url}/${req.L}/${req.ty}/${req.tx}.bin`;
+      const url = tileUrl(layer.ref, req.L, req.ty, req.tx);
       this.fetcher(url).then(
         (buf) => this.arrive(layer, req, key, buf),
         () => this.arrive(layer, req, key, null),

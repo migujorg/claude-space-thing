@@ -776,7 +776,7 @@ export class Renderer {
     this.stats.pupilDiameterMm = eye.pupilMm;
     this.stats.mesopicM = eye.mesopic.m;
     this.stats.limitingMagnitude = eye.limitingMagnitude;
-    this.stats.warnings = [...this.persistentWarnings, ...prep.warnings];
+    this.stats.warnings = [...this.persistentWarnings, ...prep.warnings, ...(surf?.problems ?? [])];
     d.queue.onSubmittedWorkDone().then(() => { this.stats.frameMs = performance.now() - t0; });
 
     if (doReadback) {

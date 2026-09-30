@@ -5,7 +5,7 @@
 // anything not allowed at the current `exists` level arrives here as null / flagged, so the renderer
 // never needs to reason about provenance labels except for the provenance-tint overlay.
 
-import type { Label, PhaseFunction, SpatialPhotometricModel } from '../data/schema';
+import type { Label, PhaseFunction, SpatialPhotometricModel, SurfaceLayerHeader } from '../data/schema';
 import type { EyeSettings } from '../eye/settings';
 
 export type { EyeSettings };
@@ -59,16 +59,22 @@ export interface SceneBody {
 }
 
 /**
- * One layer of a surface-map pyramid (architecture §4.4). Tile (L, ty, tx) is fetched from
- * `${url}/${L}/${ty}/${tx}.bin`, i.e. `url` is `…/surfaces/<naifId>/<layer>`. The header is the parsed
- * `surfaces/<naifId>/<layer>.json`; the renderer reads only the fields below and ignores the rest.
+ * One layer of a surface-map pyramid (architecture §4.4): the parsed `surfaces/<naifId>/<layer>.json`
+ * (SurfaceLayerHeader) and where to fetch its tiles. The renderer reads `maxLevel`, `tilePath`,
+ * `missingTiles`, `format` and `channels`; a layer whose format is not the one the renderer decodes
+ * (albedo: float16 X, Y, Z, S; height: float32 metres) is ignored with a warning.
  */
 export interface SurfaceLayerRef {
+  /**
+   * With a pipeline header (it has `tilePath`, relative to the data root): the data root URL, e.g.
+   * '/data'; tile (L, ty, tx) is `${url}/${tilePath}` with {level}, {ty}, {tx} substituted. Without
+   * `tilePath` (test fixtures): the layer directory, tile = `${url}/${L}/${ty}/${tx}.bin`.
+   */
   url: string;
-  header: {
+  header: Partial<SurfaceLayerHeader> & {
     /** Finest pyramid level present (levels 0..maxLevel). */
     maxLevel: number;
-    /** Tiles not written because every texel is unknown: level (as a string key) → [tx, ty] pairs. */
+    /** Fixture form of `missingTiles`: level (as a string key) → [tx, ty] pairs not stored (entirely unknown). */
     missing?: Record<string, [number, number][]>;
   };
 }
