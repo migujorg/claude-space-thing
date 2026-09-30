@@ -113,8 +113,14 @@ def run(ctx: BuildContext) -> None:
     diag["posRoutes"] = {str(k): int((pos_route == k).sum()) for k in range(3)}
 
     # ------------------------------------------------------------------------------------ XP reductions
-    xp_paths, xp_ledger = sd.stream_deep_xp(log=log, workers=ctx.param("gaia.xpWorkers"))
-    xsid, xred = sg.load_xp_reduced(xp_paths)
+    # the deep sources with XP, plus the bright-tier stars lit by their XP spectrum (the sky stage needs their band
+    # means; with stars.xpSource=archive they are reduced from the stars stage's raw responses, no download)
+    b_xp_routes = [i for i, r in enumerate(bh["routes"]["light"]) if "XP externally calibrated" in r["method"]]
+    b_xp = sf.gaia_id(bright["catId"])[(bright["src"] == bh["sourceTable"].index(st.SRC_GAIA))
+                                       & np.isin(bright["lightRoute"], b_xp_routes)]
+    xsid, xred, xp_ledger = sd.deep_xp(np.concatenate([sid[g["has_xp_sampled"].astype(bool)], b_xp]),
+                                       source=ctx.param("stars.xpSource"), log=log,
+                                       workers=ctx.param("gaia.xpWorkers"))
     k = np.clip(np.searchsorted(xsid, sid), 0, xsid.size - 1)
     has_xp = xsid[k] == sid
     red = np.full((n0, xred.shape[1]), np.nan, np.float64)
@@ -312,16 +318,35 @@ def _register_sources(ctx: BuildContext, paths, xp_ledger, tp_path) -> None:
         notes=(f"{len(paths)} synchronous TAP queries (FITS), one per HEALPix level-{sg.DEEP_LEVEL} source_id range; "
                f"first: {q0}. Files data/raw/{paths[0].parent.relative_to(RAW).as_posix()}/*.fits with .adql sidecars; per-file "
                "url/sha256 in data/raw/_downloads.json; this sha256 is over the per-file sha256s.")))
-    ctx.add_source(SourceRecord(
-        id=SRC_XP_ALL, title=f"{sg.REL.label} BP/RP externally calibrated sampled mean spectra, all sources",
-        citation="De Angeli F. et al. 2023, A&A 674, A2, DOI:10.1051/0004-6361/202243680; Montegriffo P. et al. "
-                 "2023, A&A 674, A3, DOI:10.1051/0004-6361/202243880.",
-        url=sg.XP_BASE, retrieved=min(f["retrieved"] for f in xp_ledger["files"].values()),
-        sha256=sg.stream_ledger_digest(xp_ledger), version=sg.REL.label, license="ESA/Gaia/DPAC, CC BY-SA 3.0 IGO",
-        notes=(f"All {len(xp_ledger['files'])} bulk files streamed and MD5-verified against ESA's _MD5SUM.txt; every "
-               f"spectrum reduced on the fly to {', '.join(sd.XP_COLUMNS)} (stars_deep.xp_operator; W sha256 "
-               f"{xp_ledger['W_sha256'][:16]}...) and kept in data/cache/{sg.XP_REDUCED_SUBDIR}/{sd.XP_TAG}; per-file "
-               "url/md5/sha256 in its _streamed.json; this sha256 is over the per-file sha256s.")))
+    xp_cite = ("De Angeli F. et al. 2023, A&A 674, A2, DOI:10.1051/0004-6361/202243680; Montegriffo P. et al. "
+               "2023, A&A 674, A3, DOI:10.1051/0004-6361/202243880.")
+    if xp_ledger.get("source") == "archive":
+        ctx.add_source(SourceRecord(
+            id=SRC_XP_ALL, title=f"{sg.REL.label} BP/RP externally calibrated sampled mean spectra "
+                                 f"({sg.REL.schema}.xp_sampled_mean_spectrum), deep-tier and bright-tier sources",
+            citation=xp_cite + " Served by the Gaia archive TAP service of ARI Heidelberg (Astronomisches "
+                               "Rechen-Institut, ZAH, Universitaet Heidelberg), a Gaia DPAC partner data centre.",
+            url=sg.ARI_TAP_URL, retrieved=min(f["retrieved"] for f in xp_ledger["files"].values()),
+            sha256=sg.stream_ledger_digest(xp_ledger), version=sg.REL.label, license="ESA/Gaia/DPAC, CC BY-SA 3.0 IGO",
+            notes=(f"Synchronous TAP queries (POST, FITS; stars_gaia.xp_archive_query: at most {sg.XP_BATCH} "
+                   f"source_ids each, grouped by HEALPix level-{sg.XP_BATCH_LEVEL} pixel) for the sources that have XP "
+                   f"spectra; every spectrum reduced on the fly to {', '.join(sd.XP_COLUMNS)} (stars_deep.xp_operator; "
+                   f"W sha256 {xp_ledger['W_sha256'][:16]}...) and only the reductions kept, in data/cache/"
+                   f"{sg.XP_REDUCED_SUBDIR}/{sd.XP_TAG}_archive ({len(xp_ledger['files'])} files; per query the POST-"
+                   "body sha256, id range, response sha256 and size in its _fetched.json; bright-tier spectra are "
+                   "reduced from the stars stage's raw responses). This sha256 is over the per-file sha256s. The "
+                   "reductions are bit-identical to those of ESA's bulk files (stars.xpSource=bulk; "
+                   "docs/reports/stars.md).")))
+    else:
+        ctx.add_source(SourceRecord(
+            id=SRC_XP_ALL, title=f"{sg.REL.label} BP/RP externally calibrated sampled mean spectra, all sources",
+            citation=xp_cite,
+            url=sg.XP_BASE, retrieved=min(f["retrieved"] for f in xp_ledger["files"].values()),
+            sha256=sg.stream_ledger_digest(xp_ledger), version=sg.REL.label, license="ESA/Gaia/DPAC, CC BY-SA 3.0 IGO",
+            notes=(f"All {len(xp_ledger['files'])} bulk files streamed and MD5-verified against ESA's _MD5SUM.txt; "
+                   f"every spectrum reduced on the fly to {', '.join(sd.XP_COLUMNS)} (stars_deep.xp_operator; W sha256 "
+                   f"{xp_ledger['W_sha256'][:16]}...) and kept in data/cache/{sg.XP_REDUCED_SUBDIR}/{sd.XP_TAG}; "
+                   "per-file url/md5/sha256 in its _streamed.json; this sha256 is over the per-file sha256s.")))
     r = record(tp_path)
     ctx.add_source(SourceRecord(
         id=SRC_TP, title=f"Tycho-2 proper motions of {sg.REL.label} 2-parameter sources (Gaia archive best neighbour)",

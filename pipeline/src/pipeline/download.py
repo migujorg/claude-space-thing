@@ -43,8 +43,9 @@ from .paths import RAW
 _LEDGER = RAW / "_downloads.json"
 _LEDGER_LOCK = threading.Lock()  # fetch may be called from worker threads; ledger updates are read-modify-write
 
-#: Concurrent transfers per host. JPL's APIs ask for one request at a time; ESA's TAP service runs queries.
-HOST_LIMITS = {"ssd-api.jpl.nasa.gov": 1, "ssd.jpl.nasa.gov": 1, "gea.esac.esa.int": 2}
+#: Concurrent transfers per host. JPL's APIs ask for one request at a time; ESA's TAP service runs queries. ARI's
+#: TAP service answers the XP queries (stars.xpSource=archive) `gaia.xpWorkers` at a time (default 4), up to 8.
+HOST_LIMITS = {"ssd-api.jpl.nasa.gov": 1, "ssd.jpl.nasa.gov": 1, "gea.esac.esa.int": 2, "gaia.ari.uni-heidelberg.de": 8}
 DEFAULT_HOST_LIMIT = 4
 RETRY_STATUS = {408, 425, 429, 500, 502, 503, 504}
 PROGRESS_EVERY_S = 15.0
@@ -271,10 +272,19 @@ def _full_url(url: str, params: dict | None) -> str:
     return f"{url}?{requests.compat.urlencode(params)}" if params else url
 
 
+def post_digest(data: dict) -> str:
+    """sha256 of a POST body as sent (form-encoded): recorded in the ledger for POSTed queries."""
+    return hashlib.sha256(requests.compat.urlencode(data).encode()).hexdigest()
+
+
 def _transfer(url: str, params: dict | None, headers: dict, part: Path, meta_path: Path,
-              byte_range: tuple[int, int] | None, timeout: float, label: str) -> dict:
-    """One attempt: download into `part`, resuming it if possible. Returns the range metadata for the ledger."""
+              byte_range: tuple[int, int] | None, timeout: float, label: str, data: dict | None = None) -> dict:
+    """One attempt: download into `part`, resuming it if possible. Returns the range metadata for the ledger.
+    With `data` the request is a form POST (e.g. a TAP query too long for a URL); a POST is never resumed."""
     ident = {"url": _full_url(url, params), "range": list(byte_range) if byte_range else None}
+    if data is not None:
+        part.unlink(missing_ok=True)
+        meta_path.unlink(missing_ok=True)
     have = part.stat().st_size if part.exists() else 0
     meta = {}
     if have and meta_path.exists():
@@ -290,7 +300,12 @@ def _transfer(url: str, params: dict | None, headers: dict, part: Path, meta_pat
         hdrs["If-Range"] = validator
     elif byte_range:
         hdrs["Range"] = f"bytes={first}-{last}"
-    with host_slot(url), session().get(url, params=params, headers=hdrs or None, stream=True, timeout=timeout) as r:
+    def send() -> requests.Response:   # called inside the host slot
+        if data is not None:
+            return session().post(url, params=params, data=data, headers=hdrs or None, stream=True, timeout=timeout)
+        return session().get(url, params=params, headers=hdrs or None, stream=True, timeout=timeout)
+
+    with host_slot(url), send() as r:
         if r.status_code >= 400:
             raise HTTPStatusError(f"{r.status_code} {r.reason} for {r.url}", r.status_code, _retry_after(r), r)
         cr = r.headers.get("Content-Range", "")
@@ -315,7 +330,7 @@ def _transfer(url: str, params: dict | None, headers: dict, part: Path, meta_pat
         etag = r.headers.get("ETag")
         new_validator = etag if etag and not etag.startswith("W/") else r.headers.get("Last-Modified")
         if not append:
-            if new_validator and not encoded:
+            if new_validator and not encoded and data is None:
                 meta_path.write_text(json.dumps({**ident, "validator": new_validator}), encoding="utf-8", newline="\n")
             else:
                 meta_path.unlink(missing_ok=True)
@@ -338,7 +353,7 @@ def _transfer(url: str, params: dict | None, headers: dict, part: Path, meta_pat
 def fetch(url: str, subdir: str, name: str | None = None, *, params: dict | None = None,
           retries: int = 6, timeout: float = 120.0, headers: dict | None = None,
           validate: Callable[[Path], bool] | None = None, byte_range: tuple[int, int] | None = None,
-          record_url: str | None = None) -> Path:
+          record_url: str | None = None, data: dict | None = None) -> Path:
     """Download url to data/raw/<subdir>/<name> unless already present. Returns the local path.
 
     `headers` are extra request headers (some publishers reject the default client). `validate(path)` checks the
@@ -347,7 +362,9 @@ def fetch(url: str, subdir: str, name: str | None = None, *, params: dict | None
     `byte_range=(start, stop)` downloads only bytes [start, stop) with an HTTP Range request (the server must answer
     206); the ledger then also records the range and the remote file's size, ETag and Last-Modified, and a cached
     file is reused only for the same range. `record_url` is the URL written to the ledger instead of `url` (e.g.
-    without a temporary access token). Interrupted transfers resume (module docstring)."""
+    without a temporary access token). `data` makes the request a form POST (for queries too long for a URL; the
+    caller names the file after the query, since the URL alone no longer identifies it); the ledger then records
+    the sha256 and length of the POST body. Interrupted GET transfers resume (module docstring)."""
     name = name or url.rstrip("/").split("/")[-1]
     check_portable(f"{subdir}/{name}")
     dest = RAW / subdir / name
@@ -367,7 +384,7 @@ def fetch(url: str, subdir: str, name: str | None = None, *, params: dict | None
         extra: dict = {}
         for attempt in range(retries + 1):
             try:
-                extra = _transfer(url, params, hdrs, part, meta_path, byte_range, timeout, key)
+                extra = _transfer(url, params, hdrs, part, meta_path, byte_range, timeout, key, data)
                 if validate is not None and not validate(part):
                     part.unlink()
                     meta_path.unlink(missing_ok=True)
@@ -392,6 +409,10 @@ def fetch(url: str, subdir: str, name: str | None = None, *, params: dict | None
             "bytes": dest.stat().st_size,
             **extra,
         }
+        if data is not None:
+            entry["method"] = "POST"
+            entry["postSha256"] = post_digest(data)
+            entry["postBytes"] = len(requests.compat.urlencode(data).encode())
         # Re-read under the lock: other threads/processes may have recorded downloads during the transfer.
         update_ledger(key, entry)
         return dest

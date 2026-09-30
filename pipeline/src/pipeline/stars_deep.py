@@ -34,8 +34,16 @@ def xp_operator() -> tuple[np.ndarray, np.ndarray]:
     return W, cover
 
 
-def stream_deep_xp(*, workers: int = 4, log=print):
-    """The deep tiers' XP reductions (cached; the stars stage fills the cache in its own pass when the build runs
-    the deep tiers too, see stars_gaia.stream_xp)."""
+def deep_xp(ids: np.ndarray, *, source: str, workers: int = 4, log=print) -> tuple[np.ndarray, np.ndarray, dict]:
+    """XP reductions (source_id, red float32 [n, 6], ledger) covering the sources `ids` (those that have XP).
+
+    source "archive": targeted queries for exactly these ids (stars_gaia.xp_reduced_archive); "bulk": every bulk
+    file's reductions (stars_gaia.stream_xp_reduced; the stars stage fills that cache in its own pass when the build
+    runs the deep tiers too). Both give bit-identical reductions; the ledger's "source" says which was used."""
     W, cover = xp_operator()
-    return sg.stream_xp_reduced(W, cover, XP_TAG, workers=workers, log=log)
+    if source == "archive":
+        paths, ledger = sg.xp_reduced_archive(ids, W, cover, XP_TAG, workers=workers, log=log)
+    else:
+        paths, ledger = sg.stream_xp_reduced(W, cover, XP_TAG, workers=workers, log=log)
+    sid, red = sg.load_xp_reduced(paths)
+    return sid, red, {**ledger, "source": source}
