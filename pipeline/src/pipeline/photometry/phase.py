@@ -3,7 +3,9 @@
 Sources:
   Mercury..Neptune  Mallama & Hilton (2018) V-band equations (tables/mallama_hilton_2018.json), checked against the
                     authors' reference code Ap_Mag_V3.f90.
-  Moon              ROLO model (Kieffer & Stone 2005; photometry/rolo.py) for 1.55-97°, Lane & Irvine (1973) Table V
+  Saturn            Eq. 11 to 5.7 deg, then the Cassini ISS GRN full-disk reflectance of Wang et al. (2024, Fig. 7B;
+                    digitized, tables/wang_2024_saturn_fig7.csv) instead of Eq. 12 (a fit to a Pioneer-based model).
+  Moon             ROLO model (Kieffer & Stone 2005; photometry/rolo.py) for 1.55-97°, Lane & Irvine (1973) Table V
                     V passband (tables/lane_irvine_1973_phase.csv) joined to it for 97-120°.
   Pluto             Buie et al. (2010) linear V phase coefficient over 0.36-1.74 deg (tables/buie_2010a_pluto.json).
 
@@ -64,6 +66,39 @@ BUIE = Download(
     browser_agent=True,
     sha256="89b6dd0c8fdf1fb9c0f32db27aa6147054ae12a90fbc105fc32a9e961f162bb5", retrieved="2026-09-30",
 )
+
+WANG_2024 = Download(
+    id="wang-2024", url="https://www.nature.com/articles/s41467-024-48969-9.pdf", subdir="papers",
+    name="Wang2024_NatCommun15_5045.pdf",
+    title="Saturn's full-disk reflectance vs phase angle from Cassini ISS, 2004-2017 (Fig. 7, digitized)",
+    citation="Wang, X., Li, L., Jiang, X., Fry, P. M., West, R. A., Nixon, C. A., Guan, L., Karandana G, T. D., "
+             "Albright, R., Colwell, J. E. et al. (2024). Cassini spacecraft reveals global energy imbalance of "
+             "Saturn. Nature Communications 15, 5045. DOI:10.1038/s41467-024-48969-9.",
+    notes="Fig. 7 panels A-C (RED, GRN, BL1): four-order polynomials fitted to Cassini ISS full-disk reflectances "
+          "(global images with sub-Cassini latitude < 3 deg; CISSCAL 4.3) and the ESO point of Karkoschka (1998) at "
+          "5.7 deg. The curves are digitized into photometry/tables/wang_2024_saturn_fig7.csv (the paper tabulates "
+          "neither data nor coefficients).",
+    license="CC BY 4.0")
+
+# The phase angle of Karkoschka's 1995 ESO spectrum, which is both the app's Saturn albedo and Wang et al.'s anchor.
+SATURN_ESO_PHASE_DEG = read_table_json("karkoschka_disk_radii.json")["phase_angle_deg_1995"]["699"]
+SATURN_ISS_MAX_DEG = 160.0      # the last Cassini ISS point in the GRN panel is at 161 deg
+
+
+@lru_cache(maxsize=None)
+def wang_saturn_poly(filt: str) -> np.ndarray:
+    """Four-order polynomial (the paper's own form, numpy.polyval order) refitted to the digitized Fig. 7 curve."""
+    rows = [r for r in read_table_csv("wang_2024_saturn_fig7.csv") if r["filter"] == filt]
+    a = np.array([float(r["alpha_deg"]) for r in rows])
+    f = np.array([float(r["reflectance"]) for r in rows])
+    return np.polyfit(a, f, 4)
+
+
+def saturn_iss_ratio(filt: str, alpha: float) -> float:
+    """Wang et al.'s full-disk reflectance at alpha relative to its value at the ESO phase angle (5.7 deg)."""
+    c = wang_saturn_poly(filt)
+    return float(np.polyval(c, alpha) / np.polyval(c, SATURN_ESO_PHASE_DEG))
+
 
 MH = read_table_json("mallama_hilton_2018.json")
 
@@ -167,6 +202,44 @@ def _lane_irvine_phase() -> tuple[list[float], list[float]]:
     return [float(r["phase_deg"]) for r in rows], [float(r["V"]) for r in rows]
 
 
+def saturn_phase(ctx: BuildContext | None = None) -> Phase:
+    """Saturn's globe: Mallama & Hilton Eq. 11 up to the ESO phase angle (5.7°), then Wang et al.'s (2024) Cassini
+    ISS GRN curve, joined there (both are anchored to Karkoschka's 1995 ESO albedo at that angle)."""
+    src_mh = APMAG_CODE.register(ctx) if ctx else APMAG_CODE.id
+    src_w = WANG_2024.register(ctx) if ctx else WANG_2024.id
+    z = MH["bodies"]["699"]["V10_zero_phase"]
+    a0 = SATURN_ESO_PHASE_DEG
+    mh = _mh_delta(699, z)          # Eq. 11 to 6.5°, Eq. 12 beyond
+    dm0 = mh(a0)
+
+    def dm(a: float) -> float:
+        return mh(a) if a <= a0 else dm0 - 2.5 * math.log10(saturn_iss_ratio("GRN", a))
+
+    def mh_over_iss(a: float) -> float:
+        return 10 ** (-0.4 * (mh(a) - dm(a)))
+
+    spread = {f: saturn_iss_ratio(f, 54.6) / saturn_iss_ratio("GRN", 54.6) for f in ("RED", "BL1")}
+    return Phase(
+        _tabulate(dm, SATURN_ISS_MAX_DEG, (a0,)), "estimated", [src_mh, src_w],
+        f"Globe without rings. 0-{a0}°: Mallama & Hilton (2018) Eq. 11, which adopts Jupiter's phase polynomial "
+        f"for Saturn's globe (an assumption), normalized to its zero-phase value. {a0}-{SATURN_ISS_MAX_DEG:.0f}°: the "
+        "Cassini ISS GRN (568 nm) full-disk reflectance of Wang et al. (2024, Fig. 7B), a four-order polynomial they "
+        "fitted to global ISS images from 2004-2017 with sub-Cassini latitude < 3° (divided by the ring-modified "
+        f"solar irradiance) and to Karkoschka's ESO point at {a0}°, taken relative to its value at {a0}° and joined "
+        f"to Eq. 11 there (the app's albedo is Karkoschka's ESO spectrum at the same {a0}°). The curve is digitized "
+        "from the figure (tables/wang_2024_saturn_fig7.csv, ~0.1 % of the ESO level) and refitted with the paper's "
+        f"four-order form. It replaces Mallama & Hilton's Eq. 12, a fit to the red-light Pioneer 11 model of "
+        f"Dyudina et al. (2005), which is brighter than the Cassini measurements by ×{mh_over_iss(30):.2f} at 30°, "
+        f"×{mh_over_iss(60):.2f} at 60° and ×{mh_over_iss(90):.2f} at 90°. The GRN curve serves all "
+        "wavelengths. Tabulated every 0.5°; the last ISS point is at 161°. Ring shadows, ring occultation and "
+        "ringshine are not included.",
+        f"RED and BL1 curves differ from GRN by {100 * (spread['RED'] - 1):+.1f} % and {100 * (spread['BL1'] - 1):+.1f} % "
+        "at 54.6°; the join depends on the relative calibration of Karkoschka's ESO data (±4 %) and CISSCAL 4.3; "
+        "Saturn's full-disk reflectance varied by 1-3 % over the Cassini mission (paper Fig. S13-S14); Eq. 11 below "
+        f"{a0}° is Jupiter's curve.",
+        zero_phase_V10=z)
+
+
 def phase_for(naif: int, ctx: BuildContext | None = None) -> Phase:
     src_mh = APMAG_CODE.register(ctx) if ctx else APMAG_CODE.id
     mh_note = ("Mallama & Hilton (2018) V-band magnitude equations for The Astronomical Almanac, normalized to their "
@@ -214,12 +287,7 @@ def phase_for(naif: int, ctx: BuildContext | None = None) -> Phase:
                      "ISS green-filter phase curve of Mayorga et al. 2016, offset for continuity at 12°). Tabulated "
                      "every 0.5°.", "few hundredths of a magnitude intrinsic variability (belts)", zero_phase_V10=z)
     if naif == 699:
-        z = MH["bodies"]["699"]["V10_zero_phase"]
-        return Phase(_tabulate(_mh_delta(699, z), 150.0, (6.5,)), "estimated", [src_mh],
-                     f"{mh_note} Globe without rings. 0-6.5°: Eq. 11, which adopts Jupiter's phase polynomial for "
-                     "Saturn's globe (assumption). 6.5-150°: Eq. 12, a fit to the Pioneer-based scattering model of "
-                     "Dyudina et al. (2005) for red light (a model). Tabulated every 0.5°. Ring shadows, ring "
-                     "occultation and ringshine are not included.", zero_phase_V10=z)
+        return saturn_phase(ctx)
     if naif == 799:
         p = MH["bodies"]["799"]["pieces"][0]
         return Phase({"kind": "poly-mag", "coeffs": list(p["coeffs"]), "minDeg": 0.0, "maxDeg": 154.0}, "measured",
