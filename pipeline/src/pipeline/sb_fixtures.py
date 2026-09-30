@@ -45,7 +45,7 @@ def main() -> None:
     if core["epochEt"] != common or table.size != cat.n:
         raise ValueError("the built product does not match this snapshot/window: rebuild the smallbodies stage first")
     states_full = np.concatenate([table["pos"], table["vel"]], axis=1).astype(np.float64)
-    horizons_bit = 1 << core["flagBits"]["horizonsState"]
+    horizons_bit = next(int(bit) for bit, name in core["flagBits"].items() if name == "horizonsState")
     res = sb_verify.run(cat, model, common, ctx.start_et, ctx.end_et, states_common=states_full)
     stride = int(round(FIXTURE_STEP_DAYS / 2))
 

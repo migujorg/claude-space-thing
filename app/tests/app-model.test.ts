@@ -28,6 +28,10 @@ function setup(now = FAKE_J2000_MS + T0 * 1000) {
     stars: null,
     starNames: [],
     report: { products: [], notes: [] },
+    deferred: [],
+    orientations: [],
+    surfaces: [],
+    loader: null,
   };
   model.setData(data);
   model.setViewport({ width: 1600, height: 900, dpr: 1 });

@@ -29,11 +29,11 @@ export function coreState(cat: SmallBodyCatalog, i: number): Float64Array | null
   return s.every(Number.isFinite) ? s : null;
 }
 
-/** Whether flag `name` (header.flagBits) is set on record i. */
+/** Whether flag `name` (a value of header.flagBits, which is keyed by bit value) is set on record i. */
 export function hasFlag(cat: SmallBodyCatalog, i: number, name: string): boolean {
-  const bit = cat.header.flagBits[name];
-  if (bit === undefined) throw new Error(`unknown small-body flag ${name}`);
-  return ((cat.table.get('flags', i) >> bit) & 1) === 1;
+  const entry = Object.entries(cat.header.flagBits).find(([, n]) => n === name);
+  if (!entry) throw new Error(`unknown small-body flag ${name}`);
+  return (cat.table.get('flags', i) & Number(entry[0])) !== 0;
 }
 
 /** core row -> non-gravitational parameters, from smallbodies/nongrav. */

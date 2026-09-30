@@ -71,7 +71,8 @@ export interface EphemSegment {
   target: number;
   center: number;
   frame: 'J2000';
-  type: 2 | 3;
+  /** SPK type: 2/3 Chebyshev records, or 17 (precessing equinoctial conic: n = 1 record of 12 doubles). */
+  type: 2 | 3 | 17;
   /** Start of first record interval, TDB s past J2000. */
   initEt: number;
   /** Length of each record interval, s. */
@@ -117,6 +118,41 @@ export interface IauRotation {
   nutPrecAnglesDegree?: number;
 }
 
+/** One binary-PCK type 2 segment (SPICE PCKE02): Chebyshev series of three Euler angles, same record layout as SPK type 2. */
+export interface OrientSegment {
+  /** NAIF body id whose orientation this is (399, 301). */
+  body: number;
+  /** PCK frame class id (3000 = ITRF93, 31008 = MOON_PA_DE440). */
+  frameClassId: number;
+  /** Frame the Euler angles are relative to; a key of OrientationHeader.references. */
+  reference: string;
+  type: 2;
+  initEt: number;
+  intLen: number;
+  rsize: number;
+  n: number;
+  offset: number;
+  /** Declared coverage (TDB s past J2000); may be narrower than the records' span. */
+  startEt: number;
+  endEt: number;
+  sources: string[];
+  label: Label;
+  method?: string;
+  uncertainty?: string;
+}
+
+/** orient/<name>.json: precise body orientation. reference → PCK frame = R3(w)·R1(δ)·R3(φ) (angles φ, δ, w). */
+export interface OrientationHeader {
+  /** Path of the binary relative to the data root, e.g. "orient/earth.bin". */
+  bin: string;
+  /** Row-major rotation matrices reference frame → J2000 (ICRF), by frame name (computed by SPICE). */
+  references: Record<string, number[]>;
+  /** Per body id: the body-fixed frame the app uses and the constant row-major rotation body frame → PCK frame. */
+  bodies: Record<string, { frame: string; pckFrame: string; bodyToPck: number[] }>;
+  segments: OrientSegment[];
+  notes?: string;
+}
+
 export type BodyKind = 'star' | 'planet' | 'dwarf-planet' | 'moon' | 'barycenter';
 
 export interface Body {
@@ -125,10 +161,12 @@ export interface Body {
   kind: BodyKind;
   /** Body this one is grouped under in the UI (e.g. Moon -> Earth). */
   parent?: number;
-  /** Which ephemeris file serves this body (holds its own segment), e.g. "ephem/centers"; the loader chains segments to reach the SSB. */
+  /** Which ephemeris file serves this body (holds its own segment), e.g. "ephem/sat-jup"; the loader chains segments to reach the SSB. */
   ephemeris: string;
   /** Every ephemeris file needed to chain this body to the SSB (includes `ephemeris`). Load them all into one EphemerisSet. */
   ephemerisFiles?: string[];
+  /** Precise orientation product for this body ("orient/earth"), preferred over `rotation` where it covers (OrientationSet). */
+  orientation?: string;
   /** Triaxial radii a, b, c in km. */
   radii: Sourced<[number, number, number]>;
   gm: Sourced<number>;
@@ -155,6 +193,56 @@ export type PhaseFunction =
   | { kind: 'tabulated'; alphaDeg: number[]; deltaMag: number[] }
   /** Polynomial in phase angle (degrees) giving magnitude correction, e.g. Mallama & Hilton (2018). Valid in [minDeg, maxDeg]. */
   | { kind: 'poly-mag'; coeffs: number[]; minDeg: number; maxDeg: number };
+
+/** rings.json: planet NAIF id (as string) → ring system. Produced by the `light` stage. See docs/architecture.md §6. */
+export type RingsFile = Record<string, RingSystem>;
+
+export interface RingSystem {
+  /** NAIF id of the planet. The ring plane is its equator (IAU pole from bodies.json); radii are planet-centred. */
+  planet: number;
+  /** Radial profiles of normal optical depth, each from one measured occultation cut. */
+  opticalDepth: Sourced<RingProfile[]>;
+  /** Lit-face reflectance vs radius. Reserved: `unknown` until a measured source is processed. */
+  reflectance: Sourced<RingReflectance>;
+}
+
+export interface RingProfile {
+  /** What the profile covers, as named by the source (e.g. "main rings", "ring system"). */
+  name: string;
+  /** Bin-centre radii, km, increasing (nominally uniform; spacing may vary by < 1 %). */
+  radiusKm: number[];
+  /** Normal optical depth τ⊥ per bin; null = not constrained. Without self-gravity wakes the slant optical depth
+   *  along a ray at elevation B above the ring plane is τ⊥ / |sin B|. */
+  normalTau: (number | null)[];
+  /** Largest measurable τ⊥ per bin (values at or above it are lower limits), when the source provides it. */
+  maxTau?: (number | null)[];
+  /** Geometry of the occultation that produced the profile. */
+  observation: {
+    instrument: string;
+    star: string;
+    direction: string;
+    /** UTC (as archived) of the first and last samples. */
+    start: string;
+    stop: string;
+    wavelengthNm: [number, number];
+    /** Elevation of the line of sight above the ring plane, degrees. */
+    ringElevationDeg: number;
+    ringLongitudeDeg?: [number, number];
+    observedRingAzimuthDeg?: [number, number];
+  };
+}
+
+/** Reserved for a measured radial I/F profile of the lit face: I/F per radius bin at the given wavelengths and geometry. */
+export interface RingReflectance {
+  kind: 'radial-if';
+  radiusKm: number[];
+  wavelengthNm: number[];
+  /** iOverF[w][r]: I/F at wavelengthNm[w], radiusKm[r]; null = not measured. */
+  iOverF: (number | null)[][];
+  phaseDeg: number;
+  incidenceDeg: number;
+  emissionDeg: number;
+}
 
 export interface SunData {
   /** Solar irradiance at 1 AU integrated against the CIE observers: X, Y (lux), Z, scotopic lux. */
@@ -188,6 +276,153 @@ export interface BinaryTableHeader {
   labelEncoding?: Label[];
   /** Source ids referenced by index from source-index fields. */
   sourceTable?: string[];
+  notes?: string;
+  /** Epoch of time-dependent fields (e.g. star directions), TDB seconds past J2000. */
+  epochEt?: number;
+  /**
+   * Per-record provenance routes. A u8 field `<kind>Route` (e.g. posRoute, lightRoute) indexes routes[kind];
+   * each route states the label, all SourceRecord ids and the method that produced that record's values.
+   */
+  routes?: Record<string, BinaryRoute[]>;
+  /** How catalogue-id fields are to be read, keyed by sourceTable id. */
+  idEncoding?: Record<string, string>;
+  /** Meaning of the bits of a u8 `flags` field, keyed by bit value ("1", "2", "4", ...). */
+  flagBits?: Record<string, string>;
+  /** Free-form completeness statement of a catalogue product. */
+  completeness?: Record<string, unknown>;
+}
+
+export interface BinaryRoute {
+  label: Label;
+  sources: string[];
+  method: string;
+}
+
+// ------------------------------------------------------------------------------------------ surface maps (§4.4)
+// Written by the pipeline's `surfaces` stage: surfaces/<naifId>/<layer>.json next to the tile pyramid.
+
+/** Provenance of one aspect of a surface layer (its brightness pattern or its colour). */
+export interface SurfaceProvenance {
+  label: Label;
+  sources: string[];
+  method: string;
+  uncertainty?: string;
+}
+
+/** A lat/lon box of a layer that comes from a particular source with its own provenance (e.g. polar caps). */
+export interface SurfaceRegion {
+  latMin: number;
+  latMax: number;
+  /** East longitude, degrees, −180..180. */
+  lonMin: number;
+  lonMax: number;
+  brightness: SurfaceProvenance;
+  color?: SurfaceProvenance;
+  note?: string;
+}
+
+export interface SurfaceLevelInfo {
+  level: number;
+  /** Texels: width = 512·2^level, height = 256·2^level. */
+  width: number;
+  height: number;
+  tilesX: number;
+  tilesY: number;
+  /** Texel size in degrees (same in latitude and longitude). */
+  texelDeg: number;
+}
+
+export type SurfaceLayerKind = 'relative-reflectance' | 'height' | 'photometric-parameters';
+
+export interface SurfaceLayerHeader {
+  body: number;
+  bodyName: string;
+  /** 'albedo' | 'height' | other layer names (e.g. 'hapke'). */
+  layer: string;
+  kind: SurfaceLayerKind;
+  /** Per-channel element type of the raw little-endian tiles. */
+  format: 'float16' | 'float32';
+  /** Channel names, interleaved per texel: ['X','Y','Z','S'] for albedo, ['height'] for height. */
+  channels: string[];
+  bytesPerTexel: number;
+  tileSize: 256;
+  minLevel: number;
+  maxLevel: number;
+  levels: SurfaceLevelInfo[];
+  /** Template relative to the data root, placeholders {level}, {ty}, {tx}. */
+  tilePath: string;
+  /** Path of the "sha256  path" listing of every stored tile. */
+  tileListing: string;
+  /** level (as string) → [tx, ty][] of tiles that are entirely unknown and therefore not stored. */
+  missingTiles: Record<string, [number, number][]>;
+  /** How unknown texels are encoded (float16 layers: all channels exactly 0; float32 layers: NaN). */
+  noData: string;
+  geometry: {
+    projection: 'equirectangular';
+    latitude: 'planetocentric';
+    longitude: 'east';
+    u: string;
+    v: string;
+    texelValue: string;
+  };
+  /** Body-fixed frame of the source maps and how it relates to the app's IAU frame. */
+  frame: {
+    name: string;
+    note?: string;
+    longitudeSystem?: string;
+    sourceLatitude?: string;
+    referenceRadiusKm?: number;
+    referenceEllipsoidKm?: number[];
+  };
+  coverage: {
+    /** Fraction of the sphere's area with data (top level). */
+    areaFraction: number;
+    /** Fraction of the rotation-averaged zero-phase disk weight (cos²φ) with data. */
+    diskWeightFraction: number;
+    regions: SurfaceRegion[];
+  };
+  /**
+   * Provenance of the layer's values, worst over regions: for albedo layers the spatial brightness pattern, for
+   * height and parameter layers the heights / parameters themselves.
+   */
+  brightness: SurfaceProvenance;
+  /** Provenance of the per-texel colour variation (albedo layers only). */
+  color?: SurfaceProvenance;
+  sources: string[];
+  /** Observation epoch; maps of changing surfaces carry start/end (ISO UTC) and how the surface changes. */
+  epoch?: {
+    start?: string;
+    end?: string;
+    mid?: string;
+    observed?: string;
+    changes?: string;
+    perFilter?: Record<string, { start: string; end: string }>;
+  };
+  /**
+   * Albedo layers: how the texels were normalized so that the cos²φ-weighted disk average is 1 per channel
+   * (band disk means before normalization, band → XYZS weights W (texel = W·bandRatios), achieved disk mean).
+   */
+  normalization?: {
+    weighting: string;
+    texelDiskMeanCheck: number[];
+    channelWeights?: { bandsNm: number[]; W: number[][] };
+    [k: string]: unknown;
+  };
+  /** Height layers: 'm' (above the pck00011 reference ellipsoid named in `frame`). */
+  units?: string;
+  /** Parameter layers: model constants and the model definition. */
+  constants?: Record<string, unknown>;
+  diagnostics?: Record<string, unknown>;
+  notes?: string[];
+  generated: string;
+  stats: { tiles: number; bytes: number };
+}
+
+/** surfaces/index.json */
+export interface SurfaceIndex {
+  bodies: Record<string, { name: string; layers: Record<string, string> }>;
+  /** NAIF id → why the body deliberately has no visible-light surface map (e.g. Venus, Titan). */
+  excluded: Record<string, string>;
   notes?: string;
 }
 
@@ -245,8 +480,8 @@ export interface SmallBodyCoreHeader extends SmallBodyTableHeader {
   window: { startEt: number; endEt: number };
   forceModel: SmallBodyForceModel;
   orbitClasses: { code: string; name: string }[];
-  /** Bit index of each flag in the u16 `flags` field. */
-  flagBits: Record<string, number>;
+  /** Meaning of each bit of the u16 `flags` field, keyed by bit value ("1", "2", "4", ...), as BinaryTableHeader. */
+  flagBits: Record<string, string>;
   /** Population statistic behind estimated diameters: measured p_V per SBDB orbit class ("*" = all). */
   classAlbedo: Record<string, { median: number; p16: number; p84: number; n: number }>;
   statistics: Record<string, unknown>;

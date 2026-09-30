@@ -12,7 +12,8 @@ from pipeline.photometry import bodies, horizons
 
 @pytest.fixture(scope="module")
 def comparisons():
-    return horizons.compare(bodies.build_all(None), horizons.load_fixtures())
+    ids = list(bodies.PLANETS)     # the moons are checked in test_photometry_moons.py
+    return horizons.compare(bodies.build_all(None, ids), horizons.load_fixtures(ids))
 
 
 def test_mh_reimplementation_reproduces_horizons(comparisons):

@@ -6,6 +6,9 @@
 // never needs to reason about provenance labels except for the provenance-tint overlay.
 
 import type { Label, PhaseFunction } from '../data/schema';
+import type { EyeSettings } from '../eye/settings';
+
+export type { EyeSettings };
 
 export type Vec3 = [number, number, number];
 /** Row-major 3x3 matrix. */
@@ -54,6 +57,12 @@ export interface ViewSettings {
   /** Only in 'enhanced': extra exposure in stops on top of the eye's adaptation. */
   exposureBoostStops: number;
   overlays: { provenanceTint: boolean };
+  /**
+   * Optional observer/display settings (see app/src/eye/settings.ts for meanings and defaults):
+   * ageYears, pigmentation, fieldFactor, eyes, adaptationFieldDeg, displayPeakCdM2, displayBlackCdM2.
+   * Omitted fields keep their defaults.
+   */
+  eye?: Partial<EyeSettings>;
 }
 
 export interface OrbitPolyline {
@@ -85,4 +94,14 @@ export interface RendererStats {
   /** Current eye adaptation luminance, cd/m². */
   adaptationLuminance: number;
   starsDrawn: number;
+  /** Scotopic adaptation luminance, scotopic cd/m². */
+  scotopicAdaptationLuminance?: number;
+  /** Pupil diameter from the eye model, mm. */
+  pupilDiameterMm?: number;
+  /** CIE 191 mesopic coefficient m of the adaptation state (1 photopic … 0 scotopic). */
+  mesopicM?: number;
+  /** Faintest point source visible at the adaptation state (V mag, for a 2850 K-coloured point). */
+  limitingMagnitude?: number;
+  /** Things the renderer could not draw as requested, e.g. "Sun: limb darkening unknown → drawn as a point". */
+  warnings?: string[];
 }

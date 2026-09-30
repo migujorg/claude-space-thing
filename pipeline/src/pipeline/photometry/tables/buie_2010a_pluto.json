@@ -17,6 +17,18 @@
  },
  "charon": {
   "V_a0_1deg": 17.0978, "V_a0_1deg_source": "Table 12 (p. 1126), n=0 Fourier term",
-  "V_to_zero_phase": -0.2549, "V_to_zero_phase_source": "Fig. 8 caption (p. 1126)"
+  "V_to_zero_phase": -0.2549, "V_to_zero_phase_source": "Fig. 8 caption (p. 1126)",
+  "B_a0_1deg": 17.7935, "B_a0_1deg_source": "Table 11 (p. 1125), n=0 Fourier term",
+  "B_minus_V_weighted_mean": 0.7315, "B_minus_V_err": 0.0013,
+  "B_minus_V_source": "Table 10 (p. 1123), weighted mean; also the abstract. Sec. 6.3 prints 0.7313 +- 0.0017 as the adopted value",
+  "phase_range_deg": [0.36, 1.74], "phase_range_source": "Abstract: solar phase angle 0.36-1.74 deg (Pluto and Charon observed together)",
+  "radius_used_km": 606
+ },
+ "hapke_table9": {
+  "_source": "Table 9 (p. 1123), 'Global Hapke Parameters'. Columns h, P(g), B0, theta (roughness, deg; [x] = held fixed), chi2, w. Radii used: Pluto 1153 km, Charon 606 km.",
+  "999": {"B": {"h": 0.0790, "P": 2.96, "B0": 0.790, "theta_deg": 10, "w": 0.5973},
+          "V": {"h": 0.0790, "P": 2.83, "B0": 0.790, "theta_deg": 10, "w": 0.7303}},
+  "901": {"B": {"h": 0.0033, "P": 3.02, "B0": 0.585, "theta_deg": 20, "w": 0.5942},
+          "V": {"h": 0.0044, "P": 2.46, "B0": 0.600, "theta_deg": 20, "w": 0.6737}}
  }
 }

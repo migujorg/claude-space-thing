@@ -1,17 +1,15 @@
-// Per-frame geometry of every body as seen from the camera: geometric SSB position (navigation),
-// light-time-corrected camera-relative position (drawing), and the Sun direction at the emission epoch.
-// Pure; computed once per frame and shared by the snapshot builder, labels, picking and the inspector.
+// Per-frame geometry of every body as seen from the camera: light-time-corrected camera-relative position
+// (drawing) and the Sun direction at the emission epoch. Pure; computed once per frame and shared by the
+// snapshot builder, labels, picking and the inspector. Geometric positions for navigation are evaluated on
+// demand by the model (AppModel.bodyPos), not here: with hundreds of bodies every chain evaluation counts.
 
 import type { Body } from '../data/schema';
 import type { ApparentResult, CoreFunctions, EphemerisSetPort, Vec3 } from './ports';
-import { sub } from './vec';
 
 export interface BodyGeom {
   id: number;
   body: Body;
-  /** Geometric position at et, SSB, km. null → no ephemeris coverage now. */
-  ssb: Vec3 | null;
-  /** Apparent (light-time corrected) position relative to the camera. */
+  /** Apparent (light-time corrected) position relative to the camera. null → no ephemeris coverage now. */
   app: ApparentResult | null;
   /** Body center → Sun center at the emission epoch, km. null if either position is unavailable. */
   toSun: Vec3 | null;
@@ -55,26 +53,24 @@ export function computeWorld(
   sunId: number | null,
 ): World {
   const out = new Map<number, BodyGeom>();
+  const obs: Vec3 = [cameraPos[0], cameraPos[1], cameraPos[2]];
   for (const body of bodies) {
     if (!isPhysical(body)) continue;
-    let ssb: Vec3 | null = null;
     let app: ApparentResult | null = null;
     let toSun: Vec3 | null = null;
-    if (eph && eph.covers(body.id, et)) {
+    // apparentPosition returns null when the chain does not cover the epoch (e.g. a system not loaded yet).
+    const a = eph ? core.apparentPosition(eph, body.id, obs, et) : null;
+    if (a) {
       // Copy at the port boundary: implementations may reuse scratch arrays between calls.
-      ssb = copy(eph.positionSSB(body.id, et));
-      const a = core.apparentPosition(eph, body.id, [cameraPos[0], cameraPos[1], cameraPos[2]], et);
-      app = a ? { rel: [a.rel[0], a.rel[1], a.rel[2]], lightTime: a.lightTime, emitEt: a.emitEt } : null;
-      if (app) {
-        if (body.id === sunId) toSun = [0, 0, 0];
-        else if (sunId !== null) {
-          const s = copy(eph.positionSSB(sunId, app.emitEt));
-          const b = eph.positionSSB(body.id, app.emitEt);
-          if (s && b) toSun = sub(s, b);
-        }
+      app = { rel: [a.rel[0], a.rel[1], a.rel[2]], lightTime: a.lightTime, emitEt: a.emitEt };
+      if (body.id === sunId) toSun = [0, 0, 0];
+      else if (sunId !== null) {
+        // The body at the emission epoch is observer + rel (rel = target(emitEt) − observer(et)).
+        const s = eph!.positionSSB(sunId, app.emitEt);
+        if (s) toSun = [s[0] - (obs[0] + app.rel[0]), s[1] - (obs[1] + app.rel[1]), s[2] - (obs[2] + app.rel[2])];
       }
     }
-    out.set(body.id, { id: body.id, body, ssb, app, toSun });
+    out.set(body.id, { id: body.id, body, app, toSun });
   }
   return { et, cameraPos, sunId, bodies: out };
 }

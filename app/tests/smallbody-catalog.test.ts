@@ -29,7 +29,7 @@ function coreFixture(): { header: SmallBodyCoreHeader; buffer: ArrayBuffer } {
     ],
     labelEncoding: [...LABELS], sourceTable: ['jpl-sbdb-orbits'],
     epochEt: 843998400, epochTdb: '2026-09-30 00:00:00.000', window: { startEt: 0, endEt: 1 },
-    flagBits: { comet: 0, numbered: 1, neo: 2, positionLost: 7 },
+    flagBits: { '1': 'comet', '2': 'numbered', '4': 'neo', '128': 'positionLost' },
   } as unknown as SmallBodyCoreHeader;
   return { header, buffer };
 }

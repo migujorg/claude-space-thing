@@ -6,12 +6,15 @@ import csv
 import io
 import json
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 
 import numpy as np
+import requests
 
 from .. import cie
-from ..download import fetch, record
+from ..download import fetch, record, sha256_file
+from ..paths import RAW
 from ..schema import BuildContext, SourceRecord
 
 TABLES = Path(__file__).parent / "tables"
@@ -28,9 +31,40 @@ def read_table_json(name: str) -> dict:
     return json.loads((TABLES / name).read_text())
 
 
+BROWSER_AGENT = "Mozilla/5.0"
+
+
+@lru_cache(maxsize=None)
+def _sha256_cached(path: str, mtime_ns: int, size: int) -> str:
+    return sha256_file(Path(path))
+
+
+def file_sha256(path: Path) -> str:
+    st = path.stat()
+    return _sha256_cached(str(path), st.st_mtime_ns, st.st_size)
+
+
+def _is_pdf(path: Path) -> bool:
+    with path.open("rb") as f:
+        return f.read(5) == b"%PDF-"
+
+
+def _validator(name: str):
+    """Content checks by file type: a .pdf must be a PDF (not an HTML bot-check page served with status 200)."""
+    return _is_pdf if name.lower().endswith(".pdf") else None
+
+
+_FAILED: dict[str, str] = {}     # URLs that failed in this process (not retried per call)
+
+
 @dataclass(frozen=True)
 class Download:
-    """A dataset to fetch and cite. `fetch()` returns the local path; `source()` the SourceRecord for it."""
+    """A dataset to fetch and cite. `fetch()` returns the local path; `source()` the SourceRecord for it.
+
+    Some publishers answer scripted clients with a bot-check page (status 200). For such documents (papers whose
+    numbers are transcribed under tables/, not parsed), `sha256`/`retrieved` give the digest and date of the copy the
+    transcription was made from. If the scripted download fails, a copy placed by hand at data/raw/<subdir>/<name>
+    with that digest is accepted, and `source()` cites the digest (saying it was not re-downloaded)."""
     id: str
     url: str
     subdir: str
@@ -40,12 +74,50 @@ class Download:
     version: str | None = None
     license: str | None = None
     notes: str | None = None
+    browser_agent: bool = False     # send a browser User-Agent
+    sha256: str | None = None       # digest of the hand-retrieved copy (documents behind a bot check only)
+    retrieved: str | None = None    # date of that retrieval
+
+    def _dest(self) -> Path:
+        return RAW / self.subdir / (self.name or self.url.rstrip("/").split("/")[-1])
 
     def fetch(self) -> Path:
-        return fetch(self.url, self.subdir, self.name)
+        dest = self._dest()
+        if self.sha256 and dest.exists() and file_sha256(dest) == self.sha256:
+            return dest     # the hand-retrieved copy (or an earlier scripted download of the same bytes)
+        if self.url in _FAILED:
+            raise RuntimeError(_FAILED[self.url])
+        headers = {"User-Agent": BROWSER_AGENT} if self.browser_agent else None
+        try:
+            path = fetch(self.url, self.subdir, self.name, headers=headers,
+                         validate=_validator(self.name or self.url), retries=2 if self.sha256 else 4)
+        except (requests.RequestException, ValueError) as e:
+            hint = (f" The publisher blocks scripted downloads: fetch it by hand (e.g. curl -A {BROWSER_AGENT!r} -L "
+                    f"-o '{dest}' '{self.url}') and check sha256 {self.sha256}." if self.sha256 else "")
+            _FAILED[self.url] = f"{self.id}: could not download {self.url}: {e}.{hint}"
+            raise RuntimeError(_FAILED[self.url]) from e
+        if self.sha256 and file_sha256(path) != self.sha256:
+            raise ValueError(f"{self.id}: {path} does not have the expected sha256 {self.sha256}")
+        return path
 
     def source(self) -> SourceRecord:
-        rec = record(self.fetch())
+        try:
+            path = self.fetch()
+        except RuntimeError:
+            if not self.sha256:
+                raise
+            return SourceRecord(id=self.id, title=self.title, citation=self.citation, url=self.url,
+                                retrieved=self.retrieved or "", sha256=self.sha256, version=self.version,
+                                license=self.license,
+                                notes=(self.notes or "") + " (Not re-downloaded in this build: the publisher serves "
+                                "a bot check to scripted clients; sha256 is that of the copy retrieved by hand on "
+                                f"{self.retrieved}.)")
+        try:
+            rec = record(path)
+            if rec["sha256"] != file_sha256(path):
+                raise KeyError(path)
+        except KeyError:  # placed by hand: not in the download ledger
+            rec = {"url": self.url, "retrieved": self.retrieved or "", "sha256": file_sha256(path)}
         return SourceRecord(id=self.id, title=self.title, citation=self.citation, url=rec["url"],
                             retrieved=rec["retrieved"], sha256=rec["sha256"], version=self.version,
                             license=self.license, notes=self.notes)

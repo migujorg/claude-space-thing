@@ -1,9 +1,10 @@
-// Evaluation of the SPK type 2/3 products in app/public/data/ephem/ (docs/architecture.md §6), and chaining of
-// segments to the Solar System Barycenter. km, km/s, ICRF (SPICE J2000) axes, TDB seconds past J2000.
+// Evaluation of the SPK products in app/public/data/ephem/ (docs/architecture.md §6), and chaining of segments to
+// the Solar System Barycenter. km, km/s, ICRF (SPICE J2000) axes, TDB seconds past J2000.
 //
-// Record selection follows SPICE SPKR02/SPKR03: record = floor((et − initEt) / intLen), clamped to the last
-// record, so at a record boundary the later record is used. Outside a segment's coverage nothing is returned:
-// there is no extrapolation anywhere in this module.
+// Types 2 and 3 (Chebyshev): record selection follows SPICE SPKR02/SPKR03: record = floor((et − initEt) / intLen),
+// clamped to the last record, so at a record boundary the later record is used.
+// Type 17 (precessing equinoctial conic, SPICE SPKE17/EQNCPV): one record of 12 doubles, see eqncpv() below.
+// Outside a segment's declared coverage nothing is returned: there is no extrapolation anywhere in this module.
 
 import type { EphemHeader, EphemSegment, Label } from '../data/schema';
 import { LABEL_ORDER } from '../data/schema';
@@ -17,7 +18,7 @@ export interface LoadedSegment {
   meta: EphemSegment;
   target: number;
   center: number;
-  type: 2 | 3;
+  type: 2 | 3 | 17;
   initEt: number;
   intLen: number;
   rsize: number;
@@ -44,10 +45,11 @@ export class Ephemeris {
     this.header = header;
     for (const m of header.segments) {
       if (m.frame !== 'J2000') throw new Error(`ephemeris segment ${m.target}: unsupported frame ${m.frame}`);
-      if (m.type !== 2 && m.type !== 3) throw new Error(`ephemeris segment ${m.target}: unsupported SPK type ${m.type}`);
-      const per = m.type === 2 ? 3 : 6;
-      const ncoef = (m.rsize - 2) / per;
-      if (!Number.isInteger(ncoef) || ncoef < 1) throw new Error(`ephemeris segment ${m.target}: bad rsize ${m.rsize}`);
+      if (m.type !== 2 && m.type !== 3 && m.type !== 17) throw new Error(`ephemeris segment ${m.target}: unsupported SPK type ${m.type}`);
+      const ncoef = m.type === 17 ? 0 : (m.rsize - 2) / (m.type === 2 ? 3 : 6);
+      if (m.type === 17 ? m.rsize !== 12 || m.n !== 1 : !Number.isInteger(ncoef) || ncoef < 1) {
+        throw new Error(`ephemeris segment ${m.target}: bad rsize ${m.rsize} for type ${m.type}`);
+      }
       if (!(m.n >= 1) || !(m.intLen > 0)) throw new Error(`ephemeris segment ${m.target}: bad record count/length`);
       if (m.offset < 0 || m.offset + m.n * m.rsize > data.length) {
         throw new Error(`ephemeris segment ${m.target}: records [${m.offset}, +${m.n * m.rsize}) outside data (${data.length})`);
@@ -122,7 +124,7 @@ function recordBase(s: LoadedSegment, et: number): number {
 // are bit-identical to SPICE (one float64 ulp is ~1 mm at 30 AU, so summation order is visible at that level).
 
 /** Σ c_k T_k(x) for the nc coefficients at d[c], x = (et − MID)/RADIUS. */
-function chbval(d: Float64Array, c: number, nc: number, x: number): number {
+export function chbval(d: Float64Array, c: number, nc: number, x: number): number {
   const x2 = 2 * x;
   let w1 = 0;
   let w2 = 0;
@@ -158,6 +160,10 @@ function chbint(d: Float64Array, c: number, nc: number, x: number, out: number[]
 
 /** Position of s.target relative to s.center at et (et must be inside the segment). */
 function evalPos(s: LoadedSegment, et: number, out: Vec3): void {
+  if (s.type === 17) {
+    eqncpv(s.data, s.offset, et, out, null);
+    return;
+  }
   const d = s.data;
   const base = recordBase(s, et);
   const x = (et - d[base]) / d[base + 1];
@@ -169,6 +175,10 @@ function evalPos(s: LoadedSegment, et: number, out: Vec3): void {
 
 /** State of s.target relative to s.center at et (et must be inside the segment). */
 function evalState(s: LoadedSegment, et: number, pos: Vec3, vel: Vec3): void {
+  if (s.type === 17) {
+    eqncpv(s.data, s.offset, et, pos, vel);
+    return;
+  }
   const d = s.data;
   const base = recordBase(s, et);
   const radius = d[base + 1];
@@ -188,6 +198,59 @@ function evalState(s: LoadedSegment, et: number, pos: Vec3, vel: Vec3): void {
       vel[j] = chbval(d, base + 2 + (j + 3) * nc, nc, x);
     }
   }
+}
+
+/**
+ * SPK type 17 (SPICE SPKE17 → EQNCPV): record d[o..o+11] = EPOCH, A, H, K, MEAN LONGITUDE at EPOCH, P, Q,
+ * d(longitude of periapse)/dt, d(mean longitude)/dt, d(node)/dt, pole RA, pole DEC (km, rad, rad/s). The conic's
+ * longitude of periapse and node precess linearly; h = e sin ϖ, k = e cos ϖ, p = tan(i/2) sin Ω, q = tan(i/2) cos Ω
+ * (Broucke & Cefola equinoctial elements), in the equatorial frame of the given pole, rotated to J2000.
+ * Velocity is the exact time derivative including the precession (as SPICE's). Matches spiceypy.spkgeo to
+ * < 1 mm and 1e-9 km/s (app/tests/core-ephemeris.test.ts).
+ */
+function eqncpv(d: Float64Array, o: number, et: number, pos: Vec3, vel: Vec3 | null): void {
+  const epoch = d[o], a = d[o + 1], h = d[o + 2], k = d[o + 3], ml0 = d[o + 4], p = d[o + 5], q = d[o + 6];
+  const dlpdt = d[o + 7], dmldt = d[o + 8], dnodedt = d[o + 9], ra = d[o + 10], dec = d[o + 11];
+  const dt = et - epoch;
+  const lp = dt * dlpdt, nd = dt * dnodedt;
+  const cl = Math.cos(lp), sl = Math.sin(lp), cn = Math.cos(nd), sn = Math.sin(nd);
+  const h1 = h * cl + k * sl, k1 = k * cl - h * sl;
+  const p1 = p * cn + q * sn, q1 = q * cn - p * sn;
+  const TWO_PI = 2 * Math.PI;
+  // Reduce dt·dmldt first: it reaches ~1e5 rad, where one ulp times a is ~1 mm.
+  const ml = (ml0 + ((dt * dmldt) % TWO_PI)) % TWO_PI;
+  // Eccentric longitude F from ml = F + h cos F − k sin F (Newton).
+  let f = ml;
+  for (let i = 0; i < 100; i++) {
+    const g = f + h1 * Math.cos(f) - k1 * Math.sin(f) - ml;
+    const df = g / (1 - h1 * Math.sin(f) - k1 * Math.cos(f));
+    f -= df;
+    if (Math.abs(df) <= 1e-15 * Math.max(1, Math.abs(f))) break;
+  }
+  const sf = Math.sin(f), cf = Math.cos(f);
+  const b = 1 / (1 + Math.sqrt(1 - h1 * h1 - k1 * k1));
+  const x1 = a * ((1 - b * h1 * h1) * cf + h1 * k1 * b * sf - k1);
+  const y1 = a * ((1 - b * k1 * k1) * sf + h1 * k1 * b * cf - h1);
+  const di = 1 / (1 + p1 * p1 + q1 * q1);
+  const vf = [di * (1 - p1 * p1 + q1 * q1), di * 2 * p1 * q1, di * -2 * p1];
+  const vg = [di * 2 * p1 * q1, di * (1 + p1 * p1 - q1 * q1), di * 2 * q1];
+  const sa = Math.sin(ra), ca = Math.cos(ra), sd = Math.sin(dec), cd = Math.cos(dec);
+  // Columns of the equatorial → J2000 rotation: X = ẑ × pole (normalised), Y = pole × X, Z = pole.
+  const rot = (v: number[], out: Vec3) => {
+    out[0] = -sa * v[0] - ca * sd * v[1] + ca * cd * v[2];
+    out[1] = ca * v[0] - sa * sd * v[1] + sa * cd * v[2];
+    out[2] = cd * v[1] + sd * v[2];
+  };
+  rot([x1 * vf[0] + y1 * vg[0], x1 * vf[1] + y1 * vg[1], x1 * vf[2] + y1 * vg[2]], pos);
+  if (!vel) return;
+  const dh = dlpdt * k1, dk = -dlpdt * h1, dp = dnodedt * q1, dq = -dnodedt * p1;
+  const fdot = (dmldt - dh * cf + dk * sf) / (1 - k1 * cf - h1 * sf);
+  const hk = dh * k1 + h1 * dk;
+  const x1d = a * (-2 * b * h1 * dh * cf - (1 - b * h1 * h1) * sf * fdot + b * hk * sf + h1 * k1 * b * cf * fdot - dk);
+  const y1d = a * (-2 * b * k1 * dk * sf + (1 - b * k1 * k1) * cf * fdot + b * hk * cf - h1 * k1 * b * sf * fdot - dh);
+  const vfd = [di * (-2 * p1 * dp + 2 * q1 * dq), di * 2 * (dp * q1 + p1 * dq), di * -2 * dp];
+  const vgd = [di * 2 * (dp * q1 + p1 * dq), di * (2 * p1 * dp - 2 * q1 * dq), di * 2 * dq];
+  rot([0, 1, 2].map((j) => x1d * vf[j] + y1d * vg[j] + x1 * vfd[j] + y1 * vgd[j]), vel);
 }
 
 /** Provenance of a chained position: the segments used, their worst label, and all their sources. */

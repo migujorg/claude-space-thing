@@ -278,7 +278,8 @@ def run(ctx: BuildContext) -> None:
                                                     "orbit class (estimated; table classAlbedo)."}),
         Field("physRow", "u32", 1, {"method": "Record in physical.bin, 0xFFFFFFFF if the object has no measured "
                                               "physical attribute."}),
-        Field("flags", "u16", 1, {"method": "Bit field, see header flagBits."}),
+        Field("flags", "u16", 1, {"method": "Bit field; header flagBits maps each bit value (\"1\", \"2\", \"4\", ...) "
+                                            "to its meaning."}),
         Field("orbitClass", "u8", 1, {"method": "Index into header orbitClasses (SBDB class code), 255 unknown."}),
         Field("conditionCode", "u8", 1, {"method": "JPL orbit condition code (MPC U scale 0 good .. 9 poor) from the "
                                                    "SBDB; 255 not given."}),
@@ -333,7 +334,8 @@ def run(ctx: BuildContext) -> None:
     extra = {
         "epochEt": common, "epochTdb": epoch_cal, "window": {"startEt": ctx.start_et, "endEt": ctx.end_et},
         "forceModel": model.to_json(), "orbitClasses": [{"code": k, "name": CLASS_NAMES.get(k, k)} for k in classes],
-        "flagBits": FLAGS, "classAlbedo": ph.class_albedo, "statistics": stats,
+        "flagBits": {str(1 << b): name for name, b in FLAGS.items()}, "classAlbedo": ph.class_albedo,
+        "statistics": stats,
         "snapshot": snap.tag, "names": f"{DIR}/names.json", "physical": f"{DIR}/physical.json",
         "comets": f"{DIR}/comets.json", "nongrav": f"{DIR}/nongrav.json",
     }

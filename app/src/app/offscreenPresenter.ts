@@ -1,0 +1,57 @@
+// Headless Chromium + SwiftShader never completes WebGPU canvas presentation, so screenshot tests
+// (?present=offscreen) render into the renderer's offscreen target and blit the displayed pixels into
+// the visible canvas with a 2D context. Real browsers use the renderer directly.
+
+import type { RendererPort } from './ports';
+import type { RendererStats, SceneSnapshot, StarCatalog } from '../render/scene';
+import { Renderer } from '../render/renderer';
+
+export class OffscreenPresenter implements RendererPort {
+  private blitting: Promise<void> | null = null;
+  private dirty = false;
+
+  private constructor(private readonly r: Renderer, private readonly canvas: HTMLCanvasElement) {}
+
+  static async create(canvas: HTMLCanvasElement): Promise<OffscreenPresenter> {
+    const gpuCanvas = document.createElement('canvas');
+    const r = await Renderer.create(gpuCanvas, { presentation: 'offscreen' });
+    return new OffscreenPresenter(r, canvas);
+  }
+
+  get stats(): RendererStats {
+    return this.r.stats;
+  }
+
+  setStars(c: StarCatalog): void {
+    this.r.setStars(c);
+  }
+
+  resize(w: number, h: number, dpr: number): void {
+    this.r.resize(w, h, dpr);
+  }
+
+  render(s: SceneSnapshot): void {
+    this.r.render(s);
+    this.dirty = true;
+    if (!this.blitting) this.blitting = this.blit().finally(() => (this.blitting = null));
+  }
+
+  async settled(): Promise<void> {
+    await this.r.settled();
+    if (this.blitting) await this.blitting;
+    this.dirty = true;
+    await this.blit();
+  }
+
+  private async blit(): Promise<void> {
+    while (this.dirty) {
+      this.dirty = false;
+      const px = await this.r.readPixels();
+      if (this.canvas.width !== px.width || this.canvas.height !== px.height) {
+        this.canvas.width = px.width;
+        this.canvas.height = px.height;
+      }
+      this.canvas.getContext('2d')!.putImageData(new ImageData(px.data, px.width, px.height), 0, 0);
+    }
+  }
+}

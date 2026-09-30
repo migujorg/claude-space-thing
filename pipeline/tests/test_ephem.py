@@ -1,8 +1,8 @@
-"""Ephemeris products vs their raw data. Requires `python -m pipeline build --only ephemeris`.
+"""Planetary ephemeris product vs the kernel. Requires `python -m pipeline build --only ephemeris`.
 
-- planetary (de442s): every extracted segment is bit-identical to the kernel and reproduces SPICE spkgeo to < 1 mm.
-- centers: the fitted records reproduce every raw Horizons state (fitted and hold-out epochs) to < 1 km
-  (the contract), with the actual maxima printed.
+Every extracted segment of the planetary kernel (de442s) is bit-identical to the kernel and reproduces SPICE spkgeo
+to < 1 mm. Epochs are drawn from the products' own coverage, so the tests do not depend on when the window was made.
+Satellite products: test_ephem_satellites.py.
 """
 
 import json
@@ -11,21 +11,27 @@ import numpy as np
 import pytest
 import spiceypy as sp
 
-from pipeline import download
-from pipeline import ephem_horizons as hz
 from pipeline.ephem_kernels import PLANETARY, SRC_PLANETARY, planetary
-from pipeline.ephem_spk import evaluate, load_product, read_spk, restrict
-from pipeline.paths import OUT, RAW
-from pipeline.stages.ephemeris import CENTERS, HOLDOUT_OFFSET_MIN, HOLDOUT_STEP_MIN, MARGIN_S, STEP_MIN, center_source_id
+from pipeline.ephem_spk import evaluate, load_product, read_spk
+from pipeline.paths import OUT
+from pipeline.stages.ephemeris import MARGIN_S
 
-DE, CEN = OUT / "ephem" / f"{PLANETARY}.json", OUT / "ephem" / "centers.json"
-pytestmark = pytest.mark.skipif(not (DE.exists() and CEN.exists()), reason="ephemeris products not built")
+DE = OUT / "ephem" / f"{PLANETARY}.json"
+pytestmark = pytest.mark.skipif(not DE.exists(), reason="ephemeris products not built")
 
 
-@pytest.fixture(scope="module")
-def window():
-    w = json.loads((OUT / "manifest.json").read_text())["window"]
-    return w["startEt"] - MARGIN_S, w["endEt"] + MARGIN_S
+def coverage(segs) -> tuple[float, float]:
+    """Interval every segment covers (the products' actual coverage)."""
+    return max(s.start for s in segs), min(s.end for s in segs)
+
+
+def same_records(s, ref) -> None:
+    """s holds a contiguous run of ref's records, bit for bit, with the declared coverage clipped accordingly."""
+    assert (s.type, s.intlen, s.rsize) == (ref.type, ref.intlen, ref.rsize)
+    i0 = (s.init - ref.init) / s.intlen
+    assert i0 == int(i0) and 0 <= i0 and int(i0) + s.n <= ref.n
+    assert np.array_equal(s.records, ref.records[int(i0): int(i0) + s.n]), s.target
+    assert s.start >= ref.start - 1e-3 and s.end <= ref.end + 1e-3
 
 
 @pytest.fixture(scope="module")
@@ -36,32 +42,29 @@ def kernel():
     sp.unload(str(path))
 
 
-@pytest.fixture(scope="module")
-def sources():
-    return {s["id"]: s for s in json.loads((OUT / "sources.json").read_text())}
-
-
-def test_all_segments_extracted_bit_identical(kernel, window):
+def test_all_segments_extracted_bit_identical(kernel):
     ours = {(s.target, s.center): s for s in load_product(DE)}
     theirs = {(s.target, s.center): s for s in read_spk(kernel)}
     assert set(ours) == set(theirs) and len(ours) == 14
     for k, s in ours.items():
-        ref = restrict(theirs[k], *window)
-        assert (s.init, s.intlen, s.rsize, s.n) == (ref.init, ref.intlen, ref.rsize, ref.n)
-        assert (s.start, s.end) == (ref.start, ref.end)  # declared coverage carried through
-        assert np.array_equal(s.records, ref.records), k
-        assert s.start <= window[0] and s.end >= window[1], f"{k} does not cover the window + margin"
+        same_records(s, theirs[k])
         assert s.label == "measured" and s.sources == [SRC_PLANETARY]
+    # The products cover the manifest window with the light-time margin.
+    w = json.loads((OUT / "manifest.json").read_text())["window"]
+    lo, hi = coverage(ours.values())
+    assert lo <= w["startEt"] - MARGIN_S + 1e-3 and hi >= w["endEt"] + MARGIN_S - 1e-3
 
 
-def test_every_segment_matches_spkgeo(kernel, window):
+def test_every_segment_matches_spkgeo(kernel):
     rng = np.random.default_rng(440)
     worst_p, worst_v = 0.0, 0.0
-    for s in load_product(DE):
-        et = rng.uniform(*window, 400)
-        # record boundaries inside the window (where SPICE switches records)
+    segs = load_product(DE)
+    lo, hi = coverage(segs)
+    for s in segs:
+        et = rng.uniform(lo, hi, 400)
+        # record boundaries inside the coverage (where SPICE switches records)
         b = s.init + s.intlen * np.arange(s.n + 1)
-        et = np.concatenate([et, b[(b >= window[0]) & (b <= window[1])], [s.start, s.end]])
+        et = np.concatenate([et, b[(b >= lo) & (b <= hi)], [max(s.start, lo), min(s.end, hi)]])
         pos, vel = evaluate(s, et)
         ref = np.array([sp.spkgeo(s.target, e, "J2000", s.center)[0] for e in et])
         dp = np.linalg.norm(pos - ref[:, :3], axis=1).max()
@@ -72,36 +75,23 @@ def test_every_segment_matches_spkgeo(kernel, window):
     print(f"{PLANETARY} vs spkgeo: max |dpos| = {worst_p:.3e} km, max |dvel| = {worst_v:.3e} km/s")
 
 
-def _raw(tgt, ctr, seg, suffix):
-    jd_a = hz.et_to_jd(seg.init)
-    jd_b = hz.et_to_jd(seg.end)
-    return RAW / "horizons" / "centers" / f"{tgt}_wrt_{ctr}_JD{jd_a:.1f}-{jd_b:.1f}_{suffix}.txt"
-
-
-@pytest.mark.parametrize("tgt,ctr,name", CENTERS)
-def test_center_fit_reproduces_horizons(tgt, ctr, name, window, sources):
-    seg = {s.target: s for s in load_product(CEN)}[tgt]
-    assert seg.center == ctr and seg.type == 2 and seg.label == "derived"
-    assert seg.start <= window[0] and seg.end >= window[1]
-    assert seg.sources == [center_source_id(tgt)] and "hold-out" in seg.uncertainty
-    rec = sources[center_source_id(tgt)]
-    fit_path = _raw(tgt, ctr, seg, f"{STEP_MIN}m")
-    ho_path = _raw(tgt, ctr, seg, f"{HOLDOUT_STEP_MIN}m+{HOLDOUT_OFFSET_MIN}")
-    assert rec["sha256"] == download.sha256_file(fit_path)
-    for path, kind in ((fit_path, "fitted"), (ho_path, "hold-out")):
-        t = hz.parse_vectors(path.read_text())
-        et = seg.init + np.round((t.et - seg.init) / 60.0) * 60.0
-        pos, vel = evaluate(seg, et)
-        dp = np.linalg.norm(pos - t.states[:, :3], axis=1).max()
-        dv = np.linalg.norm(vel - t.states[:, 3:], axis=1).max()
-        print(f"{tgt} wrt {ctr} {kind}: {et.size} epochs, max |dpos| {dp:.3e} km, max |dvel| {dv:.3e} km/s")
-        assert dp < 1.0          # contract: < 1 km
-        assert dv < 1e-3
-
-
-def test_chain_reaches_ssb():
-    targets = {s.target: s.center for s in load_product(DE) + load_product(CEN)}
-    for body in (10, 199, 299, 399, 301, 499, 599, 699, 799, 899, 999):
+def test_chain_reaches_ssb_and_centers_duplicates_are_identical():
+    targets, seen = {}, {}
+    for p in [DE, OUT / "ephem" / "centers.json", *sorted((OUT / "ephem").glob("sat-*.json"))]:
+        for s in load_product(p):
+            if s.target in seen:
+                # Only the planet centres appear twice (ephem/centers and their sat-* file), bit-identically,
+                # so whichever copy EphemerisSet serves (the last added) gives the same answer.
+                d = seen[s.target]
+                assert s.target in (499, 599, 699, 799, 899, 999), f"{s.target} served twice"
+                assert (s.center, s.type, s.init, s.intlen, s.rsize, s.start, s.end, s.sources) == \
+                       (d.center, d.type, d.init, d.intlen, d.rsize, d.start, d.end, d.sources)
+                assert np.array_equal(s.records, d.records)
+                continue
+            seen[s.target] = s
+            targets[s.target] = s.center
+    assert sorted(t for t in seen if t % 100 == 99 and t < 1000) == [199, 299, 399, 499, 599, 699, 799, 899, 999]
+    for body in [10, 199, 299, 399, 301, 499, 599, 699, 799, 899, 999] + [t for t in targets if t > 400]:
         node, hops = body, 0
         while node != 0:
             node = targets[node]

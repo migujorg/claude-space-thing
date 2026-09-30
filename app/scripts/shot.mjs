@@ -12,7 +12,9 @@ import { fileURLToPath } from 'node:url';
 const args = Object.fromEntries(
   process.argv.slice(2).reduce((acc, a, i, arr) => (a.startsWith('--') ? [...acc, [a.slice(2), arr[i + 1]?.startsWith('--') ? 'true' : arr[i + 1]]] : acc), []),
 );
-const url = args.url ?? '/';
+let url = args.url ?? '/';
+// The main app needs offscreen presentation in headless Chromium (see src/app/offscreenPresenter.ts).
+if (!/[?&]present=/.test(url) && !/\.html/.test(url)) url += (url.includes('?') ? '&' : '?') + 'present=offscreen';
 const out = resolve(args.out ?? 'shots/shot.png');
 const width = Number(args.width ?? 1280);
 const height = Number(args.height ?? 720);

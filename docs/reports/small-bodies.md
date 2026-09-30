@@ -24,7 +24,7 @@ All tables are `BinaryTableHeader` + `.bin`, little-endian, fixed stride (`app/s
 **core** (80 B): `pos` f64×3 km and `vel` f64×3 km/s are heliocentric ICRF states at `epochEt`. Add the Sun's SSB position from the ephemeris to place them. The other fields are:
 - `H`, `G`, `diameterFromH` as f32.
 - `physRow` u32: the record in physical.bin, or 0xFFFFFFFF if there is none.
-- `flags` u16. Bits are listed in `flagBits`: comet, numbered, neo, pha, nonGravitational, unsupportedModelTerms, preEphemerisTwoBody, positionLost, orbitFromMpc, twoBodyOrbitDetermination, oldPlanetaryEphemeris, horizonsState, mpcDisagrees, closeApproachInWindow, planetaryEphemeris.
+- `flags` u16. `flagBits` maps each bit value ("1", "2", "4", ...) to its name, the same convention as the other binary catalogues: comet, numbered, neo, pha, nonGravitational, unsupportedModelTerms, preEphemerisTwoBody, positionLost, orbitFromMpc, twoBodyOrbitDetermination, oldPlanetaryEphemeris, horizonsState, mpcDisagrees, closeApproachInWindow, planetaryEphemeris.
 - `orbitClass` u8: an index into `orbitClasses`, the SBDB class codes with names.
 - `conditionCode` u8 (JPL) and `mpcU` u8 (MPC), on the U scale 0–9, with 255 for none.
 - Labels: `posLabel`, `hLabel`, `gLabel`, `diameterFromHLabel`.

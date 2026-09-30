@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildSnapshot, buildSun } from '../src/app/snapshot';
+import { IauOrientationSet } from '../src/app/orientation';
 import { computeWorld } from '../src/app/world';
 import { defaultReality } from '../src/app/reality';
 import type { SceneCamera } from '../src/render/scene';
@@ -24,10 +25,11 @@ const bodies = [
   body(301, 'Moon', 'moon', { parent: 399, rLabel: 'estimated', albedo: 'measured', phase: 'measured' }),
 ];
 const core = { apparentPosition: makeApparent(C), bodyToIcrf: fakeBodyToIcrf };
+const iau = () => new IauOrientationSet(bodies, fakeBodyToIcrf);
 
 function snap(et: number, camPos: Vec3, reality = defaultReality(), selectedId: number | null = null) {
   const world = computeWorld(et, camPos, bodies, eph, core, 10);
-  return { world, s: buildSnapshot({ world, camera: cam, reality, light: fakeLight(), selectedId, orbits: [], core }) };
+  return { world, s: buildSnapshot({ world, camera: cam, reality, light: fakeLight(), selectedId, orbits: [], orientations: iau() }) };
 }
 
 describe('buildSnapshot', () => {
@@ -94,7 +96,7 @@ describe('buildSnapshot', () => {
     const limited = new FakeEphemerisSet({ 10: () => [0, 0, 0], 399: planetAt }, { startEt: 0, endEt: 100 });
     const world = computeWorld(500, [1, 0, 0], bodies, limited, core, 10);
     expect(world.bodies.get(399)!.app).toBeNull();
-    const s = buildSnapshot({ world, camera: cam, reality: defaultReality(), light: fakeLight(), selectedId: null, orbits: [], core });
+    const s = buildSnapshot({ world, camera: cam, reality: defaultReality(), light: fakeLight(), selectedId: null, orbits: [], orientations: iau() });
     expect(s.bodies).toHaveLength(0);
     expect(s.sun).toBeNull();
   });
@@ -103,9 +105,9 @@ describe('buildSnapshot', () => {
     const scratch = new ScratchEphemerisSet({ 10: () => [0, 0, 0], 399: planetAt, 301: (t) => [2e6, t, 0] });
     const world = computeWorld(1000, [1e6 - 2e5, 0, 0], bodies, scratch, core, 10);
     const a = world.bodies.get(399)!, b = world.bodies.get(301)!;
-    expect(a.ssb).not.toBe(b.ssb);
-    expect(a.ssb![0]).toBeCloseTo(1e6, 6);
-    expect(b.ssb![0]).toBeCloseTo(2e6, 6);
+    expect(a.app!.rel).not.toBe(b.app!.rel);
+    expect(a.app!.rel[0]).toBeCloseTo(2e5, 6);
+    expect(b.app!.rel[0]).toBeCloseTo(1.2e6, 6);
     expect(a.toSun![0]).toBeCloseTo(-1e6, 6); // not zero (Sun and body read from the same scratch)
   });
 
@@ -120,11 +122,11 @@ describe('buildSnapshot', () => {
   it('drops orbits unless the overlay is on', () => {
     const world = computeWorld(0, [5e5, 0, 0], bodies, eph, core, 10);
     const orbits = [{ id: 399, points: new Float64Array(6), selected: false }];
-    const off = buildSnapshot({ world, camera: cam, reality: defaultReality(), light: null, selectedId: null, orbits, core });
+    const off = buildSnapshot({ world, camera: cam, reality: defaultReality(), light: null, selectedId: null, orbits, orientations: iau() });
     expect(off.orbits).toEqual([]);
     const r = defaultReality();
     r.overlays.orbits = true;
-    const on = buildSnapshot({ world, camera: cam, reality: r, light: null, selectedId: null, orbits, core });
+    const on = buildSnapshot({ world, camera: cam, reality: r, light: null, selectedId: null, orbits, orientations: iau() });
     expect(on.orbits).toHaveLength(1);
   });
 });

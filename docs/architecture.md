@@ -132,6 +132,17 @@ The resolved renderer must use a surface reflectance model whose disk integral r
 
 Conventions used by the `light` stage: R is the volumetric mean radius (abc)^(1/3) of the body's pck00011 triaxial radii (albedos from sources that used other disk sizes are rescaled by (R_source/R)²). Φ is evaluated only inside its stated domain (`minDeg..maxDeg`, or the table's range); outside it the phase behaviour is unknown. A `poly-mag` whose domain excludes α = 0 may have c0 ≠ 0 (Mercury: the fitted curve starts at 2° and excludes the opposition surge that the zero-phase albedo includes).
 
+### 4.4 Surface maps (M2)
+
+Disk-integrated photometry (§4.3) is the **absolute** calibration of a body's brightness and color: it is measured from far away with well-understood instruments. Surface maps supply only the **spatial pattern** on top of it. This keeps the two consistent by construction and stops a map's calibration problems from changing how bright a world is.
+
+- **Texel content:** four float16 values (X, Y, Z, S) of *relative* normal reflectance: the ratio of the local normal albedo spectrum, integrated per §4.2 against sunlight, to the body's disk-integrated value. The pipeline normalizes each map so its disk-average (projected-area weighted, as seen at zero phase and averaged over rotation) is 1 in every channel. The renderer multiplies texels by the body's `geometricAlbedoXYZS` and applies its photometric model, then rescales so the disk integral still reproduces p and Φ(α) exactly (§4.3).
+- **Color honesty:** a map made from several calibrated bands gives per-channel variation (label per map, usually `derived`). A single-band (panchromatic) map gives the same relative variation in all four channels, so local color is the disk-average color: that assumption makes the *map's color* `estimated`, while its brightness pattern keeps the map's own label.
+- **Epoch:** maps of changing surfaces (giant-planet cloud tops, Earth's clouds) carry the observation date. Showing them at another time is `estimated`; the inspector says how far from the map epoch the current time is.
+- **Geometry:** planetocentric latitude and east longitude in the body's IAU body-fixed frame (the same frame `bodyToIcrf` uses). Equirectangular tiles: u = (lon_E + 180°)/360°, v = (90° − lat)/180°. Pyramid level L has 2^(L+1) × 2^L tiles of 256 × 256 texels (level 0 = 512 × 256 texels, the whole body). Tiles are raw little-endian float16 RGBA (`.bin`, 512 KiB each), addressed `surfaces/<naifId>/<layer>/<L>/<ty>/<tx>.bin`.
+- **Layers:** `albedo` (above) and optionally `height` (one float32 per texel, meters above the reference ellipsoid, same tiling), used for normals and, later, displacement. Each layer has a `surfaces/<naifId>/<layer>.json` header: levels, source ids, label, epoch, notes, per-channel normalization constants, and the valid lat/lon coverage (gaps are `unknown` and rendered as such, never filled).
+- **Photometric model:** when a body has a measured spatially-resolved photometric model (e.g. Hapke parameters from LROC for the Moon, MESSENGER for Mercury), photometry.json carries it and the renderer uses it instead of Lambert for the *spatial* distribution; the disk-integrated Φ(α) still governs total brightness.
+
 ## 5. The app
 
 ### 5.1 Module layout
@@ -169,10 +180,15 @@ When an attribute needed for drawing is below the current `exists` level or `unk
 | `manifest.json` | all | build time, validity windows, list of products with sha256 and byte sizes |
 | `sources.json` | all | `SourceRecord[]` |
 | `time.json` | `time` | leap seconds (UTC instants and ΔAT) and TDB formula constants from the LSK |
-| `ephem/<name>.json` + `ephem/<name>.bin` | `ephemeris` | SPK segments restricted to the window; bin is float64 little-endian, native SPK type 2/3 record layout |
+| `ephem/<name>.json` + `ephem/<name>.bin` | `ephemeris` | SPK segments restricted to the window; bin is float64 little-endian, native SPK type 2/3 record layout (type 17: one 12-double record). `ephem/de442s`: planets; `ephem/centers`: planet centres 499–999 only (bit-identical copies of the sat-* segments; loaded before the first frame); `ephem/sat-{mar,jup,sat,ura,nep,plu}`: planet centres and every moon, one file per system (lazy-loadable) |
+| `orient/<name>.json` + `orient/<name>.bin` | `bodies` | Precise body orientation (`OrientationHeader`): binary-PCK Euler-angle records for the window. `orient/earth` (ITRF93), `orient/moon` (DE440 Mean Earth frame); preferred over the IAU model where they cover (`OrientationSet`) |
 | `bodies.json` | `bodies` | `Body[]` with `Sourced` attributes (geometry, rotation, GM, ephemeris wiring) |
 | `photometry.json` | `light` | NAIF id → `BodyPhotometry` (albedo spectra integrated per §4.3, phase functions); merged into bodies by the app loader |
 | `light.json` | `light` | Sun spectrum-derived quantities, CIE constants actually used |
+| `rings.json` | `light` | planet NAIF id → `RingSystem`: measured radial profiles of normal optical depth (occultations), lit-face reflectance (reserved, `unknown` so far); see below |
 | `stars/<name>.json` + `.bin` | `stars` | header + interleaved per-star data |
+| `surfaces/<naifId>/<layer>.json` + tiles | `surfaces` | tiled map pyramids per §4.4 |
 
 Headers (`*.json` next to a `*.bin`) define byte layout explicitly (field name, type, count, stride) so the loader is generic.
+
+`rings.json` (`RingsFile` in schema.ts). Each `RingSystem` lies in its planet's equatorial plane (IAU pole of the planet in `bodies.json`); radii are planet-centred km. `opticalDepth` is a list of `RingProfile`s, each one measured occultation cut: bin-centre radii, normal optical depth τ⊥ (null where unconstrained) and, when the source gives it, the largest measurable τ⊥ (values at or above it are lower limits). Transmission of a ray crossing the ring plane at elevation B is exp(−τ⊥/|sin B|) to first order; in Saturn's A and B rings self-gravity wakes make the true slant optical depth depend on azimuth and elevation by tens of percent, which the profile's `method` text states rather than models. Occultation τ applies at visible wavelengths because the particles are much larger than the wavelength. `reflectance` (lit-face I/F vs radius, `RingReflectance`) is reserved and `unknown` until a measured source is processed; a renderer must mark ring brightness as not measured rather than invent it.
