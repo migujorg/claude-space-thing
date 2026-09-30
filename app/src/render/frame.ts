@@ -485,7 +485,8 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
     let atmB: AtmosphereBinding | null = null;
     let onDisk = false;
     const groundAlbedo = b.albedoXYZS && irr ? [0, 1, 2, 3].map((c) => LAMBERT_ALBEDO_PER_GEOMETRIC_ALBEDO * (b.albedoXYZS![c] / irr[c])) : [0, 0, 0, 0];
-    if (b.atmosphere && b.orient && irr && lit && opts.atmospheres && (earth || pPhi)) {
+    // Only for a resolved disk (smooth(1, 2, diameter px) > 0): a point's light is its disk photometry.
+    if (b.atmosphere && b.orient && irr && lit && opts.atmospheres && (earth || pPhi) && (2 * angR) / g.pixelAngle > 1) {
       const dust = b.atmosphere.body.dustColumn ? marsDustScale(b.atmosphere.body, snap.et) : null;
       const got = opts.atmospheres(b, groundAlbedo, dust ? { scale: dust.scale, bin: dust.bin } : null);
       if (got && 'error' in got) {
