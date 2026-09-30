@@ -1092,6 +1092,100 @@ export interface SmallBodyPhotometry {
   rules: Record<string, string>;
 }
 
+// ---- comets/ (pipeline stage comets; docs/reports/comets.md) ------------------------------------------------------
+
+/** A spectral component integrated once: XYZS (lux) and V-band flux relative to the Sun at 1 au, per unit. */
+export interface CometSpectralComponent {
+  xyzs: [number, number, number, number];
+  v: number;
+  windowNm?: [number, number];
+}
+
+export interface CometRatioStat {
+  median: number;
+  p16: number;
+  p84: number;
+  n: number;
+}
+
+/** Enclosed fraction of a Haser daughter distribution vs log10(rho / l_d). */
+export interface CometHaserTable {
+  parentKm1Au: number;
+  daughterKm1Au: number;
+  log10X: number[];
+  enclosed: number[];
+}
+
+/** comets/model.json: the physical model of comae and tails, composed by the app at each comet's geometry. */
+export interface CometModelProduct {
+  description: string;
+  sun: { vMag: number; vMagSources: string[]; irradianceXYZS1Au: [number, number, number, number]; gmKm3S2: number; gmSources: string[] };
+  waterFromMagnitude: { a: number; b: number; qH2OPerQOH: number; rmsDex: number; rRangeAu: [number, number]; label: Label; sources: string[]; method: string };
+  composition: { population: Record<'C2' | 'CN' | 'C3' | 'afrho', CometRatioStat>; label: Label; sources: string[]; method: string };
+  gFactors: { C2: number; C3: number; CN: { vKmS: number[]; value: number[] }; unit: string; label: Label; sources: string[] };
+  bandRatiosToC2: { 'C2(1)': CometRatioStat; CH?: CometRatioStat; label: Label; sources: string[]; method: string };
+  haser: { velocityKmS: number; species: Record<'C2' | 'CN' | 'C3' | 'OH', CometHaserTable>; scaling: string; sources: string[]; label: Label; method: string };
+  oxygen: { photonsPerH2O: number; branching: Record<'6300' | '6364', number>; photonEnergyErg: Record<'6300' | '6364', number>; label: Label; sources: string[] };
+  coPlus: { gTotalErgPerSIon1Au: number; share: Record<string, number>; coPerH2O: number; label: Label; sources: string[]; method: string };
+  solarWind: { medianKmS: number; p16KmS: number; p84KmS: number; hours: number; label: Label; sources: string[]; method: string };
+  grains: {
+    betaMin: number; betaMax: number; radiusMinM: number; radiusMaxM: number; crossSectionBetaExponent: number; sizeIndex: number;
+    densityKgM3: number; qPr: number; ejection: { v0KmS: number; gamma: number; Gamma: number }; label: Label; sources: string[];
+  };
+  dustPhase: { phaseDeg: number[]; value: number[]; label: Label; sources: string[]; method: string };
+  components: {
+    dust: Record<'longPeriod' | 'shortPeriod', CometSpectralComponent & { normalizedGradientPer100nm: number }>;
+    /** Per erg cm^-2 s^-1 of band flux at the observer: C2(0), C2(1), CN(0), C3, CH, OI6300, OI6364, COplus(2,0), COplus(3,0). */
+    bands: Record<string, CometSpectralComponent>;
+    sunV: { vFlux1Au: number; xyzs1Au: [number, number, number, number] };
+    sources: string[];
+  };
+  gasFractionMax: number;
+}
+
+/** A comet of comets/list.json: predicted peak m1 from Earth over the catalogue window. */
+export interface CometListEntry {
+  row: number;
+  designation: string;
+  name: string;
+  M1: number;
+  K1: number;
+  peakMag: number;
+  peakEt: number;
+  rAu: number;
+  deltaAu: number;
+  elongationDeg: number;
+  perihelionEt: number;
+  qAu: number;
+  /** Lowell database key (A'Hearn et al. 1995) when its composition was measured. */
+  measured: string | null;
+}
+
+/** Measured composition of one comet (log10 ratios to Q(OH); afrho: log10 Afrho[cm]/Q(OH)). */
+export interface CometMeasuredActivity {
+  key: string;
+  C2?: number;
+  CN?: number;
+  C3?: number;
+  afrho?: number;
+  label: Label;
+  sources: string[];
+}
+
+/** comets/list.json */
+export interface CometListProduct {
+  window: { startEt: number; endEt: number };
+  notableMag: number;
+  count: number;
+  method: string;
+  notable: CometListEntry[];
+  showcase: { row: number; designation: string; name: string; rule: string };
+  /** core row (as a string) → measured composition. */
+  measured: Record<string, CometMeasuredActivity>;
+  label: Label;
+  sources: string[];
+}
+
 /**
  * A star tier split into HEALPix tiles (stars/deep.json): every tile file holds records with the header's fields
  * and stride, sorted brightest first (by Y), so reading a prefix of a tile loads it to a magnitude limit.

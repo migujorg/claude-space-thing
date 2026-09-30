@@ -1,7 +1,7 @@
 // URL parameters for reproducible views:
 //   ?t=<ISO UTC>&target=<NAIF id>&dist=<km from target center>&az=<deg>&el=<deg>
 //    &exists=strict|best|complete&view=eye|enhanced&boost=<stops>&fov=<deg, vertical>
-//    &labels=0|1&orbits=0|1&tint=0|1&ui=0|1&system=jup,sat|all&smallbodies=0|1&shield=0|1
+//    &labels=0|1&orbits=0|1&tint=0|1&ui=0|1&system=jup,sat|all&smallbodies=0|1&sbfield=0|1&shield=0|1
 //    &adapt=instant|realtime&adaptfrom=<cd/m²>,<exposure s>,<elapsed s>
 // adapt: how the eye adapts over time (default realtime). adaptfrom: a defined eye history for tests and
 // demonstrations, e.g. adaptfrom=10000,600,300 = 10 min in daylight, then 5 min looking at this view.
@@ -34,6 +34,9 @@ export interface UrlView {
   system?: string[];
   /** false: do not load the small-body catalogue. */
   smallbodies?: boolean;
+  /** false: load the catalogue (targets, selection, comets) but do not draw it all as GPU points (no field: a view far
+   * from the catalogue epoch then needs no integration of every object; used by the comet regression scene). */
+  sbfield?: boolean;
   /** Sun shield (viewing aid): an occulting disc over the Sun (RealityState.sunShield). */
   shield?: boolean;
   /** Eye adaptation over time (RealityState.instantAdaptation). */
@@ -106,6 +109,7 @@ export function parseUrlParams(search: string): { view: UrlView; errors: string[
   view.tint = bool('tint');
   view.ui = bool('ui');
   view.smallbodies = bool('smallbodies');
+  view.sbfield = bool('sbfield');
   view.shield = bool('shield');
   const ad = p.get('adapt');
   if (ad !== null) {
@@ -134,7 +138,7 @@ export function formatUrlParams(v: UrlView): string {
   if (v.view !== undefined) p.set('view', v.view);
   if (v.boost !== undefined) p.set('boost', String(v.boost));
   if (v.fov !== undefined) p.set('fov', sig(v.fov, 4));
-  for (const k of ['labels', 'orbits', 'tint', 'ui', 'smallbodies', 'shield'] as const) if (v[k] !== undefined) p.set(k, v[k] ? '1' : '0');
+  for (const k of ['labels', 'orbits', 'tint', 'ui', 'smallbodies', 'sbfield', 'shield'] as const) if (v[k] !== undefined) p.set(k, v[k] ? '1' : '0');
   if (v.system?.length) p.set('system', v.system.join(','));
   if (v.adapt !== undefined) p.set('adapt', v.adapt);
   if (v.adaptFrom) p.set('adaptfrom', `${v.adaptFrom.luminanceCdM2},${v.adaptFrom.exposureS},${v.adaptFrom.elapsedS}`);

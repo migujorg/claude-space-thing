@@ -6,7 +6,7 @@
 // where this port says `eph: EphemerisSetPort`, even if the concrete class has extra/private members.
 
 import type {
-  EphemHeader, IauRotation, Label, OrientationHeader, SmallBodyCoreHeader, SmallBodyPhotometry, SmallBodyPhysicalHeader, SmallBodyTableHeader, Sourced, SyntheticObjectsHeader, TimeData,
+  CometModelProduct, EphemHeader, IauRotation, Label, OrientationHeader, SmallBodyCoreHeader, SmallBodyPhotometry, SmallBodyPhysicalHeader, SmallBodyTableHeader, Sourced, SyntheticObjectsHeader, TimeData,
 } from '../data/schema';
 import type { Mat3, RendererStats, SceneSnapshot, StarCatalog, Vec3 } from '../render/scene';
 import type { SkyBackgroundHook } from '../render/sky/background';
@@ -191,6 +191,8 @@ export interface RendererPort {
   setExtraPointSources?(src: PointSourceBuffer | null): void;
   /** Optional (M4): sky background (Milky Way, faint stars, zodiacal light) drawn behind the bodies. */
   setBackground?(b: SkyBackgroundHook | null): void;
+  /** Optional: the physical model of comets (comets/model.json) for SceneSnapshot.comets; null removes it. */
+  setCometModel?(model: CometModelProduct | null): void;
 }
 export interface RendererFactory {
   create(canvas: HTMLCanvasElement): Promise<RendererPort>;

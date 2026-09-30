@@ -22,7 +22,7 @@ from typing import Any, Callable
 
 # Order matters: later stages may read earlier stages' outputs (each stage's DEPENDS names them).
 STAGES = ["time", "ephemeris", "light", "surfaces", "shapes", "bodies", "smallbodies", "sbphotometry", "synthetic",
-          "stars", "deepstars", "sky"]
+          "comets", "stars", "deepstars", "sky"]
 
 
 def _bool(v: str) -> bool:
@@ -173,6 +173,8 @@ COSTS: dict[str, Cost] = {
     "sbphotometry": Cost(0.002, 0.002, 0.002, 0.00003, 0.5, 0.2,
                          "estimated from its inputs: one 1.3 MB source archive, a few Horizons queries"),
     "synthetic": Cost(0.03, 0.03, 0.2, 0.15, 1.5, 1, "docs/reports/synthetic-populations.md"),
+    "comets": Cost(0.02, 0.02, 0.05, 0.002, 5, 5, "docs/reports/comets.md",
+                   "propagates every comet with M1/K1 day by day through the window; a few Horizons queries"),
     "stars": Cost(116, 1.6, 3.2, 0.024, 50, 1, "docs/reports/stars.md",
                   "streams all 114 GB of Gaia DR3 XP spectra once (only 1.2 GB kept); with deepstars or sky in the "
                   "same build it also fills their 1.1 GB XP cache in that pass"),
@@ -192,7 +194,7 @@ RAW_DIRS: dict[str, tuple[str, ...]] = {
               "decolibus2026", "smallbody_colors", "neowise_v2"),
     "surfaces": ("surfaces",), "shapes": ("shapes",),
     "smallbodies": ("sbdb", "ssodnet", "mpc", "lcdb", "gaia_dr3_sso", "cneos", "horizons"),
-    "sbphotometry": ("sbpy",), "synthetic": ("synthetic",),
+    "sbphotometry": ("sbpy",), "synthetic": ("synthetic",), "comets": ("comets", "papers"),
     "stars": ("stars",), "deepstars": ("stars/gaia_dr3_deep",), "sky": ("sky", "stars/gaia_dr3_sums"),
 }
 

@@ -4,6 +4,8 @@
 //   1. bodies   → EXT (XYZS luminance, additive), W (Ricco weight, min), MASK (not-measured map gaps and
 //                 ring regions), depth (reversed-Z, ∞ far); surface maps are virtual-textured (surfaceGpu.ts);
 //                 then rings (ray–plane, lit/unlit faces, planet shadow), depth-tested, not depth-writing
+//   1b. comets  → EXT: comae (enclosed-light tables; below the Ricco area → body points) and dust/ion-tail
+//                 packets of the comets the shell draws extended (SceneSnapshot.comets; ./comets/model.ts)
 //   2. cull     → stars above the Crumey threshold → compact list + indirect draw args (compute)
 //   3. points   → PT (stars, unresolved bodies): physical energy-conserving splats, depth-tested vs
 //                 bodies, and PTEX: the part of their light the display cannot convey (eye/points.ts)
@@ -30,6 +32,8 @@ import { LAW } from './spatial';
 import { cameraGeom, prepareFrame, type PreparedFrame } from './frame';
 import { ExtraPointSources, type PointSourceBuffer } from './extraPoints';
 import { HdrReadback, type HdrImage, type HdrRect, type HdrRegionStats } from './hdrReadback';  // validation hook
+import { CometLayer } from './comets/layer';
+import type { CometModelProduct } from '../data/schema';
 import { orbitVertices } from './overlays';
 import { AdaptationState, computeEyeFrame, localObserver, type EyeFrame } from '../eye/model';
 import { magnitudeFromLux } from '../eye/crumey';
@@ -120,6 +124,8 @@ export class Renderer {
   private starStride = 7;
   private starCount = 0;
   private extraPts: ExtraPointSources | null = null;
+  /** Comet comae and tails (./comets), drawn from SceneSnapshot.comets once a model is set. */
+  private comets: CometLayer | null = null;
   private visible: GPUBuffer;
   private maxVisible = 1;
   private frameIndex = 0;
@@ -418,6 +424,12 @@ export class Renderer {
     this.maxVisible = Math.max(1, Math.min(this.starCount + this.extraPts.count, MAX_VISIBLE_STARS));
     this.visible.destroy();
     this.visible = this.device.createBuffer({ size: this.maxVisible * 32, usage: GPUBufferUsage.STORAGE });
+  }
+
+  /** The physical model of comets (comets/model.json); null removes it. See ./comets. */
+  setCometModel(model: CometModelProduct | null): void {
+    this.comets?.destroy();
+    this.comets = model ? new CometLayer(this.device, model, this.hdrFormat) : null;
   }
 
   resize(width: number, height: number, devicePixelRatio: number): void {
@@ -794,6 +806,12 @@ export class Renderer {
 
     // 1b. Sky background (render/sky): extended sky light into EXT wherever no body is in front.
     if (this.background && !skip.has('background')) this.background.encode(enc, { ext: t.ext, depth: t.depth, frameUB: this.frameUB, limbs: this.limbsUB, W: t.W, H: t.H, snapshot });
+    // 1b. Comets drawn extended: tails and comae into EXT behind the bodies; comae smaller than the Ricco area join
+    //     the point sources (prep.points, drawn in step 3).
+    if (this.comets && snapshot.comets?.length && !skip.has('comets')) {
+      this.comets.encode(enc, t, this.frameUB, snapshot.et, snapshot.comets, g, eye.riccoAreaSr, prep.points, { timestampWrites: () => this.tsw('comets') });
+      this.stats.comets = { comae: this.comets.stats.comae, packets: this.comets.stats.packets };
+    } else if (this.stats.comets) this.stats.comets = { comae: 0, packets: 0 };
 
     // 2. Star visibility culling (reads last frame's veil for the local background).
     const veilView = t.levels[0].acc.createView();

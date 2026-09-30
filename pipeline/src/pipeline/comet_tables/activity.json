@@ -1,0 +1,79 @@
+{
+  "description": "Numbers transcribed from papers for the comets stage (coma brightness split, colours, dust dynamics, ion tail). Every entry names its source id (docs/sources/<id>.md; the PDF is kept with its sha256) and where in the paper the number is.",
+  "waterFromMagnitude": {
+    "source": "jorda-2008",
+    "where": "Results: log Q[H2O] = 30.675 (0.007) - 0.2453 (0.0013) mH; Q[H2O] = 1.1 Q[OH]; RMS of log Q residuals 0.190; 234 points, 37 comets, r = 0.32-4.53 au",
+    "a": 30.675,
+    "b": 0.2453,
+    "qH2OPerQOH": 1.1,
+    "rmsDex": 0.19,
+    "rRangeAu": [0.32, 4.53],
+    "note": "mH is the visual magnitude reduced to Delta = 1 au (mV - 5 log Delta); with the SBDB total-magnitude law mH = M1 + K1 log10 r."
+  },
+  "dustColour": {
+    "source": "jewitt-2015-colors",
+    "where": "Sect. 3 (Long Period Comets): mean colours of 26 LPCs B-V = 0.78+-0.02, V-R = 0.47+-0.02, R-I = 0.42+-0.03; (Active Short-Period Comets, from Solontoi et al. 2012) B-V = 0.80+-0.01, V-R = 0.46+-0.01; Table 3 last row: Sun B-V = 0.64+-0.02, V-R = 0.35+-0.01, R-I = 0.33+-0.01",
+    "longPeriod": {"BV": 0.78, "VR": 0.47, "RI": 0.42, "err": [0.02, 0.02, 0.03], "n": 26},
+    "shortPeriod": {"BV": 0.80, "VR": 0.46, "err": [0.01, 0.01], "n": 20},
+    "sun": {"BV": 0.64, "VR": 0.35, "RI": 0.33, "err": [0.02, 0.01, 0.01]},
+    "note": "Broadband colours of active comae measured in apertures of a few arcsec, mostly of comets beyond ~2 au where gas emission contributes little: taken as the colour of the dust. Short-period comets have no R-I in the source; the long-period R-I excess is used for both."
+  },
+  "oxygenRedDoublet": {
+    "source": "bhardwaj-raghuram-2012",
+    "where": "Table 4 footnote: branching ratio for O(1D) from H2O photodissociation 0.064, from OH photodissociation 0.357 (after Morgenthaler et al. 2001), OH yield of H2O photodissociation 0.81 (Huebner et al. 1992); Sect. 4 Eq. 1 text: beta6300 = 0.75, beta6364 = 0.25; Table 1: radiative rates A6300 = 6.44e-3 s-1, A6364 = 2.15e-3 s-1",
+    "yieldO1DFromH2O": 0.064,
+    "yieldOHFromH2O": 0.81,
+    "yieldO1DFromOH": 0.357,
+    "branching": {"6300": 0.75, "6364": 0.25},
+    "wavelengthsNm": {"6300": 630.0, "6364": 636.4},
+    "note": "Photons per water molecule of the whole coma, collisional quenching of O(1D) in the inner coma neglected (an upper bound for very productive comets)."
+  },
+  "dustGrains": {
+    "sources": ["moreno-jehin-2025", "agarwal-2007-dust"],
+    "where": "Moreno & Jehin (2025) Sect. 3: beta = C_pr Q_pr / (2 rho r), C_pr = 1.191e-3 kg m-2 (printed 1.191 x 10^3), Q_pr ~ 1 for r >~ 1 um (Mie, moderately absorbing grains); Agarwal et al. (2007) Eq. 9 beta = 3 L Q_pr / (16 pi c G M rho s), Table 1: 1P/Halley DIDSY > 20 um differential size index -3.5+-0.2, Stardust samples up to 1e-3 kg; Sect. 4: constant bulk density of 1000 kg/m3",
+    "qPr": 1.0,
+    "densityKgM3": 1000.0,
+    "sizeIndex": -3.5,
+    "sizeIndexErr": 0.2,
+    "radiusMinM": 1e-6,
+    "massMaxKg": 1e-3,
+    "note": "beta is computed from the solar luminosity, GM_sun and c (Agarwal Eq. 9); Moreno & Jehin's C_pr is the same physics with an older solar luminosity (4 %; pipeline/tests/test_comets.py). Grains below 1 um (Q_pr < 1, beta saturating) are left out."
+  },
+  "dustEjection": {
+    "source": "moreno-jehin-2025",
+    "where": "Eq. 1: v(beta, rh, z) = v0 beta^gamma rh^Gamma (cos z)^eps, gamma <= 0.5 (Fulle 1987), Gamma = -0.5 (Whipple 1951; Reach et al. 2000); Eq. 2 and text: gamma = 0.25, v0 = 1 km/s (fitted for C/2023 A3)",
+    "v0KmS": 1.0,
+    "gamma": 0.25,
+    "Gamma": -0.5,
+    "note": "Terminal speed of a grain relative to the nucleus; used for the widths of synchrones and syndynes (a grain shell of radius v tau around its zero-velocity position). Isotropic (the zenith-angle term averaged out)."
+  },
+  "haserVelocity": {
+    "source": "opitom-2024-12p",
+    "where": "Table 3 caption: standard Haser model with v = 1 km s-1, g-factors from the Lowell Minor Planet Services and scale lengths as tabulated",
+    "kmS": 1.0,
+    "note": "The Lowell Haser scale lengths are fitted with v = 1 km/s (A'Hearn et al. 1995), so the coma's total number of daughters is Q l_d / v with this v."
+  },
+  "coPlus": {
+    "source": "rousselot-2024-coplus",
+    "where": "Table 1: fluorescence efficiencies of 12CO+ (A2Pi - X2Sigma+, comet-tail system) at rh = 1 au, vh = 0, erg s-1 ion-1, rows v' = 0..5, columns v'' = 0..5; Table 4: wavelengths (A) of 12CO+ lines of the (3,0) and (2,0) bands",
+    "gErgPerSIon1Au": [
+      [8.40e-16, 1.87e-15, 1.81e-15, 9.99e-16, 3.45e-16, 7.63e-17],
+      [7.68e-15, 8.41e-15, 2.19e-15, 7.10e-18, 7.63e-16, 7.87e-16],
+      [1.36e-14, 5.38e-15, 9.28e-17, 2.25e-15, 1.03e-15, 2.94e-18],
+      [1.70e-14, 9.24e-16, 3.07e-15, 1.90e-15, 5.49e-17, 8.79e-16],
+      [1.04e-14, 1.97e-16, 2.96e-15, 2.23e-17, 9.53e-16, 2.80e-16],
+      [5.12e-15, 1.21e-15, 1.04e-15, 4.14e-16, 5.21e-16, 4.16e-17]
+    ],
+    "linesA": {
+      "(3,0)": [4017.855, 4018.135, 4018.560, 4019.140, 4019.825, 4020.040, 4020.395, 4021.045, 4021.740, 4022.375, 4024.285, 4024.730, 4025.765, 4026.020, 4027.402],
+      "(2,0)": [4272.445, 4272.950, 4273.620, 4274.370, 4274.600, 4274.970, 4275.510, 4277.475, 4279.825]
+    },
+    "note": "Only the (3,0) and (2,0) bands have wavelengths in the source: the ion tail's spectrum is those two bands, each carrying its share of the total of Table 1 in proportion to its own efficiency (the other bands lie at 3800-5000 A too)."
+  },
+  "coAbundance": {
+    "source": "cochran-2015-composition",
+    "where": "Sect. 2.2: Q_CO/Q_H2O from < 1% for C/2000 WM1 (LINEAR) to > 20% for C/1996 B2 (Hyakutake); CO/H2O varies by a factor of 50 across comets observed in the UV",
+    "rangeFraction": [0.01, 0.20],
+    "note": "The ion tail uses the geometric mean of the quoted range (4.5 %); an individual comet can be 5x brighter or fainter in CO+."
+  }
+}

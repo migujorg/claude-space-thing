@@ -1083,6 +1083,17 @@ export class AppModel {
       }
       if (!sb.field) overlayOnly.push('marker' in e ? e.marker : { id: g.id, name: g.body.name, pos: g.app.rel, worstLabel: e.body.worstLabel, selected: g.id === this.selectedId });
     }
+    // Comets resolved from the camera: coma and tails (render/comets), no longer points of the field.
+    if (sb.comets) {
+      const pixelAngle = (2 * Math.tan(cam.fovY / 2)) / cam.height;
+      const inView = this.smallBodyIdsInView().map(sbRow);
+      const o = cam.orient;
+      const aspect = cam.width / Math.max(1, cam.height);
+      const view = { dir: [-o[2], -o[5], -o[8]] as Vec3, halfDiagonalRad: Math.atan(Math.tan(cam.fovY / 2) * Math.hypot(1, aspect)) };
+      const got = sb.comets.frame(inView, world.cameraPos, world.et, this.core, level, pixelAngle, undefined, view);
+      if (got.comets.length) snap.comets = got.comets;
+      if (sb.field) for (const row of got.rows) if (!excluded.includes(row)) excluded.push(row);
+    }
     const key = excluded.join(',');
     if (key !== this.sbExcluded) {
       this.sbExcluded = key;

@@ -352,8 +352,8 @@
   "earth-day-strict": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&target=399&dist=20000&az=0&el=0&exists=strict",
    "stats": {
-    "adaptationLuminance": 0.00001,
-    "scotopicAdaptationLuminance": 0.00001408,
+    "adaptationLuminance": 1e-05,
+    "scotopicAdaptationLuminance": 1.408e-05,
     "pupilDiameterMm": 7.892612754887529,
     "mesopicM": 0,
     "limitingMagnitude": 7.601985293005745,
@@ -1179,7 +1179,7 @@
   "starfield": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&target=999&dist=3000000000&labels=0",
    "stats": {
-    "adaptationLuminance": 0.000054438933694600595,
+    "adaptationLuminance": 5.4438933694600595e-05,
     "scotopicAdaptationLuminance": 0.00011576808711704343,
     "pupilDiameterMm": 7.8372675848035955,
     "mesopicM": 0,
@@ -1209,8 +1209,8 @@
   "starfield-enhanced": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&target=999&dist=3000000000&labels=0&view=enhanced&boost=6",
    "stats": {
-    "adaptationLuminance": 0.00004187434575028532,
-    "scotopicAdaptationLuminance": 0.00008768483105914255,
+    "adaptationLuminance": 4.187434575028532e-05,
+    "scotopicAdaptationLuminance": 8.768483105914255e-05,
     "pupilDiameterMm": 7.8366714719737685,
     "mesopicM": 0,
     "limitingMagnitude": 11.233767176298414,
@@ -1425,7 +1425,7 @@
   "starfield-dark-2min": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&target=999&dist=3000000000&labels=0&adaptfrom=10000%2C600%2C120",
    "stats": {
-    "adaptationLuminance": 0.00006353122935205967,
+    "adaptationLuminance": 6.353122935205967e-05,
     "scotopicAdaptationLuminance": 0.00013639825588356635,
     "pupilDiameterMm": 7.836907429178297,
     "mesopicM": 0,
@@ -1455,7 +1455,7 @@
   "starfield-dark-12min": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&target=999&dist=3000000000&labels=0&adaptfrom=10000%2C600%2C720",
    "stats": {
-    "adaptationLuminance": 0.00006292023092925444,
+    "adaptationLuminance": 6.292023092925444e-05,
     "scotopicAdaptationLuminance": 0.0001349682279289137,
     "pupilDiameterMm": 7.836805452471469,
     "mesopicM": 0,
@@ -1485,7 +1485,7 @@
   "starfield-dark-30min": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&target=999&dist=3000000000&labels=0&adaptfrom=10000%2C600%2C1800",
    "stats": {
-    "adaptationLuminance": 0.000056439053524188445,
+    "adaptationLuminance": 5.6439053524188445e-05,
     "scotopicAdaptationLuminance": 0.00012030138209054376,
     "pupilDiameterMm": 7.836523698897002,
     "mesopicM": 0,
@@ -1511,6 +1511,32 @@
    },
    "consoleErrors": [],
    "readyMs": 40955
+  },
+  "comet-lemmon": {
+   "query": "t=2025-10-27T00:00:00Z&smallbodies=1&target=1004054&sbfield=0&dist=40000000&az=90&el=20&shield=1",
+   "stats": {
+    "adaptationLuminance": 1.0750226534141897e-05,
+    "scotopicAdaptationLuminance": 2.4833550011256867e-05,
+    "pupilDiameterMm": 7.76111252528496,
+    "mesopicM": 0,
+    "limitingMagnitude": 7.322145509544188,
+    "starsDrawn": 5322,
+    "bodiesDrawn": 3,
+    "bodies": [],
+    "points": [
+     "-3995:derived:marker",
+     "301:estimated",
+     "399:estimated"
+    ],
+    "bodiesInSnapshot": 75,
+    "sun": true,
+    "warnings": [],
+    "badge": [
+     "SUN SHIELDED: occulting disc (viewing aid)"
+    ]
+   },
+   "consoleErrors": [],
+   "readyMs": 71044
   }
  }
 }

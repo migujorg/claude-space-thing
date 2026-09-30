@@ -31,9 +31,21 @@ def test_entries_match_schema(built):
     assert sorted(out) == sorted(str(n) for n in NAIF)
     for key, e in out.items():
         assert {"geometricAlbedoXYZS", "geometricAlbedoV", "phaseFunction"} <= set(e)
-        assert set(e) - {"geometricAlbedoXYZS", "geometricAlbedoV", "phaseFunction"} <= {"diskReflectanceModel"}
+        assert set(e) - {"geometricAlbedoXYZS", "geometricAlbedoV", "phaseFunction"} <= {"diskReflectanceModel",
+                                                                                         "spatialModel"}
         for s in e.values():
             _check_sourced(s, ctx)
+        sm = e.get("spatialModel")
+        if sm is not None:     # schema.ts SpatialPhotometricModel: only the fields the renderer reads
+            v = sm["value"]
+            allowed = {"minnaert": {"kind", "k", "validPhaseDeg"},
+                       "hapke": {"kind", "w", "b", "c", "bs0", "hs", "bc0", "hc", "thetaBarDeg", "K", "hFunction",
+                                 "validPhaseDeg"}}
+            assert v["kind"] in allowed and set(v) <= allowed[v["kind"]], key
+            if v["kind"] == "hapke":
+                assert 0 < v["w"] < 1 and 0 <= v["b"] < 1 and v["K"] >= 1 and v["hFunction"] in ("hapke2002",
+                                                                                                "hapke1981")
+            assert sm["label"] == "estimated"
         v = e["geometricAlbedoXYZS"]["value"]
         if v is not None:
             assert len(v) == 4 and all(isinstance(x, float) and x > 0 for x in v)
