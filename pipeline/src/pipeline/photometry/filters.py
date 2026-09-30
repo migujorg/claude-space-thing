@@ -92,7 +92,25 @@ def _voyager_nac(band: str) -> Download:
         notes="Filter + instrument (vidicon) relative response; SVO lists it as an energy counter (DetectorType 0).")
 
 
+def _hriv(band: str) -> Download:
+    return Download(
+        id=f"svo-deepimpact-hriv-{band.lower()}", url=_SVO.format(id=f"DeepImpact/HRI-VIS.{band}"), subdir="filters",
+        name=f"DeepImpact_HRI-VIS.{band}.dat",
+        title=f"Deep Impact HRI-VIS {band} filter system response, SVO DeepImpact/HRI-VIS.{band}",
+        citation="Hampton, D. L. et al. (2005). An overview of the instrument suite for the Deep Impact mission. "
+                 "Space Science Reviews 117, 43-93. DOI:10.1007/s11214-005-3390-8. Curve as distributed by the SVO "
+                 "Filter Profile Service (profile reference: PDS DIF-C-HRIV-3/4-9P-ENCOUNTER-V3.0 calib). " + _SVO_CITE,
+        notes="Filter + CCD system response, photon counter (SVO DetectorType 1).")
+
+
+def _ahi9_download() -> Download:
+    from .earth_data import AHI_SRF
+    return AHI_SRF
+
+
 FILTERS = {**{f"bessell.{b}": _bessell(b) for b in "UBVRI"}, **{f"johnson.{b}": _johnson(b) for b in "UBVRI"},
+           **{f"hriv.{b}": _hriv(b) for b in ("Violet", "Blue", "Green", "Orange", "Red", "NIR", "IR")},
+           **{f"ahi9.B{b:02d}": _ahi9_download() for b in (1, 2, 3, 4)},
            **{f"wfpc2.{b}": _wfpc2(b) for b in ("F336W", "F439W", "F555W", "F675W", "F814W")},
            "voyager.nac.Clear": _voyager_nac("Clear"),
            **{f"cassini.wac.{b}": _cassini_wac(b) for b in ("VIO", "BL1", "GRN", "RED", "CB2", "CB3")},
@@ -102,11 +120,15 @@ FILTERS.update({b: FILTERS[f"bessell.{b}"] for b in "UBVRI"})
 
 # Photon-counting responses (SVO DetectorType 1): the detected signal is ∫ E T λ dλ / (hc), so band averages of an
 # albedo weight by E·T·λ. Johnson/Bessell curves are tabulated as energy responses (DetectorType 0): weight E·T.
-PHOTON_COUNTERS = {k for k in FILTERS if k.startswith(("cassini.", "hrsc.", "wfpc2."))}
+PHOTON_COUNTERS = {k for k in FILTERS if k.startswith(("cassini.", "hrsc.", "wfpc2.", "hriv."))}
+# AHI-09 responses (JMA workbook, not SVO) weight radiance per unit wavelength: energy weighting.
 
 
 @lru_cache(maxsize=None)
 def passband(key: str) -> tuple[np.ndarray, np.ndarray]:
+    if key.startswith("ahi9."):
+        from .earth import ahi_passband
+        return ahi_passband(int(key[-2:]))
     d = np.loadtxt(FILTERS[key].fetch())
     return d[:, 0] / 10.0, d[:, 1]  # nm, transmission
 

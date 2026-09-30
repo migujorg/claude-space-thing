@@ -274,6 +274,37 @@ export type PhaseFunction =
   /** Polynomial in phase angle (degrees) giving magnitude correction, e.g. Mallama & Hilton (2018). Valid in [minDeg, maxDeg]. */
   | { kind: 'poly-mag'; coeffs: number[]; minDeg: number; maxDeg: number };
 
+/** smallbody-class-colors.json (light stage): estimated colours and albedo statistics for small bodies without a
+ *  measured spectrum. An object's geometricAlbedoXYZS = p_V × xyzsPerUnitPV (lux at 1 AU, §4.3); using these makes
+ *  the object's attribute `estimated`. See docs/sources/smallbody-class-colors.md. */
+export interface SmallBodyClassColorsFile {
+  definition: string;
+  /** Bus-DeMeo classes (DeMeo et al. 2009). */
+  classes: Record<string, SmallBodyClassEntry>;
+  /** Coarse SDSS colour classes (Carvano et al. 2010): frequency and p_V statistics. */
+  sdssClasses: Record<string, { meanSpectrumClass: string; frequency: number; numberedSingleLetter: number;
+                                pV: PVStats | null }>;
+  /** For objects of unknown class. */
+  population: { colour: Sourced<{ xyzsPerUnitPV: [number, number, number, number] }>; pV: Sourced<PVStats> };
+  /** Other schemes' class labels → the Bus-DeMeo class whose colour to use (assumed correspondences; `rule`). */
+  aliases: { rule: string; bus: Record<string, string>; tholen: Record<string, string>; mahlke: Record<string, string> };
+}
+
+export interface SmallBodyClassEntry {
+  colour: Sourced<{
+    xyzsPerUnitPV: [number, number, number, number];
+    /** The class reflectance spectrum used (normalized to 1 at 550 nm), to 900 nm. */
+    spectrum: { wavelengthNm: number[]; reflectance: number[] };
+    ultravioletFrom: string;
+    ecasN: number;
+    ecasWavelengthsNm: [number, number];
+  }>;
+  /** NEOWISE-fitted p_V of the class's classified asteroids; unknown when fewer than 3. */
+  pV: Sourced<PVStats>;
+}
+
+export interface PVStats { median: number; p16: number; p84: number; n: number }
+
 /** rings.json: planet NAIF id (as string) → ring system. Produced by the `light` stage. See docs/architecture.md §6. */
 export type RingsFile = Record<string, RingSystem>;
 

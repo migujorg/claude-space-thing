@@ -60,19 +60,21 @@ export class Input {
       down = null;
       if (wasClick) {
         const r = c.getBoundingClientRect();
-        const id = this.model.pickAt(e.clientX - r.left, e.clientY - r.top);
-        if (id !== null) this.model.select(id);
+        // Major bodies first; else the small-body field's GPU pick (asynchronous).
+        void this.model.pickAtAsync(e.clientX - r.left, e.clientY - r.top).then((id) => {
+          if (id !== null) this.model.select(id);
+        });
       }
     };
     this.on(c, 'pointerup', up);
     this.on(c, 'pointercancel', () => (down = null));
     this.on(c, 'dblclick', (e) => {
       const r = c.getBoundingClientRect();
-      const id = this.model.pickAt(e.clientX - r.left, e.clientY - r.top);
-      if (id !== null) {
+      void this.model.pickAtAsync(e.clientX - r.left, e.clientY - r.top).then((id) => {
+        if (id === null) return;
         const res = this.model.goTo(id);
         if (typeof res === 'string') this.model.message(res, 'warn');
-      }
+      });
     });
     this.on(
       c,

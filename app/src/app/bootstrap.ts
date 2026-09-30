@@ -11,6 +11,7 @@ import type { SceneSnapshot } from '../render/scene';
 import { mountUi, type Ui } from '../ui/index';
 import { AppModel } from './model';
 import type { AppDeps, RendererPort } from './ports';
+import { sbId } from './smallbodies';
 import { formatUrlParams, parseUrlParams, type UrlView } from './url';
 
 export interface AppHandle {
@@ -35,8 +36,16 @@ export interface DebugApi {
   snapshot(): SceneSnapshot | null;
   /** Resolves after the next frame has been rendered and the renderer has settled. */
   nextFrame(): Promise<void>;
+  /** Small bodies: name search (starts the name index), and go-to by SBDB SPK-ID. */
+  smallBodies: {
+    search(query: string, limit?: number): Promise<{ row: number; id: number; name: string }[]>;
+    goTo(spkid: number, dist?: number, instant?: boolean): Promise<void>;
+  };
   model: AppModel;
 }
+
+/** The name index runs in a module worker (Vite bundles it). */
+const defaultNameWorker = (): Worker => new Worker(new URL('./names.worker.ts', import.meta.url), { type: 'module' });
 
 declare global {
   interface Window {
@@ -90,6 +99,21 @@ export async function startApp(canvas: HTMLCanvasElement, uiRoot: HTMLElement, d
     url: () => formatUrlParams(model.currentUrlView()),
     snapshot: () => model.snapshot,
     nextFrame: () => new Promise<void>((res) => frameWaiters.push(res)),
+    smallBodies: {
+      search: async (q, limit) => {
+        if (!model.names) throw new Error('no small-body name index');
+        const r = await model.names.search(q, limit);
+        return r.hits.map((h) => ({ row: h.row, id: sbId(h.row), name: h.display }));
+      },
+      goTo: async (spkid, dist, instant) => {
+        if (!model.names) throw new Error('no small-body name index');
+        const row = await model.names.rowOfSpkid(spkid);
+        if (row === null) throw new Error(`no small body with SPK-ID ${spkid}`);
+        const r = model.goTo(sbId(row), dist, { instant });
+        if (typeof r === 'string') throw new Error(r);
+        await r;
+      },
+    },
     model,
   };
 
@@ -110,7 +134,7 @@ export async function startApp(canvas: HTMLCanvasElement, uiRoot: HTMLElement, d
       verifyHashes: deps.verifyHashes,
       eagerEphemeris: eagerEphemeris(view),
     });
-    model.setData(data);
+    model.setData(data, deps.dataBaseUrl ?? `${import.meta.env.BASE_URL}data/`);
     ui.status(null);
     const missing = data.report.products.filter((p) => p.status === 'missing' || p.status === 'error');
     if (missing.length) model.message(`${missing.length} data product${missing.length > 1 ? 's' : ''} missing or unusable — see Data (M).`, 'warn');
@@ -145,11 +169,26 @@ export async function startApp(canvas: HTMLCanvasElement, uiRoot: HTMLElement, d
     // DOM overlays (labels) always match the image on screen. Simulated time still advances by real time.
     let inFlight = false;
     let last = performance.now();
+    let fieldFailed = false;
     const renderFrame = (dt: number, fly: ReturnType<typeof input.flyInput>) => {
       const s = model.frame(dt, fly);
       ui.update(dt, renderer?.stats ?? null);
       const ws = frameWaiters.splice(0);
       if (!renderer) { ws.forEach((w) => w()); return; }
+      // The small-body field propagates and shades the catalogue on the GPU, before the frame that draws its points.
+      const field = model.smallBodies?.field;
+      const dev = renderer.gpuDevice;
+      if (field && dev && !fieldFailed) {
+        try {
+          const enc = dev.createCommandEncoder();
+          field.update(enc, s.et, model.pose.pos, { brightness: model.reality.exists });
+          dev.queue.submit([enc.finish()]);
+        } catch (e) {
+          fieldFailed = true;
+          console.error(e);
+          model.message(`Small bodies can no longer be drawn: ${(e as Error).message ?? e}`, 'error');
+        }
+      }
       renderer.render(s);
       inFlight = true;
       renderer.settled().then(
@@ -157,9 +196,48 @@ export async function startApp(canvas: HTMLCanvasElement, uiRoot: HTMLElement, d
         (e) => { inFlight = false; console.error(e); ws.forEach((w) => w()); },
       );
     };
-    // Initial frame first (the user sees something at once), then moon systems load in the background.
+    // Initial frame first (the user sees something at once), then moon systems load in the background, then
+    // the small-body catalogue (names are indexed in a worker when search or a small-body target needs them).
     renderFrame(0, null);
     model.startBackgroundLoading();
+    const base = deps.dataBaseUrl ?? `${import.meta.env.BASE_URL}data/`;
+    const attachSmallBodyField = async () => {
+      const sb = model.smallBodies;
+      const dev = renderer?.gpuDevice;
+      if (!sb || !deps.SmallBodyField || !renderer || !dev || !renderer.setExtraPointSources) return;
+      try {
+        const t = sb.tables;
+        const field = await deps.SmallBodyField.create(
+          dev,
+          {
+            core: t.core.buffer,
+            coreHeader: t.core.header,
+            physical: t.physical?.buffer,
+            physicalHeader: t.physical?.header,
+            comets: t.comets?.buffer,
+            cometsHeader: t.comets?.header,
+            nongrav: t.nongrav?.buffer,
+            nongravHeader: t.nongrav?.header,
+          },
+          { positionSSB: (id, et) => model.eph?.positionSSB(id, et) ?? null },
+        );
+        model.setSmallBodyField(field);
+        renderer.setExtraPointSources(field.pointSources);
+      } catch (e) {
+        console.error(e);
+        model.message(`Small bodies cannot be drawn: ${(e as Error).message ?? e}`, 'error');
+      }
+    };
+    const smallBodiesReady = data.loader
+      ? model
+          .initSmallBodies({
+            loader: data.loader,
+            namesUrl: (file) => new URL(base + file, location.href).href,
+            worker: deps.nameWorker ?? defaultNameWorker,
+            enabled: view.smallbodies !== false,
+          })
+          .then(() => attachSmallBodyField())
+      : Promise.resolve();
     const loop = (t: number) => {
       if (!running) return;
       raf = requestAnimationFrame(loop);
@@ -171,8 +249,11 @@ export async function startApp(canvas: HTMLCanvasElement, uiRoot: HTMLElement, d
     raf = requestAnimationFrame(loop);
 
     // Screenshot contract: ready once everything that could appear in the view is loaded and drawn — every
-    // moon system (loaded or failed), all orbit tracks the overlay needs — and the GPU has finished.
+    // moon system (loaded or failed), the small-body catalogue and a small-body URL target, all orbit tracks
+    // the overlay needs — and the GPU has finished.
     await model.systemsIdle();
+    await smallBodiesReady;
+    await model.urlTargetSettled();
     const nextFrame = () => new Promise<void>((res) => frameWaiters.push(res));
     await nextFrame();
     // Orbit tracks are normally built a few per frame; here finish them at once, then render once more.

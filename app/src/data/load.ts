@@ -15,10 +15,12 @@ import type {
   OrientationHeader,
   PhotometryFile,
   SourceRecord,
+  RingsFile,
   TimeData,
 } from './schema';
 import { BinaryTable } from './binaryTable';
 import { parseStarNames, type StarName } from './stars';
+import { discoverSmallBodies, type SmallBodyProducts } from './smallbodies';
 import { discoverSurfaces, parseSurfaceHeader, type SurfaceLayer } from './surfaces';
 
 export type FetchFn = (url: string) => Promise<Response>;
@@ -95,6 +97,10 @@ export interface LoadedData {
   starNames: StarName[];
   /** Surface map layer headers (surfaces/<naifId>/<layer>.json); tiles are fetched on demand by the renderer. */
   surfaces: SurfaceLayer[];
+  /** Small-body products (loaded in the background, DataLoader + loadSmallBodyTables); null if not built. */
+  smallBodies?: SmallBodyProducts | null;
+  /** rings.json: planet NAIF id (string) → ring system. */
+  rings?: RingsFile | null;
   report: DataReport;
   /** Fetches deferred products later; null when the data came from elsewhere (tests). */
   loader: DataLoader | null;
@@ -122,6 +128,7 @@ const CONSEQUENCE: Record<string, string> = {
   'stars/bright.json': 'No star background.',
   'stars/bright.bin': 'No star background.',
   'stars/names.json': 'Star names unavailable in search.',
+  'rings.json': 'No ring data: planetary rings are not drawn.',
 };
 
 class NotFound extends Error {}
@@ -171,6 +178,11 @@ export class DataLoader {
 
   constructor(private readonly opts: LoadOptions) {
     this.verify = opts.verifyHashes ?? true;
+  }
+
+  /** Base URL of the data directory (products are fetched from base + path). */
+  get base(): string {
+    return this.opts.base;
   }
 
   setReport(path: string, r: Omit<ProductReport, 'path'>): void {
@@ -286,7 +298,7 @@ export async function loadAll(opts: LoadOptions): Promise<LoadedData> {
   const manifest = (L.manifest = await L.get('manifest.json', (b) => validateManifest(json(b))));
   const productPaths = Object.keys(manifest?.products ?? {});
 
-  const [sourcesArr, time, bodiesArr, photometry, light, starHeader, namesJson] = await Promise.all([
+  const [sourcesArr, time, bodiesArr, photometry, light, starHeader, namesJson, rings] = await Promise.all([
     L.get('sources.json', (b) => validateArray<SourceRecord>(json(b), 'sources.json', (s) => typeof s.id === 'string')),
     L.get('time.json', (b) => validateTime(json(b))),
     L.get('bodies.json', (b) => validateArray<Body>(json(b), 'bodies.json', (x) => typeof x.id === 'number' && typeof x.name === 'string')),
@@ -294,6 +306,7 @@ export async function loadAll(opts: LoadOptions): Promise<LoadedData> {
     L.get('light.json', (b) => validateLight(json(b))),
     L.get('stars/bright.json', (b) => json(b) as BinaryTableHeader),
     L.get('stars/names.json', (b) => json(b)),
+    L.get('rings.json', (b) => json(b) as RingsFile),
   ]);
 
   const sources = new Map<string, SourceRecord>();
@@ -394,6 +407,15 @@ export async function loadAll(opts: LoadOptions): Promise<LoadedData> {
   );
   surfaces.sort((a, b) => a.bodyId - b.bodyId || a.layer.localeCompare(b.layer));
   const tileFiles = new Set(found.flatMap((f) => f.tiles.paths));
+  if (manifest?.products['surfaces/index.json']) tileFiles.add('surfaces/index.json');
+
+  // Small bodies: tables load in the background after the moon systems; names are indexed when search needs them.
+  const smallBodies = discoverSmallBodies(manifest);
+  for (const p of smallBodies?.all ?? []) {
+    const bytes = manifest!.products[p].bytes;
+    if (p.endsWith('names.txt')) L.setReport(p, { status: 'on-demand', bytes, message: 'Indexed for search (in a worker) when first needed.' });
+    else L.setReport(p, { status: 'deferred', bytes, message: 'Loaded in the background after the moon systems.' });
+  }
 
   // Products the manifest lists that this app version does not read.
   for (const p of productPaths) {
@@ -410,10 +432,11 @@ export async function loadAll(opts: LoadOptions): Promise<LoadedData> {
     for (const e of [...ephemerides, ...deferred]) for (const s of e.header.segments) visit(s.sources);
     for (const o of orientations) for (const s of o.header.segments) visit(s.sources);
     for (const s of surfaces) visit(s.sources);
+    for (const r of Object.values(rings ?? {})) for (const a of [r.opticalDepth, r.reflectance]) visit(a?.sources);
     if (missing.size) notes.push(`Referenced source ids missing from sources.json: ${[...missing].sort().join(', ')}.`);
   }
 
-  return { manifest, sources, time, ephemerides, deferred, orientations, bodies, light, stars, starNames, surfaces, report: L.report, loader: L };
+  return { manifest, sources, time, ephemerides, deferred, orientations, bodies, light, stars, starNames, surfaces, smallBodies, rings: rings ?? null, report: L.report, loader: L };
 }
 
 // ---- light validation (structure only; values are the pipeline's) -------------------------------

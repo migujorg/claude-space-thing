@@ -85,8 +85,14 @@ def test_phase_functions_start_at_zero(built):
             assert phase.delta_mag(pf, 1.0) is None
             continue
         if n == 301:
-            # Moon: ROLO from 1.55 deg (opposition surge above the surge-free Lane & Irvine albedo), unknown below.
-            assert pf["alphaDeg"][0] == 1.55 and pf["deltaMag"][0] < 0 and phase.delta_mag(pf, 1.0) is None
+            # Moon: ROLO from 1.55 deg, where its reference albedo is defined (Φ = 1); unknown below.
+            assert pf["alphaDeg"][0] == 1.55 and pf["deltaMag"][0] == 0 and phase.delta_mag(pf, 1.0) is None
+            continue
+        if n == 399:
+            # Earth: referenced to the Himawari-9 measurement at α ≈ 2.4° (Φ = 1 there), the model shape elsewhere.
+            a_ref = r.spectrum.notes["reference_phase_deg"]
+            assert phase.delta_mag(pf, a_ref) == pytest.approx(0.0, abs=1e-4)
+            assert 0 < phase.delta_mag(pf, 0.0) < 0.01
             continue
         if n in (601, 602, 603, 604, 605):
             # Mimas-Rhea: surge-free VIMS albedo, measured opposition-surge shape: brighter than it at zero phase.

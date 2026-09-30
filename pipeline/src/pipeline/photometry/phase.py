@@ -190,6 +190,9 @@ def phase_for(naif: int, ctx: BuildContext | None = None) -> Phase:
                      "(2 < α < 179°), including the glory near 0° and the forward-scattering excess near 170°. "
                      "Tabulated every 0.5° (interpolation error < 0.002 mag).", zero_phase_V10=z)
     if naif == 399:
+        from . import earth
+        return earth.earth_phase(ctx)
+    if naif == -399:          # Mallama & Hilton's own normalization (kept for comparisons)
         b = MH["bodies"]["399"]
         p = b["pieces"][0]
         return Phase({"kind": "poly-mag", "coeffs": list(p["coeffs"]), "minDeg": 0.0, "maxDeg": 170.0}, "estimated",
@@ -252,8 +255,8 @@ def phase_for(naif: int, ctx: BuildContext | None = None) -> Phase:
 
 
 def _moon(ctx: BuildContext | None) -> Phase:
-    """ROLO (Kieffer & Stone 2005) for 1.55-97°, Lane & Irvine's (1973) shape beyond, relative to the Lane & Irvine
-    albedo that geometricAlbedoXYZS keeps (photometry/rolo.py)."""
+    """ROLO (Kieffer & Stone 2005) for 1.55-97°, Lane & Irvine's (1973) shape beyond, relative to the ROLO reference
+    albedo at 1.55° that geometricAlbedoXYZS holds (photometry/rolo.py)."""
     from . import rolo
     from .. import cie
     from . import solar
@@ -261,7 +264,7 @@ def _moon(ctx: BuildContext | None) -> Phase:
     src_rolo = rolo.ROLO.register(ctx) if ctx else rolo.ROLO.id
     common = ([solar.HSRS.register(ctx), *cie.register_sources(ctx)] if ctx else
               [solar.HSRS.id, cie.SOURCE_CMF, cie.SOURCE_SCOTOPIC])
-    p_y = rolo.lane_irvine_py(ctx)
+    p_y = rolo.reference_py()
     a, dm = _lane_irvine_phase()
     t = rolo.phase_table(p_y, a, dm)
     fn = t["function"]
@@ -273,8 +276,8 @@ def _moon(ctx: BuildContext | None) -> Phase:
         "which also has libration and waxing/waning) for the Y channel at zero libration, geometric mean of the "
         "waxing and waning Moon (the waxing Moon is brighter: "
         f"{m.ln_a(60.0, 60.0)[1] - m.ln_a(60.0, -60.0)[1]:.2f} in ln A at 60°), "
-        f"divided by the Lane & Irvine albedo p_Y = {p_y:.4f} that geometricAlbedoXYZS keeps. It includes the "
-        "opposition surge down to 1.55° (Φ > 1 below 2°: brighter than Lane & Irvine's surge-free extrapolation). "
+        f"divided by the same at 1.55°, p_Y = {p_y:.4f}, the reference of geometricAlbedoXYZS (so Φ(1.55°) = 1). "
+        "It includes the opposition surge down to 1.55°. "
         "97-120°: Lane & Irvine's (1973) measured V curve (Table V), shifted by "
         f"{t['tail_shift_mag']:+.3f} mag to join ROLO at 97° (assumption: their shape with ROLO's level; hence "
         "'estimated' for the whole curve). Tabulated (linear interpolation in magnitudes, error < 0.002 mag). Below "

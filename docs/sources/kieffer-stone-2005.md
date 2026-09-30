@@ -31,7 +31,8 @@ The paper's minus signs are lost by ordinary text extraction. Here the PDF text 
 
 **Use:**
 - `photometry.json` → `301.diskReflectanceModel` (label **derived**). The band reflectances are interpolated linearly in wavelength (bands 350–865 nm cover the 360–830 nm grid), weighted by sunlight (TSIS-1 HSRS) and the CIE observers. Eq. 10's wavelength-dependent coefficients are refitted per channel, with max |Δ ln A| = 2.3×10⁻⁵. The c and p constants are wavelength independent and carry over exactly.
-- `301.phaseFunction` for 1.55–97° (label **estimated** for the whole curve because of the join at 97°): the Y-channel A at zero libration, as the geometric mean of the waxing and waning Moon, divided by the Lane & Irvine albedo p_Y that `geometricAlbedoXYZS` keeps. For 97–120° Lane & Irvine's curve is shifted to join it (lane-irvine-1973.md).
+- `301.geometricAlbedoXYZS` / `geometricAlbedoV` (label **derived**, since M3 follow-up): the 32-band A_k at g = 1.55°, the model's smallest phase angle, at zero libration and as the geometric mean of waxing and waning, linearly interpolated in wavelength. This is a reference albedo at 1.55°, not a zero-phase one. It replaces Lane & Irvine's 9-band albedos, which are redder (x, y 0.364, 0.359 vs ROLO 0.347, 0.350) and are kept as a cross-check.
+- `301.phaseFunction` for 1.55–97° (label **estimated** for the whole curve because of the join at 97°): the Y-channel A at zero libration, as the geometric mean of the waxing and waning Moon, divided by the same at 1.55°, so Φ(1.55°) = 1. For 97–120° Lane & Irvine's curve is shifted to join it (lane-irvine-1973.md).
 
 **Caveats:**
 - In the paper's words, the absolute scale is "uncertain by several percent" (Sec. 5). The project goal was 2.5 %. The scale is based on Vega (Hayes 1985: 1.5 % at 555.6 nm) and adjusted to Apollo sample spectra (average adjustment 3.5 %; a different choice of reference phase would raise it by up to 4 % at 440–700 nm, Sec. 4.2).

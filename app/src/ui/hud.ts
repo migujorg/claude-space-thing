@@ -3,6 +3,7 @@
 
 import type { AppModel } from '../app/model';
 import { activePreset, RATE_PRESETS } from '../app/clock';
+import { EXISTS_TEXT } from '../app/reality';
 import type { RendererStats } from '../render/scene';
 import { h, setText, toggleClass } from './dom';
 import { formatDistance, formatLuminance, formatRate } from './format';
@@ -21,6 +22,7 @@ export class Hud {
   private scrubEnd = h('span');
   private stats = h('div');
   private cam = h('div');
+  private sbLine = h('div', { title: 'Asteroids and comets drawn by the small-body field, and those whose position or brightness inputs are not admitted at this level (see the legend in the inspector).' });
   private scrubbing = false;
 
   constructor(private model: AppModel) {
@@ -64,7 +66,7 @@ export class Hud {
       { class: 'st-hud' },
       h('div', { class: 'st-panel' }, this.time, this.timeInput, this.play, this.rev, h('div', { class: 'st-rates' }, this.rateBtns), this.rateText, this.nowBtn),
       h('div', { class: 'st-panel st-scrub' }, this.scrub, h('div', { class: 'st-ends' }, this.scrubStart, h('span', null, 'data window'), this.scrubEnd)),
-      h('div', { class: 'st-panel st-stats' }, this.stats, this.cam),
+      h('div', { class: 'st-panel st-stats' }, this.stats, this.sbLine, this.cam),
     );
     model.on('time', () => this.renderControls());
     model.on('data', () => this.renderControls());
@@ -117,9 +119,26 @@ export class Hud {
         ? `frame ${stats.frameMs.toFixed(1)} ms · adapt ${formatLuminance(stats.adaptationLuminance)} · stars ${stats.starsDrawn}`
         : 'renderer stats unavailable',
     );
+    setText(this.sbLine, smallBodyHudText(m));
+    toggleClass(this.sbLine, 'st-hide', this.sbLine.textContent === '');
     const cam = m.cam;
-    const tgt = cam.mode === 'orbit' ? m.byId.get(cam.target)?.name : cam.anchor !== null ? m.byId.get(cam.anchor)?.name : 'SSB';
+    const tgt = m.travel ? m.bodyName(m.travel.target) : cam.mode === 'orbit' ? m.bodyName(cam.target) : cam.anchor !== null ? m.bodyName(cam.anchor) : 'SSB';
     const dist = cam.mode === 'orbit' ? ` · ${formatDistance(cam.dist)}` : '';
     setText(this.cam, `${m.travel ? 'traveling to' : cam.mode === 'orbit' ? 'orbiting' : 'free, riding with'} ${tgt ?? '?'}${dist}`);
   }
+}
+
+const n = (x: number): string => x.toLocaleString('en-US');
+
+/** HUD line: "N small bodies drawn / M withheld at this level" (or where the catalogue stands). */
+export function smallBodyHudText(m: AppModel): string {
+  const s = m.sb;
+  if (s.status === 'loading') return `small bodies loading ${s.total ? Math.round((100 * s.got) / s.total) : 0}%`;
+  if (s.status === 'error') return 'small bodies unavailable (see Data)';
+  if (s.status !== 'ready') return '';
+  const c = m.smallBodyCounts();
+  if (!c) return '';
+  const level = EXISTS_TEXT[m.reality.exists].name;
+  if (m.smallBodies?.field) return `${n(c.drawn)} small bodies drawn / ${n(c.withheld)} withheld at ${level}`;
+  return `small bodies not drawn (no small-body renderer): ${n(c.drawn)} admitted / ${n(c.withheld)} withheld at ${level}`;
 }

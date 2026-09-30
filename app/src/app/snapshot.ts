@@ -6,8 +6,9 @@
 import type { Body, Label, LightData } from '../data/schema';
 import type { OrbitPolyline, SceneBody, SceneCamera, SceneSnapshot, SceneSun } from '../render/scene';
 import type { OrientationSetPort, OrientationSourcePort, Vec3 } from './ports';
-import { allowedValue, filterBody, labelAllowed, type ExistsLevel, type FilteredBody, type RealityState } from './reality';
-import type { World } from './world';
+import { allowedValue, filterBody, labelAllowed, worstOf, type ExistsLevel, type FilteredBody, type RealityState } from './reality';
+import { applyExtras, type SceneExtras } from './extras';
+import type { BodyGeom, World } from './world';
 
 export interface SnapshotInput {
   world: World;
@@ -19,6 +20,8 @@ export interface SnapshotInput {
   orientations: OrientationSetPort;
   /** Label of the ephemeris chain serving a body (default 'measured'). */
   chainLabel?: (id: number) => Label;
+  /** Surface maps, rings, disk/spatial photometric models (architecture §4.4, §6). */
+  extras?: SceneExtras;
 }
 
 export interface SunResult {
@@ -75,41 +78,58 @@ export interface OverlayOnlyBody {
   selected: boolean;
 }
 
+/** How one body enters the scene at a level: a SceneBody, an overlay-only marker, or nothing (position withheld). */
+export function sceneBodyOf(
+  g: BodyGeom,
+  level: ExistsLevel,
+  orientations: OrientationSetPort,
+  chainLabel: Label | undefined,
+  selectedId: number | null,
+  extras?: SceneExtras,
+): { body: SceneBody } | { marker: OverlayOnlyBody } | null {
+  if (!g.app) return null;
+  const emit = g.app.emitEt;
+  // Orientation provenance only matters when a shape can be drawn.
+  const r = g.body.radii;
+  const shape = !!r?.value && labelAllowed(r.label, level);
+  const oprov = shape ? orientations.provenance(g.id, emit) : undefined;
+  const f = filtered(g.body, level, chainLabel, oprov);
+  if (!f.position) return null;
+  if (!f.radii && !f.albedoXYZS) return { marker: { id: g.id, name: g.body.name, pos: g.app.rel, worstLabel: f.worstLabel, selected: g.id === selectedId } };
+  const lit = g.toSun !== null;
+  const radii = f.radii ? ([f.radii[0], f.radii[1], f.radii[2]] as Vec3) : null;
+  const sb: SceneBody = {
+    id: g.id,
+    name: g.body.name,
+    pos: g.app.rel,
+    // Without a Sun direction the body cannot be lit: zero vector, and no photometry is passed.
+    toSun: g.toSun ?? [0, 0, 0],
+    orient: f.orientation ? orientations.orientation(g.id, emit) : null,
+    radii,
+    albedoXYZS: lit ? f.albedoXYZS : null,
+    phase: lit ? f.phase : null,
+    surfaceUnknown: f.surfaceUnknown || (radii !== null && !lit),
+    worstLabel: f.worstLabel,
+    selected: g.id === selectedId,
+    // Best/complete may continue a measured phase curve with the spatial law (labelled estimated).
+    allowPhaseExtrapolation: level !== 'strict',
+  };
+  const used = applyExtras(sb, g.body, extras, level, lit);
+  if (used.length) sb.worstLabel = worstOf([sb.worstLabel, ...used]);
+  return { body: sb };
+}
+
 export function buildSnapshot(inp: SnapshotInput, out?: { overlayOnly: OverlayOnlyBody[] }): SceneSnapshot {
   const { world, reality } = inp;
   const level = reality.exists;
   const bodies: SceneBody[] = [];
   for (const g of world.bodies.values()) {
-    if (g.body.kind === 'star' || g.body.kind === 'barycenter' || !g.app) continue;
-    const emit = g.app.emitEt;
-    // Orientation provenance only matters when a shape can be drawn.
-    const r = g.body.radii;
-    const shape = !!r?.value && labelAllowed(r.label, level);
-    const oprov = shape ? inp.orientations.provenance(g.id, emit) : undefined;
-    const f = filtered(g.body, level, inp.chainLabel?.(g.id), oprov);
-    if (!f.position) continue;
-    if (!f.radii && !f.albedoXYZS) {
-      out?.overlayOnly.push({ id: g.id, name: g.body.name, pos: g.app.rel, worstLabel: f.worstLabel, selected: g.id === inp.selectedId });
-      continue;
-    }
-    const lit = g.toSun !== null;
-    const radii = f.radii ? ([f.radii[0], f.radii[1], f.radii[2]] as Vec3) : null;
-    bodies.push({
-      id: g.id,
-      name: g.body.name,
-      pos: g.app.rel,
-      // Without a Sun direction the body cannot be lit: zero vector, and no photometry is passed.
-      toSun: g.toSun ?? [0, 0, 0],
-      orient: f.orientation ? inp.orientations.orientation(g.id, emit) : null,
-      radii,
-      albedoXYZS: lit ? f.albedoXYZS : null,
-      phase: lit ? f.phase : null,
-      surfaceUnknown: f.surfaceUnknown || (radii !== null && !lit),
-      worstLabel: f.worstLabel,
-      selected: g.id === inp.selectedId,
-      // Best/complete may continue a measured phase curve with the spatial law (labelled estimated).
-      allowPhaseExtrapolation: level !== 'strict',
-    });
+    // Small bodies (negative ids) are drawn by the small-body field; the model adds a resolved close-up itself.
+    if (g.id < 0 || g.body.kind === 'star' || g.body.kind === 'barycenter' || !g.app) continue;
+    const e = sceneBodyOf(g, level, inp.orientations, inp.chainLabel?.(g.id), inp.selectedId, inp.extras);
+    if (!e) continue;
+    if ('marker' in e) out?.overlayOnly.push(e.marker);
+    else bodies.push(e.body);
   }
   return {
     et: world.et,
