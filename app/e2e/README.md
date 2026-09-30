@@ -86,3 +86,41 @@ The baseline records the data build it was made with: the manifest's `generatedA
 1. Add an entry to `scenes.json` with an `id`, a `title` and `params`. The params are any URL parameters of the app, see `src/app/url.ts`. The `defaults` block pins the time and switches off small bodies.
 2. Small bodies are switched off (`smallbodies=0`) in every scene except those about small bodies, so that loading the 1.6 M-object catalogue does not slow every scene down.
 3. Run `npm run e2e -- --accept --only <id>` and commit the new baseline files.
+
+# Validation against calibrated images
+
+`npm run validate` compares the renderer with real, calibrated spacecraft and satellite images. It uses the eleven ground-truth cases in [`validation/`](../../validation), from Cassini, Voyager 2, New Horizons, EPOXI and Himawari-9. How they were made, and what their tolerances mean, is in [docs/reports/validation.md](../../docs/reports/validation.md). Like the scene suite, it needs the built data in `app/public/data` and SwiftShader WebGPU. It is not part of CI.
+
+For each case, the runner (`scripts/validate.mjs`, page `validation.html`, code in `src/validation/`) does three things.
+
+1. **Builds the case's exact view** as a `SceneSnapshot`. The camera orientation, field of view and size, and the bodies' positions, Sun directions and orientations at the observation epoch all come from `case.json`. Nothing is taken from the app's ephemeris, so every case runs, even though most epochs lie outside the app's time window (2025-03 to 2028-03).
+   - What is drawn on the bodies is the app's own data at the chosen reality level (`app/snapshot.ts` `sceneBodyOf`): albedo, phase function, disk models, surface maps, rings and atmospheres.
+   - Time-dependent content is the app's, not the observation's. Earth's clouds are those of the app's cloud day, and seasonal or volcanic changes are not modelled.
+2. **Renders the view** offscreen and lets the renderer settle: tiles loaded, adaptation converged. It then reads the HDR buffer, **before the eye model**, over every region of interest with `Renderer.readHdrRegion(rect)` → `{ mean: [X, Y, Z, S], std, n }`. This is `render/hdrReadback.ts`, reached through a marked hook in `renderer.ts`.
+   - The buffer holds the extended light: bodies, rings, atmospheres and the solar disk. Point sources are not in it.
+   - The runner loads no stars and no sky background.
+3. **Compares each mean** with the case's expected radiance:
+   - regions of interest: `|rendered − expected| ≤ tolerance` on each of X, Y, Z and S, where the tolerance is 2σ of the observation's budget;
+   - sky regions: `rendered ≤ upper limit`;
+   - ratios such as Moon/Earth.
+
+   A failure is a finding about the app's data or the renderer. It is reported with its numbers and never hidden.
+
+| File in `app/shots/validation/` | Contents |
+|---|---|
+| `report.md` | One table row per case and region of interest: expected Y ± tolerance, rendered Y, rendered/expected, deviation in σ, and the verdict, naming the failing channels. Then the ratios. Then, per case, how each body was drawn (the data used and its worst label), the notes and the renderer warnings. |
+| `report.json` | The same, with all four channels, the pixel statistics and the renderer stats. |
+| `<id>.hdr.png` | Rendered Y on a square-root scale. Compare it with `validation/cases/<id>/preview.png`. |
+| `<id>.display.png` | The eye-model image, as the app would show it. |
+
+```sh
+cd app
+npm run validate                                   # all cases (about 4 minutes; Himawari is the slowest)
+npm run validate -- --only io-nh-lorri-2007        # some cases
+npm run validate -- --ss 2                         # 2 × 2 samples per pixel (the references are pixel-area averages)
+npm run validate -- --reality strict               # measured and derived data only
+npm run validate -- --hdr f16                      # the rgba16float fallback targets
+npm run validate -- --strict                       # exit 1 when a region fails (default: only when a case does not render)
+```
+
+From a script, the page exposes `window.__validation.run(case, { ss, reality })`. For experiments with a changed scene, it also exposes `window.__validation.debug`, which is `{ renderer, data }`.

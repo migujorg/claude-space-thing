@@ -28,6 +28,7 @@ import type { BackgroundTargets } from './sky/background';
 import { LAW } from './spatial';
 import { cameraGeom, prepareFrame, type PreparedFrame } from './frame';
 import { ExtraPointSources, type PointSourceBuffer } from './extraPoints';
+import { HdrReadback, type HdrImage, type HdrRect, type HdrRegionStats } from './hdrReadback';  // validation hook
 import { orbitVertices } from './overlays';
 import { AdaptationState, computeEyeFrame, type EyeFrame } from '../eye/model';
 import { DEFAULT_EYE_SETTINGS, type EyeSettings } from '../eye/settings';
@@ -458,6 +459,27 @@ export class Renderer {
     buf.destroy();
     return { width, height, data };
   }
+
+  // ── Validation hook (render/hdrReadback.ts; docs/reports/validation.md §1) ─────────────────────────────────
+  // The HDR XYZS target (EXT) of the last rendered frame in absolute units, before the eye model: resolved
+  // bodies, rings, atmospheres, sky background, solar disk; not the point sources. Read-only, outside render().
+  private hdrReadback: HdrReadback | null = null;
+  /** Pre-exposure the last frame's HDR targets were written with (1 for rgba32float); set in writeUniforms. */
+  private hdrPreExposure = 1;
+
+  /** Mean, standard deviation and pixel count of EXT over [x0, x1) × [y0, y1) (x right, y down). */
+  readHdrRegion(rect: HdrRect): Promise<HdrRegionStats> {
+    if (!this.targets) return Promise.reject(new Error('readHdrRegion: no render targets'));
+    return (this.hdrReadback ??= new HdrReadback(this.device)).region(this.targets.ext, rect, 1 / this.hdrPreExposure);
+  }
+
+  /** The whole EXT target, width × height × 4 float32 (X, Y, Z, S). */
+  readHdr(): Promise<HdrImage> {
+    if (!this.targets) return Promise.reject(new Error('readHdr: no render targets'));
+    const t = this.targets;
+    return (this.hdrReadback ??= new HdrReadback(this.device)).read(t.ext, [0, 0, t.W, t.H], 1 / this.hdrPreExposure);
+  }
+  // ── end of the validation hook ─────────────────────────────────────────────────────────────────────────────
 
   private destroyTargets(): void {
     const t = this.targets;
@@ -1035,6 +1057,7 @@ export class Renderer {
     const d = this.device;
     const t = this.targets!;
     const preExposure = this.hdrFormat === 'rgba32float' ? 1 : 1 / Math.max(eye.Acone, 1e-6);
+    this.hdrPreExposure = preExposure;  // validation hook (readHdrRegion)
     d.queue.writeBuffer(this.frameUB, 0, new Float32Array([
       ...g.right, 0, ...g.up, 0, ...g.back, 0,
       1 / g.tanX, 1 / g.tanY, NEAR_KM, preExposure,

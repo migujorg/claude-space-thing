@@ -205,15 +205,40 @@ export interface BodyPhotometry {
    */
   spatialModel?: Sourced<SpatialPhotometricModel>;
   /** Optional refinement with more geometry than the phase angle (the Moon: ROLO, with libration and the
-   *  waxing/waning asymmetry). Inside its domain it gives the disk-integrated illuminance directly, in place of
-   *  geometricAlbedoXYZS · Φ(α); see docs/architecture.md §4.3. */
+   *  waxing/waning asymmetry; the Galilean moons: their measured rotational variation). Inside its domain it gives
+   *  the disk-integrated illuminance directly, in place of geometricAlbedoXYZS · Φ(α); see docs/architecture.md
+   *  §4.3. */
   diskReflectanceModel?: Sourced<DiskReflectanceModel>;
+}
+
+export type DiskReflectanceModel = RoloDiskModel | RotationSlicesDiskModel;
+
+/**
+ * Disk-integrated brightness with a rotational (orbital-longitude) variation, kind 'rotation-slices-v1' (the
+ * Galilean moons: Mayorga et al. 2020 Table 4). p·Φ = albedoXYZS · Φ(α) · F, with
+ *   F = Σ_j a_j G_j(λ_obs, λ_sun) / Σ_j G_j(λ_obs, λ_sun),
+ * a_j the albedo of longitude slice j relative to the slices' mean, λ_obs and λ_sun the planetocentric east
+ * longitudes of the sub-observer and sub-solar points, and G_j the Lambertian orange-slice integral over the part of
+ * slice j that is both lit and visible (the equator's view; `formula` gives it). Rotation-averaged, F = 1, so the
+ * model keeps geometricAlbedoXYZS and phaseFunction as the longitude average. Domain: Φ(α) tabulated at α.
+ */
+export interface RotationSlicesDiskModel {
+  kind: 'rotation-slices-v1';
+  formula: string;
+  /** The body's geometricAlbedoXYZS ("lux at 1 AU", referenced to radiusKm) and phaseFunction values. */
+  albedoXYZS: [number, number, number, number];
+  phase: PhaseFunction;
+  radiusKm: number;
+  /** Slice boundaries in planetocentric east longitude, degrees, ascending from −180 to 180 (n + 1 values). */
+  sliceEdgesEastLonDeg: number[];
+  /** Albedo of each slice relative to the mean of the slices (n values, mean 1). */
+  relativeAlbedo: number[];
 }
 
 /** Whole-disk reflectance A_c per channel (X, Y, Z, scotopic) vs viewing geometry, in the form of Kieffer & Stone
  *  (2005) Eq. 10. Illuminance at the observer E_c = A_c · E☉,c(1 AU)/d² · (radiusKm/Δ)². `formula` gives the
  *  expression and the units (radians in the polynomial terms, degrees elsewhere). */
-export interface DiskReflectanceModel {
+export interface RoloDiskModel {
   kind: 'rolo-v1';
   formula: string;
   /** Per channel X, Y, Z, scotopic: [a0, a1, a2, a3]. */
