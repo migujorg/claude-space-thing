@@ -412,6 +412,36 @@ response model. Adaptation still comes from the physical scene. The visibility t
 by the same factor: +3 stops raises the limiting magnitude by 2.5·log₁₀ 8 = 2.26 mag (tested). The shell
 shows the badge.
 
+## 8b. Sun shield (a viewing aid)
+
+With `view.sunShield = true`, an occulting disc sits between the eye and the Sun. It works like a
+coronagraph's occulter or a hand held up against the Sun. The option is off by default and works in
+both view modes. The shell sets it from `RealityState.sunShield` (URL `shield=1`) and always shows the
+badge "SUN SHIELDED: occulting disc (viewing aid)". It changes what reaches the eye, not the scene:
+
+- **The disc.** It is centred on the Sun and follows it. Its angular radius is the Sun's plus one pixel,
+  so it hides as little sky as possible. It is ideal: it neither emits nor reflects light, and its edge
+  does not diffract. Real external occulters scatter and diffract light around their edge (the reason
+  coronagraphs add a Lyot stop), but that light depends on the instrument, so none is invented. A
+  larger disc, such as a hand at arm's length (≈ 10°), would hide more sky and is not offered. When the
+  disc is in front of the camera, its rim is drawn as a thin grey display overlay, like the orbit lines.
+- **What changes.** The Sun's light never enters the eye. There is no solar disk or point and no CIE 146
+  veil from the Sun (§3, analytic glare). No solar light reaches the adaptation measurement or the pupil
+  (§2, off-frame flux). Adaptation, thresholds and the painted glare therefore come from everything
+  else. With the Sun in frame, the disc is excluded from fixations like the resolved solar disk (§2).
+- **What stays physical.** Everything else is unchanged: sunlight on the bodies, planetshine and
+  shadows, other sources' glare, and stars. Whatever lies behind the disc is hidden: bodies, rings,
+  stars, extra point sources such as small bodies, and unresolved bodies whose centre is behind it.
+
+The Sun's veil is light scattered inside the observer's eye, so blocking it before the eye is the
+physical way to remove it. Lowering the veil after the fact would not be. The shield exists for
+enhanced mode near the Sun. There, the exposure boost also multiplies the Sun's veil, which can hide
+the asteroid belt within ~48° of the Sun as seen from a few AU above the ecliptic. For example, 4 AU
+from the Sun at +6 stops, the unshielded frame is pure white, while the shielded frame shows the stars
+and the small bodies (`/?target=10&dist=6e8&el=80&fov=100&view=enhanced&boost=6&shield=1`;
+`render-test.html?scene=offscreen-sun&off=30&mode=enhanced&boost=6&shield=1`). `render-frame.test.ts`
+checks that the Sun's light on the bodies is unaffected.
+
 ## 9. Constants and their verification status
 
 | Source | Values | Status |

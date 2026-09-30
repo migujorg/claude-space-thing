@@ -35,6 +35,8 @@ behaves exactly as in M1.
 | `diskReflectanceModel` | `photometry.json` → `BodyPhotometry.diskReflectanceModel.value` (the Moon: ROLO), if admitted | Disk-integrated brightness from the model inside its domain (§4). Needs `orient`. Include its label (`derived`) in `worstLabel`. |
 | `surface.albedo` / `surface.height` | `surfaces/index.json` → `surfaces/<id>/<layer>.json` | `{ url: '<data root>', header: <the parsed SurfaceLayerHeader> }`. Example: `{ url: '/data', header }` for `surfaces/301/albedo.json`. The renderer builds tile URLs from `header.tilePath`, skips `header.missingTiles`, and checks `format`, `channels`, `bytesPerTexel`, `tileSize` and `minLevel`. Only used when `orient` is non-null. |
 | `surface.photometry` | a layer of kind `photometric-parameters` (the Moon: `surfaces/301/hapke.json`), same form as above | The per-texel Hapke law (§2b). Needs `surface.albedo` too, since its header carries the band → XYZS weights. `app/src/app/extras.ts` passes it when its label is admitted (a 3-line edit in the shell). |
+| `view.sunShield` (`ViewSettings`) | `RealityState.sunShield` (URL `shield=1`), off by default | The Sun-shield viewing aid: an occulting disc over the Sun ([eye-model.md](eye-model.md) §8b). The shell always badges it. `snapshot.ts` passes it; a UI toggle belongs to the UI. |
+| `surface.clouds/water/night/wind`, `atmosphere` | Earth's layers and `atmospheres.json` | Earth drawn from its layers and a multiple-scattering atmosphere: [rendering-earth.md](rendering-earth.md). |
 | `rings` | `rings.json` → the planet's `RingSystem` | `{ normal: <planet IAU pole, ICRF unit vector>, opticalDepth: rs.opticalDepth.value, reflectance: rs.reflectance.label !== 'unknown' && admitted ? rs.reflectance.value : null, worstLabel }`. For Saturn, `worstLabel` = worst of `opticalDepth.label` (measured) and `reflectance.label` (estimated). Pass `rings: null` when `opticalDepth.value` is null (Jupiter). |
 
 Renderer options:
@@ -364,6 +366,38 @@ Expected cost on a desktop GPU (RTX 5090 class), by operation count:
 At 3840×2160, the test page (`render-test.html?scene=stars`) draws the star field as crisp points.
 This needed the glare-fit fix in eye-model.md §3; before it, the unscattered fraction went negative and
 every star was black.
+
+**Measured (M3).** Timestamp queries on SwiftShader (4 CPU cores shared with other jobs, so the numbers
+vary by ±30 % from run to run), app views at `t=2026-09-30T12:00:00Z`, `ui=0`, GPU ms per pass:
+
+| View | bodies+rings | star cull | glare retina + painted | adaptation | composite | other | GPU total | CPU prep / render() |
+|---|---|---|---|---|---|---|---|---|
+| Saturn, 400 000 km, 1080p (before the M3 fixes) | 2 379 | 121 | 2 582 + 2 039 | 9 028 | 1 812 | 145 | 18 106 | 9.5 / 37 |
+| Saturn, 1080p | 2 764 | 249 | 2 082 + 2 034 | 458 | 467 | 112 | 8 166 | 7.5 / 8.6 |
+| Saturn, 4K | 11 671 | 405 | 3 968 + 7 014 | 1 484 | 2 604 | 1 058 | 28 204 | 9.5 / 10.6 |
+| Moon, 6 000 km (per-texel Hapke + relief), 1080p | 4 877 | 634 | 2 974 + 3 778 | 449 | 747 | 491 | 13 950 | 6.3 / 7.2 |
+| Moon, 4K | 26 336 | 916 | 6 052 + 4 409 | 1 187 | 3 398 | 449 | 42 747 | 5.9 / 6.7 |
+
+What changed in M3:
+
+- **Adaptation.** The reduction no longer uses workgroup barriers: each invocation sums an 8 × 8 block into
+  its own partial. On a CPU-emulated GPU the tree reduction's barriers cost more than all the per-pixel
+  work: Saturn at 1080p went from 9.0 s to 0.46 s, with an identical result.
+- **Analytic glare.** Only sources whose veil can reach 1 % of the dark light somewhere in the frame are
+  kept, strongest first. Before, up to 32 sources were evaluated per pixel in three passes.
+- **Glare pyramid.** Blur passes of levels the kernel fit gives zero weight are skipped; at narrow fields
+  and 4K these are the finest, full-resolution ones.
+- **Ring tables.** They are no longer rebuilt every frame (cached on the data arrays; `cpuPrepMs` is now
+  6–10 ms, dominated by frame preparation for ~80 bodies).
+
+Desktop estimate for these frames, from the operation counts above (RTX 4070-class: ~30 TFLOPS, ~500
+GB/s, ~600 GTexel/s). Two-thirds of a 4K frame is fill-rate bound:
+
+- Moon 4K: surface ≈ 2–4 ms, pyramids ≈ 2 ms, composite + adaptation ≈ 0.5 ms, i.e. about 5–7 ms.
+- Saturn 4K: about 4–5 ms.
+
+The CPU side, 7–11 ms per frame including every body, is then the larger cost; its biggest items are the
+snapshot's per-body photometry and the frame preparation.
 
 ## 9. Limitations
 

@@ -63,6 +63,16 @@ describe('resolved/point split', () => {
     expect(noR.resolved.length + noR.points.length).toBe(0);
     expect(noR.overlay.length).toBe(0); // the shell draws the hollow marker (ui/labels.ts), not the renderer
   });
+  it('warnings name only bodies in view', () => {
+    const eye = computeEyeFrame(DEFAULT_EYE_SETTINGS, eyeState(), 'eye', 0, null);
+    const g = cameraGeom(snap([]), W, H, 1e-7);
+    const pf = { kind: 'poly-mag' as const, coeffs: [0, 0.01], minDeg: 20, maxDeg: 120 }; // α = 0: outside
+    const front = body(1e5, { id: 5, name: 'Front', phase: pf });
+    const back = body(1e5, { id: 6, name: 'Back', phase: pf, pos: [0, 0, 1e5] });
+    const p = prepareFrame(snap([front, back], 60), g, eye, 1e-9);
+    expect(p.warnings.join()).toMatch(/Front/);
+    expect(p.warnings.join()).not.toMatch(/Back/);
+  });
   it('a measured phase curve outside its validity range is not extrapolated', () => {
     const eye = computeEyeFrame(DEFAULT_EYE_SETTINGS, eyeState(), 'eye', 0, null);
     const g = cameraGeom(snap([]), W, H, 1e-7);
@@ -158,5 +168,65 @@ describe('Sun', () => {
     expect(p.glare.some((gs) => gs.E[1] > 1e-3 && gs.E[1] < 1e4)).toBe(true); // the bright body kept
     // The pupil still counts every source's light.
     expect(p.offFrameFluxDeg2).toBeGreaterThan(0);
+  });
+});
+
+describe('Sun shield (viewing aid)', () => {
+  const limb = [[0.3, 0.93, -0.23], [0.3, 0.93, -0.23], [0.3, 0.93, -0.23], [0.3, 0.93, -0.23]];
+  const sunAt = (deg: number, limbDarkening: number[][] | null = limb) => {
+    const r = (deg * Math.PI) / 180;
+    return { pos: [AU_KM * Math.sin(r), 0, -AU_KM * Math.cos(r)] as [number, number, number], radius: 695700, irradianceXYZS_1AU: [1.2e5, 1.28e5, 1.1e5, 2.9e5] as XYZS, limbDarkening };
+  };
+  const shielded = (s: SceneSnapshot): SceneSnapshot => ({ ...s, view: { ...s.view, sunShield: true } });
+  it('off by default; on, the Sun casts no veil, has no disk or point, and adds no light to the pupil', () => {
+    const eye = computeEyeFrame(DEFAULT_EYE_SETTINGS, eyeState(), 'eye', 0, null);
+    for (const [deg, fov] of [[0, 2], [45, 20]] as const) {
+      const sn = snap([], fov, sunAt(deg));
+      const g = cameraGeom(sn, W, H, 1e-7);
+      const off = prepareFrame(sn, g, eye, 1e-9);
+      expect(off.sunShield).toBeNull();
+      expect(off.glare.length).toBe(1);
+      const on = prepareFrame(shielded(sn), g, eye, 1e-9);
+      expect(on.glare.length).toBe(0);
+      expect(on.offFrameFluxDeg2).toBe(0);
+      expect(on.sun!.resolvedFraction).toBe(0);
+      expect(on.sun!.point).toBeNull();
+      // The occulting disc: the Sun's direction, its angular radius plus one pixel.
+      expect(on.sunShield!.dir[0]).toBeCloseTo(Math.sin((deg * Math.PI) / 180), 12);
+      expect(Math.acos(on.sunShield!.cosRadius)).toBeCloseTo(Math.asin(695700 / AU_KM) + g.pixelAngle, 9);
+    }
+    // Unresolved Sun (no limb darkening): no point either, and no "limb darkening unknown" warning.
+    const sn = snap([], 20, sunAt(0, null));
+    const p = prepareFrame(shielded(sn), cameraGeom(sn, W, H, 1e-7), eye, 1e-9);
+    expect(p.sun!.point).toBeNull();
+    expect(p.warnings.join()).not.toMatch(/limb darkening unknown/);
+  });
+  it('marks the disc with a display outline when it is in front of the camera', () => {
+    const eye = computeEyeFrame(DEFAULT_EYE_SETTINGS, eyeState(), 'eye', 0, null);
+    const sn = snap([], 20, sunAt(0));
+    const p = prepareFrame(shielded(sn), cameraGeom(sn, W, H, 1e-7), eye, 1e-9);
+    expect(p.overlay.length).toBeGreaterThan(0);
+    const back = snap([], 20, sunAt(180));
+    expect(prepareFrame(shielded(back), cameraGeom(back, W, H, 1e-7), eye, 1e-9).overlay.length).toBe(0);
+  });
+  it('everything else stays physical: bodies keep their sunlight; only what lies behind the disc is hidden', () => {
+    const eye = computeEyeFrame(DEFAULT_EYE_SETTINGS, eyeState(), 'eye', 0, null);
+    // A planet 20° from the Sun (in frame, 60° field) and one exactly behind the Sun's disk, both beyond the Sun.
+    const r20 = (20 * Math.PI) / 180;
+    const sun = sunAt(0);
+    const at = (id: number, pos: [number, number, number]) =>
+      body(3e8, { id, pos, radii: [3000, 3000, 3000], toSun: [sun.pos[0] - pos[0], sun.pos[1] - pos[1], sun.pos[2] - pos[2]] });
+    const planet = at(2, [3e8 * Math.sin(-r20), 0, -3e8 * Math.cos(r20)]);
+    const hidden = at(3, [0, 0, -3e8]);
+    const sn = snap([planet, hidden], 60, sun);
+    const g = cameraGeom(sn, W, H, 1e-7);
+    const off = prepareFrame(sn, g, eye, 1e-9);
+    const on = prepareFrame(shielded(sn), g, eye, 1e-9);
+    const E = (p: ReturnType<typeof prepareFrame>, x: number) => p.points.find((q) => Math.abs(q.ndc[0] - x) < 1e-6)?.E[1] ?? 0;
+    const xPlanet = off.points.reduce((m, q) => Math.min(m, q.ndc[0]), Infinity);
+    expect(E(on, xPlanet)).toBe(E(off, xPlanet));
+    expect(E(on, xPlanet)).toBeGreaterThan(0);
+    expect(off.points.some((q) => Math.abs(q.ndc[0]) < 1e-9)).toBe(true);
+    expect(on.points.some((q) => Math.abs(q.ndc[0]) < 1e-9)).toBe(false);
   });
 });

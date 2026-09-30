@@ -19,8 +19,20 @@ export const MAX_ADDRESSED_LEVEL = 10;
 /** Unit-cosine floor of the footprint's foreshortening term (grazing views). */
 export const FORESHORTEN_MIN_MU = 0.05;
 
-export type LayerFormat = 'albedo' | 'height';
-export const TILE_BYTES: Record<LayerFormat, number> = { albedo: TILE * TILE * 8, height: TILE * TILE * 4 };
+/**
+ * Tile formats (one page atlas each): 'albedo' float16 XYZS; 'height' float32 metres; 'clouds' float16 ×4
+ * (Earth's cloud-properties layer); 'rg16' float16 ×2 (Earth's surface-water and emitted-radiance layers).
+ */
+export type LayerFormat = 'albedo' | 'height' | 'clouds' | 'rg16';
+export const TILE_BYTES: Record<LayerFormat, number> = { albedo: TILE * TILE * 8, height: TILE * TILE * 4, clouds: TILE * TILE * 8, rg16: TILE * TILE * 4 };
+
+/** Header format each tile format decodes (channels: exact names, or a count when names vary by layer). */
+const LAYER_FORMATS: Record<LayerFormat, { format: string; channels: string[] | number; bytes: number }> = {
+  albedo: { format: 'float16', channels: ['X', 'Y', 'Z', 'S'], bytes: 8 },
+  height: { format: 'float32', channels: 1, bytes: 4 },
+  clouds: { format: 'float16', channels: ['cloudFraction', 'opticalThickness', 'cloudTopHeightM', 'iceFraction'], bytes: 8 },
+  rg16: { format: 'float16', channels: 2, bytes: 4 },
+};
 
 export const tilesX = (L: number) => 2 << L;
 export const tilesY = (L: number) => 1 << L;
@@ -168,14 +180,12 @@ export function layerKey(ref: SurfaceLayerRef): string {
 }
 
 /**
- * Why a layer header cannot be decoded as `format` (albedo: float16 X, Y, Z, S; height: one float32
- * channel), or null when it can (or the header does not say, as in the fixtures).
+ * Why a layer header cannot be decoded as `format` (LAYER_FORMATS; `channels` overrides the expected
+ * channel names), or null when it can (or the header does not say, as in the fixtures).
  */
-export function layerFormatProblem(ref: SurfaceLayerRef, format: LayerFormat): string | null {
+export function layerFormatProblem(ref: SurfaceLayerRef, format: LayerFormat, channels?: string[]): string | null {
   const h = ref.header;
-  const want = format === 'albedo'
-    ? { format: 'float16', channels: ['X', 'Y', 'Z', 'S'], bytes: 8 }
-    : { format: 'float32', channels: 1, bytes: 4 };
+  const want = { ...LAYER_FORMATS[format], ...(channels ? { channels } : {}) };
   if (h.format !== undefined && h.format !== want.format) return `${format} layer stored as ${h.format}, renderer decodes ${want.format}`;
   if (h.bytesPerTexel !== undefined && h.bytesPerTexel !== want.bytes) return `${format} layer has ${h.bytesPerTexel} bytes per texel, expected ${want.bytes}`;
   if (h.channels !== undefined) {

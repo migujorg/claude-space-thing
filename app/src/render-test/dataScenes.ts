@@ -4,8 +4,9 @@
 //   scene=rings-data&planet=699|799|899&B=obs elevation°&Bsun=Sun elevation°&phase=°&dist=km&fovdeg=°&map=1
 //   scene=moon-data&sunlon=Sun selenographic longitude° (east +: waxing)&lib=lat,lon (observer)&rolo=0|1&hapke=0|1 (per-texel law)
 //   (both: nomodel=1 drops the reflectance model / disk model to show the not-measured treatment)
+//   scene=earth-data&sun=lat,lon (sub-solar)&obs=lat,lon (sub-observer)&dist=km&fovdeg=°&map|clouds|water|night|wind|atm=0
 
-import { LABEL_ORDER, type Label, type RingsFile, type SurfaceLayerHeader, type Sourced, type LightData, type Body, type PhotometryFile } from '../data/schema';
+import { LABEL_ORDER, type AtmosphereFile, type Label, type RingsFile, type SurfaceLayerHeader, type Sourced, type LightData, type Body, type PhotometryFile } from '../data/schema';
 import type { Mat3, SceneBody, SceneSnapshot, SurfaceLayerRef, Vec3 } from '../render/scene';
 import { AU_KM } from '../render/constants';
 import { diskModelPPhi, evalPhase, meanRadius, type XYZS } from '../render/photometry';
@@ -72,7 +73,7 @@ function bodyOf(pr: Products, id: number, pos: Vec3, toSun: Vec3, orient: Mat3, 
 
 export async function buildDataScene(p: URLSearchParams): Promise<TestScene> {
   const name = p.get('scene');
-  const view = { mode: 'eye' as const, exposureBoostStops: 0, overlays: { provenanceTint: p.get('tint') === '1' } };
+  const view = { mode: 'eye' as const, exposureBoostStops: 0, overlays: { provenanceTint: p.get('tint') === '1' }, sunShield: p.get('shield') === '1' };
   const noModel = p.get('nomodel') === '1';
   const pr = await products();
   if (name === 'rings-data') {
@@ -138,6 +139,43 @@ export async function buildDataScene(p: URLSearchParams): Promise<TestScene> {
     const snapshot: SceneSnapshot = { et: 0, camera: cam, sun: sunOf(pr.light, add(pos, toSun)), bodies: [body], view, orbits: [] };
     return {
       title: `Moon (REAL DATA) · Sun at selenographic longitude ${sunLon}° (${sunLon > 0 ? 'waxing' : 'waning'}), observer at ${lat}°, ${lon}° · ${rolo ? 'ROLO' : 'phase curve'} · E_Y ROLO ${eRolo.toPrecision(4)} lx, phase curve ${ePhase.toPrecision(4)} lx`,
+      stars: null, snapshot, realData: true,
+    };
+  }
+  if (name === 'earth-data') {
+    // Earth from its layers (render/earth.ts), body-fixed frame = world frame. Sub-solar and sub-observer
+    // points in planetocentric degrees.
+    const [sLat, sLon] = (p.get('sun') ?? '-2,0').split(',').map(Number);
+    const [oLat, oLon] = (p.get('obs') ?? '10,-20').split(',').map(Number);
+    const bf = (la: number, lo: number): Vec3 => [Math.cos(rad(la)) * Math.cos(rad(lo)), Math.cos(rad(la)) * Math.sin(rad(lo)), Math.sin(rad(la))];
+    const toObs = bf(oLat, oLon);
+    const dist = Number(p.get('dist') ?? 45000);
+    const pos = mul(toObs, -dist);
+    const toSun = mul(bf(sLat, sLon), AU_KM);
+    const I: Mat3 = [1, 0, 0, 0, 1, 0, 0, 0, 1];
+    const [albedo, clouds, water, night, wind] = await Promise.all(['albedo', 'clouds', 'water', 'night', 'wind'].map((l) => layer(`surfaces/399/${l}.json`)));
+    const off = (k: string) => p.get(k) === '0';
+    const atmFile = off('atm') ? null : await json<AtmosphereFile>('atmospheres.json');
+    const atmBody = atmFile?.bodies['399'];
+    const body = bodyOf(pr, 399, pos, toSun, I, {
+      surface: {
+        albedo: off('map') ? undefined : albedo,
+        clouds: off('clouds') ? undefined : clouds,
+        water: off('water') ? undefined : water,
+        night: off('night') ? undefined : night,
+        wind: off('wind') ? undefined : wind,
+      },
+      atmosphere: atmFile && atmBody ? {
+        wavelengthsNm: atmFile.wavelengthsNm, foldWeights: atmFile.foldWeights.value!, body: atmBody,
+        worstLabel: atmBody.components.map((c) => c.extinctionPerKm.label).reduce(worse, 'measured'),
+      } : null,
+    });
+    const fwd = mul(toObs, -1);
+    const cam = { orient: lookAlong(fwd, [0, 0, 1]), fovY: rad(Number(p.get('fovdeg') ?? 18)), width: 0, height: 0 };
+    const snapshot: SceneSnapshot = { et: 0, camera: cam, sun: sunOf(pr.light, add(pos, toSun)), bodies: [body], view, orbits: [] };
+    const phase = Math.acos(Math.max(-1, Math.min(1, toObs[0] * bf(sLat, sLon)[0] + toObs[1] * bf(sLat, sLon)[1] + toObs[2] * bf(sLat, sLon)[2]))) * 180 / Math.PI;
+    return {
+      title: `Earth (REAL DATA: surface, clouds, water, night layers) · sub-solar ${sLat}°, ${sLon}° · sub-observer ${oLat}°, ${oLon}° · phase ${phase.toFixed(1)}° · ${dist} km`,
       stars: null, snapshot, realData: true,
     };
   }

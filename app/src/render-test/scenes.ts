@@ -72,6 +72,7 @@ export function buildScene(p: URLSearchParams): TestScene {
     mode,
     exposureBoostStops: Number(p.get('boost') ?? (mode === 'enhanced' ? 4 : 0)),
     overlays: { provenanceTint: p.get('tint') === '1' },
+    sunShield: p.get('shield') === '1',
   };
   const fwd: Vec3 = norm([1, 0.3, 0.1]);
   const up: Vec3 = [0, 0, 1];
