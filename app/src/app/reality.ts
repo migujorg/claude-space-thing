@@ -23,6 +23,14 @@ export interface RealityState {
    * reach the eye (render/scene.ts ViewSettings.sunShield). Both view modes; off by default; always badged.
    */
   sunShield?: boolean;
+  /**
+   * The eye always fully adapted to the view, instead of adapting over real time (render/scene.ts
+   * ViewSettings.adaptation; docs/eye-model.md §2 "Time"). Off by default: real-time adaptation is what
+   * one would really see. Badged when on.
+   */
+  instantAdaptation?: boolean;
+  /** A defined eye history for tests and demonstrations (URL `adaptfrom`; ViewSettings.adaptation.history). */
+  adaptationHistory?: { luminanceCdM2: number; exposureS: number; elapsedS: number };
 }
 
 export const EXISTS_LEVELS: readonly ExistsLevel[] = ['strict', 'best', 'complete'];
@@ -65,6 +73,7 @@ export function defaultReality(opts: { syntheticLayerAvailable?: boolean } = {})
     exposureBoostStops: 0,
     overlays: { labels: true, orbits: false, provenanceTint: false },
     sunShield: false,
+    instantAdaptation: false,
   };
 }
 
@@ -202,6 +211,7 @@ export function badgeParts(s: RealityState, defaults: RealityState, opts: { synt
   if (s.overlays.provenanceTint) parts.push('PROVENANCE TINT');
   // Always shown when on, whatever the defaults: it hides the Sun and its glare.
   if (s.sunShield) parts.push('SUN SHIELDED: occulting disc (viewing aid)');
+  if (s.instantAdaptation) parts.push('INSTANT ADAPTATION: eye always fully adapted');
   return parts;
 }
 

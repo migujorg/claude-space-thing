@@ -2,6 +2,9 @@
 //   ?t=<ISO UTC>&target=<NAIF id>&dist=<km from target center>&az=<deg>&el=<deg>
 //    &exists=strict|best|complete&view=eye|enhanced&boost=<stops>&fov=<deg, vertical>
 //    &labels=0|1&orbits=0|1&tint=0|1&ui=0|1&system=jup,sat|all&smallbodies=0|1&shield=0|1
+//    &adapt=instant|realtime&adaptfrom=<cd/m²>,<exposure s>,<elapsed s>
+// adapt: how the eye adapts over time (default realtime). adaptfrom: a defined eye history for tests and
+// demonstrations, e.g. adaptfrom=10000,600,300 = 10 min in daylight, then 5 min looking at this view.
 // target may also be an SBDB SPK-ID (>= 1000000, e.g. 20099942 for 99942 Apophis): a small body, resolved once the
 // small-body catalogue and its name index are in. smallbodies=0 skips loading the small-body catalogue.
 // `system` names moon systems (ephem/sat-<key>) to load before the first frame instead of in the background;
@@ -33,6 +36,10 @@ export interface UrlView {
   smallbodies?: boolean;
   /** Sun shield (viewing aid): an occulting disc over the Sun (RealityState.sunShield). */
   shield?: boolean;
+  /** Eye adaptation over time (RealityState.instantAdaptation). */
+  adapt?: 'instant' | 'realtime';
+  /** Eye history (RealityState.adaptationHistory). */
+  adaptFrom?: { luminanceCdM2: number; exposureS: number; elapsedS: number };
 }
 
 /** Parse an ISO-8601 UTC time. A missing zone designator means UTC (never local time). */
@@ -100,6 +107,17 @@ export function parseUrlParams(search: string): { view: UrlView; errors: string[
   view.ui = bool('ui');
   view.smallbodies = bool('smallbodies');
   view.shield = bool('shield');
+  const ad = p.get('adapt');
+  if (ad !== null) {
+    if (ad === 'instant' || ad === 'realtime') view.adapt = ad;
+    else errors.push(`Ignoring adapt=${ad}: expected instant|realtime.`);
+  }
+  const af = p.get('adaptfrom');
+  if (af !== null) {
+    const x = af.split(',').map(Number);
+    if (x.length === 3 && x.every((v) => Number.isFinite(v) && v >= 0)) view.adaptFrom = { luminanceCdM2: x[0], exposureS: x[1], elapsedS: x[2] };
+    else errors.push(`Ignoring adaptfrom=${af}: expected <cd/m²>,<exposure s>,<elapsed s>.`);
+  }
   for (const k of Object.keys(view) as (keyof UrlView)[]) if (view[k] === undefined) delete view[k];
   return { view, errors };
 }
@@ -118,6 +136,8 @@ export function formatUrlParams(v: UrlView): string {
   if (v.fov !== undefined) p.set('fov', sig(v.fov, 4));
   for (const k of ['labels', 'orbits', 'tint', 'ui', 'smallbodies', 'shield'] as const) if (v[k] !== undefined) p.set(k, v[k] ? '1' : '0');
   if (v.system?.length) p.set('system', v.system.join(','));
+  if (v.adapt !== undefined) p.set('adapt', v.adapt);
+  if (v.adaptFrom) p.set('adaptfrom', `${v.adaptFrom.luminanceCdM2},${v.adaptFrom.exposureS},${v.adaptFrom.elapsedS}`);
   // ':' is legal in a query string; keep ISO times readable.
   return p.toString().replace(/%3A/gi, ':');
 }

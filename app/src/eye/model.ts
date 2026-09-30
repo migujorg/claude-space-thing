@@ -8,6 +8,7 @@ import { pupilDiameterMm } from './pupil';
 import { appearanceMap, displayObserver, observerState, response, rodResponseRaw, sceneReferences, DARK_LIGHT_CONE, DARK_LIGHT_ROD, type AppearanceMap, type DisplayObserver, type ObserverState, type References } from './tonemap';
 import { cat02Matrix, degreeOfAdaptation, displayWhiteXYZ, type M3, type V3 } from './display';
 import { opticalCoreSigmaDeg } from './glare';
+import { ADAPTED, darkAdaptation, rodEquivalentAdaptation, steadyPigment, stepPigment, thresholdFactor, trolands, type DarkAdaptation, type PigmentState } from './bleaching';
 import type { EyeSettings } from './settings';
 
 /** What the GPU measures each frame (docs/eye-model.md §2). */
@@ -21,9 +22,10 @@ export interface AdaptationGoal {
 }
 
 /**
- * Adaptation state. v0 is instantaneous (current = goal). The structure follows Pattanaik et al.
- * (2000) §4.1.2 so the time course can be switched on later: neural adaptation A as first-order
- * exponential filters with t0 = 80 ms (cones) / 150 ms (rods); pigment kinetics are M5 work.
+ * Adaptation state (docs/eye-model.md §2 "Time"). Instantaneous (current = goal, pigments in steady state)
+ * unless `timeDependent`: then the neural adaptation A follows the goal through Pattanaik et al.'s (2000,
+ * §4.1.2) first-order filters (t0 = 80 ms cones, 150 ms rods) and the pigments bleach and regenerate with
+ * their kinetics (bleaching.ts), driven by the retinal illuminance of the goal through the pupil.
  */
 export class AdaptationState {
   goal: AdaptationGoal | null = null;
@@ -31,15 +33,26 @@ export class AdaptationState {
   rodCdM2 = 1;
   cornealFlux = 0;
   timeDependent = false;
+  /** Bleached pigment fractions (null before the first measurement: then set to steady state). */
+  pigment: PigmentState | null = null;
+  /** Steady-state bleach for the last goal. */
+  steady: PigmentState = { cone: 0, rod: 0 };
+  /** Retinal illuminance of the last goal, photopic and scotopic trolands. */
+  td = { cone: 0, rod: 0 };
 
-  /** Feed a new measurement. dt (s) is only used when timeDependent is on. */
-  update(goal: AdaptationGoal, dt: number): void {
+  /**
+   * Feed a new measurement. dt (s) is only used when timeDependent is on. pupilMm: the pupil through
+   * which the goal reaches the retina (bleaching); default the Watson–Yellott pupil of the goal's corneal
+   * flux for a 25-year-old, binocular.
+   */
+  update(goal: AdaptationGoal, dt: number, pupilMm?: number): void {
     this.goal = goal;
     const floorC = CRUMEY.zeroBackgroundB;
     const floorR = CRUMEY.zeroBackgroundB * CRUMEY.spRatioBlackwell;
     const gc = Math.max(goal.coneCdM2, floorC);
     const gr = Math.max(goal.rodCdM2, floorR);
-    if (!this.timeDependent || !(dt > 0)) {
+    const timed = this.timeDependent && dt > 0;
+    if (!timed) {
       this.coneCdM2 = gc;
       this.rodCdM2 = gr;
     } else {
@@ -49,6 +62,26 @@ export class AdaptationState {
       this.rodCdM2 += fr * (gr - this.rodCdM2);
     }
     this.cornealFlux = goal.cornealFlux;
+    const d = pupilMm ?? pupilDiameterMm(goal.cornealFlux, 25, 2);
+    this.td = { cone: trolands(goal.coneCdM2, d), rod: trolands(goal.rodCdM2, d) };
+    this.steady = steadyPigment(this.td.cone, this.td.rod);
+    if (!this.pigment || !this.timeDependent) this.pigment = this.steady;
+    else if (timed) this.pigment = stepPigment(this.pigment, this.td.cone, this.td.rod, dt);
+  }
+
+  /**
+   * Put the pigments in the state left by a history: steady adaptation to (coneTd, rodTd) for `exposureS`
+   * starting from the current state (or full regeneration), then `elapsedS` under the current light.
+   */
+  applyHistory(coneTd: number, rodTd: number, exposureS: number, elapsedS: number): void {
+    let p = stepPigment(this.pigment ?? { cone: 0, rod: 0 }, coneTd, rodTd, exposureS);
+    p = stepPigment(p, this.td.cone, this.td.rod, elapsedS);
+    this.pigment = p;
+  }
+
+  /** The eye's sensitivity beyond steady adaptation to the current light. */
+  dark(): DarkAdaptation {
+    return this.pigment ? darkAdaptation(this.pigment, this.steady) : ADAPTED;
   }
 
   /** Relative distance between the state used for rendering and a fresh goal. */
@@ -61,6 +94,10 @@ export class AdaptationState {
 
 export interface EyeFrame {
   settings: EyeSettings;
+  /** Pigment state beyond steady adaptation (bleaching.ts): rod threshold elevation, cone photon catch. */
+  dark: DarkAdaptation;
+  /** Rod adaptation luminance including the bleach's equivalent background (scotopic cd/m²). */
+  ArodEff: number;
   mode: 'eye' | 'enhanced';
   /** 2^exposureBoostStops in 'enhanced', 1 in 'eye'. */
   exposure: number;
@@ -118,18 +155,23 @@ export interface LocalObserver {
   coneSummationSr: number;
 }
 
-export function localObserver(settings: EyeSettings, display: DisplayObserver, AconeIn: number, ArodIn: number, exposure: number): LocalObserver {
+/**
+ * @param dark the pigment state (bleaching.ts): the rods respond as if adapted to their equivalent
+ *   background, and the threshold is raised by thresholdFactor. Mesopic state, Blackwell background and
+ *   Ricco area stay those of the physical adaptation.
+ */
+export function localObserver(settings: EyeSettings, display: DisplayObserver, AconeIn: number, ArodIn: number, exposure: number, dark: DarkAdaptation = ADAPTED): LocalObserver {
   const Acone = Math.max(AconeIn, CRUMEY.zeroBackgroundB);
   const Arod = Math.max(ArodIn, CRUMEY.zeroBackgroundB * CRUMEY.spRatioBlackwell);
   const mes = mesopic(Acone, Arod);
-  const scene = observerState(Acone, Arod, settings.coneBleaching);
+  const scene = observerState(Acone, rodEquivalentAdaptation(Arod, dark.rodLogElevation), settings.coneBleaching);
   const refs = sceneReferences(scene);
   const map = appearanceMap(refs, display);
   const adaptBw = blackwellEquivalent(Acone, Arod, mes.m);
   return {
     Acone, Arod, scene, refs, map, mesopic: mes, adaptBw,
     riccoAreaSr: riccoArea(adaptBw),
-    thresholdBwLux: (settings.fieldFactor * pointThreshold(adaptBw)) / exposure,
+    thresholdBwLux: (settings.fieldFactor * pointThreshold(adaptBw) * thresholdFactor(Acone, Arod, dark)) / exposure,
     coneSummationSr: riccoArea(Math.max(adaptBw, CIE191.upperCdM2)),
   };
 }
@@ -140,13 +182,16 @@ export function computeEyeFrame(
   mode: 'eye' | 'enhanced',
   boostStops: number,
   adaptedWhiteXYZ: V3 | null,
+  /** The brightest luminance the output can show (an HDR display's peak), cd/m²; default display white. */
+  outputMaxCdM2?: number,
 ): EyeFrame {
   const Acone = state.coneCdM2;
   const Arod = state.rodCdM2;
   const pupilMm = pupilDiameterMm(state.cornealFlux, settings.ageYears, settings.eyes);
-  const display = displayObserver(settings.displayPeakCdM2, settings.displayBlackCdM2);
+  const display = displayObserver(settings.displayPeakCdM2, settings.displayBlackCdM2, outputMaxCdM2);
   const exposure = mode === 'enhanced' ? Math.pow(2, boostStops) : 1;
-  const o = localObserver(settings, display, Acone, Arod, exposure);
+  const dark = state.dark();
+  const o = localObserver(settings, display, Acone, Arod, exposure, dark);
   const { scene, refs, map, adaptBw, thresholdBwLux } = o;
   // Limiting magnitude of a 2850 K point: its Blackwell-equivalent illuminance equals its photopic one.
   const limitingMagnitude = magnitudeFromLux(thresholdBwLux);
@@ -154,6 +199,8 @@ export function computeEyeFrame(
   const cat = adaptedWhiteXYZ ? cat02Matrix(adaptedWhiteXYZ, displayWhiteXYZ(), D) : ([1, 0, 0, 0, 1, 0, 0, 0, 1] as M3);
   return {
     settings,
+    dark,
+    ArodEff: o.scene.Arod,
     mode,
     exposure,
     Acone,

@@ -47,6 +47,12 @@ async function main(): Promise<void> {
   renderer.resize(window.innerWidth, window.innerHeight, window.devicePixelRatio || 1);
   const scene = (params.get('scene') ?? '').endsWith('-data') ? await buildDataScene(params) : buildScene(params);
   if (scene.stars) renderer.setStars(scene.stars);
+  // Eye history (docs/eye-model.md §2 "Time"): adaptfrom=<cd/m²>,<exposure s>,<elapsed s>.
+  const adaptFrom = params.get('adaptfrom');
+  if (adaptFrom) {
+    const [luminanceCdM2, exposureS, elapsedS] = adaptFrom.split(',').map(Number);
+    scene.snapshot.view.adaptation = { mode: 'realtime', history: { luminanceCdM2, exposureS, elapsedS } };
+  }
   if (params.get('debug') === '1') {
     const t0 = performance.now();
     renderer.onMeasurement = (m) => console.warn(`[measure ${((performance.now() - t0) / 1000).toFixed(1)}s]`, JSON.stringify(m));
@@ -74,7 +80,7 @@ async function main(): Promise<void> {
     hud.textContent = [
       `${scene.realData ? 'REAL DATA (pipeline products)' : 'TEST FIXTURES — not data'} · ${scene.title} · mode ${scene.snapshot.view.mode}`,
       `adaptation ${s.adaptationLuminance.toPrecision(3)} cd/m² (scotopic ${s.scotopicAdaptationLuminance?.toPrecision(3)}) · CIE191 m ${s.mesopicM?.toFixed(2)} · pupil ${s.pupilDiameterMm?.toFixed(2)} mm`,
-      `limiting V ${s.limitingMagnitude?.toFixed(2)} · stars drawn ${s.starsDrawn} · frame ${s.frameMs.toFixed(0)} ms${params.get('hdr') === 'f16' ? ' · HDR rgba16float fallback' : ''}`,
+      `limiting V ${s.limitingMagnitude?.toFixed(2)} · stars drawn ${s.starsDrawn} · frame ${s.frameMs.toFixed(0)} ms${params.get('hdr') === 'f16' ? ' · HDR rgba16float fallback' : ''}${s.darkAdaptation ? ` · ${s.darkAdaptation.text}` : ''}`,
       ...(s.surfaceCache ? [`surface tiles ${s.surfaceCache.residentTiles} resident · ${s.surfaceCache.usedMiB.toFixed(0)}/${s.surfaceCache.budgetMiB} MiB · deferred ${s.surfaceCache.deferredTiles} · failed ${s.surfaceCache.failedFetches}`] : []),
       ...(s.gpuFrameMs !== undefined ? [`GPU ${s.gpuFrameMs.toFixed(2)} ms: ${Object.entries(s.gpuPassMs ?? {}).map(([k, v]) => `${k} ${v.toFixed(2)}`).join(' · ')}`] : []),
       ...(s.warnings ?? []).map((w) => `⚠ ${w}`),

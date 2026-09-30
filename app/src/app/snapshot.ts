@@ -141,6 +141,10 @@ export function buildSnapshot(inp: SnapshotInput, out?: { overlayOnly: OverlayOn
       exposureBoostStops: reality.view === 'enhanced' ? reality.exposureBoostStops : 0,
       overlays: { provenanceTint: reality.overlays.provenanceTint },
       ...(reality.sunShield ? { sunShield: true } : {}),
+      adaptation: {
+        mode: reality.instantAdaptation ? 'instant' : 'realtime',
+        ...(reality.adaptationHistory ? { history: reality.adaptationHistory } : {}),
+      },
     },
     orbits: reality.overlays.orbits ? inp.orbits : [],
   };

@@ -31,7 +31,8 @@ import { orbitVertices } from './overlays';
 import { AdaptationState, computeEyeFrame, type EyeFrame } from '../eye/model';
 import { DEFAULT_EYE_SETTINGS, type EyeSettings } from '../eye/settings';
 import { fitScatterKernel } from '../eye/glare';
-import { DEG2_PER_SR } from '../eye/pupil';
+import { DEG2_PER_SR, pupilDiameterMm } from '../eye/pupil';
+import { adaptationStatus, adaptationStatusText, trolands } from '../eye/bleaching';
 import { DARK_LIGHT_CONE, DARK_LIGHT_ROD, response } from '../eye/tonemap';
 import { CIE191, CRUMEY, PATTANAIK } from '../eye/constants';
 
@@ -79,6 +80,8 @@ interface Targets {
   w: GPUTexture;
   depth: GPUTexture;
   levels: Level[];
+  /** The extended image alone as a mip chain (mip j: 2^(j+1) px per texel), for the low-light acuity (eye/acuity.ts). */
+  acu: GPUTexture;
   zero: GPUTexture;
   zero2: GPUTexture;
   partials: GPUBuffer;
@@ -114,6 +117,20 @@ export class Renderer {
   private waiters: ((m: Measurement) => void)[] = [];
   private glareCache = { key: '', weights: [] as number[], unscattered: 1 };
   private lastMeasurementTime = 0;
+  /**
+   * The display output chosen at creation: HDR (rgba16float, toneMapping 'extended'; 1.0 = SDR white) or SDR,
+   * and the canvas colour space. In HDR the eye model's display luminance is shown up to
+   * EyeSettings.hdrPeakCdM2.
+   */
+  displayInfo: { hdr: boolean; colorSpace: 'srgb' | 'display-p3'; format: GPUTextureFormat } = { hdr: false, colorSpace: 'srgb', format: 'rgba8unorm' };
+  /** settled() in progress: pigments held in steady state unless the view gives a history. */
+  private settling = false;
+  /** The adaptation history last applied (ViewSettings.adaptation.history), and whether it has settled. */
+  private historyKey = '';
+  private historySettled = false;
+  /** S/P ratio of sunlight (for a history's scotopic luminance) and the view's field (deg²), from the last frame. */
+  private sunSP = 1;
+  private fieldDeg2 = 0;
   private persistentWarnings: string[] = [];
   /** Debug: names of passes to skip ('bodies', 'cull', 'points', 'pyramid', 'sun', 'adapt', 'composite', 'overlays'). */
   debugSkip = new Set<string>();
@@ -187,7 +204,7 @@ export class Renderer {
     const d = device;
     const ub = (size: number) => d.createBuffer({ size, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
     this.frameUB = ub(128);
-    this.eyeUB = ub(16 * 16);  // 16 vec4 (struct Eye)
+    this.eyeUB = ub(17 * 16);  // 17 vec4 (struct Eye)
     this.sunUB = ub(11 * 16);
     this.clampUB = ub(16);
     this.reduceUB = ub(16);
@@ -308,7 +325,16 @@ export class Renderer {
   /**
    * @param options.surfaceCacheMiB GPU memory budget for surface-map tiles (default 1024 MiB); never exceeded.
    */
-  static async create(canvas: HTMLCanvasElement, options: { presentation?: 'canvas' | 'offscreen'; hdr?: 'auto' | 'f16'; surfaceCacheMiB?: number } = {}): Promise<Renderer> {
+  static async create(canvas: HTMLCanvasElement, options: {
+    presentation?: 'canvas' | 'offscreen'; hdr?: 'auto' | 'f16'; surfaceCacheMiB?: number;
+    /**
+     * Display output (docs/eye-model.md §7): 'auto' (default) uses HDR when the screen reports
+     * (dynamic-range: high) and the browser accepts an extended-range canvas, else SDR; 'sdr' / 'hdr' force.
+     */
+    display?: 'auto' | 'sdr' | 'hdr';
+    /** Canvas colour space: 'auto' (default) = Display P3 when the screen covers it ((color-gamut: p3)). */
+    colorSpace?: 'auto' | 'srgb' | 'display-p3';
+  } = {}): Promise<Renderer> {
     if (!navigator.gpu) throw new Error('WebGPU is not available in this browser');
     const adapter = await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' });
     if (!adapter) throw new Error('No WebGPU adapter');
@@ -327,10 +353,11 @@ export class Renderer {
     const offscreen = options.presentation === 'offscreen';
     const ctx = offscreen ? null : canvas.getContext('webgpu');
     if (!offscreen && !ctx) throw new Error('Could not get a WebGPU canvas context');
-    const format: GPUTextureFormat = offscreen ? 'rgba8unorm' : navigator.gpu.getPreferredCanvasFormat();
-    ctx?.configure({ device, format, alphaMode: 'opaque' });
+    const out = ctx ? configureOutput(device, ctx, options.display ?? 'auto', options.colorSpace ?? 'auto') : { format: 'rgba8unorm' as GPUTextureFormat, hdr: false, colorSpace: 'srgb' as const };
+    const format = out.format;
     device.pushErrorScope('validation');
     const r = new Renderer(device, canvas, ctx, format, blend32 ? 'rgba32float' : 'rgba16float', blend32 ? 'r32float' : 'r16float');
+    r.displayInfo = { hdr: out.hdr, colorSpace: out.colorSpace, format };
     const err = await device.popErrorScope();
     if (err) throw new Error(`Renderer pipeline creation failed: ${err.message}`);
     if (!blend32) r.persistentWarnings.push('HDR buffers are rgba16float with pre-exposure (float32-blendable unavailable or disabled)');
@@ -412,6 +439,10 @@ export class Renderer {
       mask: tex(W, H, 'r8unorm', RT, 'MASK'),
       depth: tex(W, H, 'depth32float', RT, 'depth'),
       levels,
+      acu: ((w1: number, h1: number) => d.createTexture({
+        size: [w1, h1], format: 'rgba32float', usage: ST, label: 'acuity mips',
+        mipLevelCount: Math.max(1, Math.min(levels.length - 1, Math.floor(Math.log2(Math.max(w1, h1))) + 1)),
+      }))(levels[1]?.w ?? 1, levels[1]?.h ?? 1),
       zero: tex(1, 1, 'rgba32float', ST, 'zero'),
       zero2: tex(1, 1, 'rgba32float', ST, 'zero2'),
       // One partial per adaptation invocation (8 × 8 per workgroup).
@@ -454,7 +485,7 @@ export class Renderer {
   private destroyTargets(): void {
     const t = this.targets;
     if (!t) return;
-    for (const x of [t.ext, t.pt, t.ptEx, t.ptDisp, t.w, t.mask, t.depth, t.zero, t.zero2]) x.destroy();
+    for (const x of [t.ext, t.pt, t.ptEx, t.ptDisp, t.w, t.mask, t.depth, t.acu, t.zero, t.zero2]) x.destroy();
     for (const l of t.levels) { l.lvl.destroy(); l.tmp.destroy(); l.blur.destroy(); l.acc.destroy(); l.accR.destroy(); l.ub.destroy(); l.ubR.destroy(); }
     t.partials.destroy();
     this.targets = null;
@@ -475,7 +506,12 @@ export class Renderer {
       if (!atmIdle) await this.atm!.whenIdle(30000);
       else await this.surf!.whenIdle(10000);
     }
-    await this.settleAdaptation();
+    this.settling = true;
+    try {
+      await this.settleAdaptation();
+    } finally {
+      this.settling = false;
+    }
   }
 
   /** Resolves when the GPU has finished the last submitted frame (frame pacing; no extra frames). */
@@ -512,8 +548,13 @@ export class Renderer {
     const d = this.device;
     this.settings = { ...DEFAULT_EYE_SETTINGS, ...(snapshot.view.eye ?? {}) };
     const sunWhite = snapshot.sun ? ([snapshot.sun.irradianceXYZS_1AU[0], snapshot.sun.irradianceXYZS_1AU[1], snapshot.sun.irradianceXYZS_1AU[2]] as [number, number, number]) : null;
-    const eye = computeEyeFrame(this.settings, this.adaptation, snapshot.view.mode, snapshot.view.exposureBoostStops, sunWhite);
+    const ad = snapshot.view.adaptation;
+    this.adaptation.timeDependent = ad?.mode === 'realtime';
+    if (snapshot.sun) this.sunSP = snapshot.sun.irradianceXYZS_1AU[3] / snapshot.sun.irradianceXYZS_1AU[1];
+    const outMax = this.displayInfo.hdr ? Math.max(this.settings.hdrPeakCdM2, this.settings.displayPeakCdM2) : undefined;
+    const eye = computeEyeFrame(this.settings, this.adaptation, snapshot.view.mode, snapshot.view.exposureBoostStops, sunWhite, outMax);
     const g = cameraGeom(snapshot, t.W, t.H, NEAR_KM);
+    this.fieldDeg2 = (2 * Math.atan(g.tanX)) * (2 * Math.atan(g.tanY)) * DEG2_PER_SR;
 
     // Point-splat footprint: the eye's optical core (Watson 2013) or the reconstruction minimum.
     const sigmaPx = Math.max(((eye.coreSigmaDeg * Math.PI) / 180) / g.pixelAngle, SIGMA_MIN_PX);
@@ -819,6 +860,23 @@ export class Renderer {
       }
     });
 
+    // 6b. The extended image's mip chain for the low-light acuity (eye/acuity.ts; eye mode only).
+    const acuityOn = snapshot.view.mode === 'eye' && !skip.has('acuity');
+    if (acuityOn) {
+      const pass = enc.beginComputePass({ label: 'acuity mips', timestampWrites: this.tsw('acuity mips') });
+      pass.setPipeline(this.pyr.down);
+      const n = t.acu.mipLevelCount;
+      for (let j = 0; j < n; j++) {
+        const src = j === 0 ? t.ext.createView() : t.acu.createView({ baseMipLevel: j - 1, mipLevelCount: 1 });
+        pass.setBindGroup(0, d.createBindGroup({
+          layout: this.pyr.down.getBindGroupLayout(0),
+          entries: [{ binding: 0, resource: src }, { binding: 2, resource: t.acu.createView({ baseMipLevel: j, mipLevelCount: 1 }) }],
+        }));
+        pass.dispatchWorkgroups(Math.ceil(Math.max(1, t.acu.width >> j) / 8), Math.ceil(Math.max(1, t.acu.height >> j) / 8));
+      }
+      pass.end();
+    }
+
     // 7. Composite (eye model) into the canvas.
     const canvasView = this.ctx ? this.ctx.getCurrentTexture().createView() : this.displayTexture().createView();
     {
@@ -835,6 +893,8 @@ export class Renderer {
           { binding: 4, resource: t.w.createView() },
           { binding: 5, resource: paintView },
           { binding: 6, resource: { buffer: this.srcs } },
+          { binding: 7, resource: t.acu.createView() },
+          { binding: 8, resource: veilView },
         ],
       }));
       pass.draw(3);
@@ -923,7 +983,8 @@ export class Renderer {
     };
     this.stats.starsDrawn = Math.round(r[4]);
     const now = performance.now();
-    const dt = this.lastMeasurementTime ? (now - this.lastMeasurementTime) / 1000 : 0;
+    // Real elapsed time, at most 2 s per measurement (a longer gap is a hidden tab, not a stare).
+    const dt = this.lastMeasurementTime ? Math.min((now - this.lastMeasurementTime) / 1000, 2) : 0;
     this.lastMeasurementTime = now;
     const floorC = CRUMEY.zeroBackgroundB;
     const floorR = CRUMEY.zeroBackgroundB * CRUMEY.spRatioBlackwell;
@@ -932,9 +993,28 @@ export class Renderer {
       Math.abs(Math.log(Math.max(goal.rodCdM2, floorR) / used.rod)),
     );
     const prevFlux = this.adaptation.cornealFlux;
-    this.adaptation.update(goal, dt);
+    const s = this.settings;
+    const pupil = pupilDiameterMm(goal.cornealFlux, s.ageYears, s.eyes);
+    // Time-dependent adaptation (eye/bleaching.ts): settled() holds the pigments in steady state, unless the
+    // view gives a history, which is re-applied under the current goal until the adaptation settles.
+    const hist = this.lastSnapshot?.view.adaptation?.history;
+    const key = hist ? `${hist.luminanceCdM2}|${hist.exposureS}|${hist.elapsedS}` : '';
+    if (key !== this.historyKey) { this.historyKey = key; this.historySettled = false; }
+    const timed = this.adaptation.timeDependent;
+    this.adaptation.timeDependent = timed && !(this.settling && !hist);
+    this.adaptation.update(goal, dt, pupil);
+    this.adaptation.timeDependent = timed;
+    if (hist && timed && !this.historySettled) {
+      const L = hist.luminanceCdM2;
+      const dPre = pupilDiameterMm(L * this.fieldDeg2, s.ageYears, s.eyes);
+      this.adaptation.pigment = null;
+      this.adaptation.applyHistory(trolands(L, dPre), trolands(L * this.sunSP, dPre), hist.exposureS, hist.elapsedS);
+    }
     const fluxStable = Math.abs(goal.cornealFlux - prevFlux) <= 1e-3 * Math.max(goal.cornealFlux, 1e-12);
     const converged = dist < 1e-3 && fluxStable;
+    if (converged && hist) this.historySettled = !this.settling || this.historySettled;
+    const st = adaptationStatus(this.adaptation.dark(), this.adaptation.td.rod);
+    this.stats.darkAdaptation = { fraction: st.fraction, minutesToFull: st.minutesToFull, rodLogElevation: st.rodLogElevation, coneCatch: this.adaptation.dark().coneCatch, text: adaptationStatusText(st) };
     this.onMeasurement?.({ goal, used, converged, starsDrawn: this.stats.starsDrawn });
     const w = this.waiters;
     this.waiters = [];
@@ -1055,11 +1135,12 @@ export class Renderer {
       this.glareCache.unscattered, s.ageYears, s.pigmentation, wPt,
       c[0], c[1], c[2], 0, c[3], c[4], c[5], 0, c[6], c[7], c[8], 0,
       1 / 255, cosField, sigmaPx, nSrc,
-      extentPx, norm, 0, 0,
+      extentPx, norm, Math.pow(10, Math.min(eye.dark.rodLogElevation, 30)), eye.dark.coneCatch,
       DARK_LIGHT_CONE, DARK_LIGHT_ROD, eye.darkResponse[0], eye.darkResponse[1],
       response(PATTANAIK.coneBleachHalf, eye.display.sigma, eye.display.B), eye.displayRiccoSr, eye.coneSummationSr, this.selfVeilPx,
       ...sunFix,
-      eye.display.blackRef, s.coneBleaching ? 1 : 0, s.fixation === 'centre' ? 0 : 1, 0,
+      eye.display.blackRef, s.coneBleaching ? 1 : 0, s.fixation === 'centre' ? 0 : 1, eye.mode === 'eye' && !this.debugSkip.has('acuity') ? 1 : 0,
+      eye.display.maxLd, eye.display.maxResponse, this.displayInfo.hdr ? 1 : 0, this.displayInfo.colorSpace === 'display-p3' ? 1 : 0,
     ]));
     const src = new Float32Array(MAX_GLARE_SOURCES * 8);
     prep.glare.slice(0, nSrc).forEach((gs, i) => src.set([...gs.dir, gs.minDeg, ...gs.E], i * 8));
@@ -1255,4 +1336,28 @@ export class Renderer {
 export function pyramidSigma(k: number): number {
   const p = Math.pow(4, k);
   return Math.sqrt(PYRAMID_BLUR_SIGMA * PYRAMID_BLUR_SIGMA * p + (p - 1) / 12 + (4 * p - 4) / 18);
+}
+
+/**
+ * Configure the canvas for the display (docs/eye-model.md §7). HDR: rgba16float with toneMapping 'extended'
+ * (WebGPU §21.5; Chrome 129+), used when asked for, or in 'auto' when the screen reports
+ * (dynamic-range: high) and the browser reports the extended mode back (getConfiguration). Otherwise the
+ * preferred 8-bit format. Colour space: Display P3 when the screen covers it ((color-gamut: p3)), else sRGB.
+ */
+function configureOutput(device: GPUDevice, ctx: GPUCanvasContext, display: 'auto' | 'sdr' | 'hdr', cs: 'auto' | 'srgb' | 'display-p3'): { format: GPUTextureFormat; hdr: boolean; colorSpace: 'srgb' | 'display-p3' } {
+  const media = (q: string) => typeof matchMedia === 'function' && matchMedia(q).matches;
+  const colorSpace = cs === 'auto' ? (media('(color-gamut: p3)') ? 'display-p3' : 'srgb') : cs;
+  if (display === 'hdr' || (display === 'auto' && media('(dynamic-range: high)'))) {
+    try {
+      ctx.configure({ device, format: 'rgba16float', colorSpace, alphaMode: 'opaque', toneMapping: { mode: 'extended' } } as GPUCanvasConfiguration);
+      const get = (ctx as unknown as { getConfiguration?: () => { toneMapping?: { mode?: string } } | null }).getConfiguration;
+      const mode = get ? get.call(ctx)?.toneMapping?.mode : undefined;
+      if (mode === 'extended' || (display === 'hdr' && mode === undefined)) return { format: 'rgba16float', hdr: true, colorSpace };
+    } catch {
+      // Fall back to SDR below.
+    }
+  }
+  const format = navigator.gpu.getPreferredCanvasFormat();
+  ctx.configure({ device, format, colorSpace, alphaMode: 'opaque' });
+  return { format, hdr: false, colorSpace };
 }

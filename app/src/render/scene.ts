@@ -191,6 +191,24 @@ export interface ViewSettings {
    * enhanced modes; off by default.
    */
   sunShield?: boolean;
+  /** How the eye adapts over time (docs/eye-model.md §2 "Time"); absent = instant. */
+  adaptation?: AdaptationSettings;
+}
+
+/**
+ * 'realtime': the eye adapts over real elapsed time, neurally in fractions of a second and through its
+ * pigments over minutes (dark adaptation takes ~30–40 min after daylight). 'instant': always fully adapted
+ * to the view. Renderer.settled() (screenshots, tests) uses instant pigments unless a `history` is given.
+ */
+export interface AdaptationSettings {
+  mode: 'instant' | 'realtime';
+  /**
+   * A defined past, for tests and demonstrations: the eye was adapted to a uniform field of
+   * `luminanceCdM2` (photopic; scotopic from sunlight's S/P) filling the view for `exposureS`, then has
+   * looked at the current view for `elapsedS`. Applied until the adaptation to the view has settled, then
+   * the eye goes on in real time.
+   */
+  history?: { luminanceCdM2: number; exposureS: number; elapsedS: number };
 }
 
 export interface OrbitPolyline {
@@ -230,6 +248,12 @@ export interface RendererStats {
   mesopicM?: number;
   /** Faintest point source visible at the adaptation state (V mag, for a 2850 K-coloured point). */
   limitingMagnitude?: number;
+  /**
+   * Dark adaptation (eye/bleaching.ts): share of the excess rod bleach regenerated (1 = adapted to the
+   * current light), minutes until the rod threshold is within 0.1 log unit of adapted if the light stays,
+   * rod threshold elevation (log₁₀), cone photon catch relative to adapted, and a HUD line.
+   */
+  darkAdaptation?: { fraction: number; minutesToFull: number; rodLogElevation: number; coneCatch: number; text: string };
   /** Things the renderer could not draw as requested, e.g. "Sun: limb darkening unknown → drawn as a point". */
   warnings?: string[];
   /** GPU time per pass, ms (timestamp queries; absent where the adapter lacks 'timestamp-query'). A frame or two old. */

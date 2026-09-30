@@ -1187,6 +1187,8 @@ export class AppModel {
     if (v.orbits !== undefined) patch.overlays!.orbits = v.orbits;
     if (v.tint !== undefined) patch.overlays!.provenanceTint = v.tint;
     if (v.shield !== undefined) patch.sunShield = v.shield;
+    if (v.adapt !== undefined) patch.instantAdaptation = v.adapt === 'instant';
+    if (v.adaptFrom !== undefined) patch.adaptationHistory = v.adaptFrom;
     this.setReality(patch);
     if (v.ui === false) this.uiHidden = true;
 
@@ -1240,6 +1242,8 @@ export class AppModel {
     if (r.overlays.orbits !== d.overlays.orbits) v.orbits = r.overlays.orbits;
     if (r.overlays.provenanceTint !== d.overlays.provenanceTint) v.tint = r.overlays.provenanceTint;
     if (!!r.sunShield !== !!d.sunShield) v.shield = !!r.sunShield;
+    if (!!r.instantAdaptation !== !!d.instantAdaptation) v.adapt = r.instantAdaptation ? 'instant' : 'realtime';
+    if (r.adaptationHistory) v.adaptFrom = r.adaptationHistory;
     return v;
   }
 

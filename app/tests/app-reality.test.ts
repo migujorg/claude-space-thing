@@ -99,4 +99,8 @@ describe('badge', () => {
     expect(badgeParts({ ...d, view: 'enhanced', sunShield: true }, d)).toContain('SUN SHIELDED: occulting disc (viewing aid)');
     expect(badgeParts({ ...d, sunShield: true }, { ...d, sunShield: true })).toContain('SUN SHIELDED: occulting disc (viewing aid)');
   });
+  it('real-time eye adaptation is the default; instant adaptation is badged', () => {
+    expect(d.instantAdaptation).toBe(false);
+    expect(badgeParts({ ...d, instantAdaptation: true }, d)).toEqual(['INSTANT ADAPTATION: eye always fully adapted']);
+  });
 });
