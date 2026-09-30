@@ -1,0 +1,13 @@
+ASTEROID LIGHTCURVE DATABASE (LCDB) SUMMARY (Complete)
+GENERATED: Oct 01, 2023
+
+NUMBER    NAME                           DESIG                FAM      S CLASS      S F DIA.     S H      B  S G      G1     G2     S F ALBEDO F PERIOD        P DESC          F AMIN AMAX U  NOTES BIN SAM SurvA NEX PRI
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+      1   Ceres                                               9106     S C          L    939.4   M  3.53     A  0.12                D   0.0775 S    9.07417                      0.03 0.06 3             Y               
+     22 * Kalliope                                            9106     S X          L    142.99  L  6.45     A  0.12                D   0.2272      4.1483                       0.02 0.53 3         B   Y               
+     23   Thalia                                              9105     S S          D    106.51  M  7.16     A  0.2                 D   0.2129     12.312                      > 0.1  0.3  3             Y               
+    637   Chrysothemis                   1907 YE              602      A C          C     23.82  M 11.62     A  0.12                A   0.07        3.7                               0.06 1                             
+    859   Bouzareah                      1916 c               9106     A C*         D     73.9   M  9.76     A  0.12                D   0.0403     23.2                               0.13 2-                            
+    988   Appella                        1922 MT              9106     A C*         D     25.75  M 11.68     A  0.12                D   0.0567 >  120                          >      0.4  2                             
+  76111   2000 DK106                     2000 DK106           9106     A C*         C      5.29  L 15.11     A  0.12                A   0.057       5.123                        0.09 0.14 2                             
+      0   2017 XH62                      2017 XH62            9101     A S*         C      0.375 L 20.05     L  0.14                A   0.12        8.0026                            0.2  0                             
