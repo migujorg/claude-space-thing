@@ -886,6 +886,111 @@ def build_albedo(ctx: BuildContext, mask: WaterMask) -> dict:
     return sl.write_layer(ctx, spec, top, known, LEVEL)
 
 
+# ---------------------------------------------------------------------------------------------- wind
+
+WIND_DAY = "2026-09-28"               # the day of the cloud snapshot
+WIND_LEVEL = 2                        # 0.176° texels; the sources are on a 0.25° grid
+AMSR3_URL = ("https://data.remss.com/amsr3/ocean/L3/V2.0/daily/{y}/RSS_AMSR3_ocean_L3_daily_{d}_v2.0.nc")
+GMI_URL = "https://data.remss.com/gmi/bmaps_v08.2/y{y}/m{m}/f35_{ymd}v8.2.gz"
+SRC_AMSR3 = "rss-amsr3-l3-daily"
+SRC_GMI = "rss-gmi-bmaps-daily"
+
+
+def _amsr3(day: str) -> tuple[np.ndarray, np.ndarray, np.ndarray, Path]:
+    """(MF wind [pass, lat, lon] with NaN, latitude, longitude) from the RSS AMSR3 V2.0 daily L3 file."""
+    import h5py
+    p = fetch(AMSR3_URL.format(y=day[:4], d=day), f"{SUBDIR}/wind", timeout=600,
+              validate=lambda q: q.read_bytes()[:8] == b"\x89HDF\r\n\x1a\n")
+    with h5py.File(p, "r") as f:
+        w = f["wind_speed_MF"][:].astype(np.float32)
+        fill = float(np.ravel(f["wind_speed_MF"].attrs["_FillValue"])[0])
+        passes = [int(x) for x in f["pass"][:]]
+        lat, lon = f["lat"][:], f["lon"][:]
+    if passes != [1, 2]:
+        raise ValueError(f"{p.name}: unexpected pass order {passes}")
+    w[(w == fill) | ~(w >= 0) | (w > 70)] = np.nan
+    return w, lat, lon, p
+
+
+def _gmi(day: str) -> tuple[np.ndarray, Path]:
+    """GMI daily bytemap (RSS v8.2): uint8 [2 passes][7 variables][720 lat, south first][1440 lon from 0.125°E];
+    variable 3 = 10 m wind speed (medium frequency) × 0.2 m/s; bytes > 250 are land, ice, no data or bad."""
+    import gzip
+    y, m, dd = day.split("-")
+    p = fetch(GMI_URL.format(y=y, m=m, ymd=f"{y}{m}{dd}"), f"{SUBDIR}/wind", timeout=600)
+    raw = np.frombuffer(gzip.decompress(p.read_bytes()), np.uint8)
+    if raw.size != 2 * 7 * 720 * 1440:
+        raise ValueError(f"{p.name}: {raw.size} bytes, expected {2 * 7 * 720 * 1440}")
+    b = raw.reshape(2, 7, 720, 1440)[:, 3].astype(np.float32)
+    return np.where(b <= 250, b * np.float32(0.2), np.nan), p
+
+
+def build_wind(ctx: BuildContext) -> dict:
+    amsr3, lat, lon, p_amsr3 = _amsr3(WIND_DAY)
+    gmi, p_gmi = _gmi(WIND_DAY)
+    if not (np.allclose(lat, -89.875 + 0.25 * np.arange(720)) and np.allclose(lon, 0.125 + 0.25 * np.arange(1440))):
+        raise ValueError("AMSR3 grid differs from the RSS 0.25° bytemap grid")
+    h, w = st.level_shape(WIND_LEVEL)
+    lat_g = geodetic_from_centric(st.lat_centers(WIND_LEVEL))
+    ri = np.clip(np.floor((lat_g + 90.0) / 0.25).astype(int), 0, 719)
+    ci = np.floor(np.mod(st.lon_centers(WIND_LEVEL), 360.0) / 0.25).astype(int) % 1440
+    asc = amsr3[0][np.ix_(ri, ci)]
+    stack = np.stack([amsr3[0], amsr3[1], gmi[0], gmi[1]])[:, ri][:, :, ci]
+    n = np.isfinite(stack).sum(axis=0)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        mean = np.where(n > 0, np.nansum(stack, axis=0) / np.maximum(n, 1), np.nan)
+    top = np.stack([asc, mean, np.where(n > 0, n, np.nan)], axis=-1).astype(np.float32)
+    known = np.isfinite(mean)
+    for sid, pth, title, cit in (
+            (SRC_AMSR3, p_amsr3, f"RSS AMSR3 V2.0 daily ocean products (GOSAT-GW), {WIND_DAY}",
+             "Wentz, F., Meissner, T., Ricciardulli, L., Mears, C., Densberger, M. & Nelson, K. (2026). Remote "
+             "Sensing Systems AMSR3 V2.0 Air-Sea Essential Climate Variables (AS-ECV) on 0.25 deg grid, version 1.0. "
+             "Remote Sensing Systems, Santa Rosa, CA. www.remss.com/missions/amsr/"),
+            (SRC_GMI, p_gmi, f"RSS GMI (GPM) version 8.2 daily ocean bytemaps, {WIND_DAY}",
+             "Wentz, F.J., Draper, D. & Remote Sensing Systems (2015, updated daily). RSS GMI daily environmental "
+             "suite on 0.25 deg grid, Version 8.2. Remote Sensing Systems, Santa Rosa, CA. "
+             "www.remss.com/missions/gmi")):
+        sl.register_dataset(ctx, sid, title, cit, AMSR3_URL if sid == SRC_AMSR3 else GMI_URL, {pth.name: record(pth)},
+                            version="V2.0" if sid == SRC_AMSR3 else "v8.2",
+                            license="free with attribution (Remote Sensing Systems data policy)",
+                            notes="10 m ocean-surface wind speed, medium-frequency algorithm (18.7-36.5 GHz); "
+                                  "0.25° grid, ascending and descending passes.")
+    spec = sl.LayerSpec(
+        naif=NAIF, body=NAME, layer="wind", kind="surface-wind", fmt="f16", nodata="nan",
+        channels=["windSpeed10mAscending", "windSpeed10mDailyMean", "passes"],
+        frame=FRAME, sources=[SRC_AMSR3, SRC_GMI],
+        brightness=sl.Provenance(
+            "measured", [SRC_AMSR3, SRC_GMI],
+            "Microwave-radiometer retrievals of the 10 m ocean-surface wind speed (RSS medium-frequency algorithm). "
+            "windSpeed10mAscending: AMSR3 ascending pass (~13:30 local solar time, the local time of the cloud "
+            "layer's NOAA-20 overpass). windSpeed10mDailyMean: mean of all AMSR3 and GMI passes of the UTC day that "
+            "saw the cell (count in `passes`). Nearest 0.25° cell per texel.",
+            "~1 m/s rms against buoys for rain-free retrievals; no value in rain, near land (~50 km), over sea ice "
+            "or between swaths (NaN)"),
+        epoch={"start": f"{WIND_DAY}T00:00:00Z", "end": f"{WIND_DAY}T23:59:59Z",
+               "observed": f"{WIND_DAY}: AMSR3 ascending ~13:30 and descending ~01:30 local solar time; GMI "
+                           "(GPM, 65° inclination, precessing) passes within ±70° latitude",
+               "changes": "winds change over hours; glint rendered at another time is estimated"},
+        units="m/s",
+        constants={
+            "channels": {"windSpeed10mAscending": "m/s at 10 m, AMSR3 ascending pass",
+                         "windSpeed10mDailyMean": "m/s at 10 m, mean of the day's AMSR3 and GMI passes",
+                         "passes": "number of passes averaged (1-4)"},
+            "coxMunk": {"formula": "σ² = 0.003 + 5.12e-3·U (sum of the two slope variances, clean sea)",
+                        "reference": "Cox, C. & Munk, W. (1954). Measurement of the roughness of the sea surface "
+                                     "from photographs of the sun's glitter. J. Opt. Soc. Am. 44, 838-850",
+                        "height": "Cox & Munk measured U at 12.5 m; for a neutral logarithmic profile with roughness "
+                                  "length ~0.2 mm, U(12.5 m) ≈ 1.02·U(10 m), within their fit's scatter, so U10 can "
+                                  "be used directly (or multiplied by 1.02)"},
+            "sourceDate": WIND_DAY},
+        diagnostics={"knownFraction": round(float(known.mean()), 4),
+                     "ascendingKnownFraction": round(float(np.isfinite(asc).mean()), 4),
+                     "meanWindSpeed": round(float(np.nanmean(mean)), 3)},
+        notes=["Ocean only: land, sea ice and cells near coasts are NaN (use the water layer for where water is)."],
+    )
+    return sl.write_layer(ctx, spec, top, known, WIND_LEVEL)
+
+
 def build(ctx: BuildContext, work: Path) -> list[dict]:
     only = {s.strip() for s in os.environ.get("SURFACES_EARTH_LAYERS", "").split(",") if s.strip()}
     out = []
@@ -899,4 +1004,6 @@ def build(ctx: BuildContext, work: Path) -> list[dict]:
             out.append(build_water(ctx, mask))
         if not only or "albedo" in only:
             out.append(build_albedo(ctx, mask))
+    if not only or "wind" in only:
+        out.append(build_wind(ctx))
     return out
