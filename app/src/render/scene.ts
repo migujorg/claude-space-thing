@@ -96,6 +96,53 @@ export interface SceneBody {
    * phase function is unknown stops the whole atmosphere from being drawn (warning).
    */
   atmosphere?: SceneAtmosphere | null;
+  /**
+   * Shape model (docs/rendering-shapes.md): a triangle mesh drawn in place of the triaxial ellipsoid, when its
+   * shape and orientation are admitted at the reality level. The renderer fetches the mesh levels itself and draws
+   * the ellipsoid until one is resident. Radii, albedo and phase keep their meaning: the disk photometry is
+   * redistributed over the mesh (energy normalization by the mesh's mean projected area). Include its label in
+   * `worstLabel`.
+   */
+  shape?: SceneShape | null;
+}
+
+/** A shape model as the renderer needs it (docs/rendering-shapes.md; ShapeModelHeader, DamitIndexHeader). */
+export interface SceneShape {
+  /** Stable key of the model (the renderer caches its levels by key), e.g. 'shapes/401' or 'damit/1234'. */
+  key: string;
+  /** Mesh frame → ICRF rotation (row-major) at the body's light-emission epoch. */
+  orient: Mat3;
+  /** Model units → km (1 for meshes in km; DAMIT: the measured size over the model's). */
+  scaleKm: number;
+  /** Largest distance of the mesh from the body centre, km (culling: an irregular body reaches beyond its radii). */
+  boundRadiusKm: number;
+  /** Surface area of the mesh, km² (level-of-detail choice before any level is loaded). */
+  areaKm2: number;
+  /** Levels of detail, finest first. */
+  lods: SceneShapeLod[];
+  /** Worst label of the shape, its orientation and the energy normalization (derived). */
+  worstLabel: Label;
+}
+
+export interface SceneShapeLod {
+  /** URL of the binary that holds this level (data root + path). */
+  url: string;
+  /** Byte range of this level in the binary. */
+  offset: number;
+  bytes: number;
+  triangles: number;
+  vertices: number;
+  /**
+   * 'shape': a ShapeModelHeader level (float32 positions, int16 normals, u16/u32 indices at `parts`, offsets
+   * relative to `offset`); 'damit': int16 positions × quantScale/32767 then u16 indices, no normals.
+   */
+  format: 'shape' | 'damit';
+  parts?: {
+    positions: { offset: number; bytes: number };
+    normals: { offset: number; bytes: number };
+    indices: { offset: number; bytes: number; type: 'u16' | 'u32' };
+  };
+  quantScale?: number;
 }
 
 /** One body's atmosphere from atmospheres.json (AtmosphereFile), with the file's spectral grid. */
@@ -238,6 +285,16 @@ export interface RendererStats {
   /** CPU time of the last render() call, ms: frame preparation (photometry, rings, tiles) and all of render() up to submit. */
   cpuPrepMs?: number;
   cpuFrameMs?: number;
+  /** Shape meshes (docs/rendering-shapes.md): level cache and what was drawn from meshes this frame. */
+  meshes?: {
+    budgetMiB: number;
+    usedMiB: number;
+    residentLevels: number;
+    pendingFetches: number;
+    failedFetches: number;
+    models: number;
+    drawn: { name: string; level: number; triangles: number; energyNormalization: number; selfShadow: boolean }[];
+  };
   /** Surface-map tile cache (virtual texturing). */
   surfaceCache?: {
     budgetMiB: number;

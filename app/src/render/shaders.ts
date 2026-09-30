@@ -300,7 +300,8 @@ fn bgAt(t: texture_2d<f32>, ndc: vec2f) -> vec4f {
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 // Resolved bodies: analytic ellipsoid ray casting on a screen-space quad (see raycast.ts).
 // ─────────────────────────────────────────────────────────────────────────────────────────────
-const BODY_COMMON = /* wgsl */ `
+/** The per-body record (renderer.ts writeBodies), shared by the ellipsoid and the mesh shaders (meshes/). */
+export const BODY_STRUCT = /* wgsl */ `
 struct Body {
   n: vec4f,     // direction to centre (world, unit), w = D (km)
   e1: vec4f,    // tangent basis e1, w = quad half-extent (tan units)
@@ -330,7 +331,9 @@ struct Body {
   nightK: vec4f, // night lights: luminance (cd/m², XYZS) per unit of the layer's radiance
   atm: vec4f,    // atmosphere (shaders-atmosphere.ts): 1 = drawn, march steps, unused, unused
 };
+`;
 
+const BODY_COMMON = BODY_STRUCT + /* wgsl */ `
 @group(0) @binding(0) var<uniform> F: Frame;
 @group(0) @binding(1) var<storage, read> bodies: array<Body>;
 
@@ -391,6 +394,65 @@ fn castBody(b: Body, xy: vec2f) -> Hit {
 fn depthOf(t: f32, dir: vec3f) -> f32 {
   let zv = t * dot(dir, -F.back.xyz);
   return F.proj.z / max(zv, F.proj.z);
+}
+`;
+
+/**
+ * Eclipses, ring shadows and ring transmission of a body-relative point (km, world axes), shared by the ellipsoid
+ * and the mesh shaders. Needs `F`, `rings` and `ringProf` bound, BODY_STRUCT, RING_COMMON and COMMON.
+ */
+export const BODY_LIGHT_WGSL = /* wgsl */ `
+/** Fraction of the solar disk (uniform-disk approximation) visible from body-relative point p. */
+fn sunVisible(b: Body, p: vec3f) -> f32 {
+  let n = u32(b.misc.z);
+  if (n == 0u) { return 1.0; }
+  let S = b.sun.xyz * b.sun.w - p;
+  let dS = length(S);
+  let sHat = S / dS;
+  let rs = asin(min(b.misc.y / dS, 1.0));
+  var covered = 0.0;
+  for (var i = 0u; i < n; i++) {
+    let O = b.occ[i].xyz - p;
+    let dO = length(O);
+    if (dot(O, S) <= 0.0 || dO >= dS) { continue; }
+    let ro = asin(min(b.occ[i].w / dO, 1.0));
+    let sep = angleBetween(O / dO, sHat);
+    covered += circleOverlap(rs, ro, sep);
+  }
+  return clamp(1.0 - covered / (PI * rs * rs), 0.0, 1.0);
+}
+
+/** Sunlight transmitted through a ring system to body-relative point p (ring shadow, soft by the solar disk). */
+fn ringShadowT(b: Body, p: vec3f) -> f32 {
+  if (b.ring.x < -0.5) { return 1.0; }
+  let R = rings[u32(b.ring.x)];
+  let N = R.N.xyz;
+  let X = p + b.ring.yzw;
+  let s = b.sun.xyz;
+  let sN = dot(s, N);
+  if (abs(sN) < 1e-6) { return 1.0; }
+  let u = -dot(X, N) / sN;
+  if (u <= 0.0) { return 1.0; }
+  let r = length(X + u * s);
+  let delta = u * asin(min(b.misc.y / b.sun.w, 1.0)) / abs(sN);
+  let a = ringAvg(R, r - delta, r + delta);
+  return exp(-a.tau / abs(sN));
+}
+
+/** Light from point p toward the camera transmitted through a ring system in front of it. */
+fn ringViewT(b: Body, p: vec3f, dirN: vec3f, range: f32) -> f32 {
+  if (b.ring.x < -0.5) { return 1.0; }
+  let R = rings[u32(b.ring.x)];
+  let N = R.N.xyz;
+  let X = p + b.ring.yzw;
+  let dN = dot(dirN, N);
+  if (abs(dN) < 1e-6) { return 1.0; }
+  let u = dot(X, N) / dN;
+  if (u <= 0.0 || u >= range) { return 1.0; }
+  let r = length(X - u * dirN);
+  let fw = F.tanHalf.z * (range - u) / abs(dN);
+  let a = ringAvg(R, r - 0.5 * fw, r + 0.5 * fw);
+  return exp(-a.tau / abs(dN));
 }
 `;
 
@@ -488,59 +550,7 @@ fn texelRadf(uv: vec2f, mu0: f32, mu: f32, g: f32) -> vec4f {
   return select(vec4f(mu0), num / max(dn, vec4f(1e-12)), dn > vec4f(0.0));
 }
 
-/** Fraction of the solar disk (uniform-disk approximation) visible from body-relative point p. */
-fn sunVisible(b: Body, p: vec3f) -> f32 {
-  let n = u32(b.misc.z);
-  if (n == 0u) { return 1.0; }
-  let S = b.sun.xyz * b.sun.w - p;
-  let dS = length(S);
-  let sHat = S / dS;
-  let rs = asin(min(b.misc.y / dS, 1.0));
-  var covered = 0.0;
-  for (var i = 0u; i < n; i++) {
-    let O = b.occ[i].xyz - p;
-    let dO = length(O);
-    if (dot(O, S) <= 0.0 || dO >= dS) { continue; }
-    let ro = asin(min(b.occ[i].w / dO, 1.0));
-    let sep = angleBetween(O / dO, sHat);
-    covered += circleOverlap(rs, ro, sep);
-  }
-  return clamp(1.0 - covered / (PI * rs * rs), 0.0, 1.0);
-}
-
-/** Sunlight transmitted through a ring system to body-relative point p (ring shadow, soft by the solar disk). */
-fn ringShadowT(b: Body, p: vec3f) -> f32 {
-  if (b.ring.x < -0.5) { return 1.0; }
-  let R = rings[u32(b.ring.x)];
-  let N = R.N.xyz;
-  let X = p + b.ring.yzw;
-  let s = b.sun.xyz;
-  let sN = dot(s, N);
-  if (abs(sN) < 1e-6) { return 1.0; }
-  let u = -dot(X, N) / sN;
-  if (u <= 0.0) { return 1.0; }
-  let r = length(X + u * s);
-  let delta = u * asin(min(b.misc.y / b.sun.w, 1.0)) / abs(sN);
-  let a = ringAvg(R, r - delta, r + delta);
-  return exp(-a.tau / abs(sN));
-}
-
-/** Light from point p toward the camera transmitted through a ring system in front of it. */
-fn ringViewT(b: Body, p: vec3f, dirN: vec3f, range: f32) -> f32 {
-  if (b.ring.x < -0.5) { return 1.0; }
-  let R = rings[u32(b.ring.x)];
-  let N = R.N.xyz;
-  let X = p + b.ring.yzw;
-  let dN = dot(dirN, N);
-  if (abs(dN) < 1e-6) { return 1.0; }
-  let u = dot(X, N) / dN;
-  if (u <= 0.0 || u >= range) { return 1.0; }
-  let r = length(X - u * dirN);
-  let fw = F.tanHalf.z * (range - u) / abs(dN);
-  let a = ringAvg(R, r - 0.5 * fw, r + 0.5 * fw);
-  return exp(-a.tau / abs(dN));
-}
-
+${BODY_LIGHT_WGSL}
 struct FOut {
   @location(0) ext: vec4f,
   @location(1) w: f32,
