@@ -6,7 +6,9 @@
 //   shield=1 (Sun shield viewing aid: an occulting disc over the Sun),
 //   M2: scene=vt|lowsun|hapke|rings|earthshine, cache=MiB (surface tile budget, default 96), side=lit|unlit (rings),
 //   nomodel=1 (rings without a reflectance model); real data (pipeline products under /data):
-//   scene=rings-data|moon-data (see dataScenes.ts)
+//   scene=rings-data|moon-data (see dataScenes.ts);
+//   bench=N (the stats then carry the median GPU time of each pass over N more frames), benchab=<skip> (A/B);
+//   skip=ap|acuity|…
 
 import { Renderer } from '../render/renderer';
 import { buildScene } from './scenes';
@@ -69,6 +71,33 @@ async function main(): Promise<void> {
     console.warn(`[stage] first frame GPU done after ${(performance.now() - tt).toFixed(0)} ms`);
   }
   await renderer.settled();
+  // bench=N: N more frames of the settled view; the stats then carry the median GPU time of each pass.
+  // benchab=<skip name>: 2N frames alternating without and with that skip; the second set is reported with
+  // a "B " prefix (same load on both, e.g. benchab=ap for the aerial-perspective columns).
+  const bench = Math.max(0, Math.floor(Number(params.get('bench') ?? 0)));
+  if (bench) {
+    const ab = params.get('benchab');
+    const runs: Record<string, number>[][] = [[], []];
+    for (let i = 0; i < (ab ? 2 * bench : bench); i++) {
+      const b = ab ? 1 - (i & 1) : 0; // B first, so the last frame (the screenshot) is A
+      if (ab) { if (b) renderer.debugSkip.add(ab); else renderer.debugSkip.delete(ab); }
+      const before = renderer.stats.gpuPassMs;
+      renderer.render(scene.snapshot);
+      await dev.queue.onSubmittedWorkDone();
+      for (let w = 0; w < 100 && renderer.stats.gpuPassMs === before; w++) await new Promise((r) => setTimeout(r, 20));
+      if (renderer.stats.gpuPassMs && renderer.stats.gpuPassMs !== before) runs[b].push({ ...renderer.stats.gpuPassMs, total: renderer.stats.gpuFrameMs ?? 0 });
+    }
+    if (ab) renderer.debugSkip.delete(ab);
+    const med = (v: number[]) => { const s = [...v].sort((a, b) => a - b); return s.length ? s[(s.length - 1) >> 1] : NaN; };
+    const medians = (rs: Record<string, number>[]) => {
+      const keys = [...new Set(rs.flatMap((r) => Object.keys(r)))];
+      return Object.fromEntries(keys.map((k) => [k, med(rs.map((r) => r[k]).filter((x) => x !== undefined))]));
+    };
+    const A = medians(runs[0]);
+    const B = ab ? Object.fromEntries(Object.entries(medians(runs[1])).map(([k, v]) => [`B ${k}`, v])) : {};
+    console.log('[bench]', JSON.stringify({ frames: runs[0].length + runs[1].length, medianPassMs: { ...A, ...B } }));
+    renderer.stats.gpuPassMs = { ...A, ...B };
+  }
   if (offscreen) {
     const px = await renderer.readPixels();
     canvas.width = px.width;

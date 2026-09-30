@@ -35,7 +35,19 @@ interface Entry {
 }
 
 /** Bytes of the Atm uniform (struct Atm: 3 + 16 + 4 vec4). */
-export const ATM_UB_BYTES = (3 + 16 + 4 + 4) * 16;
+export const ATM_UB_BYTES = (3 + 16 + 4 + 4 + 2 + 3) * 16;
+
+/** Aerial-perspective columns of one body this frame (renderer.ts, AP_COLUMNS_SHADER). */
+export interface ApColumns {
+  /** Column size, px; columns across and down. */
+  colPx: number;
+  nx: number;
+  ny: number;
+  /** Slice altitudes, km, ascending from 0 (at most 12). */
+  slices: number[];
+  /** Index of the body in the frame's body buffer. */
+  body: number;
+}
 
 export class AtmosphereGpu {
   /** Per atmosphere data object, per dust-season bin (−1: no dust scaling). */
@@ -133,7 +145,7 @@ export class AtmosphereGpu {
   }
 
   /** Per-frame uniform: geometry, the Sun's illuminance over π at the body, the shell quad. */
-  writeUniform(b: AtmosphereBinding, sunE: number[], sunAngularRadius: number, quadHalfExtent: number, fullScreen: boolean, steps: number): void {
+  writeUniform(b: AtmosphereBinding, sunE: number[], sunAngularRadius: number, quadHalfExtent: number, fullScreen: boolean, steps: number, ap: ApColumns | null = null): void {
     const m = b.model;
     const K = m.wavelengthsNm.length;
     const K4 = Math.ceil(K / 4);
@@ -145,6 +157,10 @@ export class AtmosphereGpu {
     for (let k = 0; k < K; k++) a[12 + 64 + k] = dep[k];
     const fD = particleDeltaFraction(m);
     for (let k = 0; k < K; k++) a[12 + 64 + 16 + k] = fD[k];
+    if (ap) {
+      a.set([ap.colPx, ap.nx, ap.ny, ap.slices.length, ap.body, 1, 0, 0], 12 + 64 + 32);
+      ap.slices.slice(0, 12).forEach((h, k) => { a[12 + 64 + 40 + k] = h; });
+    }
     this.device.queue.writeBuffer(b.uniform, 0, a);
   }
 

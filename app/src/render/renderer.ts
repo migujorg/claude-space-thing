@@ -17,12 +17,12 @@
 
 import type { RendererStats, SceneBody, SceneSnapshot, StarCatalog } from './scene';
 import {
-  ADAPT_REDUCE_SHADER, ADAPT_SHADER, ADAPT_TILE_PX, ATM_BODY_SHADER, ATMOSPHERE_SHELL_SHADER, BODY_OVERLAY_SHADER, BODY_SHADER, CLAMP_ARGS_SHADER, COMPOSITE_SHADER, EARTH_BODY_SHADER,
+  ADAPT_REDUCE_SHADER, ADAPT_SHADER, ADAPT_TILE_PX, AP_COLUMNS_SHADER, ATM_BODY_SHADER, ATMOSPHERE_SHELL_SHADER, BODY_OVERLAY_SHADER, BODY_SHADER, CLAMP_ARGS_SHADER, COMPOSITE_SHADER, EARTH_BODY_SHADER,
   CULL_SHADER, LINE_SHADER, MASK_HATCH_SHADER, OVERFLOW_SHADER, POINT_SHADER, PYRAMID_BLUR_SIGMA, PYRAMID_SHADER,
   RING_SHADER, SUN_SHADER,
 } from './shaders';
 import { SurfaceGpu } from './surfaceGpu';
-import { AtmosphereGpu, ATM_UB_BYTES, type AtmosphereBinding } from './atmosphereGpu';
+import { AtmosphereGpu, ATM_UB_BYTES, type ApColumns, type AtmosphereBinding } from './atmosphereGpu';
 import type { RingPrep } from './rings';
 import { LAW } from './spatial';
 import { cameraGeom, prepareFrame, type PreparedFrame } from './frame';
@@ -65,6 +65,11 @@ interface Level {
   ub: GPUBuffer;
   ubR: GPUBuffer;
 }
+
+/** Rows of aerial-perspective columns across the frame (column size = ⌈H / AP_ROWS⌉ px, at least 2). A sampling choice. */
+const AP_ROWS = 270;
+/** Altitude slices of Earth's columns, km: the range of the cloud-top heights the view path is split at. A sampling choice. */
+const AP_SLICES_EARTH_KM = [0, 1, 2, 3, 4, 6, 8, 10, 13, 16];
 
 interface Targets {
   W: number;
@@ -576,14 +581,25 @@ export class Renderer {
       surf.flush();
       this.stats.surfaceCache = surf.stats();
     }
-    // Atmospheres whose tables are ready (computed in a worker the first time a body shows one).
+    // Atmospheres whose tables are ready (computed in a worker the first time a body shows one), and the
+    // aerial-perspective columns of those drawn over a disk (AP_COLUMNS_SHADER).
     const atmOf = new Map<number, AtmosphereBinding>();
+    const apOf = new Map<number, { cols: ApColumns; tex: GPUTexture }>();
     prep.resolved.forEach((r, i) => {
       if (!r.atmosphere || !this.atm) return;
-      atmOf.set(i, r.atmosphere.binding);
-      this.atm.writeUniform(r.atmosphere.binding, r.atmosphere.sunE, r.atmosphere.sunAngularRadius, r.atmosphere.shellBeta, r.frame.near, ATM_STEPS);
+      const b = r.atmosphere.binding;
+      atmOf.set(i, b);
+      let ap: ApColumns | null = null;
+      if (r.atmosphere.onDisk && !b.unmeasured && !this.debugSkip.has('ap')) {
+        const colPx = Math.max(2, Math.ceil(t.H / AP_ROWS));
+        const slices = r.earth ? AP_SLICES_EARTH_KM : [0];
+        ap = { colPx, nx: Math.ceil(t.W / colPx), ny: Math.ceil(t.H / colPx), slices, body: i };
+        apOf.set(i, { cols: ap, tex: this.apTexture(b.key, ap, Math.ceil(b.model.wavelengthsNm.length / 4)) });
+      }
+      this.atm.writeUniform(b, r.atmosphere.sunE, r.atmosphere.sunAngularRadius, r.atmosphere.shellBeta, r.frame.near, ATM_STEPS, ap);
     });
     this.atmOf = atmOf;
+    this.apOf = apOf;
     this.stats.cpuPrepMs = performance.now() - t0;
 
     // Scatter kernel (CIE 146) fitted to this pyramid and field of view.
@@ -624,6 +640,20 @@ export class Renderer {
     const nRings = this.writeRings(prep.rings);
     d.queue.writeBuffer(this.surfUB, 0, new Uint32Array([surf?.perRow('albedo') ?? 1, surf?.perRow('height') ?? 1, nRings, 0, surf?.perRow('clouds') ?? 1, surf?.perRow('rg16') ?? 1, 0, 0]));
     const skip = this.debugSkip;
+    // 1a. Aerial-perspective columns of the atmospheres drawn over a disk (AP_COLUMNS_SHADER).
+    if (apOf.size && this.bodiesBuf && !skip.has('atmosphere')) {
+      const pipe = (this.apPipe ??= d.createComputePipeline({ layout: 'auto', compute: { module: d.createShaderModule({ code: AP_COLUMNS_SHADER, label: 'aerial perspective' }), entryPoint: 'main' }, label: 'aerial perspective' }));
+      const cp = enc.beginComputePass({ label: 'aerial perspective', timestampWrites: this.tsw('aerial perspective') });
+      cp.setPipeline(pipe);
+      for (const [i, a] of apOf) {
+        cp.setBindGroup(0, d.createBindGroup({
+          layout: pipe.getBindGroupLayout(0),
+          entries: [{ binding: 0, resource: { buffer: this.frameUB } }, { binding: 1, resource: { buffer: this.bodiesBuf } }, ...this.atmEntries(atmOf.get(i)), { binding: 16, resource: a.tex.createView({ dimension: '3d' }) }],
+        }));
+        cp.dispatchWorkgroups(Math.ceil(a.cols.nx / 8), Math.ceil(a.cols.ny / 8));
+      }
+      cp.end();
+    }
     {
       const pass = enc.beginRenderPass({
         label: 'bodies',
@@ -674,7 +704,7 @@ export class Renderer {
               : this.bodyPipe;
           if (withAtm) {
             pass.setPipeline(pipe);
-            pass.setBindGroup(0, d.createBindGroup({ layout: pipe.getBindGroupLayout(0), entries: [...entries, ...this.atmEntries(atmOf.get(i))] }));
+            pass.setBindGroup(0, d.createBindGroup({ layout: pipe.getBindGroupLayout(0), entries: [...entries, ...this.atmEntries(atmOf.get(i)), { binding: 16, resource: this.apView(i) }] }));
             bound = null;
           } else if (earth) {
             pass.setPipeline(pipe);
@@ -683,6 +713,7 @@ export class Renderer {
               entries: [
                 ...entries, { binding: 10, resource: surf!.view('clouds') }, { binding: 11, resource: surf!.view('rg16') }, ...this.atmEntries(atmOf.get(i)),
                 { binding: 15, resource: prep.resolved[i].surface?.wind?.view ?? this.windDummy() },
+                { binding: 16, resource: this.apView(i) },
               ],
             }));
             bound = null;
@@ -1173,6 +1204,32 @@ export class Renderer {
   }
 
   private atmOf = new Map<number, AtmosphereBinding>();
+  private apOf = new Map<number, { cols: ApColumns; tex: GPUTexture }>();
+  private apTextures = new Map<string, GPUTexture>();
+  private apPipe: GPUComputePipeline | null = null;
+  private apDummyTex: GPUTexture | null = null;
+
+  /** The aerial-perspective texture of an atmosphere for this frame's grid (kept while the size fits). */
+  private apTexture(key: string, ap: ApColumns, K4: number): GPUTexture {
+    const depth = ap.slices.length * (1 + K4);
+    let tex = this.apTextures.get(key);
+    if (!tex || tex.width !== ap.nx || tex.height !== ap.ny || tex.depthOrArrayLayers !== depth) {
+      tex?.destroy();
+      tex = this.device.createTexture({
+        size: [ap.nx, ap.ny, depth], dimension: '3d', format: 'rgba16float',
+        usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING, label: `aerial perspective ${key}`,
+      });
+      this.apTextures.set(key, tex);
+    }
+    return tex;
+  }
+
+  private apView(i: number): GPUTextureView {
+    const a = this.apOf.get(i);
+    if (a) return a.tex.createView({ dimension: '3d' });
+    this.apDummyTex ??= this.device.createTexture({ size: [1, 1, 1], dimension: '3d', format: 'rgba16float', usage: GPUTextureUsage.TEXTURE_BINDING, label: 'aerial perspective dummy' });
+    return this.apDummyTex.createView({ dimension: '3d' });
+  }
   private windDummyTex: GPUTexture | null = null;
   private windDummy(): GPUTextureView {
     this.windDummyTex ??= this.device.createTexture({ size: [1, 1], format: 'rgba16float', usage: GPUTextureUsage.TEXTURE_BINDING, label: 'wind dummy' });

@@ -7,7 +7,7 @@ import { XYZ_TO_HPE } from '../eye/tonemap';
 import { LAW_WGSL, MASK_HATCH_SHADER, RING_COMMON, RING_SHADER as RING_SHADER_OF, SURFACE_WGSL } from './shaders-m2';
 import { FORESHORTEN_MIN_MU } from './surface';
 import { EARTH_WGSL } from './shaders-earth';
-import { ATMOSPHERE_WGSL } from './shaders-atmosphere';
+import { AP_READ_WGSL, ATMOSPHERE_WGSL } from './shaders-atmosphere';
 
 // Relief self-shadowing: horizon search toward the Sun in geometrically growing steps from one texel
 // (a numerical choice, not a physical constant: 40 steps growing by 15% reach ~230 texels, capped at
@@ -416,7 +416,7 @@ fn depthOf(t: f32, dir: vec3f) -> f32 {
  * from its disk photometry under an atmosphere: Mars, Venus, Pluto; docs/rendering-earth.md §8).
  */
 type BodyVariant = 'plain' | 'earth' | 'atm';
-const bodyShader = (v: BodyVariant) => { const earth = v === 'earth'; const atm = v !== 'plain'; return COMMON + BODY_COMMON + RING_COMMON + LAW_WGSL + SURFACE_WGSL + (earth ? EARTH_WGSL : '') + (atm ? ATMOSPHERE_WGSL : '') + /* wgsl */ `
+const bodyShader = (v: BodyVariant) => { const earth = v === 'earth'; const atm = v !== 'plain'; return COMMON + BODY_COMMON + RING_COMMON + LAW_WGSL + SURFACE_WGSL + (earth ? EARTH_WGSL : '') + (atm ? ATMOSPHERE_WGSL + AP_READ_WGSL : '') + /* wgsl */ `
 @group(0) @binding(2) var<storage, read> pageTable: array<u32>;
 @group(0) @binding(3) var albedoPages: texture_2d_array<f32>;
 @group(0) @binding(4) var heightPages: texture_2d_array<f32>;
@@ -427,7 +427,8 @@ const bodyShader = (v: BodyVariant) => { const earth = v === 'earth'; const atm 
 @group(0) @binding(9) var<uniform> TL: TexelLawInfo;
 ${atm ? `@group(0) @binding(12) var<uniform> A: Atm;
 @group(0) @binding(13) var atmTex: texture_2d_array<f32>;
-@group(0) @binding(14) var atmSamp: sampler;` : ''}
+@group(0) @binding(14) var atmSamp: sampler;
+@group(0) @binding(16) var apTex: texture_3d<f32>;` : ''}
 ${earth ? `@group(0) @binding(10) var cloudPages: texture_2d_array<f32>;
 @group(0) @binding(11) var rg16Pages: texture_2d_array<f32>;
 @group(0) @binding(15) var windTex: texture_2d<f32>;
@@ -712,11 +713,13 @@ const ATM_OVER_PHOTOMETRY = /* wgsl */ `
       let Hk = A.geo.y - A.geo.x;
       let rS = length(p);
       let sTop = min(-pe + sqrt(max(pe * pe + 2.0 * rS * Hk + Hk * Hk, 0.0)), range);
-      let path = atmMarch(p, dirN, sTop, 0.0, i32(b.atm.y), S, b.m0.xyz, b.m1.xyz, b.m2.xyz, -1.0);
+      // The view path from the aerial-perspective columns, or marched here (disk edge, columns off).
+      var apOk = false;
+      var path = apView(in.pos.xy, -1.0, &apOk);
+      if (!apOk) { path = atmViewOf(atmMarch(p, dirN, sTop, 0.0, i32(b.atm.y), S, b.m0.xyz, b.m1.xyz, b.m2.xyz, -1.0)); }
       let muSg = dot(p, S) / rS;
       var T2 = vec4f(0.0);
       var Sky = vec4f(0.0);
-      var Lp = vec4f(0.0);
       psT = vec4f(0.0);
       for (var j = 0; j < atmK4(); j++) {
         let ts = atmTsun(A.geo.x, muSg, j) * path.Td[j];
@@ -725,11 +728,10 @@ const ATM_OVER_PHOTOMETRY = /* wgsl */ `
           let w = A.w[4 * c + j];
           T2[c] += dot(w, ts);
           Sky[c] += dot(w, es);
-          Lp[c] += dot(w, path.L[j]);
           psT[c] += dot(w, path.Td[j]);
         }
       }
-      L = L * T2 + (b.rad * M * Sky + PI * A.sunE * Lp) * sunVisible(b, p);
+      L = L * T2 + (b.rad * M * Sky + PI * A.sunE * path.Lf) * sunVisible(b, p);
     }
 `;
 
@@ -745,12 +747,15 @@ const EARTH_WITH_ATMOSPHERE = /* wgsl */ `
         let Hk = A.geo.y - A.geo.x;
         let rS = length(p);
         let sTop = min(-pe + sqrt(max(pe * pe + 2.0 * rS * Hk + Hk * Hk, 0.0)), range);
-        let path = atmMarch(p, dirN, sTop, 0.0, i32(b.atm.y), S, b.m0.xyz, b.m1.xyz, b.m2.xyz, ein.cthKm);
+        // The view path from the aerial-perspective columns, or marched here (disk edge, columns off).
+        var apOk = false;
+        var path = apView(in.pos.xy, ein.cthKm, &apOk);
+        if (!apOk) { path = atmViewOf(atmMarch(p, dirN, sTop, 0.0, i32(b.atm.y), S, b.m0.xyz, b.m1.xyz, b.m2.xyz, ein.cthKm)); }
         let muSg = dot(p, S) / rS;
         let hv = normalize(S + V);
         let pr = earthParts(ein, mu0, mu, dot(hv, N), dot(hv, S));
         let unknownW = max(1.0 - pr.clear.w - pr.cloudy.w, 0.0);
-        var Lsun = vec4f(0.0);
+        var Lsun = PI * ((pr.clear.w + unknownW) * path.Lf + pr.cloudy.w * path.Lcf);
         var Temit = vec4f(0.0);
         for (var j = 0; j < atmK4(); j++) {
           let ts0 = atmTsun(A.geo.x, muSg, j);
@@ -758,9 +763,9 @@ const EARTH_WITH_ATMOSPHERE = /* wgsl */ `
           let tsc = atmTsun(A.geo.x + ein.cthKm, muSg, j);
           let esc = atmIrr(ein.cthKm, muSg, j);
           for (var c = 0; c < 4; c++) {
-            let clearRad = PI * path.L[j] + path.Td[j] * (pr.clear.dir[c] * ts0 + pr.clear.dif[c] * es0);
-            let cloudRad = PI * path.Lc[j] + path.Tcd[j] * (pr.cloudy.dir[c] * tsc + pr.cloudy.dif[c] * esc);
-            Lsun[c] += dot(A.w[4 * c + j], pr.clear.w * clearRad + pr.cloudy.w * cloudRad + unknownW * PI * path.L[j]);
+            let clearRad = path.Td[j] * (pr.clear.dir[c] * ts0 + pr.clear.dif[c] * es0);
+            let cloudRad = path.Tcd[j] * (pr.cloudy.dir[c] * tsc + pr.cloudy.dif[c] * esc);
+            Lsun[c] += dot(A.w[4 * c + j], pr.clear.w * clearRad + pr.cloudy.w * cloudRad);
             Temit[c] += dot(A.w[4 * c + j], path.Td[j]);
           }
         }
@@ -1494,3 +1499,99 @@ struct LV { @builtin(position) pos: vec4f, @location(0) col: vec4f, @location(1)
 `;
 
 export const RING_SHADER = RING_SHADER_OF(COMMON);
+
+/**
+ * Aerial-perspective columns (docs/rendering-earth.md §4 "Cost"): the view path of the atmosphere over a body,
+ * marched once per column of A.ap.x × A.ap.x pixels instead of per pixel (Hillaire 2020's aerial-perspective
+ * volume, laid out for a planet seen from outside: slices by altitude along each column's ray, not by
+ * distance from the camera). For each slice altitude h_k the texture holds the path radiance folded to XYZS
+ * and the δ-scaled transmittance per bin of the part of the path above h_k (h_0 = 0: the whole path). A
+ * column whose ray misses the body stores −1 (readers march themselves).
+ */
+export const AP_COLUMNS_SHADER = COMMON + BODY_COMMON + ATMOSPHERE_WGSL + /* wgsl */ `
+@group(0) @binding(12) var<uniform> A: Atm;
+@group(0) @binding(13) var atmTex: texture_2d_array<f32>;
+@group(0) @binding(14) var atmSamp: sampler;
+@group(0) @binding(16) var apOut: texture_storage_3d<rgba16float, write>;
+
+fn apStore(q: vec2i, k: i32, L: array<vec4f, 4>, Td: array<vec4f, 4>) {
+  let nq = 1 + atmK4();
+  textureStore(apOut, vec3i(q, k * nq), atmFold(L));
+  for (var j = 0; j < atmK4(); j++) { textureStore(apOut, vec3i(q, k * nq + 1 + j), Td[j]); }
+}
+
+@compute @workgroup_size(8, 8) fn main(@builtin(global_invocation_id) g: vec3u) {
+  let dims = vec2u(u32(A.ap.y), u32(A.ap.z));
+  if (g.x >= dims.x || g.y >= dims.y) { return; }
+  let q = vec2i(g.xy);
+  let ns = i32(A.ap.w);
+  let nq = 1 + atmK4();
+  let b = bodies[u32(A.apB.x)];
+  let ndc = ndcFromFrag(F, (vec2f(g.xy) + 0.5) * A.ap.x);
+  let dirW = normalize(worldDirNdc(F, ndc));
+  var xy = ndc;
+  var hitOk = true;
+  if (b.e2.w < 0.5) {
+    let dn = dot(dirW, b.n.xyz);
+    hitOk = dn > 0.0;
+    xy = vec2f(dot(dirW, b.e1.xyz), dot(dirW, b.e2.xyz)) / max(dn, 1e-12);
+  }
+  let hit = castBody(b, xy);
+  if (!hitOk || hit.disc < 0.0 || hit.t <= 0.0) {
+    for (var k = 0; k < ns * nq; k++) { textureStore(apOut, vec3i(q, k), vec4f(-1.0)); }
+    return;
+  }
+  // As the body shader: body-relative surface point, the segment back to the top of the air (or the camera).
+  let dirN = normalize(hit.dir);
+  let range = hit.t * length(hit.dir);
+  let p = vec3f(dot(b.mi0.xyz, hit.h), dot(b.mi1.xyz, hit.h), dot(b.mi2.xyz, hit.h));
+  let e = -dirN;
+  let pe = dot(p, e);
+  let Hk = A.geo.y - A.geo.x;
+  let rS = length(p);
+  let sTop = min(-pe + sqrt(max(pe * pe + 2.0 * rS * Hk + Hk * Hk, 0.0)), range);
+  // atmMarch (shaders-atmosphere.ts) with a snapshot where the path drops below each slice altitude (the
+  // altitude falls monotonically toward a surface point).
+  let n = i32(b.atm.y);
+  let S = b.sun.xyz;
+  var L: array<vec4f, 4>;
+  var T: array<vec4f, 4>;
+  var Td: array<vec4f, 4>;
+  var phR: array<vec4f, 4>;
+  var phA: array<vec4f, 4>;
+  let nu = dot(dirN, S);
+  for (var j = 0; j < atmK4(); j++) {
+    T[j] = vec4f(1.0);
+    Td[j] = vec4f(1.0);
+    phR[j] = atmRayleighPhase(nu, A.depol[j]);
+    phA[j] = atmParticlePhase(nu, j);
+  }
+  var next = ns - 1;
+  let ds = sTop / f32(n);
+  for (var i = 0; i < n; i++) {
+    let s = sTop - (f32(i) + 0.5) * ds;
+    let pp = p - dirN * s;
+    let rp = length(pp);
+    let qq = vec3f(dot(b.m0.xyz, pp), dot(b.m1.xyz, pp), dot(b.m2.xyz, pp));
+    let h = max(rp - rp / max(length(qq), 1e-6), 0.0);
+    while (next > 0 && h <= atmSliceH(next)) {
+      apStore(q, next, L, Td);
+      next--;
+    }
+    let r = A.geo.x + h;
+    let muS = dot(pp, S) / rp;
+    for (var j = 0; j < atmK4(); j++) {
+      let ext = atmProfile(h, 0, j);
+      let sR = atmProfile(h, 1, j);
+      let sA = atmProfile(h, 2, j);
+      let src = (sR * phR[j] + sA * phA[j]) * atmTsun(r, muS, j) + (sR + sA) * atmMS(h, muS, j);
+      let tr = exp(-ext * ds);
+      let seg = src * select(vec4f(ds), (1.0 - tr) / max(ext, vec4f(1e-12)), ext > vec4f(1e-9));
+      L[j] += T[j] * seg;
+      T[j] *= tr;
+      Td[j] *= exp(-(ext - A.delta[j] * sA) * ds);
+    }
+  }
+  for (var k = next; k >= 0; k--) { apStore(q, k, L, Td); }
+}
+`;

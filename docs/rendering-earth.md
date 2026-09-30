@@ -13,11 +13,13 @@ Code:
 - `atmosphere.worker.ts`: computes the tables off the main thread.
 - `atmosphereGpu.ts`: packs the tables into a texture.
 - `shaders-atmosphere.ts`: the per-pixel march.
-- `shaders.ts`: the Earth body variant `EARTH_BODY_SHADER` and `ATMOSPHERE_SHELL_SHADER`.
+- `shaders.ts`: the Earth body variant `EARTH_BODY_SHADER`, `ATMOSPHERE_SHELL_SHADER` and the aerial-perspective
+  columns `AP_COLUMNS_SHADER`.
 
 Tests: `app/tests/render-earth.test.ts`, `render-atmosphere.test.ts` (TEST FIXTURE atmosphere) and
 `render-earth-energy.test.ts` (real products, §6). Test page: `render-test.html?scene=earth-data&sun=lat,lon&obs=lat,lon&dist=km`.
-Any of `map|clouds|water|night|wind|atm=0` switches a part off.
+Any of `map|clouds|water|night|wind|atm=0` switches a part off; `skip=ap` marches every pixel instead of the
+columns, `bench=N` reports median pass times.
 
 ## 0. Inputs
 
@@ -203,6 +205,23 @@ particleDeltaFraction`). The path radiance, sunlight and skylight keep the full 
 Mars dust has f ≈ 0.5, so T_view at 0° phase rises from 0.53 to 0.69 of the airless disk. Images under
 dust keep more contrast, and the disk renormalisation keeps the total.
 
+**Aerial-perspective columns (M5).** Marching every pixel is most of the cost (§7). Following Hillaire's
+(2020) aerial-perspective volume, a compute pass (`AP_COLUMNS_SHADER`) marches the view path once per
+column of c × c pixels, c = ⌈frame height / 270⌉ (at least 2), and the pixels interpolate. Hillaire slices the
+camera frustum by distance, for views from inside the air. Seen from outside, what changes along a column's
+path toward the surface is the altitude, so the slices here are by altitude. For each slice altitude h_k the
+texture (rgba16float, 3D) holds the path radiance folded to XYZS and the δ-scaled transmittance per bin of
+the part of the path above h_k:
+
+- h_0 = 0 is the whole path (the clear part and the night lights);
+- Earth adds 1, 2, 3, 4, 6, 8, 10, 13 and 16 km, the range of its cloud tops. A pixel reads the two slices
+  around its cloud-top height and interpolates linearly. Other bodies use only h_0.
+
+A pixel interpolates its four surrounding columns bilinearly. If any of them missed the body (at the limb), it
+marches itself. The slice altitudes and the column size are sampling choices. Against the per-pixel march at
+640 × 360, the 8-bit output differs by at most 15/255 on Earth (mean 0.2; cloud edges, where the cloud-top
+height varies within a column) and 3/255 on Mars.
+
 **Limb.** Rays that miss the solid Earth go through `ATMOSPHERE_SHELL_SHADER`. It marches the chord through
 the top sphere from its closest point to the centre, computed without cancellation at large distance.
 Pixels partly covered by the Earth get the uncovered share. The shell is additive and depth-tested, with no
@@ -257,10 +276,25 @@ The unknown share of the disk is 1 %.
 Per Earth pixel: 32 steps × (profile 3, transmittance 1, multiple scattering 1) texture samples per 4 bins,
 i.e. 480 filtered samples, plus the cloud and surface lookups.
 
-On SwiftShader at 960 × 540 with the Earth covering about 40 % of the frame, bodies+rings takes 13 s, against
-1.3 s without the atmosphere. On a desktop GPU this is estimated at ≈ 2–4 ms at 1080p and 8–15 ms for a 4K
-frame filled by Earth. Hillaire's aerial-perspective volume (a 32³ froxel table per frame) would cut it to a
-few samples per pixel; it is the next optimisation.
+On SwiftShader at 960 × 540 with the Earth covering about 40 % of the frame, the per-pixel march made
+bodies+rings take 13 s, against 1.3 s without the atmosphere. On a desktop GPU this is estimated at
+≈ 2–4 ms at 1080p and 8–15 ms for a 4K frame filled by Earth.
+
+**Aerial-perspective columns (M5, §4).** The march now runs once per column: 1/c² of the pixels (c = 3 at
+720p, 4 at 1080p, 8 at 4K), plus the pixels at the limb. Each pixel then makes 4 × 3·(1 + K/4) texel
+loads (four columns; the two slices around the cloud tops and the whole path), 48 for K = 12 bins, instead of
+32 steps × 5 filtered samples × K/4. Measured on SwiftShader at 1280 × 720, with frames alternating between
+columns and per-pixel march under the same load (`bench=4&benchab=ap`, median):
+
+| View | Per-pixel march: bodies+rings | Columns: aerial perspective + bodies+rings |
+|---|---|---|
+| Earth, 45 000 km (§6 geometry) | 27.3 s | 1.8 + 17.2 s (−30 %) |
+| Mars, 8 radii | 15.7 s | 1.0 + 10.7 s (−26 %) |
+
+Mars without its atmosphere takes 2.9 s. On SwiftShader most of the remaining cost is not the march:
+removing the per-pixel fallback from the shader changed the Mars time by less than the run-to-run noise
+(±30 %). A real GPU, where the march dominates, should gain close to c². This has not been measured in this
+container, which has no GPU.
 
 ## 8. Other atmospheres
 
