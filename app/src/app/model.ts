@@ -1203,6 +1203,7 @@ export class AppModel {
         bodies: this.bodies.map((b) => ({ id: b.id, radii: b.radii, rotation: b.rotation })),
         orientations: (this.data?.orientations ?? []).map((o) => ({ path: o.path, header: o.header, data: o.data })),
         window: this.clock.window ?? { startEt: 0, endEt: 0 },
+        atmospheres: [...this.atmosphereTops()].map(([id, topKm]) => ({ id, topKm })),
       }),
       smallBodies: () => {
         const sb = this.smallBodies, c = sb?.closeApproachCandidates();
@@ -1289,7 +1290,17 @@ export class AppModel {
     if (!eph || !w) return null;
     const radii = new Map<number, Vec3>();
     for (const b of this.bodies) if (b.radii?.value) radii.set(b.id, [b.radii.value[0], b.radii.value[1], b.radii.value[2]]);
-    return { eph: { positionSSB: (id, et) => copy(eph.positionSSB(id, et)) }, radii, orientation: (id, et) => this.orientations.orientation(id, et), window: w };
+    return { eph: { positionSSB: (id, et) => copy(eph.positionSSB(id, et)) }, radii, orientation: (id, et) => this.orientations.orientation(id, et), window: w, atmosphereTopKm: this.atmosphereTops() };
+  }
+
+  /** Top of each drawn atmosphere above its body's largest radius, km (as the renderer draws the shell). */
+  private atmosphereTops(): Map<number, number> {
+    const out = new Map<number, number>();
+    for (const a of Object.values(this.data?.atmospheres?.bodies ?? {})) {
+      if (a.topAltitudeKm === null || a.topAltitudeKm === undefined) continue;
+      out.set(a.naifId, a.topAltitudeKm - (a.altitudesKm?.[0] ?? 0));
+    }
+    return out;
   }
 
   /** Curated views: the most striking events found so far, and a few placed near the current time. */

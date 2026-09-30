@@ -23,6 +23,8 @@ export interface EngineInit {
   bodies: Pick<Body, 'id' | 'radii' | 'rotation'>[];
   orientations: OrientFile[];
   window: { startEt: number; endEt: number };
+  /** Top of each drawn atmosphere above its body's largest radius (km). */
+  atmospheres?: { id: number; topKm: number }[];
 }
 
 export interface SmallBodyInit {
@@ -56,6 +58,7 @@ export class EventEngine {
       radii,
       orientation: (id, et) => orient.orientation(id, et) as Mat3 | null,
       window: init.window,
+      atmosphereTopKm: new Map((init.atmospheres ?? []).map((a) => [a.id, a.topKm])),
     }, eph);
     for (const f of init.ephem) engine.addEphem(f);
     for (const o of init.orientations) {

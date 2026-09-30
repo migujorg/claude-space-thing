@@ -12,7 +12,7 @@
 import { describe, expect, it } from 'vitest';
 import { EventEngine, type EngineInit } from '../src/app/events/engine';
 import type { SkyEvent } from '../src/app/events/finder';
-import type { Body, EphemHeader, Manifest, OrientationHeader, SmallBodyCoreHeader } from '../src/data/schema';
+import type { AtmosphereFile, Body, EphemHeader, Manifest, OrientationHeader, SmallBodyCoreHeader } from '../src/data/schema';
 import { DATA_DIR, ephemerisProducts, fixture, loadBodies } from './core-data';
 
 interface Fs { existsSync(p: string): boolean; readFileSync(p: string): Uint8Array; readFileSync(p: string, e: 'utf8'): string }
@@ -44,7 +44,10 @@ function init(window?: { startEt: number; endEt: number }): EngineInit {
     return { path, header, data: f64(header.bin) };
   });
   const bodies = loadBodies() as Body[];
-  return { ephem, bodies, orientations, window: window ?? man.window };
+  // As the app passes them: the top of each drawn atmosphere above the body's largest radius.
+  const atm = fs.existsSync(DATA_DIR + 'atmospheres.json') ? (JSON.parse(fs.readFileSync(DATA_DIR + 'atmospheres.json', 'utf8')) as AtmosphereFile) : null;
+  const atmospheres = Object.values(atm?.bodies ?? {}).filter((a) => a.topAltitudeKm !== null).map((a) => ({ id: a.naifId, topKm: a.topAltitudeKm! - (a.altitudesKm[0] ?? 0) }));
+  return { ephem, bodies, orientations, window: window ?? man.window, atmospheres };
 }
 
 const near = (l: SkyEvent[], t: number, pred: (e: SkyEvent) => boolean = () => true) =>
@@ -67,6 +70,11 @@ describe.skipIf(!built)('event finder on the real products', () => {
     expect(Number(e.data!.gamma)).toBeCloseTo(0.1421, 3);
     expect(Number(e.data!.magnitude)).toBeCloseTo(1.079, 2);
     expect(Math.abs(Number(e.data!.durationS) - 383)).toBeLessThan(10);
+    // The second view looks at the Sun from just above the drawn atmosphere (still inside the umbra).
+    const v = e.views[1];
+    expect(v).toMatchObject({ target: 399, lookAt: 10, fovDeg: 6 });
+    expect(Math.hypot(...v.rel) - 6378.1366).toBeGreaterThan(86);
+    expect(Math.hypot(...v.rel) - 6378.1366).toBeLessThan(250);
     // The others: 2025 Sep 21 partial (magnitude 0.855), 2026 Feb 17 annular, 2026 Aug 12 total (2m18s),
     // 2027 Feb 06 annular, 2028 Jan 26 annular.
     expect(l.map((x) => [x.subtype, new Date(J2000_MS + x.et * 1000).toISOString().slice(0, 10)])).toEqual([

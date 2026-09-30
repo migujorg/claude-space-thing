@@ -19,7 +19,12 @@ export interface FinderInput {
   /** Body-fixed → ICRF (row-major) at et, or null (orientation unknown). */
   orientation(id: number, et: number): Mat3 | null;
   window: { startEt: number; endEt: number };
+  /** Top of the drawn atmosphere above the body's largest radius (km), per body with one (atmospheres.json). */
+  atmosphereTopKm?: Map<number, number>;
 }
+
+/** A viewpoint "just above the atmosphere" clears the drawn atmosphere's top by this much (framing), km. */
+export const ABOVE_ATMOSPHERE_KM = 50;
 
 /**
  * A camera placement that shows an event, at the event time: the camera is at `rel` (km, ICRF) from `target`'s
@@ -359,19 +364,25 @@ export function solarEclipses(g: Geometry): SkyEvent[] {
       `magnitude ${e.magnitude.toFixed(4)}`,
       `shadow axis ${e.gamma.toFixed(4)} Earth radii from the centre`,
     ].join('; ');
-    // View 1: in space on the shadow axis, looking back at the Earth; view 2: on the ground, looking at the Sun.
+    // View 1: in space on the shadow axis, looking back at the Earth. View 2: over the greatest-eclipse point,
+    // looking at the Sun — just above the atmosphere when the Earth has one drawn: the renderer does not darken
+    // the sky in the Moon's shadow, so from the ground it would show a daylight sky during totality.
     const E = g.pos(EARTH, m.t);
+    const top = g.inp.atmosphereTopKm?.get(EARTH);
+    const alt = top !== undefined ? top + ABOVE_ATMOSPHERE_KM : 1;
     const onAxis = add(e.onAxis, mul(e.axis, -4.5 * RE[0]));
     const views: EventView[] = [
       { label: 'Above the Earth, in the Moon\'s shadow', target: EARTH, rel: sub(onAxis, E), note: 'The camera is on the shadow axis between the Moon and the Earth, looking at the Earth: the Moon\'s shadow is the dark spot.' },
       {
-        label: central ? 'On the ground at greatest eclipse, looking at the Sun' : 'On the ground where the eclipse is greatest, looking at the Sun',
+        label: `${top !== undefined ? 'Just above the atmosphere over' : 'On the ground at'} ${central ? 'greatest eclipse' : 'the point of greatest eclipse'}, looking at the Sun`,
         target: EARTH,
-        rel: sub(add(e.point, mul(e.up, 1)), E),
+        rel: sub(add(e.point, mul(e.up, alt)), E),
         lookAt: SUN,
         up: e.up,
         fovDeg: 6,
-        note: 'The camera is 1 km above the greatest-eclipse point. The renderer has no sky or corona yet: space stays black around the Moon.',
+        note: top !== undefined
+          ? `The camera is ${Math.round(alt)} km above the greatest-eclipse point, above the drawn atmosphere: the renderer does not yet darken the sky in the Moon's shadow, so a view from the ground would show a daylight sky during totality. The solar corona is not drawn.`
+          : 'The camera is 1 km above the greatest-eclipse point. The solar corona is not drawn.',
       },
     ];
     out.push({
