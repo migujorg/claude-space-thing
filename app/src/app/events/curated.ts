@@ -19,7 +19,7 @@ export interface Bookmark {
   method: string;
 }
 
-const SUN = 10, EARTH = 399, MOON = 301, JUPITER = 599, PLUTO = 999, CHARON = 901, EMB = 3;
+const SUN = 10, EARTH = 399, MOON = 301, JUPITER = 599, PLUTO = 999, CHARON = 901;
 const DAY = 86400;
 
 const sub = (a: Vec3, b: Vec3): Vec3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
@@ -42,10 +42,7 @@ export const CURATED_TUNING = {
   jupiterFill: 0.8,
   fovDeg: 50,
   /** Pluto framing: camera distance in Pluto–Charon separations. */
-  plutoSeparations: 4,
-  /** Inner solar system from above: Jupiter's orbit at this fraction of the half field of view; exposure boost. */
-  beltFill: 0.85,
-  beltBoostStops: 14,
+  plutoSeparations: 3,
 };
 
 /** The event with the best rank (ties: nearest to `nowEt`, future first). */
@@ -70,16 +67,19 @@ export function eventBookmarks(events: SkyEvent[], nowEt: number): Bookmark[] {
   const shadows = best(events, nowEt, (e) => e.kind === 'jovian' && e.subtype.endsWith('-shadow'));
   const mars = best(events, nowEt, (e) => e.kind === 'opposition' && e.bodies.includes(499));
   const pair = best(events, nowEt, (e) => e.kind === 'planet-pair' && Number(e.data?.sunDeg) > 20);
+  // Where the Sun shield earns its keep: two planets a few degrees from the Sun.
+  const byTheSun = best(events, nowEt, (e) => e.kind === 'planet-pair' && Number(e.data?.sunDeg) < 10 && !!e.views[0]?.sunShield);
   const neo = events.filter((e) => e.kind === 'neo-approach' && e.subtype === 'earth').sort((a, b) => Number(a.data?.distKm) - Number(b.data?.distKm))[0] ?? null;
   return [
     ...fromEvent(solar, 0, 'Total solar eclipse: the Moon\'s shadow on the Earth'),
-    ...fromEvent(solar, 1, 'Total solar eclipse: from the ground at greatest eclipse'),
+    ...fromEvent(solar, 1, 'Total solar eclipse: the Moon covering the Sun, over the point of greatest eclipse'),
     ...fromEvent(lunar, 0, 'Total lunar eclipse: the Earth in front of the Sun, from the Moon'),
     ...fromEvent(equinox, 0, 'Saturn at equinox: the rings edge-on to the Sun'),
     ...fromEvent(edgeOn, 1, 'Saturn\'s rings nearly edge-on from the Earth'),
     ...fromEvent(shadows, 0, `${shadows?.subtype === 'triple-shadow' ? 'Three' : 'Two'} moon shadows on Jupiter at once`),
     ...fromEvent(mars, 0, 'Mars at opposition'),
     ...fromEvent(pair, 0, pair?.title ?? ''),
+    ...fromEvent(byTheSun, 0, byTheSun ? `${byTheSun.title.replace(' together in the sky', '')} beside the covered Sun` : ''),
     ...fromEvent(neo, 0, 'The closest pass of a near-Earth asteroid in the window'),
   ];
 }
@@ -131,28 +131,11 @@ export function staticBookmarks(inp: FinderInput, nowEt: number): Bookmark[] {
     out.push({
       id: 'static:jupiter',
       title: 'Jupiter with Io, Europa, Ganymede and Callisto',
-      detail: 'now, from the direction of the Earth: the moons line up as they do in a telescope',
+      detail: 'now, from the direction of the Earth, close enough to see the four moons around the planet',
       et: t0,
       view: { label: 'Jupiter system', target: JUPITER, rel: mul(unit(sub(E, J)), d) },
       bodies: [SUN, EARTH, JUPITER, ...gal],
       method: 'Camera on the Jupiter–Earth line, far enough to frame the outermost of the four moons.',
-    });
-  }
-
-  // The asteroid belt from above the ecliptic, framed by Jupiter's orbit, enhanced, the Sun covered, now.
-  if (ok(SUN, t0) && ok(JUPITER, t0) && ok(EMB, t0)) {
-    const S = g.pos(SUN, t0), J = g.pos(JUPITER, t0);
-    const r0 = sub(g.pos(EMB, t0), S), r1 = sub(g.pos(EMB, t0 + 3600), g.pos(SUN, t0 + 3600));
-    const north = unit(cross(r0, sub(r1, r0)));
-    const d = len(sub(J, S)) / Math.tan(T.beltFill * (T.fovDeg / 2) * DEG);
-    out.push({
-      id: 'static:belt',
-      title: 'The asteroid belt from above (enhanced, Sun covered)',
-      detail: `now, from above the ecliptic, Jupiter's orbit filling the view; +${T.beltBoostStops} stops and the Sun shield, both badged`,
-      et: t0,
-      view: { label: 'Inner solar system from above', target: SUN, rel: mul(north, d), enhancedStops: T.beltBoostStops, sunShield: true, fovDeg: T.fovDeg, note: 'Enhanced view with the Sun covered by an occulting disc (viewing aids, both badged): the eye alone would see only the Sun and a few planets from here.' },
-      bodies: [SUN, EMB, JUPITER],
-      method: 'Camera on the ecliptic pole (the Earth–Moon barycentre\'s orbital angular momentum, from the ephemeris) above the Sun, framing Jupiter\'s distance; asteroids and comets as the small-body field draws them.',
     });
   }
 

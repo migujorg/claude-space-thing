@@ -115,6 +115,10 @@ describe.skipIf(!built)('event finder on the real products', () => {
     expect(find('opposition', 599, '2026-01-10')).toBeTruthy(); // Jupiter
     expect(find('opposition', 699, '2025-09-21')).toBeTruthy(); // Saturn
     expect(find('conjunction', 299, '2026-10-24')?.subtype).toBe('inferior'); // Venus
+    // Mercury and Venus 2° from the Sun: shown with the Sun shield.
+    const mv = l.find((e) => e.kind === 'planet-pair' && e.subtype === '199-299' && day(e) === '2027-08-11')!;
+    expect(Number(mv.data!.sunDeg)).toBeLessThan(5);
+    expect(mv.views[0].sunShield).toBe(true);
     const gwe = find('elongation', 199, '2025-04-21')!; // Mercury, greatest western elongation 27.4°
     expect(gwe.subtype).toBe('west');
     expect(Number(gwe.data!.elongationDeg)).toBeCloseTo(27.4, 1);

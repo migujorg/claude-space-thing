@@ -784,7 +784,18 @@ export function planetEvents(g: Geometry): SkyEvent[] {
           observer: 'the Earth',
           method: `Minimum of the angle between the two planets as seen from the Earth's centre (light-time corrected). ${EPHEM_METHOD}.`,
           rank: 15 + Math.max(0, 20 - (m.v / DEG) * 10) - (sun < 15 ? 20 : 0),
-          views: [{ label: 'From just outside the Earth, looking at the pair', target: EARTH, rel: mul(unit(sub(E, P)), 30000), fovDeg: 10, note: 'The Earth is behind the camera; the pair is ahead.' }],
+          // Close to the Sun its glare hides the pair: the view covers the Sun (a viewing aid, badged).
+          views: [{
+            label: sun < PAIR_SHIELD_SUN_DEG ? 'From just outside the Earth, the Sun covered' : 'From just outside the Earth, looking at the pair',
+            // A fixed viewpoint on the Earth–pair line, the Earth behind the camera, looking at the first planet.
+            target: EARTH,
+            rel: mul(unit(sub(P, E)), PAIR_VIEW_KM),
+            lookAt: a,
+            fovDeg: 10,
+            ...(sun < PAIR_SHIELD_SUN_DEG
+              ? { sunShield: true, note: `The Earth is behind the camera; the pair is ahead, ${sun.toFixed(0)}° from the Sun, which the Sun shield covers (a viewing aid, badged): without it the Sun's glare hides them.` }
+              : { note: 'The Earth is behind the camera; the pair is ahead.' }),
+          }],
           data: { separationDeg: m.v / DEG, sunDeg: sun },
         });
       }
@@ -792,6 +803,11 @@ export function planetEvents(g: Geometry): SkyEvent[] {
   }
   return out;
 }
+
+/** Pairs closer to the Sun than this are shown with the Sun shield (framing: the glare of the Sun), degrees. */
+export const PAIR_SHIELD_SUN_DEG = 15;
+/** Pair views: the camera this far from the Earth's centre, towards the pair (framing), km. */
+export const PAIR_VIEW_KM = 30000;
 
 // ---- Pluto and Charon -------------------------------------------------------------------------------------------
 
