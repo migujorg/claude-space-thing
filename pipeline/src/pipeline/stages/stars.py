@@ -597,6 +597,15 @@ def run(ctx: BuildContext) -> None:
             pvc.append({"name": c_["name"], "hr": e["hr"], "dY_mag": float(-2.5 * np.log10(a[1] / b[1])),
                         "dx": float(xa - xb), "dy": float(ya - yb), "SY_ratio": float((a[3] / a[1]) / (b[3] / b[1]))})
     diag["pulkovoVsCalspec"] = pvc
+    xvc = []
+    for e in cal_diag:
+        k = e["record"]
+        if e.get("xyzs") and k >= 0 and np.isfinite(rec_xp[k]).all() and not r_blend[k]:
+            a, b = rec_xp[k], np.array(e["xyzs"])
+            (xa, ya), (xb, yb) = sl.chromaticity(a), sl.chromaticity(b)
+            xvc.append({"name": e["name"], "G": float(r_G[k]), "dY_mag": float(-2.5 * np.log10(a[1] / b[1])),
+                        "dx": float(xa - xb), "dy": float(ya - yb), "SY_ratio": float((a[3] / a[1]) / (b[3] / b[1]))})
+    diag["xpVsCalspec"] = xvc
     log(f"Pulkovo: {pk.hr.size} stars with 320-1080 nm spectra, used for {int((light_route == R_PK).sum())}")
 
     # 4. photometric estimates, calibrated on XP-derived stars (G >= XP_G_MIN)
@@ -1009,8 +1018,9 @@ def _register_sources(ctx, today, gaia, xp_ledger, tyc_path, hip2, hipm, pk, cal
                  "cross-match algorithm: Marrese P. M. et al. 2019, A&A 621, A144, DOI:10.1051/0004-6361/201834142.",
         url=sg.TAP_URL, retrieved=record(xm_path)["retrieved"], sha256=record(xm_path)["sha256"], version="Gaia DR3",
         notes="ADQL: " + xm_path.with_name(xm_path.name + ".adql").read_text() +
-              f". Hipparcos stars not in this table are matched by position (<= {XM_RADIUS_HIP}\" at J2016.0, "
-              f"|G - Hp| < {XM_DMAG})."))
+              f". Hipparcos stars not in this table are matched by position at J2016.0 (<= {XM_RADIUS_HIP}\" with "
+              f"G - Hp < {XM_DMAG}, then <= {XM_RADIUS_HIP2}\" with |G - Hp| < {XM_DMAG2}); pairings > {XM_DMAG2} "
+              f"mag off in G are moved to an unclaimed source within {XM_RADIUS_HIP2}\" that agrees with Hp to 0.75 mag."))
     ctx.add_source(SourceRecord(
         id=SRC_TYC, title="Tycho-2 catalogue (with TDSC merge) as served by the Gaia archive (gaiadr3.tycho2tdsc_merge)",
         citation="Høg E. et al. 2000, The Tycho-2 catalogue of the 2.5 million brightest stars, A&A 355, L27 "

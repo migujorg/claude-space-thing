@@ -35,7 +35,12 @@ sample between 360 and 830 nm is measured.
   used, since they are two stars' light); a lone `.` marks a missing sample; negative V is written with its
   sign in byte 65 (inside the SpType field).
 - **Matching:** HD number (leading digits) → Hipparcos main catalogue → star. Used only when the catalogue V
-  agrees with Hipparcos V within 0.10 mag (same light, not a different component mix or variability phase),
-  and only for stars whose Gaia XP spectrum is absent or brighter than the XP limit.
+  agrees with Hipparcos V within 0.10 mag (same light, not a different component mix or variability phase), Gaia
+  shows no comparably bright neighbour within 2″, and only for stars whose Gaia XP spectrum is absent or brighter
+  than the XP limit (G < 4). For Hipparcos multiple entries the spectrum is treated as the system's light, minus
+  components that are separate records.
+- **Absolute scale:** on six stars also in CALSPEC, Pulkovo Y is 3–7 % fainter and ~0.005 redder in x, y than
+  HST/STIS; against Gaia XP at 4 < G < 5 it is 2 % fainter and Δx ≈ +0.007 (docs/reports/stars.md §2–3). Not
+  corrected; it is the systematic uncertainty of the ~200 stars lit this way.
 - **Not used:** `table6.dat` (320–735 nm only): its range stops short of 830 nm, so integrating it would need
   an assumed red tail.

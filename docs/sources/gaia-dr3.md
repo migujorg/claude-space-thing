@@ -50,12 +50,15 @@ every star with G < 10. SourceRecord ids: `gaia-dr3`, `gaia-dr3-xp-sampled`, `ga
 
 - `gaiadr3.hipparcos2_best_neighbour` (99 525 pairs). Algorithm: Marrese P. M. et al. 2019, A&A 621, A144,
   DOI 10.1051/0004-6361/201834142. Hipparcos stars missing from it are matched by position at J2016.0
-  (≤ 1.5″, |G − Hp| < 1.5).
+  (≤ 1.5″ with G − Hp < 1.5, then ≤ 4″ with |G − Hp| < 1), and pairings > 1 mag off in G are moved to an
+  unclaimed source within 4″ that agrees with Hp (details: docs/reports/stars.md §1.1).
 
 ## Tycho-2 — `tycho-2`
 
 - `gaiadr3.tycho2tdsc_merge` joined with `gaiadr3.tycho2tdsc_merge_best_neighbour`, only stars with VT < 11 and
   no Gaia best neighbour. Citation: Høg E. et al. 2000, A&A 355, L27 (bibcode 2000A&A...355L..27H); TDSC:
   Fabricius C. et al. 2002, A&A 384, 180, DOI 10.1051/0004-6361:20011822.
+- A second query takes the Tycho-2 proper motions of the Gaia DR3 sources with G < 10 that have only a
+  2-parameter solution (3 879 rows); 2 133 catalogue stars are propagated with them.
 - Stars that still have no Gaia source within 2″ (J2016.0) and no Hipparcos entry, with
   V = VT − 0.090 (BT − VT) < 10 (ESA 1997, Vol. 1, §1.3 App. 4), become Tycho-only catalogue records.
