@@ -14,6 +14,7 @@ import {
 } from './camera';
 import { Clock, intersectWindows, type TimeWindow } from './clock';
 import { SystemScheduler, systemBarycenter, type SystemInfo, type SystemState } from './lazy';
+import { surfaceRefs, type SceneExtras } from './extras';
 import { buildOrientation } from './orientation';
 import { OrbitManager } from './orbits';
 import { pick, type PickTarget, type Viewport } from './picking';
@@ -84,6 +85,8 @@ export class AppModel {
   byId = new Map<number, Body>();
   sunId: number | null = null;
   light: LightData | null = null;
+  /** Surface maps and rings the snapshot may attach (filtered per frame by the reality level). */
+  extras: SceneExtras | undefined;
   clock = new Clock(0, null);
   readonly realityDefaults: RealityState;
   reality: RealityState;
@@ -150,8 +153,9 @@ export class AppModel {
 
   // ---- data -------------------------------------------------------------------------------------
 
-  setData(d: LoadedData): void {
+  setData(d: LoadedData, dataBaseUrl = 'data/'): void {
     this.data = d;
+    this.extras = { surfaces: surfaceRefs(d.surfaces ?? [], dataBaseUrl), rings: d.rings ?? null };
     this.bodies = d.bodies;
     this.byId = new Map(d.bodies.map((b) => [b.id, b]));
     this.roots.clear();
@@ -662,6 +666,7 @@ export class AppModel {
       orbits,
       orientations: this.orientations,
       chainLabel: (id) => this.chainLabel(id, et),
+      extras: this.extras,
     }, { overlayOnly });
     this.overlayOnly = overlayOnly;
     const t3 = perfNow();

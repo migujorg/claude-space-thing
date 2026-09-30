@@ -6,7 +6,8 @@
 import type { Body, Label, LightData } from '../data/schema';
 import type { OrbitPolyline, SceneBody, SceneCamera, SceneSnapshot, SceneSun } from '../render/scene';
 import type { OrientationSetPort, OrientationSourcePort, Vec3 } from './ports';
-import { allowedValue, filterBody, labelAllowed, type ExistsLevel, type FilteredBody, type RealityState } from './reality';
+import { allowedValue, filterBody, labelAllowed, worstOf, type ExistsLevel, type FilteredBody, type RealityState } from './reality';
+import { applyExtras, type SceneExtras } from './extras';
 import type { World } from './world';
 
 export interface SnapshotInput {
@@ -19,6 +20,8 @@ export interface SnapshotInput {
   orientations: OrientationSetPort;
   /** Label of the ephemeris chain serving a body (default 'measured'). */
   chainLabel?: (id: number) => Label;
+  /** Surface maps, rings, disk/spatial photometric models (architecture §4.4, §6). */
+  extras?: SceneExtras;
 }
 
 export interface SunResult {
@@ -94,7 +97,7 @@ export function buildSnapshot(inp: SnapshotInput, out?: { overlayOnly: OverlayOn
     }
     const lit = g.toSun !== null;
     const radii = f.radii ? ([f.radii[0], f.radii[1], f.radii[2]] as Vec3) : null;
-    bodies.push({
+    const sb: SceneBody = {
       id: g.id,
       name: g.body.name,
       pos: g.app.rel,
@@ -109,7 +112,10 @@ export function buildSnapshot(inp: SnapshotInput, out?: { overlayOnly: OverlayOn
       selected: g.id === inp.selectedId,
       // Best/complete may continue a measured phase curve with the spatial law (labelled estimated).
       allowPhaseExtrapolation: level !== 'strict',
-    });
+    };
+    const used = applyExtras(sb, g.body, inp.extras, level, lit);
+    if (used.length) sb.worstLabel = worstOf([sb.worstLabel, ...used]);
+    bodies.push(sb);
   }
   return {
     et: world.et,

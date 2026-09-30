@@ -110,7 +110,7 @@ export async function startApp(canvas: HTMLCanvasElement, uiRoot: HTMLElement, d
       verifyHashes: deps.verifyHashes,
       eagerEphemeris: eagerEphemeris(view),
     });
-    model.setData(data);
+    model.setData(data, deps.dataBaseUrl ?? `${import.meta.env.BASE_URL}data/`);
     ui.status(null);
     const missing = data.report.products.filter((p) => p.status === 'missing' || p.status === 'error');
     if (missing.length) model.message(`${missing.length} data product${missing.length > 1 ? 's' : ''} missing or unusable — see Data (M).`, 'warn');
