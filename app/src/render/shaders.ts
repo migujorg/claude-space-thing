@@ -439,24 +439,28 @@ ${earth ? `@group(0) @binding(10) var cloudPages: texture_2d_array<f32>;
 @group(0) @binding(11) var rg16Pages: texture_2d_array<f32>;
 @group(0) @binding(15) var windTex: texture_2d<f32>;
 
-/** Wind layer (one whole level, NaN = unknown): bilinear over known texels per channel. */
+/**
+ * Wind speed from the wind layer (one whole level, NaN = unknown): per texel the ascending pass (the overpass
+ * nearest the cloud layer's ~13:30 local time), else the daily mean, then bilinear over the texels that have
+ * either. Choosing per texel before interpolating keeps the field continuous where the ascending swath ends.
+ * v.x = speed (m/s), known.x = weight of the known texels.
+ */
 fn sampleWind(uv: vec2f) -> LayerSample {
   let d = vec2i(textureDimensions(windTex));
   let c = uv * vec2f(d) - 0.5;
   let i0 = vec2i(floor(c));
   let fr = c - vec2f(i0);
-  var acc = vec4f(0.0);
-  var wk = vec4f(0.0);
+  var acc = 0.0;
+  var wk = 0.0;
   for (var k = 0; k < 4; k++) {
     let dx = k & 1;
     let dy = k >> 1;
     let w = select(1.0 - fr.x, fr.x, dx == 1) * select(1.0 - fr.y, fr.y, dy == 1);
     let t = textureLoad(windTex, vec2i((i0.x + dx + d.x) % d.x, clamp(i0.y + dy, 0, d.y - 1)), 0);
-    let ok = vec4<bool>(isFiniteF(t.x), isFiniteF(t.y), isFiniteF(t.z), isFiniteF(t.w));
-    acc += select(vec4f(0.0), w * t, ok);
-    wk += select(vec4f(0.0), vec4f(w), ok);
+    let u = select(t.y, t.x, isFiniteF(t.x));
+    if (isFiniteF(u)) { acc += w * u; wk += w; }
   }
-  return LayerSample(select(vec4f(0.0), acc / max(wk, vec4f(1e-30)), wk > vec4f(0.0)), wk);
+  return LayerSample(vec4f(select(0.0, acc / max(wk, 1e-30), wk > 0.0), 0.0, 0.0, 0.0), vec4f(wk, 0.0, 0.0, 0.0));
 }` : ''}
 
 struct TexelLawInfo {
@@ -812,11 +816,10 @@ const EARTH_SAMPLE = /* wgsl */ `
         ein.fi = sW.v.y;
       }
       if (b.earthW.w > 0.5) {
-        // Wind (a whole level in its own texture): the ascending pass, else the daily mean.
+        // Wind (a whole level in its own texture): per texel the ascending pass, else the daily mean.
         let wv = sampleWind(uv);
         ein.glint = 1.0;
         if (wv.known.x > 0.0) { ein.u10 = wv.v.x; ein.windKnown = 1.0; }
-        else if (wv.known.y > 0.0) { ein.u10 = wv.v.y; ein.windKnown = 1.0; }
       }
       if (b.earthN.z > 0.5) {
         let baseN = bitcast<u32>(b.earthN.x);

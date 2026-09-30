@@ -101,6 +101,27 @@ cloud base, and is seen through the direct view path plus the diffuse part (1 �
 - The marks count only where the pixel is lit. At night only the cloud state matters, and only where
   there are lights to hide.
 
+**What the layer cannot say (validation, M5).** In the validation case `earth-himawari9-2026` (Himawari-9,
+the cloud layer's own overpass), the disk centre renders 2.1× the measured radiance and three points
+near it 1.2–1.25×. The limb passes. The centre texel is 81 % cloudy with an in-cloud mean τ = 7.8 (low
+cumulus, tops near 1 km), and its neighbours range from clear to τ = 20. Across the swath from 125° E to
+160° E the render is about 1.4× the image. The model reproduces what the layer says there (checked on the
+CPU with earth.ts): the excess is in what the layer means.
+
+- Its cloud fraction counts the samples with a retrieved cloud top. These include partly cloudy samples,
+  for which the retrieval gives no optical thickness.
+- Its τ is the mean over the samples that have one.
+- The renderer gives that τ to the whole cloud fraction. Where no sample has a τ (49 % of the cloudy texels
+  in the swath) the share is drawn as unknown. Where only some lack one, nothing in the layer tells, and
+  broken cumulus comes out too bright.
+- R(τ̄) ≥ the mean of R(τ) adds to it (the plane-parallel bias, Cahalan et al. 1994, J. Atmos. Sci. 51,
+  2434).
+
+A fix needs two things from the pipeline: the share of samples with an optical-thickness retrieval (the rest
+of the cloudy share is then unknown), and preferably the mean of ln τ (Cahalan et al.'s effective
+thickness). The renderer change is then small. The 8-px blocks in the rendered case are the glint: the wind
+layer's resolution and swath gaps (§3; clear water where the wind is unknown gets no glint).
+
 **Not modelled.** Cloud parallax and cloud shadows on the ground. The cloud-top height is used only to
 place the cloud's reflection inside the atmosphere (§4). Also not modelled: 3D cloud effects, the glory,
 and cloud-bow phase features (the two-stream albedo has no phase function).
@@ -126,7 +147,11 @@ Choices and references for the glint:
   adaptation 6·10⁷ cd/m².
 - **erfc** comes from Abramowitz & Stegun 7.1.26.
 - **Wind.** The wind layer gives U10: the AMSR3 ascending pass (~13:30 local, like the clouds), else the
-  daily mean. It is taken as U(12.5 m) = 1.02·U10 (the layer header's neutral log profile).
+  daily mean. The choice is made per texel, then the texels are interpolated (M5). Choosing per pixel after
+  interpolation switched sources in steps where the ascending swath ended: blocks of different glint in the
+  validation case `earth-himawari9-2026`. It is taken as U(12.5 m) = 1.02·U10 (the layer header's neutral
+  log profile). The layer is level 2 (0.18°, ~20 km); the passive-microwave winds behind it are coarser
+  still, so the glint varies in blocks of a few tens of km.
 - **Direction.** Wind direction is not in the layer, so the up/cross-wind anisotropy and the Gram–Charlier
   terms are left out.
 - **Thin clouds.** The glint is seen through them in the unscattered beam both ways.
