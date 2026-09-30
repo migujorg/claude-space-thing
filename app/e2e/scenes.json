@@ -17,6 +17,9 @@
     { "id": "sun-1au", "title": "The Sun from 1 au", "params": { "target": "10", "dist": "149597871" } },
     { "id": "juno-closeup", "title": "3 Juno close-up (small body with a measured diameter and colour)", "params": { "target": "20000003", "smallbodies": "1" } },
     { "id": "mars-map", "title": "Mars surface map, day side", "params": { "target": "499", "dist": "15000", "az": "0", "el": "10" } },
-    { "id": "mercury-map", "title": "Mercury surface map, day side", "params": { "target": "199", "dist": "8000", "az": "0", "el": "10" } }
+    { "id": "mercury-map", "title": "Mercury surface map, day side", "params": { "target": "199", "dist": "8000", "az": "0", "el": "10" } },
+    { "id": "phobos-stickney", "title": "Phobos shape model from 45 km, looking down on Stickney (lat −1°, 49°W) in sunlight", "params": { "t": "2026-10-15T05:20:00Z", "target": "401", "dist": "45", "az": "-21", "el": "5" } },
+    { "id": "hyperion-fallback", "title": "Hyperion: shape model known, orientation unknown (chaotic rotation) → ellipsoid, and the inspector says why", "params": { "target": "607", "dist": "900", "az": "30", "el": "10" } },
+    { "id": "bennu-closeup", "title": "101955 Bennu close-up: OSIRIS-REx OLA shape model placed with its own rotation (small body)", "params": { "target": "20101955", "dist": "1.5", "az": "40", "el": "10", "smallbodies": "1" } }
   ]
 }

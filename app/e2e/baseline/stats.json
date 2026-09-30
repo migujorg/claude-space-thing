@@ -1,9 +1,9 @@
 {
- "acceptedAt": "2026-09-30T16:59:20.764Z",
- "git": "de93566",
+ "acceptedAt": "2026-09-30T21:11:38.140Z",
+ "git": "b10c276",
  "data": {
-  "manifestGeneratedAt": "2026-09-30T14:59:56+00:00",
-  "manifestSha256": "2a2d65c6d6f6548473aa7e83f1b83450531c13b6816def279680eef18346a888"
+  "manifestGeneratedAt": "2026-09-30T20:55:28+00:00",
+  "manifestSha256": "90fe552b64c38be8372217905a8bb65962ead42deb6d1a2d4a178f77247d705f"
  },
  "viewport": {
   "width": 1280,
@@ -1421,6 +1421,166 @@
    },
    "consoleErrors": [],
    "readyMs": 64759
+  },
+  "phobos-stickney": {
+   "query": "t=2026-10-15T05:20:00Z&smallbodies=0&target=401&dist=45&az=-21&el=5",
+   "stats": {
+    "adaptationLuminance": 452.03964092125943,
+    "scotopicAdaptationLuminance": 1012.9462987962988,
+    "pupilDiameterMm": 2.934720172703906,
+    "mesopicM": 1,
+    "limitingMagnitude": -1.59664432961517,
+    "starsDrawn": 0,
+    "bodiesDrawn": 31,
+    "bodies": [
+     {
+      "id": 401,
+      "name": "Phobos",
+      "worstLabel": "estimated",
+      "surfaceUnknown": false
+     }
+    ],
+    "points": [
+     "701:estimated",
+     "702:estimated",
+     "703:derived",
+     "704:derived",
+     "705:derived",
+     "706:derived",
+     "707:derived",
+     "708:derived",
+     "709:derived",
+     "710:derived",
+     "711:derived",
+     "712:derived",
+     "713:derived",
+     "714:derived",
+     "715:derived",
+     "716:derived:marker",
+     "717:derived:marker",
+     "718:derived:marker",
+     "719:derived:marker",
+     "720:derived:marker",
+     "721:derived:marker",
+     "722:derived:marker",
+     "723:derived:marker",
+     "724:derived:marker",
+     "725:derived:marker",
+     "726:derived:marker",
+     "727:derived:marker",
+     "799:estimated",
+     "75051:derived:marker",
+     "75052:derived:marker"
+    ],
+    "bodiesInSnapshot": 75,
+    "sun": true,
+    "warnings": [
+     "Uranus rings: reflectance not measured → rings absorb and cast shadows only; their material is hatched as not measured"
+    ],
+    "badge": []
+   },
+   "consoleErrors": [],
+   "readyMs": 25657
+  },
+  "hyperion-fallback": {
+   "query": "t=2026-10-15T00:00:00Z&smallbodies=0&target=607&dist=900&az=30&el=10",
+   "stats": {
+    "adaptationLuminance": 0.00004770213430591739,
+    "scotopicAdaptationLuminance": 0.00010410755386802757,
+    "pupilDiameterMm": 7.841625821235505,
+    "mesopicM": 0,
+    "limitingMagnitude": 6.638537403364602,
+    "starsDrawn": 2498,
+    "bodiesDrawn": 34,
+    "bodies": [
+     {
+      "id": 607,
+      "name": "Hyperion",
+      "worstLabel": "derived",
+      "surfaceUnknown": true
+     }
+    ],
+    "points": [
+     "623:derived:marker",
+     "636:derived:marker",
+     "639:derived:marker",
+     "641:derived:marker",
+     "643:derived:marker",
+     "650:derived:marker",
+     "651:derived:marker",
+     "654:derived:marker",
+     "658:derived:marker",
+     "65085:derived:marker",
+     "65086:derived:marker",
+     "65087:derived:marker",
+     "65089:derived:marker",
+     "65092:derived:marker",
+     "65123:derived:marker",
+     "65125:derived:marker",
+     "65142:derived:marker",
+     "65168:derived:marker",
+     "65172:derived:marker",
+     "65174:derived:marker",
+     "65178:derived:marker",
+     "65189:derived:marker",
+     "65201:derived:marker",
+     "65203:derived:marker",
+     "65207:derived:marker",
+     "65223:derived:marker",
+     "65231:derived:marker",
+     "65247:derived:marker",
+     "65281:derived:marker",
+     "65282:derived:marker",
+     "65287:derived:marker",
+     "65297:derived:marker",
+     "65301:derived:marker"
+    ],
+    "bodiesInSnapshot": 75,
+    "sun": true,
+    "warnings": [
+     "Hyperion: orientation unknown → drawn as a sphere of mean radius"
+    ],
+    "badge": []
+   },
+   "consoleErrors": [],
+   "readyMs": 32284
+  },
+  "bennu-closeup": {
+   "query": "t=2026-10-15T00:00:00Z&smallbodies=1&target=20101955&dist=1.5&az=40&el=10",
+   "stats": {
+    "adaptationLuminance": 918.599627703271,
+    "scotopicAdaptationLuminance": 2161.710341963484,
+    "pupilDiameterMm": 3.012672575244715,
+    "mesopicM": 1,
+    "limitingMagnitude": -2.2442747526521027,
+    "starsDrawn": 0,
+    "bodiesDrawn": 7,
+    "bodies": [
+     {
+      "id": -106032,
+      "name": "101955 Bennu (1999 RQ36)",
+      "worstLabel": "estimated",
+      "surfaceUnknown": false
+     }
+    ],
+    "points": [
+     "901:estimated",
+     "902:derived:marker",
+     "903:derived:marker",
+     "904:derived:marker",
+     "905:derived:marker",
+     "999:estimated"
+    ],
+    "bodiesInSnapshot": 76,
+    "sun": true,
+    "warnings": [
+     "Charon: phase extrapolated beyond measured range (0–1.74°) with the spatial law → estimated",
+     "Pluto: phase extrapolated beyond measured range (0–1.74°) with the spatial law → estimated"
+    ],
+    "badge": []
+   },
+   "consoleErrors": [],
+   "readyMs": 201985
   }
  }
 }
