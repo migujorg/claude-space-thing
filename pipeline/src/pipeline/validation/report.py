@@ -412,8 +412,9 @@ change no ROI by more than 0.3 %, and the rgba16float fallback targets give the 
 
 1. **Disk-resolved photometry: published laws, tested here independently.** photometry.json now carries a
    `spatialModel` from published fits for Jupiter, Saturn, Uranus and Neptune (Minnaert k from the Hubble OPAL
-   READMEs, at the Y-channel wavelength), Europa, Ganymede and Callisto (Hapke, Domingue & Verbiscer 1997), Pluto,
-   Charon and Triton (Hapke, Verbiscer et al. 2022) and Mars (Vincendon 2013); all *estimated*
+   READMEs, at the Y-channel wavelength; for Saturn k varies with phase as measured by Pioneer 11), Io (Hapke,
+   Simonelli & Veverka 1986), Europa, Ganymede and Callisto (Hapke, Domingue & Verbiscer 1997), Pluto, Charon and
+   Triton (Hapke, Verbiscer et al. 2022) and Mars (Vincendon 2013); all *estimated*
    (docs/sources/spatial-photometry.md). Before them every disk was Lambert (effective Minnaert k 1.0, against the
    observed 0.7–0.9 for the planets and Pluto and 0.5–0.8 for the icy moons). Rendered / observed, Lambert → the
    published law:
@@ -423,16 +424,28 @@ change no ROI by more than 0.3 %, and the rgba16float fallback targets give the 
    - **closer, already within tolerance:** Neptune centre 1.157 → 1.002, limb 0.824 → 0.958, terminator
      0.567 → 0.837; Jupiter terminator 0.931 → 0.978. Jupiter's centre stays too bright (1.235 → 1.212); its
      2025 OPAL map shows other belt features than the 2007 planet.
-   - **out of tolerance: Saturn's limb 1.032 → 1.316 and terminator 1.034 → 1.719** (disk centre 1.311 → 1.187).
-     OPAL's k = 0.72 comes from Earth-based images (phase ≤ 6°); the Cassini view is at 54.6°, where the image's
-     own centre-to-limb ratios need k ≈ 0.8–0.9. The assumption that k does not change with phase fails there. It
-     holds at Voyager's 14–15° for Uranus and Neptune. A phase-dependent limb-darkening law for Saturn is needed.
+   - **Saturn (54.6°), still out of tolerance but with the right shape at the limb.** Rendered / observed for
+     centre, limb and terminator: Lambert 1.311 / 1.032 / 1.034; OPAL's k = 0.72 at all phases 1.187 / 1.316 /
+     1.719; now, with k(α) from Pioneer 11 (Dones et al. 1993 Barkstrom law, k(54.6°) = 0.79),
+     1.223 / 1.239 / 1.509. Relative to the centre, the limb goes from 1.109 to 1.013 and the terminator from
+     1.448 to 1.234. OPAL's k comes from Earth-based images (phase ≤ 6°) and does not hold at 54.6°; the Pioneer
+     law, measured on Saturn's disk at 30–150° and independent of this frame, removes most of the error. The
+     terminator is still 23 % too bright relative to the centre: the image's own centre-to-limb ratios need
+     k ≈ 0.8–0.9, and the Minnaert form approximates the Barkstrom law with an rms of 0.10 in ln I/F at 60°. The
+     common factor of about 1.22 over the whole disk points to the disk-integrated brightness at 54.6°, to which
+     the renderer scales every law (Mallama & Hilton's Eq. 12, a fit to the red-light Pioneer scattering model of
+     Dyudina et al. 2005; ring shadows and ringshine not included). The frame has no disk-integrated ROI,
+     so this is not tested directly. Nothing is tuned to this frame.
    - **Galilean moons:** measured against the disk-integrated value (which carries the common offset of item 2),
      the laws flatten the disks as observed. Europa's centre / limb / terminator go from 1.20 / 0.95 / 0.60 to
      1.02 / 1.01 / 0.85 of the disk-integrated ratio, and Ganymede's from 1.08 / 0.87 / 0.42 to 0.91 / 0.98 / 0.66.
      Callisto's limb stays too bright (1.27 → 1.31) while its centre (1.11 → 1.00) and terminator (0.63 → 0.84)
      improve. In absolute terms they still fail because of item 2 (Ganymede's centre and Callisto's limb now
-     fail, 0.808 and 1.065). Io has no published law available and stays Lambert.
+     fail, 0.808 and 1.065).
+   - **Io** now has the Hapke law of Simonelli & Veverka (1986, Voyager violet filter). Relative to the
+     disk-integrated ratio (0.885), its centre / limb / terminator go from 1.13 / 0.96 / 0.68 (Lambert) to
+     0.96 / 1.01 / 0.99. In absolute terms the terminator moves into tolerance (0.598 → 0.874), while the centre
+     now fails (1.000 → 0.848, −3.8σ) with the common offset of item 2, as Europa's and Ganymede's do.
 2. **Galilean moons, disk-integrated:** with the rotational variation (§6.10) Io, Europa and Ganymede render at
    0.885, 0.888 and 0.893 of LORRI (−3 to −5σ), the same to 1 %; Callisto at 0.812 (46.5° phase, in Mayorga et al.'s
    30–60° data gap). The common factor lies between the Cassini-based photometry (CISSCAL 3.9, Mayorga et al.

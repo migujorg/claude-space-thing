@@ -64,16 +64,74 @@ def test_y_effective_wavelength_grey():
 
 
 def test_no_law_without_a_source():
-    for n in (199, 301, 399, 501, 601, 701):
+    for n in (199, 301, 399, 601, 701):
         assert spatial.spatial_model_for(n, None) is None
 
 
 def test_hapke_law_is_physical_for_all_entries():
     """Each Hapke set gives a positive particle phase function over 0-180° (Charon's c > 1 is allowed for small b)."""
-    for n in (499, 502, 503, 504, 801, 901, 999):
+    for n in (499, 501, 502, 503, 504, 801, 901, 999):
         v = spatial.spatial_model_for(n, None)["value"]
         for g in np.radians(np.arange(0, 181, 5)):
             b, c = v["b"], v["c"]
             p = ((1 + c) / 2 * (1 - b * b) / (1 - 2 * b * math.cos(g) + b * b) ** 1.5
                  + (1 - c) / 2 * (1 - b * b) / (1 + 2 * b * math.cos(g) + b * b) ** 1.5)
             assert p > 0, (n, g)
+
+
+def test_barkstrom_transcription():
+    """Dones et al. (1993) Table V as reproduced by Dyudina et al. (2016) Table 3: 0-150° measured, 180° not."""
+    rows = read_table_csv("dones_1993_saturn_barkstrom.csv")
+    assert len(rows) == 14
+    for band, B0, B150 in (("red", 1.48, 1.34), ("blue", 1.11, 1.41)):
+        rs = [r for r in rows if r["band"] == band]
+        assert [int(r["alpha_deg"]) for r in rs] == [0, 30, 60, 90, 120, 150, 180]
+        assert [r["measured"] for r in rs] == ["1"] * 6 + ["0"]
+        assert float(rs[0]["B"]) == B0 and float(rs[5]["B"]) == B150
+    used = spatial._barkstrom()
+    assert len(used["red"]) == len(used["blue"]) == 6
+
+
+def test_minnaert_equivalent_of_barkstrom():
+    """At zero phase μ0 = μ, so the Barkstrom law (μ/2)^B/μ is exactly Minnaert with k = B/2; at larger phase the
+    closest k grows (the limb darkens less than the terminator)."""
+    k, rms = spatial.minnaert_equivalent_k(1.48, 0.0)
+    assert k == pytest.approx(0.74, abs=1e-9) and rms < 1e-9
+    k30, e30 = spatial.minnaert_equivalent_k(1.34, 30.0)
+    k90, e90 = spatial.minnaert_equivalent_k(1.34, 90.0)
+    assert 0.67 < k30 < k90 < 1.0 and 0 < e30 < e90 < 0.25
+
+
+def test_saturn_phase_dependent_k():
+    """Saturn's k(α): Pioneer B interpolated to the wavelength; the table spans 0-150° and interpolates B linearly."""
+    alphas, Bs, ks, rms = spatial.saturn_k_table(540.0)
+    assert alphas == [0, 30, 60, 90, 120, 150]
+    assert Bs[0] == pytest.approx((1.11 + 1.48) / 2) and ks[0] == pytest.approx(Bs[0] / 2)
+    assert all(a < b for a, b in zip(ks[1:], ks[2:])) and max(rms) < 0.2
+    # clamped outside the two passbands
+    assert spatial.saturn_k_table(700.0)[1][0] == pytest.approx(1.48)
+    assert spatial.saturn_k_table(400.0)[1][0] == pytest.approx(1.11)
+
+
+def test_io_simonelli_veverka():
+    m = spatial.io_hapke()
+    assert m["label"] == "estimated" and m["sources"] == ["simonelli-veverka-1987"]
+    v = m["value"]
+    assert (v["w"], v["hs"], v["thetaBarDeg"], v["b"], v["c"]) == (0.68, 0.24, 25.0, 0.14, 1.0)
+    assert v["bs0"] == pytest.approx(math.exp(-0.68 ** 2 / 2), abs=1e-4) and v["hFunction"] == "hapke1981"
+    assert spatial.spatial_model_for(501, None) == m
+
+
+def test_saturn_entry_layout(monkeypatch):
+    """OPAL k at 0°, Pioneer-derived k at 30-150°, held at 180°; two sources; still 'estimated'."""
+    monkeypatch.setattr(spatial, "opal_k", lambda naif, lam, ctx=None: (0.72, {"F547M": 0.72}, "opal-readme-x"))
+    grey = np.ones_like(spatial.cie.WAVELENGTHS, dtype=float)
+    m = spatial.giant_minnaert(699, grey)
+    k = m["value"]["k"]
+    assert k["alphaDeg"] == [0, 30, 60, 90, 120, 150, 180] and k["values"][0] == 0.72
+    assert k["values"][-1] == k["values"][-2] and all(0.7 < x < 1 for x in k["values"])
+    assert m["label"] == "estimated" and m["sources"] == ["opal-readme-x", "dyudina-2016"]
+    j = spatial.giant_minnaert(599, grey)
+    assert j["value"]["k"] == 0.72 and j["sources"] == ["opal-readme-x", "dyudina-2016"]
+    u = spatial.giant_minnaert(799, grey)
+    assert u["value"]["k"] == 0.72 and u["sources"] == ["opal-readme-x"]
