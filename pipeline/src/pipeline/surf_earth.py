@@ -825,7 +825,7 @@ def build_albedo(ctx: BuildContext, mask: WaterMask) -> dict:
     cie_src = ["cie-1931-2deg-cmf", "cie-1951-scotopic"]
     spec = sl.LayerSpec(
         naif=NAIF, body=NAME, layer="albedo", kind="relative-reflectance", fmt="f16", channels=list(sc.CHANNELS),
-        frame=FRAME, sources=[SRC_MCD43, SRC_OCCCI, SRC_MOD44W, SRC_ETOPO, pc_id, solar_src, *cie_src],
+        coarse="half", frame=FRAME, sources=[SRC_MCD43, SRC_OCCCI, SRC_MOD44W, SRC_ETOPO, pc_id, solar_src, *cie_src],
         brightness=sl.Provenance(
             "measured", [SRC_MCD43, SRC_OCCCI, SRC_MOD44W, SRC_ETOPO],
             "Land: MODIS nadir BRDF-adjusted reflectance (reflectance factor for a nadir view with the Sun at local "

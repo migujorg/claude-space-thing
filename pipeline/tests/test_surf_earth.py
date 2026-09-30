@@ -41,6 +41,21 @@ def test_daylit_rows_follow_the_season():
     assert dec[lat < -80].all() and not dec[lat > 75].any()
 
 
+def test_coverage_weighted_coarse_levels():
+    # a bright known strip next to unknown texels: the 'any' rule lets it grow, 'half' keeps the known area
+    a = np.zeros((4, 8, 1), np.float32)
+    known = np.zeros((4, 8), bool)
+    a[:, :3], known[:, :3] = 2.0, True           # 3 of 8 columns known
+    a[:, 3:5], known[:, 3:5] = 1.0, True         # and 2 more darker ones
+    out, cover = st.downsample2_cover(a, known.astype(np.float32))
+    assert cover[0].tolist() == [1.0, 1.0, 0.5, 0.0]
+    assert out[0, :, 0].tolist() == [2.0, 1.5, 1.0, 0.0]
+    out2, cover2 = st.downsample2_cover(out, cover)
+    # the second level is the mean over the known top-level texels inside it: 12 at 2.0 and 4 at 1.0
+    assert cover2[0].tolist() == [1.0, 0.25] and out2[0, 0, 0] == pytest.approx((2 * 6 + 1 * 2) / 8)
+    assert out2[0, 1, 0] == pytest.approx(1.0)
+
+
 # ------------------------------------------------------------------------------------------------ GIBS colour maps
 
 CMAP = """<?xml version="1.0" encoding="UTF-8"?>

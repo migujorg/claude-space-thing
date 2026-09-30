@@ -82,12 +82,13 @@ class LayerSpec:
     notes: list[str] = field(default_factory=list)
     min_level: int = 0
     nodata: str = "zero"             # 'zero' (all channels 0 = unknown) or 'nan' (NaN per channel = unknown)
+    coarse: str = "any"              # rule for coarser levels (surf_tiles.COARSE_RULES)
 
 
 def write_layer(ctx: BuildContext, spec: LayerSpec, top: np.ndarray, known: np.ndarray, top_level: int) -> dict:
     """Write tiles, listing and header; register the products; return the header dict."""
     ts = st.write_pyramid(OUT, spec.naif, spec.layer, top, known, top_level, spec.fmt, min_level=spec.min_level,
-                          nodata=spec.nodata)
+                          nodata=spec.nodata, coarse=spec.coarse)
     listing_rel = f"surfaces/{spec.naif}/{spec.layer}.sha256"
     write_bin(ctx, listing_rel, ts.listing(), STAGE)
     ctx.products[f"surfaces/{spec.naif}/{spec.layer}/"] = {
@@ -113,6 +114,7 @@ def write_layer(ctx: BuildContext, spec: LayerSpec, top: np.ndarray, known: np.n
                     "texelDeg": 180.0 / st.level_shape(L)[0]} for L in range(spec.min_level, top_level + 1)],
         "tilePath": f"surfaces/{spec.naif}/{spec.layer}/{{level}}/{{ty}}/{{tx}}.bin",
         "tileListing": listing_rel,
+        "coarseLevels": st.COARSE_RULES[spec.coarse],
         "missingTiles": {str(k): v for k, v in sorted(ts.missing.items())},
         "noData": ("texels whose channels are all exactly 0 are unknown (no data); tiles listed in missingTiles are "
                    "entirely unknown and not stored") if (spec.fmt == "f16" and spec.nodata == "zero") else

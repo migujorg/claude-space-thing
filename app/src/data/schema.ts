@@ -455,6 +455,8 @@ export interface SurfaceLayerHeader {
   tilePath: string;
   /** Path of the "sha256  path" listing of every stored tile. */
   tileListing: string;
+  /** How the coarser levels were built from the top level (layers built before this field: mean of known texels). */
+  coarseLevels?: string;
   /** level (as string) → [tx, ty][] of tiles that are entirely unknown and therefore not stored. */
   missingTiles: Record<string, [number, number][]>;
   /**
