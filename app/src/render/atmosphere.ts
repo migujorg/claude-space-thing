@@ -223,6 +223,35 @@ export function particleTable(m: AtmosphereModel): number[][] | null {
   });
 }
 
+/**
+ * δ-M forward-peak fraction per bin (Wiscombe 1977, J. Atmos. Sci. 34, 1408, with M = 2, i.e. δ-Eddington
+ * generalised beyond Henyey–Greenstein): f = χ₂, the second Legendre moment of the particle phase function,
+ * χ₂ = 2π∫p(cos θ)·P₂(cos θ)·sin θ dθ with ∫p dΩ = 1 (for HG, χ₂ = g²). The scattering into the forward
+ * peak leaves an image's radiance on (almost) its own path, so for the transmittance of a surface's
+ * radiance to the eye the particle scattering counts as (1 − f)·σ_s. 0 without particles.
+ */
+const deltaCache = new WeakMap<AtmosphereModel, number[]>();
+export function particleDeltaFraction(m: AtmosphereModel): number[] {
+  let f = deltaCache.get(m);
+  if (!f) { f = computeDeltaFraction(m); deltaCache.set(m, f); }
+  return f;
+}
+function computeDeltaFraction(m: AtmosphereModel): number[] {
+  const table = particleTable(m);
+  const K = m.wavelengthsNm.length;
+  if (!table) return new Array(K).fill(0);
+  return table.map((row) => {
+    let chi2 = 0;
+    for (let i = 0; i < PHASE_N - 1; i++) {
+      // Trapezoid in θ over 1° cells.
+      const t0 = (phaseAngleDeg(i) * Math.PI) / 180, t1 = (phaseAngleDeg(i + 1) * Math.PI) / 180;
+      const g = (t: number, p: number) => { const c = Math.cos(t); return p * 0.5 * (3 * c * c - 1) * Math.sin(t); };
+      chi2 += 0.5 * (g(t0, row[i]) + g(t1, row[i + 1])) * (t1 - t0);
+    }
+    return Math.min(Math.max(2 * Math.PI * chi2, 0), 1);
+  });
+}
+
 /** Precompute all tables (CPU). */
 export function precomputeAtmosphere(m: AtmosphereModel): AtmosphereTables {
   const K = m.wavelengthsNm.length;
@@ -504,6 +533,9 @@ export interface ViewPath {
   T: Float64Array;
   Lc: Float64Array;
   Tc: Float64Array;
+  /** The same transmittances δ-scaled (particleDeltaFraction): for a surface's radiance, whose forward-scattered part stays in its image. */
+  Td: Float64Array;
+  Tcd: Float64Array;
 }
 
 /**
@@ -515,7 +547,8 @@ export interface ViewPath {
  */
 export function viewPath(m: AtmosphereModel, tab: AtmosphereTables, G: ProfileGrid, p: V3, e: V3, sunV: V3, hSplit: number, n: number, sLen?: number): ViewPath {
   const K = tab.K;
-  const out: ViewPath = { L: new Float64Array(K), T: new Float64Array(K).fill(1), Lc: new Float64Array(K), Tc: new Float64Array(K).fill(1) };
+  const out: ViewPath = { L: new Float64Array(K), T: new Float64Array(K).fill(1), Lc: new Float64Array(K), Tc: new Float64Array(K).fill(1), Td: new Float64Array(K).fill(1), Tcd: new Float64Array(K).fill(1) };
+  const fD = particleDeltaFraction(m);
   const r0 = Math.hypot(p[0], p[1], p[2]);
   const pe = p[0] * e[0] + p[1] * e[1] + p[2] * e[2];
   const Hk = m.topKm - m.bottomKm;
@@ -542,7 +575,9 @@ export function viewPath(m: AtmosphereModel, tab: AtmosphereTables, G: ProfileGr
       const seg = ext > 1e-9 ? (src * (1 - tr)) / ext : src * ds;
       out.L[k] += out.T[k] * seg;
       out.T[k] *= tr;
-      if (h > hSplit) { out.Lc[k] += out.Tc[k] * seg; out.Tc[k] *= tr; }
+      const trD = Math.exp(-(ext - fD[k] * sA) * ds);
+      out.Td[k] *= trD;
+      if (h > hSplit) { out.Lc[k] += out.Tc[k] * seg; out.Tc[k] *= tr; out.Tcd[k] *= trD; }
     }
   }
   return out;
@@ -621,7 +656,7 @@ export function atmosphereDiskFactors(
     for (let c = 0; c < 4; c++) {
       let under = 0, air = 0;
       for (let k = 0; k < K; k++) {
-        under += m.weights[c][k] * (sf.rho[c] * ts[k] + sf.albedo[c] * es[k]) * path.T[k];
+        under += m.weights[c][k] * (sf.rho[c] * ts[k] + sf.albedo[c] * es[k]) * path.Td[k];
         air += m.weights[c][k] * Math.PI * path.L[k];
       }
       I0[c] += sf.rho[c] * dA;

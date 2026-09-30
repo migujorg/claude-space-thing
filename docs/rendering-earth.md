@@ -194,6 +194,15 @@ The pixel is then composed, per bin, folded into XYZS with the fold weights:
 ρ_dir and ρ_dif are the Earth model's radiance factors for direct sunlight and for diffuse skylight. Each
 part is taken as spectrally flat within an XYZS channel (exact for grey clouds).
 
+**δ-scaled view transmittance (M5).** A particle's forward-scattering peak sends a surface's light on
+along (almost) its own path. For aerosol and dust (g ≈ 0.7) the peak is a few degrees wide, a fraction of
+a km on the ground from the scattering altitude, so the light stays in the pixel. T_view for the surface
+and cloud radiance therefore uses the δ-M extinction σ_ext − f·σ_s,particle (Wiscombe 1977, M = 2: f = χ₂,
+the second Legendre moment of the particle phase function, = g² for Henyey–Greenstein; `atmosphere.ts
+particleDeltaFraction`). The path radiance, sunlight and skylight keep the full phase functions.
+Mars dust has f ≈ 0.5, so T_view at 0° phase rises from 0.53 to 0.69 of the airless disk. Images under
+dust keep more contrast, and the disk renormalisation keeps the total.
+
 **Limb.** Rays that miss the solid Earth go through `ATMOSPHERE_SHELL_SHADER`. It marches the chord through
 the top sphere from its closest point to the centre, computed without cancellation at large distance.
 Pixels partly covered by the Earth get the uncovered share. The shell is additive and depth-tested, with no
@@ -229,11 +238,11 @@ claim, so it is not marked: marking it would hatch most of the night side.
 | Model | A (X, Y, Z, S) | Ratio to measured |
 |---|---|---|
 | Surface + clouds, no atmosphere (level 1) | 0.179 0.178 0.182 0.180 | 0.74 0.75 0.59 0.67 |
-| + atmosphere, glint, sky reflection (level 0) | 0.212 0.211 0.268 0.240 | 0.88 0.89 0.87 0.89 |
+| + atmosphere, glint, sky reflection (level 0) | 0.215 0.214 0.271 0.243 | 0.89 0.90 0.88 0.91 |
 | Measured p·Φ(2.42°) | 0.241 0.238 0.308 0.269 | 1 |
 
-With the atmosphere the colour matches: all four channels come out 0.87–0.89 of the measurement. The
-remaining 11–13 % is within the photometry's stated variability: the disk reflectance changes by 10–20 %
+With the atmosphere the colour matches: all four channels come out 0.88–0.91 of the measurement (with the
+δ-scaled view transmittance). The remaining 9–12 % is within the photometry's stated variability: the disk reflectance changes by 10–20 %
 with clouds and the hemisphere in view, and the clouds here are from a different day, 2026-09-28. Model
 approximations also contribute:
 
@@ -301,7 +310,7 @@ extrapolated disk could not contain.
 
 | Body | Components | Outcome in the test views |
 |---|---|---|
-| Mars | CO₂ Rayleigh; dust, double HG, ω 0.71–0.98 | Over the disk to α ≈ 65°: haze softens the terminator and lowers contrast. At α = 36° the surface scale is ×0.82 / 0.74 / 0.22 / 0.52 (X, Y, Z, S): the blue of the disk is mostly dust light. Not drawn beyond (3.). |
+| Mars | CO₂ Rayleigh; dust, double HG, ω 0.71–0.98 | Over the disk to α ≈ 65°: haze softens the terminator and lowers contrast. At α = 36° the surface scale is ×0.62 / 0.57 / 0.18 / 0.41 (X, Y, Z, S; with the δ-scaled view transmittance): the blue of the disk is mostly dust light. Not drawn beyond (3.). |
 | Venus | the cloud and upper haze above 60 km | Beyond the disk only. Near inferior conjunction (α = 172°) the haze alone outshines the measured p·Φ: not drawn. |
 | Pluto | haze (tabulated Mie phase, ω 0.944) | Over the disk; the haze is 1–2 % of the disk at low phase and forms a ring at high phase. |
 | Titan | N₂ Rayleigh; haze with ω and phase unknown | See below. |
@@ -330,8 +339,8 @@ withhold it: the renderer handles that as above.
 
 **Not done.**
 
-- δ-scaling of forward-peaked phase functions (Wiscombe 1977) for the view transmittance of surface
-  light. Mars's surface contrast under the dust is therefore somewhat low. The disk total is kept by the
-  renormalisation.
+- δ-scaling of the sunlight's path and of the multiple-scattering table. Only the view transmittance
+  of surface light is δ-scaled (§4). The skylight table already holds the forward-scattered sunlight, so
+  scaling the sun path too would count it twice.
 - Refraction and the Venus aureole.
 - Latitude-dependent dust and seasonal hazes.

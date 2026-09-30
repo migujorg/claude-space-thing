@@ -26,6 +26,7 @@ struct Atm {
   quad: vec4f,    // shell quad half-extent (tan units), 1 = full-screen (camera near or inside), steps, 1 = scattering not measured
   w: array<vec4f, 16>,     // fold weights: channel c, bins 4j..4j+3 at w[4c + j]
   depol: array<vec4f, 4>,  // Rayleigh depolarisation ratio per bin
+  delta: array<vec4f, 4>,  // δ-M forward-peak fraction of the particle scattering per bin (atmosphere.ts particleDeltaFraction)
 };
 
 const ATM_TW: f32 = ${f(ATM_TEX_W)};
@@ -89,6 +90,8 @@ struct AtmPath {
   T: array<vec4f, 4>,   // transmittance of the whole segment
   Lc: array<vec4f, 4>,  // the same over the part above altitude hSplit (the cloud tops)
   Tc: array<vec4f, 4>,
+  Td: array<vec4f, 4>,  // δ-scaled transmittances, for a surface's radiance (its forward-scattered part stays in its image)
+  Tcd: array<vec4f, 4>,
 };
 
 /**
@@ -107,6 +110,8 @@ fn atmMarch(p0: vec3f, d: vec3f, sNear: f32, sFar: f32, n: i32, S: vec3f, m0: ve
   for (var j = 0; j < K4; j++) {
     o.T[j] = vec4f(1.0);
     o.Tc[j] = vec4f(1.0);
+    o.Td[j] = vec4f(1.0);
+    o.Tcd[j] = vec4f(1.0);
     phR[j] = atmRayleighPhase(nu, A.depol[j]);
     phA[j] = atmParticlePhase(nu, j);
   }
@@ -129,9 +134,12 @@ fn atmMarch(p0: vec3f, d: vec3f, sNear: f32, sFar: f32, n: i32, S: vec3f, m0: ve
       let seg = src * select(vec4f(ds), (1.0 - tr) / max(ext, vec4f(1e-12)), ext > vec4f(1e-9));
       o.L[j] += o.T[j] * seg;
       o.T[j] *= tr;
+      let trD = exp(-(ext - A.delta[j] * sA) * ds);
+      o.Td[j] *= trD;
       if (h > hSplit) {
         o.Lc[j] += o.Tc[j] * seg;
         o.Tc[j] *= tr;
+        o.Tcd[j] *= trD;
       }
     }
   }

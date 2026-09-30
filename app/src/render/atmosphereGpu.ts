@@ -2,7 +2,7 @@
 // precomputes its tables in a worker, packs them into one rgba16float texture array (shaders-atmosphere.ts)
 // and keeps one uniform buffer per atmosphere.
 
-import { atmosphereModelFromData, IRR_H, IRR_W, MS_N, PHASE_N, particleTable, PROFILE_N, ProfileGrid, rayleighDepolarization, T_H, T_W, type AtmosphereModel, type AtmosphereTables } from './atmosphere';
+import { atmosphereModelFromData, IRR_H, IRR_W, MS_N, PHASE_N, particleDeltaFraction, particleTable, PROFILE_N, ProfileGrid, rayleighDepolarization, T_H, T_W, type AtmosphereModel, type AtmosphereTables } from './atmosphere';
 import { ATM_K4_MAX, ATM_TEX_H, ATM_TEX_W } from './shaders-atmosphere';
 import { numberToF16 } from './surface';
 import type { SceneAtmosphere } from './scene';
@@ -35,7 +35,7 @@ interface Entry {
 }
 
 /** Bytes of the Atm uniform (struct Atm: 3 + 16 + 4 vec4). */
-export const ATM_UB_BYTES = (3 + 16 + 4) * 16;
+export const ATM_UB_BYTES = (3 + 16 + 4 + 4) * 16;
 
 export class AtmosphereGpu {
   /** Per atmosphere data object, per dust-season bin (−1: no dust scaling). */
@@ -143,6 +143,8 @@ export class AtmosphereGpu {
     for (let c = 0; c < 4; c++) for (let k = 0; k < K; k++) a[12 + (4 * c + (k >> 2)) * 4 + (k & 3)] = m.weights[c][k];
     const dep = rayleighDepolarization(m);
     for (let k = 0; k < K; k++) a[12 + 64 + k] = dep[k];
+    const fD = particleDeltaFraction(m);
+    for (let k = 0; k < K; k++) a[12 + 64 + 16 + k] = fD[k];
     this.device.queue.writeBuffer(b.uniform, 0, a);
   }
 

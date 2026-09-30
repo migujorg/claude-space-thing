@@ -702,14 +702,14 @@ const ATM_OVER_PHOTOMETRY = /* wgsl */ `
       var Lp = vec4f(0.0);
       psT = vec4f(0.0);
       for (var j = 0; j < atmK4(); j++) {
-        let ts = atmTsun(A.geo.x, muSg, j) * path.T[j];
-        let es = atmIrr(0.0, muSg, j) * path.T[j];
+        let ts = atmTsun(A.geo.x, muSg, j) * path.Td[j];
+        let es = atmIrr(0.0, muSg, j) * path.Td[j];
         for (var c = 0; c < 4; c++) {
           let w = A.w[4 * c + j];
           T2[c] += dot(w, ts);
           Sky[c] += dot(w, es);
           Lp[c] += dot(w, path.L[j]);
-          psT[c] += dot(w, path.T[j]);
+          psT[c] += dot(w, path.Td[j]);
         }
       }
       L = L * T2 + (b.rad * M * Sky + PI * A.sunE * Lp) * sunVisible(b, p);
@@ -741,10 +741,10 @@ const EARTH_WITH_ATMOSPHERE = /* wgsl */ `
           let tsc = atmTsun(A.geo.x + ein.cthKm, muSg, j);
           let esc = atmIrr(ein.cthKm, muSg, j);
           for (var c = 0; c < 4; c++) {
-            let clearRad = PI * path.L[j] + path.T[j] * (pr.clear.dir[c] * ts0 + pr.clear.dif[c] * es0);
-            let cloudRad = PI * path.Lc[j] + path.Tc[j] * (pr.cloudy.dir[c] * tsc + pr.cloudy.dif[c] * esc);
+            let clearRad = PI * path.L[j] + path.Td[j] * (pr.clear.dir[c] * ts0 + pr.clear.dif[c] * es0);
+            let cloudRad = PI * path.Lc[j] + path.Tcd[j] * (pr.cloudy.dir[c] * tsc + pr.cloudy.dif[c] * esc);
             Lsun[c] += dot(A.w[4 * c + j], pr.clear.w * clearRad + pr.cloudy.w * cloudRad + unknownW * PI * path.L[j]);
-            Temit[c] += dot(A.w[4 * c + j], path.T[j]);
+            Temit[c] += dot(A.w[4 * c + j], path.Td[j]);
           }
         }
         L = A.sunE * Lsun * sunVisible(b, p);
@@ -754,7 +754,7 @@ const EARTH_WITH_ATMOSPHERE = /* wgsl */ `
         L += nightL * (pr.clear.w * pr.clear.emit + pr.cloudy.w * pr.cloudy.emit) * Temit;
         // An unknown wind marks the water where a possible glint (through both paths) outshines the known light.
         var glintT = 0.0;
-        for (var j = 0; j < atmK4(); j++) { glintT += dot(A.w[4 + j], atmTsun(A.geo.x, muSg, j) * path.T[j]); }
+        for (var j = 0; j < atmK4(); j++) { glintT += dot(A.w[4 + j], atmTsun(A.geo.x, muSg, j) * path.Td[j]); }
         let glintGap = earthGlintGap(pr.glintShare, pr.glintMax * glintT, Lsun.y);
         // Reflected light matters while the sky above is lit (to ~6° below the horizon, sin 6° ≈ 0.1).
         gap = earthGap(max(pr.gap, glintGap), pr.gapEmit, muSg > -0.1, nightL);
