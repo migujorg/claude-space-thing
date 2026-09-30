@@ -169,11 +169,19 @@ WGSL `texelRadf`).
   - where the photometry is measured at this geometry (ROLO, §4), at this geometry. The map is then
     also normalized at this geometry: ROLO already contains the libration and the waxing/waning
     asymmetry the map would otherwise add a second time;
+  - outside ROLO's domain (M5): at the view the Moon's albedoXYZS·Φ(α) describes. photometry.json
+    defines it as ROLO at zero libration, geometric mean of the waxing and waning Moon ("describes the
+    near side as seen from Earth"). The integral is taken with the observer over 0°, 0° and the Sun on
+    the equator at east longitude +α and −α, geometric mean. The far side, or any view off the
+    Earth–Moon line, then differs from the near side by what the maps and the per-texel law say. It was
+    averaged over rotations until M5, which made the EPOXI far-side view (validation case
+    `earth-moon-epoxi-2008`) 0.79 of the measured brightness. It is now 0.93, within tolerance;
   - elsewhere, averaged over 8 rotations.
 
   The result is cached on the geometry quantized to ~0.06°. A test integrates the rendered sphere by
   brute force against ROLO: agreement within 1 % for a sharp-edged test map, with a per-texel law that
-  changes across the surface.
+  changes across the surface. A second one renders the far side and integrates the same K at the
+  reference view: it gives albedoXYZS·Φ(α) within 1.5 % (0.76 with the rotation average).
 
 ## 3. Height maps: relief normals and self-shadowing
 
@@ -209,7 +217,7 @@ The inputs:
 
 Inside the domain (1.55° ≤ g ≤ 97°, |θ| ≤ 7°, |φ| ≤ 8°), pΦ = A_c · E☉,c(1 AU) · (radiusKm/R)²
 replaces albedoXYZS·Φ(α) in the disk illuminance and in the resolved radiance (§2). Outside it, the
-phase curve applies as before. From a spacecraft far off the Earth–Moon line, that is the curve.
+phase curve applies as before, and the maps are normalized at the curve's reference view (§2).
 Planetshine uses the same value when the Moon is the source (moonshine on Earth).
 
 Tests (`render-rolo.test.ts`):
