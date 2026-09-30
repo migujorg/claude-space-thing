@@ -114,19 +114,41 @@ def test_layer_header_roundtrip(tmp_path, monkeypatch):
                         epoch={"observed": "2025-12-11T16:49:03Z/2025-12-12T01:05:03Z"},
                         normalization={"texelDiskMeanCheck": [1, 1, 1, 1]})
     hdr = sl.write_layer(ctx, spec, top, known, L)
-    disk = json.loads((tmp_path / "surfaces/997/albedo.json").read_text())
+    disk = json.loads((tmp_path / "surfaces/997/albedo.json").read_text(encoding="utf-8"))
     assert disk == json.loads(json.dumps(hdr))
     assert disk["maxLevel"] == L and disk["minLevel"] == 0 and disk["bytesPerTexel"] == 8
     assert disk["tilePath"] == "surfaces/997/albedo/{level}/{ty}/{tx}.bin"
     assert disk["color"]["label"] == "estimated" and disk["brightness"]["label"] == "measured"
     assert [lv["width"] for lv in disk["levels"]] == [512, 1024]
     # listing file hashes every stored tile; the aggregate manifest entry points to it
-    listing = (tmp_path / disk["tileListing"]).read_text().splitlines()
+    listing = (tmp_path / disk["tileListing"]).read_text(encoding="utf-8").splitlines()
     assert len(listing) == disk["stats"]["tiles"] == ctx.products["surfaces/997/albedo/"]["files"]
     for line in listing:
         sha, rel = line.split("  ")
         import hashlib
         assert hashlib.sha256((tmp_path / rel).read_bytes()).hexdigest() == sha
+    assert "levelCap" not in disk
+
+
+def test_level_cap_writes_the_same_lower_levels(tmp_path, monkeypatch):
+    """surfaces.maxLevel (build profiles) leaves out the top levels; the levels written are the uncapped ones."""
+    L = 2
+    top, known = _synthetic(L, seed=3)
+    full = st.write_pyramid(tmp_path / "full", 999, "albedo", top, known, L, "f16")
+    capped = st.write_pyramid(tmp_path / "cap", 999, "albedo", top, known, L, "f16", max_level=1)
+    assert capped.files == {k: v for k, v in full.files.items() if int(k.split("/")[3]) <= 1}
+    assert not (tmp_path / "cap/surfaces/999/albedo/2").exists() and 2 not in capped.missing
+    # the layer header says what was written and what the source has
+    monkeypatch.setattr(sl, "OUT", tmp_path / "out")
+    monkeypatch.setattr(output, "OUT", tmp_path / "out")
+    ctx = BuildContext(0.0, 1.0, params={"surfaces.maxLevel": 1})
+    spec = sl.LayerSpec(naif=996, body="Test", layer="albedo", kind="relative-reflectance", fmt="f16",
+                        channels=["X", "Y", "Z", "S"], frame={"name": "IAU_TEST"}, sources=["s"],
+                        brightness=sl.Provenance("measured", ["s"], "test"))
+    hdr = sl.write_layer(ctx, spec, top, known, L)
+    assert hdr["maxLevel"] == 1 and [lv["level"] for lv in hdr["levels"]] == [0, 1]
+    assert hdr["levelCap"]["sourceMaxLevel"] == 2
+    assert hdr["coverage"]["areaFraction"] == round(st.area_fraction(known, L), 5)   # coverage of the source
 
 
 # ------------------------------------------------------------------------------------------ resampling

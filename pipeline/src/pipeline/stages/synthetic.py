@@ -82,9 +82,10 @@ FIT_RANGE = {"hungaria": (1.78, 2.0), "mainbelt": (2.12, 3.25), "hilda": (3.92, 
 ANGLES = {"hungaria": "uniform", "mainbelt": "uniform", "hilda": "hilda", "trojan": "trojan"}
 
 
-def params() -> dict:
+def params(over: str | None = None) -> dict:
+    """PARAMS with the overrides of `over` (JSON; default: the synthetic.params build parameter's variable)."""
     p = json.loads(json.dumps(PARAMS))
-    over = os.environ.get("SYNTHETIC_PARAMS", "").strip()
+    over = (os.environ.get("SYNTHETIC_PARAMS", "") if over is None else over).strip()
     if over:
         for k, v in json.loads(over).items():
             if isinstance(v, dict):
@@ -371,7 +372,7 @@ def build(cat: dict, p: dict | None = None, *, only: tuple[str, ...] | None = No
 def run(ctx: BuildContext) -> None:
     t_stage = time.time()
     src = ss.register(ctx)
-    p = params()
+    p = params(ctx.param("synthetic.params"))
     cat = load_catalogue()
     res = build(cat, p)
     core_hdr = cat["header"]
@@ -478,9 +479,12 @@ def run(ctx: BuildContext) -> None:
     report.update({"generated": _dt.datetime.now(_dt.timezone.utc).isoformat(timespec="seconds"),
                    "seconds": round(time.time() - t_stage, 1), "counts": {"synthetic": n_obj, "cells": n_cell},
                    "products": {k: v for k, v in ctx.products.items() if v["stage"] == STAGE}})
-    REPORT.write_text(json.dumps(report, indent=1, allow_nan=False))
-    FIGURE.write_text(distribution_svg(report))
-    diagnostic_png(cat, res, DIAGNOSTIC)
+    if ctx.param("build.writeRepoFiles"):
+        REPORT.write_text(json.dumps(report, indent=1, allow_nan=False), encoding="utf-8", newline="\n")
+        FIGURE.write_text(distribution_svg(report), encoding="utf-8", newline="\n")
+        diagnostic_png(cat, res, DIAGNOSTIC)
+    else:
+        print(f"[synthetic] {REPORT.name} and its figures not rewritten (build.writeRepoFiles is off)")
     per_pop = ", ".join(f"{k} {int(v['cells'].n_shown.sum())}" for k, v in res["populations"].items())
     print(f"[synthetic] {n_obj} synthetic objects in {n_cell} cells ({per_pop}); {time.time() - t_stage:.0f} s")
 
