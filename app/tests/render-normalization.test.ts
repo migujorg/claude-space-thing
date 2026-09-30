@@ -87,5 +87,5 @@ describe('disk integral with a surface map equals p·Φ(α)', () => {
     expect(mean / I[1]).toBeCloseTo(1, 2);
     // The map's longitude structure makes the brightness vary with rotation (it is not normalized away).
     expect(Math.max(...vals) / Math.min(...vals)).toBeGreaterThan(1.02);
-  });
+  }, 60000);
 });

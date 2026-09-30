@@ -169,9 +169,18 @@ composite keeps 1 − Σw of the light unscattered, so energy is conserved exact
 pixel; inside 0.1° (below the CIE validity range) the kernel is held at its 0.1° value. v0 fitted only
 from 0.1° outward, which left the narrowest Gaussians unconstrained at fine pixel scales: at 1440p and 4K
 the fitted "scattered" energy could exceed 100 % and the unscattered fraction turned negative (stars and
-bodies vanished at 4K). The bounded continuation makes the scattered fraction ~0.45–0.5 at every
-resolution from 720p to 4K (tested). Light scattered
-beyond the frame edge is lost (the scene outside the frame is not rendered).
+bodies vanished at 4K). The bounded continuation keeps the scattered fraction within 20 % across
+resolutions from 720p to 4K (tested; ≈ 0.39–0.40 at a 50° field).
+
+Outward, the fit runs over the whole support of every Gaussian (to 4σ of the widest level), with the
+kernel's own zero beyond 100° as the target there. v1 stopped at the frame diagonal or at 100°,
+whichever came first. In a wide field, where 100° lies inside the frame, the widest levels were then free
+to carry energy beyond 100°: the weights summed to 0.73 at fovY 110° and 1.20 at 130° (1080p). The
+unscattered fraction 1 − Σw went negative and the whole frame rendered black, stars included. Now the
+scattered fraction stays physical at every field from 5° to 150° (tested at 720p, 1080p and 4K): ≈ 0.36–0.40
+up to 90°, falling to 0.14–0.27 at 150°. It falls because a wide-field pixel spans more of the kernel's
+steep core, and that light stays in its pixel. Light scattered beyond the frame edge is lost (the scene
+outside the frame is not rendered).
 
 The Sun, and bodies whose centre is outside the frame, are veiled analytically per pixel
 (E·f_CIE(θ)), because their glare reaches far beyond the frame and the Sun's disk is too bright for a
@@ -402,6 +411,36 @@ that. Rigel/Vega stay near white, Antares and Betelgeuse show a warm tint.
 response model. Adaptation still comes from the physical scene. The visibility threshold is divided
 by the same factor: +3 stops raises the limiting magnitude by 2.5·log₁₀ 8 = 2.26 mag (tested). The shell
 shows the badge.
+
+## 8b. Sun shield (a viewing aid)
+
+With `view.sunShield = true`, an occulting disc sits between the eye and the Sun. It works like a
+coronagraph's occulter or a hand held up against the Sun. The option is off by default and works in
+both view modes. The shell sets it from `RealityState.sunShield` (URL `shield=1`) and always shows the
+badge "SUN SHIELDED: occulting disc (viewing aid)". It changes what reaches the eye, not the scene:
+
+- **The disc.** It is centred on the Sun and follows it. Its angular radius is the Sun's plus one pixel,
+  so it hides as little sky as possible. It is ideal: it neither emits nor reflects light, and its edge
+  does not diffract. Real external occulters scatter and diffract light around their edge (the reason
+  coronagraphs add a Lyot stop), but that light depends on the instrument, so none is invented. A
+  larger disc, such as a hand at arm's length (≈ 10°), would hide more sky and is not offered. When the
+  disc is in front of the camera, its rim is drawn as a thin grey display overlay, like the orbit lines.
+- **What changes.** The Sun's light never enters the eye. There is no solar disk or point and no CIE 146
+  veil from the Sun (§3, analytic glare). No solar light reaches the adaptation measurement or the pupil
+  (§2, off-frame flux). Adaptation, thresholds and the painted glare therefore come from everything
+  else. With the Sun in frame, the disc is excluded from fixations like the resolved solar disk (§2).
+- **What stays physical.** Everything else is unchanged: sunlight on the bodies, planetshine and
+  shadows, other sources' glare, and stars. Whatever lies behind the disc is hidden: bodies, rings,
+  stars, extra point sources such as small bodies, and unresolved bodies whose centre is behind it.
+
+The Sun's veil is light scattered inside the observer's eye, so blocking it before the eye is the
+physical way to remove it. Lowering the veil after the fact would not be. The shield exists for
+enhanced mode near the Sun. There, the exposure boost also multiplies the Sun's veil, which can hide
+the asteroid belt within ~48° of the Sun as seen from a few AU above the ecliptic. For example, 4 AU
+from the Sun at +6 stops, the unshielded frame is pure white, while the shielded frame shows the stars
+and the small bodies (`/?target=10&dist=6e8&el=80&fov=100&view=enhanced&boost=6&shield=1`;
+`render-test.html?scene=offscreen-sun&off=30&mode=enhanced&boost=6&shield=1`). `render-frame.test.ts`
+checks that the Sun's light on the bodies is unaffected.
 
 ## 9. Constants and their verification status
 

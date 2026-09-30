@@ -64,8 +64,26 @@ export interface RingProfile {
   tables: Float32Array | null;
 }
 
-const profileCache = new WeakMap<object, WeakMap<object, RingProfile>>();
+// Cached on the data arrays themselves (radiusKm, normalTau of each profile, and the reflectance model),
+// not on the SceneRings wrapper: a shell that rebuilds the wrapper every frame must not cause a rebuild
+// (7 885 bins × 66 exponentials) and a 2.3 MB re-upload per frame.
+interface ProfileCacheEntry { arrays: unknown[]; byModel: WeakMap<object, RingProfile> }
+const profileCache = new WeakMap<object, ProfileCacheEntry[]>();
 const NO_MODEL = {};
+const EMPTY_ANCHOR = {};
+
+function profileCacheEntry(r: SceneRings, create: boolean): ProfileCacheEntry | undefined {
+  const arrays = r.opticalDepth.flatMap((p) => [p.radiusKm, p.normalTau]);
+  const anchor = (arrays[1] as object | undefined) ?? EMPTY_ANCHOR;
+  let list = profileCache.get(anchor);
+  let e = list?.find((x) => x.arrays.length === arrays.length && x.arrays.every((a, i) => a === arrays[i]));
+  if (!e && create) {
+    e = { arrays, byModel: new WeakMap() };
+    if (!list) profileCache.set(anchor, (list = []));
+    list.push(e);
+  }
+  return e;
+}
 
 function interpIn(R: number[], v: (number | null)[], r: number): number | null {
   const n = R.length;
@@ -90,8 +108,7 @@ function gridAt(m: RingReflectance, arr: (number | null)[], r: number): number |
 /** Resample a ring system onto uniform bins and build the cumulative sums (cached per data object). */
 export function ringProfile(r: SceneRings): RingProfile {
   const key = r.reflectance ?? NO_MODEL;
-  let inner = profileCache.get(r.opticalDepth);
-  const hit = inner?.get(key);
+  const hit = profileCacheEntry(r, false)?.byModel.get(key);
   if (hit) return hit;
   const profs = r.opticalDepth.filter((p) => p.radiusKm.length >= 2);
   let rMin = Infinity, rMax = -Infinity, step = Infinity;
@@ -132,8 +149,7 @@ export function ringProfile(r: SceneRings): RingProfile {
     cum.set(acc, (b + 1) * S);
   }
   const p: RingProfile = { rMin, rMax, bins, stride, cumulative: new Float32Array(cum), cum64: cum, model: m, tables: m ? ringTables(m) : null };
-  if (!inner) profileCache.set(r.opticalDepth, (inner = new WeakMap()));
-  inner.set(key, p);
+  profileCacheEntry(r, true)!.byModel.set(key, p);
   return p;
 }
 
@@ -392,6 +408,8 @@ export function ringIlluminance(p: RingProfile, normal: V3, toObs: V3, D: number
   return E;
 }
 
+const pointCache = new WeakMap<RingProfile, Map<string, XYZS | null>>();
+
 /**
  * Per-frame preparation of a body's ring system: the resolved part to draw (faded in between 1 and 2
  * pixels of ring diameter) and the light of the unresolved part, which joins the planet's point source.
@@ -424,8 +442,19 @@ export function prepareRings(b: SceneBody, sunIrradianceXYZS_1AU: XYZS | null, s
     }
   }
   if (fRes < 1 && m && sunIrradianceXYZS_1AU) {
-    const E = ringIlluminance(prof, normal, toObs, D, sunDir, esun, planet.M);
-    if (E) out.pointE = E.map((v) => v * (1 - fRes)) as XYZS;
+    // Per unit esun and D = 1 (E scales with both), cached on the quantized directions and the planet's
+    // shape: an unresolved ring system otherwise costs ~10⁴ ray tests every frame.
+    const q = (v: number[]) => v.map((x) => x.toFixed(4)).join(',');
+    const key = `${q(normal)}|${q(toObs)}|${q(sunDir)}|${q(b.radii)}|${q(planet.M as number[])}`;
+    let unit = pointCache.get(prof)?.get(key);
+    if (unit === undefined) {
+      unit = ringIlluminance(prof, normal, toObs, 1, sunDir, [1, 1, 1, 1], planet.M);
+      let c = pointCache.get(prof);
+      if (!c) pointCache.set(prof, (c = new Map()));
+      if (c.size > 256) c.clear();
+      c.set(key, unit);
+    }
+    if (unit) out.pointE = unit.map((v, k) => (v * esun[k] * (1 - fRes)) / (D * D)) as XYZS;
   }
   if (fRes > 0) {
     const frame = prepareBody(b.pos, [prof.rMax, prof.rMax, prof.rMax], null, 3 * pixelAngle);

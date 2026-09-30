@@ -33,7 +33,10 @@ behaves exactly as in M1.
 | `allowPhaseExtrapolation` | reality level | `exists !== 'strict'`. Already set in `app/src/app/snapshot.ts` (one line). |
 | `spatialModel` | `photometry.json` → `BodyPhotometry.spatialModel.value`, if admitted at the level | Measured spatial law. Absent → Lambert. No body has one in the current products. |
 | `diskReflectanceModel` | `photometry.json` → `BodyPhotometry.diskReflectanceModel.value` (the Moon: ROLO), if admitted | Disk-integrated brightness from the model inside its domain (§4). Needs `orient`. Include its label (`derived`) in `worstLabel`. |
-| `surface.albedo` / `surface.height` | `surfaces/index.json` → `surfaces/<id>/<layer>.json` | `{ url: '<data root>', header: <the parsed SurfaceLayerHeader> }`. Example: `{ url: '/data', header }` for `surfaces/301/albedo.json`. The renderer builds tile URLs from `header.tilePath`, skips `header.missingTiles`, and checks `format`, `channels`, `bytesPerTexel`, `tileSize` and `minLevel`. Only used when `orient` is non-null. The `hapke` layer (per-texel parameters) is not used yet. |
+| `surface.albedo` / `surface.height` | `surfaces/index.json` → `surfaces/<id>/<layer>.json` | `{ url: '<data root>', header: <the parsed SurfaceLayerHeader> }`. Example: `{ url: '/data', header }` for `surfaces/301/albedo.json`. The renderer builds tile URLs from `header.tilePath`, skips `header.missingTiles`, and checks `format`, `channels`, `bytesPerTexel`, `tileSize` and `minLevel`. Only used when `orient` is non-null. |
+| `surface.photometry` | a layer of kind `photometric-parameters` (the Moon: `surfaces/301/hapke.json`), same form as above | The per-texel Hapke law (§2b). Needs `surface.albedo` too, since its header carries the band → XYZS weights. `app/src/app/extras.ts` passes it when its label is admitted (a 3-line edit in the shell). |
+| `view.sunShield` (`ViewSettings`) | `RealityState.sunShield` (URL `shield=1`), off by default | The Sun-shield viewing aid: an occulting disc over the Sun ([eye-model.md](eye-model.md) §8b). The shell always badges it. `snapshot.ts` passes it; a UI toggle belongs to the UI. |
+| `surface.clouds/water/night/wind`, `atmosphere` | Earth's layers and `atmospheres.json` | Earth drawn from its layers and a multiple-scattering atmosphere: [rendering-earth.md](rendering-earth.md). |
 | `rings` | `rings.json` → the planet's `RingSystem` | `{ normal: <planet IAU pole, ICRF unit vector>, opticalDepth: rs.opticalDepth.value, reflectance: rs.reflectance.label !== 'unknown' && admitted ? rs.reflectance.value : null, worstLabel }`. For Saturn, `worstLabel` = worst of `opticalDepth.label` (measured) and `reflectance.label` (estimated). Pass `rings: null` when `opticalDepth.value` is null (Jupiter). |
 
 Renderer options:
@@ -106,8 +109,8 @@ Available models (`schema.ts` `SpatialPhotometricModel`; float64 reference in `s
 - Hapke (2012): the IMSA form with SHOE, CBOE, double Henyey–Greenstein p(g) (b, c), porosity K,
   Hapke's (1984) macroscopic roughness θ̄, and the Hapke (2002) or (1981) H function.
 
-The design is a per-body constant parameter set. Per-texel parameters, such as the pipeline's `hapke`
-layer for the Moon (Sato et al. 2014 at 1°, 7 bands), would need a further layer type (§8).
+These are per-body constant parameter sets. Per-texel parameters (the Moon's `hapke` layer, Sato et al.
+2014 at 1°, 7 bands) are a surface layer of their own (§2b).
 
 **Normalization.** A model only distributes light across the disk. The rendered radiance is
 
@@ -138,6 +141,39 @@ normalization ignores relief (height maps).
   Minnaert geometric albedo 2/(2k + 1).
 - Outside a model's `validPhaseDeg` or its parameter tables, the spatial distribution falls back to
   Lambert, with a warning.
+
+## 2b. The Moon's per-texel Hapke law
+
+`surfaces/301/hapke` holds Sato et al.'s (2014) Hapke parameters per 1° cell and band: w, b, c, B_S0,
+h_S, with θ̄, K, B_C0, h_C in its header. The renderer uses them as the Moon's spatial law (`texelLaw.ts`,
+WGSL `texelRadf`).
+
+- **Combining with the albedo map.** The albedo layer's texels are the normal-albedo pattern (normal
+  albedo without the surge, A_b = RADF_b(0, 0, 0; B_S0 = 0), as a ratio to its disk mean ⟨A_b⟩) combined
+  linearly across bands with the weights W[c][b] in its header. So the radiance of channel c relative
+  to the texel is
+  R_c(i, e, g) = Σ_b W[c][b]·RADF_b(i, e, g)/⟨A_b⟩ / Σ_b W[c][b]·RADF_b(0, 0, 0; B_S0 = 0)/⟨A_b⟩,
+  and L_c = K_c·M_c·R_c.
+- **Bands.** The four bands with the largest weights (415, 566, 604, 643 nm) are used, with the weights
+  renormalized; the rest carry < 3 %.
+- **Sampling.** Parameters are interpolated bilinearly over known cells. The roughness term is computed
+  once per pixel (θ̄ is global).
+- **Polar caps.** Poleward of 70° there are no parameters, and each cell takes the nearest known cell
+  of its longitude. That is an assumption, like the pipeline's polar albedo scaling. A Lambert fallback
+  there left a visible step at 70°.
+- **What it changes.** The opposition surge and its width now vary over the surface. The full Moon's
+  flat, nearly limb-darkening-free disk and the maria/highland contrast changing with phase come from
+  the measured parameters instead of a Lambert assumption.
+- **Normalization.** The disk integral of M·R equals the disk photometry (§2), computed over the
+  actual disk from the level-0 map and parameters (`mapDiskIntegral`, Gauss–Legendre 24 × 24):
+  - where the photometry is measured at this geometry (ROLO, §4), at this geometry. The map is then
+    also normalized at this geometry: ROLO already contains the libration and the waxing/waning
+    asymmetry the map would otherwise add a second time;
+  - elsewhere, averaged over 8 rotations.
+
+  The result is cached on the geometry quantized to ~0.06°. A test integrates the rendered sphere by
+  brute force against ROLO: agreement within 1 % for a sharp-edged test map, with a per-texel law that
+  changes across the surface.
 
 ## 3. Height maps: relief normals and self-shadowing
 
@@ -267,9 +303,20 @@ against direct quadrature (0.5 %) and shows that the planet's occultation and sh
 **Occlusion:** the planet's shadow on the rings uses its ellipsoid, with the solar-disk overlap as
 penumbra. The rings depth-test against bodies but do not write depth.
 
-**Not modelled:** self-gravity wakes (azimuth-dependent τ and brightness), spokes, Saturn-shine on the
-rings, ringshine on the planet, and ring shadows or occultation of the globe in the *point* brightness
-of an unresolved Saturn.
+**Not modelled:** self-gravity wakes (azimuth-dependent τ and brightness), spokes, and ring shadows or
+occultation of the globe in the *point* brightness of an unresolved Saturn.
+
+Saturn-shine on the rings and ringshine on the globe are deliberately left out. Both are light
+scattered between the planet and the rings, which lie in the same plane:
+
+- Saturn-shine reaches a ring particle from a direction within ±37° of the ring plane (the globe seen
+  from the B ring).
+- The rings light the globe (and its night side) at scattering angles that are, for most viewpoints,
+  beyond the 47° phase limit of the reflectance model's particle phase function (`maxPhaseDeg`).
+
+Beyond 47° the model states that ring brightness is unknown (forward scattering by dust), so computing
+either term would mean inventing the particle phase function. The in-domain part alone would be a
+viewpoint-dependent patch. This is left for a model that covers the full phase range.
 
 ## 7. Best-estimate phase extrapolation
 
@@ -320,12 +367,44 @@ At 3840×2160, the test page (`render-test.html?scene=stars`) draws the star fie
 This needed the glare-fit fix in eye-model.md §3; before it, the unscattered fraction went negative and
 every star was black.
 
+**Measured (M3).** Timestamp queries on SwiftShader (4 CPU cores shared with other jobs, so the numbers
+vary by ±30 % from run to run), app views at `t=2026-09-30T12:00:00Z`, `ui=0`, GPU ms per pass:
+
+| View | bodies+rings | star cull | glare retina + painted | adaptation | composite | other | GPU total | CPU prep / render() |
+|---|---|---|---|---|---|---|---|---|
+| Saturn, 400 000 km, 1080p (before the M3 fixes) | 2 379 | 121 | 2 582 + 2 039 | 9 028 | 1 812 | 145 | 18 106 | 9.5 / 37 |
+| Saturn, 1080p | 2 764 | 249 | 2 082 + 2 034 | 458 | 467 | 112 | 8 166 | 7.5 / 8.6 |
+| Saturn, 4K | 11 671 | 405 | 3 968 + 7 014 | 1 484 | 2 604 | 1 058 | 28 204 | 9.5 / 10.6 |
+| Moon, 6 000 km (per-texel Hapke + relief), 1080p | 4 877 | 634 | 2 974 + 3 778 | 449 | 747 | 491 | 13 950 | 6.3 / 7.2 |
+| Moon, 4K | 26 336 | 916 | 6 052 + 4 409 | 1 187 | 3 398 | 449 | 42 747 | 5.9 / 6.7 |
+
+What changed in M3:
+
+- **Adaptation.** The reduction no longer uses workgroup barriers: each invocation sums an 8 × 8 block into
+  its own partial. On a CPU-emulated GPU the tree reduction's barriers cost more than all the per-pixel
+  work: Saturn at 1080p went from 9.0 s to 0.46 s, with an identical result.
+- **Analytic glare.** Only sources whose veil can reach 1 % of the dark light somewhere in the frame are
+  kept, strongest first. Before, up to 32 sources were evaluated per pixel in three passes.
+- **Glare pyramid.** Blur passes of levels the kernel fit gives zero weight are skipped; at narrow fields
+  and 4K these are the finest, full-resolution ones.
+- **Ring tables.** They are no longer rebuilt every frame (cached on the data arrays; `cpuPrepMs` is now
+  6–10 ms, dominated by frame preparation for ~80 bodies).
+
+Desktop estimate for these frames, from the operation counts above (RTX 4070-class: ~30 TFLOPS, ~500
+GB/s, ~600 GTexel/s). Two-thirds of a 4K frame is fill-rate bound:
+
+- Moon 4K: surface ≈ 2–4 ms, pyramids ≈ 2 ms, composite + adaptation ≈ 0.5 ms, i.e. about 5–7 ms.
+- Saturn 4K: about 4–5 ms.
+
+The CPU side, 7–11 ms per frame including every body, is then the larger cost; its biggest items are the
+snapshot's per-body photometry and the frame preparation.
+
 ## 9. Limitations
 
 - **Surface maps:**
-  - Per-texel photometric parameters (the Moon's `hapke` layer) are not used. Only a per-body constant
-    model is used, and no body has one in the current products, so every body is Lambert-distributed,
-    normalized to its measured disk photometry.
+  - Only the Moon has a measured spatial law (its per-texel Hapke layer, §2b). Every other body is
+    Lambert-distributed, normalized to its measured disk photometry: no body has a `spatialModel` in the
+    current products. Only one per-texel layer is bound per frame.
   - The normalization uses the zonal mean of level 0 (512 × 256), and ignores relief and the
     ellipsoid's departure from a sphere.
   - Pyramid levels above 10 are not addressed.
@@ -333,8 +412,9 @@ every star was black.
   the view ray.
 - **Planetshine** uses the Lambert law, only two sources per body, and point-source illuminators
   without eclipses.
-- **Rings:** see §6 (no wakes or spokes, no Saturn-shine or ringshine, and the unresolved-planet point
-  omits ring shadows on the globe).
+- **Rings:** see §6. There are no wakes or spokes, and the unresolved-planet point omits ring shadows on
+  the globe. Saturn-shine and ringshine are left out because they fall outside the particle phase
+  function's measured 0.25–47°.
 - **Data:** Saturn's occultation profile has τ ≈ 0.03–0.10 at 145 000–151 700 km, beyond the F ring,
   where the rings are essentially empty. It is probably a background artefact of that occultation. The
   renderer shows it as material of unknown reflectance (a hatched outer band) and it slightly dims

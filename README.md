@@ -21,6 +21,16 @@ In the app press `?` for keys. Click anything to see its provenance; `X` cycles 
 
 The time window of the data is centered on the moment of the first build and stored in `data/cache/window.json`, so later partial builds (`--only`) stay on it; run `uv run python -m pipeline build --new-window` to recenter it on "now".
 
+## Testing
+
+```sh
+cd app && npm run typecheck && npm test       # unit tests; data-dependent ones skip without built data
+cd pipeline && uv run pytest -rs              # PIPELINE_OFFLINE=1: tests never download, missing inputs skip
+cd app && npm run e2e                         # rendered-scene regression suite (needs built data), see app/e2e/README.md
+```
+
+CI (`.github/workflows/ci.yml`) runs the first two on every push, offline and without data.
+
 ## Layout
 
 - `pipeline/` — Python: raw downloads → processed, provenance-tagged data products.

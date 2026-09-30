@@ -31,7 +31,7 @@ from collections import Counter
 import numpy as np
 
 from .. import ephem_horizons as hz
-from .. import sb_catalog, sb_dynamics as dyn, sb_model, sb_physical, sb_physical_sources as ps, sb_sbdb, sb_verify
+from .. import sb_catalog, sb_class_colours, sb_dynamics as dyn, sb_model, sb_physical, sb_physical_sources as ps, sb_sbdb, sb_verify
 from ..download import record
 from ..output import write_json
 from ..paths import CACHE, OUT
@@ -39,7 +39,7 @@ from ..photometry import filters, solar
 from ..schema import BuildContext, SourceRecord
 from ..sb_table import LABEL_CODE, Field, write_table
 
-DEPENDS: tuple[str, ...] = ("ephemeris",)
+DEPENDS: tuple[str, ...] = ("ephemeris", "light")
 STAGE = "smallbodies"
 DIR = "smallbodies"
 DAY = 86400.0
@@ -256,6 +256,17 @@ def run(ctx: BuildContext) -> None:
     phys_row = np.full(n, 0xFFFFFFFF, dtype=np.uint32)
     phys_row[phys_rows] = np.arange(phys_rows.size, dtype=np.uint32)
 
+    # Estimated colours from the class colour product: a class for every asteroid (core.colorClass), the colour itself
+    # for physical records without a Gaia spectrum (after the physical-record selection, so it adds no records).
+    cc = sb_class_colours.load()
+    colours = sb_class_colours.assign(cc, n, is_comet, c["taxonomyBft"], ph.taxonomy_bft, c["taxonomyB"], ph.taxonomy_B,
+                                      c["taxonomyT"], ph.taxonomy_T)
+    pv_orbit = np.array([ph.class_albedo.get(k, ph.class_albedo["*"])["median"] for k in cat.s["class"]])
+    pv_meas = np.where(c["albedoLabel"] == M, c["albedo"], np.nan)
+    n_class_colour = sb_class_colours.fill_physical(c, phys_rows, colours, pv_orbit, pv_meas, E, U,
+                                                    sidx[sb_class_colours.SOURCE_ID])
+    colours.header["physicalFilled"] = n_class_colour
+
     core_fields = [
         Field("pos", "f64", 3, {"unit": "km", "label": "posLabel", "source": "orbitSrc",
                                 "method": "Heliocentric ICRF position at epochEt: SBDB osculating elements -> state at the "
@@ -288,13 +299,16 @@ def run(ctx: BuildContext) -> None:
                                           "decade: U=0 < 1 arcsec, each step x e^1.49 (MPC UValue.html)."}),
         Field("posLabel", "u8"), Field("hLabel", "u8"), Field("gLabel", "u8"), Field("diameterFromHLabel", "u8"),
         Field("orbitSrc", "u8"), Field("hSrc", "u8"), Field("gSrc", "u8"), Field("diameterFromHSrc", "u8"),
+        Field("colorClass", "u8", 1, {"method": "Index into header colorClasses: the class whose mean colour "
+                                                f"({sb_class_colours.SOURCE_ID}) is the object's estimated colour where "
+                                                "it has no measured spectrum (255 = comet); see colorClasses.method."}),
     ]
     core_cols = {
         "pos": states[:, :3], "vel": states[:, 3:], "H": H.astype(np.float32), "G": G.astype(np.float32),
         "diameterFromH": d_est.astype(np.float32), "physRow": phys_row, "flags": flags, "orbitClass": cls_idx,
         "conditionCode": cond, "mpcU": mpc_u, "posLabel": pos_label, "hLabel": h_label, "gLabel": g_label,
         "diameterFromHLabel": d_est_label, "orbitSrc": pos_src, "hSrc": h_src, "gSrc": g_src,
-        "diameterFromHSrc": d_est_src,
+        "diameterFromHSrc": d_est_src, "colorClass": colours.index,
     }
 
     # ------------------------------------------------------------------ statistics for the header / report
@@ -335,6 +349,7 @@ def run(ctx: BuildContext) -> None:
         "epochEt": common, "epochTdb": epoch_cal, "window": {"startEt": ctx.start_et, "endEt": ctx.end_et},
         "forceModel": model.to_json(), "orbitClasses": [{"code": k, "name": CLASS_NAMES.get(k, k)} for k in classes],
         "flagBits": {str(1 << b): name for name, b in FLAGS.items()}, "classAlbedo": ph.class_albedo,
+        "colorClasses": colours.header,
         "statistics": stats,
         "snapshot": snap.tag, "names": f"{DIR}/names.json", "physical": f"{DIR}/physical.json",
         "comets": f"{DIR}/comets.json", "nongrav": f"{DIR}/nongrav.json",
@@ -366,7 +381,8 @@ def run(ctx: BuildContext) -> None:
                         "against the CIE 1931 2deg and 1951 scotopic observers. derived with a measured p_V and bands "
                         "418-814 nm unflagged (a flagged 374 or 858 nm edge band is bridged; that changes XYZS by at "
                         "most statistics.physical.gaia.edgeBandEffectMax); estimated with the class p_V or a gap "
-                        "inside 418-814 nm.",
+                        "inside 418-814 nm. Records without a Gaia spectrum (colorSrc smallbody-class-colors): the "
+                        "estimated class colour, p_V * xyzsPerUnitPV of core colorClass (header colorClasses.method).",
               "uncertainty": "Gaia reflectances carry per-band errors of ~1 %; p_V errors (often 10-30 %) scale all "
                              "four channels."}),
         Field("BV", "f32"), Field("UB", "f32"), Field("IR", "f32"),
@@ -662,6 +678,25 @@ def _sources(ctx, snap, src_ids, phys_dl, lcdb_path, mpc_path) -> list[str]:
     ids.append("bowell-1989")
     ids += [solar.HSRS.id, "cie-1931-2deg-cmf", "cie-1951-scotopic", filters.FILTERS["V"].id, "naif-de442s",
             "naif-gm-de440", "naif-pck00011"]
+    cc_path = OUT / sb_class_colours.PRODUCT
+    from ..download import sha256_file
+    ctx.add_source(SourceRecord(
+        id=sb_class_colours.SOURCE_ID,
+        title="Small-body class colours and albedos (light stage product smallbody-class-colors.json)",
+        citation="Class mean spectra: DeMeo, F. E., Binzel, R. P., Slivan, S. M. & Bus, S. J. (2009). An extension of "
+                 "the Bus asteroid taxonomy into the near-infrared. Icarus 202, 160-180, DOI:10.1016/j.icarus.2009.02.005; "
+                 "ultraviolet: Zellner, B., Tholen, D. J. & Tedesco, E. F. (1985). The eight-color asteroid survey. "
+                 "Icarus 61, 355-416; classes: Neese, C. (2010), Asteroid Taxonomy V6.0, NASA PDS; population weights: "
+                 "Carvano, J. M. et al. (2010), A&A 510, A43; p_V: Mainzer, A. K. et al. (2019), NEOWISE V2.0. "
+                 "Combined by the light stage (pipeline/src/pipeline/photometry/smallbody_colors.py; "
+                 "docs/sources/smallbody-class-colors.md).",
+        url=f"app/public/data/{sb_class_colours.PRODUCT}", retrieved=_dt.date.today().isoformat(),
+        sha256=sha256_file(cc_path) if cc_path.exists() else None,
+        notes="Used for the estimated colour of asteroids without a measured spectrum (physical.geometricAlbedoXYZS "
+              "with this source, and core.colorClass / header colorClasses for every asteroid). Its own inputs are "
+              "SourceRecords of the light stage (busdemeo-*, ecas-*, pds-asteroid-taxonomy-v6, sdss-taxonomy-"
+              "carvano2010, neowise-v2)."))
+    ids.append(sb_class_colours.SOURCE_ID)
     solar.HSRS.register(ctx)
     filters.register(ctx, ("V",))
     from .. import cie

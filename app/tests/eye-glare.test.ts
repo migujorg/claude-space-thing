@@ -56,6 +56,24 @@ describe('scatter-kernel fit used by the glare pyramid', () => {
       expect(Math.abs(t / totals[0] - 1)).toBeLessThan(0.2);
     }
   });
+  it('scatters a physical fraction at every field of view (5°–150°): wide fields no longer go black', () => {
+    for (const [W, H] of [[1280, 720], [1920, 1080], [3840, 2160]]) {
+      const n = Math.ceil(Math.log2(Math.max(W, H))) + 1;
+      const levels = Array.from({ length: n }, (_, k) => {
+        const p = 4 ** k;
+        return { sigmaPx: Math.sqrt(p + (p - 1) / 12 + (4 * p - 4) / 18) };
+      });
+      for (const fov of [5, 20, 60, 90, 110, 130, 150]) {
+        const pixelDeg = ((2 * Math.tan((fov * Math.PI) / 360)) / H) * (180 / Math.PI);
+        const fit = fitScatterKernel(levels, pixelDeg, Math.hypot(W, H), 25, 0.5);
+        // Never more than the CIE 146 kernel scatters in total (≈ 0.4 at age 25), never close to 1.
+        expect(fit.total).toBeGreaterThan(0.1);
+        expect(fit.total).toBeLessThan(0.5);
+        // The in-frame part matches the target energy it is fitted to (the fit also honours the zero beyond 100°).
+        expect(Math.abs(fit.fittedInRange / fit.target - 1)).toBeLessThan(0.15);
+      }
+    }
+  });
   it('the sum of Gaussians reproduces the CIE profile and its energy within a few percent', () => {
     const levels = Array.from({ length: 11 }, (_, k) => ({ sigmaPx: 0.8 * 2 ** k }));
     const pixelDeg = 60 / 720;
