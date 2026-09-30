@@ -23,6 +23,7 @@ import {
 } from './shaders';
 import { SurfaceGpu } from './surfaceGpu';
 import type { RingPrep } from './rings';
+import { LAW } from './spatial';
 import { cameraGeom, prepareFrame, type PreparedFrame } from './frame';
 import { orbitVertices } from './overlays';
 import { AdaptationState, computeEyeFrame, type EyeFrame } from '../eye/model';
@@ -141,6 +142,9 @@ export class Renderer {
   private maskHatchPipe: GPURenderPipeline;
   private surf: SurfaceGpu | null = null;
   private surfUB: GPUBuffer;
+  /** Per-texel photometric law (texelLaw.ts): uniform (band weights, constants) and a placeholder texture. */
+  private texelUB: GPUBuffer;
+  private texelDummy: GPUTexture | null = null;
   private ringsBuf: GPUBuffer | null = null;
   private ringProfBuf: GPUBuffer | null = null;
   private ringProfKey: unknown[] = [];
@@ -179,6 +183,7 @@ export class Renderer {
     this.sunPointBuf = d.createBuffer({ size: 32, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
     this.visible = d.createBuffer({ size: 32, usage: GPUBufferUsage.STORAGE });
     this.surfUB = ub(16);
+    this.texelUB = ub(6 * 16);
     this.dummyStorage = d.createBuffer({ size: 256, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
 
     const mod = (code: string, label: string) => d.createShaderModule({ code, label });
@@ -527,6 +532,15 @@ export class Renderer {
         depthStencilAttachment: { view: t.depth.createView(), depthClearValue: 0, depthLoadOp: 'clear', depthStoreOp: 'store' },
       });
       const ringsRes = this.ringsBuf && nRings ? this.ringsBuf : this.dummyStorage;
+      // One per-texel photometric layer per frame (the Moon's): the first resolved body that has one.
+      const texelBody = prep.resolved.find((r) => r.surface?.photometry && r.law.kind === LAW.texelHapke);
+      const tp = texelBody?.surface?.photometry;
+      if (tp) {
+        const t = tp.texel;
+        d.queue.writeBuffer(this.texelUB, 0, new Float32Array([...t.cw.flatMap((row) => row.slice(0, 4)), t.thetaBar, t.K, t.bc0, t.hc, t.width, t.height, t.hFn, 0]));
+      }
+      if (!this.texelDummy) this.texelDummy = d.createTexture({ size: [1, 1, 1], format: 'rgba32float', usage: GPUTextureUsage.TEXTURE_BINDING, label: 'texel law dummy' });
+      const texelView = tp ? tp.view : this.texelDummy.createView({ dimension: '2d-array' });
       const profRes = this.ringProfBuf && nRings ? this.ringProfBuf : this.dummyStorage;
       if (nRes && this.bodiesBuf && !skip.has('bodies')) {
         pass.setPipeline(this.bodyPipe);
@@ -541,6 +555,8 @@ export class Renderer {
             { binding: 5, resource: { buffer: this.surfUB } },
             { binding: 6, resource: { buffer: ringsRes } },
             { binding: 7, resource: { buffer: profRes } },
+            { binding: 8, resource: texelView },
+            { binding: 9, resource: { buffer: this.texelUB } },
           ],
         }));
         pass.draw(6, nRes);

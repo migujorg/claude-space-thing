@@ -5,7 +5,9 @@
 import type { SceneBody, SceneSnapshot } from './scene';
 import { AU_KM } from './constants';
 import { diskIlluminance, diskModelPPhi, evalPhase, extrapolatePhase, lambertPhase, limbDarkenedI0, meanRadius, phaseRangeDeg, type XYZS } from './photometry';
-import { LAMBERT_LAW, LAW, lawDiskIntegral, NormalizationCache, photometricFrame, resolveLaw, type ResolvedLaw, type ZonalProfile } from './spatial';
+import { LAMBERT_LAW, LAW, lawDiskIntegral, lawRadf, mapDiskIntegral, NormalizationCache, photometricFrame, resolveLaw, TEXEL_LAW, type ResolvedLaw, type ZonalProfile } from './spatial';
+import { sampleLevel0, type Level0Map } from './surface';
+import { texelRadf, type TexelHapke } from './texelLaw';
 import { planetshineSources, type PlanetshineSource } from './planetshine';
 import { prepareRings, type RingPrep } from './rings';
 import { LABEL_ORDER, type Label } from '../data/schema';
@@ -19,7 +21,9 @@ import { DEG2_PER_SR } from '../eye/pupil';
 
 /** GPU page-table bindings of a body's surface-map layers (renderer supplies them; surface.ts). */
 export interface SurfaceBinding {
-  albedo?: { base: number; maxLevel: number; zonal: ZonalProfile | null };
+  albedo?: { base: number; maxLevel: number; zonal: ZonalProfile | null; map0?: Level0Map | null };
+  /** Per-texel photometric model (texelLaw.ts) and its GPU texture, once loaded. */
+  photometry?: { texel: TexelHapke; view: GPUTextureView };
   height?: { base: number; maxLevel: number };
 }
 
@@ -283,6 +287,11 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
     // domain, else albedoXYZS·Φ(α) (architecture §4.3).
     let pPhi: XYZS | null = b.surfaceUnknown ? null
       : diskModelPPhi(b.diskReflectanceModel, b.orient, R, b.toSun, scale(b.pos, -1), irr);
+    // Photometry measured at this very geometry (ROLO): normalize the maps at this geometry, not on a
+    // rotational average, or the model's libration and waxing/waning terms would be counted twice.
+    const atThisGeometry = pPhi !== null;
+    const texel = surface?.photometry?.texel ?? null;
+    if (texel) law = TEXEL_LAW;
     if (!pPhi && !b.surfaceUnknown && b.albedoXYZS && b.phase) {
       const ph = evalPhase(b.phase, alpha);
       let phi: number | null = ph.ok ? ph.phi : null;
@@ -306,15 +315,39 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
     }
     if (pPhi) {
       E = diskIlluminance(pPhi, dAU, R, D, 1);
-      // Normalization: the disk integral of law × map (zonal mean, rotation-averaged) equals p·Φ(α).
+      // Normalization: the disk integral of law × map equals p·Φ(α). A zonal map with a constant law:
+      // rotation-averaged zonal mean (exact for any rotation phase). A per-texel law, or photometry measured
+      // at this geometry: the map (level 0) and law over the actual disk, at this geometry or averaged over
+      // rotations (mapDiskIntegral).
       let zonal: { profile: ZonalProfile; pole: V3 } | undefined;
-      if (surface?.albedo?.zonal && b.orient) {
+      let I: XYZS;
+      const map0 = surface?.albedo?.map0 ?? null;
+      if (b.orient && (texel || (atThisGeometry && map0))) {
         const Rm = b.orient;
         const [px, py, pz] = photometricFrame(normalize(scale(b.pos, -1)), sunDir);
-        const P: V3 = [Rm[2], Rm[5], Rm[8]];
-        zonal = { profile: surface.albedo.zonal, pole: [dot(P, px), dot(P, py), dot(P, pz)] };
+        const toBf = (v: V3): V3 => [Rm[0] * v[0] + Rm[3] * v[1] + Rm[6] * v[2], Rm[1] * v[0] + Rm[4] * v[1] + Rm[7] * v[2], Rm[2] * v[0] + Rm[5] * v[1] + Rm[8] * v[2]];
+        const axes: [V3, V3, V3] = [toBf(px), toBf(py), toBf(pz)];
+        const rotations = atThisGeometry ? 1 : 8;
+        const q = (v: V3) => v.map((x) => x.toFixed(3)).join(',');
+        const key = `map|${b.id}|${texel ? 't' : ''}${map0 ? 'm' : ''}|${alpha.toFixed(3)}|` + (atThisGeometry ? `${q(axes[0])}|${q(axes[2])}` : q([axes[0][2], axes[1][2], axes[2][2]]));
+        I = normCache.get(key, () => mapDiskIntegral(alpha, axes, (lat, lon, mu0, mu, gph) => {
+          const m = map0 ? sampleLevel0(map0, lat, lon) : [1, 1, 1, 1];
+          if (texel) {
+            const r = texelRadf(texel, lat, lon, mu0, mu, gph);
+            return [m[0] * r[0], m[1] * r[1], m[2] * r[2], m[3] * r[3]];
+          }
+          const r = lawRadf(law, mu0, mu, gph);
+          return [m[0] * r, m[1] * r, m[2] * r, m[3] * r];
+        }, texel ? 24 : 32, rotations));
+      } else {
+        if (surface?.albedo?.zonal && b.orient) {
+          const Rm = b.orient;
+          const [px, py, pz] = photometricFrame(normalize(scale(b.pos, -1)), sunDir);
+          const P: V3 = [Rm[2], Rm[5], Rm[8]];
+          zonal = { profile: surface.albedo.zonal, pole: [dot(P, px), dot(P, py), dot(P, pz)] };
+        }
+        I = lawIntegral(law, alpha, zonal);
       }
-      const I = lawIntegral(law, alpha, zonal);
       if (I[1] > 0) {
         K = [0, 1, 2, 3].map((k) => (I[k] > 0 ? pPhi![k] / (Math.PI * dAU * dAU * I[k]) : 0)) as XYZS;
         lit = true;

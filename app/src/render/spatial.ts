@@ -17,7 +17,7 @@ import type { V3 } from './raycast';
 export type XYZS = [number, number, number, number];
 
 /** Numeric codes shared with the WGSL body shader. */
-export const LAW = { lambert: 0, lommelSeeliger: 1, lunarLambert: 2, minnaert: 3, hapke: 4 } as const;
+export const LAW = { lambert: 0, lommelSeeliger: 1, lunarLambert: 2, minnaert: 3, hapke: 4, texelHapke: 5 } as const;
 
 /** A spatial model with its phase-dependent parameters evaluated at one phase angle. */
 export interface ResolvedLaw {
@@ -37,6 +37,8 @@ export interface ResolvedLaw {
 }
 
 export const LAMBERT_LAW: ResolvedLaw = { kind: LAW.lambert, p: 0, b: 0, c: 0, bs0: 0, hs: 1, bc0: 0, hc: 1, thetaBar: 0, K: 1, hFn: 0 };
+/** Marker for the per-texel Hapke law (texelLaw.ts): the body shader reads its parameters from the texel. */
+export const TEXEL_LAW: ResolvedLaw = { ...LAMBERT_LAW, kind: LAW.texelHapke };
 
 function evalPhaseDependent(v: PhaseDependent, deg: number): number | null {
   if (typeof v === 'number') return v;
@@ -265,6 +267,58 @@ export function lawDiskIntegral(law: ResolvedLaw, alpha: number, zonal?: { profi
         zonalAt(zonal.profile, cb * sl * P[0] + sb * P[1] + cb * cl * P[2], m);
       }
       for (let k = 0; k < 4; k++) acc[k] += f * m[k];
+    }
+  }
+  return acc.map((v) => v / Math.PI) as XYZS;
+}
+
+/**
+ * I_c = (1/π)∫ f_c dA_proj over the lit and visible lune of the unit disk, with f = R·M evaluated at each
+ * point's body-fixed planetocentric latitude and longitude: the normalization for a map (and a
+ * per-texel law) that is not zonal. Same photometric frame and quadrature as lawDiskIntegral. `frame`
+ * holds the photometric axes (x toward the Sun in the observer–Sun plane, y, z toward the observer)
+ * expressed in the body-fixed frame. `rotations` > 1 averages over that many rotations of the body about
+ * its pole (for disk photometry that is itself a rotational average); 1 = this geometry exactly (for disk
+ * photometry measured at this geometry, e.g. ROLO).
+ */
+export function mapDiskIntegral(
+  alpha: number,
+  frame: [V3, V3, V3],
+  f: (lat: number, lon: number, mu0: number, mu: number, g: number) => XYZS,
+  n = 20,
+  rotations = 1,
+): XYZS {
+  const a = Math.min(Math.max(alpha, 0), Math.PI);
+  const lam0 = a - Math.PI / 2, lam1 = Math.PI / 2;
+  if (lam1 <= lam0) return [0, 0, 0, 0];
+  const { x, w } = gaussLegendre(n);
+  const sa = Math.sin(a), ca = Math.cos(a);
+  const [X, Y, Z] = frame;
+  const acc = [0, 0, 0, 0];
+  for (let p = 0; p < n; p++) {
+    const lam = lam0 + ((x[p] + 1) / 2) * (lam1 - lam0);
+    const wl = (w[p] * (lam1 - lam0)) / 2;
+    const sl = Math.sin(lam), cl = Math.cos(lam);
+    for (let q = 0; q < n; q++) {
+      const beta = (x[q] * Math.PI) / 2;
+      const wb = (w[q] * Math.PI) / 2;
+      const cb = Math.cos(beta), sb = Math.sin(beta);
+      const mu = cb * cl;
+      const mu0 = cb * (sl * sa + cl * ca);
+      if (!(mu0 > 0) || !(mu > 0)) continue;
+      const px = cb * sl, py = sb, pz = cb * cl;
+      const bx = px * X[0] + py * Y[0] + pz * Z[0];
+      const by = px * X[1] + py * Y[1] + pz * Z[1];
+      const bz = px * X[2] + py * Y[2] + pz * Z[2];
+      const lat = Math.asin(Math.max(-1, Math.min(1, bz)));
+      const lon0 = Math.atan2(by, bx);
+      const wt = (mu * cb * wl * wb) / rotations;
+      for (let k = 0; k < rotations; k++) {
+        let lon = lon0 + (2 * Math.PI * k) / rotations;
+        if (lon > Math.PI) lon -= 2 * Math.PI;
+        const v = f(lat, lon, mu0, mu, a);
+        for (let c = 0; c < 4; c++) acc[c] += wt * v[c];
+      }
     }
   }
   return acc.map((v) => v / Math.PI) as XYZS;
