@@ -93,6 +93,13 @@ export function buildScene(p: URLSearchParams): TestScene {
         snapshot: { et: 0, camera: cam(deg(2)), sun: sunAt(sunPos, p.get('limb') !== '0'), bodies: [], view, orbits: [] },
       };
     }
+    case 'offscreen-sun': {
+      // The Sun just outside the frame (default 45° from the view axis, horizontally): its CIE 146
+      // veil must still light the frame, strongest at the edge nearest the Sun.
+      const off = Number(p.get('off') ?? 45);
+      const sunPos = mul(rotateToward(fwd, side, off), AU_KM);
+      return { title: `Sun ${off}° off-axis, outside the frame (off-screen glare)`, stars, snapshot: { et: 0, camera: cam(deg(50)), sun: sunAt(sunPos), bodies: [], view, orbits: [] } };
+    }
     case 'stars': {
       const sunPos = mul(fwd, -AU_KM); // behind the observer
       return { title: 'Star field in darkness (Sun behind the observer)', stars, snapshot: { et: 0, camera: cam(deg(60)), sun: sunAt(sunPos), bodies: [], view, orbits: [] } };

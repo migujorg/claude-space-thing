@@ -95,8 +95,55 @@ export const PATTANAIK = {
 } as const;
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────
+// Hunt's colour-vision model: Hunt, R. W. G. (2004), The Reproduction of Colour, 6th ed., as given
+// in Fairchild, M. D. (2013), Color Appearance Models, 3rd ed., ch. 12 "The Hunt model".
+// Checked against the open-source implementation colour.appearance.hunt (colour-science).
+// Pattanaik et al. (2000) abbreviate this model. Their cone path is identical to Hunt's
+// (σ_cone = 12.9223·A/F_L(A); 12.9223 = 5·2^(1/0.73)), but their rod equation (Eq. 4) drops Hunt's
+// /2.26 scaling and has a numerator 5× smaller than Hunt's and than their own display table
+// (σ_rod = 722 cd/m² at A = 25). That makes rods ~5× too sensitive, which caused v0's mesopic
+// brightness dip. Eye model v1 therefore uses Hunt's rod path.
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+export const HUNT = {
+  /** f_n(x) = 40·x^0.73/(x^0.73 + 2): responses are half-maximal at x = 2^(1/0.73). */
+  fnHalf: 2,
+  /** Scotopic luminance-level adaptation factor:
+   *  F_LS = 3800·j²·(5·L_AS/2.26) + 0.2·(1 − j²)⁴·(5·L_AS/2.26)^(1/6),  j = 1e-5/(5·L_AS/2.26 + 1e-5).
+   *  (colour-science writes the (1 − j²) exponent as 0.4; Pattanaik's abbreviation and Fairchild use 4.) */
+  flsJ2: 3800,
+  flsPow: 0.2,
+  flsJ: 1e-5,
+  scotopicScale: 2.26,
+  flsExpJ: 4,
+  /** Rod saturation B_S = 0.5/(1 + 0.3·((5·L_AS/2.26)·S/S_w)^0.3) + 0.5/(1 + 5·(5·L_AS/2.26)). */
+  bsA: 0.3,
+  bsExp: 0.3,
+  bsB: 5,
+} as const;
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+// Hecht, S. (1947), JOSA 37, 59: two-branch point-source threshold ΔI = c·(1 + √(K·B))², in modern
+// units as given by Crumey (2014) Eq. 20. Its photopic (cone) branch at B → 0 is the cone system's
+// point threshold, the constant Schaefer (1990, PASP 102, 212) uses for the "day" branch. Used only to
+// validate the onset of star colour (tests, docs/eye-model.md §6), not in rendering.
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+export const HECHT1947 = {
+  /** Cone (photopic) branch: c (lux), K (per cd/m²), valid for B ≥ 1.645e-2 cd/m². */
+  coneC: 4.808e-8,
+  coneK: 1.259e-1,
+  /** Rod (scotopic) branch. */
+  rodC: 1.706e-9,
+  rodK: 1.259e3,
+} as const;
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────
 // CIE 191:2010, Recommended System for Mesopic Photometry Based on Visual Performance.
-// Transcribed (the endpoints m(0.005)=0 and m(5)=1 are reproduced by a, b — see tests).
+// Verification (eye model v1): the standard itself was not obtainable. Cross-checked against the
+// published reproduction of the CIE 191 system in Maksimainen, Kurkela, Bhusal, Hyyppä (2019),
+// "Calculation of Mesopic Luminance Using per Pixel S/P Ratios Measured with Digital Imaging",
+// LEUKOS 15(4):309–317, doi:10.1080/15502724.2018.1557526 (same a, b, range and iteration; it
+// prints V′(λ0) as 683/1700, a 0.06% rounding difference), and against m(0.005)=0, m(5)=1 (tests).
+// Status: SECONDARY-VERIFIED.
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 export const CIE191 = {
   /** V′(λ0) at λ0 = 555 nm, written in the standard as 683/1699. */
@@ -135,7 +182,10 @@ export const WATSON_YELLOTT = {
 // CIE 146:2002 (Vos, J. J. et al.), CIE equations for disability glare. "General disability glare
 // equation", valid 0.1° ≤ θ ≤ 100°:
 //   L_veil / E_glare = 10/θ³ + (5/θ² + 0.1·p/θ)·(1 + (A/62.5)⁴) + 0.0025·p     [sr⁻¹, θ in degrees]
-// Transcribed (see docs/eye-model.md §9).
+// Verification (eye model v1): the CIE document itself was not obtainable. All constants (10, 5,
+// 0.1·p, 62.5, exponent 4, 0.0025·p, validity 0.1°–100°) cross-checked against the equation as
+// reprinted in "Introduction to straylight", ch. 2 of an Erasmus MC Rotterdam thesis on the C-Quant
+// straylight meter (hdl.handle.net/1765/102424). Status: SECONDARY-VERIFIED (docs/eye-model.md §9).
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 export const CIE146 = {
   c3: 10,
@@ -149,8 +199,12 @@ export const CIE146 = {
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 // Watson, A. B. (2013). A formula for the mean human optical modulation transfer function as a
-// function of pupil size. J. Vision 13(6):18. doi:10.1167/13.6.18. Transcribed.
-//   M(u, d) = D(u, d, λ) · (1 + (u/u1(d))²)^(−0.62),  u1(d) = 21.95 − 5.512·d + 0.3922·d²
+// function of pupil size. J. Vision 13(6):18. doi:10.1167/13.6.18.
+//   M(u, d) = √D(u, d, λ) · (1 + (u/u1(d))²)^(−0.62),  u1(d) = 21.95 − 5.512·d + 0.3922·d²  (Eqs. 4–5)
+// Verification (eye model v1): the journal page was not retrievable (bot wall); checked against an
+// independent open implementation of Eqs. 4–5 (ISETBio / isetvalidate), which applies the SQUARE ROOT
+// of the diffraction-limited MTF. v0 omitted the square root (it made the optical core too narrow);
+// fixed in v1. Status: SECONDARY-VERIFIED (implementation), not against the paper's own text.
 //   D = diffraction-limited MTF of a circular pupil, cutoff u0 = d·π·10⁶ / (λ·180) cycles/deg
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 export const WATSON2013 = {

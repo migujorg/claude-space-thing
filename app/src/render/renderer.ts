@@ -3,17 +3,20 @@
 // Frame outline (docs/eye-model.md has the physics; this file the plumbing):
 //   1. bodies   → EXT (XYZS luminance, additive), W (Ricco weight, min), depth (reversed-Z, ∞ far)
 //   2. cull     → stars above the Crumey threshold → compact list + indirect draw args (compute)
-//   3. points   → PT (stars, unresolved bodies): energy-conserving splats, depth-tested vs bodies
-//   4. glare    → pyramid convolution of EXT+PT with the CIE 146 scatter kernel → veil
+//   3. points   → PT (stars, unresolved bodies): physical energy-conserving splats, depth-tested vs
+//                 bodies, and PTEX: the part of their light the display cannot convey (eye/points.ts)
+//   4. glare    → pyramid convolution with the CIE 146 scatter kernel, twice: of EXT+PT (the physical
+//                 veil: adaptation, thresholds) and of the excess image (the glare that is painted)
 //   5. sun      → limb-darkened disk into EXT (its glare is analytic, so it is added after 4)
 //   6. adapt    → foveal mean of the retinal image + corneal flux, reduced on the GPU, read back
-//   7. composite→ Pattanaik tone reproduction, mesopic colour, CAT02, sRGB, dither → canvas
+//   6b. points  → PTDISP: sharp display-space splats of each point's display flux and own colour
+//   7. composite→ Pattanaik tone reproduction, mesopic colour, CAT02, + points, sRGB, dither → canvas
 //   8. overlays → hatch / provenance tint / markers / orbits in display space
 
 import type { RendererStats, SceneSnapshot, StarCatalog } from './scene';
 import {
   ADAPT_REDUCE_SHADER, ADAPT_SHADER, BODY_OVERLAY_SHADER, BODY_SHADER, CLAMP_ARGS_SHADER, COMPOSITE_SHADER,
-  CULL_SHADER, LINE_SHADER, POINT_SHADER, PYRAMID_BLUR_SIGMA, PYRAMID_SHADER, SUN_SHADER,
+  CULL_SHADER, LINE_SHADER, OVERFLOW_SHADER, POINT_SHADER, PYRAMID_BLUR_SIGMA, PYRAMID_SHADER, SUN_SHADER,
 } from './shaders';
 import { cameraGeom, prepareFrame, type PreparedFrame } from './frame';
 import { orbitVertices } from './overlays';
@@ -21,7 +24,7 @@ import { AdaptationState, computeEyeFrame, type EyeFrame } from '../eye/model';
 import { DEFAULT_EYE_SETTINGS, type EyeSettings } from '../eye/settings';
 import { fitScatterKernel } from '../eye/glare';
 import { DEG2_PER_SR } from '../eye/pupil';
-import { DARK_LIGHT_CONE, DARK_LIGHT_ROD } from '../eye/tonemap';
+import { DARK_LIGHT_CONE, DARK_LIGHT_ROD, response } from '../eye/tonemap';
 import { CIE191, CRUMEY, PATTANAIK } from '../eye/constants';
 
 /** Near plane of the reversed-Z infinite projection, km (0.1 mm). */
@@ -43,10 +46,13 @@ interface Level {
   lvl: GPUTexture;
   tmp: GPUTexture;
   blur: GPUTexture;
+  /** Physical veil (components at this level and coarser). */
   acc: GPUTexture;
-  /** Ricco-weighted accumulation (perceptual veil). */
+  /** Painted glare: the viewer's veil of the overflow image (display units). */
   accR: GPUTexture;
+  /** Level weights: physical w_k, and painted r_k·w_k (r_k = min(1, A_k/A_R,disp), the viewer's Ricco summation). */
   ub: GPUBuffer;
+  ubR: GPUBuffer;
 }
 
 interface Targets {
@@ -54,6 +60,10 @@ interface Targets {
   H: number;
   ext: GPUTexture;
   pt: GPUTexture;
+  /** Excess part of point light (painted glare input). */
+  ptEx: GPUTexture;
+  /** Point sources as displayed (display-linear XYZ, cd/m²). */
+  ptDisp: GPUTexture;
   w: GPUTexture;
   depth: GPUTexture;
   levels: Level[];
@@ -119,6 +129,8 @@ export class Renderer {
   private cullPipe: GPUComputePipeline;
   private clampPipe: GPUComputePipeline;
   private pointPipe: GPURenderPipeline;
+  private pointDispPipe: GPURenderPipeline;
+  private overflowPipe: GPUComputePipeline;
   private sunPipe: GPURenderPipeline;
   private pyr: Record<'combine' | 'down' | 'blurH' | 'blurV' | 'accum', GPUComputePipeline>;
   private adaptPipe: GPUComputePipeline;
@@ -138,7 +150,7 @@ export class Renderer {
     const d = device;
     const ub = (size: number) => d.createBuffer({ size, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
     this.frameUB = ub(112);
-    this.eyeUB = ub(13 * 16);  // 13 vec4 (struct Eye)
+    this.eyeUB = ub(14 * 16);  // 14 vec4 (struct Eye)
     this.sunUB = ub(11 * 16);
     this.clampUB = ub(16);
     this.reduceUB = ub(16);
@@ -172,9 +184,16 @@ export class Renderer {
     this.clampPipe = d.createComputePipeline({ label: 'clamp args', layout: 'auto', compute: { module: mod(CLAMP_ARGS_SHADER, 'clamp'), entryPoint: 'main' } });
     const ptMod = mod(POINT_SHADER, 'points');
     this.pointPipe = d.createRenderPipeline({
-      label: 'points', layout: 'auto',
+      label: 'points (retina)', layout: 'auto',
       vertex: { module: ptMod, entryPoint: 'vs' },
-      fragment: { module: ptMod, entryPoint: 'fs', targets: [{ format: hdrFormat, blend: add }] },
+      fragment: { module: ptMod, entryPoint: 'fsPhys', targets: [{ format: hdrFormat, blend: add }, { format: hdrFormat, blend: add }] },
+      primitive: { topology: 'triangle-list' },
+      depthStencil: { format: 'depth32float', depthWriteEnabled: false, depthCompare: 'greater-equal' },
+    });
+    this.pointDispPipe = d.createRenderPipeline({
+      label: 'points (display)', layout: 'auto',
+      vertex: { module: ptMod, entryPoint: 'vs' },
+      fragment: { module: ptMod, entryPoint: 'fsDisp', targets: [{ format: 'rgba16float', blend: add }] },
       primitive: { topology: 'triangle-list' },
       depthStencil: { format: 'depth32float', depthWriteEnabled: false, depthCompare: 'greater-equal' },
     });
@@ -189,6 +208,7 @@ export class Renderer {
     const pyrMod = mod(PYRAMID_SHADER, 'pyramid');
     const cp = (entryPoint: string) => d.createComputePipeline({ label: entryPoint, layout: 'auto', compute: { module: pyrMod, entryPoint } });
     this.pyr = { combine: cp('combine'), down: cp('down'), blurH: cp('blurH'), blurV: cp('blurV'), accum: cp('accum') };
+    this.overflowPipe = d.createComputePipeline({ label: 'overflow', layout: 'auto', compute: { module: mod(OVERFLOW_SHADER, 'overflow'), entryPoint: 'main' } });
     this.adaptPipe = d.createComputePipeline({ label: 'adapt tiles', layout: 'auto', compute: { module: mod(ADAPT_SHADER, 'adapt'), entryPoint: 'tiles' } });
     this.reducePipe = d.createComputePipeline({ label: 'adapt reduce', layout: 'auto', compute: { module: mod(ADAPT_REDUCE_SHADER, 'reduce'), entryPoint: 'main' } });
     const compMod = mod(COMPOSITE_SHADER, 'composite');
@@ -288,6 +308,7 @@ export class Renderer {
         acc: tex(w, h, 'rgba32float', ST, `pyr acc ${k}`),
         accR: tex(w, h, 'rgba32float', ST, `pyr accR ${k}`),
         ub: d.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST }),
+        ubR: d.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST }),
       });
       if (w === 1 && h === 1) break;
       w = Math.max(1, Math.ceil(w / 2));
@@ -298,6 +319,8 @@ export class Renderer {
       W, H,
       ext: tex(W, H, this.hdrFormat, RT, 'EXT'),
       pt: tex(W, H, this.hdrFormat, RT, 'PT'),
+      ptEx: tex(W, H, this.hdrFormat, RT, 'PTEX'),
+      ptDisp: tex(W, H, 'rgba16float', RT, 'PTDISP'),
       w: tex(W, H, this.weightFormat, RT, 'W'),
       depth: tex(W, H, 'depth32float', RT, 'depth'),
       levels,
@@ -342,8 +365,8 @@ export class Renderer {
   private destroyTargets(): void {
     const t = this.targets;
     if (!t) return;
-    for (const x of [t.ext, t.pt, t.w, t.depth, t.zero, t.zero2]) x.destroy();
-    for (const l of t.levels) { l.lvl.destroy(); l.tmp.destroy(); l.blur.destroy(); l.acc.destroy(); l.accR.destroy(); l.ub.destroy(); }
+    for (const x of [t.ext, t.pt, t.ptEx, t.ptDisp, t.w, t.depth, t.zero, t.zero2]) x.destroy();
+    for (const l of t.levels) { l.lvl.destroy(); l.tmp.destroy(); l.blur.destroy(); l.acc.destroy(); l.accR.destroy(); l.ub.destroy(); l.ubR.destroy(); }
     t.partials.destroy();
     this.targets = null;
   }
@@ -389,11 +412,24 @@ export class Renderer {
       const fit = fitScatterKernel(levels, (g.pixelAngle * 180) / Math.PI, Math.hypot(t.W, t.H), this.settings.ageYears, this.settings.pigmentation);
       this.glareCache = { key, weights: fit.weights, unscattered: 1 - fit.total };
     }
-    // Ricco weight of each scatter level: its Gaussian's equivalent area vs the Ricco area.
+    // Painted glare is the viewer's (display-adapted) veil: structure finer than their Ricco area is summed
+    // rather than seen (its perceived luminance is its flux over A_R,disp), so fine levels count A_k/A_R,disp.
     t.levels.forEach((l, k) => {
+      const wk = this.glareCache.weights[k] ?? 0;
       const Ak = 2 * Math.PI * pyramidSigma(k) ** 2 * omegaCentre;
-      d.queue.writeBuffer(l.ub, 0, new Float32Array([this.glareCache.weights[k] ?? 0, Math.min(1, Ak / eye.riccoAreaSr), 0, 0]));
+      d.queue.writeBuffer(l.ub, 0, new Float32Array([wk, 0, 0, 0]));
+      d.queue.writeBuffer(l.ubR, 0, new Float32Array([wk * Math.min(1, Ak / eye.displayRiccoSr), 0, 0, 0]));
     });
+    // Local background of point sources: the physical veil at scales >= the Ricco area (the level whose
+    // Gaussian's equivalent area first reaches A_R), so a star's own core glare does not mask it.
+    let kR = 0;
+    while (kR < t.levels.length - 1 && 2 * Math.PI * pyramidSigma(kR) ** 2 * omegaCentre < eye.riccoAreaSr) kR++;
+    this.bgView = t.levels[kR].acc.createView();
+    // A source's own light in that background at its own position, per unit illuminance and per pixel
+    // solid angle: Σ_{k≥kR} w_k/(2π σ_k²). The shaders subtract it: the background excludes the source.
+    let selfVeilPx = 0;
+    for (let k = kR; k < t.levels.length; k++) selfVeilPx += (this.glareCache.weights[k] ?? 0) / (2 * Math.PI * pyramidSigma(k) ** 2);
+    this.selfVeilPx = selfVeilPx;
 
     this.writeUniforms(snapshot, eye, g, prep, sigmaPx, extentPx, wPt);
 
@@ -423,7 +459,8 @@ export class Renderer {
 
     // 2. Star visibility culling (reads last frame's veil for the local background).
     const veilView = t.levels[0].acc.createView();
-    const veilRView = t.levels[0].accR.createView();
+    const paintView = t.levels[0].accR.createView();
+    const bgView = this.bgView!;
     if (this.starCount > 0 && !skip.has('cull')) {
       const pass = enc.beginComputePass({ label: 'star cull' });
       pass.setPipeline(this.cullPipe);
@@ -440,7 +477,7 @@ export class Renderer {
             { binding: 2, resource: { buffer: c.buffer } },
             { binding: 3, resource: { buffer: this.visible } },
             { binding: 4, resource: { buffer: this.args } },
-            { binding: 5, resource: veilRView },
+            { binding: 5, resource: bgView },
             { binding: 6, resource: { buffer: c.info } },
             { binding: 7, resource: { buffer: this.srcs } },
           ],
@@ -454,31 +491,41 @@ export class Renderer {
       pass.end();
     }
 
-    // 3. Point sources.
-    {
+    // 3. Point sources on the retina (PT) and their excess (PTEX).
+    const pointPass = (pipe: GPURenderPipeline, targets: GPUTexture[], load: boolean, draw: (pass: GPURenderPassEncoder) => void) => {
       const pass = enc.beginRenderPass({
-        label: 'points',
-        colorAttachments: [{ view: t.pt.createView(), loadOp: 'clear', storeOp: 'store', clearValue: [0, 0, 0, 0] }],
+        label: pipe.label,
+        colorAttachments: targets.map((tx) => ({ view: tx.createView(), loadOp: load ? ('load' as const) : ('clear' as const), storeOp: 'store' as const, clearValue: [0, 0, 0, 0] })),
         depthStencilAttachment: { view: t.depth.createView(), depthReadOnly: true },
       });
-      pass.setPipeline(this.pointPipe);
+      pass.setPipeline(pipe);
+      draw(pass);
+      pass.end();
+    };
+    let bodyPointsBuf: GPUBuffer | null = null;
+    if (prep.points.length) {
+      bodyPointsBuf = this.ensure('pointsBuf', prep.points.length * 32);
+      const a = new Float32Array(prep.points.length * 8);
+      prep.points.forEach((p, i) => a.set([p.ndc[0], p.ndc[1], p.depth, 0, ...p.E], i * 8));
+      d.queue.writeBuffer(bodyPointsBuf, 0, a);
+    }
+    const drawPoints = (pipe: GPURenderPipeline, bg: GPUTextureView) => (pass: GPURenderPassEncoder) => {
       if (this.starCount > 0 && !skip.has('points')) {
-        pass.setBindGroup(0, this.pointBindGroup(this.visible));
+        pass.setBindGroup(0, this.pointBindGroup(pipe, this.visible, bg));
         pass.drawIndirect(this.args, 0);
       }
-      if (prep.points.length) {
-        const buf = this.ensure('pointsBuf', prep.points.length * 32);
-        const a = new Float32Array(prep.points.length * 8);
-        prep.points.forEach((p, i) => a.set([p.ndc[0], p.ndc[1], p.depth, 0, ...p.E], i * 8));
-        d.queue.writeBuffer(buf, 0, a);
-        pass.setBindGroup(0, this.pointBindGroup(buf));
+      if (bodyPointsBuf) {
+        pass.setBindGroup(0, this.pointBindGroup(pipe, bodyPointsBuf, bg));
         pass.draw(6, prep.points.length);
       }
-      pass.end();
-    }
+    };
+    pointPass(this.pointPipe, [t.pt, t.ptEx], false, drawPoints(this.pointPipe, bgView));
 
-    // 4. Glare pyramid over EXT + PT.
-    if (!skip.has('pyramid')) this.encodePyramid(enc, t);
+    // 4. Glare pyramids: physical veil (EXT + PT -> acc) and painted glare (overflow -> accR).
+    if (!skip.has('pyramid')) {
+      this.encodePyramid(enc, t, 'acc');
+      this.encodePyramid(enc, t, 'accR');
+    }
 
     // 5. Sun (after the pyramid: its scatter is analytic).
     if (prep.sun && (prep.sun.resolvedFraction > 0 || prep.sun.point) && !skip.has('sun')) {
@@ -495,16 +542,12 @@ export class Renderer {
         pass.end();
       }
       if (s.point) {
+        // Into PT only for adaptation; its glare is analytic (PTEX is not read after the pyramid).
         d.queue.writeBuffer(this.sunPointBuf, 0, new Float32Array([s.point.ndc[0], s.point.ndc[1], s.point.depth, 0, ...s.point.E]));
-        const pass = enc.beginRenderPass({
-          label: 'sun point',
-          colorAttachments: [{ view: t.pt.createView(), loadOp: 'load', storeOp: 'store' }],
-          depthStencilAttachment: { view: t.depth.createView(), depthReadOnly: true },
+        pointPass(this.pointPipe, [t.pt, t.ptEx], true, (pass) => {
+          pass.setBindGroup(0, this.pointBindGroup(this.pointPipe, this.sunPointBuf, bgView));
+          pass.draw(6, 1);
         });
-        pass.setPipeline(this.pointPipe);
-        pass.setBindGroup(0, this.pointBindGroup(this.sunPointBuf));
-        pass.draw(6, 1);
-        pass.end();
       }
     }
 
@@ -540,6 +583,16 @@ export class Renderer {
       pass.end();
     }
 
+    // 6b. Point sources as displayed (sharp splats of display flux, own colour), against this frame's veil.
+    const bgNow = t.levels[kR].acc.createView();
+    pointPass(this.pointDispPipe, [t.ptDisp], false, (pass) => {
+      drawPoints(this.pointDispPipe, bgNow)(pass);
+      if (prep.sun?.point && !skip.has('sun')) {
+        pass.setBindGroup(0, this.pointBindGroup(this.pointDispPipe, this.sunPointBuf, bgNow));
+        pass.draw(6, 1);
+      }
+    });
+
     // 7. Composite (eye model) into the canvas.
     const canvasView = this.ctx ? this.ctx.getCurrentTexture().createView() : this.displayTexture().createView();
     {
@@ -552,9 +605,9 @@ export class Renderer {
           { binding: 0, resource: { buffer: this.frameUB } },
           { binding: 1, resource: { buffer: this.eyeUB } },
           { binding: 2, resource: t.ext.createView() },
-          { binding: 3, resource: t.pt.createView() },
+          { binding: 3, resource: t.ptDisp.createView() },
           { binding: 4, resource: t.w.createView() },
-          { binding: 5, resource: veilRView },
+          { binding: 5, resource: paintView },
           { binding: 6, resource: { buffer: this.srcs } },
         ],
       }));
@@ -616,7 +669,7 @@ export class Renderer {
 
     if (doReadback) {
       this.readbackBusy = true;
-      const used = { cone: eye.Acone, rod: eye.Arod };
+      const used = { cone: eye.Acone, rod: eye.Arod, offFrameFlux: prep.offFrameFluxDeg2 };
       this.readback.mapAsync(GPUMapMode.READ).then(() => {
         const r = new Float32Array(this.readback.getMappedRange().slice(0));
         this.readback.unmap();
@@ -626,12 +679,12 @@ export class Renderer {
     }
   }
 
-  private handleMeasurement(r: Float32Array, used: { cone: number; rod: number }): void {
+  private handleMeasurement(r: Float32Array, used: { cone: number; rod: number; offFrameFlux: number }): void {
     const om = r[2];
     const goal = {
-      coneCdM2: om > 0 ? r[0] / om : 0,
-      rodCdM2: om > 0 ? r[1] / om : 0,
-      cornealFlux: r[3] * DEG2_PER_SR,
+      coneCdM2: om > 0 ? Math.exp(r[0] / om) - DARK_LIGHT_CONE : 0,
+      rodCdM2: om > 0 ? Math.exp(r[1] / om) - DARK_LIGHT_ROD : 0,
+      cornealFlux: r[3] * DEG2_PER_SR + used.offFrameFlux,
     };
     this.stats.starsDrawn = Math.round(r[4]);
     const now = performance.now();
@@ -653,10 +706,20 @@ export class Renderer {
     for (const f of w) f({ converged });
   }
 
-  private pointBindGroup(buf: GPUBuffer): GPUBindGroup {
+  private bgView: GPUTextureView | null = null;
+  private selfVeilPx = 0;
+
+  private pointBindGroup(pipe: GPURenderPipeline, buf: GPUBuffer, bg: GPUTextureView): GPUBindGroup {
     return this.device.createBindGroup({
-      layout: this.pointPipe.getBindGroupLayout(0),
-      entries: [{ binding: 0, resource: { buffer: this.frameUB } }, { binding: 1, resource: { buffer: this.eyeUB } }, { binding: 2, resource: { buffer: buf } }],
+      layout: pipe.getBindGroupLayout(0),
+      entries: [
+        { binding: 0, resource: { buffer: this.frameUB } },
+        { binding: 1, resource: { buffer: this.eyeUB } },
+        { binding: 2, resource: { buffer: buf } },
+        { binding: 3, resource: bg },
+        { binding: 4, resource: this.targets!.ext.createView() },
+        { binding: 5, resource: { buffer: this.srcs } },
+      ],
     });
   }
 
@@ -687,7 +750,7 @@ export class Renderer {
     const norm = 1 / (1 - Math.exp(-(SPLAT_EXTENT_SIGMA * SPLAT_EXTENT_SIGMA) / 2));
     const c = eye.cat;
     d.queue.writeBuffer(this.eyeUB, 0, new Float32Array([
-      eye.scene.sigmaCone, eye.scene.sigmaRod, eye.scene.Bcone, eye.scene.Brod,
+      eye.scene.sigmaCone, eye.scene.sigmaRod, eye.scene.Bcone, eye.scene.BrodAdapt,
       eye.map.gain, eye.map.offset, PATTANAIK.n, eye.exposure,
       eye.display.sigma, eye.display.B, eye.display.white, eye.display.peak,
       eye.mesopic.m, CIE191.vPrimeLambda0, CRUMEY.spRatioBlackwell, s.fieldFactor,
@@ -698,6 +761,7 @@ export class Renderer {
       1 / 255, cosField, sigmaPx, nSrc,
       extentPx, norm, 0, 0,
       DARK_LIGHT_CONE, DARK_LIGHT_ROD, eye.darkResponse[0], eye.darkResponse[1],
+      response(PATTANAIK.coneBleachHalf, eye.display.sigma, eye.display.B), eye.displayRiccoSr, eye.coneSummationSr, this.selfVeilPx,
     ]));
     const src = new Float32Array(MAX_GLARE_SOURCES * 8);
     prep.glare.slice(0, nSrc).forEach((gs, i) => src.set([...gs.dir, gs.minDeg, ...gs.E], i * 8));
@@ -731,20 +795,31 @@ export class Renderer {
     this.device.queue.writeBuffer(buf, 0, a);
   }
 
-  private encodePyramid(enc: GPUCommandEncoder, t: Targets): void {
+  private encodePyramid(enc: GPUCommandEncoder, t: Targets, out: 'acc' | 'accR'): void {
     const d = this.device;
-    const pass = enc.beginComputePass({ label: 'glare pyramid' });
+    const pass = enc.beginComputePass({ label: out === 'acc' ? 'glare pyramid (retina)' : 'glare pyramid (painted)' });
     const run = (pipe: GPUComputePipeline, w: number, h: number, entries: GPUBindGroupEntry[]) => {
       pass.setPipeline(pipe);
       pass.setBindGroup(0, d.createBindGroup({ layout: pipe.getBindGroupLayout(0), entries }));
       pass.dispatchWorkgroups(Math.ceil(w / 8), Math.ceil(h / 8));
     };
     const L = t.levels;
-    run(this.pyr.combine, t.W, t.H, [
-      { binding: 0, resource: t.ext.createView() },
-      { binding: 1, resource: t.pt.createView() },
-      { binding: 2, resource: L[0].lvl.createView() },
-    ]);
+    if (out === 'acc') {
+      run(this.pyr.combine, t.W, t.H, [
+        { binding: 0, resource: t.ext.createView() },
+        { binding: 1, resource: t.pt.createView() },
+        { binding: 2, resource: L[0].lvl.createView() },
+      ]);
+    } else {
+      run(this.overflowPipe, t.W, t.H, [
+        { binding: 0, resource: { buffer: this.frameUB } },
+        { binding: 1, resource: { buffer: this.eyeUB } },
+        { binding: 2, resource: t.ext.createView() },
+        { binding: 3, resource: t.w.createView() },
+        { binding: 4, resource: t.ptEx.createView() },
+        { binding: 5, resource: L[0].lvl.createView() },
+      ]);
+    }
     for (let k = 1; k < L.length; k++) {
       run(this.pyr.down, L[k].w, L[k].h, [{ binding: 0, resource: L[k - 1].lvl.createView() }, { binding: 2, resource: L[k].lvl.createView() }]);
     }
@@ -755,11 +830,9 @@ export class Renderer {
     for (let k = L.length - 1; k >= 0; k--) {
       run(this.pyr.accum, L[k].w, L[k].h, [
         { binding: 0, resource: L[k].blur.createView() },
-        { binding: 1, resource: (k + 1 < L.length ? L[k + 1].acc : t.zero).createView() },
-        { binding: 2, resource: L[k].acc.createView() },
-        { binding: 3, resource: { buffer: L[k].ub } },
-        { binding: 4, resource: (k + 1 < L.length ? L[k + 1].accR : t.zero2).createView() },
-        { binding: 5, resource: L[k].accR.createView() },
+        { binding: 1, resource: (k + 1 < L.length ? L[k + 1][out] : t.zero).createView() },
+        { binding: 2, resource: L[k][out].createView() },
+        { binding: 3, resource: { buffer: out === 'acc' ? L[k].ub : L[k].ubR } },
       ]);
     }
     pass.end();
