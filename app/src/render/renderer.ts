@@ -476,6 +476,11 @@ export class Renderer {
     await this.settleAdaptation();
   }
 
+  /** Resolves when the GPU has finished the last submitted frame (frame pacing; no extra frames). */
+  frameDone(): Promise<void> {
+    return this.device.queue.onSubmittedWorkDone();
+  }
+
   private async settleAdaptation(): Promise<void> {
     let stable = 0;
     for (let i = 0; i < 40; i++) {

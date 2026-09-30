@@ -599,9 +599,11 @@ struct FOut {
           let sE = (hE.x - hW.x) * 1e-3 / (2.0 / W * 2.0 * PI * r * max(cos(lat), 1e-3));
           let sN = (hN.x - hS.x) * 1e-3 / (2.0 / H * PI * r);
           let nb = normalize(upb - sE * east - sN * north);
-          N = normalize(b.rot0.xyz * nb.x + b.rot1.xyz * nb.y + b.rot2.xyz * nb.z);
+          // Body-fixed → world: world_i = row_i · nb (rot0..2 are the rows of the body→world matrix).
+          N = normalize(vec3f(dot(b.rot0.xyz, nb), dot(b.rot1.xyz, nb), dot(b.rot2.xyz, nb)));
           // Self-shadowing: horizon toward the Sun by ray marching the height field (curvature included),
           // compared with the solar disk (soft terminator of relief).
+          // World → body-fixed: the transpose, Σ_i row_i · s_i.
           let sbf = b.rot0.xyz * b.sun.x + b.rot1.xyz * b.sun.y + b.rot2.xyz * b.sun.z;
           let es = asin(clamp(dot(sbf, upb), -1.0, 1.0));
           let hor = sbf - dot(sbf, upb) * upb;

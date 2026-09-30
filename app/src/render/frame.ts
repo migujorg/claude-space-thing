@@ -228,6 +228,20 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
     const p = camToNdc(g, c);
     return Math.abs(p[0]) <= 1 && Math.abs(p[1]) <= 1;
   };
+  /** Whether a sphere of radius r (km) at camera-relative pos overlaps the frame (for per-body warnings). */
+  const inView = (pos: V3, r: number) => {
+    const D = len(pos);
+    if (!(D > 0)) return false;
+    if (r >= D) return true;
+    const ang = Math.asin(r / D);
+    const c = toCam(g, pos);
+    const cosOff = -c[2] / D;
+    if (cosOff < Math.cos(Math.min(Math.PI, Math.PI / 2 + ang))) return false;
+    if (c[2] >= 0) return ang > Math.acos(Math.min(1, Math.max(-1, cosOff))) - Math.PI / 2;
+    const p = camToNdc(g, c);
+    const t = Math.tan(Math.min(ang, 1.5)) / -c[2] * D;
+    return Math.abs(p[0]) <= 1 + t / g.tanX && Math.abs(p[1]) <= 1 + t / g.tanY;
+  };
 
   // Sun first (its radius is needed for eclipse shadows).
   const sunR = snap.sun?.radius ?? 0;
@@ -294,7 +308,7 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
     const rf = prepareRings(b, irr, sunR, g.pixelAngle);
     if (rf.draw) rings.push(rf.draw);
     if (rf.pointE) ringPoint.set(b, rf.pointE);
-    if (rf.draw || inFrame(toCam(g, b.pos))) warnings.push(...rf.warnings);
+    if (inView(b.pos, b.rings ? Math.max(...(b.rings.opticalDepth.flatMap((p) => p.radiusKm)), 0) : 0)) warnings.push(...rf.warnings);
   }
   const ringFor = (b: SceneBody): { index: number; B: V3 } | null => {
     let best: { index: number; B: V3 } | null = null;
@@ -308,13 +322,22 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
   };
 
   for (const b of snap.bodies) {
+    // This body's warnings are kept only if it is in view (drawn in the frame).
+    const w0 = warnings.length;
+    try {
+      prepareOneBody(b);
+    } finally {
+      if (!inView(b.pos, b.radii ? Math.max(...b.radii) : 0)) warnings.length = w0;
+    }
+  }
+  function prepareOneBody(b: SceneBody): void {
     const D = len(b.pos);
-    if (!(D > 0)) continue;
+    if (!(D > 0)) return;
     const c = toCam(g, b.pos);
     if (!b.radii) {
       // Position known, size unknown: no brightness can be computed (R is needed). Nothing is drawn; the
       // shell draws the hollow "position known, brightness not admitted" marker (ui/labels.ts).
-      continue;
+      return;
     }
     const R = meanRadius(b.radii);
     const angR = Math.asin(Math.min(1, R / D));
@@ -429,7 +452,7 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
     // Off-frame bright bodies still veil the view (analytic glare).
     if (E && !inFrame(c) && !behindShield) glare.push({ dir: normalize(b.pos), minDeg: (angR * 180) / Math.PI, E, inFrame: false });
 
-    if (behind) continue;
+    if (behind) return;
     if (fRes > 0) {
       let radii = b.radii;
       let orient = b.orient as M3 | null;

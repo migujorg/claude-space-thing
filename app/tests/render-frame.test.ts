@@ -63,6 +63,16 @@ describe('resolved/point split', () => {
     expect(noR.resolved.length + noR.points.length).toBe(0);
     expect(noR.overlay.length).toBe(0); // the shell draws the hollow marker (ui/labels.ts), not the renderer
   });
+  it('warnings name only bodies in view', () => {
+    const eye = computeEyeFrame(DEFAULT_EYE_SETTINGS, eyeState(), 'eye', 0, null);
+    const g = cameraGeom(snap([]), W, H, 1e-7);
+    const pf = { kind: 'poly-mag' as const, coeffs: [0, 0.01], minDeg: 20, maxDeg: 120 }; // α = 0: outside
+    const front = body(1e5, { id: 5, name: 'Front', phase: pf });
+    const back = body(1e5, { id: 6, name: 'Back', phase: pf, pos: [0, 0, 1e5] });
+    const p = prepareFrame(snap([front, back], 60), g, eye, 1e-9);
+    expect(p.warnings.join()).toMatch(/Front/);
+    expect(p.warnings.join()).not.toMatch(/Back/);
+  });
   it('a measured phase curve outside its validity range is not extrapolated', () => {
     const eye = computeEyeFrame(DEFAULT_EYE_SETTINGS, eyeState(), 'eye', 0, null);
     const g = cameraGeom(snap([]), W, H, 1e-7);
