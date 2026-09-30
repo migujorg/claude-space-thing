@@ -656,7 +656,6 @@ struct FrameU {
   camH: vec4f, camL: vec4f, sunV: vec4f,
   t0: vec2f, h: vec2f, tk: vec2f, iv: u32, mode: u32,
   flags: u32, first: u32, n: u32, groupsX: u32,
-  ovH: array<vec4f, 4>, ovL: array<vec4f, 4>, ovV: array<vec4f, 4>,
 };
 @group(0) @binding(0) var<uniform> F: FieldU;
 @group(0) @binding(1) var<uniform> FR: FrameU;
@@ -667,6 +666,8 @@ struct FrameU {
 @group(0) @binding(6) var<storage, read> PH: array<vec4u>;
 @group(0) @binding(7) var<storage, read_write> R: array<vec4u>;
 @group(0) @binding(8) var<storage, read_write> DBG: array<vec4f>;
+// [drawn, withheld]: objects with a position whose light is / is not admitted at this level.
+@group(0) @binding(9) var<storage, read_write> CNT: array<atomic<u32>, 2>;
 ${DYNAMICS_WGSL}
 ${photometryWgsl(cfg.photometry, cfg.auKm)}
 @compute @workgroup_size(${WG}) fn main(@builtin(global_invocation_id) gid: vec3u) {
@@ -680,18 +681,13 @@ ${photometryWgsl(cfg.photometry, cfg.auKm)}
   let idx = pp1.z;
   let info = PI[i];
   var st: St;
-  var ok = (info & 0x80000000u) == 0u && (FR.flags & 2u) == 0u;
+  // Not drawn: no state (unknown / lost position, planetary-ephemeris objects), or the whole field is hidden.
+  var ok = (info & 0xC0000000u) == 0u && (FR.flags & 2u) == 0u;
   if (ok) {
-    if ((info & 0x40000000u) != 0u) {
-      let k = (info >> 24u) & 3u;
-      st = St(FR.ovH[k].xyz, FR.ovL[k].xyz, FR.ovV[k].xyz, vec3f(0.0));
-      ok = FR.ovH[k].w != 0.0;
-    } else {
-      st = load_state(i);
-      ok = !bad(st.xh.x);
-      if (ok && (FR.h.x != 0.0)) {
-        ok = advance(&st, FR.t0, FR.h, FR.iv, FR.tk, info & 0xFFFFu) == 0u;
-      }
+    st = load_state(i);
+    ok = !bad(st.xh.x);
+    if (ok && (FR.h.x != 0.0)) {
+      ok = advance(&st, FR.t0, FR.h, FR.iv, FR.tk, info & 0xFFFFu) == 0u;
     }
   }
   if ((FR.flags & 1u) != 0u) {
@@ -720,6 +716,9 @@ ${photometryWgsl(cfg.photometry, cfg.auKm)}
   let alpha = atan2(length(cross(xo, rel)), dot(xo, rel));
   var e = vec4f(0.0);
   if (HAVE_PHOT) { e = light(pp0, pp1, r / AU_KM, dist / AU_KM, alpha, FR.mode); }
+  if (e.y > 0.0) { atomicAdd(&CNT[0], 1u); } else { atomicAdd(&CNT[1], 1u); }
+  // Excluded (the shell draws the object itself, e.g. a resolved close-up): no point, but still pickable.
+  if ((info & 0x20000000u) != 0u) { e = vec4f(0.0); }
   R[2u * i] = bitcast<vec4u>(vec4f(dir, e.x));
   R[2u * i + 1u] = vec4u(bitcast<vec3u>(e.yzw), idx);
 }

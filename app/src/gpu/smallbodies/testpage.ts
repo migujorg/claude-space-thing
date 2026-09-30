@@ -307,14 +307,25 @@ async function accuracy(): Promise<unknown> {
     else log(`  pick mismatch: tol ${tol}, gpu ${got}, cpu ${want}`);
   }
   log(`pick vs CPU scan: ${pickAgree}/${pickCases} agree`);
+  // exclude() and stats: object 0 loses its light but keeps its direction; counts arrive a frame later.
+  field.exclude([0]);
+  await submit(dev, field, lastEt, cam, 'best');
+  await submit(dev, field, lastEt, cam, 'strict');
+  await submit(dev, field, lastEt, cam, 'strict');
+  await new Promise((r) => setTimeout(r, 50));
+  const recs2 = await field.readRecords();
+  const excludedOk = recs2[8 * s0 + 4] === 0 && recs2[8 * s0] === recs[8 * s0];
+  field.exclude([]);
+  const statsStrict = field.stats;
+  log(`exclude: ${excludedOk ? 'ok' : 'FAILED'}; stats at strict: ${JSON.stringify(statsStrict)}`);
   const so = field.stateOf(0, lastEt);
   const cpu0 = cpuState(0, lastEt);
-  const stateOfErr = so && cpu0 ? Math.hypot(so.pos[0] - sun[0] - cpu0[0], so.pos[1] - sun[1] - cpu0[1], so.pos[2] - sun[2] - cpu0[2]) : null;
+  const stateOfErr = so && cpu0 ? Math.hypot(so.pos[0] - cpu0[0], so.pos[1] - cpu0[1], so.pos[2] - cpu0[2]) : null;
   return {
     precision: field.info.precision, selfTest: field.info.selfTest, objects: rows.length, spacing: field.info.checkpointSpacingSteps,
     times, fixtures: fixtureErr, random: { n: N, maxKm: rq(1), p99Km: rq(0.99), p90Km: rq(0.9), p50Km: rq(0.5), worst: worstRandom },
     statusMismatches: failures, records: { maxDirErrRad: maxAng, maxDmag: maxDm, compared: nCmp, lit: nLit },
-    pick: picked === 0, pickAgreement: `${pickAgree}/${pickCases}`, stateOfErrKm: stateOfErr,
+    pick: picked === 0, pickAgreement: `${pickAgree}/${pickCases}`, stateOfErrKm: stateOfErr, excludeOk: excludedOk, statsStrict,
   };
 }
 

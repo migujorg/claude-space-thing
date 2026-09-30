@@ -73,10 +73,9 @@ export interface SmallBodyFieldInfo {
   precision: 'df64-fma' | 'df64-dekker' | 'degraded';
   selfTest: { fmaExact: boolean; dekkerExact: boolean; maxRelError: number; cases: number };
   objects: number;
-  /** Objects with no state (position unknown) or not propagated (planetary-ephemeris objects beyond 4). */
+  /** Objects not propagated nor drawn: position unknown, flag positionLost, or flag planetaryEphemeris (Pluto: the
+   * app draws it as a planetary-ephemeris body). */
   invalid: number;
-  /** Objects drawn from the planetary ephemeris instead (flag planetaryEphemeris: Pluto). */
-  external: number;
   photometry: boolean;
   checkpointSpacingSteps: number;
   checkpointSlots: number;
@@ -98,9 +97,12 @@ const STATE_FLOATS = 12;
 const STATE_BYTES = 4 * STATE_FLOATS;
 const RECORD_FLOATS = 8;
 const SLOT = 256;
-const FRAME_SLOT = 512;
+const FRAME_SLOT = 256;
+const FRAME_BYTES = 96;
+/** Where stateOf takes planetary-ephemeris objects from (Pluto 999, else the Pluto-system barycentre 9). */
 const PLUTO_IDS = [999, 9];
-const MAX_EXTERNAL = 4;
+const INVALID = 0x80000000;
+const EXCLUDED = 0x20000000;
 
 type Op =
   | { kind: 'copy'; from: GPUBuffer; to: 'W' | 'B' }
@@ -141,8 +143,12 @@ export class SmallBodyField {
   private readonly cat: SmallBodyCatalog;
   private readonly order: Uint32Array;
   private readonly slot: Uint32Array;
-  private readonly external: number[] = [];
   private readonly extFlag: Uint8Array;
+  private readonly infoWords: Uint32Array;
+  private excluded = new Set<number>();
+  private readonly counters: GPUBuffer;
+  private readonly statsRead: { buf: GPUBuffer; state: 'free' | 'copied' | 'mapping' }[];
+  private lastStats: { drawn: number; withheld: number } | undefined;
   private readonly nongrav: Map<number, NonGrav>;
   private readonly table: PlanetTable;
   private readonly H: number;
@@ -252,7 +258,9 @@ export class SmallBodyField {
     for (let s = 0; s < n; s++) this.slot[this.order[s]] = s;
 
     // --- per-slot propagation info and initial states.
-    const extBit = Number(Object.entries(hdr.flagBits).find(([, v]) => v === 'planetaryEphemeris')?.[0] ?? 0);
+    const bit = (name: string) => Number(Object.entries(hdr.flagBits).find(([, v]) => v === name)?.[0] ?? 0);
+    const extBit = bit('planetaryEphemeris');
+    const lostBit = bit('positionLost');
     const flags = this.cat.table.column('flags');
     const ngIndex = new Map<number, number>();
     const ngList = [...this.nongrav.entries()];
@@ -264,22 +272,18 @@ export class SmallBodyField {
     for (let s = 0; s < n; s++) {
       const i = this.order[s];
       const o = 6 * i;
-      const ok = Number.isFinite(states[o]) && Number.isFinite(states[o + 3]);
-      let w = 0;
-      if (extBit && (flags.get(i) & extBit)) {
-        this.extFlag[i] = 1;
-        if (this.external.length < MAX_EXTERNAL) {
-          w = 0x40000000 | (this.external.length << 24);
-          this.external.push(i);
-        } else w = 0x80000000;
-      } else if (!ok) w = 0x80000000;
+      const f = flags.get(i);
+      if (extBit && (f & extBit)) this.extFlag[i] = 1;
+      const ok = Number.isFinite(states[o]) && Number.isFinite(states[o + 3]) && !(f & extBit) && !(f & lostBit);
+      let w = ok ? 0 : INVALID;
       const g = ngIndex.get(i);
       if (g !== undefined) w |= g + 1;
       info[s] = w >>> 0;
-      if (w & 0x80000000) invalid++;
+      if (!ok) invalid++;
       const [x0, x1, x2, v0, v1, v2] = [0, 1, 2, 3, 4, 5].map((k) => split64(states[o + k]));
       init.set([x0[0], x1[0], x2[0], v0[0], v1[0], v2[0], x0[1], x1[1], x2[1], v0[1], v1[1], v2[1]], s * STATE_FLOATS);
     }
+    this.infoWords = info;
     const ng = new Float32Array(Math.max(1, ngList.length) * 12);
     ngList.forEach(([, p], k) => ng.set([p.a1, p.a2, p.a3, p.dt, p.aln, p.r0, p.nm, p.nn, p.nk, 0, 0, 0], 12 * k));
 
@@ -347,7 +351,7 @@ export class SmallBodyField {
     this.shadeLayout = d.createBindGroupLayout({
       label: 'sb shade', entries: [
         { binding: 0, visibility: C, buffer: { type: 'uniform' } },
-        { binding: 1, visibility: C, buffer: { type: 'uniform', hasDynamicOffset: true, minBindingSize: 288 } },
+        { binding: 1, visibility: C, buffer: { type: 'uniform', hasDynamicOffset: true, minBindingSize: FRAME_BYTES } },
         { binding: 2, visibility: C, buffer: ro },
         { binding: 3, visibility: C, buffer: ro },
         { binding: 4, visibility: C, buffer: ro },
@@ -355,6 +359,7 @@ export class SmallBodyField {
         { binding: 6, visibility: C, buffer: ro },
         { binding: 7, visibility: C, buffer: { type: 'storage' } },
         { binding: 8, visibility: C, buffer: { type: 'storage' } },
+        { binding: 9, visibility: C, buffer: { type: 'storage' } },
       ],
     });
     const constants = { USE_FMA: useFma ? 1 : 0 };
@@ -372,10 +377,12 @@ export class SmallBodyField {
     this.pickU = [buf(32, SU.UNIFORM | SU.COPY_DST, 'sb pick 0'), buf(32, SU.UNIFORM | SU.COPY_DST, 'sb pick 1')];
     this.pickOut = buf(16, SU.STORAGE | SU.COPY_SRC | SU.COPY_DST, 'sb pick out');
     this.pickRead = buf(16, SU.MAP_READ | SU.COPY_DST, 'sb pick readback');
+    this.counters = buf(16, SU.STORAGE | SU.COPY_SRC | SU.COPY_DST, 'sb counters');
+    this.statsRead = [0, 1, 2].map(() => ({ buf: buf(16, SU.MAP_READ | SU.COPY_DST, 'sb counters readback'), state: 'free' as const }));
 
     const precision = st.fmaExact && useFma ? 'df64-fma' : st.dekkerExact && !useFma ? 'df64-dekker' : 'degraded';
     this.info = {
-      precision, selfTest: st, objects: n, invalid, external: this.external.length, photometry: !!this.light,
+      precision, selfTest: st, objects: n, invalid, photometry: !!this.light,
       checkpointSpacingSteps: this.spacing, checkpointSlots: this.slots, checkpoints: 1,
       last: { et: NaN, targetStep: 0, steps: 0, backgroundSteps: 0, restoredFrom: null, tableIntervalsBuilt: 0, displayStepS: 0, cpuMs: 0, hidden: null },
     };
@@ -452,7 +459,7 @@ export class SmallBodyField {
       this.device.queue.writeBuffer(this.stepUB, 0, u);
     }
 
-    // Frame uniform (display step, camera, overrides).
+    // Frame uniform (display step, camera).
     {
       const u = new ArrayBuffer(chunks * FRAME_SLOT);
       const f = new Float32Array(u);
@@ -469,7 +476,6 @@ export class SmallBodyField {
       const [t0h, t0l] = split64(mStar * H);
       const [hh, hl] = split64(hDisp);
       const [tkh, tkl] = split64(kDisp * H);
-      const ov = this.externalStates(et, sunP);
       for (let ch = 0; ch < chunks; ch++) {
         const o = (ch * FRAME_SLOT) / 4;
         const first = ch * this.opts.chunkObjects;
@@ -483,17 +489,12 @@ export class SmallBodyField {
         w[o + 21] = first;
         w[o + 22] = cnt;
         w[o + 23] = gx;
-        for (let k = 0; k < ov.length; k++) {
-          const s = ov[k];
-          if (!s) continue;
-          const sp = s.map((v) => split64(v));
-          f.set([sp[0][0], sp[1][0], sp[2][0], 1], o + 24 + 4 * k);
-          f.set([sp[0][1], sp[1][1], sp[2][1], 0], o + 40 + 4 * k);
-          f.set([s[3], s[4], s[5], 0], o + 56 + 4 * k);
-        }
       }
       this.device.queue.writeBuffer(this.frameUB, 0, u);
     }
+    // Counters of the shade pass (read back asynchronously: stats reflects an update one or two frames old).
+    this.pollStats();
+    this.device.queue.writeBuffer(this.counters, 0, new Uint32Array(4));
 
     // Encode.
     const bg = this.stepBindGroups();
@@ -527,6 +528,11 @@ export class SmallBodyField {
       pass.dispatchWorkgroups(...dispatchSize(Math.ceil(cnt / WG)));
     }
     pass.end();
+    const rb = this.statsRead.find((r) => r.state === 'free');
+    if (rb) {
+      encoder.copyBufferToBuffer(this.counters, 0, rb.buf, 0, 16);
+      rb.state = 'copied';
+    }
     if (this.retireB && this.B) {
       this.pending.push(this.B);
       this.B = null;
@@ -536,6 +542,42 @@ export class SmallBodyField {
     last.hidden = hide;
     this.info.checkpoints = this.checkpoints.size;
     last.cpuMs = performance.now() - t0;
+  }
+
+  /** Counts at a recent update: objects with a position whose brightness is admitted (drawn) or not (withheld). */
+  get stats(): { drawn: number; withheld: number } | undefined {
+    return this.lastStats;
+  }
+
+  /** Map the counter copies of earlier updates (their encoders have been submitted by now, see update()). */
+  private pollStats(): void {
+    for (const r of this.statsRead) {
+      if (r.state !== 'copied') continue;
+      r.state = 'mapping';
+      r.buf.mapAsync(GPUMapMode.READ).then(() => {
+        const a = new Uint32Array(r.buf.getMappedRange().slice(0));
+        r.buf.unmap();
+        this.lastStats = { drawn: a[0], withheld: a[1] };
+        r.state = 'free';
+      }, () => { r.state = 'free'; });
+    }
+  }
+
+  /**
+   * Objects (core indices) the shell draws itself, e.g. as a resolved close-up: they get no point (their records
+   * keep the direction, so pick still finds them). Replaces the previous set.
+   */
+  exclude(indices: number[]): void {
+    const next = new Set(indices.filter((i) => i >= 0 && i < this.count));
+    const touched = new Set<number>();
+    for (const i of this.excluded) if (!next.has(i)) touched.add(i);
+    for (const i of next) if (!this.excluded.has(i)) touched.add(i);
+    this.excluded = next;
+    for (const i of touched) {
+      const s = this.slot[i];
+      this.infoWords[s] = (next.has(i) ? this.infoWords[s] | EXCLUDED : this.infoWords[s] & ~EXCLUDED) >>> 0;
+      this.device.queue.writeBuffer(this.infoBuf, s * 4, new Uint32Array([this.infoWords[s]]));
+    }
   }
 
   /** Plan W -> m*: returns null, or why it cannot be reached. */
@@ -652,7 +694,7 @@ export class SmallBodyField {
     this.shadeBG = this.device.createBindGroup({
       layout: this.shadeLayout, entries: [
         { binding: 0, resource: { buffer: this.fieldUB } },
-        { binding: 1, resource: { buffer: this.frameUB, size: 288 } },
+        { binding: 1, resource: { buffer: this.frameUB, size: FRAME_BYTES } },
         { binding: 2, resource: { buffer: this.W } },
         { binding: 3, resource: { buffer: this.tableBuf } },
         { binding: 4, resource: { buffer: this.infoBuf } },
@@ -660,25 +702,10 @@ export class SmallBodyField {
         { binding: 6, resource: { buffer: this.photBuf } },
         { binding: 7, resource: { buffer: this.records } },
         { binding: 8, resource: { buffer: this.debugBuf } },
+        { binding: 9, resource: { buffer: this.counters } },
       ],
     });
     return this.shadeBG;
-  }
-
-  /** Heliocentric states (x, v) at et of the objects drawn from the planetary ephemeris, or null per object. */
-  private externalStates(et: number, sun: readonly number[]): (number[] | null)[] {
-    return this.external.map(() => {
-      for (const id of PLUTO_IDS) {
-        const p = this.planets.positionSSB(id, et);
-        const a = this.planets.positionSSB(id, et - 60), b = this.planets.positionSSB(id, et + 60);
-        const sa = this.planets.positionSSB(this.model.sun.naifId, et - 60), sb = this.planets.positionSSB(this.model.sun.naifId, et + 60);
-        if (p && a && b && sa && sb) {
-          return [p[0] - sun[0], p[1] - sun[1], p[2] - sun[2],
-            (b[0] - sb[0] - a[0] + sa[0]) / 120, (b[1] - sb[1] - a[1] + sa[1]) / 120, (b[2] - sb[2] - a[2] + sa[2]) / 120];
-        }
-      }
-      return null;
-    });
   }
 
   /**
@@ -727,20 +754,25 @@ export class SmallBodyField {
   }
 
   /**
-   * Geometric SSB state (km, km/s, ICRF) of core record `index` at et from the float64 reference propagator (the
-   * same scheme; exact for close-ups and the inspector), or null (unknown position, lost, outside the ephemeris).
+   * Geometric heliocentric state (km, km/s, ICRF: as the tables; add the Sun's SSB state for SSB) of core record
+   * `index` at et from the float64 reference propagator (the same scheme; exact for close-ups and the inspector),
+   * or null (unknown or lost position, outside the ephemeris). Planetary-ephemeris objects (Pluto) come from the
+   * planetary ephemeris (999, else the system barycentre 9) minus the Sun.
    */
   stateOf(index: number, et: number): { pos: Vec3; vel: Vec3 } | null {
     if (!(index >= 0 && index < this.count)) return null;
     const sunId = this.model.sun.naifId;
-    const sun = this.planets.positionSSB(sunId, et);
-    const sa = this.planets.positionSSB(sunId, et - 1), sb = this.planets.positionSSB(sunId, et + 1);
-    if (!sun || !sa || !sb) return null;
-    const sv = [(sb[0] - sa[0]) / 2, (sb[1] - sa[1]) / 2, (sb[2] - sa[2]) / 2];
     if (this.extFlag[index]) {
+      const sun = this.planets.positionSSB(sunId, et);
+      const sa = this.planets.positionSSB(sunId, et - 60), sb = this.planets.positionSSB(sunId, et + 60);
       for (const id of PLUTO_IDS) {
         const p = this.planets.positionSSB(id, et), a = this.planets.positionSSB(id, et - 60), b = this.planets.positionSSB(id, et + 60);
-        if (p && a && b) return { pos: [p[0], p[1], p[2]], vel: [(b[0] - a[0]) / 120, (b[1] - a[1]) / 120, (b[2] - a[2]) / 120] };
+        if (p && a && b && sun && sa && sb) {
+          return {
+            pos: [p[0] - sun[0], p[1] - sun[1], p[2] - sun[2]],
+            vel: [0, 1, 2].map((k) => (b[k] - sb[k] - a[k] + sa[k]) / 120) as Vec3,
+          };
+        }
       }
       return null;
     }
@@ -758,10 +790,7 @@ export class SmallBodyField {
     this.stateCache.set(index, { m: mStar, st: st.slice() });
     if (this.stateCache.size > 16) this.stateCache.delete(this.stateCache.keys().next().value as number);
     if (et !== E0 + mStar * this.H && this.propagator.propagateOne(st, 0, E0 + mStar * this.H, et, E0, ng) !== SB_OK) return null;
-    return {
-      pos: [st[0] + sun[0], st[1] + sun[1], st[2] + sun[2]],
-      vel: [st[3] + sv[0], st[4] + sv[1], st[5] + sv[2]],
-    };
+    return { pos: [st[0], st[1], st[2]], vel: [st[3], st[4], st[5]] };
   }
 
   /** Test hook (options.debug): heliocentric double-single states at the last update's et, per core index. */
@@ -798,7 +827,7 @@ export class SmallBodyField {
 
   destroy(): void {
     for (const b of this.checkpoints.values()) b.destroy();
-    for (const b of [this.W, this.B, this.records, this.debugBuf, this.tableBuf, this.infoBuf, this.ngBuf, this.photBuf, this.stepUB, this.frameUB, this.fieldUB, this.pickOut, this.pickRead, ...this.pickU]) b?.destroy();
+    for (const b of [this.W, this.B, this.records, this.debugBuf, this.tableBuf, this.infoBuf, this.ngBuf, this.photBuf, this.stepUB, this.frameUB, this.fieldUB, this.pickOut, this.pickRead, this.counters, ...this.pickU, ...this.statsRead.map((r) => r.buf)]) b?.destroy();
     this.checkpoints.clear();
   }
 }

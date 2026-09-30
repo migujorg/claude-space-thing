@@ -653,6 +653,17 @@ export interface SmallBodyCoreHeader extends SmallBodyTableHeader {
   flagBits: Record<string, string>;
   /** Population statistic behind estimated diameters: measured p_V per SBDB orbit class ("*" = all). */
   classAlbedo: Record<string, { median: number; p16: number; p84: number; n: number }>;
+  /**
+   * Estimated colour of every asteroid without a measured spectrum: core field colorClass indexes `classes`
+   * (Bus-DeMeo class mean colours from smallbody-class-colors.json, then 'population'); 255 = comet.
+   */
+  colorClasses?: {
+    method: string;
+    sources: string[];
+    classes: { name: string; xyzsPerUnitPV: [number, number, number, number]; pVMedian: number | null }[];
+    counts?: Record<string, number>;
+    physicalFilled?: number;
+  };
   statistics: Record<string, unknown>;
   snapshot: string;
   names: string;
@@ -695,12 +706,6 @@ export interface PhaseBasisSpline {
   coefficients: number[][];
 }
 
-export interface SmallBodyColourStat {
-  cXYZS: [number, number, number, number];
-  sd: [number, number, number, number];
-  n: number;
-}
-
 /** smallbodies/photometry.json (pipeline stage sbphotometry): turning small-body magnitudes into light. */
 export interface SmallBodyPhotometry {
   vSun: Sourced<number>;
@@ -713,13 +718,7 @@ export interface SmallBodyPhotometry {
     shapeDerived: number;
     withSpectrum: number;
     yOverV: Record<string, number | string>;
-    populationMeans: {
-      method: string;
-      taxonomicClass: Record<string, SmallBodyColourStat>;
-      taxonomicComplex: Record<string, SmallBodyColourStat>;
-      orbitClass: Record<string, SmallBodyColourStat>;
-      all: SmallBodyColourStat;
-    };
+    estimatedColour: string;
   };
   comets: { method: string; label: Label };
   rules: Record<string, string>;

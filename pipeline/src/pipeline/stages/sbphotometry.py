@@ -9,8 +9,8 @@ Contents (every number from a downloaded file, or computed here from the built s
   - hg1g2: the H-G1-G2 basis functions (Muinonen et al. 2010) - spline nodes, values and end derivatives parsed from
     sbpy's implementation, plus the piecewise-cubic coefficients built with sbpy's own spline construction.
   - colour: the colour of an object relative to sunlight, c = geometricAlbedoXYZS / (p_V E_sun) per channel (for
-    Gaia-derived spectra; p_V cancels), its distribution (bounds the "brightness only" rule), and population means
-    per taxonomic class / complex / SBDB orbit class used as the estimated colour of objects without a spectrum.
+    Gaia-derived spectra; p_V cancels) and its distribution (bounds the "brightness only" rule). Objects without a
+    spectrum take the class colour of core.colorClass (smallbody-class-colors.json, via the smallbodies stage).
   - rules: the label rules the GPU field applies (strict / best / complete).
 Also writes app/tests/fixtures/smallbody_photometry.json: JPL Horizons APmag, r, Delta and phase angle for a few
 asteroids (fetched, sha256-recorded) with our catalogue H, G, for the photometry unit test.
@@ -70,7 +70,6 @@ HORIZONS_API = "https://ssd.jpl.nasa.gov/api/horizons.api"
 TEST_SPKIDS = (20000001, 20000004, 20000433, 20099942, 20001000, 20010000)
 TEST_EPOCHS_JD = (2460827.5, 2461313.5, 2461740.5)   # 2025-06-01, 2026-09-30, 2027-12-01 00:00 UT
 FIXTURE = Path(__file__).resolve().parents[4] / "app" / "tests" / "fixtures" / "smallbody_photometry.json"
-MIN_CLASS_SAMPLE = 20
 M, D, E, U = LABEL_CODE["measured"], LABEL_CODE["derived"], LABEL_CODE["estimated"], LABEL_CODE["unknown"]
 
 
@@ -188,36 +187,14 @@ def colour_tables(core_h: dict, core: np.ndarray, phys_h: dict, phys: np.ndarray
     pv_class = np.array([core_h["classAlbedo"].get(classes[k] if k < len(classes) else "", core_h["classAlbedo"]["*"])
                          ["median"] for k in ocls])
     pv = np.where(alab == M, phys["albedo"].astype(np.float64), pv_class)
-    has = (clab != U) & np.all(np.isfinite(xyzs), axis=1)
+    gaia = phys_h["sourceTable"].index("gaia-dr3-sso-reflectance")
+    has = (clab != U) & (phys["colorSrc"] == gaia) & np.all(np.isfinite(xyzs), axis=1)
     c = np.full((phys.size, 4), np.nan)
     c[has] = xyzs[has] / (pv[has, None] * sun[None, :])
     # Spectral shape measured without bridging a gap inside 418-814 nm: colorLabel derived, or (albedo not measured,
     # which alone makes colorLabel estimated) all 12 Gaia bands 374-858 nm used.
     shape_ok = has & ((clab == D) | ((alab != M) & (phys["gaiaBands"] == 12)))
 
-    def summary(sel: np.ndarray) -> dict:
-        v = c[sel]
-        return {"cXYZS": [float(x) for x in v.mean(axis=0)], "sd": [float(x) for x in v.std(axis=0, ddof=1)],
-                "n": int(sel.sum())}
-
-    tax_names = phys_h["taxonomySsodnet"]
-    tb = phys["taxonomyBft"]
-    tclass = np.array(["" if k == 0 else tax_names[k].split("|")[1].rstrip(":") for k in tb], dtype=object)
-    by_class, by_complex = {}, {}
-    for k in sorted(set(tclass[shape_ok]) - {""}):
-        sel = shape_ok & (tclass == k)
-        if sel.sum() >= MIN_CLASS_SAMPLE:
-            by_class[k] = summary(sel)
-    comp = np.array([t[:1].upper() for t in tclass], dtype=object)
-    for k in sorted(set(comp[shape_ok]) - {""}):
-        sel = shape_ok & (comp == k)
-        if sel.sum() >= MIN_CLASS_SAMPLE:
-            by_complex[k] = summary(sel)
-    by_orbit = {}
-    for k in sorted(set(ocls[shape_ok])):
-        sel = shape_ok & (ocls == k)
-        if sel.sum() >= MIN_CLASS_SAMPLE and k < len(classes):
-            by_orbit[classes[k]] = summary(sel)
     cy = c[shape_ok, 1]
     return {
         "definition": "c_k = geometricAlbedoXYZS_k / (p_V * sunIrradianceXYZS1AU_k), k = X, Y, Z, S, with p_V the "
@@ -235,15 +212,10 @@ def colour_tables(core_h: dict, core: np.ndarray, phys_h: dict, phys: np.ndarray
                    "p0.1": float(np.percentile(cy, 0.1)), "p1": float(np.percentile(cy, 1)),
                    "p50": float(np.percentile(cy, 50)), "p99": float(np.percentile(cy, 99)),
                    "p99.9": float(np.percentile(cy, 99.9)), "min": float(cy.min()), "max": float(cy.max())},
-        "populationMeans": {
-            "method": "Mean c over objects whose spectral shape is derived, grouped by the SsODNet best taxonomic "
-                      "class (physical.taxonomyBft, 'scheme|class|technique', trailing ':' dropped), by its complex "
-                      "(first letter), and by SBDB orbit class; groups with fewer than "
-                      f"{MIN_CLASS_SAMPLE} objects are omitted. Lookup for an object without a derived shape: its "
-                      "class, else its complex, else its orbit class, else all objects. Label estimated (a "
-                      "population statistic stands in for the object's own spectrum).",
-            "taxonomicClass": by_class, "taxonomicComplex": by_complex, "orbitClass": by_orbit,
-            "all": summary(shape_ok)},
+        "estimatedColour": "Objects without a Gaia spectrum use the class colour of core.colorClass: c = "
+                           "xyzsPerUnitPV / sunIrradianceXYZS1AU (header colorClasses of smallbodies/core.json, from "
+                           "smallbody-class-colors.json), label estimated. A Gaia spectrum whose shape is estimated "
+                           "(bridged gap) is still the object's own and is used at best/complete (label estimated).",
     }
 
 
@@ -371,8 +343,8 @@ def run(ctx: BuildContext) -> None:
                       "Sun's colour (c = 1), i.e. neutral - Y is then off by the object's c_Y (colour.yOverV bounds "
                       "it), X, Z, S by its unknown colour. Comets are not drawn (estimated brightness).",
             "best": "Also estimated inputs: G = 0.15, H-G1-G2 outside its fitted range, estimated positions, the "
-                    "estimated colour (Gaia spectrum with a bridged gap, else the population mean of colour."
-                    "populationMeans), and comet magnitude laws.",
+                    "estimated colour (Gaia spectrum with a bridged gap, else the class colour of core.colorClass), "
+                    "and comet magnitude laws.",
             "complete": "As best (no synthetic small bodies yet).",
             "lightTime": "Position back-dated by the light time tau = Delta / c to first order: x(t - tau) = x(t) - "
                          "v(t) tau (SSB velocity), with Delta from the geometric position.",
@@ -393,6 +365,5 @@ def run(ctx: BuildContext) -> None:
                          for a in (0.0, 0.2, 1.0, 5.0, 7.5, 10.0, 25.0, 45.0, 90.0, 140.0, 160.0)
                          for g1, g2 in ((0.62, 0.14), (0.25, 0.4), (0.9, 0.05))]
     FIXTURE.write_text(json.dumps(fx, indent=1))
-    print(f"[{STAGE}] photometry.json: {colour['shapeDerived']} derived colour shapes, "
-          f"{len(colour['populationMeans']['taxonomicClass'])} taxonomic classes; c_Y p1..p99 = "
+    print(f"[{STAGE}] photometry.json: {colour['shapeDerived']} derived colour shapes; c_Y p1..p99 = "
           f"{colour['yOverV']['p1']:.4f}..{colour['yOverV']['p99']:.4f}; fixture {FIXTURE.name}")

@@ -328,6 +328,11 @@ export class Renderer {
     this.visible = this.device.createBuffer({ size: this.maxVisible * 32, usage: GPUBufferUsage.STORAGE });
   }
 
+  /** The renderer's device, for GPU producers of extra point sources (e.g. the small-body field). */
+  get gpuDevice(): GPUDevice {
+    return this.device;
+  }
+
   /** Extra point sources (star-layout records produced on the GPU, e.g. small bodies) drawn through the star path; null removes them. See ./extraPoints.ts. */
   setExtraPointSources(src: PointSourceBuffer | null): void {
     (this.extraPts ??= new ExtraPointSources(this.device)).set(src);

@@ -105,7 +105,8 @@ export function fromHalf(h: number): number {
 }
 
 // ------------------------------------------------------------------------------------------------ per object
-export type ColourMethod = 'gaia' | 'taxonomicClass' | 'taxonomicComplex' | 'orbitClass' | 'all' | 'sun';
+/** gaia: the object's Gaia DR3 spectrum; class: the mean colour of its class (core colorClass); sun: none known. */
+export type ColourMethod = 'gaia' | 'class' | 'sun';
 
 export interface SmallBodyLightParams {
   model: number;
@@ -155,6 +156,8 @@ export class SmallBodyLight {
   private readonly classCodes: string[];
   private readonly classAlbedo: SmallBodyCoreHeader['classAlbedo'];
   private readonly vFilter: number;
+  private readonly gaiaSrc: number;
+  private readonly classColour: ([number, number, number, number] | null)[];
   /** Columns read per object (a BinaryColumn get is a typed-array read). */
   private readonly cc: Record<string, BinaryColumn>;
   private readonly pc: Record<string, BinaryColumn>;
@@ -182,10 +185,14 @@ export class SmallBodyLight {
     const filters = this.physH?.phaseFilters ?? [];
     this.vFilter = filters.indexOf('V');
     const cols = (t: BinaryTable | null, names: string[]) => Object.fromEntries(t ? names.filter((n) => t.has(n)).map((n) => [n, t.column(n)]) : []);
-    this.cc = cols(this.core, ['posLabel', 'flags', 'physRow', 'H', 'G', 'hLabel', 'gLabel', 'orbitClass']);
+    this.cc = cols(this.core, ['posLabel', 'flags', 'physRow', 'H', 'G', 'hLabel', 'gLabel', 'orbitClass', 'colorClass']);
     this.pc = cols(this.phys, ['phaseFilter', 'phaseLabel', 'phaseH', 'phaseG1', 'phaseG2', 'phaseMinDeg', 'phaseMaxDeg', 'colorLabel',
-      'geometricAlbedoXYZS', 'albedoLabel', 'albedo', 'gaiaBands', 'taxonomyBft']);
+      'colorSrc', 'geometricAlbedoXYZS', 'albedoLabel', 'albedo', 'gaiaBands']);
     this.mc = cols(this.comets, ['M1', 'K1', 'M2', 'K2', 'PC']);
+    this.gaiaSrc = t.physicalHeader?.sourceTable?.indexOf('gaia-dr3-sso-reflectance') ?? -1;
+    const sun = this.sun;
+    this.classColour = (t.coreHeader.colorClasses?.classes ?? []).map((c) =>
+      c.xyzsPerUnitPV.every(Number.isFinite) ? (c.xyzsPerUnitPV.map((v, k) => v / sun[k]) as [number, number, number, number]) : null);
     this.coreLabels = t.coreHeader.labelEncoding ?? LABEL_ORDER;
     this.physLabels = t.physicalHeader?.labelEncoding ?? LABEL_ORDER;
   }
@@ -232,8 +239,8 @@ export class SmallBodyLight {
         Object.assign(out, { model: MODEL_HG, h: H, p1: G, labelIn: l, labelOut: l });
       }
     }
-    // Colour: the object's Gaia spectrum, else a population mean.
-    if (p) {
+    // Colour: the object's Gaia spectrum, else the mean colour of its class (smallbody-class-colors via core colorClass).
+    if (p && P.colorSrc && P.colorSrc.get(pr) === this.gaiaSrc) {
       const cl = pl0('colorLabel', pr);
       const x = P.geometricAlbedoXYZS;
       const v = [x.get(pr, 0), x.get(pr, 1), x.get(pr, 2), x.get(pr, 3)];
@@ -247,18 +254,12 @@ export class SmallBodyLight {
         return out;
       }
     }
-    const pm = this.phot.colour.populationMeans;
-    const tax = p ? this.taxonomy(pr) : '';
-    const cls = this.classCodes[C.orbitClass.get(i)] ?? '';
-    let m: [ColourMethod, { cXYZS: [number, number, number, number] } | undefined][] = [
-      ['taxonomicClass', tax ? pm.taxonomicClass[tax] : undefined],
-      ['taxonomicComplex', tax ? pm.taxonomicComplex[tax.slice(0, 1).toUpperCase()] : undefined],
-      ['orbitClass', pm.orbitClass[cls]],
-      ['all', pm.all],
-    ];
-    m = m.filter(([, s]) => s);
-    out.colour = [...m[0][1]!.cXYZS];
-    out.colourMethod = m[0][0];
+    const k = C.colorClass ? C.colorClass.get(i) : 255;
+    const cc = this.classColour[k];
+    if (cc) {
+      out.colour = [...cc];
+      out.colourMethod = 'class';
+    }
     out.colourLabel = 'estimated';
     return out;
   }
@@ -266,13 +267,6 @@ export class SmallBodyLight {
   private classPv(k: number): number {
     const code = this.classCodes[k];
     return (this.classAlbedo[code] ?? this.classAlbedo['*']).median;
-  }
-
-  private taxonomy(pr: number): string {
-    const k = this.pc.taxonomyBft?.get(pr) ?? 0;
-    if (!k) return '';
-    const names = this.physH?.taxonomySsodnet ?? [];
-    return (names[k] ?? '').split('|')[1]?.replace(/:+$/, '') ?? '';
   }
 
   /**

@@ -4,7 +4,7 @@
 
 import { BinaryTable } from './binaryTable';
 import type { DataLoader, Progress } from './load';
-import type { Manifest, SmallBodyCoreHeader, SmallBodyNamesHeader, SmallBodyPhysicalHeader, SmallBodyTableHeader } from './schema';
+import type { Manifest, SmallBodyCoreHeader, SmallBodyNamesHeader, SmallBodyPhotometry, SmallBodyPhysicalHeader, SmallBodyTableHeader } from './schema';
 
 export interface SmallBodyProducts {
   /** Header product paths, from the manifest. */
@@ -13,6 +13,8 @@ export interface SmallBodyProducts {
   comets: string | null;
   nongrav: string | null;
   names: string | null;
+  /** smallbodies/photometry.json (magnitude laws, colours) for the GPU field. */
+  photometry?: string | null;
   /** Every smallbodies/* product path (for the report). */
   all: string[];
   /** Bytes of the tables loaded in the background (headers + binaries, names excluded). */
@@ -35,6 +37,7 @@ export function discoverSmallBodies(manifest: Manifest | null): SmallBodyProduct
     comets: has('smallbodies/comets.json'),
     nongrav: has('smallbodies/nongrav.json'),
     names: has('smallbodies/names.json'),
+    photometry: has('smallbodies/photometry.json'),
     all,
     tableBytes,
     namesBytes,
@@ -53,6 +56,7 @@ export interface SmallBodyTables {
   comets: SmallBodyTable | null;
   nongrav: SmallBodyTable | null;
   namesHeader: SmallBodyNamesHeader | null;
+  photometry?: SmallBodyPhotometry | null;
   /** core row → comets / nongrav record (physical rows come from core.physRow). */
   cometRow: Map<number, number>;
   nongravRow: Map<number, number>;
@@ -89,12 +93,15 @@ export async function loadSmallBodyTables(L: SmallBodyLoader, p: SmallBodyProduc
   const comets = await table(p.comets, 'No comet magnitude laws.');
   const nongrav = await table(p.nongrav, 'Comets and asteroids with non-gravitational forces are propagated without them.');
   const namesHeader = await loadSmallBodyNamesHeader(L, p);
+  const photometry = p.photometry
+    ? await L.get(p.photometry, (b) => json(b) as SmallBodyPhotometry, 'Small bodies cannot be drawn: their brightness laws are missing.')
+    : null;
   const rowMap = (t: SmallBodyTable | null) => {
     const m = new Map<number, number>();
     if (t?.table.has('row')) for (let k = 0; k < t.table.count; k++) m.set(t.table.get('row', k), k);
     return m;
   };
-  return { core, physical, comets, nongrav, namesHeader, cometRow: rowMap(comets), nongravRow: rowMap(nongrav), count: core.table.count };
+  return { core, physical, comets, nongrav, namesHeader, photometry, cometRow: rowMap(comets), nongravRow: rowMap(nongrav), count: core.table.count };
 }
 
 const namesHeaders = new WeakMap<object, Promise<SmallBodyNamesHeader | null>>();
