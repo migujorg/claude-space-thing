@@ -769,7 +769,10 @@ export interface ShapeModelHeader {
   frame: { name: string; origin: string; axes: string };
   /**
    * Orientation provenance: `frame`, the SPICE kernels that define it for the source, the rotation constants
-   * behind it (`sourceRotation`: POLE_RA/POLE_DEC [deg, deg/century, deg/century²], PM [deg, deg/day, deg/day²]),
+   * behind it (`sourceRotation`: POLE_RA/POLE_DEC [deg, deg/century, deg/century²], PM [deg, deg/day, deg/day²],
+   * and where the kernel has them NUT_PREC_RA/DEC/PM with the system's NUT_PREC_ANGLES and MAX_PHASE_DEGREE, as
+   * SPICE evaluates them; for a frame without constants of its own, e.g. ROS_LUTETIA, the equivalent constant pole
+   * and uniform rate, `derived`),
    * the app's frame for the body (`appFrame`, pck00011) and its constants, the angle between the two frames at
    * given epochs (`differenceDeg`, `poleDifferenceDeg`), and for radar models the published spin state.
    */

@@ -31,7 +31,10 @@ def _rotations(kernels: list[Path], frame: str, ets: list[float]) -> list[np.nda
 
 
 def _constants(kernels: list[Path], frame: str) -> dict | None:
-    """Rotation constants (POLE_RA, POLE_DEC, PM polynomials) behind a PCK-class frame, if in a text kernel."""
+    """Rotation constants behind a PCK-class frame, if in a text kernel: POLE_RA, POLE_DEC (deg, deg/century,
+    deg/century²), PM (deg, deg/day, deg/day²) and, where the body has them, the nutation/precession terms
+    NUT_PREC_RA/DEC/PM with its system's NUT_PREC_ANGLES (deg, deg/century[, deg/century²]) and MAX_PHASE_DEGREE,
+    exactly as SPICE evaluates them (BODEUL)."""
     import spiceypy as sp
     sp.kclear()
     try:
@@ -47,11 +50,57 @@ def _constants(kernels: list[Path], frame: str) -> dict | None:
         for item in ("POLE_RA", "POLE_DEC", "PM"):
             n, vals = sp.bodvcd(clsid, item, 3)
             out[item] = [float(v) for v in vals[:n]]
+        terms = {}
+        for item in ("NUT_PREC_RA", "NUT_PREC_DEC", "NUT_PREC_PM"):
+            if sp.bodfnd(clsid, item):
+                n, vals = sp.bodvcd(clsid, item, 100)
+                terms[item] = [float(v) for v in vals[:n]]
+        if terms:
+            # the system's phase angles: planetary satellites use their barycentre's (e.g. BODY4 for 401)
+            bary = clsid // 100 if 100 < clsid < 1000 else clsid
+            n, vals = sp.bodvcd(bary, "NUT_PREC_ANGLES", 1000)
+            out.update(terms)
+            out["NUT_PREC_ANGLES"] = [float(v) for v in vals[:n]]
+            out["MAX_PHASE_DEGREE"] = int(sp.bodvcd(bary, "MAX_PHASE_DEGREE", 1)[1][0]) if sp.bodfnd(
+                bary, "MAX_PHASE_DEGREE") else 1
+            out["NUT_PREC_BODY"] = int(bary)
         return out
     except Exception:  # noqa: BLE001 - absent constants are reported as None
         return None
     finally:
         sp.kclear()
+
+
+def iau_matrix(c: dict, et: float) -> np.ndarray:
+    """J2000 → body-fixed rotation from a `sourceRotation`/`appRotation` block (as SPICE BODEUL/TISBOD)."""
+    d = et / 86400.0
+    t = d / 36525.0
+
+    def poly(v, x):
+        return sum(a * x ** k for k, a in enumerate(v))
+
+    ra, dec, w = poly(c["POLE_RA"], t), poly(c["POLE_DEC"], t), poly(c["PM"], d)
+    if "NUT_PREC_ANGLES" in c:
+        stride = c.get("MAX_PHASE_DEGREE", 1) + 1
+        ang = c["NUT_PREC_ANGLES"]
+        for key, fn, tgt in (("NUT_PREC_RA", math.sin, "ra"), ("NUT_PREC_DEC", math.cos, "dec"),
+                             ("NUT_PREC_PM", math.sin, "w")):
+            for i, a in enumerate(c.get(key, [])):
+                th = math.radians(poly(ang[i * stride:(i + 1) * stride], t))
+                if tgt == "ra":
+                    ra += a * fn(th)
+                elif tgt == "dec":
+                    dec += a * fn(th)
+                else:
+                    w += a * fn(th)
+
+    def rot(axis, a):
+        ca, sa = math.cos(a), math.sin(a)
+        if axis == 3:
+            return np.array([[ca, sa, 0], [-sa, ca, 0], [0, 0, 1.0]])
+        return np.array([[1.0, 0, 0], [0, ca, sa], [0, -sa, ca]])
+
+    return rot(3, math.radians(w)) @ rot(1, math.radians(90 - dec)) @ rot(3, math.radians(90 + ra))
 
 
 def _pole_and_w(r: np.ndarray) -> tuple[float, float, float]:

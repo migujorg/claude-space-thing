@@ -169,28 +169,8 @@ def build_one(ctx: BuildContext, src: ShapeSource, radii: dict, pck11: Path, kee
         scale = {**ref, "volumeEquivalentRadiusKm": round(req, 5),
                  "ratio": round(req / ref["referenceMeanRadiusKm"], 4)}
 
-    # orientation
-    kpaths = [fetch(u, f"shapes/{src.key}/kernels") for u in src.kernels]
-    orient = so.compare_isolated(kpaths, src.frame, pck11, src.naif, src.compare_epochs) if (
-        src.kind == "spacecraft") else {"frame": src.frame}
-    if src.frame_note:
-        orient["note"] = src.frame_note
-    if info.get("segments"):
-        orient["dskSegments"] = info["segments"]
-    if src.rotation:
-        orient["labelRotation"] = src.rotation
-    if src.spin_url:
-        sp_path = fetch(src.spin_url, f"shapes/{src.key}")
-        lab_path = fetch(src.spin_url.rsplit(".", 1)[0] + ".xml", f"shapes/{src.key}")
-        orient["spinState"] = {"file": sp_path.name, "fields": parse_spin(sp_path, lab_path),
-                               "frame": "ecliptic J2000 pole; rotational phase at the zero epoch (UTC) as defined "
-                                        "in the source label"}
-        paths += [sp_path, lab_path]
-    orient["label"] = orientation_label(src, orient)
-
-    files = {p.name: record(p) for p in paths}
-    for k in kpaths:
-        files[k.name] = record(k)
+    orient, ofiles = orientation_block(src, pck11, info.get("segments"))
+    files = {p.name: record(p) for p in [*paths, *ofiles]}
     if sb_path:
         files[sb_path.name] = record(sb_path)
     sid = register_dataset(ctx, f"shape-{src.key}", f"{src.name} shape model", src.citation, src.url, files,
@@ -239,10 +219,47 @@ UNCERTAINTY = {
 def orientation_label(src: ShapeSource, orient: dict) -> str:
     """measured: the frame is defined by the mission's measured rotation model (or the spin state of the radar
     fit); unknown: no rotation model valid today (Hyperion's chaotic rotation, 67P's perihelion-to-perihelion spin
-    changes, radar models without spin state)."""
-    if src.key in ("hyperion", "67p") or (src.kind == "radar" and not src.spin_url and src.key != "toutatis"):
+    changes, radar models without spin state, e.g. the tumbling Toutatis)."""
+    if src.key in ("hyperion", "67p") or (src.kind == "radar" and not src.spin_url):
         return "unknown"
     return "measured"
+
+
+def orientation_block(src: ShapeSource, pck11: Path, segments: list | None) -> tuple[dict, list[Path]]:
+    """The header's `orientation` block and the files it was made from (kernels, spin-state CSV and label)."""
+    kpaths = [fetch(u, f"shapes/{src.key}/kernels") for u in src.kernels]
+    orient = so.compare_isolated(kpaths, src.frame, pck11, src.naif, src.compare_epochs) if (
+        src.kind == "spacecraft") else {"frame": src.frame}
+    if src.frame_note:
+        orient["note"] = src.frame_note
+    if segments:
+        orient["dskSegments"] = segments
+    if src.rotation:
+        orient["labelRotation"] = src.rotation
+    files = list(kpaths)
+    if src.spin_url:
+        sp_path = fetch(src.spin_url, f"shapes/{src.key}")
+        lab_path = fetch(src.spin_url.rsplit(".", 1)[0] + ".xml", f"shapes/{src.key}")
+        orient["spinState"] = {"file": sp_path.name, "fields": parse_spin(sp_path, lab_path),
+                               "frame": "ecliptic J2000 pole; rotational phase at the zero epoch (UTC) as defined "
+                                        "in the source label"}
+        files += [sp_path, lab_path]
+    orient["label"] = orientation_label(src, orient)
+    return orient, files
+
+
+def reorient_one(ctx: BuildContext, src: ShapeSource, pck11: Path, header: dict) -> dict:
+    """Recompute the orientation block (and the notes) of an existing header without touching its mesh."""
+    orient, _ = orientation_block(src, pck11, header["orientation"].get("dskSegments"))
+    header["orientation"] = orient
+    s = header["source"]
+    removed = s["nativeTriangles"] - s.get("weldedTriangles", s["nativeTriangles"])
+    header["notes"] = list(src.notes) + topology_notes(s["integrity"], header["lods"], removed)
+    write_json(ctx, f"shapes/{header['id']}.json", header, STAGE)
+    sr = orient.get("sourceRotation")
+    extra = f", source rotation {'with' if sr and 'NUT_PREC_ANGLES' in sr else 'without'} nutation terms" if sr else ""
+    print(f"[shapes] {src.name}: orientation {orient['label']}{extra}")
+    return header
 
 
 def summarize(headers: list[dict]) -> dict:
