@@ -38,7 +38,8 @@ def test_entries_match_schema(built):
         sm = e.get("spatialModel")
         if sm is not None:     # schema.ts SpatialPhotometricModel: only the fields the renderer reads
             v = sm["value"]
-            allowed = {"minnaert": {"kind", "k", "validPhaseDeg"},
+            allowed = {"minnaert": {"kind", "k", "validPhaseDeg"}, "barkstrom": {"kind", "B", "validPhaseDeg"},
+                       "akimov": {"kind", "validPhaseDeg"},
                        "hapke": {"kind", "w", "b", "c", "bs0", "hs", "bc0", "hc", "thetaBarDeg", "K", "hFunction",
                                  "validPhaseDeg"}}
             assert v["kind"] in allowed and set(v) <= allowed[v["kind"]], key
