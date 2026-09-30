@@ -38,8 +38,10 @@ def sha256_file(path: Path) -> str:
 
 
 def fetch(url: str, subdir: str, name: str | None = None, *, params: dict | None = None,
-          retries: int = 4, timeout: float = 120.0) -> Path:
-    """Download url to data/raw/<subdir>/<name> unless already present. Returns the local path."""
+          retries: int = 4, timeout: float = 120.0, headers: dict | None = None) -> Path:
+    """Download url to data/raw/<subdir>/<name> unless already present. Returns the local path.
+
+    `headers` (e.g. a User-Agent some APIs ask for) are sent but not recorded: they do not change the content."""
     name = name or url.rstrip("/").split("/")[-1]
     dest = RAW / subdir / name
     ledger = _load_ledger()
@@ -51,7 +53,7 @@ def fetch(url: str, subdir: str, name: str | None = None, *, params: dict | None
     delay = 2.0
     for attempt in range(retries + 1):
         try:
-            with requests.get(url, params=params, stream=True, timeout=timeout) as r:
+            with requests.get(url, params=params, stream=True, timeout=timeout, headers=headers) as r:
                 r.raise_for_status()
                 with tmp.open("wb") as f:
                     for chunk in r.iter_content(1 << 20):
