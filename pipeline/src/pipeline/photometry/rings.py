@@ -10,10 +10,9 @@ Per planet, the ring plane is the planet's equator (IAU pole in bodies.json) and
   Neptune  Voyager 2 PPS σ Sgr ingress occultation (PDS VG_2801), whole ring system at 5 km.
   Jupiter  unknown (τ ~ 1e-6 dust ring; no machine-readable profile).
 
-Reflectance of the lit face (I/F vs radius, colour, phase and tilt dependence) is unknown for every system: the
-measurements (Cassini ISS/VIMS radial scans, HST: Filacchione et al. 2012, Cuzzi et al. 2018, Salo & French 2010) are
-published as figures, not tables, and deriving them from calibrated images needs per-pixel geometry this pipeline does
-not yet compute.
+Reflectance: Saturn's is a single-scattering ring model calibrated on Voyager ISS radial I/F profiles (lit and unlit
+faces) and HST phase curves (Salo & French 2010), with those measurements alongside (ring_reflectance.py). Jupiter's,
+Uranus's and Neptune's are unknown: no calibrated machine-readable reflectance measurement was found.
 
 Occultation optical depth is wavelength independent for particles much larger than the wavelength (the 110-190 nm UVIS
 and 264 nm PPS profiles apply in the visible). In the A and B rings self-gravity wakes make the line-of-sight optical
@@ -146,12 +145,10 @@ def voyager_profile(pair, name: str, ctx: BuildContext | None, step: float) -> t
     return js, srcs, Profile(js, r, tau, float(np.median(0.5 * (hi - lo))))
 
 
-REFLECTANCE_UNKNOWN = (
-    "No machine-readable measurement of the lit-face reflectance (I/F vs radius, colour, phase and ring-opening "
-    "dependence) was available: Cassini ISS/VIMS radial scans (e.g. Filacchione et al. 2012, Icarus 220, 1064) and "
-    "HST spectra and phase curves (Cuzzi et al. 2018, Icarus 309, 363; Salo & French 2010, Icarus 210, 785) are "
-    "published as figures. Deriving I/F from calibrated Cassini images (PDS COISS_2xxx) needs per-pixel ring geometry "
-    "that this pipeline does not yet compute.")
+URANUS_REFLECTANCE_UNKNOWN = (
+    "No machine-readable measurement of the Uranian rings' reflectance (I/F vs radius, colour, phase) was available: "
+    "the PDS Ring-Moon Systems Node's Voyager ring-profile volumes (VG_28xx) hold imaging I/F profiles for Saturn "
+    "only, and Karkoschka's (2001, Icarus 151, 51) HST ring photometry is not openly accessible here.")
 
 
 def rings_json(ctx: BuildContext | None = None) -> tuple[dict, dict]:
@@ -174,9 +171,13 @@ def rings_json(ctx: BuildContext | None = None) -> tuple[dict, dict]:
             uncertainty="photon noise: 25 % at maxTau, much smaller where τ⊥ is well below it; in the A and B rings "
                         "the line-of-sight optical depth varies with viewing azimuth and elevation by tens of percent "
                         "(self-gravity wakes), which a single τ⊥ profile does not capture"),
-        "reflectance": unknown(REFLECTANCE_UNKNOWN),
     }
+    from . import ring_reflectance
+    refl, model = ring_reflectance.model_json(ctx)
+    out["699"].update(refl)
+    out["699"]["reflectanceMeasurements"] = ring_reflectance.measurements_json(ctx)
     diag["699"] = prof
+    diag["699-model"] = model
     js, srcs, prof = voyager_profile(VG_URANUS, "ring system (6, 5, 4, α, β, η, γ, δ, λ, ε)", ctx, 1.0)
     ob = js["observation"]
     out["799"] = {
@@ -190,15 +191,7 @@ def rings_json(ctx: BuildContext | None = None) -> tuple[dict, dict]:
                    "this is one cut.",
             uncertainty=f"median half-width of the archived 68 % confidence interval ±{prof.noise:.3f} in τ⊥ per "
                         "1 km bin (the archive gives the interval per bin)"),
-        "reflectance": unknown(REFLECTANCE_UNKNOWN.replace("Cassini ISS/VIMS radial scans (e.g. Filacchione et al. "
-                                                           "2012, Icarus 220, 1064) and HST spectra and phase curves "
-                                                           "(Cuzzi et al. 2018, Icarus 309, 363; Salo & French 2010, "
-                                                           "Icarus 210, 785) are published as figures. Deriving I/F "
-                                                           "from calibrated Cassini images (PDS COISS_2xxx) needs "
-                                                           "per-pixel ring geometry that this pipeline does not yet "
-                                                           "compute.",
-                                                           "Karkoschka's (2001, Icarus 151, 51) HST ring photometry "
-                                                           "is not openly accessible here.")),
+        "reflectance": unknown(URANUS_REFLECTANCE_UNKNOWN),
     }
     diag["799"] = prof
     js, srcs, prof = voyager_profile(VG_NEPTUNE, "ring system", ctx, 5.0)

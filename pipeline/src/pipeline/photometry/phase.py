@@ -3,7 +3,8 @@
 Sources:
   Mercury..Neptune  Mallama & Hilton (2018) V-band equations (tables/mallama_hilton_2018.json), checked against the
                     authors' reference code Ap_Mag_V3.f90.
-  Moon              Lane & Irvine (1973) Table V, V passband (tables/lane_irvine_1973_phase.csv).
+  Moon              ROLO model (Kieffer & Stone 2005; photometry/rolo.py) for 1.55-97°, Lane & Irvine (1973) Table V
+                    V passband (tables/lane_irvine_1973_phase.csv) joined to it for 97-120°.
   Pluto             Buie et al. (2010) linear V phase coefficient over 0.36-1.74 deg (tables/buie_2010a_pluto.json).
 
 `deltaMag`/`coeffs` are magnitudes added to the zero-phase magnitude, so Φ(α) = 10^(-0.4 Δm(α)).
@@ -234,15 +235,7 @@ def phase_for(naif: int, ctx: BuildContext | None = None) -> Phase:
                      "Ap_Mag_V3/Horizons apply it only above α = 1.9° (≤ 0.015 mag difference).",
                      zero_phase_V10=MH["bodies"]["899"]["V10_zero_phase"])
     if naif == 301:
-        src = LANE_IRVINE.register(ctx) if ctx else LANE_IRVINE.id
-        a, dm = _lane_irvine_phase()
-        return Phase({"kind": "tabulated", "alphaDeg": a, "deltaMag": dm}, "measured", [src],
-                     "Lane & Irvine (1973) Table V, V passband: phase curve of the whole lunar disk from 1965 "
-                     "photoelectric photometry (6° ≤ α ≤ 120°, mostly before full Moon), linear fit to α ≤ 40° and "
-                     "cubic beyond, tabulated every 10°. The 0° point is a linear extrapolation that EXCLUDES the "
-                     "opposition surge (tens of percent brighter at α < 5°), consistently with the geometric albedo "
-                     "used for this body. Waxing/waning differences (≤ 0.1 mag) are averaged over.",
-                     "~0.05 mag per observation (paper Sec. II)", zero_phase_V10=None)
+        return _moon(ctx)
     if naif == 999:
         src = BUIE.register(ctx) if ctx else BUIE.id
         t = read_table_json("buie_2010a_pluto.json")["pluto"]
@@ -256,6 +249,42 @@ def phase_for(naif: int, ctx: BuildContext | None = None) -> Phase:
                      "here (New Horizons phase curves were not available in machine-usable form).",
                      f"±{t['beta_V_err']} mag/deg")
     raise KeyError(naif)
+
+
+def _moon(ctx: BuildContext | None) -> Phase:
+    """ROLO (Kieffer & Stone 2005) for 1.55-97°, Lane & Irvine's (1973) shape beyond, relative to the Lane & Irvine
+    albedo that geometricAlbedoXYZS keeps (photometry/rolo.py)."""
+    from . import rolo
+    from .. import cie
+    from . import solar
+    src_li = LANE_IRVINE.register(ctx) if ctx else LANE_IRVINE.id
+    src_rolo = rolo.ROLO.register(ctx) if ctx else rolo.ROLO.id
+    common = ([solar.HSRS.register(ctx), *cie.register_sources(ctx)] if ctx else
+              [solar.HSRS.id, cie.SOURCE_CMF, cie.SOURCE_SCOTOPIC])
+    p_y = rolo.lane_irvine_py(ctx)
+    a, dm = _lane_irvine_phase()
+    t = rolo.phase_table(p_y, a, dm)
+    fn = t["function"]
+    m = rolo.channel_model()
+    return Phase(
+        fn, "estimated", [src_rolo, src_li, *common],
+        "Φ(α) = A_Y(α)/p_Y. 1.55° ≤ α ≤ 97°: A_Y is the ROLO whole-Moon reflectance (Kieffer & Stone 2005 Eq. 10, "
+        "version 311g, fitted to USGS Robotic Lunar Observatory photometry in 32 bands; see diskReflectanceModel, "
+        "which also has libration and waxing/waning) for the Y channel at zero libration, geometric mean of the "
+        "waxing and waning Moon (the waxing Moon is brighter: "
+        f"{m.ln_a(60.0, 60.0)[1] - m.ln_a(60.0, -60.0)[1]:.2f} in ln A at 60°), "
+        f"divided by the Lane & Irvine albedo p_Y = {p_y:.4f} that geometricAlbedoXYZS keeps. It includes the "
+        "opposition surge down to 1.55° (Φ > 1 below 2°: brighter than Lane & Irvine's surge-free extrapolation). "
+        "97-120°: Lane & Irvine's (1973) measured V curve (Table V), shifted by "
+        f"{t['tail_shift_mag']:+.3f} mag to join ROLO at 97° (assumption: their shape with ROLO's level; hence "
+        "'estimated' for the whole curve). Tabulated (linear interpolation in magnitudes, error < 0.002 mag). Below "
+        "1.55° (eclipse geometry from Earth) and beyond 120° the curve is unknown. As a single α-only curve it "
+        "describes the near side as seen from Earth.",
+        "ROLO: mean absolute fit residual 0.0096 in ln A; absolute scale uncertain by several percent (paper Sec. "
+        "4.3, 5). Beyond 97°: Lane & Irvine ~0.05 mag per observation plus the join. Libration changes the "
+        "brightness by up to 7 % or more over a Saros cycle (paper Sec. 4.1) and waxing vs waning by ~10 % at 60° (use "
+        "diskReflectanceModel for those).",
+        zero_phase_V10=None)
 
 
 def delta_mag(pf: dict, alpha: float) -> float | None:

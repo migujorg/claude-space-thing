@@ -12,3 +12,7 @@ Band averages weight by T(λ)·E☉(λ) on the TSIS-1 HSRS air-wavelength grid (
 - `MEX/HRSC.{Blue,Green,Red,NIR}`: filter + CCD + instrument (Jaumann, R. et al. 2007, *Planetary and Space Science* 55, 928–952, DOI [10.1016/j.pss.2006.12.003](https://doi.org/10.1016/j.pss.2006.12.003)). They are used for Phobos (Fornasier et al. 2024).
 
 For these, band averages weight by T(λ)·E☉(λ)·λ, which is how a photon-counting detector integrates (Mayorga et al. 2020, Eq. 7).
+
+**Ring photometry (M3)**:
+- `HST/WFPC2-PC.{F336W,F439W,F555W,F675W,F814W}` (`svo-hst-wfpc2-pc-*`): filter + CCD + instrument throughput as tabulated by STScI synthetic photometry and distributed by SVO. These are photon counters (SVO DetectorType 1), weighted by T·E☉·λ. Effective wavelengths for sunlight: 337.6, 434.4, 548.5, 671.9 and 797.5 nm. They are used to integrate Salo & French's (2010) HST ring phase curves to CIE channels (salo-french-2010.md). The PC and WF curves differ by < 1 nm in effective wavelength.
+- `Voyager/ISS-NAC.Clear` (`svo-voyager-iss-nac-clear`): the Voyager narrow-angle camera's clear-filter relative response (Smith, B. A. et al. 1977, *Space Science Reviews* 21, 103–127, DOI [10.1007/BF00200847](https://doi.org/10.1007/BF00200847)). SVO lists it as an energy counter; its effective wavelength for sunlight is 474.5 nm. It is used to put the HST-derived ϖP into the band of the Voyager ring profiles (voyager-iss-ring-profiles.md).

@@ -185,11 +185,41 @@ export interface BodyPhotometry {
   geometricAlbedoV: Sourced<number>;
   /** Disk-integrated phase function. */
   phaseFunction: Sourced<PhaseFunction>;
+  /** Optional refinement with more geometry than the phase angle (the Moon: ROLO, with libration and the
+   *  waxing/waning asymmetry). Inside its domain it gives the disk-integrated illuminance directly, in place of
+   *  geometricAlbedoXYZS · Φ(α); see docs/architecture.md §4.3. */
+  diskReflectanceModel?: Sourced<DiskReflectanceModel>;
+}
+
+/** Whole-disk reflectance A_c per channel (X, Y, Z, scotopic) vs viewing geometry, in the form of Kieffer & Stone
+ *  (2005) Eq. 10. Illuminance at the observer E_c = A_c · E☉,c(1 AU)/d² · (radiusKm/Δ)². `formula` gives the
+ *  expression and the units (radians in the polynomial terms, degrees elsewhere). */
+export interface DiskReflectanceModel {
+  kind: 'rolo-v1';
+  formula: string;
+  /** Per channel X, Y, Z, scotopic: [a0, a1, a2, a3]. */
+  a: number[][];
+  /** Per channel: [b1, b2, b3]. */
+  b: number[][];
+  /** Per channel: [d1, d2, d3]. */
+  d: number[][];
+  /** Shared by all channels: [c1, c2, c3, c4] (libration) and [p1, p2, p3, p4] (degrees). */
+  c: [number, number, number, number];
+  p: [number, number, number, number];
+  radiusKm: number;
+  /** Domain: minPhaseDeg ≤ α ≤ maxPhaseDeg, |observer selenographic latitude| ≤ maxObserverLatitudeDeg and
+   *  |longitude| ≤ maxObserverLongitudeDeg; outside it the model does not apply. */
+  minPhaseDeg: number;
+  maxPhaseDeg: number;
+  maxObserverLatitudeDeg: number;
+  maxObserverLongitudeDeg: number;
 }
 
 export type PhaseFunction =
   | { kind: 'lambert' }
-  /** Tabulated magnitude correction vs phase angle, from a published phase curve. */
+  /** Tabulated magnitude correction vs phase angle, from a published phase curve. Valid for alphaDeg[0] ≤ α ≤
+   *  alphaDeg[last] (linear interpolation); the first node may be above 0 and deltaMag may be negative (an
+   *  opposition surge above the albedo's surge-free reference). */
   | { kind: 'tabulated'; alphaDeg: number[]; deltaMag: number[] }
   /** Polynomial in phase angle (degrees) giving magnitude correction, e.g. Mallama & Hilton (2018). Valid in [minDeg, maxDeg]. */
   | { kind: 'poly-mag'; coeffs: number[]; minDeg: number; maxDeg: number };
@@ -202,8 +232,14 @@ export interface RingSystem {
   planet: number;
   /** Radial profiles of normal optical depth, each from one measured occultation cut. */
   opticalDepth: Sourced<RingProfile[]>;
-  /** Lit-face reflectance vs radius. Reserved: `unknown` until a measured source is processed. */
+  /** Ring I/F model for the lit and unlit faces (per CIE channel, any geometry in its domain), calibrated on the
+   *  measurements below; `unknown` where no measurement exists. See docs/architecture.md §6. */
   reflectance: Sourced<RingReflectance>;
+  /** The measured reflectance data the model is built on, each at its own observed geometry. */
+  reflectanceMeasurements?: {
+    radialProfiles: Sourced<RingIFProfile[]>;
+    regionalPhaseCurves: Sourced<RingRegionalPhaseCurves>;
+  };
 }
 
 export interface RingProfile {
@@ -232,16 +268,68 @@ export interface RingProfile {
   };
 }
 
-/** Reserved for a measured radial I/F profile of the lit face: I/F per radius bin at the given wavelengths and geometry. */
-export interface RingReflectance {
-  kind: 'radial-if';
-  radiusKm: number[];
-  wavelengthNm: number[];
-  /** iOverF[w][r]: I/F at wavelengthNm[w], radiusKm[r]; null = not measured. */
-  iOverF: (number | null)[][];
+/** A radial I/F profile of the rings measured at one geometry. */
+export interface RingIFProfile {
+  name: string;
+  side: 'lit' | 'unlit';
+  instrument: string;
+  filter: string;
+  /** Solar-weighted effective wavelength of the band. */
+  effectiveWavelengthNm: number;
+  start: string;
   phaseDeg: number;
-  incidenceDeg: number;
-  emissionDeg: number;
+  /** Elevation of the Sun above the ring plane, degrees. */
+  solarElevationDeg: number;
+  /** Elevation of the observer: positive on the Sun's side of the ring plane, negative on the unlit side. */
+  observerElevationDeg: number;
+  /** Uniform radial grid: radius of sample i = radiusStartKm + i·radiusStepKm, i < count. */
+  radiusStartKm: number;
+  radiusStepKm: number;
+  count: number;
+  iOverF: (number | null)[];
+}
+
+/** Lit-face phase curves of ring regions: geometrically corrected I/F = a ln α + b (α in degrees). */
+export interface RingRegionalPhaseCurves {
+  definition: string;
+  minPhaseDeg: number;
+  maxPhaseDeg: number;
+  filters: { name: string; effectiveWavelengthNm: number }[];
+  /** Effective elevations Beff (sin Beff = 2μμ0/(μ+μ0)), degrees. */
+  elevationEffDeg: number[];
+  /** a[e][f], b[e][f] for elevationEffDeg[e] and filters[f]. */
+  regions: { name: string; radiusKm: [number, number]; a: number[][]; b: number[][] }[];
+}
+
+/** Ring reflectance model. `formula` states how to evaluate I/F per channel; all arrays are on the uniform radial
+ *  grid radiusStartKm + i·radiusStepKm (i < count); null = not modelled there. */
+export interface RingReflectance {
+  kind: 'single-scattering-v1';
+  formula: string;
+  radiusStartKm: number;
+  radiusStepKm: number;
+  count: number;
+  normalTau: (number | null)[];
+  /** Radial modulation of the particle reflectance (about 1 on average in each calibrated region). */
+  litModulation: (number | null)[];
+  /** Effective optical depth and gain for light diffusely transmitted to the unlit face. */
+  unlitTau: (number | null)[];
+  unlitGain: (number | null)[];
+  /** Grids of the amplitude tables (degrees); the model is defined for minPhaseDeg ≤ α ≤ maxPhaseDeg. */
+  phaseDeg: number[];
+  elevationEffDeg: number[];
+  minPhaseDeg: number;
+  maxPhaseDeg: number;
+  regions: {
+    name: string;
+    radiusKm: [number, number];
+    centerKm: number;
+    /** Exponent n of the power-law particle phase function (π − α)^n used between the calibrated phase ranges. */
+    powerLawExponent: number;
+    /** ϖP (particle albedo × phase function) per CIE channel X, Y, Z, scotopic: amplitudeXYZS[e][p][c] for
+     *  elevationEffDeg[e], phaseDeg[p]. */
+    amplitudeXYZS: number[][][];
+  }[];
 }
 
 export interface SunData {
@@ -449,5 +537,90 @@ export interface SurfaceIndex {
   rejected?: Record<string, string>;
   /** Builder module → wall-clock seconds of the last build. */
   buildSeconds?: Record<string, number>;
+  notes?: string;
+}
+
+// ---------------------------------------------------------------------------------------------- small bodies
+// Products of the `smallbodies` stage (app/public/data/smallbodies/). Each table is a BinaryTableHeader plus
+// per-column documentation; the core header also carries the force model the propagator must use
+// (app/src/core/smallbody.ts). Source-index fields hold 255 when there is no source (label unknown).
+
+/** Documentation of one binary column: its unit, the fields holding its label and source index, and how it was made. */
+export interface BinaryColumnDoc {
+  unit?: string;
+  /** Name of the u8 field holding this column's provenance label. */
+  label?: string;
+  /** Name of the u8 field holding this column's index into sourceTable. */
+  source?: string;
+  method?: string;
+}
+
+export interface SmallBodyTableHeader extends BinaryTableHeader {
+  columns?: Record<string, BinaryColumnDoc>;
+}
+
+/** Force model and integrator settings (written by pipeline/src/pipeline/sb_model.py). */
+export interface SmallBodyForceModel {
+  frame: string;
+  sun: { naifId: number; gm: number; radius: number; sources: string[] };
+  perturbers: { name: string; naifId: number; gm: number; radius: number }[];
+  perturberSources: string[];
+  /** Ephemeris product that serves the perturbers, e.g. "ephem/de442s". */
+  ephemeris: string;
+  indirect: string;
+  zonal: { perturber: number | null; j2: number; referenceRadiusKm: number; poleIcrf: [number, number, number]; source: string; model: string };
+  relativity: { model: string; enabled: boolean; cKmS: number };
+  nonGravitational: string;
+  scheme: { name: string; drift: number[]; kick: number[]; order: string };
+  grid: { baseStepS: number; rule: string };
+  stepControl: {
+    etaSun: number;
+    etaPlanet: number;
+    etaEncounter: number;
+    kmax: number;
+    encounterRatio: number;
+    rule: string;
+    encounter: string;
+  };
+  obliquityArcsec: number;
+  kepler: string;
+}
+
+/** smallbodies/core.json: one record per asteroid/comet (state at epochEt, H, G, flags, labels). */
+export interface SmallBodyCoreHeader extends SmallBodyTableHeader {
+  /** Common epoch of every state and origin of the integration grid, TDB s past J2000. */
+  epochEt: number;
+  epochTdb: string;
+  window: { startEt: number; endEt: number };
+  forceModel: SmallBodyForceModel;
+  orbitClasses: { code: string; name: string }[];
+  /** Meaning of each bit of the u16 `flags` field, keyed by bit value ("1", "2", "4", ...), as BinaryTableHeader. */
+  flagBits: Record<string, string>;
+  /** Population statistic behind estimated diameters: measured p_V per SBDB orbit class ("*" = all). */
+  classAlbedo: Record<string, { median: number; p16: number; p84: number; n: number }>;
+  statistics: Record<string, unknown>;
+  snapshot: string;
+  names: string;
+  physical: string;
+  comets: string;
+  nongrav: string;
+}
+
+export interface SmallBodyPhysicalHeader extends SmallBodyTableHeader {
+  /** LCDB reliability code per rotQuality index ('' = not from the LCDB). */
+  lcdbU: string[];
+  taxonomyB: string[];
+  taxonomyT: string[];
+}
+
+/** smallbodies/names.json: line i of `file` describes core record i. */
+export interface SmallBodyNamesHeader {
+  file: string;
+  count: number;
+  encoding: 'utf-8';
+  separator: string;
+  lineSeparator: string;
+  columns: string[];
+  sources: string[];
   notes?: string;
 }

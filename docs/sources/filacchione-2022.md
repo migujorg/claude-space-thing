@@ -12,10 +12,9 @@
 
 **Use and caveats:**
 - **Albedo spectrum:** a₀(λ), linearly interpolated. Label **derived**.
-- **Phase function:** Φ(α) = F(α)/a₀ · J(α), where J is the disk integral of the Akimov function (`photometry/diskint.py`). It uses the 549 nm row and is tabulated over 0–120°. Label **estimated** for the curve as a whole:
-  - 10–120° is the fitted range and is derived from measurements.
-  - 0–10° is the paper's own extrapolation of the quadratic, which excludes the opposition surge.
-- **Both the albedo and the phase curve exclude the opposition surge**, consistently with each other. Every Earth-based view is at α < 6.5°, where these moons are brighter than predicted here by their surge (tens of percent). See the Horizons comparison in `docs/reports/planet-colors.md`.
+- **Phase function:** Φ(α) = F(α)/a₀ · J(α) for 10–120°, where J is the disk integral of the Akimov function (`photometry/diskint.py`). This part uses the 549 nm row and is derived from measurements. Below 10° (M3), the curve follows the measured opposition-surge shape of Enceladus and Rhea (deau-2009.md), joined at 10°. The paper's own quadratic extrapolation to 0°, which has no surge, is no longer used. Label **estimated** for the curve as a whole.
+- **The albedo excludes the opposition surge**, and the phase function adds it: Φ(0) = 1.15–1.25.
+- **Verbiscer et al. (2007), quoted in Sec. 4, pp. 14–15:** the HST geometric albedos at true opposition (Mimas 0.96, Enceladus 1.38, Tethys 1.23, Dione 1.00, Rhea 0.95), which "include the opposition effect surge". The primary paper is not accessible here (science.org 403). These values are 1.2–1.4× the surge-inclusive p_V·Φ(0) of the product. They are kept in `tables/saturnian_opposition.json` and used only for comparison (`docs/reports/planet-colors.md`, M3).
 - **Not represented:**
   - Leading/trailing hemisphere albedo differences, which reach tens of percent (paper Sec. 5).
   - Phase reddening. Only one phase curve is used for all wavelengths.
