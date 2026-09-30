@@ -137,6 +137,14 @@ def verification(hs: dict) -> list[str]:
     return lines
 
 
+def _short(v):
+    if isinstance(v, float):
+        return f"{v:.4g}"
+    if isinstance(v, list):
+        return "[" + ", ".join(_short(x) for x in v) + "]"
+    return v
+
+
 def earth_numbers(hs: dict) -> str:
     """Computed Earth facts: absolute calibration, composition, epochs."""
     h = hs[(399, "albedo")]
@@ -169,7 +177,7 @@ def earth_numbers(hs: dict) -> str:
             ep = x.get("epoch", {})
             lines.append(f"**{layer}:** {x['brightness']['method']} Epoch: {ep.get('observed', '')}. Coverage "
                          f"{x['coverage']['areaFraction']:.3f} of the area; diagnostics "
-                         + ", ".join(f"{k} {v}" for k, v in x.get("diagnostics", {}).items()
+                         + ", ".join(f"{k} {_short(v)}" for k, v in x.get("diagnostics", {}).items()
                                      if isinstance(v, (int, float)) or k == "daylitLatitudeRange") + ".")
     return "\n\n".join(lines)
 
@@ -312,7 +320,10 @@ def generate() -> str:
         "" + ", ".join(f"{k.removeprefix('surf_')} {v:.0f} s" for k, v in secs.items()) + "; "
         "the Moon and Mercury from their cached reductions). A cold build downloads ~20 GB and took 1096 s for the "
         "Moon (13 GB of LROC mosaics), 431 s for Mercury (4.3 GB of band ranges + the DEM), 106 s for Mars and 35 s "
-        "for the giant planets on this machine (~20-40 MB/s).",
+        "for the giant planets on this machine (~20-40 MB/s). Earth, all four layers, cold: 1509 s for 1.8 GB "
+        "(GIBS renders the 8192 × 4096 WMS blocks slowly; 1890 MODIS byte ranges, 766 MB; OC-CCI 324 MB; ETOPO "
+        "156 MB); only the ETOPO subset, the colour maps and the STAC responses are kept. Pluto and Charon: 42 s "
+        "for 1.27 GB of band ranges, deleted after use.",
         "",
         "## Colour: when is it `derived`?",
         "",
