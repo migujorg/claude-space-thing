@@ -31,14 +31,28 @@ every star with G < 10. SourceRecord ids: `gaia-dr3`, `gaia-dr3-xp-sampled`, `ga
   W m⁻² nm⁻¹ (`xp_sampled_mean_spectrum`, published for sources with `has_xp_sampled`, G ≲ 15).
 - **Citation:** De Angeli F. et al. 2023, A&A 674, A2, DOI 10.1051/0004-6361/202243680 (processing);
   Montegriffo P. et al. 2023, A&A 674, A3, DOI 10.1051/0004-6361/202243880 (external flux calibration).
-- **Retrieval:** these spectra are not in the TAP service. DataLink (`RETRIEVAL_TYPE=XP_SAMPLED`) measured
-  ≈ 2 s per source, i.e. ~11 days for 0.45 M stars, so the stage streams ESA's bulk files instead:
-  `https://cdn.gea.esac.esa.int/Gaia/gdr3/Spectroscopy/xp_sampled_mean_spectrum/` — 3386 gzipped ECSV files,
-  ≈ 114 GB. Each file is streamed once, its MD5 checked against ESA's `_MD5SUM.txt`, its sha256 computed, and
-  only rows of the selected sources (G < 10 with `has_xp_sampled`) are kept as
-  `data/raw/stars/gaia_dr3_xp_sampled/<file>.npz` (float32 flux and flux_error). Per-file url, md5, sha256,
-  byte count, row count and kept count are in `_streamed.json`; the SourceRecord's sha256 is a digest over the
-  per-file sha256s. The full files are not stored (disk budget).
+- **Retrieval:** these spectra are not in ESA's TAP service. ESA's DataLink (`RETRIEVAL_TYPE=XP_SAMPLED`,
+  `DATA_STRUCTURE=RAW`) took 251 s for a batch of 1000 ids (~30 h for 0.44 M stars). Two routes, set by the
+  build parameter `stars.xpSource`. They give bit-identical values (`docs/reports/stars.md` §8):
+  - **archive** (default): the TAP service of ARI Heidelberg (`https://gaia.ari.uni-heidelberg.de/tap`;
+    Astronomisches Rechen-Institut, Zentrum für Astronomie der Universität Heidelberg), a Gaia DPAC partner
+    data centre. It serves the same table, `gaiadr3.xp_sampled_mean_spectrum`, with flux as REAL[343].
+    - The query is `SELECT source_id, flux FROM gaiadr3.xp_sampled_mean_spectrum WHERE source_id IN (...)`: POSTed,
+      at most 5000 ids per query, grouped by HEALPix level-2 pixel, FITS output.
+    - The bright tier's 440 702 sources take 207 queries, 0.61 GB and 12 min. The responses are kept as
+      `data/raw/stars/gaia_dr3_xp_ari/*.fits` with `.adql` sidecars.
+    - The ledger records the POST-body and response sha256s. The SourceRecord's sha256 is a digest over the
+      responses' sha256s.
+  - **bulk**: ESA's bulk files, `https://cdn.gea.esac.esa.int/Gaia/gdr3/Spectroscopy/xp_sampled_mean_spectrum/`,
+    3386 gzipped ECSV files, ≈ 114 GB, ordered by source_id.
+    - Each file is streamed once, its MD5 checked against ESA's `_MD5SUM.txt` and its sha256 computed.
+    - Only rows of the selected sources (G < 10 with `has_xp_sampled`) are kept, as
+      `data/raw/stars/gaia_dr3_xp_sampled/<file>.npz` (float32 flux and flux_error). The full files are not
+      stored (disk budget).
+    - Per-file url, md5, sha256, byte count, row count and kept count are in `_streamed.json`. The
+      SourceRecord's sha256 is a digest over the per-file sha256s.
+  - **Printing.** The bulk files print each float32 sample as its shortest round-trip decimal; ARI returns the
+    float32 values themselves, identical in all 151 M samples compared.
 - **Use:** integrated with the CIE observers via `cie.resample` + `cie.xyzs` → X, Y, Z, S, label `derived`,
   for G ≥ the XP bright limit (see `docs/reports/stars.md`). Also the calibration set for the photometric
   estimates of stars without a usable spectrum.
@@ -86,13 +100,22 @@ string is unchanged, so cached downloads keep their names and digests.
 
 ## All XP spectra, reduced — `gaia-dr3-xp-sampled-all`
 
-- All 3386 bulk files (≈ 114 GB) are streamed again and every one of the ≈ 34.5 M spectra is reduced on the fly
-  to six linear functionals (`stars_deep.xp_operator`): CIE X, Y, Z, S (the same resample ∘ xyzs operator as the
-  bright tier) and the mean flux in the Pioneer IPP B (395.7–478.3 nm) and R (595.7–692.5 nm) bands. A spectrum
-  with any missing sample in 360–830 nm gets NaN. Only the reductions are kept (float32, ≈ 1.7 GB in
-  `data/cache/stars/xp_reduced/xyzs_pioneerBR_v1/`, keyed by a hash of the operator), so this is a cache, not raw
-  data: the per-file url, MD5 check, sha256 and size are in its `_streamed.json`, and the SourceRecord's sha256 is
-  a digest over the per-file sha256s.
+- Every spectrum is reduced on the fly to six linear functionals (`stars_deep.xp_operator`): CIE X, Y, Z, S (the
+  same resample ∘ xyzs operator as the bright tier) and the mean flux in the Pioneer IPP B (395.7–478.3 nm) and R
+  (595.7–692.5 nm) bands. A spectrum with any missing sample in 360–830 nm gets NaN. Only the reductions are
+  kept, so this is a cache, not raw data. The SourceRecord's sha256 is a digest over the per-file (bulk) or
+  per-response (archive) sha256s.
+  - **archive route** (`stars.xpSource=archive`, default): the deep-tier sources that have XP spectra
+    (15.3 M), plus the bright-tier stars lit by XP, queried as for the bright tier (above) and reduced in memory.
+    - Cache: `data/cache/stars/xp_reduced/xyzs_pioneerBR_v1_archive/`, one .npz per query. `_fetched.json` holds
+      each query's POST-body sha256, id range and count, and the response's sha256, size and date.
+    - The bright-tier stars are reduced from the stars stage's raw responses, with no second download.
+  - **bulk route**: all 3386 bulk files (≈ 114 GB) are streamed and all ≈ 34.5 M spectra reduced.
+    - Cache: float32, ≈ 1.1 GB in `data/cache/stars/xp_reduced/xyzs_pioneerBR_v1/`, keyed by a hash of the
+      operator. Its `_streamed.json` holds the per-file url, MD5 check, sha256 and size.
+  - **Same reductions.** The bulk route parses each sample's printed text to float64. The archive route
+    reproduces this (float32 → shortest decimal → float64, `stars_gaia.xp_text_float64`), so the reductions are
+    bit-identical.
 
 ## Faint-star sums — `gaia-dr3-faint-sums`
 

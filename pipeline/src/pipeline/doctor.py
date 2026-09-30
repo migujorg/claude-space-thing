@@ -46,11 +46,14 @@ HOSTS: dict[str, tuple[str, ...]] = {
                     "minplanobs.org", "sbnarchive.psi.edu", "cdn.gea.esac.esa.int"),
     "sbphotometry": ("files.pythonhosted.org", "ssd.jpl.nasa.gov"),
     "synthetic": ("www.mv.helsinki.fi", "www.cfeps.net", "arxiv.org"),
-    "stars": ("gea.esac.esa.int", "cdn.gea.esac.esa.int", "archive.stsci.edu", "www.stsci.edu",
-              "cdsarc.cds.unistra.fr", "cds.unistra.fr", "www.pas.rochester.edu"),
-    "deepstars": ("gea.esac.esa.int", "cdn.gea.esac.esa.int"),
+    "stars": ("gea.esac.esa.int", "archive.stsci.edu", "www.stsci.edu", "cdsarc.cds.unistra.fr", "cds.unistra.fr",
+              "www.pas.rochester.edu"),
+    "deepstars": ("gea.esac.esa.int",),
     "sky": ("gea.esac.esa.int", "www.stsci.edu", "arxiv.org", "scispace.com"),
 }
+#: The Gaia XP spectra's host, by stars.xpSource (stars_gaia module docstring), for the stages that read them.
+XP_HOSTS = {"archive": "gaia.ari.uni-heidelberg.de", "bulk": "cdn.gea.esac.esa.int"}
+XP_STAGES = ("stars", "deepstars", "sky")
 
 # Compiled or native packages: a missing wheel shows up here first.
 PACKAGES = ("numpy", "scipy", "numba", "llvmlite", "h5py", "spiceypy", "pyarrow", "fast_simplification", "astropy",
@@ -251,8 +254,9 @@ def _probe(host: str) -> tuple[str, str | None, float]:
 def check_network(r: Report, profile: str) -> None:
     stages = config.PROFILES[profile].stages
     hosts: dict[str, list[str]] = {}
+    xp_host = XP_HOSTS[config.resolve(profile).get("stars.xpSource", "archive")]
     for s in stages:
-        for h in HOSTS.get(s, ()):
+        for h in HOSTS.get(s, ()) + ((xp_host,) if s in XP_STAGES else ()):
             hosts.setdefault(h, []).append(s)
     if config.PROFILES[profile].params.get("shapes.damit") is False:
         hosts.pop("damit.cuni.cz", None)

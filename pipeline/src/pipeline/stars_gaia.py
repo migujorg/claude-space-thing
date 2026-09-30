@@ -1,16 +1,23 @@
-"""Gaia DR3 access for the stars stage: TAP queries and the bulk XP sampled-spectra files.
+"""Gaia DR3 access for the stars stage: TAP queries and the XP sampled spectra.
 
-Two access paths, both recorded for provenance:
+Access paths, all recorded for provenance:
 
 * ADQL queries on the ESA Gaia archive's synchronous TAP endpoint, downloaded with `download.fetch` (so the
   query URL and the result's sha256 land in the ledger); the ADQL text is also stored as `<name>.adql`.
   (During development the asynchronous service sat in "WRITING_RESULT" for > 20 min on 1e5-row results, while
   synchronous CSV returned 2e5 rows in ~2 min.)
-* XP sampled mean spectra are not in the TAP service. DataLink serves them at ~2 s per source, far too slow for
-  ~0.5 M stars, so we stream ESA's bulk ECSV files (3386 files, ~114 GB gzip) from the Gaia CDN, verify each
-  file's MD5 against ESA's `_MD5SUM.txt`, compute its sha256 while streaming, and keep only the rows of the
-  sources we need. The kept rows are stored as `<file>.npz` under data/raw/ (the full files would not fit the
-  disk budget); `_streamed.json` records url, md5, sha256, size and retrieval date of every streamed file.
+* XP sampled mean spectra (`xp_sampled_mean_spectrum`) are not in ESA's TAP service, and ESA's DataLink serves
+  them at ~0.25 s per source even in batches of 1000 (~30 h for the bright tier). Two routes, chosen by the
+  `stars.xpSource` parameter; they give bit-identical values (docs/reports/stars.md, "XP spectra: targeted
+  queries"):
+  - "archive" (default): only the sources a stage needs, by source_id, from the same table on the TAP service of
+    ARI Heidelberg (`ARI_TAP_URL`, a Gaia DPAC partner data centre serving the Gaia DR3 archive tables), 5000
+    ids per query, FITS output. The bright tier keeps each response in data/raw (fetch ledger); the deep tier
+    reduces each response on the fly and keeps only the reductions (data/cache), like the bulk route.
+  - "bulk": stream ESA's bulk ECSV files (3386 files, ~114 GB gzip) from the Gaia CDN, verify each file's MD5
+    against ESA's `_MD5SUM.txt`, compute its sha256 while streaming, and keep only the rows of the sources we need
+    (`<file>.npz` under data/raw/) and/or every spectrum's reductions; `_streamed.json` records url, md5, sha256,
+    size and retrieval date of every streamed file.
 """
 
 from __future__ import annotations
@@ -19,6 +26,7 @@ import datetime as _dt
 import hashlib
 import json
 import os
+import threading
 import time
 import zlib
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
@@ -513,6 +521,247 @@ def load_xp_reduced(paths: list[Path]) -> tuple[np.ndarray, np.ndarray]:
     r = np.concatenate(red)
     o = np.argsort(sid)
     return sid[o], r[o]
+
+
+# ------------------------------------------------------------------------ XP, targeted queries (archive)
+
+#: TAP service of ARI Heidelberg (Astronomisches Rechen-Institut, Zentrum fuer Astronomie der Universitaet
+#: Heidelberg), a Gaia DPAC partner data centre. It serves the Gaia DR3 archive tables, including
+#: gaiadr3.xp_sampled_mean_spectrum (flux REAL[343]), which ESA's own TAP service does not.
+ARI_TAP_URL = "https://gaia.ari.uni-heidelberg.de/tap"
+XP_SOURCES = ("archive", "bulk")
+XP_ARCHIVE_SUBDIR = f"stars/gaia_{REL.key}_xp_ari"   # data/raw: bright-tier XP responses (FITS)
+XP_BATCH = 5000        # source_ids per query
+XP_BATCH_LEVEL = 2     # a query never spans two HEALPix level-2 pixels, so batches stay put when the id set changes
+
+
+def _batch_pixel(source_id: int) -> int:
+    return int(source_id) >> (35 + 2 * (12 - XP_BATCH_LEVEL))
+
+
+def xp_batches(ids: np.ndarray) -> list[np.ndarray]:
+    """Sorted unique `ids` cut into queries: per HEALPix level-XP_BATCH_LEVEL pixel, runs of <= XP_BATCH ids."""
+    ids = np.unique(np.asarray(ids, dtype=np.int64))
+    pix = ids >> (35 + 2 * (12 - XP_BATCH_LEVEL))
+    out = []
+    for p in np.unique(pix):
+        sel = ids[pix == p]
+        out += [sel[k:k + XP_BATCH] for k in range(0, sel.size, XP_BATCH)]
+    return out
+
+
+def xp_archive_query(ids: np.ndarray) -> str:
+    """ADQL for the XP sampled spectra (flux only) of these sources."""
+    return (f"SELECT source_id, flux FROM {REL.schema}.xp_sampled_mean_spectrum WHERE source_id IN ("
+            + ",".join(str(int(i)) for i in ids) + ")")
+
+
+def _xp_post(query: str) -> dict:
+    return {"REQUEST": "doQuery", "LANG": "ADQL", "FORMAT": "fits", "QUERY": query, "MAXREC": str(2 * XP_BATCH)}
+
+
+_FITS_TYPES = {"K": ">i8", "J": ">i4", "I": ">i2", "E": ">f4", "D": ">f8"}
+
+
+def _fits_header(buf: bytes, off: int) -> tuple[dict[str, str], int]:
+    """Cards of the FITS header starting at `off` and the offset just past it (2880-byte blocks)."""
+    cards: dict[str, str] = {}
+    while True:
+        block = buf[off:off + 2880]
+        if len(block) < 2880:
+            raise ValueError("truncated FITS header")
+        off += 2880
+        for i in range(0, 2880, 80):
+            card = block[i:i + 80].decode("ascii", "replace")
+            key = card[:8].strip()
+            if key == "END":
+                return cards, off
+            if card[8:10] == "= ":
+                cards[key] = card[10:].split("/")[0].strip().strip("'").strip()
+
+
+def _read_xp_fits(src) -> tuple[np.ndarray, np.ndarray]:
+    """(source_id int64, flux float32 [n, 343]) of an XP response (path or bytes; FITS binary table with columns
+    source_id K and flux 343E, NaN where a sample is null). Read with numpy alone: no astropy import in the worker
+    threads (see stages/stars.py::_import_astropy for the colour-science matplotlib trap)."""
+    buf = bytes(src) if isinstance(src, (bytes, bytearray)) else Path(src).read_bytes()
+    primary, off = _fits_header(buf, 0)
+    if int(primary.get("NAXIS", "0")):
+        raise ValueError("XP response: unexpected primary data array")
+    h, off = _fits_header(buf, off)
+    if h.get("XTENSION") != "BINTABLE":
+        raise ValueError("XP response: no binary table")
+    fields = []
+    for k in range(1, int(h["TFIELDS"]) + 1):
+        form = h[f"TFORM{k}"]
+        n = int(form[:-1] or 1)
+        fields.append((h[f"TTYPE{k}"].lower(), _FITS_TYPES[form[-1]], (n,) if n > 1 else ()))
+        if f"TSCAL{k}" in h or f"TZERO{k}" in h:
+            raise ValueError(f"XP response: scaled column {h[f'TTYPE{k}']}")
+    dt = np.dtype(fields)
+    rows = int(h["NAXIS2"])
+    if dt.itemsize != int(h["NAXIS1"]) or len(buf) < off + rows * dt.itemsize:
+        raise ValueError("XP response: row layout or size does not match its header")
+    d = np.frombuffer(buf, dtype=dt, count=rows, offset=off)
+    sid = d["source_id"].astype(np.int64)
+    flux = d["flux"].astype(np.float32).reshape(rows, -1) if rows else np.zeros((0, XP_WAVELENGTHS.size), np.float32)
+    if flux.shape[1] != XP_WAVELENGTHS.size:
+        raise ValueError(f"XP response has {flux.shape[1]} samples, expected {XP_WAVELENGTHS.size}")
+    return sid, flux
+
+
+def fetch_xp_archive(wanted: np.ndarray, *, workers: int = 4, log=print) -> tuple[list[Path], dict]:
+    """XP sampled spectra of `wanted` from ARI's TAP service: one FITS file per query in data/raw, with its ADQL as
+    a sidecar (resumable: a query whose file is in the ledger is not repeated; names carry a hash of the query).
+    Returns (paths, ledger) with every file's fetch record; raises if a wanted source is missing."""
+    batches = xp_batches(wanted)
+
+    def one(b: np.ndarray) -> Path:
+        q = xp_archive_query(b)
+        name = (f"xp_sampled_hpx{XP_BATCH_LEVEL}_{_batch_pixel(b[0]):03d}_"
+                f"{hashlib.sha256(q.encode()).hexdigest()[:10]}.fits")
+        path = fetch(ARI_TAP_URL + "/sync", XP_ARCHIVE_SUBDIR, name, timeout=1800.0, validate=_fits_table_ok,
+                     data=_xp_post(q))
+        side = path.with_name(path.name + ".adql")
+        if not side.exists():
+            side.write_text(q, encoding="utf-8", newline="\n")
+        return path
+
+    log(f"  XP spectra (archive, {ARI_TAP_URL}): {len(batches)} queries for {sum(b.size for b in batches)} sources")
+    paths = _in_order(one, batches, workers, log, "XP spectra (ARI TAP)", every=20)
+    for p, b in zip(paths, batches):
+        sid, _ = _read_xp_fits(p)
+        if not np.array_equal(np.sort(sid), b):
+            miss = np.setdiff1d(b, sid)
+            raise RuntimeError(f"{p.name}: {miss.size} of {b.size} sources missing from the XP response "
+                               f"(first {miss[:3].tolist()})")
+    files = {p.name: {**download.record(p), "rows": int(b.size)} for p, b in zip(paths, batches)}
+    return paths, {"service": ARI_TAP_URL, "wanted_count": int(sum(b.size for b in batches)), "files": files}
+
+
+def load_xp_archive(paths: list[Path]) -> tuple[np.ndarray, np.ndarray]:
+    """(source_id, flux float32) of every row in the responses, sorted by source_id."""
+    ids, flux = [], []
+    for p in paths:
+        sid, f = _read_xp_fits(p)
+        ids.append(sid)
+        flux.append(f)
+    sid = np.concatenate(ids)
+    f = np.concatenate(flux)
+    o = np.argsort(sid)
+    return sid[o], f[o]
+
+
+def xp_text_float64(flux32: np.ndarray) -> np.ndarray:
+    """The float64 values a reader of ESA's bulk ECSV files gets for these float32 samples. The files print every
+    sample as the shortest decimal that round-trips to its float32, and the bulk route parses that text straight to
+    float64 (`_parse_flux`). Arrow's float32 -> string cast prints the same shortest decimal and its string ->
+    float64 cast parses it correctly rounded, so reductions of archive responses are bit-identical to the bulk
+    route's (checked against the bulk-derived cache, docs/reports/stars.md)."""
+    import pyarrow as pa
+    import pyarrow.compute as pc
+    a = pa.array(np.ascontiguousarray(flux32, dtype=np.float32).ravel(), from_pandas=True)
+    out = pc.cast(pc.cast(a, pa.string()), pa.float64()).to_numpy(zero_copy_only=False)
+    return np.asarray(out, dtype=np.float64).reshape(flux32.shape)
+
+
+def reduce_xp(flux64: np.ndarray, W: np.ndarray, cover: np.ndarray) -> np.ndarray:
+    """flux @ W per spectrum (float32), NaN where a sample in `cover` is missing: the bulk route's reduction."""
+    red = np.full((flux64.shape[0], W.shape[1]), np.nan, dtype=np.float64)
+    if flux64.shape[0]:
+        ok = np.isfinite(flux64[:, cover]).all(axis=1)
+        red[ok] = np.nan_to_num(flux64[ok]) @ W
+    return red.astype(np.float32)
+
+
+def xp_reduced_archive(ids: np.ndarray, W: np.ndarray, cover: np.ndarray, tag: str, *, workers: int = 4,
+                       log=print) -> tuple[list[Path], dict]:
+    """Reductions `flux @ W` of the sources `ids` (as `stream_xp_reduced`, bit-identical), from targeted queries.
+
+    Cached in data/cache/<XP_REDUCED_SUBDIR>/<tag>_archive/: one .npz per query and `_fetched.json` with each
+    response's sha256, size, POST-body digest, id range and retrieval date. Only ids not cached yet are queried;
+    responses are reduced in memory and not kept. Spectra already in data/raw from the bright tier
+    (`fetch_xp_archive`) are reduced from there instead of being queried again. Returns (npz paths, ledger)."""
+    d = CACHE / XP_REDUCED_SUBDIR / f"{tag}_archive"
+    d.mkdir(parents=True, exist_ok=True)
+    lp = d / "_fetched.json"
+    w_hash = hashlib.sha256(np.ascontiguousarray(W, dtype=np.float64).tobytes() + cover.tobytes()).hexdigest()
+    ledger = json.loads(lp.read_text(encoding="utf-8")) if lp.exists() else {}
+    if ledger.get("W_sha256") != w_hash:
+        for p in d.glob("*.npz"):
+            p.unlink()
+        ledger = {"W_sha256": w_hash, "service": ARI_TAP_URL, "files": {}}
+    lock = threading.Lock()
+
+    def save() -> None:
+        tmp = lp.with_suffix(".tmp")
+        tmp.write_text(json.dumps(ledger, indent=1, sort_keys=True), encoding="utf-8", newline="\n")
+        tmp.replace(lp)
+
+    have = [np.load(d / n)["source_id"] for n in ledger["files"] if (d / n).exists()]
+    ledger["files"] = {n: v for n, v in ledger["files"].items() if (d / n).exists()}
+    need = np.setdiff1d(np.unique(np.asarray(ids, dtype=np.int64)),
+                        np.concatenate(have) if have else np.zeros(0, np.int64))
+    # bright-tier spectra already downloaded (raw FITS with a ledger record): reduce them here
+    raw_ledger = download._load_ledger() if need.size else {}
+    taken = np.zeros(need.size, bool)     # need is sorted and unique; an id is taken from the first file having it
+    for p in sorted((RAW / XP_ARCHIVE_SUBDIR).glob("*.fits")) if need.size else []:
+        rec = raw_ledger.get(download.ledger_key(p))
+        if rec is None:
+            continue
+        sid, flux = _read_xp_fits(p)
+        j = np.minimum(np.searchsorted(need, sid), need.size - 1)
+        m = (need[j] == sid) & ~taken[j]
+        if not m.any():
+            continue
+        taken[j[m]] = True
+        sid, flux = sid[m], flux[m]
+        name = f"raw_{p.stem}_{hashlib.sha256(np.sort(sid).tobytes()).hexdigest()[:8]}.npz"
+        np.savez(d / name, source_id=sid, red=reduce_xp(xp_text_float64(flux), W, cover))
+        ledger["files"][name] = {"from": f"data/raw/{download.ledger_key(p)}", "url": rec["url"],
+                                 "sha256": rec["sha256"], "bytes": rec["bytes"], "retrieved": rec["retrieved"],
+                                 "rows": int(sid.size)}
+    need = need[~taken]
+    batches = xp_batches(need)
+    log(f"  XP reductions (archive, {ARI_TAP_URL}): {len(ledger['files'])} cached files; {need.size} sources to "
+        f"fetch in {len(batches)} queries")
+    t0 = time.time()
+    done = [0, 0]
+
+    def one(b: np.ndarray) -> None:
+        data = _xp_post(xp_archive_query(b))
+        body = download.request("POST", ARI_TAP_URL + "/sync", data=data, timeout=1800).content
+        download.count(len(body), files=1)
+        if not body.startswith(b"SIMPLE  ="):
+            raise RuntimeError(f"ARI TAP query failed: {body[:300]!r}")
+        sid, flux = _read_xp_fits(body)
+        if not np.array_equal(np.sort(sid), b):
+            raise RuntimeError(f"{np.setdiff1d(b, sid).size} of {b.size} sources missing from an XP response "
+                               f"(ids {int(b[0])}..{int(b[-1])})")
+        ids_hash = hashlib.sha256(b.tobytes()).hexdigest()
+        name = f"hpx{XP_BATCH_LEVEL}_{_batch_pixel(b[0]):03d}_{ids_hash[:12]}.npz"
+        tmp = d / (name[:-4] + ".tmp.npz")
+        np.savez(tmp, source_id=sid, red=reduce_xp(xp_text_float64(flux), W, cover))
+        tmp.replace(d / name)
+        with lock:
+            ledger["files"][name] = {
+                "url": ARI_TAP_URL + "/sync", "method": "POST", "postSha256": download.post_digest(data),
+                "query": "stars_gaia.xp_archive_query(ids), FITS", "idsSha256": ids_hash, "firstId": int(b[0]),
+                "lastId": int(b[-1]), "rows": int(b.size), "sha256": hashlib.sha256(body).hexdigest(),
+                "bytes": len(body), "retrieved": _dt.date.today().isoformat()}
+            done[0] += 1
+            done[1] += len(body)
+            if done[0] % 25 == 0 or done[0] == len(batches):
+                save()
+                el = time.time() - t0
+                log(f"  XP reductions: {done[0]}/{len(batches)} queries ({done[1] / 1e9:.2f} GB, "
+                    f"{done[1] / 1e6 / el:.1f} MB/s), {el / 60:.1f} min, "
+                    f"eta {(len(batches) - done[0]) * el / done[0] / 60:.1f} min")
+
+    if batches:
+        _in_order(one, batches, workers)
+    save()
+    return [d / n for n in sorted(ledger["files"])], ledger
 
 
 # ------------------------------------------------------------------------------------ stage queries

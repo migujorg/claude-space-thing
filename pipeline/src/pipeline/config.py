@@ -47,6 +47,15 @@ def _str_list(v: str) -> list[str]:
     return [x.strip() for x in str(v).split(",") if x.strip()]
 
 
+def _choice(*options: str) -> Callable[[str], str]:
+    def parse(v: str) -> str:
+        s = str(v).strip().lower()
+        if s not in options:
+            raise ValueError(f"expected one of {', '.join(options)}, not {v!r}")
+        return s
+    return parse
+
+
 @dataclass(frozen=True)
 class Param:
     key: str                       # "<stage or 'build'>.<name>"
@@ -90,11 +99,18 @@ PARAMS: dict[str, Param] = {p.key: p for p in [
           env="SB_SNAPSHOT"),
     Param("synthetic.params", str, "",
           "JSON object overriding synthetic.PARAMS (seed, hFloor, ...). Development.", env="SYNTHETIC_PARAMS"),
+    Param("stars.xpSource", _choice("archive", "bulk"), "archive",
+          "Where the Gaia DR3 XP spectra come from. 'archive': only the sources the star stages need, by source_id, "
+          "from ARI Heidelberg's Gaia TAP service (bright tier ~0.6 GB, deep tiers ~21 GB); 'bulk': stream all "
+          "114 GB of ESA's bulk files. The values are bit-identical (docs/reports/stars.md); only the provenance "
+          "records differ (so the two stages that write them rebuild; the sky stage's products do not change).",
+          env="STARS_XP_SOURCE", stages=("stars", "deepstars")),
     Param("stars.xpNoStream", _bool, False,
-          "Use only the Gaia XP files streamed so far. Development only: not a release product.",
+          "Bulk route only: use the Gaia XP files streamed so far. Development only: not a release product.",
           env="STARS_XP_NO_STREAM"),
     Param("gaia.xpWorkers", int, 4,
-          "Parallel streams of Gaia XP bulk files from ESA's CDN (the build's longest download).", output=False),
+          "Parallel Gaia XP downloads: queries to ARI's TAP service (stars.xpSource=archive) or streams of ESA's "
+          "bulk files (bulk).", output=False),
     Param("gaia.tapWorkers", int, 2,
           "Gaia archive TAP queries run at once (deep-star tiles, faint-star sums); 1 = one at a time.", output=False),
     Param("gaia.release", str, "dr3",

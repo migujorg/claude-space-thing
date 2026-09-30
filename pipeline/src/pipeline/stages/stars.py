@@ -518,14 +518,22 @@ def run(ctx: BuildContext) -> None:
 
     # 2. Gaia XP
     xp_wanted = g_sid[(g_mag < G_LIMIT) & gaia["has_xp_sampled"]]
-    dev_partial = ctx.param("stars.xpNoStream")  # development only: use XP files streamed so far
-    # When this build also runs the deep tiers, fill their XP reductions in the same pass (one read of 114 GB).
-    share = {"deepstars", "sky"} & set(ctx.plan)
-    xp_paths, xp_ledger = sg.stream_xp(xp_wanted, log=log, stream=not dev_partial, workers=ctx.param("gaia.xpWorkers"),
-                                       also_reduce=(*sd.xp_operator(), sd.XP_TAG) if share else None)
-    if dev_partial:
-        diag["WARNING"] = "built with a partial XP set (STARS_XP_NO_STREAM=1); not a release product"
-    xsid, xflux, xerr = sg.load_xp(xp_paths, xp_wanted)
+    xp_source = ctx.param("stars.xpSource")
+    if xp_source == "archive":
+        # only these sources, by source_id (sg module docstring); the deep stages query theirs themselves
+        xp_paths, xp_ledger = sg.fetch_xp_archive(xp_wanted, log=log, workers=ctx.param("gaia.xpWorkers"))
+        xsid, xflux = sg.load_xp_archive(xp_paths)
+    else:
+        dev_partial = ctx.param("stars.xpNoStream")  # development only: use XP files streamed so far
+        # When this build also runs the deep tiers, fill their XP reductions in the same pass (one read of 114 GB).
+        share = {"deepstars", "sky"} & set(ctx.plan)
+        xp_paths, xp_ledger = sg.stream_xp(xp_wanted, log=log, stream=not dev_partial,
+                                           workers=ctx.param("gaia.xpWorkers"),
+                                           also_reduce=(*sd.xp_operator(), sd.XP_TAG) if share else None)
+        if dev_partial:
+            diag["WARNING"] = "built with a partial XP set (STARS_XP_NO_STREAM=1); not a release product"
+        xsid, xflux, _ = sg.load_xp(xp_paths, xp_wanted)
+    xp_ledger["source"] = xp_source
     W = sl.linear_operator(sg.XP_WAVELENGTHS)
     cov = np.isfinite(xflux[:, (sg.XP_WAVELENGTHS >= 358) & (sg.XP_WAVELENGTHS <= 832)]).all(axis=1)
     xp_xyzs = np.full((xsid.size, 4), np.nan)
@@ -1058,19 +1066,38 @@ def _register_sources(ctx, today, gaia, xp_ledger, tyc_path, hip2, hipm, pk, cal
         license="ESA/Gaia/DPAC, CC BY-SA 3.0 IGO",
         notes=f"ADQL (synchronous TAP): {queries}. sha256 is over the per-file hashes: {_files_note(gaia_paths)}"))
     digest = sg.stream_ledger_digest(xp_ledger)
-    idx = RAW / sg.XP_SUBDIR / "_MD5SUM.txt"
-    ctx.add_source(SourceRecord(
-        id=SRC_XP, title="Gaia DR3 BP/RP externally calibrated sampled mean spectra (xp_sampled_mean_spectrum)",
-        citation="De Angeli F. et al. 2023, Gaia DR3: Processing and validation of BP/RP low-resolution spectral data, "
-                 "A&A 674, A2, DOI:10.1051/0004-6361/202243680; Montegriffo P. et al. 2023, Gaia DR3: External "
-                 "calibration of BP/RP low-resolution spectroscopic data, A&A 674, A3, DOI:10.1051/0004-6361/202243880.",
-        url=sg.XP_BASE, retrieved=min(f["retrieved"] for f in xp_ledger["files"].values()), sha256=digest,
-        version="Gaia DR3", license="ESA/Gaia/DPAC, CC BY-SA 3.0 IGO",
-        notes=(f"{len(xp_ledger['files'])} bulk ECSV files streamed from the Gaia CDN; each verified against ESA's "
-               f"_MD5SUM.txt (sha256 {record(idx)['sha256']}); only rows of the {xp_ledger['wanted_count']} selected "
-               f"sources (G < {G_LIMIT}, has_xp_sampled) kept, in data/raw/{sg.XP_SUBDIR}/*.npz. Per-file url/md5/"
-               f"sha256/bytes in data/raw/{sg.XP_SUBDIR}/_streamed.json; this record's sha256 is over those per-file "
-               "sha256s (sorted by file name).")))
+    xp_citation = ("De Angeli F. et al. 2023, Gaia DR3: Processing and validation of BP/RP low-resolution spectral "
+                   "data, A&A 674, A2, DOI:10.1051/0004-6361/202243680; Montegriffo P. et al. 2023, Gaia DR3: External "
+                   "calibration of BP/RP low-resolution spectroscopic data, A&A 674, A3, "
+                   "DOI:10.1051/0004-6361/202243880.")
+    if xp_ledger.get("source") == "archive":
+        first = next(iter(sorted(xp_ledger["files"])))
+        ctx.add_source(SourceRecord(
+            id=SRC_XP, title="Gaia DR3 BP/RP externally calibrated sampled mean spectra (gaiadr3.xp_sampled_mean_spectrum)",
+            citation=xp_citation + " Served by the Gaia archive TAP service of ARI Heidelberg (Astronomisches "
+                                   "Rechen-Institut, ZAH, Universitaet Heidelberg), a Gaia DPAC partner data centre.",
+            url=sg.ARI_TAP_URL, retrieved=min(f["retrieved"] for f in xp_ledger["files"].values()), sha256=digest,
+            version="Gaia DR3", license="ESA/Gaia/DPAC, CC BY-SA 3.0 IGO",
+            notes=(f"{len(xp_ledger['files'])} synchronous TAP queries (POST, FITS) for the {xp_ledger['wanted_count']} "
+                   f"selected sources (G < {G_LIMIT}, has_xp_sampled), at most {sg.XP_BATCH} source_ids each, grouped by "
+                   f"HEALPix level-{sg.XP_BATCH_LEVEL} pixel: SELECT source_id, flux FROM "
+                   f"{sg.REL.schema}.xp_sampled_mean_spectrum WHERE source_id IN (...). Files data/raw/"
+                   f"{sg.XP_ARCHIVE_SUBDIR}/*.fits, each with its ADQL as a .adql sidecar (first: {first}); per-file "
+                   "url, POST-body sha256 and response sha256 in data/raw/_downloads.json; this record's sha256 is "
+                   "over the per-file sha256s (sorted by file name). The same values as ESA's bulk files "
+                   "(stars.xpSource=bulk): every flux sample bit-identical (docs/reports/stars.md).")))
+    else:
+        idx = RAW / sg.XP_SUBDIR / "_MD5SUM.txt"
+        ctx.add_source(SourceRecord(
+            id=SRC_XP, title="Gaia DR3 BP/RP externally calibrated sampled mean spectra (xp_sampled_mean_spectrum)",
+            citation=xp_citation,
+            url=sg.XP_BASE, retrieved=min(f["retrieved"] for f in xp_ledger["files"].values()), sha256=digest,
+            version="Gaia DR3", license="ESA/Gaia/DPAC, CC BY-SA 3.0 IGO",
+            notes=(f"{len(xp_ledger['files'])} bulk ECSV files streamed from the Gaia CDN; each verified against ESA's "
+                   f"_MD5SUM.txt (sha256 {record(idx)['sha256']}); only rows of the {xp_ledger['wanted_count']} "
+                   f"selected sources (G < {G_LIMIT}, has_xp_sampled) kept, in data/raw/{sg.XP_SUBDIR}/*.npz. Per-file "
+                   f"url/md5/sha256/bytes in data/raw/{sg.XP_SUBDIR}/_streamed.json; this record's sha256 is over "
+                   "those per-file sha256s (sorted by file name).")))
     ctx.add_source(SourceRecord(
         id=SRC_HIPXM, title="Gaia DR3 cross-match with Hipparcos-2 (gaiadr3.hipparcos2_best_neighbour)",
         citation="Gaia Collaboration, Vallenari A. et al. 2023, A&A 674, A1, DOI:10.1051/0004-6361/202243940; "

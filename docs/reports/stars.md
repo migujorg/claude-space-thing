@@ -1,8 +1,9 @@
 # Stars (M1): the star field seen from inside the solar system
 
 Stage `stars` → `app/public/data/stars/bright.json` (BinaryTableHeader) + `bright.bin`, and `stars/names.json`.
-Build: `cd pipeline && uv run python -m pipeline build --only stars` (from scratch ≈ 50 min, mostly streaming the
-Gaia XP bulk files; from the cache ≈ 1 min). Code: `pipeline/src/pipeline/stages/stars.py` and
+Build: `cd pipeline && uv run python -m pipeline build --only stars` (from scratch ≈ 14 min, of which ≈ 12 min
+fetching the XP spectra of the 440 702 selected sources, 0.61 GB; with `--set stars.xpSource=bulk` ≈ 50 min,
+streaming all 114 GB of Gaia XP bulk files; from the cache ≈ 1 min; §8). Code: `pipeline/src/pipeline/stages/stars.py` and
 `pipeline/src/pipeline/stars_*.py`; tests `pipeline/tests/test_stars_*.py`. Dataset notes:
 `docs/sources/gaia-dr3.md`, `hipparcos.md`, `star-spectrophotometry.md`, `star-names.md`. Numbers below are from
 the build of 2026-09-30 (window mid-epoch J2026.746); the stage writes them to `data/cache/stars/diagnostics.json`.
@@ -315,7 +316,48 @@ All < 1″ (SIMBAD's values for these stars come from the same Hipparcos/Gaia so
 propagation, the epoch handling and the record matching). `propagate` itself matches astropy's
 `apply_space_motion` to < 0.1 mas over 1991–2027 for the fastest nearby stars.
 
-## 8. Tests
+## 8. XP spectra: targeted queries (`stars.xpSource`)
+
+ESA publishes the XP sampled spectra (`xp_sampled_mean_spectrum`) as 3386 bulk files ordered by source_id, not
+by brightness, so colouring the 440 702 bright-tier sources from them means streaming all 114 GB. They are not in
+ESA's TAP service, and ESA's DataLink (`RETRIEVAL_TYPE=XP_SAMPLED`, `DATA_STRUCTURE=RAW`) took 251 s for a batch
+of 1000 ids (≈ 30 h for the bright tier). The TAP service of ARI Heidelberg, a Gaia DPAC partner data centre,
+serves the same table (`gaiadr3.xp_sampled_mean_spectrum`, flux REAL[343]). The default route
+(`stars.xpSource=archive`) queries it for exactly the sources a stage needs:
+`SELECT source_id, flux FROM gaiadr3.xp_sampled_mean_spectrum WHERE source_id IN (...)`. Queries are POSTed with at
+most 5000 ids each, grouped by HEALPix level-2 pixel so that batches stay put when the selection changes, and the
+answer is a FITS table. `--set stars.xpSource=bulk` keeps the bulk stream.
+
+* **Bright tier.** 207 queries, 0.61 GB, 12 min with 4 at a time. Each response is kept as a FITS file in
+  `data/raw/stars/gaia_dr3_xp_ari/`, with its ADQL as a `.adql` sidecar and its POST-body and response sha256s
+  in the download ledger.
+* **Deep tiers.** The responses are reduced on the fly, like the bulk stream, and only the reductions are kept, in
+  `data/cache/stars/xp_reduced/xyzs_pioneerBR_v1_archive/`. The bright-tier stars that the sky stage needs are
+  reduced from the raw files above, with no second download.
+
+**Same values.** The comparison is against the bulk-derived data of the 2026-09-30 build, i.e. the raw subset
+`data/raw/stars/gaia_dr3_xp_sampled/*.npz` and the reduced cache `data/cache/stars/xp_reduced/xyzs_pioneerBR_v1/`:
+
+| | compared | identical |
+|---|---|---|
+| bright tier: source ids | 440 702 | the same set |
+| bright tier: flux samples (float32) | 151 160 786 | all, bit for bit (0 null samples) |
+| bright tier: X, Y, Z, S as the stars stage computes them | 440 702 stars | all, bit for bit (max relative difference 0) |
+| bright tier: reductions X, Y, Z, S, Pioneer B, R (deep and sky stages) | 440 702 × 6 | all, bit for bit |
+| deep tier: reductions, 8 HEALPix level-2 pixels | 711 301 × 6 | all, bit for bit |
+| stars stage products `bright.bin`, `bright.json`, `names.json` | built both ways from the same data/raw | byte-identical |
+
+The reductions are identical only because the archive route reproduces how the bulk route reads the numbers. The
+bulk files print every sample as the shortest decimal that round-trips to its float32, and the bulk route parses
+that text straight to float64 (`_parse_flux`). The archive route gets the float32 values, prints them the same way
+and parses them back (`stars_gaia.xp_text_float64`, with Arrow casts). Without that step, 97.6 % of the bright-tier
+reductions are bit-identical and the rest differ by at most 3.0 × 10⁻⁶ relative (99th percentile 8.6 × 10⁻⁸).
+The stars stage itself integrates the float32 values widened to float64 on both routes, so its product never
+depended on this. Only `sources.json` differs between the routes: the XP records name the service, the queries,
+and a digest over the responses' sha256s instead of the bulk files'. `pipeline/tests/test_stars_xp_archive.py`
+checks the equivalence offline against `_stream_file` on synthetic spectra spanning many decades.
+
+## 9. Tests
 
 `pipeline/tests/test_stars_format.py` (writer/reader round trip; the app's Float32 view; built-product
 consistency: unit vectors, labels vs routes, NaN iff unknown, positivity, sort order, size < 30 MB),
@@ -323,7 +365,7 @@ consistency: unit vectors, labels vs routes, NaN iff unknown, positivity, sort o
 calls; coverage rule; relation fitting; named-star brightness sanity), `test_stars_names.py` (Bayer/Flamsteed/
 variable designations; names product).
 
-## 9. Open issues
+## 10. Open issues
 
 * **No observer parallax.** Directions are barycentric. From the outer planets nearby stars shift by up to
   ~23″ (α Cen from 30 au) — below eye resolution, but a zoomed "enhanced" view would show it. Adding parallax
