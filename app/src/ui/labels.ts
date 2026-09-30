@@ -71,7 +71,7 @@ export class Labels {
       for (const t of targets) {
         const p = project(vp, t.pos);
         if (!p || p.x < -margin || p.y < -margin || p.x > vp.width + margin || p.y > vp.height + margin) continue;
-        const body = m.byId.get(t.id);
+        const body = m.bodyOf(t.id);
         if (!body) continue;
         const rPx = rPxOf(t, p.dist);
         if (occluded(t, occluders)) continue;
@@ -118,7 +118,7 @@ export class Labels {
       }
       for (const pl of r.labels) {
         const c = byId.get(pl.id)!;
-        const body = m.byId.get(pl.id)!;
+        const body = m.bodyOf(pl.id)!;
         const e = this.labelEl(pl.id);
         setText(e.name, body.name);
         setText(e.d, c.text.slice(body.name.length + 2));

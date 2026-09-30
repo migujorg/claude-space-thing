@@ -110,7 +110,12 @@ kernel. An image pyramid (2× box downsample, σ = 1 texel separable Gaussian at
 upsample-and-add) realises a sum of Gaussians whose effective widths are known in closed form
 (`pyramidSigma`); non-negative least squares (`fitScatterKernel`) finds the level weights that
 reproduce the CIE profile, matching it to < 10 % at every radius and its energy to < 3 % (tested). The
-composite keeps 1 − Σw of the light unscattered, so energy is conserved exactly. Light scattered
+composite keeps 1 − Σw of the light unscattered, so energy is conserved exactly. The fit starts at half a
+pixel; inside 0.1° (below the CIE validity range) the kernel is held at its 0.1° value. v0 fitted only
+from 0.1° outward, which left the narrowest Gaussians unconstrained at fine pixel scales: at 1440p and 4K
+the fitted "scattered" energy could exceed 100 % and the unscattered fraction turned negative (stars and
+bodies vanished at 4K). The bounded continuation makes the scattered fraction ~0.45–0.5 at every
+resolution from 720p to 4K (tested). Light scattered
 beyond the frame edge is lost (the scene outside the frame is not rendered).
 
 The Sun, and bodies whose centre is outside the frame, are veiled analytically per pixel
@@ -374,6 +379,12 @@ shows the badge.
   instead of 10⁻⁵), which lowers the limiting magnitude of the whole frame by ~1.5 mag. Real
   faint-star vision uses parafoveal rods (the central ~1.25° is rod-free; Curcio et al. 1990) adapted to
   the dark sky. A rod adaptation measured over a rod-weighted parafoveal field is the fix; not done.
+  The opposite case shows the same limit. With a bright body filling half of a dark frame (the Moon at a
+  0.8° field of view, real data), the log-average of the retinal image is ~53 cd/m², pulled down by the
+  dark half. The Moon is ~3 000 cd/m², so its lit surface saturates to white, though the terminator
+  relief stays visible. The retina adapts locally, within ~1° (the receptors imaging the Moon adapt to
+  the Moon). A spatially varying adaptation (e.g. Ledda et al. 2004; Pattanaik et al. 2000 applied per
+  region) is the fix; not done.
 - **Adapted brightness across the range (v1).** A fully adapted surface (S/P 2.3), 200 cd/m² display:
 
   | adaptation (cd/m²) | 10⁻⁵ | 10⁻⁴ | 10⁻³ | 10⁻² | 0.1 | 1 | 10 | 10² | 10³ | 10⁴ | 10⁵ |
@@ -413,6 +424,8 @@ shows the badge.
 - Hecht, S. (1947). Visual thresholds of steady point sources in the eye. JOSA 37, 59.
 - Hunt, R. W. G. (1995). The Reproduction of Colour, 5th ed. Fountain Press.
 - Hunt, R. W. G. (2004). The Reproduction of Colour, 6th ed. Wiley.
+- Ledda, P., Santos, L. P., Chalmers, A. (2004). A local model of eye adaptation for high dynamic
+  range images. AFRIGRAPH 2004, 151–160.
 - Maksimainen, M., Kurkela, M., Bhusal, P., Hyyppä, H. (2019). Calculation of mesopic luminance using
   per pixel S/P ratios measured with digital imaging. LEUKOS 15(4), 309–317.
   doi:10.1080/15502724.2018.1557526.

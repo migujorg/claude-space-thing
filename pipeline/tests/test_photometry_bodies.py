@@ -30,7 +30,8 @@ def test_entries_match_schema(built):
     out = bodies.photometry_json(res)
     assert sorted(out) == sorted(str(n) for n in NAIF)
     for key, e in out.items():
-        assert set(e) == {"geometricAlbedoXYZS", "geometricAlbedoV", "phaseFunction"}
+        assert {"geometricAlbedoXYZS", "geometricAlbedoV", "phaseFunction"} <= set(e)
+        assert set(e) - {"geometricAlbedoXYZS", "geometricAlbedoV", "phaseFunction"} <= {"diskReflectanceModel"}
         for s in e.values():
             _check_sourced(s, ctx)
         v = e["geometricAlbedoXYZS"]["value"]
@@ -48,7 +49,7 @@ def test_entries_match_schema(built):
         if pf["kind"] == "tabulated":
             a = pf["alphaDeg"]
             assert set(pf) == {"kind", "alphaDeg", "deltaMag"} and len(a) == len(pf["deltaMag"])
-            assert a[0] == 0.0 and all(y > x for x, y in zip(a, a[1:]))
+            assert a[0] >= 0.0 and all(y > x for x, y in zip(a, a[1:]))
 
 
 def test_every_source_record_is_complete(built):
@@ -82,6 +83,20 @@ def test_phase_functions_start_at_zero(built):
             # Mercury: surge-exclusive polynomial referenced to the surge-inclusive V(1,0); valid from 2 deg.
             assert pf["minDeg"] == 2.0 and pf["coeffs"][0] == pytest.approx(0.081)
             assert phase.delta_mag(pf, 1.0) is None
+            continue
+        if n == 301:
+            # Moon: ROLO from 1.55 deg, where its reference albedo is defined (Φ = 1); unknown below.
+            assert pf["alphaDeg"][0] == 1.55 and pf["deltaMag"][0] == 0 and phase.delta_mag(pf, 1.0) is None
+            continue
+        if n == 399:
+            # Earth: referenced to the Himawari-9 measurement at α ≈ 2.4° (Φ = 1 there), the model shape elsewhere.
+            a_ref = r.spectrum.notes["reference_phase_deg"]
+            assert phase.delta_mag(pf, a_ref) == pytest.approx(0.0, abs=1e-4)
+            assert 0 < phase.delta_mag(pf, 0.0) < 0.01
+            continue
+        if n in (601, 602, 603, 604, 605):
+            # Mimas-Rhea: surge-free VIMS albedo, measured opposition-surge shape: brighter than it at zero phase.
+            assert -0.3 < phase.delta_mag(pf, 0.0) < -0.1, n
             continue
         assert phase.delta_mag(pf, 0.0) == pytest.approx(0.0, abs=1e-9), n
 

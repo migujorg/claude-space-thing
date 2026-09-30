@@ -84,7 +84,10 @@ export function fitScatterKernel(
   p: number,
 ): { weights: number[]; total: number; target: number; fittedInRange: number } {
   const pxSr = (pixelAngleDeg * Math.PI / 180) ** 2;
-  const rMin = Math.max(CIE146.minDeg / pixelAngleDeg, 0.5);
+  // Fitted from half a pixel outward. Inside 0.1° (below the CIE validity range) the kernel is held at
+  // its 0.1° value: a bounded continuation, so that at fine pixel scales the narrowest Gaussians are
+  // constrained instead of free to carry unphysical energy inside 0.1° (docs/eye-model.md §3).
+  const rMin = 0.5;
   const rMax = Math.min(maxRadiusPx, CIE146.maxDeg / pixelAngleDeg);
   const samples: number[] = [];
   const nS = 400;
@@ -98,7 +101,7 @@ export function fitScatterKernel(
     const r = samples[i];
     const dr = r * Math.log(rMax / rMin) / nS;
     const ring = 2 * Math.PI * r * dr;
-    const f = cie146(r * pixelAngleDeg, ageYears, p) * pxSr;
+    const f = cie146(Math.max(r * pixelAngleDeg, CIE146.minDeg), ageYears, p) * pxSr;
     b.push(f * ring);
     target += f * ring;
     A.push(levels.map((l) => (Math.exp(-(r * r) / (2 * l.sigmaPx * l.sigmaPx)) / (2 * Math.PI * l.sigmaPx * l.sigmaPx)) * ring));

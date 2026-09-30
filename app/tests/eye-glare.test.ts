@@ -41,6 +41,21 @@ describe('scatter-kernel fit used by the glare pyramid', () => {
     expect(x[1]).toBe(0);
     expect(x[0]).toBeGreaterThan(0);
   });
+  it('scatters the same fraction of light at every display resolution (720p … 4K), never > 100 %', () => {
+    const totals: number[] = [];
+    for (const [W, H] of [[1280, 720], [1920, 1080], [2560, 1440], [3840, 2160]]) {
+      const n = Math.ceil(Math.log2(Math.max(W, H))) + 1;
+      const levels = Array.from({ length: n }, (_, k) => {
+        const p = 4 ** k;
+        return { sigmaPx: Math.sqrt(p + (p - 1) / 12 + (4 * p - 4) / 18) };
+      });
+      totals.push(fitScatterKernel(levels, 50 / H, Math.hypot(W, H), 25, 0.5).total);
+    }
+    for (const t of totals) {
+      expect(t).toBeLessThan(0.6);
+      expect(Math.abs(t / totals[0] - 1)).toBeLessThan(0.2);
+    }
+  });
   it('the sum of Gaussians reproduces the CIE profile and its energy within a few percent', () => {
     const levels = Array.from({ length: 11 }, (_, k) => ({ sigmaPx: 0.8 * 2 ** k }));
     const pixelDeg = 60 / 720;

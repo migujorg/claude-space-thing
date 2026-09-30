@@ -11,7 +11,7 @@
 **Checks:** Tables VII and VIII agree through the paper's Eq. 2 (m☉ = −26.81 in each narrow band and V, (B−V)☉ = 0.65) to ±0.001 in p, and A = p·q holds for every band (`tests/test_photometry_tables.py`).
 
 **Use and caveats:**
-- Albedo spectrum: the 9 narrow-band p values, linearly interpolated, rescaled from the paper's disk (sin σ × 384 400 km = 1738.1 km) to the pck00011 radius (×1.0008). Label **estimated**.
-- Phase function: Table V, V column, tabulated (label **measured**, valid 6–120°; the 0° value is their linear extrapolation).
-- Both **exclude the opposition surge** (tens of percent at α < 5°), consistently with each other.
+- Albedo spectrum (M1–M3; since the M3 follow-up a cross-check only, `albedo.moon_lane_irvine`): the 9 narrow-band p values, linearly interpolated, rescaled from the paper's disk (sin σ × 384 400 km = 1738.1 km) to the pck00011 radius (×1.0008). The Moon's albedo is now ROLO's (kieffer-stone-2005.md); Lane & Irvine's colour is redder, by 20–27 % at 626–730 nm relative to 450 nm, which is consistent with the excess the authors flag at 0.60–0.85 µm.
+- Phase function (M1-M2): Table V, V column, tabulated (valid 6–120°; the 0° value is their linear extrapolation). Since M3 the Moon's phase function is the ROLO model for 1.55–97° (kieffer-stone-2005.md), normalized to this albedo; Table V's V curve is used only for 97–120°, shifted to join ROLO at 97°.
+- The albedos **exclude the opposition surge** (linear extrapolation from α ≥ 6°); the ROLO phase function supplies it (Φ > 1 below 2°).
 - The narrow-band albedos imply a V-band albedo 13 % above the paper's broadband V (0.113); the authors say their broadband V "appears slightly faint with respect to the narrow band data, perhaps because of transformation problems" (p. 273), and they also flag a possible excess at 0.60–0.85 µm in the 1965 data. We keep the narrow-band values (so geometricAlbedoV and XYZS agree) and report the difference.

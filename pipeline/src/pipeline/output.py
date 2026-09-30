@@ -14,10 +14,11 @@ from .paths import OUT
 from .schema import BuildContext
 
 
-def write_json(ctx: BuildContext, rel: str, obj, stage: str) -> Path:
+def write_json(ctx: BuildContext, rel: str, obj, stage: str, *, indent: int | None = 1) -> Path:
+    """`indent=None` writes compact JSON (for large numeric products)."""
     path = OUT / rel
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(obj, indent=1, allow_nan=False))
+    path.write_text(json.dumps(obj, indent=indent, allow_nan=False, separators=None if indent else (",", ":")))
     _register(ctx, rel, path, stage)
     return path
 

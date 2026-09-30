@@ -1,0 +1,17 @@
+{
+ "_purpose": "Opposition surge of Mimas-Rhea (moons.saturnian_phase): the surge-inclusive geometric albedos measured at true opposition, and the measured shape of the opposition phase curves of Enceladus and Rhea.",
+ "verbiscer_2007": {
+  "_citation": "Verbiscer, A., French, R., Showalter, M. & Helfenstein, P. (2007). Enceladus: cosmic graffiti artist caught in the act. Science 315, 815. DOI:10.1126/science.1134681. HST observations at true opposition, 2005 January 13-14 (PubMed abstract, PMID 17289992).",
+  "_transcription": "SECONDARY: the paper and its supplement are not accessible here (science.org answers 403). The values are as quoted by Filacchione et al. (2022), accepted manuscript arXiv:2111.15541v1, Sec. 4, pp. 14-15: 'the geometrical albedo (p) by Verbiscer et al. (2007) which have measured 0.96 on Mimas, 1.38 on Enceladus, 1.23 on Tethys, 1.00 on Dione, and 0.95 Rhea', which they note 'includes the opposition effect surge'. The quotation does not state the wavelength; Filacchione et al. compare them with their 0.549 um albedos.",
+  "geometric_albedo": {"601": 0.96, "602": 1.38, "603": 1.23, "604": 1.00, "605": 0.95}
+ },
+ "deau_2009": {
+  "_citation": "Deau, E., Dones, L., Rodriguez, S., Charnoz, S. & Brahic, A. (2009). The opposition effect in the outer Solar system: a comparative study of the phase function morphology. Planetary and Space Science 57, 1282-1301. DOI:10.1016/j.pss.2009.05.005 (accepted manuscript arXiv:0902.0345v1). A corrigendum was published (Planetary and Space Science 161, 137, 2018, DOI:10.1016/j.pss.2018.03.006); it could not be accessed here, so its content is unknown.",
+  "_transcription": "arXiv:0902.0345v1 Table 3 (p. 61, 'Direct output parameters of morphological models using opposition phase curves'; checked against a 220 dpi rendering), linear-exponential fit columns (not the 'extrapolated' ones): disk-integrated I/F = Ib + Is*alpha + Ip*exp(-alpha/(2w)) (paper Eq. 5, alpha and w in degrees; I/F = 10^(-0.4 M), Eq. 1). The table lists the slope as a positive number while Eq. 6 defines S = -Is: the fitted slope is negative (the curve falls with alpha; checked against the log fit, Table 3). Table 2 (p. 60) linear-exponential A, HWHM, S are kept as checks: A = (Ip + Ib)/Ib, HWHM = 2 ln2 w, S = |Is| (Eq. 6). Data (paper Table 1, p. 59): Enceladus, Verbiscer et al. (2005, Icarus 173, 66) at 439 nm; Rhea, Domingue et al. (1995, Icarus 115, 228) and Verbiscer & Veverka (1989, Icarus 82, 336) at ~500 nm; leading hemispheres.",
+  "linear_exponential": {
+   "602": {"name": "Enceladus", "Ip": 0.180, "Ib": 0.895, "w_deg": 0.215, "slope_abs": 0.0113, "table2_A": 1.20, "table2_HWHM_deg": 0.29, "table2_S": 0.0113},
+   "605": {"name": "Rhea", "Ip": 0.085, "Ib": 0.573, "w_deg": 0.379, "slope_abs": 0.0080, "table2_A": 1.14, "table2_HWHM_deg": 0.52, "table2_S": 0.0080}
+  },
+  "log_fit": {"602": {"a0": 0.912, "a1": -0.063}, "605": {"a0": 0.602, "a1": -0.055}}
+ }
+}

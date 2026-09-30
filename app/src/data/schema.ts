@@ -185,14 +185,125 @@ export interface BodyPhotometry {
   geometricAlbedoV: Sourced<number>;
   /** Disk-integrated phase function. */
   phaseFunction: Sourced<PhaseFunction>;
+  /**
+   * Optional measured spatially resolved photometric model (docs/architecture.md §4.4 "Photometric
+   * model"; docs/rendering-m2.md). It sets only how light is distributed across the disk: the renderer
+   * rescales it so the disk integral still equals geometricAlbedoXYZS·Φ(α). Absent → Lambert.
+   */
+  spatialModel?: Sourced<SpatialPhotometricModel>;
+  /** Optional refinement with more geometry than the phase angle (the Moon: ROLO, with libration and the
+   *  waxing/waning asymmetry). Inside its domain it gives the disk-integrated illuminance directly, in place of
+   *  geometricAlbedoXYZS · Φ(α); see docs/architecture.md §4.3. */
+  diskReflectanceModel?: Sourced<DiskReflectanceModel>;
 }
+
+/** Whole-disk reflectance A_c per channel (X, Y, Z, scotopic) vs viewing geometry, in the form of Kieffer & Stone
+ *  (2005) Eq. 10. Illuminance at the observer E_c = A_c · E☉,c(1 AU)/d² · (radiusKm/Δ)². `formula` gives the
+ *  expression and the units (radians in the polynomial terms, degrees elsewhere). */
+export interface DiskReflectanceModel {
+  kind: 'rolo-v1';
+  formula: string;
+  /** Per channel X, Y, Z, scotopic: [a0, a1, a2, a3]. */
+  a: number[][];
+  /** Per channel: [b1, b2, b3]. */
+  b: number[][];
+  /** Per channel: [d1, d2, d3]. */
+  d: number[][];
+  /** Shared by all channels: [c1, c2, c3, c4] (libration) and [p1, p2, p3, p4] (degrees). */
+  c: [number, number, number, number];
+  p: [number, number, number, number];
+  radiusKm: number;
+  /** Domain: minPhaseDeg ≤ α ≤ maxPhaseDeg, |observer selenographic latitude| ≤ maxObserverLatitudeDeg and
+   *  |longitude| ≤ maxObserverLongitudeDeg; outside it the model does not apply. */
+  minPhaseDeg: number;
+  maxPhaseDeg: number;
+  maxObserverLatitudeDeg: number;
+  maxObserverLongitudeDeg: number;
+}
+
+/** A parameter that is either constant or tabulated against phase angle (linear interpolation, no extrapolation). */
+export type PhaseDependent = number | { alphaDeg: number[]; values: number[] };
+
+/**
+ * Spatially resolved photometric (bidirectional reflectance) models. Angles: incidence i, emission e,
+ * phase g; μ0 = cos i, μ = cos e. Each is a published model with its fitted parameters:
+ *  - lambert:          r ∝ μ0
+ *  - lommel-seeliger:  r ∝ μ0/(μ0 + μ)
+ *  - lunar-lambert:    r ∝ 2L·μ0/(μ0 + μ) + (1 − L)·μ0   (McEwen 1991)
+ *  - minnaert:         r ∝ μ0^k·μ^(k−1)                  (Minnaert 1941)
+ *  - hapke:            Hapke (2012) isotropic multiple-scattering approximation with the shadow-hiding
+ *                      (SHOE) and coherent-backscatter (CBOE) opposition effects, a double Henyey–Greenstein
+ *                      particle phase function p(g) = (1+c)/2·HG(b, backward) + (1−c)/2·HG(b, forward),
+ *                      porosity factor K and Hapke's (1984) macroscopic roughness θ̄.
+ * `validPhaseDeg` (optional) is the phase-angle range the fit covers; outside it the renderer falls back to
+ * Lambert for the spatial distribution and warns.
+ */
+export type SpatialPhotometricModel =
+  | { kind: 'lambert'; validPhaseDeg?: [number, number] }
+  | { kind: 'lommel-seeliger'; validPhaseDeg?: [number, number] }
+  | { kind: 'lunar-lambert'; L: PhaseDependent; validPhaseDeg?: [number, number] }
+  | { kind: 'minnaert'; k: PhaseDependent; validPhaseDeg?: [number, number] }
+  | {
+      kind: 'hapke';
+      /** Single-scattering albedo. */
+      w: number;
+      /** Double Henyey–Greenstein asymmetry b (0..1) and backward/forward partition c (−1..1). */
+      b: number;
+      c: number;
+      /** SHOE amplitude B_S0 and angular width h_S. */
+      bs0: number;
+      hs: number;
+      /** CBOE amplitude B_C0 and width h_C (default 0: no CBOE). */
+      bc0?: number;
+      hc?: number;
+      /** Mean slope angle θ̄ of the macroscopic roughness, degrees (0 = smooth). */
+      thetaBarDeg: number;
+      /** Porosity factor K (default 1). */
+      K?: number;
+      /** Approximation of Chandrasekhar's H function used by the fit: Hapke (2002) (default) or Hapke (1981). */
+      hFunction?: 'hapke2002' | 'hapke1981';
+      validPhaseDeg?: [number, number];
+    };
 
 export type PhaseFunction =
   | { kind: 'lambert' }
-  /** Tabulated magnitude correction vs phase angle, from a published phase curve. */
+  /** Tabulated magnitude correction vs phase angle, from a published phase curve. Valid for alphaDeg[0] ≤ α ≤
+   *  alphaDeg[last] (linear interpolation); the first node may be above 0 and deltaMag may be negative (an
+   *  opposition surge above the albedo's surge-free reference). */
   | { kind: 'tabulated'; alphaDeg: number[]; deltaMag: number[] }
   /** Polynomial in phase angle (degrees) giving magnitude correction, e.g. Mallama & Hilton (2018). Valid in [minDeg, maxDeg]. */
   | { kind: 'poly-mag'; coeffs: number[]; minDeg: number; maxDeg: number };
+
+/** smallbody-class-colors.json (light stage): estimated colours and albedo statistics for small bodies without a
+ *  measured spectrum. An object's geometricAlbedoXYZS = p_V × xyzsPerUnitPV (lux at 1 AU, §4.3); using these makes
+ *  the object's attribute `estimated`. See docs/sources/smallbody-class-colors.md. */
+export interface SmallBodyClassColorsFile {
+  definition: string;
+  /** Bus-DeMeo classes (DeMeo et al. 2009). */
+  classes: Record<string, SmallBodyClassEntry>;
+  /** Coarse SDSS colour classes (Carvano et al. 2010): frequency and p_V statistics. */
+  sdssClasses: Record<string, { meanSpectrumClass: string; frequency: number; numberedSingleLetter: number;
+                                pV: PVStats | null }>;
+  /** For objects of unknown class. */
+  population: { colour: Sourced<{ xyzsPerUnitPV: [number, number, number, number] }>; pV: Sourced<PVStats> };
+  /** Other schemes' class labels → the Bus-DeMeo class whose colour to use (assumed correspondences; `rule`). */
+  aliases: { rule: string; bus: Record<string, string>; tholen: Record<string, string>; mahlke: Record<string, string> };
+}
+
+export interface SmallBodyClassEntry {
+  colour: Sourced<{
+    xyzsPerUnitPV: [number, number, number, number];
+    /** The class reflectance spectrum used (normalized to 1 at 550 nm), to 900 nm. */
+    spectrum: { wavelengthNm: number[]; reflectance: number[] };
+    ultravioletFrom: string;
+    ecasN: number;
+    ecasWavelengthsNm: [number, number];
+  }>;
+  /** NEOWISE-fitted p_V of the class's classified asteroids; unknown when fewer than 3. */
+  pV: Sourced<PVStats>;
+}
+
+export interface PVStats { median: number; p16: number; p84: number; n: number }
 
 /** rings.json: planet NAIF id (as string) → ring system. Produced by the `light` stage. See docs/architecture.md §6. */
 export type RingsFile = Record<string, RingSystem>;
@@ -202,8 +313,14 @@ export interface RingSystem {
   planet: number;
   /** Radial profiles of normal optical depth, each from one measured occultation cut. */
   opticalDepth: Sourced<RingProfile[]>;
-  /** Lit-face reflectance vs radius. Reserved: `unknown` until a measured source is processed. */
+  /** Ring I/F model for the lit and unlit faces (per CIE channel, any geometry in its domain), calibrated on the
+   *  measurements below; `unknown` where no measurement exists. See docs/architecture.md §6. */
   reflectance: Sourced<RingReflectance>;
+  /** The measured reflectance data the model is built on, each at its own observed geometry. */
+  reflectanceMeasurements?: {
+    radialProfiles: Sourced<RingIFProfile[]>;
+    regionalPhaseCurves: Sourced<RingRegionalPhaseCurves>;
+  };
 }
 
 export interface RingProfile {
@@ -232,16 +349,68 @@ export interface RingProfile {
   };
 }
 
-/** Reserved for a measured radial I/F profile of the lit face: I/F per radius bin at the given wavelengths and geometry. */
-export interface RingReflectance {
-  kind: 'radial-if';
-  radiusKm: number[];
-  wavelengthNm: number[];
-  /** iOverF[w][r]: I/F at wavelengthNm[w], radiusKm[r]; null = not measured. */
-  iOverF: (number | null)[][];
+/** A radial I/F profile of the rings measured at one geometry. */
+export interface RingIFProfile {
+  name: string;
+  side: 'lit' | 'unlit';
+  instrument: string;
+  filter: string;
+  /** Solar-weighted effective wavelength of the band. */
+  effectiveWavelengthNm: number;
+  start: string;
   phaseDeg: number;
-  incidenceDeg: number;
-  emissionDeg: number;
+  /** Elevation of the Sun above the ring plane, degrees. */
+  solarElevationDeg: number;
+  /** Elevation of the observer: positive on the Sun's side of the ring plane, negative on the unlit side. */
+  observerElevationDeg: number;
+  /** Uniform radial grid: radius of sample i = radiusStartKm + i·radiusStepKm, i < count. */
+  radiusStartKm: number;
+  radiusStepKm: number;
+  count: number;
+  iOverF: (number | null)[];
+}
+
+/** Lit-face phase curves of ring regions: geometrically corrected I/F = a ln α + b (α in degrees). */
+export interface RingRegionalPhaseCurves {
+  definition: string;
+  minPhaseDeg: number;
+  maxPhaseDeg: number;
+  filters: { name: string; effectiveWavelengthNm: number }[];
+  /** Effective elevations Beff (sin Beff = 2μμ0/(μ+μ0)), degrees. */
+  elevationEffDeg: number[];
+  /** a[e][f], b[e][f] for elevationEffDeg[e] and filters[f]. */
+  regions: { name: string; radiusKm: [number, number]; a: number[][]; b: number[][] }[];
+}
+
+/** Ring reflectance model. `formula` states how to evaluate I/F per channel; all arrays are on the uniform radial
+ *  grid radiusStartKm + i·radiusStepKm (i < count); null = not modelled there. */
+export interface RingReflectance {
+  kind: 'single-scattering-v1';
+  formula: string;
+  radiusStartKm: number;
+  radiusStepKm: number;
+  count: number;
+  normalTau: (number | null)[];
+  /** Radial modulation of the particle reflectance (about 1 on average in each calibrated region). */
+  litModulation: (number | null)[];
+  /** Effective optical depth and gain for light diffusely transmitted to the unlit face. */
+  unlitTau: (number | null)[];
+  unlitGain: (number | null)[];
+  /** Grids of the amplitude tables (degrees); the model is defined for minPhaseDeg ≤ α ≤ maxPhaseDeg. */
+  phaseDeg: number[];
+  elevationEffDeg: number[];
+  minPhaseDeg: number;
+  maxPhaseDeg: number;
+  regions: {
+    name: string;
+    radiusKm: [number, number];
+    centerKm: number;
+    /** Exponent n of the power-law particle phase function (π − α)^n used between the calibrated phase ranges. */
+    powerLawExponent: number;
+    /** ϖP (particle albedo × phase function) per CIE channel X, Y, Z, scotopic: amplitudeXYZS[e][p][c] for
+     *  elevationEffDeg[e], phaseDeg[p]. */
+    amplitudeXYZS: number[][][];
+  }[];
 }
 
 export interface SunData {
