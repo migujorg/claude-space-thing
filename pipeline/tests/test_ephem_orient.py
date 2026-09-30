@@ -18,7 +18,7 @@ pytestmark = pytest.mark.skipif(not (EARTH.exists() and MOON.exists()), reason="
 
 
 def _load(p):
-    h = json.loads(p.read_text())
+    h = json.loads(p.read_text(encoding="utf-8"))
     return h, np.fromfile(OUT / h["bin"], dtype="<f8")
 
 
@@ -49,7 +49,7 @@ def test_matches_pxform_over_the_window(kernels):
 
 
 def test_coverage_and_labels():
-    w = json.loads((OUT / "manifest.json").read_text())["window"]
+    w = json.loads((OUT / "manifest.json").read_text(encoding="utf-8"))["window"]
     h, _ = _load(EARTH)
     segs = sorted(h["segments"], key=lambda s: s["startEt"])
     assert segs[0]["startEt"] <= w["startEt"] - MARGIN_S and segs[-1]["endEt"] >= w["endEt"] + MARGIN_S

@@ -112,7 +112,7 @@ def _paged(subdir: str, stem: str, fields: list[str], extra: dict | None = None)
         if extra:
             params.update(extra)
         p = _fetch_live(QUERY_URL, subdir, f"{stem}_{k:03d}.json", params, PAUSE_S)
-        d = json.loads(p.read_text())
+        d = json.loads(p.read_text(encoding="utf-8"))
         if d.get("fields") != fields:
             raise ValueError(f"{p.name}: unexpected fields {d.get('fields')}")
         total = int(d["count"])
@@ -133,7 +133,7 @@ def fetch_snapshot(tag: str | None = None) -> Snapshot:
     # e.g. Bennu's): their model_pars may hold terms the propagator does not model.
     ng_ids: list[int] = []
     for p in orbit_pages:
-        d = json.loads(p.read_text())
+        d = json.loads(p.read_text(encoding="utf-8"))
         idx = [d["fields"].index(f) for f in NONGRAV_FIELDS]
         ipe = d["fields"].index("pe_used")
         for row in d["data"]:
@@ -150,7 +150,7 @@ def fetch_snapshot(tag: str | None = None) -> Snapshot:
     if not done.exists():
         done.write_text(json.dumps({"completed": _dt.datetime.now(_dt.timezone.utc).isoformat(timespec="seconds"),
                                     "orbitPages": len(orbit_pages), "physPages": len(phys_pages),
-                                    "nongrav": len(nongrav)}, indent=1))
+                                    "nongrav": len(nongrav)}, indent=1), encoding="utf-8", newline="\n")
     return snap
 
 

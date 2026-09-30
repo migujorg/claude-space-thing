@@ -26,13 +26,13 @@ def test_unpack_mpc_designations():
 
 def test_sbdb_page_parse_and_nongrav():
     cat = sb_catalog.load_orbits([FIX / "orbits.json"])
-    assert cat.n == json.loads((FIX / "orbits.json").read_text())["count"]
+    assert cat.n == json.loads((FIX / "orbits.json").read_text(encoding="utf-8"))["count"]
     assert np.all(np.diff(cat.spkid) > 0)
     ceres = cat.row_of(20000001)
     assert cat.s["pdes"][ceres] == "1" and cat.s["name"][ceres] == "Ceres"
     # full precision: 16 significant digits survive (the API rounds unless full-prec=1)
-    raw = next(r for r in json.loads((FIX / "orbits.json").read_text())["data"] if r[0] == 20000001)
-    fields = json.loads((FIX / "orbits.json").read_text())["fields"]
+    raw = next(r for r in json.loads((FIX / "orbits.json").read_text(encoding="utf-8"))["data"] if r[0] == 20000001)
+    fields = json.loads((FIX / "orbits.json").read_text(encoding="utf-8"))["fields"]
     assert cat.f["a"][ceres] == float(raw[fields.index("a")])
     assert len(raw[fields.index("e")].lstrip(".0")) >= 15
     files = {int(p.stem): p for p in (FIX / "nongrav").glob("*.json")}
@@ -87,7 +87,7 @@ def test_neowise_csv(tmp_path):
         '  5311,"1981 GD1   ","05311   ",13.60,+0.15,2455387.2751350,  0,  0, 12, 11,"DVB-",  9.349,  0.332,0.073,0.009,0.110,0.013,1.573,0.074,"-","Mas11",""\n'
         '     0,"2010 AB12  ","K10A12B ",17.10,+0.15,2455300.1000000,  0,  0,  3,  0,"--B-",  1.000,  0.000,0.100,0.000,-.999,-.999,1.000,0.000,"-","Mas11",""\n')
     p = tmp_path / "neowise_test.csv"
-    p.write_text(text)
+    p.write_text(text, encoding="utf-8", newline="\n")
     rows = ps.read_neowise([p])
     assert [r.number for r in rows] == [5, 5311, None]
     assert rows[0].fit_code == "DVBI" and rows[0].D == 108.293 and rows[0].pV == 0.274 and rows[0].nobs == 48

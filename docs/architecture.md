@@ -12,6 +12,7 @@ This is the engineering companion to [`NORTH_STAR.md`](../NORTH_STAR.md). The no
 ```
 
 - **pipeline/** — Python 3.11+, managed with `uv`. `uv run python -m pipeline build` downloads anything missing into `data/raw/`, records a sha256 for every file, and writes processed products into `app/public/data/`. Scientific libraries are allowed and preferred when they are the authoritative implementation (SPICE via `spiceypy`, ESA's `gaiaxpy`, `colour-science` for CIE tables, `astropy`).
+- **Builds** (`pipeline/build.py`, `pipeline/config.py`; README "Build profiles") come in profiles (minimal, standard, full) that choose which stages run and set stage parameters (`--set key=value`, e.g. `surfaces.maxLevel`). A profile or parameter may leave products, or the top levels of a surface pyramid, out, and the manifest records that. It never changes what a product that is built means or contains. Builds resume: `manifest.json` records per stage a fingerprint of its code, output parameters, window (if the code reads it) and input products, and a stage whose fingerprint and products are unchanged is not rebuilt. A stage that fails has its products dropped from the manifest, and the stages that do not need it still run.
 - **app/** — TypeScript, Vite, raw WebGPU (no engine). Targets desktop Chromium with a high-end GPU. All positions are computed in float64 on the CPU for "few" objects; large populations are computed on the GPU (see §3.3).
 - Nothing in `app/` may contain a physical constant or dataset value that did not come from `app/public/data/` **or** from a documented, cited constant module (`app/src/core/constants.ts`, each entry with its source). No magic numbers that describe the universe.
 
@@ -195,7 +196,7 @@ When an attribute needed for drawing is below the current `exists` level or `unk
 
 | File | Producer stage | Content |
 |---|---|---|
-| `manifest.json` | all | build time, validity windows, list of products with sha256 and byte sizes |
+| `manifest.json` | all | build time, validity windows, list of products with sha256 and byte sizes; `stages`: per stage the last run's status and fingerprint (resumable builds); `build`: the last build's profile and, per stage, built / up to date / not built / failed / blocked with the reason |
 | `sources.json` | all | `SourceRecord[]` |
 | `time.json` | `time` | leap seconds (UTC instants and ΔAT) and TDB formula constants from the LSK |
 | `ephem/<name>.json` + `ephem/<name>.bin` | `ephemeris` | SPK segments restricted to the window; bin is float64 little-endian, native SPK type 2/3 record layout (type 17: one 12-double record). `ephem/de442s`: planets; `ephem/centers`: planet centres 499–999 only (bit-identical copies of the sat-* segments; loaded before the first frame); `ephem/sat-{mar,jup,sat,ura,nep,plu}`: planet centres and every moon, one file per system (lazy-loadable) |

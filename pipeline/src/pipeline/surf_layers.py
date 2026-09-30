@@ -87,8 +87,10 @@ class LayerSpec:
 
 def write_layer(ctx: BuildContext, spec: LayerSpec, top: np.ndarray, known: np.ndarray, top_level: int) -> dict:
     """Write tiles, listing and header; register the products; return the header dict."""
+    cap = ctx.param("surfaces.maxLevel")
+    written = top_level if cap is None else max(spec.min_level, min(top_level, cap))
     ts = st.write_pyramid(OUT, spec.naif, spec.layer, top, known, top_level, spec.fmt, min_level=spec.min_level,
-                          nodata=spec.nodata, coarse=spec.coarse)
+                          nodata=spec.nodata, coarse=spec.coarse, max_level=written)
     listing_rel = f"surfaces/{spec.naif}/{spec.layer}.sha256"
     write_bin(ctx, listing_rel, ts.listing(), STAGE)
     ctx.products[f"surfaces/{spec.naif}/{spec.layer}/"] = {
@@ -108,10 +110,10 @@ def write_layer(ctx: BuildContext, spec: LayerSpec, top: np.ndarray, known: np.n
         "bytesPerTexel": len(spec.channels) * (2 if spec.fmt == "f16" else 4),
         "tileSize": st.TILE,
         "minLevel": spec.min_level,
-        "maxLevel": top_level,
+        "maxLevel": written,
         "levels": [{"level": L, "width": st.level_shape(L)[1], "height": st.level_shape(L)[0],
                     "tilesX": st.tiles_shape(L)[1], "tilesY": st.tiles_shape(L)[0],
-                    "texelDeg": 180.0 / st.level_shape(L)[0]} for L in range(spec.min_level, top_level + 1)],
+                    "texelDeg": 180.0 / st.level_shape(L)[0]} for L in range(spec.min_level, written + 1)],
         "tilePath": f"surfaces/{spec.naif}/{spec.layer}/{{level}}/{{ty}}/{{tx}}.bin",
         "tileListing": listing_rel,
         "coarseLevels": st.COARSE_RULES[spec.coarse],
@@ -132,6 +134,13 @@ def write_layer(ctx: BuildContext, spec: LayerSpec, top: np.ndarray, known: np.n
         "generated": _dt.datetime.now(_dt.timezone.utc).isoformat(timespec="seconds"),
         "stats": {"tiles": len(ts.files), "bytes": ts.bytes},
     }
+    if written < top_level:
+        header["levelCap"] = {
+            "sourceMaxLevel": top_level,
+            "note": f"Built with the level cap surfaces.maxLevel={cap} (build profile or --set): levels "
+                    f"{written + 1}-{top_level} exist in the source but were not written. Levels "
+                    f"{spec.min_level}-{written} are identical to an uncapped build's; coverage is that of the "
+                    f"source level {top_level}."}
     if spec.color:
         header["color"] = spec.color.to_json()
     if spec.epoch:
@@ -147,7 +156,8 @@ def write_layer(ctx: BuildContext, spec: LayerSpec, top: np.ndarray, known: np.n
     if spec.notes:
         header["notes"] = spec.notes
     write_json(ctx, f"surfaces/{spec.naif}/{spec.layer}.json", header, STAGE)
-    print(f"[surfaces] {spec.body} {spec.layer}: levels {spec.min_level}-{top_level}, {len(ts.files)} tiles, "
+    print(f"[surfaces] {spec.body} {spec.layer}: levels {spec.min_level}-{written}"
+          f"{f' (of {top_level}: surfaces.maxLevel={cap})' if written < top_level else ''}, {len(ts.files)} tiles, "
           f"{ts.bytes / 2**20:.1f} MiB, coverage {header['coverage']['areaFraction']:.3f}")
     return header
 

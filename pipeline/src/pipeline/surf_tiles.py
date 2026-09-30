@@ -243,11 +243,14 @@ def encode_tile(block: np.ndarray, known: np.ndarray, fmt: str, nodata: str = "z
 
 
 def write_pyramid(out_root: Path, naif: int, layer: str, top: np.ndarray, known: np.ndarray, top_level: int,
-                  fmt: str, *, min_level: int = 0, nodata: str = "zero", coarse: str = "any") -> TileSet:
+                  fmt: str, *, min_level: int = 0, nodata: str = "zero", coarse: str = "any",
+                  max_level: int | None = None) -> TileSet:
     """Write levels top_level..min_level of an (H, W[, C]) array (H, W = level_shape(top_level)).
 
     Levels are built by successive 2×2 known-texel means. Tiles whose texels are all unknown are not written and
-    are listed in `missing`. The layer directory is cleared first so no stale tiles survive a rebuild."""
+    are listed in `missing`. The layer directory is cleared first so no stale tiles survive a rebuild.
+    `max_level` (a build's level cap) skips writing the levels above it; they are still computed, so every level
+    written is identical to the same level of an uncapped build."""
     if known.shape != level_shape(top_level):
         raise ValueError(f"array {known.shape} is not level {top_level} {level_shape(top_level)}")
     layer_dir = out_root / "surfaces" / str(naif) / layer
@@ -263,7 +266,7 @@ def write_pyramid(out_root: Path, naif: int, layer: str, top: np.ndarray, known:
     for level in range(top_level, min_level - 1, -1):
         ny, nx = tiles_shape(level)
         miss = []
-        for ty in range(ny):
+        for ty in range(ny if max_level is None or level <= max_level else 0):
             rows = slice(ty * TILE, (ty + 1) * TILE)
             strip = np.asarray(arr[rows], np.float32)
             kstrip = np.asarray(kn[rows])

@@ -92,7 +92,7 @@ def _horizons(target: int, center: str, corr: str, tag: str) -> dict:
     et = hz.jd_to_et(table.jd_tdb)
     if not np.allclose(table.jd_tdb, EPOCHS_JD, rtol=0, atol=1e-9):
         raise ValueError("Horizons returned different epochs")
-    text = path.read_text()
+    text = path.read_text(encoding="utf-8")
     corr_desc = ""
     if "ABERRATIONS AND CORRECTIONS" in text:
         corr_desc = re.sub(r"\s+", " ", text.split("ABERRATIONS AND CORRECTIONS", 1)[1].split("Computations by", 1)[0]).strip()
@@ -155,7 +155,7 @@ def _rebase(bodies: list[dict], kernels: dict, astrometric: bool) -> None:
 
 def _window() -> tuple[float, float]:
     from .stages.ephemeris import MARGIN_S
-    w = json.loads((CACHE / "window.json").read_text())
+    w = json.loads((CACHE / "window.json").read_text(encoding="utf-8"))
     return w["startEt"] - MARGIN_S, w["endEt"] + MARGIN_S
 
 
@@ -164,7 +164,7 @@ def _satellite_spk(epochs_et: list[float]) -> list[dict]:
     t0, t1 = _window()
     by_kernel: dict[str, list[tuple[str, dict]]] = {}
     for p in sorted((OUT / "ephem").glob("sat-*.json")):
-        for s in json.loads(p.read_text())["segments"]:
+        for s in json.loads(p.read_text(encoding="utf-8"))["segments"]:
             by_kernel.setdefault(s["sources"][0].removeprefix("naif-"), []).append((f"ephem/{p.stem}", s))
     out = []
     for k in sat.KERNELS:
@@ -300,7 +300,7 @@ def main() -> None:
 
 
 def _write(name: str, obj: dict) -> None:
-    (FIXTURES / name).write_text(json.dumps(obj, indent=1) + "\n")
+    (FIXTURES / name).write_text(json.dumps(obj, indent=1) + "\n", encoding="utf-8", newline="\n")
     print(f"wrote {FIXTURES / name}")
 
 

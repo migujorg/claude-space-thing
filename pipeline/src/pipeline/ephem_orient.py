@@ -21,10 +21,10 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
-import requests
 import spiceypy as sp
 from jplephem.daf import DAF
 
+from . import download
 from .download import fetch, record
 from .ephem_spk import Segment, read_pck
 from .output import write_bin, write_json
@@ -57,8 +57,7 @@ class OrientSeg:
 
 def _latest(pattern: str, key) -> str:
     """Newest file name in NAIF's pck/ directory matching `pattern` (NAIF renames files as data arrive)."""
-    r = requests.get(f"{NAIF}/pck/", timeout=60)
-    r.raise_for_status()
+    r = download.request("GET", f"{NAIF}/pck/", timeout=60)
     names = sorted(set(re.findall(pattern, r.text)), key=key)
     if not names:
         raise ValueError(f"no file matching {pattern} in {NAIF}/pck/")

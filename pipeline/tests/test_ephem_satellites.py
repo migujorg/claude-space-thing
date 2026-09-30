@@ -64,7 +64,7 @@ def excerpt_path(kernel, segs):
 
 def test_products_cover_every_kernel_and_system(segments):
     assert set(segments) == {k.name for k in sat.KERNELS}
-    w = json.loads((OUT / "manifest.json").read_text())["window"]
+    w = json.loads((OUT / "manifest.json").read_text(encoding="utf-8"))["window"]
     for p in PRODUCTS:
         key = p.stem.removeprefix("sat-")
         bary = sat.SYSTEMS[key][0]
@@ -138,7 +138,7 @@ def test_every_excerpt_was_checked_against_its_original(segments):
     ledger = download._load_ledger()
     for k in sat.KERNELS:
         path = excerpt_path(k, [s for _, s in segments[k.name]])
-        rec = ledger[str(path.relative_to(RAW))]
+        rec = ledger[download.ledger_key(path)]
         assert rec["url"] == k.url
         if not k.whole:
             ex = rec["excerpt"]
@@ -147,7 +147,7 @@ def test_every_excerpt_was_checked_against_its_original(segments):
 
 
 def test_sources_cite_each_kernel():
-    sources = {s["id"]: s for s in json.loads((OUT / "sources.json").read_text())}
+    sources = {s["id"]: s for s in json.loads((OUT / "sources.json").read_text(encoding="utf-8"))}
     for k in sat.KERNELS:
         s = sources[k.source_id]
         assert s["url"] == k.url and s["sha256"] and s["version"] == k.name

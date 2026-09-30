@@ -40,6 +40,15 @@ export interface Manifest {
   /** Validity window of time-dependent products, TDB seconds past J2000. */
   window: { startEt: number; endEt: number };
   products: Record<string, ProductEntry>;
+  /** Pipeline bookkeeping for resumable builds (pipeline/build.py): stage name → last run (built / failed). */
+  stages?: Record<string, { status: 'built' | 'failed'; finishedAt?: string; error?: string; profile?: string | null }>;
+  /** The last build: its profile and, per stage, what happened and why (e.g. "not in profile minimal"). */
+  build?: {
+    profile: string | null;
+    startedAt: string;
+    finishedAt: string;
+    stages: Record<string, { status: string; reason: string }>;
+  };
 }
 
 export interface LeapSecond {
@@ -622,8 +631,14 @@ export interface SurfaceLayerHeader {
   bytesPerTexel: number;
   tileSize: 256;
   minLevel: number;
+  /** Highest level stored (the source's own maximum unless a build level cap applied, see levelCap). */
   maxLevel: number;
   levels: SurfaceLevelInfo[];
+  /**
+   * Present only when a build profile capped the pyramid (pipeline parameter surfaces.maxLevel): the source supports
+   * levels up to sourceMaxLevel, but only minLevel..maxLevel were written (identical to an uncapped build's).
+   */
+  levelCap?: { sourceMaxLevel: number; note: string };
   /** Template relative to the data root, placeholders {level}, {ty}, {tx}. */
   tilePath: string;
   /** Path of the "sha256  path" listing of every stored tile. */

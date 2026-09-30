@@ -1,0 +1,7 @@
+# Line endings that must not depend on the platform of the checkout (git core.autocrlf on Windows):
+# shell scripts run in Git Bash / WSL need LF, PowerShell scripts are kept CRLF.
+*.sh    text eol=lf
+*.ps1   text eol=crlf
+# Test fixtures are data (some are server responses byte for byte): never convert them.
+pipeline/tests/fixtures/** -text
+app/tests/fixtures/**      -text

@@ -35,8 +35,8 @@ def albedo_rgb(header: dict, level: int) -> np.ndarray:
     import colour
     a = st.read_level(OUT, header["body"], header["layer"], level, 4, "f16")
     known = (a != 0).any(axis=2)
-    phot = json.loads((OUT / "photometry.json").read_text()).get(str(header["body"]))
-    light = json.loads((OUT / "light.json").read_text())
+    phot = json.loads((OUT / "photometry.json").read_text(encoding="utf-8")).get(str(header["body"]))
+    light = json.loads((OUT / "light.json").read_text(encoding="utf-8"))
     sun = np.array(light["sun"]["irradianceXYZS_1AU"]["value"][:3])
     sun_xy = sun[:2] / sun.sum()
     absolute = (header.get("normalization") or {}).get("absoluteDiskMean")
@@ -125,7 +125,7 @@ def write(header: dict) -> Path | None:
 
 def main() -> None:
     for p in sorted((OUT / "surfaces").glob("*/*.json")):
-        out = write(json.loads(p.read_text()))
+        out = write(json.loads(p.read_text(encoding="utf-8")))
         if out:
             print(f"{out.relative_to(REPO)}: {out.stat().st_size / 1024:.0f} KiB")
 

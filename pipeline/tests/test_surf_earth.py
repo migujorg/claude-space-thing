@@ -76,7 +76,7 @@ CMAP = """<?xml version="1.0" encoding="UTF-8"?>
 
 def test_colormap_inversion(tmp_path):
     p = tmp_path / "map.xml"
-    p.write_text(CMAP)
+    p.write_text(CMAP, encoding="utf-8", newline="\n")
     cm = gb.parse_colormap("test", p)
     assert cm.units == "m" and cm.classes == ["No Data", "Thing"]
     rgba = np.array([[[10, 0, 0, 255], [20, 0, 0, 255], [30, 0, 0, 255]],
@@ -92,7 +92,7 @@ def test_colormap_inversion(tmp_path):
 
 def test_colormap_with_duplicate_colours_is_rejected(tmp_path):
     p = tmp_path / "dup.xml"
-    p.write_text(CMAP.replace('rgb="20,0,0"', 'rgb="10,0,0"'))
+    p.write_text(CMAP.replace('rgb="20,0,0"', 'rgb="10,0,0"'), encoding="utf-8", newline="\n")
     with pytest.raises(ValueError, match="duplicate"):
         gb.parse_colormap("dup", p)
 
@@ -137,7 +137,7 @@ def test_fetch_byte_range_is_recorded(server):
     url = f"http://127.0.0.1:{server.server_port}/blob.bin"
     p = download.fetch(url + "?token=secret", "t", "part", byte_range=(100, 612), record_url=url)
     assert p.read_bytes() == _RangeHandler.blob[100:612]
-    e = json.loads(download._LEDGER.read_text())["t/part"]
+    e = json.loads(download._LEDGER.read_text(encoding="utf-8"))["t/part"]
     assert e["range"] == "bytes=100-611" and e["remoteBytes"] == 10240 and e["etag"] == '"abc"'
     assert e["url"] == url and "secret" not in json.dumps(e)
     # a different range is fetched again, not taken from the cache
@@ -169,7 +169,7 @@ def _header(layer):
     p = OUT / "surfaces" / "399" / f"{layer}.json"
     if not p.exists():
         pytest.skip(f"surfaces/399/{layer} not built")
-    return json.loads(p.read_text())
+    return json.loads(p.read_text(encoding="utf-8"))
 
 
 def _top(h):

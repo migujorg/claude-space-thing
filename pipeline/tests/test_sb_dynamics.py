@@ -78,7 +78,7 @@ def test_stumpff_series_matches_closed_form_at_boundary():
 
 @pytest.fixture(scope="module")
 def fixture_data():
-    hz = json.loads((FIX / "horizons.json").read_text())
+    hz = json.loads((FIX / "horizons.json").read_text(encoding="utf-8"))
     cat = sb_catalog.load_orbits([FIX / "orbits.json"])
     sb_catalog.attach_nongrav(cat, {int(p.stem): p for p in (FIX / "nongrav").glob("*.json")})
     return hz, cat

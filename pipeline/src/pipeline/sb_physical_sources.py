@@ -132,7 +132,7 @@ def _f(x: str) -> float:
 def read_neowise(paths: list[Path]) -> list[NeowiseFit]:
     out = []
     for p in paths:
-        for row in csv.reader(io.StringIO(p.read_text())):
+        for row in csv.reader(io.StringIO(p.read_text(encoding="utf-8"))):
             if not row:
                 continue
             r = [c.strip() for c in row]

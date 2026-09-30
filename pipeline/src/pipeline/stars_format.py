@@ -68,7 +68,7 @@ def encode(records: np.ndarray) -> bytes:
 
 def read_table(header_path: Path) -> tuple[dict, dict[str, np.ndarray]]:
     """Generic BinaryTableHeader reader (mirrors what the app loader does): header + {field: array}."""
-    header = json.loads(Path(header_path).read_text())
+    header = json.loads(Path(header_path).read_text(encoding="utf-8"))
     raw = (Path(header_path).parent / header["bin"]).read_bytes()
     n, stride = header["count"], header["stride"]
     if len(raw) != n * stride:

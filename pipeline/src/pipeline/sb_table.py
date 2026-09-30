@@ -75,7 +75,7 @@ def write_table(ctx: BuildContext, rel_stem: str, fields: list[Field], columns: 
 
 def read_table(header_path: Path) -> tuple[dict, np.ndarray]:
     """Read a table written by write_table back (for tests)."""
-    header = json.loads(header_path.read_text())
+    header = json.loads(header_path.read_text(encoding="utf-8"))
     root = header_path.parent
     while not (root / header["bin"]).exists() and root != root.parent:
         root = root.parent
