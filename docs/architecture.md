@@ -168,7 +168,8 @@ When an attribute needed for drawing is below the current `exists` level or `unk
 | `sources.json` | all | `SourceRecord[]` |
 | `time.json` | `time` | leap seconds (UTC instants and ΔAT) and TDB formula constants from the LSK |
 | `ephem/<name>.json` + `ephem/<name>.bin` | `ephemeris` | SPK segments restricted to the window; bin is float64 little-endian, native SPK type 2/3 record layout |
-| `bodies.json` | `bodies` (+ `light`) | `Body[]` with `Sourced` attributes |
+| `bodies.json` | `bodies` | `Body[]` with `Sourced` attributes (geometry, rotation, GM, ephemeris wiring) |
+| `photometry.json` | `light` | NAIF id → `BodyPhotometry` (albedo spectra integrated per §4.3, phase functions); merged into bodies by the app loader |
 | `light.json` | `light` | Sun spectrum-derived quantities, CIE constants actually used |
 | `stars/<name>.json` + `.bin` | `stars` | header + interleaved per-star data |
 

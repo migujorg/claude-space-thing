@@ -9,6 +9,7 @@ dependencies = [
   "colour-science>=0.4.6",
   "astropy>=6.0",
   "requests>=2.31",
+  "scipy>=1.17.1",
 ]
 
 [dependency-groups]

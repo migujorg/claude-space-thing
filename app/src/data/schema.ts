@@ -111,8 +111,12 @@ export interface Body {
   radii: Sourced<[number, number, number]>;
   gm: Sourced<number>;
   rotation: Sourced<IauRotation>;
-  photometry: BodyPhotometry;
+  /** Filled by the loader from photometry.json (produced by the `light` stage). Absent → all unknown. */
+  photometry?: BodyPhotometry;
 }
+
+/** photometry.json: NAIF id (as string) → photometry. */
+export type PhotometryFile = Record<string, BodyPhotometry>;
 
 export interface BodyPhotometry {
   /** See docs/architecture.md §4.3. Four numbers (X, Y, Z, scotopic) in "lux at 1 AU". */
