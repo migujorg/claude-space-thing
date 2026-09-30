@@ -90,7 +90,7 @@ def run(ctx: BuildContext) -> None:
     log(f"zodiacal model written ({time.time() - t0:.0f} s)")
     build_diffuse(ctx, ids, diag)
     (CACHE / "sky").mkdir(parents=True, exist_ok=True)
-    (CACHE / "sky" / "diagnostics.json").write_text(json.dumps(st._jsonable(diag), indent=1))
+    (CACHE / "sky" / "diagnostics.json").write_text(json.dumps(st._jsonable(diag), indent=1), encoding="utf-8", newline="\n")
     log(f"done in {time.time() - t0:.0f} s")
 
 
@@ -242,7 +242,7 @@ def build_diffuse(ctx: BuildContext, ids: dict, diag: dict) -> None:
     diag["bandFromXYZ"] = br_from_xyz
 
     # --------------------------------------------------------------- stars we render: dir, Y, B, R, HIP V
-    xp_paths, xp_ledger = sdp.stream_deep_xp(log=log)
+    xp_paths, xp_ledger = sdp.stream_deep_xp(log=log, workers=ctx.param("gaia.xpWorkers"))
     xsid, xred = sg.load_xp_reduced(xp_paths)
 
     def band_fluxes(xp_lit, cat, xyzs_):
@@ -265,7 +265,7 @@ def build_diffuse(ctx: BuildContext, ids: dict, diag: dict) -> None:
     hm = sc.load_hip_main()
     vmap = dict(zip(hm.hip.astype(int).tolist(), hm.vmag.tolist()))
     b_v = np.array([vmap.get(int(h), np.nan) if h else np.nan for h in br["hip"]])
-    dh = json.loads((OUT / "stars" / "deep.json").read_text())
+    dh = json.loads((OUT / "stars" / "deep.json").read_text(encoding="utf-8"))
     d_dir, d_xyzs, d_cat, d_route = [], [], [], []
     for t in dh["tiles"]:
         raw = np.frombuffer((OUT / "stars" / t["bin"]).read_bytes(), dtype=sf.dtype())
@@ -283,10 +283,10 @@ def build_diffuse(ctx: BuildContext, ids: dict, diag: dict) -> None:
     diag["bandFluxFromXP"] = {"bright": [int(b_hit.sum()), int(b_hit.size)], "deep": [int(d_hit.sum()), int(d_hit.size)]}
 
     # --------------------------------------------------------------- faint Gaia sums (G >= 14)
-    sums = _load_sums(sg.fetch_faint_sums(FAINT_G_MIN, FAINT_ORDER))
+    sums = _load_sums(sg.fetch_faint_sums(FAINT_G_MIN, FAINT_ORDER, ctx.param("gaia.tapWorkers")))
     npx8 = hp.npix(FAINT_ORDER)
     om8 = 4 * np.pi / npx8
-    csum = _load_colour_sums(sg.fetch_faint_colour_sums(FAINT_G_MIN, COLOUR_ORDER))
+    csum = _load_colour_sums(sg.fetch_faint_colour_sums(FAINT_G_MIN, COLOUR_ORDER, ctx.param("gaia.tapWorkers")))
     # effective (XYZS, B, R) per 10^(-0.4 G) of the faint stars in each order-6 pixel: colour-bin mix
     npx6c = hp.npix(COLOUR_ORDER)
     num = np.zeros((npx6c, len(cols)))
@@ -483,8 +483,8 @@ def _register_sources(ctx: BuildContext) -> None:
                "0 = no data. B: 437.0 nm (826 A wide), R: 644.1 nm (968 A). Measurements from beyond 3.3 AU (no "
                "zodiacal light); stars 'typically brighter than 6.5 mag' removed by Toller from a 12457-star catalog "
                "(Leinert 1998 p. 69). Files: " + st._files_note(list(paths.values())))))
-    sums = sg.fetch_faint_sums(FAINT_G_MIN, FAINT_ORDER)
-    csums = sg.fetch_faint_colour_sums(FAINT_G_MIN, COLOUR_ORDER)
+    sums = sg.fetch_faint_sums(FAINT_G_MIN, FAINT_ORDER, ctx.param("gaia.tapWorkers"))
+    csums = sg.fetch_faint_colour_sums(FAINT_G_MIN, COLOUR_ORDER, ctx.param("gaia.tapWorkers"))
     ctx.add_source(SourceRecord(
         id=SRC_SUMS, title=f"{sg.REL.label} gaia_source: per-HEALPix sums of G, BP, RP fluxes for G >= {FAINT_G_MIN:g}",
         citation=sg.REL.citation + f", DOI:{sg.REL.doi}; photometry: Riello M. et al. 2021, A&A 649, A3, "
@@ -493,8 +493,8 @@ def _register_sources(ctx: BuildContext) -> None:
         version=sg.REL.label, license="ESA/Gaia/DPAC, CC BY-SA 3.0 IGO",
         notes=f"2 x {len(sums)} synchronous TAP queries (one per HEALPix level-{sg.SUM_LEVEL} source_id range; "
               "sha256 over all result files). Per level-8 pixel: "
-              + sums[0].with_name(sums[0].name + ".adql").read_text() + " || per level-6 pixel and BP-RP bin: "
-              + csums[0].with_name(csums[0].name + ".adql").read_text()))
+              + sums[0].with_name(sums[0].name + ".adql").read_text(encoding="utf-8") + " || per level-6 pixel and BP-RP bin: "
+              + csums[0].with_name(csums[0].name + ".adql").read_text(encoding="utf-8")))
 
 
 def _write_diffuse(ctx, ids, diag, faint_xyzs, xyzs6, label6, agg, filled, reg, incl_w, br_from_xyz,
