@@ -219,6 +219,7 @@ export async function startApp(canvas: HTMLCanvasElement, uiRoot: HTMLElement, d
             nongrav: t.nongrav?.buffer,
             nongravHeader: t.nongrav?.header,
             photometry: t.photometry ?? undefined,
+            synthetic: t.synthetic ? { objects: t.synthetic.objects.buffer, header: t.synthetic.objects.header } : undefined,
           },
           { positionSSB: (id, et) => model.eph?.positionSSB(id, et) ?? null },
         );

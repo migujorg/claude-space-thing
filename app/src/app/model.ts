@@ -113,7 +113,10 @@ export class AppModel {
   /** Surface maps and rings the snapshot may attach (filtered per frame by the reality level). */
   extras: SceneExtras | undefined;
   clock = new Clock(0, null);
-  readonly realityDefaults: RealityState;
+  /** Defaults of the reality settings (NORTH_STAR 3.7): Complete once the build has a synthetic layer. */
+  realityDefaults: RealityState;
+  /** The data lists a synthetic layer (synthetic/objects.json): Complete is the default level. */
+  syntheticLayerAvailable = false;
   reality: RealityState;
   fovY = DEFAULT_FOV_DEG * DEG;
   cam: CamState = { mode: 'free', anchor: null, rel: [0, 0, 0], orient: IDENTITY };
@@ -161,6 +164,7 @@ export class AppModel {
   constructor(core: CoreDeps, opts: { now?: () => number; syntheticLayerAvailable?: boolean } = {}) {
     this.core = core;
     this.now = opts.now ?? Date.now;
+    this.syntheticLayerAvailable = !!opts.syntheticLayerAvailable;
     this.realityDefaults = defaultReality({ syntheticLayerAvailable: opts.syntheticLayerAvailable });
     this.reality = structuredClone(this.realityDefaults);
     this.orientations = buildOrientation(core, [], []).set;
@@ -249,6 +253,16 @@ export class AppModel {
     this.smallBodies = null;
     this.sbExcluded = '';
     this.sb = { status: d.smallBodies ? 'waiting' : 'absent', got: 0, total: d.smallBodies?.tableBytes ?? 0, message: null, ms: null };
+    // Architecture §5.2 / NORTH_STAR 3.7: once a synthetic layer exists, Complete is the default level (a level the
+    // user or the URL chose is kept).
+    const syn = !!d.smallBodies?.synthetic;
+    if (syn !== this.syntheticLayerAvailable) {
+      const nd = defaultReality({ syntheticLayerAvailable: syn });
+      if (this.reality.exists === this.realityDefaults.exists) this.reality = { ...this.reality, exists: nd.exists };
+      this.realityDefaults = { ...this.realityDefaults, exists: nd.exists };
+      this.syntheticLayerAvailable = syn;
+      this.emit('reality');
+    }
     this.emit('data');
     this.emit('time');
   }
@@ -337,6 +351,7 @@ export class AppModel {
   setSmallBodyField(f: SmallBodyFieldPort | null): void {
     if (!this.smallBodies) return;
     this.smallBodies.field = f;
+    if (f?.syntheticNote) this.message(`Synthetic objects are not drawn: ${f.syntheticNote}.`, 'warn');
     this.sbExcluded = '';
     this.emit('smallbodies');
   }
@@ -385,7 +400,7 @@ export class AppModel {
   private fetchName(row: number): void {
     const sb = this.smallBodies;
     // Search results bring the name but not the SPK-ID (needed for links): ask until both are known.
-    if (!this.names || !sb || (sb.knownName(row) && this.names.spkidOf(row) !== null)) return;
+    if (!this.names || !sb || sb.isSynthetic(row) || (sb.knownName(row) && this.names.spkidOf(row) !== null)) return;
     this.names.display([row]).then(
       ([n]) => {
         if (!n) return;
@@ -650,7 +665,7 @@ export class AppModel {
   }
 
   badge(): string[] {
-    const parts = badgeParts(this.reality, this.realityDefaults);
+    const parts = badgeParts(this.reality, this.realityDefaults, { syntheticLayerAvailable: this.syntheticLayerAvailable });
     // Away from the default level, say what it does to the asteroids and comets (most brightnesses rest on an
     // assumed phase law, so Strict withholds most of them).
     const c = this.reality.exists !== this.realityDefaults.exists ? this.smallBodyCounts() : null;
