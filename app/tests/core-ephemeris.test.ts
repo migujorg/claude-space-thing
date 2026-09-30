@@ -5,9 +5,15 @@ import type { Vec3 } from '../src/core/vec';
 import { distance, norm, sub } from '../src/core/vec';
 import { MaxTracker, fixture, loadEphemeris, loadEphemerisSet } from './core-data';
 
+interface SpiceCase {
+  et: number;
+  pos: number[];
+  vel: number[];
+}
 interface SpiceSpk {
   kernel: { file: string };
-  segments: { target: number; center: number; cases: { et: number; pos: number[]; vel: number[] }[] }[];
+  segments: { target: number; center: number; cases: SpiceCase[] }[];
+  satellites: { product: string; kernel: string; target: number; center: number; type: number; cases: SpiceCase[] }[];
 }
 interface HorizonsFile {
   ourPlanetary: string;
@@ -45,6 +51,72 @@ describe.skipIf(!de)(`Ephemeris (TS Chebyshev) vs SPICE spkgeo on the original $
     }
     expect(n).toBeGreaterThanOrEqual(14 * 3);
     max.report(`TS ${planetary} vs SPICE (${n} cases):`);
+  });
+});
+
+// Satellite products: SPICE spkgeo on the kernel excerpts (each loaded alone) vs the TS evaluator on our products.
+// Types 2 and 3 are bit-identical to SPICE; type 17 (a conic) agrees to < 1 mm (a mean longitude of ~1e5 rad has an
+// ulp of ~1e-11 rad, i.e. ~1 mm at a = 117,061 km).
+const satProducts = [...new Set(spk.satellites.map((s) => s.product))];
+const sats = new Map(satProducts.map((p) => [p, loadEphemeris(p)] as const));
+describe.skipIf([...sats.values()].some((e) => !e))('Satellite products vs SPICE spkgeo on the kernel excerpts', () => {
+  it('reproduces sampled segments of every kernel (SPK types 2, 3 and 17) to < 1 mm and < 1e-9 km/s', () => {
+    const max = new MaxTracker();
+    const types = new Set<number>();
+    for (const seg of spk.satellites) {
+      const e = sats.get(seg.product)!;
+      for (const c of seg.cases) {
+        const st = e.state(seg.target, c.et);
+        expect(st, `${seg.target} at ${c.et} not covered by ${seg.product}`).not.toBeNull();
+        expect(st!.center).toBe(seg.center);
+        const dp = distance(st!.pos, c.pos as Vec3);
+        const dv = distance(st!.vel, c.vel as Vec3);
+        max.add(`type ${seg.type} position km`, dp, `${seg.target} (${seg.kernel})`);
+        max.add(`type ${seg.type} velocity km/s`, dv, `${seg.target} (${seg.kernel})`);
+        expect(dp, `${seg.target}`).toBeLessThan(1e-6);
+        expect(dv, `${seg.target}`).toBeLessThan(1e-9);
+        types.add(seg.type);
+      }
+    }
+    expect([...types].sort()).toEqual([17, 2, 3]);
+    max.report(`TS satellite products vs SPICE (${spk.satellites.length} segments, ${new Set(spk.satellites.map((s) => s.kernel)).size} kernels):`);
+  });
+});
+
+interface HorizonsMoons {
+  bodies: { target: number; center: string; targetLine: string; centerLine: string; epochs: { jdTdb: number; et: number; pos: number[]; vel: number[] }[] }[];
+}
+
+describe.skipIf(!set)('Moons vs JPL Horizons, relative to their planet centre (independent)', () => {
+  it('matches Io, Europa, Titan, Enceladus, Phobos, Triton, Charon, Miranda, irregulars, Janus (type 3) and a type-17 moonlet', () => {
+    const hz = fixture<HorizonsMoons>('horizons_moons.json');
+    const max = new MaxTracker();
+    for (const b of hz.bodies) {
+      const planet = Number(b.center.replace('500@', ''));
+      // Our planet centre comes from one kernel (e.g. 699 from sat441). Horizons pairs a moon with the planet centre
+      // of the moon's own kernel: for sat415 moons (Janus) that is sat415's 699, which differs from sat441's by ~3 m,
+      // inside sat415's stated 5.8 m interpolation error. Everywhere else both come from the same kernel.
+      const ourCenterKernel = set!.provenance(planet, b.epochs[0].et)!.sources.find((s) => s !== `naif-${planetary}`)!.replace('naif-', '');
+      // Kernel families: mar099s ~ mar099, nep098_part-1 ~ nep098_merged, sat441 ~ sat441l.
+      const family = (k: string) => k.replace(/_part-\d+$/, '').replace(/_merged.*$/, '').replace(/^(\w{3}\d{3})[sl]$/, '$1');
+      const hzCenterKernel = /source: ([^}]+)\}/.exec(b.centerLine)![1].trim();
+      const sameCenter = family(ourCenterKernel) === family(hzCenterKernel);
+      const tol = sameCenter ? 1e-3 : 1e-2;
+      for (const e of b.epochs) {
+        const m = set!.stateSSB(b.target, e.et);
+        const p = set!.stateSSB(planet, e.et);
+        expect(m && p, `${b.target} at JD ${e.jdTdb} not covered: regenerate fixtures`).toBeTruthy();
+        const dp = distance(sub(m!.pos, p!.pos), e.pos as Vec3);
+        const dv = distance(sub(m!.vel, p!.vel), e.vel as Vec3);
+        const tag = `${b.target} wrt ${planet}${sameCenter ? '' : ` (Horizons centre from ${hzCenterKernel}, ours from ${ourCenterKernel})`}`;
+        max.add(`${tag} position km`, dp, `JD ${e.jdTdb}`);
+        max.add(`${tag} velocity km/s`, dv, `JD ${e.jdTdb}`);
+        // Same kernels as Horizons; Horizons prints 16 significant digits.
+        expect(dp, `${b.target} JD ${e.jdTdb}`).toBeLessThan(tol);
+        expect(dv, `${b.target} JD ${e.jdTdb}`).toBeLessThan(sameCenter ? 1e-8 : 1e-6);
+      }
+    }
+    max.report(`Moons vs Horizons (${hz.bodies.length} moons):`);
   });
 });
 
@@ -92,13 +164,14 @@ describe.skipIf(!set)('EphemerisSet vs JPL Horizons geometric SSB states (indepe
     expect(off).toBeLessThan(2500);
   });
 
-  it('reports provenance: measured for planetary-ephemeris chains, derived when a fitted center is involved', () => {
+  it('reports provenance: the segments and sources of the whole chain (planet centres and moons from the satellite kernels)', () => {
     const et = hz.bodies[0].epochs[0].et;
     expect(set!.provenance(399, et)!.label).toBe('measured');
     const p = set!.provenance(599, et)!;
-    expect(p.label).toBe('derived');
+    expect(p.label).toBe('measured');
     expect(p.sources).toContain(`naif-${planetary}`);
-    expect(p.sources).toContain('jpl-horizons-center-599');
+    expect(p.sources).toContain('naif-jup365');
+    expect(set!.provenance(65304, et)!.segments.map((s) => s.target)).toEqual([65304, 699, 6]);
   });
 
   it('never extrapolates: null outside coverage, window is the intersection', () => {
