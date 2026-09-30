@@ -73,6 +73,8 @@ export function buildSnapshot(inp: SnapshotInput): SceneSnapshot {
       surfaceUnknown: f.surfaceUnknown || (radii !== null && !lit),
       worstLabel: f.worstLabel,
       selected: g.id === inp.selectedId,
+      // Best/complete may continue a measured phase curve with the spatial law (labelled estimated).
+      allowPhaseExtrapolation: level !== 'strict',
     });
   }
   return {

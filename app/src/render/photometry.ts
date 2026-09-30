@@ -85,6 +85,38 @@ export function lambertRadianceFactor(albedoXYZS: XYZS, dAU: number, scale: numb
   return [albedoXYZS[0] * k, albedoXYZS[1] * k, albedoXYZS[2] * k, albedoXYZS[3] * k];
 }
 
+/** Phase-angle range (degrees) over which a phase function is defined; null = all angles (Lambert). */
+export function phaseRangeDeg(pf: PhaseFunction): [number, number] | null {
+  switch (pf.kind) {
+    case 'lambert':
+      return null;
+    case 'poly-mag':
+      return [pf.minDeg, pf.maxDeg];
+    case 'tabulated':
+      return pf.alphaDeg.length ? [pf.alphaDeg[0], pf.alphaDeg[pf.alphaDeg.length - 1]] : null;
+  }
+}
+
+/**
+ * Best-estimate continuation of a measured phase curve outside its range (NORTH_STAR 3.2/3.7; used only
+ * when the shell allows it): Φ(α) = Φ_meas(α_e)·I(α)/I(α_e), with α_e the nearest end of the measured
+ * range and I the disk integral of the body's spatial law (its own phase dependence), so the result is
+ * continuous with the measurement at the edge. Returns null when the law has no lit disk at α_e.
+ *
+ * @param lawIntegral disk-integrated brightness I(α) of the spatial law (e.g. from spatial.ts)
+ */
+export function extrapolatePhase(pf: PhaseFunction, alpha: number, lawIntegral: (a: number) => number): { phi: number; edgeDeg: number } | null {
+  const r = phaseRangeDeg(pf);
+  if (!r) return null;
+  const edgeDeg = Math.min(Math.max((alpha * 180) / Math.PI, r[0]), r[1]);
+  const edge = (edgeDeg * Math.PI) / 180;
+  const at = evalPhase(pf, edge);
+  if (!at.ok) return null;
+  const Ie = lawIntegral(edge);
+  if (!(Ie > 0)) return null;
+  return { phi: (at.phi * lawIntegral(alpha)) / Ie, edgeDeg };
+}
+
 /**
  * Limb-darkened solar disk: normalise I(μ) = I0·Σ c_k μ^k so that ∫ I dΩ over the visible cap equals
  * E (lux) for a sphere of radius R at distance D. Integrates exactly over the spherical cap.

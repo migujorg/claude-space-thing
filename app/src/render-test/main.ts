@@ -3,9 +3,22 @@
 //   /render-test.html?scene=sphere|sun|stars|unknown|neptune|eclipse|far&mode=eye|enhanced&boost=4&tint=1&orbits=1&hud=0
 //   more: stars=N (fixture stars, 0 = none), dist=km, dau=AU (neptune/far), phase=deg, fov=deg, limb=0 (sun),
 //   hdr=f16 (fallback path), present=canvas (WebGPU canvas instead of offscreen), debug=1, skip=pass,...
+//   M2: scene=vt|lowsun|hapke|rings|earthshine, cache=MiB (surface tile budget, default 96), side=lit|unlit (rings)
 
 import { Renderer } from '../render/renderer';
 import { buildScene } from './scenes';
+import { fixtureTile } from './fixtures/surfaces';
+
+// Surface-map fixture tiles (TEST FIXTURES) are served from fixture:// URLs; everything else is fetched.
+const realFetch = window.fetch.bind(window);
+window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+  const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+  if (url.startsWith('fixture://')) {
+    const b = fixtureTile(url);
+    return b ? new Response(b) : new Response(null, { status: 404 });
+  }
+  return realFetch(input, init);
+}) as typeof fetch;
 
 declare global {
   interface Window {
@@ -22,7 +35,11 @@ async function main(): Promise<void> {
   // test page renders offscreen and blits the pixels into a 2D canvas (?present=canvas to override).
   const offscreen = params.get('present') !== 'canvas';
   const gpuCanvas = offscreen ? document.createElement('canvas') : canvas;
-  const renderer = await Renderer.create(gpuCanvas, { presentation: offscreen ? 'offscreen' : 'canvas', hdr: params.get('hdr') === 'f16' ? 'f16' : 'auto' });
+  const renderer = await Renderer.create(gpuCanvas, {
+    presentation: offscreen ? 'offscreen' : 'canvas',
+    hdr: params.get('hdr') === 'f16' ? 'f16' : 'auto',
+    surfaceCacheMiB: Number(params.get('cache') ?? 96),
+  });
   renderer.resize(window.innerWidth, window.innerHeight, window.devicePixelRatio || 1);
   const scene = buildScene(params);
   if (scene.stars) renderer.setStars(scene.stars);
@@ -54,6 +71,8 @@ async function main(): Promise<void> {
       `TEST FIXTURES — not data · ${scene.title} · mode ${scene.snapshot.view.mode}`,
       `adaptation ${s.adaptationLuminance.toPrecision(3)} cd/m² (scotopic ${s.scotopicAdaptationLuminance?.toPrecision(3)}) · CIE191 m ${s.mesopicM?.toFixed(2)} · pupil ${s.pupilDiameterMm?.toFixed(2)} mm`,
       `limiting V ${s.limitingMagnitude?.toFixed(2)} · stars drawn ${s.starsDrawn} · frame ${s.frameMs.toFixed(0)} ms${params.get('hdr') === 'f16' ? ' · HDR rgba16float fallback' : ''}`,
+      ...(s.surfaceCache ? [`surface tiles ${s.surfaceCache.residentTiles} resident · ${s.surfaceCache.usedMiB.toFixed(0)}/${s.surfaceCache.budgetMiB} MiB · deferred ${s.surfaceCache.deferredTiles} · failed ${s.surfaceCache.failedFetches}`] : []),
+      ...(s.gpuFrameMs !== undefined ? [`GPU ${s.gpuFrameMs.toFixed(2)} ms: ${Object.entries(s.gpuPassMs ?? {}).map(([k, v]) => `${k} ${v.toFixed(2)}`).join(' · ')}`] : []),
       ...(s.warnings ?? []).map((w) => `⚠ ${w}`),
     ].join('\n');
   }
