@@ -7,6 +7,7 @@ downloaded images once the cases are built (the next `build` fetches them again)
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 
 from . import build as vb
@@ -38,8 +39,10 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args.cmd == "report":
         from . import report
-        report.write(report.FINDINGS)
-        print(f"wrote {report.REPORT}")
+        # §7 from the app's last run (`cd app && npm run validate`), when there is one.
+        run = json.loads(report.RUN_REPORT.read_text(encoding="utf-8")) if report.RUN_REPORT.exists() else None
+        report.write(report.FINDINGS, run, report.RUN_FINDINGS)
+        print(f"wrote {report.REPORT}" + (f" (with the run of {run['generatedAt']})" if run else ""))
         return 0
     if args.cmd == "list":
         for cid, c in CASES.items():
