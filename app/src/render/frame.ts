@@ -327,7 +327,7 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
     try {
       prepareOneBody(b);
     } finally {
-      if (!inView(b.pos, b.radii ? Math.max(...b.radii) : 0)) warnings.length = w0;
+      if (!inView(b.pos, b.radii ? extentOf(b, b.radii) : 0)) warnings.length = w0;
     }
   }
   function prepareOneBody(b: SceneBody): void {
@@ -341,7 +341,7 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
     }
     const R = meanRadius(b.radii);
     const angR = Math.asin(Math.min(1, R / D));
-    const behind = dot(normalize(b.pos), fwd) < -Math.sin(Math.max(angR, Math.asin(Math.min(1, Math.max(...b.radii) / D))));
+    const behind = dot(normalize(b.pos), fwd) < -Math.sin(Math.max(angR, Math.asin(Math.min(1, extentOf(b, b.radii) / D))));
     // Photometry, or the reason it is unavailable.
     let E: XYZS | null = null;
     let K: XYZS = [0, 0, 0, 0];
@@ -578,6 +578,11 @@ function occulterOutline(g: CameraGeom, n: V3, r: number, out: number[]): void {
 const OCCULTER_OUTLINE_MIN_PX = 5;
 /** Display colour of the occulting disc's outline (a UI marking, not scene light): neutral grey. */
 const OCCULTER_OUTLINE_RGBA = [0.45, 0.45, 0.45, 0.9] as const;
+
+/** Largest extent of a body from its centre: its radii, or its shape mesh where one is drawn (meshes/). */
+function extentOf(b: SceneBody, radii: [number, number, number]): number {
+  return Math.max(...radii, b.shape?.boundRadiusKm ?? 0);
+}
 
 /** Radius of the atmosphere shell around a body: its largest radius plus the atmosphere's height. */
 function atmTop(b: SceneBody): number {
