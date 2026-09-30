@@ -6,9 +6,9 @@
     <title>Space Thing</title>
     <style>
       html, body { margin: 0; height: 100%; background: #000; color: #ddd; overflow: hidden; font: 13px/1.4 system-ui, sans-serif; }
-      #view { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+      #view { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+      /* The UI layer is click-through; interactive panels opt back in (src/ui/ui.css). */
       #ui { position: fixed; inset: 0; pointer-events: none; }
-      #ui > * { pointer-events: auto; }
     </style>
   </head>
   <body>

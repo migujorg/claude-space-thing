@@ -99,7 +99,8 @@ export function formatUrlParams(v: UrlView): string {
   if (v.boost !== undefined) p.set('boost', String(v.boost));
   if (v.fov !== undefined) p.set('fov', sig(v.fov, 4));
   for (const k of ['labels', 'orbits', 'tint', 'ui'] as const) if (v[k] !== undefined) p.set(k, v[k] ? '1' : '0');
-  return p.toString();
+  // ':' is legal in a query string; keep ISO times readable.
+  return p.toString().replace(/%3A/gi, ':');
 }
 
 function sig(x: number, n: number): string {

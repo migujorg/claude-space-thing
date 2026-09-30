@@ -430,7 +430,8 @@ export class AppModel {
       this.emit('time');
     }
     const et = this.clock.et;
-    this.updateCamera(realDt, et, fly);
+    // The clock takes real elapsed time; camera motion is capped so a stalled frame doesn't teleport.
+    this.updateCamera(Math.min(realDt, 0.1), et, fly);
     this.world = computeWorld(et, this.pose.pos, this.bodies, this.eph, this.core, this.sunId);
     this.snapshot = buildSnapshot({
       world: this.world,
@@ -590,7 +591,7 @@ export class AppModel {
     const c = this.clock.snapshot();
     const cam = this.cam;
     const sunRes = this.world ? buildSun(this.world, this.light, this.reality.exists) : null;
-    const target = cam.mode === 'orbit' ? cam.target : null;
+    const target = this.travel ? this.travel.target : cam.mode === 'orbit' ? cam.target : null;
     const ae = cam.mode === 'orbit' ? azElFromDir(sunFrame(this.toSunAt(cam.target)), cam.dir) : null;
     return {
       et: c.et,

@@ -200,6 +200,8 @@ export async function loadAll(opts: LoadOptions): Promise<LoadedData> {
   for (const b of bodies) if (b.ephemeris) ephemPaths.add(ephemPath(b.ephemeris));
   for (const p of Object.keys(manifest?.products ?? {})) if (/^ephem\/[^/]+\.json$/.test(p)) ephemPaths.add(p);
   const ephemerides: LoadedEphemeris[] = [];
+  if (ephemPaths.size === 0)
+    report('ephem/*.json', { status: 'missing', message: 'No ephemeris named by bodies.json or listed in the manifest.', consequence: 'No body can be positioned.' });
   await Promise.all(
     [...ephemPaths].sort().map(async (path) => {
       const served = bodies.filter((b) => b.ephemeris && ephemPath(b.ephemeris) === path).map((b) => b.name);
