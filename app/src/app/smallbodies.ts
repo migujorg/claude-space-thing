@@ -30,13 +30,13 @@ import { labelAllowed, worstOf, type ExistsLevel } from './reality';
 export const sbId = (row: number): number => -(row + 1);
 
 /** Names of the synthetic populations (synthetic/objects.json populations[].name). */
-export const SYNTHETIC_POP_TEXT: Record<string, { short: string; long: string }> = {
-  neo: { short: 'NEO', long: 'near-Earth object (q < 1.3 au)' },
-  hungaria: { short: 'Hungaria', long: 'Hungaria-region asteroid (1.78–2.0 au)' },
-  mainbelt: { short: 'main-belt asteroid', long: 'main-belt asteroid (2.0–3.7 au)' },
-  hilda: { short: 'Hilda', long: 'Hilda-region asteroid (3.7–4.2 au)' },
-  trojan: { short: 'Jupiter Trojan', long: 'Jupiter Trojan (5.05–5.35 au)' },
-  tno: { short: 'trans-Neptunian object', long: 'trans-Neptunian object (a ≥ 30 au)' },
+export const SYNTHETIC_POP_TEXT: Record<string, { short: string; long: string; plural: string }> = {
+  neo: { short: 'NEO', long: 'near-Earth object (q < 1.3 au)', plural: 'near-Earth objects' },
+  hungaria: { short: 'Hungaria', long: 'Hungaria-region asteroid (1.78–2.0 au)', plural: 'Hungaria-region asteroids' },
+  mainbelt: { short: 'main-belt asteroid', long: 'main-belt asteroid (2.0–3.7 au)', plural: 'main-belt asteroids' },
+  hilda: { short: 'Hilda', long: 'Hilda-region asteroid (3.7–4.2 au)', plural: 'Hilda-region asteroids' },
+  trojan: { short: 'Jupiter Trojan', long: 'Jupiter Trojan (5.05–5.35 au)', plural: 'Jupiter Trojans' },
+  tno: { short: 'trans-Neptunian object', long: 'trans-Neptunian object (a ≥ 30 au)', plural: 'trans-Neptunian objects' },
 };
 export const sbRow = (id: number): number => -id - 1;
 export const isSmallBodyId = (id: number | null | undefined): id is number => typeof id === 'number' && id < 0;

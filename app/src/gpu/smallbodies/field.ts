@@ -65,6 +65,11 @@ export interface SmallBodyFieldOptions {
   useFma?: boolean;
   /** Draw the synthetic objects of tables.synthetic at `complete` (default true). */
   synthetic?: boolean;
+  /**
+   * DIAGNOSTIC ONLY (test page): draw every synthetic object in this false colour (X, Y, Z, S relative to sunlight)
+   * instead of its class colour, to tell synthetic from catalogued points in a picture.
+   */
+  syntheticDiagnosticColour?: [number, number, number, number];
 }
 
 export interface PointSourceBuffer {
@@ -175,7 +180,7 @@ export class SmallBodyField {
   private readonly nongrav: Map<number, NonGrav>;
   private readonly table: PlanetTable;
   private readonly H: number;
-  private readonly opts: Required<Omit<SmallBodyFieldOptions, 'useFma' | 'synthetic'>>;
+  private readonly opts: Required<Omit<SmallBodyFieldOptions, 'useFma' | 'synthetic' | 'syntheticDiagnosticColour'>>;
   private readonly spacing: number;
   private readonly slots: number;
 
@@ -434,8 +439,10 @@ export class SmallBodyField {
       this.synEl = buf(el.byteLength, SU.STORAGE | SU.COPY_DST, 'sb synthetic elements');
       d.queue.writeBuffer(this.synEl, 0, el);
       const sun = tables.photometry?.sunIrradianceXYZS1AU.value ?? null;
+      const diag = options.syntheticDiagnosticColour;
       const classColours = (hdr.colorClasses?.classes ?? []).map((c) =>
-        sun && c.xyzsPerUnitPV.every(Number.isFinite) ? (c.xyzsPerUnitPV.map((v, k) => v / sun[k]) as [number, number, number, number]) : null);
+        diag ?? (sun && c.xyzsPerUnitPV.every(Number.isFinite) ? (c.xyzsPerUnitPV.map((v, k) => v / sun[k]) as [number, number, number, number]) : null));
+      if (diag) classColours.push(...Array.from({ length: 256 - classColours.length }, () => diag));
       const code = syntheticShader({
         gmSun: syn!.mu, auKm: syn!.auKm, cKmS: C_KM_S, obliquityRad: syn!.obliquity, slopeG: syn!.header.slopeParameterG!.value,
         classColours, photometry: tables.photometry ?? null,

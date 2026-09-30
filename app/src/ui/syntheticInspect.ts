@@ -43,11 +43,11 @@ export function syntheticFacts(s: SyntheticCatalog, j: number, level: ExistsLeve
   const row = (key: string, name: string, value: string, method?: string, sources = src): AttrRow => ({ key: `syn:${key}`, name, label: 'synthetic', value, sources, withheld, ...(method ? { method } : {}) });
   const cols = s.header.columns ?? {};
   const rows: AttrRow[] = [];
-  const popText = pop ? SYNTHETIC_POP_TEXT[pop.name]?.long ?? pop.name : 'unknown population';
-  let what = `Not a real object. It stands in for one of the ${popText}s that no survey has found yet.`;
+  const popText = pop ? SYNTHETIC_POP_TEXT[pop.name]?.plural ?? `${pop.name} objects` : 'objects';
+  let what = `Not a real object. It stands in for one of the ${popText} that no survey has found yet.`;
   if (pop && c) {
     const stand = c.deficit;
-    what = `Not a real object. It stands in for one of ~${fmt(stand, 3)} undiscovered ${popText}s in its cell (a ${fmt(c.a[0], 4)}–${fmt(c.a[1], 4)} au, e ${fmt(c.e[0], 3)}–${fmt(c.e[1], 3)}, i ${fmt(c.i[0], 3)}°–${fmt(c.i[1], 3)}°, H ${fmt(c.h[0], 4)}–${fmt(c.h[1], 4)}). The model (${modelText(pop)}) expects ${fmt(c.nModel, 4)} objects there; the catalogue has ${n0(c.nObs)}, complete down to H ${fmt(c.hLim, 4)} at this a, so ${fmt(c.deficit, 4)} are missing and ${n0(c.nShown)} synthetic objects are shown in this cell. When surveys find more, the deficit falls and synthetic objects are removed from the end of the cell's list.`;
+    what = `Not a real object. It stands in for one of ~${fmt(stand, 3)} undiscovered ${popText} in its cell (a ${fmt(c.a[0], 4)}–${fmt(c.a[1], 4)} au, e ${fmt(c.e[0], 3)}–${fmt(c.e[1], 3)}, i ${fmt(c.i[0], 3)}°–${fmt(c.i[1], 3)}°, H ${fmt(c.h[0], 4)}–${fmt(c.h[1], 4)}). The model (${modelText(pop)}) expects ${fmt(c.nModel, 4)} objects there; the catalogue has ${n0(c.nObs)}, complete down to H ${fmt(c.hLim, 4)} at this a, so ${fmt(c.deficit, 4)} are missing and ${n0(c.nShown)} synthetic objects are shown in this cell. When surveys find more, the deficit falls and synthetic objects are removed from the end of the cell's list.`;
     rows.push(row('cell', 'Stands in for', `${fmt(c.deficit, 4)} undiscovered objects (model ${fmt(c.nModel, 4)} − catalogued ${n0(c.nObs)}; raw deficit ${fmt(c.rawDeficit, 4)}) in cell ${cellRow.toLocaleString('en-US')} of ${pop.name}: a ${fmt(c.a[0], 4)}–${fmt(c.a[1], 4)} au, e ${fmt(c.e[0], 3)}–${fmt(c.e[1], 3)}, i ${fmt(c.i[0], 3)}°–${fmt(c.i[1], 3)}°, H ${fmt(c.h[0], 4)}–${fmt(c.h[1], 4)}; ${n0(c.nShown)} shown`,
       `Model: ${modelText(pop)}. Deficit per cell = max(0, model − catalogued), each (a, H) group scaled to its total model − catalogued (no Poisson bias from clipping small cells). ${s.header.yieldRule}.`));
     rows.push(row('limit', 'Survey completeness limit here', `H ${fmt(c.hLim, 4)} (no synthetic object is brighter)`,

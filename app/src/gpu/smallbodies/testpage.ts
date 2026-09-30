@@ -391,7 +391,9 @@ async function render(): Promise<unknown> {
   const level = (params.get('level') ?? 'best') as 'strict' | 'best' | 'complete';
   const allowed = (l: string) => (level === 'strict' ? ['measured', 'derived'] : ['measured', 'derived', 'estimated']).includes(l);
   if (params.get('nostars') !== '1') renderer.setStars(buildStarCatalog(starT, allowed as never).catalog);
-  const field = await SmallBodyField.create(dev, tables, eph, { chunkObjects: Number(params.get('chunk') ?? 262144), backgroundStepsPerUpdate: 0 });
+  // syntint=1: DIAGNOSTIC false colour (orange) for synthetic objects.
+  const synDiag: [number, number, number, number] | undefined = params.get('syntint') === '1' ? [1.9, 1.0, 0.12, 0.35] : undefined;
+  const field = await SmallBodyField.create(dev, tables, eph, { chunkObjects: Number(params.get('chunk') ?? 262144), backgroundStepsPerUpdate: 0, syntheticDiagnosticColour: synDiag });
   renderer.setExtraPointSources(field.pointSources);
   const et = field.epochEt + Number(params.get('days') ?? 0) * 86400;
   const sunSSB = eph.positionSSB(10, et)!;
@@ -463,18 +465,26 @@ async function render(): Promise<unknown> {
   const recs = await field.readRecords();
   let lit = 0, brightest = 0;
   for (let s = 0; s < field.count; s++) { const y = recs[8 * s + 4]; if (y > 0) { lit++; brightest = Math.max(brightest, y); } }
+  let synLit = 0, synBrightest = 0;
+  for (let j = 0; j < field.syntheticCount; j++) { const y = recs[8 * (field.count + j) + 4]; if (y > 0) { synLit++; synBrightest = Math.max(synBrightest, y); } }
   const s = renderer.stats;
   // Small bodies above the eye's point threshold (photopic Y vs the limiting magnitude's illuminance).
   const yLim = s.limitingMagnitude !== undefined ? luxFromMagnitude(s.limitingMagnitude) : Infinity;
-  let above = 0;
+  let above = 0, synAbove = 0;
   for (let q = 0; q < field.count; q++) if (recs[8 * q + 4] > yLim) above++;
+  for (let j = 0; j < field.syntheticCount; j++) if (recs[8 * (field.count + j) + 4] > yLim) synAbove++;
   const hud = document.getElementById('hud')!;
   hud.textContent = [
-    `REAL DATA · ${field.count.toLocaleString()} small bodies (${lit.toLocaleString()} with admitted brightness, level ${level}) · ${scene === 'inside' ? `inside the main belt, ${params.get('rau') ?? 2.7} au from the Sun, ${params.get('look') === 'along' ? 'looking along the orbital motion' : 'looking away from the Sun'}` : scene === 'above-off' ? `${params.get('hau') ?? 3} au above the Sun, looking down at the belt, Sun just outside the frame` : `${params.get('hau') ?? 3} au above the ecliptic, looking down at the Sun`}`,
+    `REAL DATA · ${field.count.toLocaleString()} catalogued small bodies (${lit.toLocaleString()} with admitted brightness)${field.syntheticCount ? ` + ${synLit.toLocaleString()} synthetic drawn` : ''} · level ${level} · ${scene === 'inside' ? `inside the main belt, ${params.get('rau') ?? 2.7} au from the Sun, ${params.get('look') === 'along' ? 'looking along the orbital motion' : 'looking away from the Sun'}` : scene === 'above-off' ? `${params.get('hau') ?? 3} au above the Sun, looking down at the belt, Sun just outside the frame` : `${params.get('hau') ?? 3} au above the ecliptic, looking down at the Sun`}`,
     ...(params.get('nosun') === '1' ? [`DIAGNOSTIC: the Sun${params.get('nostars') === '1' ? ' and the stars are' : ' is'} left out of the scene (no disk, no glare), so the eye is dark-adapted: not what an observer would see`] : []),
-    `${mode} mode${mode === 'enhanced' ? ` (+${snapshot.view.exposureBoostStops} stops)` : ''} · points drawn ${s.starsDrawn} (stars + small bodies) · limiting V ${s.limitingMagnitude?.toFixed(2)} · small bodies above it: ${above} (brightest V ${magnitudeFromLux(brightest).toFixed(1)}) · ${new Date((946728000 + et - 69.184) * 1000).toISOString().slice(0, 10)}`,
+    ...(synDiag ? ['DIAGNOSTIC FALSE COLOUR: synthetic objects orange, catalogued objects in their own colours'] : []),
+    `${mode} mode${mode === 'enhanced' ? ` (+${snapshot.view.exposureBoostStops} stops)` : ''} · points drawn ${s.starsDrawn} (stars + small bodies) · limiting V ${s.limitingMagnitude?.toFixed(2)} · catalogued above it: ${above} (brightest V ${magnitudeFromLux(brightest).toFixed(1)})${field.syntheticCount ? ` · synthetic above it: ${synAbove} (brightest V ${synBrightest > 0 ? magnitudeFromLux(synBrightest).toFixed(1) : '-'})` : ''} · ${new Date((946728000 + et - 69.184) * 1000).toISOString().slice(0, 10)}`,
   ].join('\n');
-  const res = { scene, mode, level, lit, brightestY: brightest, brightestV: magnitudeFromLux(brightest), smallBodiesAboveThreshold: above, pointsDrawn: s.starsDrawn, limitingV: s.limitingMagnitude, adaptation: s.adaptationLuminance, stats: field.stats };
+  const res = {
+    scene, mode, level, lit, brightestY: brightest, brightestV: magnitudeFromLux(brightest), smallBodiesAboveThreshold: above, pointsDrawn: s.starsDrawn,
+    limitingV: s.limitingMagnitude, adaptation: s.adaptationLuminance, stats: field.stats,
+    synthetic: { objects: field.syntheticCount, lit: synLit, brightestV: synBrightest > 0 ? magnitudeFromLux(synBrightest) : null, aboveThreshold: synAbove, falseColour: !!synDiag },
+  };
   window.__frameReady = true;
   return res;
 }

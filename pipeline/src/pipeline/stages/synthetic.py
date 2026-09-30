@@ -28,7 +28,6 @@ Parameters (defaults in PARAMS; JSON overrides in the environment variable SYNTH
 from __future__ import annotations
 
 import datetime as _dt
-import hashlib
 import json
 import math
 import os
@@ -43,7 +42,6 @@ from .. import syn_sources as ss
 from ..download import sha256_file
 from ..ephem_kernels import planetary
 from ..ephem_spk import evaluate, read_spk
-from ..output import write_json
 from ..paths import OUT
 from ..sb_table import LABEL_CODE, Field, read_table, write_table
 from ..schema import BuildContext
@@ -53,6 +51,7 @@ STAGE = "synthetic"
 DIR = "synthetic"
 REPORT = Path(__file__).resolve().parents[4] / "docs" / "reports" / "synthetic-populations.json"
 FIGURE = REPORT.parent / "img" / "synthetic-h-distributions.svg"
+DIAGNOSTIC = REPORT.parent / "img" / "synthetic-diagnostic-known-vs-synthetic.png"
 J2000_JD = 2451545.0
 DAY = 86400.0
 AU_KM = 149597870.7                      # IAU 2012 Resolution B2
@@ -481,6 +480,7 @@ def run(ctx: BuildContext) -> None:
                    "products": {k: v for k, v in ctx.products.items() if v["stage"] == STAGE}})
     REPORT.write_text(json.dumps(report, indent=1, allow_nan=False))
     FIGURE.write_text(distribution_svg(report))
+    diagnostic_png(cat, res, DIAGNOSTIC)
     per_pop = ", ".join(f"{k} {int(v['cells'].n_shown.sum())}" for k, v in res["populations"].items())
     print(f"[synthetic] {n_obj} synthetic objects in {n_cell} cells ({per_pop}); {time.time() - t_stage:.0f} s")
 
@@ -531,6 +531,73 @@ def _distribution(grid: sm.Grid, known: sm.Known, hlim_a: np.ndarray, h_floor: f
             "known": known_n.astype(int).tolist(), "synthetic": syn[:nb].astype(int).tolist()}
 
 
+def diagnostic_png(cat: dict, res: dict, path: Path) -> None:
+    """DIAGNOSTIC figure (a data plot, not a rendering): catalogued objects in cyan, synthetic objects in orange.
+    Left: positions at the epoch seen from the ecliptic north pole (|x|, |y| < 6 au), log density. Right: the a-H
+    plane (1.6-5.6 au) with the completeness limit of every a-bin (white): synthetic objects lie only fainter."""
+    from PIL import Image, ImageDraw
+
+    def xy(a, e, i, node, peri, M):
+        x, _ = sm.elements_to_icrf(a, e, i, node, peri, M, cat["mu"], AU_KM, 0.0)
+        return x[:, 0] / AU_KM, x[:, 1] / AU_KM
+
+    masks = population_masks(cat)
+    kn = cat["ok"] & (cat["e"] < 1)
+    kx, ky = xy(cat["a"][kn], cat["e"][kn], cat["i"][kn], cat["node"][kn], cat["peri"][kn], cat["M"][kn])
+    so = [r["objects"] for r in res["populations"].values()]
+    cat_syn = {k: np.concatenate([o[k] for o in so]) for k in ("a", "e", "i", "node", "peri", "M", "H")}
+    sx, sy = xy(cat_syn["a"], cat_syn["e"], cat_syn["i"], cat_syn["node"], cat_syn["peri"], cat_syn["M"])
+
+    def layer(h):
+        v = np.log1p(h)
+        return v / max(np.percentile(v[v > 0], 99.5) if np.any(v > 0) else 1.0, 1e-9)
+
+    def rgb(hk, hs):
+        k, t = np.clip(layer(hk), 0, 1), np.clip(layer(hs), 0, 1)
+        img = np.stack([0.30 * k + 1.00 * t, 0.80 * k + 0.50 * t, 1.00 * k + 0.08 * t], axis=-1)
+        return (np.clip(img, 0, 1) * 255).astype(np.uint8)
+
+    N = 900
+    ext = 6.0
+    hk, _, _ = np.histogram2d(ky, kx, bins=N, range=[[-ext, ext], [-ext, ext]])
+    hs, _, _ = np.histogram2d(sy, sx, bins=N, range=[[-ext, ext], [-ext, ext]])
+    left = Image.fromarray(rgb(hk[::-1], hs[::-1]))
+    A0, A1, H0, H1, W2 = 1.6, 5.6, 8.0, 20.6, 900
+    ka, kH = cat["a"][kn], cat["H"][kn]
+    hk2, _, _ = np.histogram2d(kH, ka, bins=[N, W2], range=[[H0, H1], [A0, A1]])
+    hs2, _, _ = np.histogram2d(cat_syn["H"], cat_syn["a"], bins=[N, W2], range=[[H0, H1], [A0, A1]])
+    right = Image.fromarray(rgb(hk2, hs2))
+    d2 = ImageDraw.Draw(right)
+    for pop, r in res["populations"].items():
+        if pop not in ANGLES:
+            continue
+        ed = np.asarray(r["grid"].a_edges)
+        for k, hl in enumerate(r["hlim"]):
+            if not np.isfinite(hl):
+                continue
+            x0 = (ed[k] - A0) / (A1 - A0) * W2
+            x1 = (ed[k + 1] - A0) / (A1 - A0) * W2
+            y = (hl - H0) / (H1 - H0) * N
+            d2.line([(x0, y), (x1, y)], fill=(255, 255, 255), width=2)
+    img = Image.new("RGB", (2 * N + 30, N + 70), (0, 0, 0))
+    img.paste(left, (0, 40))
+    img.paste(right, (N + 30, 40))
+    d = ImageDraw.Draw(img)
+    d.text((8, 8), "DIAGNOSTIC (a data plot, not a rendering): catalogued objects cyan, synthetic objects orange, log density", fill=(230, 230, 230))
+    d.text((8, 22), "Left: positions at the small-body epoch seen from ecliptic north, 12 x 12 au around the Sun", fill=(180, 180, 180))
+    d.text((N + 38, 22), f"Right: a {A0}-{A1} au (x) vs H {H0}-{H1} (y, fainter down); white: completeness limit per a-bin", fill=(180, 180, 180))
+    for h in range(9, 21):
+        y = 40 + (h - H0) / (H1 - H0) * N
+        d.text((N + 32, y - 5), f"{h}", fill=(150, 150, 150))
+    for a in (2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0, 5.5):
+        x = N + 30 + (a - A0) / (A1 - A0) * W2
+        d.text((x - 8, N + 44), f"{a}", fill=(150, 150, 150))
+    n_known, n_syn = int(kn.sum()), int(cat_syn["a"].size)
+    d.text((8, N + 50), f"catalogue {n_known:,} objects, synthetic {n_syn:,} (pipeline stage synthetic)", fill=(180, 180, 180))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    img.quantize(colors=128, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.NONE).save(path, optimize=True)
+
+
 def distribution_svg(report: dict) -> str:
     """Cumulative H distributions per population (log N(<H)): the debiased model, the catalogue, catalogue +
     synthetic. Plain SVG (no plotting library in the pipeline)."""
@@ -568,7 +635,7 @@ def distribution_svg(report: dict) -> str:
             ly = y0 + MT + 14 + 14 * j
             out.append(f'<line x1="{x0 + ML + 8}" x2="{x0 + ML + 30}" y1="{ly - 4}" y2="{ly - 4}" stroke="{col}" '
                        f'stroke-width="{wdt}"' + (f' stroke-dasharray="{dash}"' if dash else "") + "/>")
-            out.append(f'<text x="{x0 + ML + 34}" y="{ly}">{lab} (N(&lt;H) at H = {hx[-1]:g}: {v[-1]:,.0f})</text>')
+            out.append(f'<text x="{x0 + ML + 34}" y="{ly}">{lab} (total to the floor: {v[-1]:,.0f})</text>')
     out.append(f'<text x="8" y="{H - 6}" fill="#555">Cumulative number N(&lt;H) inside each population\'s grid, below its '
                "H floor. Synthetic objects appear only fainter than the completeness limit of their a-bin. "
                "(pipeline stage synthetic; numbers in docs/reports/synthetic-populations.json)</text>")

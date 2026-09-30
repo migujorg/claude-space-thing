@@ -16,7 +16,7 @@ from pathlib import Path
 import numpy as np
 
 from .photometry.common import Download
-from .schema import BuildContext, SourceRecord
+from .schema import BuildContext
 
 TABLES = Path(__file__).parent / "syn_tables"
 SUBDIR = "synthetic"
