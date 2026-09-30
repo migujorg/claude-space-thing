@@ -185,11 +185,41 @@ export interface BodyPhotometry {
   geometricAlbedoV: Sourced<number>;
   /** Disk-integrated phase function. */
   phaseFunction: Sourced<PhaseFunction>;
+  /** Optional refinement with more geometry than the phase angle (the Moon: ROLO, with libration and the
+   *  waxing/waning asymmetry). Inside its domain it gives the disk-integrated illuminance directly, in place of
+   *  geometricAlbedoXYZS · Φ(α); see docs/architecture.md §4.3. */
+  diskReflectanceModel?: Sourced<DiskReflectanceModel>;
+}
+
+/** Whole-disk reflectance A_c per channel (X, Y, Z, scotopic) vs viewing geometry, in the form of Kieffer & Stone
+ *  (2005) Eq. 10. Illuminance at the observer E_c = A_c · E☉,c(1 AU)/d² · (radiusKm/Δ)². `formula` gives the
+ *  expression and the units (radians in the polynomial terms, degrees elsewhere). */
+export interface DiskReflectanceModel {
+  kind: 'rolo-v1';
+  formula: string;
+  /** Per channel X, Y, Z, scotopic: [a0, a1, a2, a3]. */
+  a: number[][];
+  /** Per channel: [b1, b2, b3]. */
+  b: number[][];
+  /** Per channel: [d1, d2, d3]. */
+  d: number[][];
+  /** Shared by all channels: [c1, c2, c3, c4] (libration) and [p1, p2, p3, p4] (degrees). */
+  c: [number, number, number, number];
+  p: [number, number, number, number];
+  radiusKm: number;
+  /** Domain: minPhaseDeg ≤ α ≤ maxPhaseDeg, |observer selenographic latitude| ≤ maxObserverLatitudeDeg and
+   *  |longitude| ≤ maxObserverLongitudeDeg; outside it the model does not apply. */
+  minPhaseDeg: number;
+  maxPhaseDeg: number;
+  maxObserverLatitudeDeg: number;
+  maxObserverLongitudeDeg: number;
 }
 
 export type PhaseFunction =
   | { kind: 'lambert' }
-  /** Tabulated magnitude correction vs phase angle, from a published phase curve. */
+  /** Tabulated magnitude correction vs phase angle, from a published phase curve. Valid for alphaDeg[0] ≤ α ≤
+   *  alphaDeg[last] (linear interpolation); the first node may be above 0 and deltaMag may be negative (an
+   *  opposition surge above the albedo's surge-free reference). */
   | { kind: 'tabulated'; alphaDeg: number[]; deltaMag: number[] }
   /** Polynomial in phase angle (degrees) giving magnitude correction, e.g. Mallama & Hilton (2018). Valid in [minDeg, maxDeg]. */
   | { kind: 'poly-mag'; coeffs: number[]; minDeg: number; maxDeg: number };

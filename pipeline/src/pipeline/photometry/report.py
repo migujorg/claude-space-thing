@@ -35,11 +35,13 @@ NOTES = {
          "disk of mean reflectance factor ⟨R⟩ seen at zero phase p ≈ ⅔⟨R⟩, and Earth's ⟨R⟩ ≈ Bond albedo ≈ 0.3 "
          "gives p ≈ 0.2. The high value comes from EPOXI photometry at 58-77° phase extrapolated to 0° with a model "
          "phase curve. Real Earth varies by tens of percent with clouds. Phase curve: model (estimated).",
-    301: "Lane & Irvine (1973) whole-disk narrow-band geometric albedos, interpolated linearly between 9 bands. "
-         "Opposition surge EXCLUDED from both albedo and phase curve (the real full Moon is tens of percent brighter "
-         "at α < 5°). The narrow-band data give a V-band albedo 13 % above the authors' own broadband V (they "
-         "suspected their broadband transformation) and they flag a possible ~10 % excess at 600-850 nm in the 1965 "
-         "data; the Moon may therefore render slightly too red and too bright. Phase curve: measured 6-120°.",
+    301: "Albedo: Lane & Irvine (1973) whole-disk narrow-band geometric albedos, interpolated linearly between 9 "
+         "bands; surge-free (linear extrapolation to 0°). The narrow-band data give a V-band albedo 13 % above the "
+         "authors' own broadband V (they suspected their broadband transformation) and they flag a possible ~10 % "
+         "excess at 600-850 nm in the 1965 data; the colour is probably too red (ROLO's is less red, see M3 below). "
+         "Phase curve (M3): the ROLO model (Kieffer & Stone 2005) for 1.55-97°, with the opposition surge, "
+         "normalized to that albedo, so the brightness there is ROLO's; Lane & Irvine's shape joined to it for "
+         "97-120° (estimated). Libration and waxing/waning are in diskReflectanceModel.",
     499: "Reconstructed from Mallama et al. (2017) photometric Johnson UBVRI albedos (rotation/season averaged): a "
          "piecewise-linear spectrum through five band averages. Brightness and B-V are measured; the shape between "
          "bands is assumed (no 530 nm shoulder). A PSG model composite (Payne et al.) was rejected: its B albedo is "
@@ -277,10 +279,11 @@ def generate() -> str:
       "largest open discrepancy; we believe the DSCOVR-validated value, but neither is a clean measurement.\n"
       "- **Saturn +0.13…+0.30**: Horizons includes the rings for α < 6.5° (Eq. 10); our entry is the globe alone. "
       "Against the globe-only Eq. 11 we are +0.05 (see the consistency table).\n"
-      "- **Moon −0.07 (α = 43°), −0.21 (α = 100°), n/a at 130°**: Horizons uses V(1,α) = 0.23 + 0.026α + "
+      "- **Moon +0.09 (α = 43°), +0.06 (α = 100°), n/a at 130°**: Horizons uses V(1,α) = 0.23 + 0.026α + "
       "4×10⁻⁹α⁴ (Allen's law; our fixtures reproduce it to 0.0002 mag), whose 0.23 equals Lane & Irvine's broadband "
-      "V. Ours is 0.08 mag brighter at zero phase (we use their narrow-band albedos, see the Moon note) and follows "
-      "their measured V phase curve, which dims less than Allen's law at large α; valid to 120° only.\n"
+      "V. Ours is the ROLO level (to 97°; Lane & Irvine's shape joined to it beyond), averaged over waxing and "
+      "waning at zero libration; the fixture epochs' libration and waxing/waning (≈ ±5 % at 43°) are not applied "
+      "in this table. Valid to 120° only.\n"
       "- **Pluto +0.16…+0.19**: Horizons' Pluto includes Charon, V(1,α) ≈ −1.00 + 0.041α (inferred from the "
       "fixtures; the manual does not cite a source); we add Charon from the same HST paper for this comparison. "
       "Buie et al.'s 2002-2003 Pluto + Charon is 0.16 mag fainter than Horizons' system magnitude (the radius "
@@ -288,16 +291,18 @@ def generate() -> str:
     _moons_section(w, mres, mtexts, mcomps, sun, sx, sy)
     _rings_section(w)
     _fixups_section(w)
+    _m3_section(w)
     w("## Weak data, in order of concern\n")
     w("1. **Earth**: model spectrum; factor-2 disagreement with the magnitude used by Horizons.\n"
       "2. **Pluto**: colour from two broadband points; phase curve only to 1.74°.\n"
       "3. **Venus blue end**: ±20 % between datasets below 480 nm, which sets how yellow Venus looks.\n"
-      "4. **Moon**: 1964-65 photometry with a known internal 13 % V inconsistency; opposition surge excluded.\n"
+      "4. **Moon colour**: 1964-65 narrow-band photometry with a known internal 13 % V inconsistency; redder than "
+      "ROLO. Its brightness now follows ROLO (1.55-97°), with the opposition surge.\n"
       "5. **Uranus/Neptune epoch**: 1995 spectra; both have changed since (Uranus seasonally, strongly in the red).\n"
       "6. **Mars and Mercury shapes**: Mars between broadband nodes; Mercury from disk-resolved spectra.\n"
       "7. **Phase corrections for Jupiter/Saturn** to zero phase (+2.4 %, +1.7 %) assume a grey phase law.\n"
-      "8. **Opposition surges of the moons**: excluded for the Moon and Mimas-Rhea (Earth views too faint by tens of "
-      "percent); included for Uranian moons, Triton, Charon, Phobos.\n"
+      "8. **Opposition surges of the moons**: included for the Moon (ROLO, to 1.55°), Uranian moons, Triton, "
+      "Charon, Phobos; see M3 for Mimas-Rhea.\n"
       "9. **Iapetus and Miranda** unknown; **Deimos** grey placeholder; **Titan** and **Triton**/**Charon** phase "
       "curves only near opposition.\n"
       "10. **Ring brightness**: Saturn's is a calibrated model (unlit face and radii away from the three HST "
@@ -529,14 +534,50 @@ def _fixups_section(w) -> None:
       "EPIC-validated model; with an Earthdata account (a token in the environment) the pipeline could fetch a few "
       "granules and integrate the 10 calibrated EPIC bands over the disk.\n"
       "- **Moon beyond 120°**: no accessible measured whole-disk phase curve beyond 120° was found (Lane & Irvine "
-      "stop at 120°; the ROLO model of Kieffer & Stone 2005, AJ 129, 2887, covers 1.55-97°). Still unknown.\n"
-      "- **Opposition surge, Moon and Mercury**: not changed. The best candidate for the Moon is the ROLO model "
-      "(32 bands 350-2450 nm, libration terms, two exponential opposition terms down to 1.55°); its Table 4 "
-      "(320 coefficients) loses its minus signs in text extraction and needs a careful visual transcription. "
-      "Mercury's M&H curve stays defined from 2° (from Earth, α < 2° happens only within ~0.6° of the Sun).\n"
+      "stop at 120°). Still unknown.\n"
+      "- **Opposition surge, Moon and Mercury**: the Moon now uses the ROLO model (M3 below). Mercury's M&H curve "
+      "stays defined from 2° (from Earth, α < 2° happens only within ~0.6° of the Sun).\n"
       "- **Buie et al. (2010) source record**: the M1 download ledger held the sha256 of a bot-check page served "
       "in place of the PDF. Fixed (PDF validation; hand-retrieved copy with recorded sha256); transcribed numbers "
       "re-checked against the real PDF.\n")
+
+
+def _m3_section(w) -> None:
+    from . import phase as ph, rolo
+    w("## M3: the Moon from ROLO\n")
+    m = rolo.channel_model()
+    p_y = rolo.lane_irvine_py()
+    sun = solar.irradiance_xyzs()
+    li_a, li_dm = ph._lane_irvine_phase()
+    w("The ROLO lunar model (Kieffer & Stone 2005, AJ 129, 2887; version 311g) is an empirical fit of whole-Moon "
+      "irradiance in 32 bands (350-2384 nm) from the USGS Robotic Lunar Observatory over 1.55° < g < 97°, with "
+      "terms for the opposition effect, for which hemisphere is lit (waxing vs waning), and for libration. Table 4 "
+      "and Eq. 11 were extracted from the PDF text with their minus signs (the PDF's minus glyph comes out as a "
+      "control character) and checked against a rendering of the page, against an independent transcription of "
+      "Table 4 (identical) and an independent implementation's constants (identical); Table 5's 'Effect' column "
+      "confirms the units (g and Φ in radians in the polynomials, degrees in the exponentials). Converted to the "
+      f"CIE channels and refitted per channel (max |Δ ln A| = {m.max_residual:.1e}).\n")
+    w("Brightness of the Moon (Y channel, disk-equivalent reflectance A = p·Φ at zero libration, mean of waxing and "
+      f"waning) from ROLO and from Lane & Irvine (p_Y = {p_y:.4f} times their V phase curve), and the waxing/waning "
+      "ratio from ROLO:\n")
+    w("| α | A_Y ROLO | A_Y Lane & Irvine | ROLO / L&I | waxing / waning | x, y (ROLO) |\n|---|---|---|---|---|---|")
+    for g in (1.55, 2.0, 3.0, 5.0, 7.0, 10.0, 20.0, 30.0, 45.0, 60.0, 90.0, 97.0):
+        ay = float(rolo.mean_phase_y(g))
+        li = p_y * 10 ** (-0.4 * float(np.interp(g, li_a, li_dm)))
+        a2 = np.exp(m.ln_a(g, np.array([g, -g])))
+        c = np.sqrt(a2[0] * a2[1])[:3] * sun[:3]
+        w(f"| {g:g}° | {ay:.4f} | {li:.4f} | {ay / li:.3f} | {a2[0, 1] / a2[1, 1]:.3f} | "
+          f"{c[0] / c.sum():.4f}, {c[1] / c.sum():.4f} |")
+    res = bodies.build_body(301)
+    cl = res.xyzs[:3]
+    w(f"\nLane & Irvine's colour: x, y = {cl[0] / cl.sum():.4f}, {cl[1] / cl.sum():.4f} (kept for "
+      "geometricAlbedoXYZS; ROLO is less red). Below 2° ROLO is brighter than Lane & Irvine's surge-free "
+      "extrapolation (the surge); from 5° on it is 6-22 % fainter, i.e. close to Lane & Irvine's own broadband V "
+      "(13 % below their narrow bands) up to 45° and steeper beyond. The waxing Moon is brighter, as Lane & Irvine "
+      "and Rougier (1934) observed (0.01-0.09 mag between quadrature and full). The product's phase function is "
+      "ROLO's A_Y divided by Lane & Irvine's p_Y (so the brightness is ROLO's) for 1.55-97°, Lane & Irvine's curve "
+      "shifted to join it for 97-120° (label estimated because of the join); diskReflectanceModel carries the full "
+      "ROLO geometry per channel (derived).\n")
 
 
 if __name__ == "__main__":

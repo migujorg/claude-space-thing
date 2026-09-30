@@ -130,7 +130,15 @@ E_obs(α)     = E_obs(0) · Φ(α)          with Φ(0) = 1
 
 The resolved renderer must use a surface reflectance model whose disk integral reproduces both p and Φ(α) (energy consistency between "point" and "disk" views). The phase function Φ is itself a `Sourced` value (e.g. a published phase curve) — if the only available model is an assumption such as Lambert, it is labeled `estimated`.
 
-Conventions used by the `light` stage: R is the volumetric mean radius (abc)^(1/3) of the body's pck00011 triaxial radii (albedos from sources that used other disk sizes are rescaled by (R_source/R)²). Φ is evaluated only inside its stated domain (`minDeg..maxDeg`, or the table's range); outside it the phase behaviour is unknown. A `poly-mag` whose domain excludes α = 0 may have c0 ≠ 0 (Mercury: the fitted curve starts at 2° and excludes the opposition surge that the zero-phase albedo includes).
+Conventions used by the `light` stage: R is the volumetric mean radius (abc)^(1/3) of the body's pck00011 triaxial radii (albedos from sources that used other disk sizes are rescaled by (R_source/R)²). Φ is evaluated only inside its stated domain (`minDeg..maxDeg`, or the table's range); outside it the phase behaviour is unknown. A `poly-mag` whose domain excludes α = 0 may have c0 ≠ 0 (Mercury: the fitted curve starts at 2° and excludes the opposition surge that the zero-phase albedo includes). The reverse also occurs: a surge-free albedo with a curve that includes the surge has Φ > 1 (negative `deltaMag`) near its first node (the Moon: the table starts at 1.55°).
+
+Optional `diskReflectanceModel` (M3; so far only the Moon, kind `rolo-v1`): when a body's disk-integrated brightness depends on more than α, this model gives it directly per channel. The Moon's depends on which hemisphere is lit (the waxing Moon is ~10 % brighter than the waning Moon at 60°) and on libration (up to 7 % or more). The illuminance is
+
+```
+E_obs,c = A_c(g, Φ, θ, φ) · E☉,c(1 AU) · (1/d²) · (radiusKm/Δ)²
+```
+
+with A_c from the model's `formula`. The inputs are the phase angle g, the Sun's selenographic longitude Φ, and the observer's selenographic latitude and longitude θ, φ. E☉,c is the solar XYZS in `light.json`. The model applies only inside its stated domain (phase range and observer libration range). There it replaces `geometricAlbedoXYZS · Φ(α)`; outside it, the α-only `phaseFunction` applies (within its own domain). `phaseFunction` equals the model's Y channel at zero libration, averaged over waxing and waning (geometric mean), divided by the albedo's Y.
 
 ### 4.4 Surface maps (M2)
 
