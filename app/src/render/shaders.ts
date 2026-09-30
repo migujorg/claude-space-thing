@@ -950,27 +950,19 @@ export const BODY_OVERLAY_SHADER = COMMON + BODY_COMMON + /* wgsl */ `
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 // Stars: GPU visibility culling (Crumey threshold) → compact list + indirect draw arguments.
 // ─────────────────────────────────────────────────────────────────────────────────────────────
-export const CULL_SHADER = COMMON + /* wgsl */ `
-struct CullInfo { count: u32, stride: u32, maxVisible: u32, groupsX: u32 };
-@group(0) @binding(0) var<uniform> F: Frame;
-@group(0) @binding(1) var<uniform> E: Eye;
-@group(0) @binding(2) var<storage, read> stars: array<f32>;
-@group(0) @binding(3) var<storage, read_write> visible: array<vec4f>;
-@group(0) @binding(4) var<storage, read_write> args: array<atomic<u32>, 4>;
-@group(0) @binding(5) var bgTex: texture_2d<f32>;
-@group(0) @binding(6) var<uniform> info: CullInfo;
-${SRCS(0, 7)}
-${VEIL}
-${BG}
-
-// Atmospheres in front of the camera whose limb a point source may be seen through (renderer.ts
-// writeLimbs; docs/rendering-earth.md §4 "Stars behind the limb"). Per limb: the body centre relative to
+/**
+ * The limbs of the drawn atmospheres, for light from beyond them: point sources (CULL_SHADER) and the sky
+ * background (sky/background.ts). The Limbs uniform is written by renderer.ts writeLimbs.
+ */
+export const LIMB_WGSL = (binding: number) => /* wgsl */ `
+// The drawn atmospheres whose limb light from beyond may cross (renderer.ts writeLimbs;
+// docs/rendering-earth.md §4 "Stars behind the limb"). Per limb: the body centre relative to
 // the camera (km, ICRF) with w = the shell's thickness H (km), the camera in the body's unit-sphere frame,
 // the rows of M (ICRF → unit-sphere frame), and ln τ per XYZS channel of the chord at impact altitude
 // h_i = H·i/(LIMB_N − 1) (atmosphere.ts limbChordTable).
 struct Limb { c: vec4f, o: vec4f, m0: vec4f, m1: vec4f, m2: vec4f, tab: array<vec4f, ${LIMB_N}> };
 struct Limbs { count: vec4f, l: array<Limb, ${LIMB_MAX}> };
-@group(0) @binding(8) var<uniform> LB: Limbs;
+@group(0) @binding(${binding}) var<uniform> LB: Limbs;
 
 /** Transmittance (XYZS) of the atmospheres' limbs along the unit direction u from the camera; 0 behind a solid body. */
 fn limbTransmittance(u: vec3f) -> vec4f {
@@ -992,6 +984,22 @@ fn limbTransmittance(u: vec3f) -> vec4f {
   }
   return T;
 }
+`;
+
+export const CULL_SHADER = COMMON + /* wgsl */ `
+struct CullInfo { count: u32, stride: u32, maxVisible: u32, groupsX: u32 };
+@group(0) @binding(0) var<uniform> F: Frame;
+@group(0) @binding(1) var<uniform> E: Eye;
+@group(0) @binding(2) var<storage, read> stars: array<f32>;
+@group(0) @binding(3) var<storage, read_write> visible: array<vec4f>;
+@group(0) @binding(4) var<storage, read_write> args: array<atomic<u32>, 4>;
+@group(0) @binding(5) var bgTex: texture_2d<f32>;
+@group(0) @binding(6) var<uniform> info: CullInfo;
+${SRCS(0, 7)}
+${VEIL}
+${BG}
+
+${LIMB_WGSL(8)}
 
 @compute @workgroup_size(256) fn main(@builtin(global_invocation_id) gid: vec3u) {
   let i = gid.x + gid.y * info.groupsX * 256u;

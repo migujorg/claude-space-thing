@@ -766,7 +766,7 @@ export class Renderer {
     }
 
     // 1b. Sky background (render/sky): extended sky light into EXT wherever no body is in front.
-    if (this.background && !skip.has('background')) this.background.encode(enc, { ext: t.ext, depth: t.depth, frameUB: this.frameUB, W: t.W, H: t.H, snapshot });
+    if (this.background && !skip.has('background')) this.background.encode(enc, { ext: t.ext, depth: t.depth, frameUB: this.frameUB, limbs: this.limbsUB, W: t.W, H: t.H, snapshot });
 
     // 2. Star visibility culling (reads last frame's veil for the local background).
     const veilView = t.levels[0].acc.createView();

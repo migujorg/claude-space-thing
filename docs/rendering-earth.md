@@ -14,7 +14,8 @@ Code:
 - `atmosphereGpu.ts`: packs the tables into a texture.
 - `shaders-atmosphere.ts`: the per-pixel march.
 - `shaders.ts`: the Earth body variant `EARTH_BODY_SHADER`, `ATMOSPHERE_SHELL_SHADER`, the aerial-perspective
-  columns `AP_COLUMNS_SHADER` and the limb transmittance of point sources (`CULL_SHADER`).
+  columns `AP_COLUMNS_SHADER` and the limb transmittance of light from beyond (`LIMB_WGSL`, used by the star
+  cull and the sky background).
 
 Tests: `app/tests/render-earth.test.ts`, `render-atmosphere.test.ts` (TEST FIXTURE atmosphere) and
 `render-earth-energy.test.ts` (real products, §6). Test page: `render-test.html?scene=earth-data&sun=lat,lon&obs=lat,lon&dist=km`.
@@ -237,7 +238,9 @@ extinction, not δ-scaled: the forward peak is degrees wide and spreads a star's
 The table is folded to XYZS as the effective optical depth −ln Σ_k w_ck·e^{−τ_k}. The fold weights make this
 exact for a spectrum like the Sun's; for other stars it is an approximation. The star cull (`CULL_SHADER
 limbTransmittance`) finds each point source's closest approach in the body's unit-sphere frame, reads the
-table (log-linear in h), and multiplies the source's XYZS. A ray that meets the solid body gives 0.
+table (log-linear in h), and multiplies the source's XYZS. A ray that meets the solid body gives 0. The sky
+background (Milky Way, faint stars, zodiacal light: `sky/background.ts`) is dimmed the same way per pixel,
+the zodiacal light included, since nearly all of it comes from beyond the planet.
 
 This applies to the nearest four measured atmospheres that are drawn, with the camera above their top. Stars
 seen from inside an atmosphere are not dimmed (extinction by airmass is not modelled). The test page's
