@@ -36,7 +36,7 @@ Each segment keeps only the records that overlap the manifest window ± 2 days, 
 
 Each segment's *declared* coverage (from the SPK segment summary) is written as `startEt`/`endEt`. For 199 and 299 it is narrower than the records' span: the records span 1549–2650 but the segments declare 1849–2150. SPICE refuses epochs outside the declared range, and so does our evaluator.
 
-DE442s does **not** contain planet centers relative to their system barycenters (499 wrt 4 … 999 wrt 9). Those come from `jpl-horizons-center-*`.
+DE442s does **not** contain planet centers relative to their system barycenters (499 wrt 4 … 999 wrt 9). Those come, with the moons, from the NAIF satellite kernels (`ephem/sat-*`); see naif-satellite-kernels.md. Until M2 they were fitted to JPL Horizons.
 
 ## GM consistency
 
@@ -60,5 +60,5 @@ Horizons builds each answer on the planetary ephemeris of the satellite ephemeri
 The source is named in each response; the base ephemeris is taken from NAIF's `.cmt` "Planetary Ephemeris Number".
 
 - **Uranus and Neptune** (Horizons on DE442): agree with no correction, 7.2e-7 km and 6.0e-8 km.
-- **Everything else** (Horizons on DE440): the fixture carries a SPICE-computed DE440→DE442 shift of the barycenter part (`toOurs`), and after that shift every body agrees to within 2.6e-3 km. The Moon is the largest; all others are ≤ 7.8e-5 km. Before the shift, the raw differences are exactly the DE440/DE442 difference, e.g. Jupiter 14.8 km and barycenter 7 1300 km.
-- **Center offsets:** the same agreement confirms that the planet-center offsets (fitted relative to their barycenters) do not depend on the planetary ephemeris.
+- **Everything else** (Horizons on DE440): the fixture carries a SPICE-computed DE440→DE442 shift of the barycenter part (`toOurs`). After that shift every body agrees to within 2.6e-3 km; the Moon is the largest, and the planet centres, now taken from the satellite kernels, are ≤ 7.2e-7 km. Before the shift, the raw differences are exactly the DE440/DE442 difference, e.g. Jupiter 14.8 km and barycenter 7 1300 km.
+- **Center offsets:** the same agreement confirms that the planet-centre offsets (given relative to their barycenters) do not depend on the planetary ephemeris.
