@@ -228,7 +228,9 @@ def galilean_spectrum(naif: int, ctx: BuildContext | None = None) -> AlbedoSpect
         f"{r:.1f} km (the paper used SPICE shapes). The fits start at the smallest observed phase angles and do not "
         "resolve a narrow opposition surge.",
         "absolute calibration: CISSCAL 3.9 radiometric correction factors (Knowles 2016), not re-scaled to any "
-        "reference spectrum; rotational variation up to 16 % peak to peak (Io, GRN, low phase; paper Sec. 5); shape "
+        "reference spectrum; with the paper's apertures and close sky annuli (its Table 1) the ISS WAC extended PSF "
+        "(COISS_0011 calib/xpsf, 2018) leaves 5-13 % of a moon's light outside the measurement, so these albedos "
+        "are probably low by that much (docs/sources/mayorga-2020.md); rotational variation up to 16 % peak to peak (Io, GRN, low phase; paper Sec. 5); shape "
         "between nodes unconstrained",
         notes={"nodes_nm": nodes.tolist(), "band_albedos": {f: c[0] for f, c in polys.items()}})
 
