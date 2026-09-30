@@ -70,7 +70,8 @@ export function attributeRows(body: Body, level: ExistsLevel, ephs: LoadedEpheme
     rows.push({
       key: 'position',
       name: 'Position (ephemeris)',
-      label: 'measured',
+      // A chain is only as grounded as its least grounded segment (e.g. a fitted planet-center offset).
+      label: worstOf(chain.links.map((l) => l.seg.label ?? 'unknown')),
       value: `SPK type ${types} segments ${path}${chain.complete ? ' (SSB)' : ' — chain to the SSB is incomplete'}`,
       method: `Chebyshev ephemeris from ${files}, evaluated at the light-emission epoch; the light-time correction makes the drawn position derived.`,
       sources: chain.sources,
