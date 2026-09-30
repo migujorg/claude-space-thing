@@ -501,7 +501,21 @@ export interface SurfaceLevelInfo {
   texelDeg: number;
 }
 
-export type SurfaceLayerKind = 'relative-reflectance' | 'height' | 'photometric-parameters';
+/**
+ * 'relative-reflectance': XYZS normal reflectance relative to its disk mean (albedo layers).
+ * 'height': metres above the reference ellipsoid. 'photometric-parameters': model constants per texel.
+ * Earth only (all dated, float16 with NaN = unknown per channel):
+ * 'cloud-properties': [cloudFraction, opticalThickness, cloudTopHeightM, iceFraction] of one day's daytime overpass;
+ * 'emitted-radiance': [dnbRadiance (nW cm⁻² sr⁻¹), censoredFraction]; `constants.toXYZS` converts to luminance;
+ * 'surface-water': [waterFraction, seaIceFraction] (where the renderer adds Fresnel reflection and glint).
+ */
+export type SurfaceLayerKind =
+  | 'relative-reflectance'
+  | 'height'
+  | 'photometric-parameters'
+  | 'cloud-properties'
+  | 'emitted-radiance'
+  | 'surface-water';
 
 export interface SurfaceLayerHeader {
   body: number;
@@ -522,9 +536,14 @@ export interface SurfaceLayerHeader {
   tilePath: string;
   /** Path of the "sha256  path" listing of every stored tile. */
   tileListing: string;
+  /** How the coarser levels were built from the top level (layers built before this field: mean of known texels). */
+  coarseLevels?: string;
   /** level (as string) → [tx, ty][] of tiles that are entirely unknown and therefore not stored. */
   missingTiles: Record<string, [number, number][]>;
-  /** How unknown texels are encoded (float16 layers: all channels exactly 0; float32 layers: NaN). */
+  /**
+   * How unknown texels are encoded: float16 reflectance/height layers use all channels exactly 0; float32 layers
+   * and the Earth cloud/night/water layers use NaN per channel (the text says which).
+   */
   noData: string;
   geometry: {
     projection: 'equirectangular';
@@ -574,7 +593,12 @@ export interface SurfaceLayerHeader {
   normalization?: {
     weighting: string;
     texelDiskMeanCheck: number[];
-    channelWeights?: { bandsNm: number[]; W: number[][] };
+    channelWeights?: { bandsNm: number[]; W: number[][] } | Record<string, { bandsNm: number[]; W: number[][] }>;
+    /**
+     * Earth: absolute surface reflectance = texel × absoluteDiskMean[channel]. Earth's disk photometry includes
+     * clouds and atmosphere, so it must not be used to scale Earth's surface map.
+     */
+    absoluteDiskMean?: Record<'X' | 'Y' | 'Z' | 'S', number>;
     [k: string]: unknown;
   };
   /** Height layers: 'm' (above the pck00011 reference ellipsoid named in `frame`). */
@@ -592,6 +616,10 @@ export interface SurfaceIndex {
   bodies: Record<string, { name: string; layers: Record<string, string> }>;
   /** NAIF id → why the body deliberately has no visible-light surface map (e.g. Venus, Titan). */
   excluded: Record<string, string>;
+  /** NAIF id → why a candidate map failed a check (the body is rendered from photometry only). */
+  rejected?: Record<string, string>;
+  /** Builder module → wall-clock seconds of the last build. */
+  buildSeconds?: Record<string, number>;
   notes?: string;
 }
 

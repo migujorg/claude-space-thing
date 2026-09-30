@@ -136,10 +136,13 @@ def equirect_grid(label: dict) -> EquirectGrid:
     l0 = num(mp, "LINE_PROJECTION_OFFSET")
     s0 = num(mp, "SAMPLE_PROJECTION_OFFSET")
     clon = num(mp, "CENTER_LONGITUDE")
-    if str(mp.get("POSITIVE_LONGITUDE_DIRECTION", "EAST")).upper() != "EAST":
-        raise ValueError("west-positive longitudes not supported here")
     # x = R (λ − λ0) cos φ0, y = R φ: with a standard parallel φ0 ≠ 0 the longitude spacing is 1/(res cos φ0)
     dlon = 1.0 / (res * np.cos(np.radians(clat)))
+    if str(mp.get("POSITIVE_LONGITUDE_DIRECTION", "EAST")).upper() == "WEST":
+        # west-positive maps: λW = CENTER_LONGITUDE − (s − S0)/res, so east longitude −λW grows with the sample
+        # index just as in an east-positive map, starting at −CENTER_LONGITUDE − S0·dlon
+        return EquirectGrid(lat0=l0 / res, lon0=-clon - s0 * dlon, dlat=1.0 / res, dlon=dlon,
+                            lines=int(img["LINES"]), samples=int(img["LINE_SAMPLES"]))
     return EquirectGrid(lat0=l0 / res, lon0=clon - s0 * dlon, dlat=1.0 / res, dlon=dlon,
                         lines=int(img["LINES"]), samples=int(img["LINE_SAMPLES"]))
 

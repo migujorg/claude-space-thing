@@ -129,6 +129,13 @@ def known_weight_fraction(known: np.ndarray, level: int) -> float:
     return float((wr[:, None] * known).sum() / (wr.sum() * known.shape[1]))
 
 
+def area_mean(arr: np.ndarray, level: int) -> float:
+    """Area-weighted mean of a finite (H, W) array over the whole sphere."""
+    e = np.radians(lat_edges(level))
+    wr = np.sin(e[:-1]) - np.sin(e[1:])
+    return float((wr[:, None] * arr).sum() / (wr.sum() * arr.shape[1]))
+
+
 def area_fraction(known: np.ndarray, level: int) -> float:
     """Fraction of the sphere's surface area covered by known texels."""
     e = np.radians(lat_edges(level))
@@ -174,9 +181,55 @@ class TileSet:
         return "".join(f"{self.files[p]}  {p}\n" for p in sorted(self.files)).encode()
 
 
-def encode_tile(block: np.ndarray, known: np.ndarray, fmt: str) -> bytes:
+def downsample2_nan(arr: np.ndarray, known: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Like downsample2, for layers whose channels may be individually unknown (NaN): each channel is the mean of
+    its finite values among the known texels of the block (NaN if none)."""
+    h, w = known.shape
+    a = np.where(known[..., None], arr, np.nan) if arr.ndim == 3 else np.where(known, arr, np.nan)
+    fin = np.isfinite(a)
+    shp = (h // 2, 2, w // 2, 2) + a.shape[2:]
+    n = fin.reshape(shp).sum(axis=(1, 3))
+    s_ = np.where(fin, a, 0).reshape(shp).sum(axis=(1, 3))
+    with np.errstate(invalid="ignore", divide="ignore"):
+        out = np.where(n > 0, s_ / np.maximum(n, 1), np.nan).astype(np.float32)
+    kn = known.reshape(h // 2, 2, w // 2, 2).any(axis=(1, 3))
+    return out, kn
+
+
+def downsample2_cover(arr: np.ndarray, cover: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Coverage-weighted 2×2 means: `cover` is the fraction of each texel's area known at the top level, the
+    coarse value is the mean over all known top-level area inside it, and the coarse cover is the block mean."""
+    h, w = cover.shape
+    c = cover.reshape(h // 2, 2, w // 2, 2)
+    n = c.sum(axis=(1, 3))
+    if arr.ndim == 2:
+        a = (np.where(cover > 0, arr, 0) * cover).reshape(h // 2, 2, w // 2, 2).sum(axis=(1, 3))
+        out = np.where(n > 0, a / np.maximum(n, 1e-12), 0)
+    else:
+        a = (np.where(cover[..., None] > 0, arr, 0) * cover[..., None]).reshape(
+            h // 2, 2, w // 2, 2, arr.shape[2]).sum(axis=(1, 3))
+        out = np.where(n[..., None] > 0, a / np.maximum(n, 1e-12)[..., None], 0)
+    return out.astype(np.float32), (n / 4).astype(np.float32)
+
+
+COARSE_RULES = {
+    "any": "each coarser level is the mean of the known texels of each 2×2 block; a coarse texel is known if any "
+           "of its four is",
+    "half": "each coarser level is the mean over the known top-level area inside each coarse texel (coverage-"
+            "weighted); a coarse texel is known only if at least half of its area is known at the top level, so "
+            "partly covered edges do not grow at coarse levels",
+}
+
+
+def encode_tile(block: np.ndarray, known: np.ndarray, fmt: str, nodata: str = "zero") -> bytes:
     """Encode a (256, 256[, C]) block. fmt 'f16' (reflectance/parameters: unknown -> 0, known clamped to the smallest
     positive normal float16 so that it never collides with the unknown marker) or 'f32' (height: unknown -> NaN)."""
+    if fmt == "f16" and nodata == "nan":
+        k = known[..., None] if block.ndim == 3 else known
+        b = np.where(k, block, np.nan).astype("<f2")
+        if np.isinf(b).any():
+            raise ValueError("float16 overflow in tile")
+        return b.tobytes()
     if fmt == "f16":
         tiny = np.float32(np.finfo(np.float16).tiny)
         k = known[..., None] if block.ndim == 3 else known
@@ -190,7 +243,7 @@ def encode_tile(block: np.ndarray, known: np.ndarray, fmt: str) -> bytes:
 
 
 def write_pyramid(out_root: Path, naif: int, layer: str, top: np.ndarray, known: np.ndarray, top_level: int,
-                  fmt: str, *, min_level: int = 0) -> TileSet:
+                  fmt: str, *, min_level: int = 0, nodata: str = "zero", coarse: str = "any") -> TileSet:
     """Write levels top_level..min_level of an (H, W[, C]) array (H, W = level_shape(top_level)).
 
     Levels are built by successive 2×2 known-texel means. Tiles whose texels are all unknown are not written and
@@ -204,6 +257,9 @@ def write_pyramid(out_root: Path, naif: int, layer: str, top: np.ndarray, known:
     missing: dict[int, list[list[int]]] = {}
     total = 0
     arr, kn = top, known
+    if coarse not in COARSE_RULES or (coarse == "half" and (nodata == "nan" or fmt == "f32")):
+        raise ValueError(f"coarse rule {coarse!r} not supported for {fmt}/{nodata}")
+    cover = np.asarray(known, np.float32) if coarse == "half" else None
     for level in range(top_level, min_level - 1, -1):
         ny, nx = tiles_shape(level)
         miss = []
@@ -217,7 +273,7 @@ def write_pyramid(out_root: Path, naif: int, layer: str, top: np.ndarray, known:
                 if not kb.any():
                     miss.append([tx, ty])
                     continue
-                data = encode_tile(strip[:, cols], kb, fmt)
+                data = encode_tile(strip[:, cols], kb, fmt, nodata)
                 rel = tile_rel_path(naif, layer, level, ty, tx)
                 p = out_root / rel
                 p.parent.mkdir(parents=True, exist_ok=True)
@@ -227,15 +283,22 @@ def write_pyramid(out_root: Path, naif: int, layer: str, top: np.ndarray, known:
         if miss:
             missing[level] = miss
         if level > min_level:
-            arr, kn = downsample2(np.asarray(arr, np.float32), np.asarray(kn))
+            if cover is not None:
+                arr, cover = downsample2_cover(np.asarray(arr, np.float32), cover)
+                kn = cover >= 0.5
+            elif nodata == "nan" or fmt == "f32":
+                arr, kn = downsample2_nan(np.asarray(arr, np.float32), np.asarray(kn))
+            else:
+                arr, kn = downsample2(np.asarray(arr, np.float32), np.asarray(kn))
     return TileSet(files, total, missing)
 
 
-def read_level(out_root: Path, naif: int, layer: str, level: int, channels: int, fmt: str) -> np.ndarray:
+def read_level(out_root: Path, naif: int, layer: str, level: int, channels: int, fmt: str,
+               nodata: str = "zero") -> np.ndarray:
     """Reassemble a whole level from its tiles (tests, previews). Missing tiles read as unknown."""
     h, w = level_shape(level)
     dt = "<f2" if fmt == "f16" else "<f4"
-    fill = 0.0 if fmt == "f16" else np.nan
+    fill = 0.0 if (fmt == "f16" and nodata == "zero") else np.nan
     out = np.full((h, w, channels), fill, np.float32)
     ny, nx = tiles_shape(level)
     for ty in range(ny):
