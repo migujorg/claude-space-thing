@@ -9,6 +9,7 @@ import type { Manifest, SmallBodyCoreHeader } from '../src/data/schema';
 import { discoverSmallBodies, loadSmallBodyTables, type SmallBodyTables } from '../src/data/smallbodies';
 import { smallBodyFacts, smallBodyLegend } from '../src/ui/smallBodyInspect';
 import { DATA_DIR, fixture, loadEphemerisSet } from './core-data';
+import { apparentPosition } from '../src/core/lighttime';
 
 interface Fs { existsSync(p: string): boolean; readFileSync(p: string): Uint8Array; readFileSync(p: string, e: 'utf8'): string }
 const fs: Fs = await import(/* @vite-ignore */ 'node:fs' as string);
@@ -120,4 +121,31 @@ describe.skipIf(!built || !eph)('small bodies on the real products', () => {
     expect(smallBodyLegend(tables).length).toBeGreaterThan(3);
     console.log(f.rows.map((r) => `${r.name}: ${r.value} [${r.label}; ${r.sources.join(', ')}]`).join('\n'));
   });
+
+  it('comets: the showcase comet is drawn with coma and tails from Earth at its peak; per-frame cost', () => {
+    const sb = new SmallBodies(tables, eph!);
+    if (!sb.comets || !tables.cometList) {
+      console.warn('[small-body tests] comets/* not built; skipping the comet shell check');
+      return;
+    }
+    const show = tables.cometList.showcase;
+    const peak = tables.cometList.notable.find((n) => n.row === show.row)!;
+    const et = peak.peakEt;
+    const earth = eph!.positionSSB(399, et)!;
+    const pix = (60 * Math.PI) / 180 / 720;
+    const core = { apparentPosition };
+    const t0 = performance.now();
+    const first = sb.comets.frame([], earth, et, core, 'best', pix);
+    const t1 = performance.now();
+    const again = sb.comets.frame([], earth, et, core, 'best', pix);
+    const t2 = performance.now();
+    expect(first.rows).toContain(show.row);
+    expect(again.rows).toEqual(first.rows);
+    const sc = first.comets.find((c) => c.id === -(show.row + 1))!;
+    // its apparent distance and the M1/K1 magnitude match the list (Horizons T-mag, see comets.test.ts)
+    expect(Math.hypot(...sc.rel) / 149597870.7).toBeCloseTo(peak.deltaAu, 2);
+    // nothing is drawn extended at Strict (the coma model is estimated)
+    expect(sb.comets.frame([], earth, et, core, 'strict', pix).comets.length).toBe(0);
+    console.log(`comets from Earth on ${new Date((946728000 + et - 69.184) * 1000).toISOString().slice(0, 10)}: extended ${first.comets.map((c) => c.name).join(', ')}; first frame ${(t1 - t0).toFixed(0)} ms (states from the catalogue epoch), next ${(t2 - t1).toFixed(1)} ms`);
+  }, 120_000);
 });

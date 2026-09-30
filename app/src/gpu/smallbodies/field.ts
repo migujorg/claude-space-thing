@@ -110,6 +110,8 @@ const STATE_BYTES = 4 * STATE_FLOATS;
 const RECORD_FLOATS = 8;
 const SLOT = 256;
 const FRAME_SLOT = 256;
+/** stateOf keeps the grid state of this many objects (more than the comets the shell evaluates each frame). */
+const STATE_CACHE = 64;
 const FRAME_BYTES = 96;
 /** Where stateOf takes planetary-ephemeris objects from (Pluto 999, else the Pluto-system barycentre 9). */
 const PLUTO_IDS = [999, 9];
@@ -214,6 +216,7 @@ export class SmallBodyField {
   /** Buffers to destroy once the commands of the update that last used them have run. */
   private pending: GPUBuffer[] = [];
   private readonly propagator: SmallBodyPropagator;
+  /** Grid states of the objects asked for by stateOf (selection, travel, the comets drawn with coma and tails); the oldest goes first. */
   private readonly stateCache = new Map<number, { m: number; st: Float64Array }>();
   private readonly pickU: [GPUBuffer, GPUBuffer];
   private readonly pickOut: GPUBuffer;
@@ -948,7 +951,7 @@ export class SmallBodyField {
     const st = from.st;
     if (from.m !== mStar && this.propagator.propagateOne(st, 0, E0 + from.m * this.H, E0 + mStar * this.H, E0, ng) !== SB_OK) return null;
     this.stateCache.set(index, { m: mStar, st: st.slice() });
-    if (this.stateCache.size > 16) this.stateCache.delete(this.stateCache.keys().next().value as number);
+    if (this.stateCache.size > STATE_CACHE) this.stateCache.delete(this.stateCache.keys().next().value as number);
     if (et !== E0 + mStar * this.H && this.propagator.propagateOne(st, 0, E0 + mStar * this.H, et, E0, ng) !== SB_OK) return null;
     return { pos: [st[0], st[1], st[2]], vel: [st[3], st[4], st[5]] };
   }

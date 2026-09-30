@@ -226,11 +226,12 @@ export class Inspector {
       return;
     }
     const closeup = !!m.snapshot?.bodies.some((b) => b.id === id);
+    const comet = !!m.snapshot?.comets?.some((c) => c.id === id);
     this.setWhy(
       smallBodyWhy({
         level,
         positionLabel: sb.posLabel(row),
-        drawn: closeup ? 'closeup' : 'point',
+        drawn: comet ? 'comet' : closeup ? 'closeup' : 'point',
         field: !!sb.field,
         inputs: brightnessInputs(sb.tables, row),
         filtered: closeup ? m.filtered(id) : null,

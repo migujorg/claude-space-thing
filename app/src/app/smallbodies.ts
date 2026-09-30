@@ -27,6 +27,7 @@ import { osculatingPeriod, orbitSpan } from './orbits';
 import type { ApparentResult, CoreFunctions, EphemerisSetPort, SmallBodyFieldPort, Vec3 } from './ports';
 import type { GridStates, GridWorkerPort } from './sbgrid';
 import { labelAllowed, worstOf, type ExistsLevel } from './reality';
+import { CometShell } from './comets';
 
 export const sbId = (row: number): number => -(row + 1);
 
@@ -353,7 +354,11 @@ export class SmallBodies {
     const syn = tables.synthetic;
     this.synthetic = syn ? readSynthetic(syn.objects.header, syn.objects.buffer, syn.cells?.header ?? null, syn.cells?.buffer ?? null) : null;
     this.syntheticCount = this.synthetic?.count ?? 0;
+    this.comets = tables.cometModel ? new CometShell(this, tables.cometModel, tables.cometList ?? null) : null;
   }
+
+  /** Comets drawn with their coma and tails (comets/model.json), when the product is built. */
+  readonly comets: CometShell | null;
 
   has(row: number): boolean {
     return Number.isInteger(row) && row >= 0 && row < this.count + this.syntheticCount;
@@ -452,6 +457,11 @@ export class SmallBodies {
       return s ? { pos: [s.pos[0], s.pos[1], s.pos[2]], vel: [s.vel[0], s.vel[1], s.vel[2]] } : null;
     }
     return this.cpu.stateOf(row, et);
+  }
+
+  /** The Sun's position relative to the solar-system barycenter (the centre of the heliocentric states). */
+  sunSSB(et: number): Vec3 | null {
+    return this.eph.positionSSB(this.sunNaif, et);
   }
 
   /** Position relative to the solar-system barycenter (heliocentric + the Sun's SSB position). */
