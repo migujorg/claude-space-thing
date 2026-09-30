@@ -255,3 +255,19 @@ def test_earth_water_layer():
     fin = np.isfinite(ice)
     assert ((ice[fin] >= 0) & (ice[fin] <= 1)).all()
     assert h["diagnostics"]["texelsWithSeaIceOver15pc"] > 1000
+
+
+def test_earth_wind_layer():
+    h = _header("wind")
+    a = _top(h)
+    asc, mean, n = a[..., 0], a[..., 1], a[..., 2]
+    fin = np.isfinite(mean)
+    assert 0.4 < h["coverage"]["areaFraction"] < 0.72          # ocean only; gaps between swaths and in rain
+    assert ((mean[fin] >= 0) & (mean[fin] < 50)).all() and 5 < np.nanmean(mean) < 10
+    assert np.isfinite(asc).sum() <= fin.sum() and ((n[fin] >= 1) & (n[fin] <= 4)).all()
+    wh = _header("water")
+    w = _top(wh)[..., 0]
+    step = 2 ** (wh["maxLevel"] - h["maxLevel"])
+    wl = w.reshape(w.shape[0] // step, step, w.shape[1] // step, step).mean(axis=(1, 3))
+    assert (wl[fin] > 0.5).mean() > 0.97                       # the winds are over water
+    assert "12.5 m" in h["constants"]["coxMunk"]["height"]

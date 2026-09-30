@@ -8,7 +8,8 @@
 import type { SceneBody, SurfaceLayerRef } from './scene';
 import type { CameraGeom } from './overlays';
 import type { PreparedFrame, SurfaceBinding } from './frame';
-import { footprintTiles, layerFormatProblem, TILE, TILE_BYTES, TileCache, type Fetcher, type LayerFormat, type PageStore } from './surface';
+import { footprintTiles, httpFetcher, layerFormatProblem, layerKey, TILE, TILE_BYTES, TileCache, tileUrl, type Fetcher, type LayerFormat, type PageStore } from './surface';
+import { decodeTexelHapke, texelHapkeGpuLayers, texelLawProblem, type TexelHapke } from './texelLaw';
 
 const MIB = 1 << 20;
 
@@ -126,13 +127,64 @@ export class SurfaceGpu {
     };
     if (s.albedo && usable(s.albedo, 'albedo')) {
       const l = this.cache('albedo').layer(s.albedo);
-      out.albedo = { base: l.base, maxLevel: l.maxLevel, zonal: l.zonal };
+      out.albedo = { base: l.base, maxLevel: l.maxLevel, zonal: l.zonal, map0: l.map0 };
     }
     if (s.height && usable(s.height, 'height')) {
       const l = this.cache('height').layer(s.height);
       out.height = { base: l.base, maxLevel: l.maxLevel };
     }
+    if (s.photometry && s.albedo && out.albedo) {
+      const p = this.photometry(s.photometry, s.albedo, b.name);
+      if (p) out.photometry = p;
+    } else if (s.photometry && !s.albedo) {
+      this.problems.add(`${b.name}: per-texel photometric layer needs the albedo layer (band weights) → not used`);
+    }
     return out.albedo || out.height ? out : null;
+  }
+
+  // ── Per-texel photometric layers (texelLaw.ts): level 0 only, loaded whole, one GPU texture each.
+  private photo = new Map<string, { state: 'loading' | 'ready' | 'failed'; texel?: TexelHapke; texture?: GPUTexture }>();
+  private photoPending = 0;
+
+  private photometry(ref: SurfaceLayerRef, albedo: SurfaceLayerRef, name: string): { texel: TexelHapke; view: GPUTextureView } | null {
+    const key = layerKey(ref);
+    let e = this.photo.get(key);
+    if (!e) {
+      const why = texelLawProblem(ref, albedo);
+      if (why) {
+        this.problems.add(`${name}: ${why} → per-texel photometry not used`);
+        this.photo.set(key, { state: 'failed' });
+        return null;
+      }
+      const entry: { state: 'loading' | 'ready' | 'failed'; texel?: TexelHapke; texture?: GPUTexture } = { state: 'loading' };
+      e = entry;
+      this.photo.set(key, entry);
+      const fetcher = this.fetcher ?? httpFetcher;
+      const missing = ref.header.missingTiles?.['0'] ?? ref.header.missing?.['0'] ?? [];
+      this.photoPending++;
+      Promise.all([0, 1].map((tx) => (missing.some(([x, y]) => x === tx && y === 0) ? Promise.resolve(null) : fetcher(tileUrl(ref, 0, 0, tx)).catch(() => null))))
+        .then((tiles) => {
+          const t = decodeTexelHapke(ref, albedo, tiles);
+          const texture = this.device.createTexture({
+            size: [t.width, t.height, 6], format: 'rgba32float',
+            usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST, label: 'per-texel photometry',
+          });
+          this.device.queue.writeTexture({ texture }, texelHapkeGpuLayers(t), { bytesPerRow: t.width * 16, rowsPerImage: t.height }, [t.width, t.height, 6]);
+          entry.texel = t;
+          entry.texture = texture;
+          entry.state = 'ready';
+        })
+        .catch((err) => {
+          entry.state = 'failed';
+          this.problems.add(`${name}: per-texel photometry could not be loaded (${err}) → not used`);
+        })
+        .finally(() => {
+          this.photoPending--;
+          this.onTile?.();
+          if (this.idle()) { const w = this.idleWaiters; this.idleWaiters = []; for (const f of w) f(); }
+        });
+    }
+    return e.state === 'ready' && e.texel && e.texture ? { texel: e.texel, view: e.texture.createView({ dimension: '2d-array' }) } : null;
   }
 
   /** Layers that could not be used (format mismatch), as warnings. */
@@ -169,7 +221,7 @@ export class SurfaceGpu {
   perRow(format: LayerFormat): number { return this.atlases[format]?.perRow ?? 1; }
 
   idle(): boolean {
-    return Object.values(this.caches).every((c) => c.getStats().pendingFetches === 0 && c.queuedCount() === 0);
+    return this.photoPending === 0 && Object.values(this.caches).every((c) => c.getStats().pendingFetches === 0 && c.queuedCount() === 0);
   }
 
   /** Resolves when no tile fetch is pending (or after timeoutMs). */
@@ -198,6 +250,7 @@ export class SurfaceGpu {
 
   destroy(): void {
     for (const a of Object.values(this.atlases)) a.texture.destroy();
+    for (const p of this.photo.values()) p.texture?.destroy();
     this.dummy.albedo.destroy();
     this.dummy.height.destroy();
     this.buffer.destroy();

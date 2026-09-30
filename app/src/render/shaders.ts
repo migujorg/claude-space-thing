@@ -387,6 +387,66 @@ export const BODY_SHADER = COMMON + BODY_COMMON + RING_COMMON + LAW_WGSL + SURFA
 @group(0) @binding(5) var<uniform> SI: SurfInfo;
 @group(0) @binding(6) var<storage, read> rings: array<Ring>;
 @group(0) @binding(7) var<storage, read> ringProf: array<vec4f>;
+@group(0) @binding(8) var texelLaw: texture_2d_array<f32>;   // per-texel Hapke (texelLaw.ts): w, b, c, B_S0, h_S of 4 bands, denominator XYZS
+@group(0) @binding(9) var<uniform> TL: TexelLawInfo;
+
+struct TexelLawInfo {
+  cw: array<vec4f, 4>,  // channel X, Y, Z, S: weights W[c][b]/⟨A_b⟩ over the 4 bands
+  k: vec4f,             // θ̄ (rad), K, B_C0, h_C
+  dims: vec4f,          // width, height, H function (0: Hapke 2002, 1: 1981), unused
+};
+
+/** R_c = Σ_b cw[c][b]·RADF_b(i, e, g) / Σ_b cw[c][b]·RADF_b(0, 0, 0; B_S0 = 0) at uv (texelLaw.ts texelRadf). */
+fn texelRadf(uv: vec2f, mu0: f32, mu: f32, g: f32) -> vec4f {
+  let Wt = i32(TL.dims.x);
+  let Ht = i32(TL.dims.y);
+  let cc = uv * TL.dims.xy - 0.5;
+  let i0 = vec2i(floor(cc));
+  let fr = cc - vec2f(i0);
+  var P = array<vec4f, 5>(vec4f(0.0), vec4f(0.0), vec4f(0.0), vec4f(0.0), vec4f(0.0));
+  var D = vec4f(0.0);
+  var ws = 0.0;
+  for (var k = 0; k < 4; k++) {
+    let dx = k & 1;
+    let dy = k >> 1;
+    let w = select(1.0 - fr.x, fr.x, dx == 1) * select(1.0 - fr.y, fr.y, dy == 1);
+    let ix = (i0.x + dx + Wt) % Wt;
+    let iy = clamp(i0.y + dy, 0, Ht - 1);
+    let d = textureLoad(texelLaw, vec2i(ix, iy), 5, 0);
+    if (d.y > 0.0 && w > 0.0) {
+      ws += w;
+      D += w * d;
+      for (var q = 0; q < 5; q++) { P[q] += w * textureLoad(texelLaw, vec2i(ix, iy), q, 0); }
+    }
+  }
+  if (ws <= 0.0) { return vec4f(mu0); }
+  let wB = P[0] / ws;
+  let bB = P[1] / ws;
+  let cB = P[2] / ws;
+  let bs0B = P[3] / ws;
+  let hsB = P[4] / ws;
+  let i = acos(clamp(mu0, -1.0, 1.0));
+  let e = acos(clamp(mu, -1.0, 1.0));
+  let den = sin(i) * sin(e);
+  var cpsi = 1.0;
+  if (den > 1e-6) { cpsi = (cos(g) - mu0 * mu) / den; }
+  let r = hapkeRough(i, e, acos(clamp(cpsi, -1.0, 1.0)), TL.k.x);
+  let K = TL.k.y;
+  let tg = tan(0.5 * g);
+  let x = select(1e9, tg / TL.k.w, TL.k.w > 0.0);
+  let Bc = select(1.0, (1.0 + (1.0 - exp(-x)) / x) / (2.0 * (1.0 + x) * (1.0 + x)), x > 1e-6);
+  var radf = vec4f(0.0);
+  for (var j = 0; j < 4; j++) {
+    let w = wB[j];
+    let Bs = select(0.0, 1.0 / (1.0 + tg / hsB[j]), hsB[j] > 0.0);
+    var H = hFn2002(r.x / K, w) * hFn2002(r.y / K, w);
+    if (TL.dims.z > 0.5) { H = hFn1981(r.x / K, w) * hFn1981(r.y / K, w); }
+    radf[j] = K * w / 4.0 * r.x / (r.x + r.y) * (doubleHG(g, bB[j], cB[j]) * (1.0 + bs0B[j] * Bs) + H - 1.0) * (1.0 + TL.k.z * Bc) * r.z;
+  }
+  let num = vec4f(dot(TL.cw[0], radf), dot(TL.cw[1], radf), dot(TL.cw[2], radf), dot(TL.cw[3], radf));
+  let dn = D / ws;
+  return select(vec4f(mu0), num / max(dn, vec4f(1e-12)), dn > vec4f(0.0));
+}
 
 /** Fraction of the solar disk (uniform-disk approximation) visible from body-relative point p. */
 fn sunVisible(b: Body, p: vec3f) -> f32 {
@@ -531,8 +591,15 @@ struct FOut {
     let mu0 = dot(N, S);
     let mu = dot(N, V);
     if (mu0 > 0.0 && mu > 0.0) {
-      let r = lawRadf(mu0, mu, acos(clamp(dot(S, V), -1.0, 1.0)), b.law0, b.law1, b.law2);
-      L = b.rad * M * (r * sunVisible(b, p) * selfShadow * ringShadowT(b, p));
+      let gph = acos(clamp(dot(S, V), -1.0, 1.0));
+      var r4: vec4f;
+      if (b.law0.x > 4.5) {
+        // Per-texel law (the Moon's Hapke maps): parameters of the texel under this point.
+        r4 = texelRadf(uvOfBf(hit.h * vec3f(b.rot0.w, b.rot1.w, b.rot2.w)), mu0, mu, gph);
+      } else {
+        r4 = vec4f(lawRadf(mu0, mu, gph, b.law0, b.law1, b.law2));
+      }
+      L = b.rad * M * r4 * (sunVisible(b, p) * selfShadow * ringShadowT(b, p));
     }
     // Planetshine (Lambert, measured albedos of both bodies; planetshine.ts).
     if (b.ps0.w > 0.5) { L += b.psK0 * M * max(dot(N, b.ps0.xyz), 0.0); }

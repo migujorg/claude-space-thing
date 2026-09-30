@@ -15,6 +15,8 @@ export interface LayerRef {
 export interface BodySurfaces {
   albedo?: LayerRef;
   height?: LayerRef;
+  /** Per-texel photometric parameters (layer kind 'photometric-parameters', e.g. the Moon's Hapke maps). */
+  photometry?: LayerRef;
 }
 
 export interface SceneExtras {
@@ -39,6 +41,7 @@ export function surfaceRefs(layers: SurfaceLayer[], dataRoot: string): Map<numbe
     const e = out.get(l.bodyId) ?? {};
     if (l.layer === 'albedo') e.albedo = { ref, label: worstOf([headerLabel(h, 'brightness'), headerLabel(h, 'color')]) };
     else if (l.layer === 'height') e.height = { ref, label: headerLabel(h, 'brightness') };
+    else if (h.kind === 'photometric-parameters') e.photometry = { ref, label: headerLabel(h, 'brightness') };
     else continue;
     out.set(l.bodyId, e);
   }
@@ -83,13 +86,21 @@ export function applyExtras(sb: SceneBody, body: Body, extras: SceneExtras | und
   const s = extras.surfaces.get(body.id);
   if (s && sb.radii) {
     const surface: SceneBody['surface'] = {};
-    if (s.albedo && lit && !sb.surfaceUnknown && labelAllowed(s.albedo.label, level)) {
+    // A map of surface-only reflectance (no clouds, no atmosphere: Earth) must not be scaled by disk photometry,
+    // which includes them. Until the renderer draws clouds and air from their own layers, the disk-photometry
+    // colour is the more faithful view, so such a map is withheld.
+    const surfaceOnly = !!(s.albedo?.ref.header as { normalization?: { absoluteDiskMean?: unknown } } | undefined)?.normalization?.absoluteDiskMean;
+    if (s.albedo && lit && !sb.surfaceUnknown && !surfaceOnly && labelAllowed(s.albedo.label, level)) {
       surface.albedo = s.albedo.ref;
       used.push(s.albedo.label);
     }
     if (s.height && labelAllowed(s.height.label, level)) {
       surface.height = s.height.ref;
       used.push(s.height.label);
+    }
+    if (s.photometry && surface.albedo && labelAllowed(s.photometry.label, level)) {
+      surface.photometry = s.photometry.ref;
+      used.push(s.photometry.label);
     }
     if (surface.albedo || surface.height) sb.surface = surface;
   }

@@ -2,6 +2,7 @@
 
 import type { AppModel } from '../app/model';
 import { clear, h, toggleClass } from './dom';
+import { groupReport } from './dataReport';
 import { formatBytes, sig } from './format';
 
 export class DataPanel {
@@ -75,11 +76,11 @@ export class DataPanel {
         'table',
         { class: 'st-table' },
         h('tr', null, h('th', null, 'Product'), h('th', null, 'Status'), h('th', null, 'Size'), h('th', null, 'Integrity / consequence')),
-        d.report.products.map((p) =>
+        groupReport(d.report.products).map((p) =>
           h(
             'tr',
             null,
-            h('td', { class: 'st-mono' }, p.path),
+            h('td', { class: 'st-mono' }, p.count > 1 ? `${p.path} … ${p.lastPath!.split('/').pop()} (${p.count} files)` : p.path),
             h('td', null, h('span', { class: `st-status st-status-${p.status}` }, statusText[p.status])),
             h('td', { class: 'st-muted' }, formatBytes(p.bytes)),
             h(

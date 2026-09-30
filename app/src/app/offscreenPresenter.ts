@@ -51,6 +51,12 @@ export class OffscreenPresenter implements RendererPort {
     if (!this.blitting) this.blitting = this.blit().finally(() => (this.blitting = null));
   }
 
+  /** The GPU finished the last frame and its pixels are in the visible canvas. */
+  async frameDone(): Promise<void> {
+    await this.gpuDevice?.queue.onSubmittedWorkDone();
+    if (this.blitting) await this.blitting;
+  }
+
   async settled(): Promise<void> {
     await this.r.settled();
     if (this.blitting) await this.blitting;

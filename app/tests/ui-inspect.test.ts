@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { attributeRows, derivedLabel, ephemerisChain, sunRows, sunWhy } from '../src/ui/inspectModel';
+import { groupReport } from '../src/ui/dataReport';
 import type { LoadedEphemeris } from '../src/data/load';
 import type { EphemSegment } from '../src/data/schema';
 import { body, fakeLight } from './app-fakes';
@@ -47,5 +48,17 @@ describe('inspector model', () => {
   it('derived quantities carry the worst of their inputs', () => {
     expect(derivedLabel('measured')).toBe('derived');
     expect(derivedLabel('estimated')).toBe('estimated');
+  });
+});
+
+describe('data panel rows', () => {
+  it('groups numbered products with the same status into one row', () => {
+    const shard = (i: number) => ({ path: `stars/deep-o3-${String(i).padStart(3, '0')}.bin`, status: 'unused' as const, bytes: 10, message: 'Listed in the manifest; not read by this app version.' });
+    const rows = groupReport([{ path: 'manifest.json', status: 'ok', bytes: 5, hash: 'unchecked' }, ...Array.from({ length: 768 }, (_, i) => shard(i)), { path: 'stars/bright.bin', status: 'ok', bytes: 7 }]);
+    expect(rows.map((r) => [r.path, r.count, r.bytes])).toEqual([['manifest.json', 1, 5], ['stars/deep-o3-000.bin', 768, 7680], ['stars/bright.bin', 1, 7]]);
+    expect(rows[1].lastPath).toBe('stars/deep-o3-767.bin');
+    // A shard with a different status stays on its own row; small groups are not collapsed.
+    expect(groupReport([shard(0), shard(1), shard(2), { ...shard(3), status: 'error' }, shard(4)]).map((r) => r.count)).toEqual([4, 1]);
+    expect(groupReport([shard(0), shard(1), shard(2)]).map((r) => r.count)).toEqual([1, 1, 1]);
   });
 });

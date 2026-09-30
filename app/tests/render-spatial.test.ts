@@ -139,6 +139,6 @@ describe('disk integrals', () => {
     expect(tilted[1] / lawDiskIntegral(LAMBERT_LAW, 0)[1]).toBeCloseTo(1.5, 3);
   });
   it('law codes are stable (shared with WGSL)', () => {
-    expect(LAW).toEqual({ lambert: 0, lommelSeeliger: 1, lunarLambert: 2, minnaert: 3, hapke: 4 });
+    expect(LAW).toEqual({ lambert: 0, lommelSeeliger: 1, lunarLambert: 2, minnaert: 3, hapke: 4, texelHapke: 5 });
   });
 });

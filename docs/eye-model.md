@@ -169,9 +169,18 @@ composite keeps 1 − Σw of the light unscattered, so energy is conserved exact
 pixel; inside 0.1° (below the CIE validity range) the kernel is held at its 0.1° value. v0 fitted only
 from 0.1° outward, which left the narrowest Gaussians unconstrained at fine pixel scales: at 1440p and 4K
 the fitted "scattered" energy could exceed 100 % and the unscattered fraction turned negative (stars and
-bodies vanished at 4K). The bounded continuation makes the scattered fraction ~0.45–0.5 at every
-resolution from 720p to 4K (tested). Light scattered
-beyond the frame edge is lost (the scene outside the frame is not rendered).
+bodies vanished at 4K). The bounded continuation keeps the scattered fraction within 20 % across
+resolutions from 720p to 4K (tested; ≈ 0.39–0.40 at a 50° field).
+
+Outward, the fit runs over the whole support of every Gaussian (to 4σ of the widest level), with the
+kernel's own zero beyond 100° as the target there. v1 stopped at the frame diagonal or at 100°,
+whichever came first. In a wide field, where 100° lies inside the frame, the widest levels were then free
+to carry energy beyond 100°: the weights summed to 0.73 at fovY 110° and 1.20 at 130° (1080p). The
+unscattered fraction 1 − Σw went negative and the whole frame rendered black, stars included. Now the
+scattered fraction stays physical at every field from 5° to 150° (tested at 720p, 1080p and 4K): ≈ 0.36–0.40
+up to 90°, falling to 0.14–0.27 at 150°. It falls because a wide-field pixel spans more of the kernel's
+steep core, and that light stays in its pixel. Light scattered beyond the frame edge is lost (the scene
+outside the frame is not rendered).
 
 The Sun, and bodies whose centre is outside the frame, are veiled analytically per pixel
 (E·f_CIE(θ)), because their glare reaches far beyond the frame and the Sun's disk is too bright for a

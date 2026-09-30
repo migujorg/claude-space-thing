@@ -51,6 +51,8 @@ export interface DebugApi {
 
 /** The name index runs in a module worker (Vite bundles it). */
 const defaultNameWorker = (): Worker => new Worker(new URL('./names.worker.ts', import.meta.url), { type: 'module' });
+/** Selected small bodies are propagated in a module worker. */
+const defaultPropagationWorker = (): Worker => new Worker(new URL('./sbprop.worker.ts', import.meta.url), { type: 'module' });
 
 declare global {
   interface Window {
@@ -186,6 +188,10 @@ export async function startApp(canvas: HTMLCanvasElement, uiRoot: HTMLElement, d
     // Render loop with backpressure: a new frame is built and submitted only once the GPU has finished the
     // previous one, so a slow GPU (or software rendering) never accumulates a queue of stale frames, and the
     // DOM overlays (labels) always match the image on screen. Simulated time still advances by real time.
+    // Pacing waits for the frame only (frameDone, or the device's queue); renderer.settled(), which drives extra
+    // frames until tiles are in and the eye has adapted, is used only when a script waits for a settled frame
+    // (__app.nextFrame(), __frameReady) — per frame it would multiply GPU work and short-cut the eye's temporal
+    // adaptation. A renderer that offers neither falls back to settled().
     let inFlight = false;
     let last = performance.now();
     let fieldFailed = false;
@@ -211,7 +217,9 @@ export async function startApp(canvas: HTMLCanvasElement, uiRoot: HTMLElement, d
       sky?.beforeFrame(s, renderer.stats);
       renderer.render(s);
       inFlight = true;
-      renderer.settled().then(
+      const r = renderer;
+      const done = ws.length ? r.settled() : r.frameDone ? r.frameDone() : r.gpuDevice ? r.gpuDevice.queue.onSubmittedWorkDone() : r.settled();
+      done.then(
         () => { inFlight = false; ws.forEach((w) => w()); },
         (e) => { inFlight = false; console.error(e); ws.forEach((w) => w()); },
       );
@@ -238,6 +246,7 @@ export async function startApp(canvas: HTMLCanvasElement, uiRoot: HTMLElement, d
             cometsHeader: t.comets?.header,
             nongrav: t.nongrav?.buffer,
             nongravHeader: t.nongrav?.header,
+            photometry: t.photometry ?? undefined,
           },
           { positionSSB: (id, et) => model.eph?.positionSSB(id, et) ?? null },
         );
@@ -254,6 +263,7 @@ export async function startApp(canvas: HTMLCanvasElement, uiRoot: HTMLElement, d
             loader: data.loader,
             namesUrl: (file) => new URL(base + file, location.href).href,
             worker: deps.nameWorker ?? defaultNameWorker,
+            propagationWorker: deps.propagationWorker === null ? undefined : deps.propagationWorker ?? defaultPropagationWorker,
             enabled: view.smallbodies !== false,
           })
           .then(() => attachSmallBodyField())

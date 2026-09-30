@@ -51,7 +51,7 @@ export interface DeclutterResult {
   markers: number[];
 }
 
-const KIND_BASE: Record<BodyKind, number> = { star: 300, planet: 200, 'dwarf-planet': 150, moon: 0, barycenter: -1000 };
+const KIND_BASE: Record<BodyKind, number> = { star: 300, planet: 200, 'dwarf-planet': 150, moon: 0, 'small-body': 0, barycenter: -1000 };
 
 export function scoreCandidate(c: OverlayCandidate, focusDist: number | null): number {
   let s = KIND_BASE[c.kind] ?? 0;

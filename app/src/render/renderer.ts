@@ -24,7 +24,9 @@ import {
 import { SurfaceGpu } from './surfaceGpu';
 import type { RingPrep } from './rings';
 import type { BackgroundTargets } from './sky/background';
+import { LAW } from './spatial';
 import { cameraGeom, prepareFrame, type PreparedFrame } from './frame';
+import { ExtraPointSources, type PointSourceBuffer } from './extraPoints';
 import { orbitVertices } from './overlays';
 import { AdaptationState, computeEyeFrame, type EyeFrame } from '../eye/model';
 import { DEFAULT_EYE_SETTINGS, type EyeSettings } from '../eye/settings';
@@ -101,6 +103,7 @@ export class Renderer {
   private stars: StarChunk[] = [];
   private starStride = 7;
   private starCount = 0;
+  private extraPts: ExtraPointSources | null = null;
   private visible: GPUBuffer;
   private maxVisible = 1;
   private frameIndex = 0;
@@ -144,6 +147,9 @@ export class Renderer {
   private maskHatchPipe: GPURenderPipeline;
   private surf: SurfaceGpu | null = null;
   private surfUB: GPUBuffer;
+  /** Per-texel photometric law (texelLaw.ts): uniform (band weights, constants) and a placeholder texture. */
+  private texelUB: GPUBuffer;
+  private texelDummy: GPUTexture | null = null;
   private ringsBuf: GPUBuffer | null = null;
   private ringProfBuf: GPUBuffer | null = null;
   private ringProfKey: unknown[] = [];
@@ -182,6 +188,7 @@ export class Renderer {
     this.sunPointBuf = d.createBuffer({ size: 32, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
     this.visible = d.createBuffer({ size: 32, usage: GPUBufferUsage.STORAGE });
     this.surfUB = ub(16);
+    this.texelUB = ub(6 * 16);
     this.dummyStorage = d.createBuffer({ size: 256, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
 
     const mod = (code: string, label: string) => d.createShaderModule({ code, label });
@@ -313,11 +320,6 @@ export class Renderer {
     this.background = b;
   }
 
-  /** The renderer's GPUDevice, for passes that share its targets (render/sky). */
-  get gpuDevice(): GPUDevice {
-    return this.device;
-  }
-
   /** Upload the star catalog once (static). Large catalogs are split into storage-binding-sized chunks. */
   setStars(catalog: StarCatalog): void {
     for (const c of this.stars) { c.buffer.destroy(); c.info.destroy(); }
@@ -334,7 +336,20 @@ export class Renderer {
       const info = this.device.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
       this.stars.push({ buffer, count, info });
     }
-    this.maxVisible = Math.max(1, Math.min(catalog.count, MAX_VISIBLE_STARS));
+    this.maxVisible = Math.max(1, Math.min(catalog.count + (this.extraPts?.count ?? 0), MAX_VISIBLE_STARS));
+    this.visible.destroy();
+    this.visible = this.device.createBuffer({ size: this.maxVisible * 32, usage: GPUBufferUsage.STORAGE });
+  }
+
+  /** The renderer's device, for GPU producers of extra point sources (e.g. the small-body field). */
+  get gpuDevice(): GPUDevice {
+    return this.device;
+  }
+
+  /** Extra point sources (star-layout records produced on the GPU, e.g. small bodies) drawn through the star path; null removes them. See ./extraPoints.ts. */
+  setExtraPointSources(src: PointSourceBuffer | null): void {
+    (this.extraPts ??= new ExtraPointSources(this.device)).set(src);
+    this.maxVisible = Math.max(1, Math.min(this.starCount + this.extraPts.count, MAX_VISIBLE_STARS));
     this.visible.destroy();
     this.visible = this.device.createBuffer({ size: this.maxVisible * 32, usage: GPUBufferUsage.STORAGE });
   }
@@ -489,6 +504,7 @@ export class Renderer {
       surf.flush();
       this.stats.surfaceCache = surf.stats();
     }
+    this.stats.cpuPrepMs = performance.now() - t0;
 
     // Scatter kernel (CIE 146) fitted to this pyramid and field of view.
     const key = `${t.W}x${t.H}:${snapshot.camera.fovY}:${this.settings.ageYears}:${this.settings.pigmentation}`;
@@ -540,6 +556,15 @@ export class Renderer {
         depthStencilAttachment: { view: t.depth.createView(), depthClearValue: 0, depthLoadOp: 'clear', depthStoreOp: 'store' },
       });
       const ringsRes = this.ringsBuf && nRings ? this.ringsBuf : this.dummyStorage;
+      // One per-texel photometric layer per frame (the Moon's): the first resolved body that has one.
+      const texelBody = prep.resolved.find((r) => r.surface?.photometry && r.law.kind === LAW.texelHapke);
+      const tp = texelBody?.surface?.photometry;
+      if (tp) {
+        const t = tp.texel;
+        d.queue.writeBuffer(this.texelUB, 0, new Float32Array([...t.cw.flatMap((row) => row.slice(0, 4)), t.thetaBar, t.K, t.bc0, t.hc, t.width, t.height, t.hFn, 0]));
+      }
+      if (!this.texelDummy) this.texelDummy = d.createTexture({ size: [1, 1, 1], format: 'rgba32float', usage: GPUTextureUsage.TEXTURE_BINDING, label: 'texel law dummy' });
+      const texelView = tp ? tp.view : this.texelDummy.createView({ dimension: '2d-array' });
       const profRes = this.ringProfBuf && nRings ? this.ringProfBuf : this.dummyStorage;
       if (nRes && this.bodiesBuf && !skip.has('bodies')) {
         pass.setPipeline(this.bodyPipe);
@@ -554,6 +579,8 @@ export class Renderer {
             { binding: 5, resource: { buffer: this.surfUB } },
             { binding: 6, resource: { buffer: ringsRes } },
             { binding: 7, resource: { buffer: profRes } },
+            { binding: 8, resource: texelView },
+            { binding: 9, resource: { buffer: this.texelUB } },
           ],
         }));
         pass.draw(6, nRes);
@@ -580,7 +607,7 @@ export class Renderer {
     const veilView = t.levels[0].acc.createView();
     const paintView = t.levels[0].accR.createView();
     const bgView = this.bgView!;
-    if (this.starCount > 0 && !skip.has('cull')) {
+    if ((this.starCount > 0 || (this.extraPts?.count ?? 0) > 0) && !skip.has('cull')) {
       const pass = enc.beginComputePass({ label: 'star cull', timestampWrites: this.tsw('star cull') });
       pass.setPipeline(this.cullPipe);
       for (const c of this.stars) {
@@ -603,6 +630,7 @@ export class Renderer {
         }));
         pass.dispatchWorkgroups(gx, gy);
       }
+      this.extraPts?.cull(pass, this.cullPipe, { frameUB: this.frameUB, eyeUB: this.eyeUB, visible: this.visible, args: this.args, bgView, srcs: this.srcs, maxVisible: this.maxVisible });
       d.queue.writeBuffer(this.clampUB, 0, new Uint32Array([this.maxVisible, 0, 0, 0]));
       pass.setPipeline(this.clampPipe);
       pass.setBindGroup(0, d.createBindGroup({ layout: this.clampPipe.getBindGroupLayout(0), entries: [{ binding: 0, resource: { buffer: this.args } }, { binding: 1, resource: { buffer: this.clampUB } }] }));
@@ -630,7 +658,7 @@ export class Renderer {
       d.queue.writeBuffer(bodyPointsBuf, 0, a);
     }
     const drawPoints = (pipe: GPURenderPipeline, bg: GPUTextureView) => (pass: GPURenderPassEncoder) => {
-      if (this.starCount > 0 && !skip.has('points')) {
+      if ((this.starCount > 0 || (this.extraPts?.count ?? 0) > 0) && !skip.has('points')) {
         pass.setBindGroup(0, this.pointBindGroup(pipe, this.visible, bg));
         pass.drawIndirect(this.args, 0);
       }
@@ -784,6 +812,7 @@ export class Renderer {
     const doReadback = !this.readbackBusy;
     if (doReadback) enc.copyBufferToBuffer(this.result, 0, this.readback, 0, 32);
     this.resolveTimestamps(enc);
+    this.stats.cpuFrameMs = performance.now() - t0;
     d.queue.submit([enc.finish()]);
     this.readTimestamps();
 

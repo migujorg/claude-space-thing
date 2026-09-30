@@ -40,7 +40,16 @@ export interface SceneBody {
    * Surface maps (docs/architecture.md §4.4). Used only when `orient` is known (a map needs the
    * body-fixed frame) and the surface is lit and measured. The renderer fetches the tiles itself.
    */
-  surface?: { albedo?: SurfaceLayerRef; height?: SurfaceLayerRef };
+  surface?: {
+    albedo?: SurfaceLayerRef;
+    height?: SurfaceLayerRef;
+    /**
+     * Per-texel photometric model (a layer of kind 'photometric-parameters', e.g. surfaces/301/hapke):
+     * the spatial law of the lit disk, per texel (texelLaw.ts). Used with the albedo layer, whose header
+     * supplies the band → XYZS weights; the disk integral still equals the disk photometry.
+     */
+    photometry?: SurfaceLayerRef;
+  };
   /**
    * Measured spatially resolved photometric model (photometry.json `spatialModel`), already filtered by
    * the reality level; absent/null → Lambert. It only redistributes light across the disk: the disk
@@ -183,6 +192,9 @@ export interface RendererStats {
   gpuPassMs?: Record<string, number>;
   /** Sum of gpuPassMs, ms. */
   gpuFrameMs?: number;
+  /** CPU time of the last render() call, ms: frame preparation (photometry, rings, tiles) and all of render() up to submit. */
+  cpuPrepMs?: number;
+  cpuFrameMs?: number;
   /** Surface-map tile cache (virtual texturing). */
   surfaceCache?: {
     budgetMiB: number;
