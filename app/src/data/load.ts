@@ -19,6 +19,7 @@ import type {
 } from './schema';
 import { BinaryTable } from './binaryTable';
 import { parseStarNames, type StarName } from './stars';
+import { discoverSmallBodies, type SmallBodyProducts } from './smallbodies';
 import { discoverSurfaces, parseSurfaceHeader, type SurfaceLayer } from './surfaces';
 
 export type FetchFn = (url: string) => Promise<Response>;
@@ -95,6 +96,8 @@ export interface LoadedData {
   starNames: StarName[];
   /** Surface map layer headers (surfaces/<naifId>/<layer>.json); tiles are fetched on demand by the renderer. */
   surfaces: SurfaceLayer[];
+  /** Small-body products (loaded in the background, DataLoader + loadSmallBodyTables); null if not built. */
+  smallBodies?: SmallBodyProducts | null;
   report: DataReport;
   /** Fetches deferred products later; null when the data came from elsewhere (tests). */
   loader: DataLoader | null;
@@ -394,6 +397,15 @@ export async function loadAll(opts: LoadOptions): Promise<LoadedData> {
   );
   surfaces.sort((a, b) => a.bodyId - b.bodyId || a.layer.localeCompare(b.layer));
   const tileFiles = new Set(found.flatMap((f) => f.tiles.paths));
+  if (manifest?.products['surfaces/index.json']) tileFiles.add('surfaces/index.json');
+
+  // Small bodies: tables load in the background after the moon systems; names are indexed when search needs them.
+  const smallBodies = discoverSmallBodies(manifest);
+  for (const p of smallBodies?.all ?? []) {
+    const bytes = manifest!.products[p].bytes;
+    if (p.endsWith('names.txt')) L.setReport(p, { status: 'on-demand', bytes, message: 'Indexed for search (in a worker) when first needed.' });
+    else L.setReport(p, { status: 'deferred', bytes, message: 'Loaded in the background after the moon systems.' });
+  }
 
   // Products the manifest lists that this app version does not read.
   for (const p of productPaths) {
@@ -413,7 +425,7 @@ export async function loadAll(opts: LoadOptions): Promise<LoadedData> {
     if (missing.size) notes.push(`Referenced source ids missing from sources.json: ${[...missing].sort().join(', ')}.`);
   }
 
-  return { manifest, sources, time, ephemerides, deferred, orientations, bodies, light, stars, starNames, surfaces, report: L.report, loader: L };
+  return { manifest, sources, time, ephemerides, deferred, orientations, bodies, light, stars, starNames, surfaces, smallBodies, report: L.report, loader: L };
 }
 
 // ---- light validation (structure only; values are the pipeline's) -------------------------------

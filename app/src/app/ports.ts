@@ -5,7 +5,9 @@
 // parameters bivariantly, so e.g. the real `apparentPosition(eph: EphemerisSet, ...)` is accepted
 // where this port says `eph: EphemerisSetPort`, even if the concrete class has extra/private members.
 
-import type { EphemHeader, IauRotation, Label, OrientationHeader, Sourced, TimeData } from '../data/schema';
+import type {
+  EphemHeader, IauRotation, Label, OrientationHeader, SmallBodyCoreHeader, SmallBodyPhysicalHeader, SmallBodyTableHeader, Sourced, TimeData,
+} from '../data/schema';
 import type { Mat3, RendererStats, SceneSnapshot, StarCatalog, Vec3 } from '../render/scene';
 
 export type { Mat3, Vec3 };
@@ -115,6 +117,48 @@ export interface CoreDeps extends CoreFunctions {
   PreciseOrientation?: PreciseOrientationCtor;
 }
 
+// ---- gpu/smallbodies (M3): GPU propagation + photometry of the small-body catalogue ------------------
+
+/** The raw small-body tables handed to the GPU field (schema.ts SmallBody*Header + .bin). */
+export interface SmallBodyTablesInput {
+  core: ArrayBuffer;
+  coreHeader: SmallBodyCoreHeader;
+  physical?: ArrayBuffer;
+  physicalHeader?: SmallBodyPhysicalHeader;
+  comets?: ArrayBuffer;
+  cometsHeader?: SmallBodyTableHeader;
+  nongrav?: ArrayBuffer;
+  nongravHeader?: SmallBodyTableHeader;
+}
+
+/** GPU buffer of point sources the renderer draws with the stars (layout owned by the field and renderer). */
+export interface PointSourceBuffer {
+  buffer: GPUBuffer;
+  count: number;
+  strideFloats: number;
+}
+
+/**
+ * `class SmallBodyField` (app/src/gpu/smallbodies): propagates every small body and computes its brightness on
+ * the GPU. `allowed.brightness` is the reality level; the field decides which objects it may draw at it.
+ */
+export interface SmallBodyFieldPort {
+  update(encoder: GPUCommandEncoder, et: number, cameraSSB: Vec3, allowed: { brightness: 'strict' | 'best' | 'complete' }): void;
+  readonly pointSources: PointSourceBuffer;
+  /** Index (core row) of the small body nearest the ray within the tolerance, or null. */
+  pick(dirICRF: Vec3, toleranceRad: number): Promise<number | null>;
+  /** Heliocentric f64 state at et (CPU reference propagator), or null (position unknown / not covered). */
+  stateOf(index: number, et: number): { pos: Vec3; vel: Vec3 } | null;
+  /** Optional: counts at the last update, for the HUD ("N drawn / M withheld at this level"). */
+  readonly stats?: { drawn: number; withheld: number };
+  /** Optional: objects the shell draws itself (a resolved close-up) — the field must not also draw them as points. */
+  exclude?(indices: number[]): void;
+}
+
+export interface SmallBodyFieldFactory {
+  create(device: GPUDevice, tables: SmallBodyTablesInput, planets: { positionSSB(id: number, et: number): Vec3 | null }): Promise<SmallBodyFieldPort>;
+}
+
 // ---- render/renderer.ts --------------------------------------------------------------------------
 
 /** `class Renderer { static create(canvas); setStars; resize; render; readonly stats; settled() }` */
@@ -126,6 +170,10 @@ export interface RendererPort {
   readonly stats: RendererStats;
   /** Resolves when the GPU has finished the work submitted so far (used for __frameReady). */
   settled(): Promise<void>;
+  /** Optional (M3): the renderer's GPUDevice, so the small-body field can share buffers with it. */
+  readonly gpuDevice?: GPUDevice;
+  /** Optional (M3): extra point sources (small bodies) drawn with the stars; null removes them. */
+  setExtraPointSources?(src: PointSourceBuffer | null): void;
 }
 export interface RendererFactory {
   create(canvas: HTMLCanvasElement): Promise<RendererPort>;
@@ -149,6 +197,10 @@ export type FetchFn = (url: string) => Promise<Response>;
  */
 export interface AppDeps extends CoreDeps {
   Renderer: RendererFactory;
+  /** Optional (M3): GPU small-body field. Without it small bodies are searchable/inspectable but not drawn. */
+  SmallBodyField?: SmallBodyFieldFactory;
+  /** Optional (M3): Web Worker factory for the small-body name index (default: a module worker; tests: none). */
+  nameWorker?: () => Worker;
   /** Defaults to window.fetch. */
   fetch?: FetchFn;
   /** Base URL of the data products. Defaults to `${import.meta.env.BASE_URL}data/`. */
