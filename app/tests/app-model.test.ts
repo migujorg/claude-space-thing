@@ -110,6 +110,19 @@ describe('AppModel', () => {
     expect(len(sub(rel0, rel1))).toBeLessThan(1e-6);
   });
 
+  it('lists the bodies in the frame with their apparent size (debugState, for the scene suite)', () => {
+    const { model } = setup();
+    model.applyUrl({ tMs: FAKE_J2000_MS + T0 * 1000, target: 399, dist: 50000, az: 0, el: 0 });
+    model.frame(0);
+    const v = model.debugState().drawn.inView;
+    const earth = v.find((b) => b.id === 399)!;
+    // Earth fills about the go-to framing: 2·atan(6400 / 50000) of the 50° field over 900 px.
+    expect(earth.px).toBeCloseTo((2 * Math.tan(Math.asin(6400 / 50000)) * 900) / (2 * Math.tan((25 * Math.PI) / 180)), 0);
+    expect(earth).toMatchObject({ worstLabel: 'derived', marker: false });
+    // The Sun is behind the camera (the view is from the Sun side): not in the frame.
+    expect(v.some((b) => b.id === 10)).toBe(false);
+  });
+
   it('go-to refuses bodies without a position instead of guessing', () => {
     const { model } = setup();
     model.applyUrl({ tMs: FAKE_J2000_MS + T0 * 1000 });
