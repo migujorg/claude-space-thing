@@ -1,4 +1,4 @@
-"""`ephemeris` stage -> app/public/data/ephem/<PLANETARY>.{json,bin} and ephem/sat-<system>.{json,bin}.
+"""`ephemeris` stage -> app/public/data/ephem/{<PLANETARY>,centers,sat-<system>}.{json,bin}.
 
 <PLANETARY> (de442s): every segment of NAIF's de442s.bsp, restricted to the records overlapping the manifest window
 widened by MARGIN_S on both sides (room for light-time: no observer in the solar system sees anything more than a
@@ -8,6 +8,9 @@ sat-mar, sat-jup, sat-sat, sat-ura, sat-nep, sat-plu: every moon of that planeta
 (499 ... 999 wrt the system barycentre), excerpted from the current NAIF satellite kernels over the same window
 (ephem_satellites.py). Records are the kernels' own, bit-for-bit (label `measured`); one moonlet is an SPK type 17
 precessing conic. Chain: moon -> barycentre (or planet centre) -> SSB through ephem/<PLANETARY>.
+
+centers: the six planet-centre segments again (bit-identical duplicates of those in sat-*), ~1.8 MB (Mars 0.9 MB), so
+the app can place every planet before it has lazily loaded the moon systems. Where both are loaded, either copy serves.
 """
 
 from __future__ import annotations
@@ -64,6 +67,16 @@ def run(ctx: BuildContext) -> None:
             r.uncertainty = info.uncertainty
             by_system[k.system].append(r)
         print(f"[ephemeris] {k.name}: {len(got)} bodies from {path.name} ({path.stat().st_size / 1e6:.2f} MB)")
+
+    # ephem/centers: just the six planet centres (tiny), so every planet can be placed before the lazily loaded
+    # moon systems arrive. The same segments stay in the sat-* files (identical records; either copy may serve).
+    centers = [s for key in sat.SYSTEMS for s in by_system[key] if s.target == 100 * sat.SYSTEMS[key][0] + 99]
+    if len(centers) != len(sat.SYSTEMS):
+        raise ValueError(f"expected {len(sat.SYSTEMS)} planet centres, got {[s.target for s in centers]}")
+    write_product(ctx, "centers", centers, "ephemeris", notes=(
+        "Planet centres 499-999 wrt their system barycentres, the same kernel records as in ephem/sat-* (bit-"
+        f"identical duplicates), so planets can be placed without the moon systems. Chain through ephem/{PLANETARY}."))
+    print(f"[ephemeris] centers: {len(centers)} segments")
 
     for key, (bary, planet) in sat.SYSTEMS.items():
         segs = sorted(by_system[key], key=lambda s: (s.target != 100 * bary + 99, s.target))

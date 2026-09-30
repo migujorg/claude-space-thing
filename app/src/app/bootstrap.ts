@@ -47,14 +47,17 @@ declare global {
 }
 
 /**
- * Which ephemeris files load before the first frame: those every body needs (the planetary file), the URL
- * target's chain, and moon systems named by ?system= ("all" → everything). The rest load in the background.
+ * Which ephemeris files load before the first frame: those every body needs (the planetary file), those any planet
+ * needs (ephem/centers), the URL target's chain, and moon systems named by ?system= ("all" → everything). The rest
+ * load in the background.
  */
 export function eagerEphemeris(view: UrlView): (path: string, bodies: Body[]) => boolean {
   return (path, bodies) => {
     if (view.system?.includes('all')) return true;
     const physical = bodies.filter((b) => b.kind !== 'barycenter');
     if (physical.length && physical.every((b) => bodyEphemerisPaths(b).includes(path))) return true;
+    // Every planet is placeable at the first frame: files a planet needs (ephem/centers) load up front.
+    if (bodies.some((b) => (b.kind === 'planet' || b.kind === 'dwarf-planet') && bodyEphemerisPaths(b).includes(path))) return true;
     const target = view.target !== undefined ? bodies.find((b) => b.id === view.target) : undefined;
     if (target && bodyEphemerisPaths(target).includes(path)) return true;
     const key = path.replace(/^ephem\/(sat-)?/, '').replace(/\.json$/, '');

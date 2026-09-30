@@ -36,7 +36,7 @@ Each segment keeps only the records that overlap the manifest window ± 2 days, 
 
 Each segment's *declared* coverage (from the SPK segment summary) is written as `startEt`/`endEt`. For 199 and 299 it is narrower than the records' span: the records span 1549–2650 but the segments declare 1849–2150. SPICE refuses epochs outside the declared range, and so does our evaluator.
 
-DE442s does **not** contain planet centers relative to their system barycenters (499 wrt 4 … 999 wrt 9). Those come, with the moons, from the NAIF satellite kernels (`ephem/sat-*`); see naif-satellite-kernels.md. Until M2 they were fitted to JPL Horizons.
+DE442s does **not** contain planet centers relative to their system barycenters (499 wrt 4 … 999 wrt 9). Those come, with the moons, from the NAIF satellite kernels (`ephem/sat-*`, with the centres also copied into `ephem/centers`); see naif-satellite-kernels.md. Until M2 they were fitted to JPL Horizons.
 
 ## GM consistency
 
