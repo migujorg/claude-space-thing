@@ -1,0 +1,9 @@
+# jpl-horizons-sb-states: JPL Horizons small-body state vectors
+
+- **URL:** https://ssd.jpl.nasa.gov/api/horizons.api (queries cached under `data/raw/horizons/smallbodies/`, each with its exact URL and sha256 in `data/raw/_downloads.json`).
+- **Citation:** Giorgini, J. D. et al. (1996). JPL's On-Line Solar System Data Service. BAAS 28(3), 1158.
+
+## Two uses
+
+1. **Product input (4 objects).** Objects whose SBDB orbit model has terms the propagator does not model take Horizons' heliocentric state at the common epoch (`core.flags` bit `horizonsState`, source index of `jpl-horizons-sb-states`): 101955 Bennu (AMRAT and RHO of the Farnocchia et al. 2021 thermal model; Horizons serves it from the SPK `ORX_merged_DE424`, solution JPL 118), 1P/Halley (S0; JPL 75), C/2013 A1 Siding Spring (rotating-jet terms ET1/ET2...; SPK `c2013a1_s105_merged`, solution 105). 134340 Pluto is in the SBDB but is also the Pluto-system perturber of the force model, so its state is Horizons' Pluto (999, `plu060_merged`) and it carries the flag `planetaryEphemeris`: the app should place it with the planetary ephemeris, not the small-body propagator. From the common epoch the app propagates the other three with the normal force model, which lacks their special terms (for Bennu that is 7 km over the window, see the report).
+2. **Verification only.** Heliocentric geometric ICRF states every 2 days across the window for 19 objects (`pipeline/src/pipeline/sb_verify.py`), fetched with `COMMAND='DES=<spkid>;'` (asteroids) or `'DES=<designation>;CAP;NOFRAG'` (comets). The solution Horizons names (`soln ref.= JPL#...`) must equal the SBDB `orbit_id`, or the build fails. Horizons integrates with DE441, the 16 most massive asteroids (SB441-N16), relativity, oblateness and the fitted non-gravitational terms, so it is an independent check of our force model and integrator.

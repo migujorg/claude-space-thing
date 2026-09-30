@@ -14,6 +14,8 @@ dependencies = [
   "jplephem>=2.24",
   "pillow>=12.3.0",
   "tifffile>=2026.3.3",
+  "numba>=0.67.0",
+  "pyarrow>=25.0.1",
 ]
 
 [dependency-groups]
