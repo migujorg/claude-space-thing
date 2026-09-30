@@ -7,6 +7,7 @@ when its parameters, its inputs (the products of the stages it depends on) or it
 
 from __future__ import annotations
 
+import hashlib
 import json
 import types
 
@@ -258,13 +259,146 @@ def test_dry_run_writes_nothing(env):
     assert env.stages.runs == [] and not (env.out / "manifest.json").exists()
 
 
-def test_adopt_records_existing_products(env):
+def _unrecorded(out):
+    """Drop the stage records: products from before resume records existed (or merged by hand)."""
+    m = _manifest(out)
+    m.pop("stages", None)
+    m.pop("build", None)
+    (out / "manifest.json").write_text(json.dumps(m), encoding="utf-8")
+    return m
+
+
+def _adopt(profile="all", window=(0.0, 10.0), sets=None):
+    plan = build.make_plan(profile, [], [], False)
+    ctx = BuildContext(*window, params=config.resolve(profile, sets or {}, environ={}), plan=tuple(plan.stages))
+    return build.adopt(ctx, plan)
+
+
+def test_adopt_records_existing_products_and_runs_nothing(env, capsys):
     assert _build() == 0
+    _unrecorded(env.out)
+    env.stages.runs.clear()
+    assert _adopt() == 0 and env.stages.runs == []
+    out = capsys.readouterr().out
+    assert "a  adopted" in out.replace("  ", "  ") and "nothing is run or downloaded" in out
+    assert {s["status"] for s in _manifest(env.out)["stages"].values()} == {"built"}
+    assert _build() == 0 and env.stages.runs == []              # the next build finds everything up to date
+    assert _adopt() == 0 and "already recorded" in capsys.readouterr().out
+
+
+def test_adopt_never_runs_a_stage_it_cannot_adopt(env, capsys):
+    assert _build() == 0
+    _unrecorded(env.out)
+    (env.out / "c.json").unlink()
+    env.stages.runs.clear()
+    assert _adopt() == 1
+    out = capsys.readouterr().out
+    assert env.stages.runs == []                                # the bug: this used to rebuild c
+    assert "c.json missing" in out and "NOT ADOPTABLE" in out
     m = _manifest(env.out)
-    del m["stages"]                                   # products from before resume records existed
+    assert set(m["stages"]) == {"a", "b"} and "c.json" in m["products"]   # c is left exactly as it was
+
+
+def test_adopt_refreshes_a_stale_json_entry_but_not_a_changed_binary(env, capsys):
+    assert _build() == 0
+    m = _unrecorded(env.out)
+    # a hand merge: the file on disk was rewritten later (still valid JSON), the manifest kept the old entry
+    (env.out / "a.json").write_text(json.dumps({"v": 1, "level": None, "extra": "wind layer"}), encoding="utf-8")
+    old_sha = m["products"]["a.json"]["sha256"]
+    assert _adopt() == 0
+    assert "refreshed a.json" in capsys.readouterr().out
+    entry = _manifest(env.out)["products"]["a.json"]
+    assert entry["sha256"] != old_sha and entry["bytes"] == (env.out / "a.json").stat().st_size
+    env.stages.runs.clear()
+    assert _build() == 0 and env.stages.runs == []
+
+    # a non-JSON product that differs from its entry cannot be checked by content: not adoptable
+    _unrecorded(env.out)
+    p = env.out / "t.bin"
+    p.write_bytes(b"\0" * 8)
+    output._register(types.SimpleNamespace(products=(reg := {})), "t.bin", p, "c")
+    m = _manifest(env.out)
+    m["products"].update(reg)
     (env.out / "manifest.json").write_text(json.dumps(m), encoding="utf-8")
+    p.write_bytes(b"\1" * 8)
+    assert _adopt() == 1
+    assert "t.bin: on disk" in capsys.readouterr().out
+    # and a JSON file naming a product that does not exist is not adoptable either
+    (env.out / "b.json").write_text(json.dumps({"bin": "b/missing.bin"}), encoding="utf-8")
+    _unrecorded(env.out)
+    assert _adopt() == 1 and "b/missing.bin" in capsys.readouterr().out
+
+
+def test_adopt_checks_the_window(env, capsys):
+    assert _build() == 0
+    _unrecorded(env.out)
+    assert _adopt(window=(0.0, 20.0)) == 1                      # b's code reads the window; a and c do not
+    out = capsys.readouterr().out
+    assert "products are for the window" in out
+    assert set(_manifest(env.out)["stages"]) == {"a", "c"}
+
+
+def test_verify_products_checks_tiles_through_their_listing(tmp_path, monkeypatch):
+    monkeypatch.setattr(build, "OUT", tmp_path)
+    tiles = {"s/1/l/0/0/0.bin": b"x" * 10, "s/1/l/0/0/1.bin": b"y" * 12}
+    listing = ""
+    for rel, data in sorted(tiles.items()):
+        (tmp_path / rel).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / rel).write_bytes(data)
+        listing += f"{hashlib.sha256(data).hexdigest()}  {rel}\n"
+    (tmp_path / "s/1/l.sha256").write_text(listing, encoding="utf-8")
+    products = {
+        "s/1/l.sha256": {"stage": "s", "bytes": len(listing), "sha256": hashlib.sha256(listing.encode()).hexdigest()},
+        "s/1/l/": {"stage": "s", "bytes": 22, "files": 2, "sha256": hashlib.sha256(listing.encode()).hexdigest()},
+    }
+    assert build.verify_products("s", products)[0] == []
+    (tmp_path / "s/1/l/0/0/1.bin").write_bytes(b"z" * 12)
+    assert "sha256 differs from its listing" in build.verify_products("s", products)[0][0]
+
+
+def test_param_problem_level_cap_and_damit(tmp_path, monkeypatch):
+    monkeypatch.setattr(build, "OUT", tmp_path)
+    (tmp_path / "surfaces/301").mkdir(parents=True)
+    hdr = {"minLevel": 0, "maxLevel": 3, "levelCap": {"sourceMaxLevel": 5}}
+    (tmp_path / "surfaces/301/albedo.json").write_text(json.dumps(hdr), encoding="utf-8")
+    prods = {"surfaces/301/albedo.json": {"stage": "surfaces"}}
+    assert build.param_problem("surfaces", {"surfaces.maxLevel": 3}, prods) is None
+    assert "levels up to 3" in build.param_problem("surfaces", {"surfaces.maxLevel": None}, prods)
+    hdr = {"minLevel": 0, "maxLevel": 5}
+    (tmp_path / "surfaces/301/albedo.json").write_text(json.dumps(hdr), encoding="utf-8")
+    assert build.param_problem("surfaces", {"surfaces.maxLevel": None}, prods) is None
+    assert build.param_problem("surfaces", {"surfaces.maxLevel": 3}, prods) is not None
+    assert "lack DAMIT" in build.param_problem("shapes", {"shapes.damit": True}, {})
+    assert build.param_problem("shapes", {"shapes.damit": False}, {}) is None
+    assert "development" in build.param_problem("shapes", {"shapes.only": ["eros"], "shapes.damit": False}, {})
+
+
+# ------------------------------------------------------------------------------------------------ disk space
+
+
+def test_stage_that_may_not_fit_is_not_started(env, monkeypatch, capsys):
+    monkeypatch.setattr(config, "COSTS", {"a": config.Cost(50, 1, 5.0, 1, 1, 1, "test")})
+    monkeypatch.setattr(build, "free_space", lambda: (2.0, env.out))
+    assert _build() == 1
+    out = capsys.readouterr().out
+    assert env.stages.runs == ["c"]                              # a refused, b blocked by it, c independent
+    assert "NOT STARTED" in out and "--force-space" in out and "NO SPACE" in out
+    m = _manifest(env.out)
+    assert m["build"]["stages"]["a"]["status"] == "no space" and "a" not in m.get("stages", {})
+    assert m["build"]["stages"]["b"]["status"] == "blocked"
     env.stages.runs.clear()
     plan = build.make_plan("all", [], [], False)
     ctx = BuildContext(0.0, 10.0, params=config.resolve("all", {}, environ={}), plan=tuple(plan.stages))
-    assert build.run(ctx, plan, adopt=True) == 0 and env.stages.runs == []
-    assert _build() == 0 and env.stages.runs == []
+    assert build.run(ctx, plan, force_space=True) == 0 and env.stages.runs == ["a", "b"]
+
+
+def test_space_needed_counts_what_is_already_there(tmp_path, monkeypatch):
+    monkeypatch.setattr(build, "RAW", tmp_path)
+    monkeypatch.setitem(config.RAW_DIRS, "x", ("xdir",))
+    cost = config.Cost(100.0, 2.0, 6.0, 1.0, 1, 1, "test")      # 100 GB download, but at most 6 GB on disk
+    assert build.space_needed("x", cost, {}) == pytest.approx(6.0 + build.SPACE_MARGIN_GB)
+    (tmp_path / "xdir").mkdir()
+    (tmp_path / "xdir" / "f").write_bytes(b"\0" * 1000)
+    prods = {"p": {"stage": "x", "bytes": int(1e9)}}
+    assert build.space_needed("x", cost, prods) == pytest.approx(6.0 - 1e-6 - 1.0 + build.SPACE_MARGIN_GB)
+    assert build.space_needed("x", None, {}) == 0.0

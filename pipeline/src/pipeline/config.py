@@ -184,6 +184,18 @@ COSTS: dict[str, Cost] = {
 }
 
 
+#: data/raw subdirectories each stage downloads into (from a full build's ledger): what a rerun finds already there
+#: does not need space again (pre-flight space check in build.py).
+RAW_DIRS: dict[str, tuple[str, ...]] = {
+    "time": ("naif",), "ephemeris": ("naif",), "bodies": ("naif",),
+    "light": ("earth", "atmospheres", "papers", "solar", "rings", "filters", "cie", "karkoschka", "payne2026",
+              "decolibus2026", "smallbody_colors", "neowise_v2"),
+    "surfaces": ("surfaces",), "shapes": ("shapes",),
+    "smallbodies": ("sbdb", "ssodnet", "mpc", "lcdb", "gaia_dr3_sso", "cneos", "horizons"),
+    "sbphotometry": ("sbpy",), "synthetic": ("synthetic",),
+    "stars": ("stars",), "deepstars": ("stars/gaia_dr3_deep",), "sky": ("sky", "stars/gaia_dr3_sums"),
+}
+
 #: surfaces products by level cap (GB), summed from the tiles of a full build (levels 0..cap of every layer).
 SURFACES_GB_BY_CAP = {0: 0.03, 1: 0.10, 2: 0.37, 3: 1.26, 4: 3.10}
 CACHE_GB = 1.5   # data/cache after a full build (XP reductions 1.1 GB, small-body states, shapes)

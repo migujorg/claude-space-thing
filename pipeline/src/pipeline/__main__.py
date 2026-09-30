@@ -1,7 +1,9 @@
 """CLI: `uv run python -m pipeline <command>`.
 
   build   [--profile minimal|standard|full] [--only a,b] [--skip a,b] [--set key=value ...] [--force]
-          [--stop-on-error] [--dry-run] [--adopt] [--new-window] [--window-days N]
+          [--stop-on-error] [--force-space] [--dry-run] [--new-window] [--window-days N]
+  build --adopt [--profile P]: run and download nothing; record the stages whose existing products check out
+          (hashed against manifest.json) as built, and say for every other stage why not
   plan    the same options as build: what would run and why, with each stage's typical cost
   doctor  [--profile P] [--offline]: check Python, packages, Node, disk space, long paths and every data host
   params  list the build profiles and parameters (pipeline/config.py)
@@ -47,7 +49,10 @@ def _build_args(p: argparse.ArgumentParser) -> None:
                    help="stop at the first failed stage (default: go on with the stages that do not need it)")
     p.add_argument("--dry-run", action="store_true", help="show what would run, and why, without running it")
     p.add_argument("--adopt", action="store_true",
-                   help="record products built before resume records existed as up to date (no rebuild)")
+                   help="run and download nothing: record existing products that check out as built, and say why the "
+                        "others do not")
+    p.add_argument("--force-space", action="store_true",
+                   help="start stages even when the free disk space looks too small for them")
     p.add_argument("--new-window", action="store_true", help=f"recenter the time window on now ({WINDOW_FILE})")
     p.add_argument("--window-days", type=float, default=None,
                    help=f"half-width of a new window in days (default {DEFAULT_WINDOW_DAYS:g})")
@@ -94,12 +99,18 @@ def _build(args, dry_run: bool) -> int:
         return 2
     config.export_env(params)
     from .schema import BuildContext
+    if args.adopt and not WINDOW_FILE.exists():
+        _window_from_manifest(build.read_manifest())
     ctx = BuildContext(*_window(args.new_window, args.window_days), params=params, plan=tuple(plan.stages))
     try:
+        if args.adopt:
+            return build.adopt(ctx, plan)
         if dry_run or args.no_log:
-            return build.run(ctx, plan, keep_going=not args.stop_on_error, adopt=args.adopt, dry_run=dry_run)
+            return build.run(ctx, plan, keep_going=not args.stop_on_error, dry_run=dry_run,
+                             force_space=args.force_space)
         with build.build_log() as log_path:
-            return build.run(ctx, plan, keep_going=not args.stop_on_error, adopt=args.adopt, log_path=log_path)
+            return build.run(ctx, plan, keep_going=not args.stop_on_error, force_space=args.force_space,
+                             log_path=log_path)
     except KeyboardInterrupt:   # between stages (inside one, build.run records the stage and stops)
         print("\ninterrupted; run the same command again to resume", file=sys.stderr)
         return 130
@@ -123,6 +134,19 @@ def _window(new: bool, days: float | None) -> tuple[float, float]:
     print(f"window: new {w['startEt']}..{w['endEt']} ET (now +/- {w['halfWidthDays']:g} d) -> {WINDOW_FILE}; "
           "rebuild all time-dependent stages")
     return w["startEt"], w["endEt"]
+
+
+def _window_from_manifest(manifest: dict) -> None:
+    """Adopting products built before data/cache/window.json existed (or after data/cache was deleted): keep
+    their window instead of centering a new one on now."""
+    w = manifest.get("window")
+    if w:
+        WINDOW_FILE.parent.mkdir(parents=True, exist_ok=True)
+        WINDOW_FILE.write_text(json.dumps({"startEt": w["startEt"], "endEt": w["endEt"],
+                                           "halfWidthDays": (w["endEt"] - w["startEt"]) / 2 / 86400.0,
+                                           "createdAt": manifest.get("generatedAt", "")}, indent=1),
+                               encoding="utf-8", newline="\n")
+        print(f"window: {w['startEt']}..{w['endEt']} ET taken from manifest.json -> {WINDOW_FILE}")
 
 
 def _utf8_or_reexec() -> int | None:

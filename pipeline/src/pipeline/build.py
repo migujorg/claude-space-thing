@@ -253,12 +253,276 @@ class _Tee:
 
 @dataclass
 class Outcome:
-    status: str                  # built | up to date | not built | failed | blocked | adopted
+    status: str                  # built | up to date | not built | failed | blocked | no space | would run
     reason: str = ""
     seconds: float | None = None
     downloaded: int = 0
     product_bytes: int = 0
     products: int = 0
+
+
+# ------------------------------------------------------------------------------------------------ disk space
+
+SPACE_MARGIN_GB = 0.5
+
+
+def _dir_bytes(path: Path) -> int:
+    total = 0
+    stack = [path]
+    while stack:
+        p = stack.pop()
+        try:
+            with os.scandir(p) as it:
+                for e in it:
+                    if e.is_dir(follow_symlinks=False):
+                        stack.append(Path(e.path))
+                    elif e.is_file(follow_symlinks=False):
+                        total += e.stat(follow_symlinks=False).st_size
+        except OSError:
+            continue
+    return total
+
+
+def space_needed(stage: str, cost: config.Cost | None, products: dict) -> float:
+    """GB of free space a stage may still need: its cold-build disk peak (raw downloads kept, transient files,
+    cache, products) less what is already on disk and will be reused or overwritten (its raw files, its products),
+    plus a margin. Files streamed and never stored (the 114 GB of Gaia XP) need no space and are not counted."""
+    if cost is None:
+        return 0.0
+    have_raw = sum(_dir_bytes(RAW / d) for d in config.RAW_DIRS.get(stage, ())) / 1e9
+    have = min(have_raw, cost.raw_gb) + _stage_bytes(products, stage) / 1e9
+    return max(cost.peak_gb - have, 0.0) + SPACE_MARGIN_GB
+
+
+def free_space() -> tuple[float, Path]:
+    """(GB, path): the least free space among the drives holding data/raw, data/cache and app/public/data."""
+    best = None
+    for p in (RAW, CACHE, OUT):
+        q = p
+        while not q.exists() and q.parent != q:
+            q = q.parent
+        f = shutil.disk_usage(q).free / 1e9
+        if best is None or f < best[0]:
+            best = (f, p)
+    return best
+
+
+# ------------------------------------------------------------------------------------------------ adopt
+
+
+def _json_refs(obj) -> list[str]:
+    """String values of a JSON document that look like product paths (relative, with a known extension)."""
+    out = []
+    if isinstance(obj, dict):
+        for v in obj.values():
+            out += _json_refs(v)
+    elif isinstance(obj, list):
+        for v in obj:
+            out += _json_refs(v)
+    elif isinstance(obj, str) and "/" in obj and "{" not in obj and " " not in obj and not obj.startswith(
+            ("http", "/", ".")) and obj.endswith((".json", ".bin", ".sha256", ".txt")):
+        out.append(obj)
+    return out
+
+
+class _Hashing:
+    """Progress lines while product files are hashed (a full build is ~6 GB)."""
+
+    def __init__(self, stage: str, n: int):
+        self.stage, self.n, self.done, self.bytes, self.t0 = stage, n, 0, 0, time.time()
+        self.last = self.t0
+
+    def tick(self, nbytes: int) -> None:
+        self.done += 1
+        self.bytes += nbytes
+        if time.time() - self.last > 20:
+            self.last = time.time()
+            print(f"   {self.stage}: verified {self.done}/{self.n} files, {fmt_bytes(self.bytes)}", flush=True)
+
+
+def verify_products(stage: str, products: dict) -> tuple[list[str], dict[str, dict], list[str]]:
+    """Check a stage's products on disk against its manifest entries, by content.
+
+    Returns (problems, refreshed entries, notes). A file whose sha256 matches its entry is fine. A JSON file that
+    differs from its (stale) entry, e.g. a header or index rewritten after the manifest was merged by hand, is
+    accepted when it parses and every product path it names is in the manifest or on disk; its entry is then
+    refreshed from the file. Any other difference, or a missing file, is a problem. Tile directories ('dir/'
+    entries) are checked through their listing: the listing's sha256, the tile count and total size, and every
+    tile's sha256."""
+    mine = {k: v for k, v in products.items() if v.get("stage") == stage}
+    problems, refreshed, notes = [], {}, []
+    if not mine:
+        return ["no products in the manifest"], {}, []
+    tiles = 0
+    for rel, e in mine.items():
+        if rel.endswith("/"):
+            listing = OUT / (rel.rstrip("/") + ".sha256")
+            tiles += int(e.get("files", 0))
+            if not listing.is_file():
+                problems.append(f"{rel}: its tile listing {listing.name} is missing")
+    prog = _Hashing(stage, len(mine) + tiles)
+    for rel, e in sorted(mine.items()):
+        p = OUT / rel
+        if rel.endswith("/"):
+            listing = OUT / (rel.rstrip("/") + ".sha256")
+            if not listing.is_file():
+                continue
+            text = listing.read_bytes()
+            if hashlib.sha256(text).hexdigest() != e.get("sha256"):
+                problems.append(f"{rel}: tile listing differs from the manifest's digest")
+                continue
+            lines = [ln.split("  ", 1) for ln in text.decode("utf-8").splitlines() if ln.strip()]
+            if e.get("files") is not None and len(lines) != e["files"]:
+                problems.append(f"{rel}: listing has {len(lines)} tiles, manifest {e['files']}")
+                continue
+            size = 0
+            for sha, tile in lines:
+                tp = OUT / tile
+                if not tp.is_file():
+                    problems.append(f"{tile} missing")
+                    break
+                size += tp.stat().st_size
+                if download.sha256_file(tp) != sha:
+                    problems.append(f"{tile}: sha256 differs from its listing")
+                    break
+                prog.tick(tp.stat().st_size)
+            else:
+                if e.get("bytes") is not None and size != e["bytes"]:
+                    problems.append(f"{rel}: tiles total {size} B, manifest {e['bytes']} B")
+            continue
+        if not p.is_file():
+            problems.append(f"{rel} missing")
+            continue
+        sha = download.sha256_file(p)
+        prog.tick(p.stat().st_size)
+        if sha == e.get("sha256") and p.stat().st_size == e.get("bytes", p.stat().st_size):
+            continue
+        what = (f"{rel}: on disk {p.stat().st_size} B sha256 {sha[:12]}, manifest {e.get('bytes')} B sha256 "
+                f"{str(e.get('sha256'))[:12]}")
+        if not rel.endswith(".json"):
+            problems.append(f"{what} (not JSON, so it cannot be checked by content)")
+            continue
+        try:
+            doc = json.loads(p.read_text(encoding="utf-8"))
+        except ValueError as err:
+            problems.append(f"{what}; and it does not parse: {err}")
+            continue
+        dangling = [r for r in _json_refs(doc) if r not in products and not (OUT / r).exists()]
+        if dangling:
+            problems.append(f"{what}; and it names products that do not exist: {', '.join(dangling[:5])}")
+            continue
+        refreshed[rel] = {**e, "bytes": p.stat().st_size, "sha256": sha}
+        notes.append(f"refreshed {what}")
+    return problems, refreshed, notes
+
+
+DEV_PARAMS = ("surfaces.bodies", "surfaces.earthLayers", "shapes.only", "smallbodies.limit", "synthetic.params",
+              "stars.xpNoStream")
+
+
+def param_problem(stage: str, params: dict, products: dict) -> str | None:
+    """Why the products on disk do not match the parameters this build would record for the stage."""
+    dev = [k for k in DEV_PARAMS if k.startswith(stage + ".")
+           and params.get(k, config.PARAMS[k].default) != config.PARAMS[k].default]
+    if dev:
+        return f"development parameter(s) set ({', '.join(dev)}): adopt without them"
+    if stage == "surfaces":
+        cap = params.get("surfaces.maxLevel")
+        for rel in sorted(k for k in products if k.startswith("surfaces/") and k.count("/") == 2 and k.endswith(".json")
+                          and products[k].get("stage") == "surfaces"):
+            try:
+                h = json.loads((OUT / rel).read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                continue
+            src_max = h.get("levelCap", {}).get("sourceMaxLevel", h.get("maxLevel"))
+            want = src_max if cap is None else max(h.get("minLevel", 0), min(src_max, cap))
+            if h.get("maxLevel") != want:
+                return (f"{rel} has levels up to {h.get('maxLevel')}, but surfaces.maxLevel="
+                        f"{'none' if cap is None else cap} means {want}: use the profile the products were built with")
+    if stage == "shapes":
+        has = "shapes/damit.bin" in products
+        if has != bool(params.get("shapes.damit")):
+            return (f"the products {'include' if has else 'lack'} DAMIT but shapes.damit={params.get('shapes.damit')}: "
+                    "use the profile the products were built with")
+    return None
+
+
+def adopt(ctx: BuildContext, plan: Plan) -> int:
+    """Record the stages whose existing products can be trusted as built, without running or downloading
+    anything. Per stage: adopted / already up to date / not adoptable, with the exact reason. Exit code 0 if every
+    stage of the plan is adopted or up to date, else 1."""
+    started = _now()
+    window = (ctx.start_et, ctx.end_et)
+    manifest = read_manifest()
+    records: dict[str, dict] = dict(manifest.get("stages", {}))
+    products: dict[str, dict] = dict(manifest.get("products", {}))
+    mwin = manifest.get("window") or {}
+    print(f"== adopt ({'profile ' + str(plan.profile) if not plan.explicit else '--only'}): nothing is run or "
+          f"downloaded; products are hashed and checked against manifest.json. {env_summary()}")
+    rows: list[tuple[str, str, str]] = []
+    changed = False
+    for name in config.STAGES:
+        if name not in plan.stages:
+            rows.append((name, "not considered", plan.left_out.get(name, "")))
+            continue
+        mod = load_stage(name)
+        deps = tuple(getattr(mod, "DEPENDS", ()))
+        rec = records.get(name, {})
+        code = code_closure(name)
+        fp = fingerprint(name, deps, ctx.params, window, products, code)
+        if rec:
+            if rec.get("status") == "built" and rec.get("fingerprint") == fp["fingerprint"]:
+                rows.append((name, "up to date", "already recorded"))
+            else:
+                diff = [k for k in ("code", "params", "window", "inputs") if k in rec and rec[k] != fp[k]]
+                rows.append((name, "NOT ADOPTABLE", f"already recorded as {rec.get('status')}" +
+                             (f" with a different {', '.join(diff)}" if diff else "") +
+                             "; `build` decides whether it reruns"))
+            continue
+        missing_deps = [d for d in deps if not _has_products(products, d)]
+        if missing_deps:
+            rows.append((name, "NOT ADOPTABLE", f"needs {', '.join(missing_deps)}, which has no products"))
+            continue
+        if code[1] and mwin and (mwin.get("startEt"), mwin.get("endEt")) != window:
+            rows.append((name, "NOT ADOPTABLE", f"products are for the window {mwin.get('startEt')}..{mwin.get('endEt')} "
+                         f"ET, this build's window is {window[0]:.0f}..{window[1]:.0f} (data/cache/window.json)"))
+            continue
+        why = param_problem(name, ctx.params, products)
+        if why:
+            rows.append((name, "NOT ADOPTABLE", why))
+            continue
+        problems, refreshed, notes = verify_products(name, products)
+        if problems:
+            more = f" (+{len(problems) - 3} more)" if len(problems) > 3 else ""
+            rows.append((name, "NOT ADOPTABLE", "; ".join(problems[:3]) + more))
+            continue
+        if refreshed:
+            products.update(refreshed)
+            fp = fingerprint(name, deps, ctx.params, window, products, code)   # its own entries changed
+        for k, v in products.items():   # register the stage's entries so write_manifest keeps (refreshed) them
+            if v.get("stage") == name:
+                ctx.products[k] = v
+        records[name] = {"status": "built", "adoptedAt": started, "finishedAt": manifest.get("generatedAt"),
+                         "profile": None if plan.explicit else plan.profile,
+                         **{k: fp[k] for k in ("fingerprint", "code", "params", "window", "inputs")}}
+        changed = True
+        n = _stage_count(products, name)
+        rows.append((name, "adopted", f"{n} products verified" + (f"; {'; '.join(notes)}" if notes else "")))
+    if changed:
+        write_manifest(ctx, stages=records, build={
+            "profile": None if plan.explicit else plan.profile, "adopt": True, "startedAt": started,
+            "finishedAt": _now(), "stages": {n: {"status": s, "reason": r} for n, s, r in rows}})
+    w0, w1 = max(len(r[0]) for r in rows), max(len(r[1]) for r in rows)
+    print("\nAdoption:")
+    for n, s, r in rows:
+        print(f"  {n.ljust(w0)}  {s.ljust(w1)}  {r}")
+    bad = [n for n, s, _ in rows if s == "NOT ADOPTABLE"]
+    print(f"\n{sum(1 for _, s, _ in rows if s == 'adopted')} stage(s) recorded as built"
+          + (" (manifest.json updated)." if changed else "; manifest.json unchanged."))
+    if bad:
+        print(f"Not adoptable: {', '.join(bad)}. `python -m pipeline plan` shows what a build would then run and "
+              "what it costs; nothing has been run.")
+    return 1 if bad else 0
 
 
 # ------------------------------------------------------------------------------------------------ run
@@ -281,10 +545,13 @@ def _why(name: str, plan: Plan, rec: dict, fp: dict, present: bool, why_not: str
     return "changed: " + ", ".join(changed) if changed else "inputs changed"
 
 
-def run(ctx: BuildContext, plan: Plan, *, keep_going: bool = True, adopt: bool = False, dry_run: bool = False,
+def run(ctx: BuildContext, plan: Plan, *, keep_going: bool = True, dry_run: bool = False, force_space: bool = False,
         log_path: Path | None = None) -> int:
     """Run the plan; print progress and a summary; record stage state in the manifest. Returns the exit code
-    (0 ok, 1 a stage failed or was blocked, 130 interrupted)."""
+    (0 ok, 1 a stage failed, was blocked or lacked disk space, 130 interrupted).
+
+    Before a stage runs, its disk need (`space_needed`) is compared with the free space on the data drives; a stage
+    that may not fit is not started (status "no space") unless `force_space`."""
     t_build = time.time()
     started = _now()
     window = (ctx.start_et, ctx.end_et)
@@ -321,7 +588,7 @@ def run(ctx: BuildContext, plan: Plan, *, keep_going: bool = True, adopt: bool =
         for d in deps:
             od = outcomes.get(d)
             st = od.status if od else "not built"
-            if st in ("failed", "blocked"):
+            if st in ("failed", "blocked", "no space"):
                 blocked.append(f"{d} {st}")
             elif st == "not built" and not _has_products(products, d):
                 blocked.append(f"{d} not built" + (f" ({od.reason})" if od and od.reason else ""))
@@ -331,8 +598,24 @@ def run(ctx: BuildContext, plan: Plan, *, keep_going: bool = True, adopt: bool =
             outcomes[name] = Outcome("blocked", "needs " + "; ".join(blocked))
             print(f"\n== {tag}: blocked, needs {'; '.join(blocked)}", flush=True)
             continue
+        cost = config.stage_cost(name, ctx.params)
+
+        def no_space() -> bool:
+            """Refuse to start a stage that may not fit on the disk (unless --force-space)."""
+            need = space_needed(name, cost, products)
+            free, where = free_space()
+            if need <= free or force_space:
+                return False
+            msg = (f"may need ~{need:.1f} GB of disk and {free:.1f} GB is free (drive of {where}). A cold {name} build "
+                   f"uses up to {cost.peak_gb:g} GB at once; what is already downloaded or built counts as available. "
+                   "Free space, move data/raw and data/cache with PIPELINE_RAW / PIPELINE_CACHE, or pass --force-space")
+            outcomes[name] = Outcome("no space", msg)
+            print(f"\n== {tag}: NOT STARTED: {msg}", flush=True)
+            return True
+
         if after:   # dry run: a dependency would be rebuilt first, so this stage would run too
-            outcomes[name] = Outcome("would run", f"after {', '.join(after)}")
+            if not no_space():
+                outcomes[name] = Outcome("would run", f"after {', '.join(after)}")
             continue
         fp = fingerprint(name, deps, ctx.params, window, products)
         rec = records.get(name, {})
@@ -343,21 +626,14 @@ def run(ctx: BuildContext, plan: Plan, *, keep_going: bool = True, adopt: bool =
                                          product_bytes=_stage_bytes(products, name),
                                          products=_stage_count(products, name))
                 continue
-            if adopt and present and not rec:
-                records[name] = {"status": "built", "adoptedAt": started, "finishedAt": manifest.get("generatedAt"),
-                                 **{k: fp[k] for k in ("fingerprint", "code", "params", "window", "inputs")}}
-                outcomes[name] = Outcome("adopted", "existing products recorded as built (--adopt)",
-                                         product_bytes=_stage_bytes(products, name),
-                                         products=_stage_count(products, name))
-                continue
         why = _why(name, plan, rec, fp, present, why_not)
+        if no_space():
+            continue
         if dry_run:
             outcomes[name] = Outcome("would run", why)
             continue
-        cost = config.stage_cost(name, ctx.params)
         est = f"; typical cold build: {cost.describe()}" if cost else ""
         print(f"\n== {tag}: running ({why}{est})", flush=True)
-        _check_space(name, cost)
         before = download.stats()["bytes"]
         t0 = time.time()
         keys_before = {k for k, v in ctx.products.items() if v.get("stage") != name}
@@ -407,7 +683,7 @@ def run(ctx: BuildContext, plan: Plan, *, keep_going: bool = True, adopt: bool =
     print_summary(outcomes, time.time() - t_build, plan, log_path, dry_run, ctx.params)
     if user_interrupt:
         return 130
-    return 1 if any(o.status in ("failed", "blocked") for o in outcomes.values()) else 0
+    return 1 if any(o.status in ("failed", "blocked", "no space") for o in outcomes.values()) else 0
 
 
 def _has_products(products: dict, stage: str) -> bool:
@@ -430,15 +706,6 @@ def _save(ctx: BuildContext, records: dict, drop_stage: str | None = None, build
     write_manifest(ctx, stages=records, drop_stage=drop_stage, build=build)
 
 
-def _check_space(stage: str, cost: config.Cost | None) -> None:
-    if not cost:
-        return
-    free = shutil.disk_usage(RAW).free
-    if free < cost.peak_gb * 1e9:
-        print(f"   WARNING: {fmt_bytes(free)} free on the data/raw drive; a cold {stage} build needs up to "
-              f"~{cost.peak_gb:g} GB (downloads are resumed if it runs out)", flush=True)
-
-
 def print_summary(outcomes: dict[str, Outcome], seconds: float, plan: Plan, log_path: Path | None,
                   dry_run: bool, params: dict | None = None) -> None:
     if dry_run:
@@ -450,7 +717,7 @@ def print_summary(outcomes: dict[str, Outcome], seconds: float, plan: Plan, log_
         o = outcomes.get(name)
         if o is None:
             continue
-        status = o.status.upper() if o.status in ("failed", "blocked") else o.status
+        status = o.status.upper() if o.status in ("failed", "blocked", "no space") else o.status
         if dry_run:
             c = config.stage_cost(name, params or {}) if o.status == "would run" else None
             if c:
@@ -466,12 +733,15 @@ def print_summary(outcomes: dict[str, Outcome], seconds: float, plan: Plan, log_
     for r in rows:
         print("  " + "  ".join(r[k].ljust(w[k]) for k in range(5)) + "  " + r[5])
     if dry_run:
-        print(f"If nothing is downloaded yet: ~{config._gb(est_dl)} to download and ~{config._min(est_min)} for the "
-              "stages that would run (README \"Build profiles\"); files already in data/raw are not downloaded again.")
+        if not any(o.status == "would run" for o in outcomes.values()):
+            print("Nothing would run: every stage of the plan is up to date (or blocked, see above).")
+        else:
+            print(f"Cold, the stages that would run download about {config._gb(est_dl)} and take about "
+                  f"{config._min(est_min)} (README \"Build profiles\"); files already in data/raw are not fetched again.")
         return
     total = sum(v.get("bytes", 0) for v in read_manifest().get("products", {}).values())
     print(f"Products: {fmt_bytes(total)} in {OUT}. Raw downloads: {RAW}; intermediates: {CACHE}.")
-    if any(o.status in ("failed", "blocked") for o in outcomes.values()):
+    if any(o.status in ("failed", "blocked", "no space") for o in outcomes.values()):
         print("Some stages did not finish. Fix the cause above (`python -m pipeline doctor` checks the usual ones) and "
               "rerun the same command: completed stages are skipped and interrupted downloads resume.")
     if log_path:
