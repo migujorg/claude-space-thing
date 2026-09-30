@@ -65,7 +65,8 @@ ORIENTATION = {399: "orient/earth", 301: "orient/moon"}
 
 def run(ctx: BuildContext) -> None:
     pck_path, gm_path = pck(ctx), gm(ctx)
-    products = [f"ephem/{PLANETARY}"] + sorted(f"ephem/{p.stem}" for p in (OUT / "ephem").glob("sat-*.json"))
+    # Order matters: a planet centre is owned by ephem/centers (tiny, loaded first), not by its sat-* duplicate.
+    products = [f"ephem/{PLANETARY}", "ephem/centers"] + sorted(f"ephem/{p.stem}" for p in (OUT / "ephem").glob("sat-*.json"))
     owner = _segment_owners(products)
     t0, t1 = ctx.start_et - MARGIN_S, ctx.end_et + MARGIN_S
 
@@ -81,7 +82,7 @@ def run(ctx: BuildContext) -> None:
             kernel_names.setdefault(i, n)
         for i, g in gms.items():
             kernel_gms.setdefault(i, (g, k.source_id))
-    moons = sorted(t for t, (f, _c) in owner.items() if f.startswith("ephem/sat-") and t not in PLANET_CENTERS)
+    moons = sorted(t for t, (f, _c) in owner.items() if f.startswith("ephem/sat-"))
 
     fks = sat.nameid_fks()
     out = []
@@ -180,16 +181,22 @@ def _rotation(naif: int) -> dict | None:
 
 
 def _segment_owners(products: list[str]) -> dict[int, tuple[str, int]]:
-    """target -> (product, center) from the ephemeris headers."""
+    """target -> (product, center) from the ephemeris headers; the first product listing a target owns it.
+
+    Only planet centres may appear twice (ephem/centers and their sat-* file, identical records).
+    """
     owner: dict[int, tuple[str, int]] = {}
     for name in products:
         path = OUT / f"{name}.json"
         if not path.exists():
             raise FileNotFoundError(f"{path} missing: run the ephemeris stage first")
         for s in json.loads(path.read_text())["segments"]:
-            if s["target"] in owner and owner[s["target"]][0] != name:
-                raise ValueError(f"target {s['target']} in both {owner[s['target']][0]} and {name}")
-            owner[s["target"]] = (name, s["center"])
+            t = s["target"]
+            if t in owner and owner[t][0] != name:
+                if t not in PLANET_CENTERS or owner[t][1] != s["center"]:
+                    raise ValueError(f"target {t} in both {owner[t][0]} and {name}")
+                continue
+            owner[t] = (name, s["center"])
     return owner
 
 

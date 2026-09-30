@@ -17,7 +17,7 @@ The build of 2026-09-30 contains 459 moons and 6 planet centres from 20 kernels,
 | sat-mar | 3.6 MB |
 | sat-plu | 0.9 MB |
 
-These products replace the M1 Horizons-fitted `ephem/centers`. Every planet centre is available natively from a kernel, so no fitted centre is kept.
+These products replace the M1 Horizons-fitted `ephem/centers`. Every planet centre is available natively from a kernel, so no fitted centre is kept. The current `ephem/centers` (1.8 MB, Mars 0.9 MB of it) holds only the six planet-centre segments 499–999, as bit-identical copies of the records in `sat-*`. The app loads it before the first frame, so every planet can be placed while the moon systems are still loading. Where both copies are loaded, `EphemerisSet` serves the one added last; the copies are identical, so the result is the same. pytest (`test_ephem.py`) and vitest (`core-ephemeris.test.ts`) both check this.
 
 ## Method
 

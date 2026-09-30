@@ -24,39 +24,36 @@ describe.skipIf(!set)('apparentPosition vs JPL Horizons astrometric (VEC_CORR=LT
   it('matches light-time-corrected Earth-centered vectors within a few km', () => {
     const hz = fixture<HorizonsFile>('horizons_astrometric.json');
     const max = new MaxTracker();
-    let n = 0;
     expect(hz.ourPlanetary, 'fixtures were made for another planetary kernel: regenerate them').toBe(planetary);
     for (const b of hz.bodies) {
       expect(b.center).toBe('500@399');
       for (const e of b.epochs) {
         const obs = set!.positionSSB(399, e.et);
-        expect(obs, `JD ${e.jdTdb} not covered: regenerate fixtures`).not.toBeNull();
-        const ap = apparentPosition(set!, b.target, obs!, e.et)!;
-        expect(ap).not.toBeNull();
+        // Covered only if the observer is at et and the target at the emission epoch (et − ~|pos|/c).
+        const ap = obs ? apparentPosition(set!, b.target, obs, e.et) : null;
+        if (!max.inCoverage(ap !== null)) continue;
         // Re-based onto our planetary kernel (see core-ephemeris.test.ts and the fixture's `rebase` note).
         const h: Vec3 = [e.pos[0] + e.toOurs[0], e.pos[1] + e.toOurs[1], e.pos[2] + e.toOurs[2]];
-        const dp = distance(ap.rel, h);
-        const raw = distance(ap.rel, e.pos as Vec3);
-        const dlt = Math.abs(ap.lightTime - norm(h) / C_KM_S);
+        const dp = distance(ap!.rel, h);
+        const raw = distance(ap!.rel, e.pos as Vec3);
+        const dlt = Math.abs(ap!.lightTime - norm(h) / C_KM_S);
         max.add(`${b.target} (Horizons on ${b.horizonsPlanetary}) position km`, dp, `JD ${e.jdTdb}`);
         max.add(`${b.target} raw (not re-based) position km`, raw, `JD ${e.jdTdb}`);
         max.add(`${b.target} light time s`, dlt, `JD ${e.jdTdb}`);
         expect(dp, `${b.target} JD ${e.jdTdb}`).toBeLessThan(5);
-        expect(ap.emitEt).toBe(e.et - ap.lightTime);
-        expect(Math.abs(norm(ap.rel) / C_KM_S - ap.lightTime)).toBeLessThan(1e-8);
-        n++;
+        expect(ap!.emitEt).toBe(e.et - ap!.lightTime);
+        expect(Math.abs(norm(ap!.rel) / C_KM_S - ap!.lightTime)).toBeLessThan(1e-8);
       }
     }
-    expect(n).toBeGreaterThanOrEqual(2 * 3);
-    max.report(`apparentPosition vs Horizons astrometric (${n} cases):`);
+    max.report('apparentPosition vs Horizons astrometric:');
+    max.requireSome('Horizons astrometric fixture');
   });
 
   it('light-time correction is not negligible: Jupiter moves ~tens of thousands of km during the delay', () => {
-    const hz = fixture<HorizonsFile>('horizons_astrometric.json');
-    const e = hz.bodies.find((b) => b.target === 599)!.epochs[0];
-    const obs = set!.positionSSB(399, e.et)!;
-    const geo = set!.positionSSB(599, e.et)!;
-    const ap = apparentPosition(set!, 599, obs, e.et)!;
+    const et = (set!.window.startEt + set!.window.endEt) / 2;
+    const obs = set!.positionSSB(399, et)!;
+    const geo = set!.positionSSB(599, et)!;
+    const ap = apparentPosition(set!, 599, obs, et)!;
     const shift = distance([geo[0] - obs[0], geo[1] - obs[1], geo[2] - obs[2]], ap.rel);
     expect(shift).toBeGreaterThan(1e4);
   });

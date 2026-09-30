@@ -46,7 +46,10 @@ def test_body_list(bodies):
         assert b["ephemeris"] == b["ephemerisFiles"][0]
         for f in b["ephemerisFiles"]:
             assert f"{f}.json" in manifest and f"{f}.bin" in manifest
-    assert bodies[599]["ephemerisFiles"] == ["ephem/sat-jup", f"ephem/{PLANETARY}"]
+    for planet in (499, 599, 699, 799, 899, 999):  # placeable before the moon systems load
+        assert bodies[planet]["ephemerisFiles"] == ["ephem/centers", f"ephem/{PLANETARY}"]
+    assert bodies[501]["ephemerisFiles"] == ["ephem/sat-jup", f"ephem/{PLANETARY}"]
+    assert bodies[65304]["ephemerisFiles"] == ["ephem/sat-sat", "ephem/centers", f"ephem/{PLANETARY}"]
     assert bodies[301]["ephemerisFiles"] == [f"ephem/{PLANETARY}"]
     assert bodies[399]["orientation"] == "orient/earth" and bodies[301]["orientation"] == "orient/moon"
 

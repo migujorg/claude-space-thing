@@ -86,12 +86,33 @@ export function loadEphemerisSet(names = ephemerisProducts()): EphemerisSet | nu
 /** Collects max errors so each suite can print what it actually achieved. */
 export class MaxTracker {
   private readonly m = new Map<string, { v: number; at: string }>();
+  /** Fixture cases checked / skipped because the epoch is outside the loaded products' coverage. */
+  checked = 0;
+  skipped = 0;
   add(key: string, v: number, at: string): void {
     const cur = this.m.get(key);
     if (!cur || v > cur.v) this.m.set(key, { v, at });
   }
+  /**
+   * Fixture epochs are fixed but each build's window is "now ± ~18 months" of its first build, so a case may fall
+   * outside the products' actual coverage. Call with the coverage test; returns true if the case should be checked.
+   */
+  inCoverage(covered: boolean): boolean {
+    if (covered) this.checked++;
+    else this.skipped++;
+    return covered;
+  }
   report(title: string): void {
     const lines = [...this.m].map(([k, { v, at }]) => `  ${k}: ${v.toExponential(3)} (${at})`);
-    console.log(`${title}\n${lines.join('\n')}`);
+    const cov = this.checked + this.skipped > 0
+      ? ` [${this.checked} cases checked, ${this.skipped} skipped: outside the built products' coverage]` : '';
+    console.log(`${title}${cov}\n${lines.join('\n')}`);
+  }
+  /** Fail only if nothing at all could be checked: then the fixtures need regenerating for this window. */
+  requireSome(what: string): void {
+    if (this.checked === 0) {
+      throw new Error(`${what}: all ${this.skipped} fixture cases are outside the built products' coverage; ` +
+        'regenerate fixtures (cd pipeline && uv run python -m pipeline.ephem_fixtures)');
+    }
   }
 }

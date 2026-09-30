@@ -39,6 +39,9 @@ FIXTURES = REPO / "app" / "tests" / "fixtures"
 
 # JD TDB, chosen with binary-exact fractions so ET = (JD - 2451545) * 86400 is exact.
 EPOCHS_JD = [2461012.15625, 2461178.84375, 2461313.5078125, 2461487.2890625, 2461617.9609375]
+# Every fixture epoch lies at least this far inside the persisted window, so the fixtures stay usable in builds
+# whose window was made some weeks earlier or later (tests skip, and count, cases outside a build's coverage).
+INSIDE_MARGIN_S = 90 * 86400.0
 
 GEOMETRIC_TARGETS = [10, 199, 299, 399, 301, 499, 599, 699, 799, 899, 999, 3, 4, 5, 6, 7, 8, 9]
 ASTROMETRIC_TARGETS = [599, 301, 10, 999]
@@ -203,7 +206,7 @@ def _orientation(common: dict, epochs_et: list[float]) -> None:
     for k in kernels:
         sp.furnsh(str(k))
     try:
-        ets = sorted(set(epochs_et) | {float(x) for x in np.linspace(t0 + 3600, t1 - 3600, 7)})
+        ets = sorted(set(epochs_et) | {float(x) for x in np.linspace(t0 + INSIDE_MARGIN_S, t1 - INSIDE_MARGIN_S, 7)})
         out = [{"id": i, "frame": f, "cases": [{"et": e, "bodyToJ2000": np.array(sp.pxform(f, "J2000", e)).reshape(-1)
                                                 .tolist()} for e in ets]}
                for i, f in ((399, "ITRF93"), (301, "MOON_ME_DE440_ME421"))]
@@ -227,6 +230,11 @@ def main() -> None:
     today = _dt.date.today().isoformat()
     lsk_path, pck_path, spk_path = lsk(), pck(), planetary()
     epochs_et = [float(hz.jd_to_et(j)) for j in EPOCHS_JD]
+    t0, t1 = _window()
+    outside = [j for j, e in zip(EPOCHS_JD, epochs_et) if not (t0 + INSIDE_MARGIN_S <= e <= t1 - INSIDE_MARGIN_S)]
+    if outside:
+        raise ValueError(f"EPOCHS_JD {outside} are not {INSIDE_MARGIN_S / 86400:g} days inside the persisted window "
+                         f"(ET {t0:.0f}..{t1:.0f}): move them into the window and regenerate")
     common = {"generatedBy": "uv run python -m pipeline.ephem_fixtures", "generated": today}
 
     # Horizons fixtures first: re-basing loads one planetary kernel at a time.

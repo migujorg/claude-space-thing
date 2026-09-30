@@ -22,10 +22,9 @@ def _load(p):
     return h, np.fromfile(OUT / h["bin"], dtype="<f8")
 
 
-@pytest.fixture(scope="module")
-def window():
-    w = json.loads((OUT / "manifest.json").read_text())["window"]
-    return w["startEt"] - MARGIN_S, w["endEt"] + MARGIN_S
+def coverage(header) -> tuple[float, float]:
+    """The product's actual coverage (its segments are contiguous; checked below)."""
+    return min(s["startEt"] for s in header["segments"]), max(s["endEt"] for s in header["segments"])
 
 
 @pytest.fixture(scope="module")
@@ -40,19 +39,20 @@ def kernels():
         sp.unload(str(k))
 
 
-def test_matches_pxform_over_the_window(kernels, window):
-    ets = np.random.default_rng(9).uniform(*window, 500)
+def test_matches_pxform_over_the_window(kernels):
     for p, body, frame in ((EARTH, 399, "ITRF93"), (MOON, 301, "MOON_ME_DE440_ME421")):
         h, d = _load(p)
+        ets = np.random.default_rng(9).uniform(*coverage(h), 500)
         worst = max(np.abs(body_to_j2000(h, d, body, e) - np.array(sp.pxform(frame, "J2000", e))).max() for e in ets)
         print(f"{frame}: max |M - pxform| = {worst:.2e} over {ets.size} epochs")
         assert worst < 1e-12
 
 
-def test_coverage_and_labels(window):
+def test_coverage_and_labels():
+    w = json.loads((OUT / "manifest.json").read_text())["window"]
     h, _ = _load(EARTH)
     segs = sorted(h["segments"], key=lambda s: s["startEt"])
-    assert segs[0]["startEt"] <= window[0] and segs[-1]["endEt"] >= window[1]
+    assert segs[0]["startEt"] <= w["startEt"] - MARGIN_S and segs[-1]["endEt"] >= w["endEt"] + MARGIN_S
     for a, b in zip(segs, segs[1:]):
         assert abs(a["endEt"] - b["startEt"]) < 1e-3, "gap or overlap in Earth orientation coverage"
     labels = [s["label"] for s in segs]
