@@ -770,6 +770,8 @@ export interface HealpixMapLayer {
   labelBin?: string;
   labelCodes?: Record<string, string>;
   pixelSolidAngleSr?: number;
+  /** Several maps in one file (deepRemainder): slice k covers value[(k * npix + pix) * channels + c]. */
+  slices?: { count: number; yBelow: (number | null)[]; layout: string; tileOrder: number };
   stats?: Record<string, unknown>;
 }
 

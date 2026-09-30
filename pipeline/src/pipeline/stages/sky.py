@@ -37,6 +37,7 @@ from . import stars as st
 DEPENDS = ("stars", "deepstars", "light")
 
 FAINT_ORDER = 8          # Gaia G >= 14 sums (0.23 deg pixels)
+REMAINDER_ORDER = 7      # deep-tier light not loaded as points, per tile prefix level (0.46 deg)
 COLOUR_ORDER = 6         # colour mix of those stars (BP-RP bins of 0.1 mag, 0.92 deg pixels)
 MIN_PER_COLOUR_BIN = 30  # calibration stars needed for a BP-RP bin
 DIFFUSE_ORDER = 6        # diffuse remainder (0.92 deg pixels)
@@ -421,10 +422,24 @@ def build_diffuse(ctx: BuildContext, ids: dict, diag: dict) -> None:
     p8 = hp.vec2pix(FAINT_ORDER, d_dir)
     for c in range(4):
         agg[:, c] = np.bincount(p8, weights=np.nan_to_num(d_xyzs[:, c]), minlength=npx8) / om8
+    # deep-tier light NOT loaded when a tile is read to its prefix k (stars/deep.json tiling.prefixY): slice 0 =
+    # the whole tier (tile not loaded), slice k = records with Y < prefixY[k-1] (k = 1..3); fully loaded = 0.
+    thr = [np.inf] + list(dh["tiling"]["prefixY"])
+    npx_r = hp.npix(REMAINDER_ORDER)
+    p_r = hp.vec2pix(REMAINDER_ORDER, d_dir)
+    rem = np.zeros((len(thr), npx_r, 4))
+    y_deep = np.nan_to_num(d_xyzs[:, 1])
+    for k, t_k in enumerate(thr):
+        m = y_deep < t_k
+        for c in range(4):
+            rem[k, :, c] = np.bincount(p_r[m], weights=np.nan_to_num(d_xyzs[m, c]), minlength=npx_r) / (4 * np.pi / npx_r)
+    diag["deepRemainder"] = {"yBelow": [None if not np.isfinite(t) else float(t) for t in thr],
+                             "tileOrder": int(dh["tiling"]["order"]),
+                             "totalY_lux": [float(rem[k, :, 1].sum() * 4 * np.pi / npx_r) for k in range(len(thr))]}
 
     _register_sources(ctx)
     _write_diffuse(ctx, ids, diag, faint_xyzs, xyzs6, label6, agg, filled, reg, incl_w, br_from_xyz,
-                   cie_ids, two)
+                   cie_ids, two, rem)
     _verification(diag, br, b_v, b_br, b_xyzs, d_dir, d_xyzs, d_br, faint_xyzs, xyzs6, filled, P, cov, rot, fsun, fs)
 
 
@@ -498,12 +513,13 @@ def _register_sources(ctx: BuildContext) -> None:
 
 
 def _write_diffuse(ctx, ids, diag, faint_xyzs, xyzs6, label6, agg, filled, reg, incl_w, br_from_xyz,
-                   cie_ids, two) -> None:
+                   cie_ids, two, rem) -> None:
     unit = "cd/m^2 (X, Y, Z) and scotopic cd/m^2 (S); radiance of the sky, no atmosphere, no zodiacal light"
     write_bin(ctx, f"sky/faint-stars-o{FAINT_ORDER}.bin", faint_xyzs.astype("<f4"), "sky")
     write_bin(ctx, f"sky/diffuse-o{DIFFUSE_ORDER}.bin", xyzs6.astype("<f4"), "sky")
     write_bin(ctx, f"sky/diffuse-o{DIFFUSE_ORDER}-label.bin", label6, "sky")
     write_bin(ctx, f"sky/deep-aggregate-o{FAINT_ORDER}.bin", agg.astype("<f4"), "sky")
+    write_bin(ctx, f"sky/deep-remainder-o{REMAINDER_ORDER}.bin", rem.astype("<f4"), "sky")
     bands = sdp.PIONEER_BANDS
 
     def layer(bin_name, order, label, srcs, method, fwhm, uncertainty, extra=None):
@@ -574,10 +590,22 @@ def _write_diffuse(ctx, ids, diag, faint_xyzs, xyzs6, label6, agg, filled, reg, 
         "Not additive to the tiers (it is the same light). Label = the worst of its records' labels; %.1f %% of its "
         "Y comes from XP-derived records (stars/deep.json routes)." % (100 * diag["deepYFractionDerived"]),
         None, "as the deep-tier records", {"stats": {"yFractionDerived": diag["deepYFractionDerived"]}})
+    yb = diag["deepRemainder"]["yBelow"]
+    deep_rem = layer(
+        f"deep-remainder-o{REMAINDER_ORDER}.bin", REMAINDER_ORDER, "estimated",
+        [f"gaia-{sg.REL.key}-deep", f"gaia-{sg.REL.key}-xp-sampled-all", *cie_ids],
+        "The deep tier's light that is NOT loaded as points when its tiles are read to a prefix (stars/deep.json "
+        "tiling.prefixY / tiles[].prefixCounts): slice k sums, per pixel, the records with Y below yBelow[k] "
+        "(slice 0: every record, i.e. tile not loaded). A renderer that loads a tile's first prefixCounts[k-1] "
+        "records draws them as points and adds slice k for that tile's pixels (a fully loaded tile adds "
+        "nothing), so no deep star is counted twice or lost.", None, "as the deep-tier records",
+        {"slices": {"count": len(yb), "yBelow": yb, "layout": "slice-major: value[(slice * npix + pix) * 4 + channel]",
+                    "tileOrder": diag["deepRemainder"]["tileOrder"]},
+         "stats": {"totalY_lux": diag["deepRemainder"]["totalY_lux"]}})
     header = {
         "kind": "skyMaps",
         "version": 1,
-        "layers": {"faintStars": faint, "diffuse": diffuse, "deepAggregate": deep_agg},
+        "layers": {"faintStars": faint, "diffuse": diffuse, "deepAggregate": deep_agg, "deepRemainder": deep_rem},
         "composition": "sky radiance = stars/bright + stars/deep (or deepAggregate) + faintStars + diffuse "
                        "(+ zodiacal light from sky/zodiacal.json when inside the dust cloud)",
         "bands": {b: {"centerNm": c, "widthNm": w} for b, (c, w) in bands.items()},
