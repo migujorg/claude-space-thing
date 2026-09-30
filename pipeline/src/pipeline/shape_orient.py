@@ -54,6 +54,48 @@ def _constants(kernels: list[Path], frame: str) -> dict | None:
         sp.kclear()
 
 
+def _pole_and_w(r: np.ndarray) -> tuple[float, float, float]:
+    """IAU-style (α0, δ0, W) of a J2000 → body-fixed rotation matrix (rows = body axes in J2000)."""
+    z, x = r[2], r[0]
+    ra = math.degrees(math.atan2(z[1], z[0])) % 360.0
+    dec = math.degrees(math.asin(max(-1.0, min(1.0, z[2]))))
+    node = np.cross([0.0, 0.0, 1.0], z)                      # ascending node of the body equator on the ICRF equator
+    node /= np.linalg.norm(node)
+    w = math.degrees(math.atan2(float(np.cross(node, x) @ z), float(node @ x))) % 360.0
+    return ra, dec, w
+
+
+def equivalent_constants(kernels: list[Path], frame: str) -> dict | None:
+    """For a frame without PCK constants of its own (a TK frame fixed to a PCK frame, e.g. ROS_LUTETIA), the
+    IAU-form constants it amounts to: fixed pole and uniform W = W0 + Ẇ d (d = days from J2000 TDB), derived by
+    evaluating the frame. None if the pole moves (> 1e-6°) or the rate is not uniform (> 1e-4° over 30 years)."""
+    import spiceypy as sp
+    day = 86400.0
+    sp.kclear()
+    try:
+        for k in kernels:
+            sp.furnsh(str(k))
+        rot = {t: np.array(sp.pxform("J2000", frame, t * day)) for t in (0.0, 60.0 / day, 1.0, 100.0, 5000.0, 10000.0)}
+    except Exception:  # noqa: BLE001 - not evaluable without more kernels
+        return None
+    finally:
+        sp.kclear()
+    ra0, dec0, w0 = _pole_and_w(rot[0.0])
+    rate = ((_pole_and_w(rot[60.0 / day])[2] - w0 + 180.0) % 360.0 - 180.0) / (60.0 / day)
+    for t in (1.0, 100.0, 10000.0):                            # refine, unwrapping with the running estimate
+        ra, dec, w = _pole_and_w(rot[t])
+        if abs(ra - ra0) > 1e-6 or abs(dec - dec0) > 1e-6:
+            return None
+        turns = round((w0 + rate * t - w) / 360.0)
+        rate = (w + 360.0 * turns - w0) / t
+    ra, dec, w = _pole_and_w(rot[5000.0])                      # independent check at ~14 years
+    if abs(((w0 + rate * 5000.0 - w) + 180.0) % 360.0 - 180.0) > 1e-4:
+        return None
+    return {"POLE_RA": [round(ra0, 9), 0.0, 0.0], "POLE_DEC": [round(dec0, 9), 0.0, 0.0],
+            "PM": [round(w0, 9), round(rate, 10), 0.0],
+            "derived": f"evaluated from {frame} with SPICE (constant pole, uniform rotation)"}
+
+
 def rotation_angle_deg(a: np.ndarray, b: np.ndarray) -> float:
     r = a @ b.T
     return math.degrees(math.acos(max(-1.0, min(1.0, (np.trace(r) - 1.0) / 2.0))))
@@ -95,6 +137,10 @@ def compare(kernels: list[Path], frame: str, pck11: Path, body: int | None, epoc
     except Exception as e:  # noqa: BLE001 - e.g. CK/dynamic frames that need more kernels
         out["comparison"] = f"not evaluated: {type(e).__name__}"
         return out
+    if not consts:
+        eq = equivalent_constants(kernels, frame)
+        if eq:
+            out["sourceRotation"] = eq
     if iau:
         try:
             app = _rotations([pck11], iau, ets)
