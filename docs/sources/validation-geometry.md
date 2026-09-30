@@ -1,0 +1,16 @@
+# Geometry of the validation images (`horizons-<case>_<image>_*`, OPUS metadata)
+
+**Spacecraft → target vectors:** JPL Horizons API (`https://ssd.jpl.nasa.gov/api/horizons.api`), one vector table per image and body: `COMMAND='<NAIF id>'`, `CENTER='@<spacecraft>'` (Cassini −82, Voyager 2 −32, New Horizons −98, EPOXI −140), `TLIST` = the image mid-time in TDB Julian days, ICRF, km, `VEC_CORR='LT'`. Each response is cached verbatim in `data/raw/validation/horizons/` with its URL and sha256 in the download ledger and cited as a SourceRecord in the case. Horizons serves the missions' reconstructed trajectories and names them in each file's header (e.g. `CASSINI_MERGE`, `sat441l`). Citation: Giorgini, J. D. et al. (1996), *BAAS* 28(3), 1158.
+- A second table with `VEC_CORR='LT+S'` per image gives the stellar-aberration shift used only by the pointing checks (the archives' pointing is apparent; the fitted views, like the renderer's scene, use LT positions).
+- Orientation (body-fixed → ICRF at t − light time) and radii: `pck00011.tpc`; the Sun: `de442s.bsp`, seen from the target's system barycenter (naif-pck00011.md, naif-de442s.md). Earth (Himawari case): the high-precision ITRF93 PCK.
+
+**Cross-checks of the geometry chain** (recorded per case):
+- Saturn 2016-04-25: sub-spacecraft point, sub-solar point and phase from Horizons + pck00011 agree with the OPUS keywords (SPICE-derived by the PDS Ring-Moon Systems Node) to 0.001° in latitude and 0.01° in longitude (validation-cassini-iss.md).
+- The LORRI headers carry the SPICE geometry of the New Horizons SOC (`SPCTSCLA/LO` sub-spacecraft, `SPCTSOLA/LO` sub-solar, the target → spacecraft vector); the case records our values for comparison.
+
+**Mission pointing (checks and parity):** OPUS metadata (`https://opus.pds-rings.seti.org/opus/api/metadata/<opus id>.json`, cached in `data/raw/validation/<case>/opus_<id>.json`): the image's RA/Dec footprint (`rightasc1/2`, `declination1/2`), computed by the PDS Ring-Moon Systems Node from the missions' reconstructed C-kernels. Its centre is compared with the fitted boresight.
+
+**Parity and roll when the image cannot decide** (a nearly spherical body at low phase fits both parities equally, with its roll barely constrained):
+- LORRI: the header WCS (reconstructed C-kernel): the sign of det(CD) gives the parity (negative = standard sky orientation with FITS rows upwards, so the top-down archive order is mirrored), and the WCS orientation gives the roll; the target's position is then refitted with that roll. For Pluto the free fit's roll was 21° off.
+- Voyager 2 NAC: the OPUS footprints (SEDR pointing) are too coarse (offsets of 50–130 native pixels) and picked the wrong parity for Neptune. A reference frame of the same camera and processing, C4220129 (1981-06-27, `vg-iss-2-s-c4220129`, VGISS_6203), shows Saturn with its rings, which fix the roll, and Mimas, Tethys, Dione and Rhea: with the direct order the moons' predicted places hold their light, with the mirrored order none. The sequences' frames then share their mean roll; the spread (2–5°) is carried as roll uncertainty.
+- EPOXI: the Moon in the same frames fixes the roll (its centroid brought onto its predicted place); the parity is the one that then also fits the Earth's lit side.

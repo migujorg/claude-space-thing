@@ -191,6 +191,7 @@ When an attribute needed for drawing is below the current `exists` level or `unk
 - `app/tests/` — vitest unit tests; ephemeris and time conversions are checked against independent JPL Horizons outputs saved as test fixtures.
 - `app/scripts/shot.mjs` — headless Chromium (SwiftShader WebGPU) screenshot harness. Usage: `npm run shot -- --url "/?t=2026-09-30T00:00:00Z&target=399&dist=50000" --out shots/earth.png`. The app sets `window.__frameReady = true` after the first frame with all data loaded.
 - The app exposes `window.__app` for tests (read current state, set time, select objects).
+- `validation/` — ground-truth cases built from calibrated spacecraft/satellite images (`uv run python -m pipeline.validation build`; types `ValidationCase` etc. in `schema.ts`). Each case gives an explicit view (camera and bodies at the observation epoch) and pixel regions with the absolute XYZS radiance the HDR buffer must hold there, before the eye model, with 2σ tolerances. The render-test harness renders the view and reads the regions (`readHdrRegion(rect)`); see docs/reports/validation.md.
 
 ## 6. Data products (app/public/data)
 

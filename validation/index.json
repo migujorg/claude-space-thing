@@ -1,0 +1,218 @@
+{
+ "schema": "validation-index-v1",
+ "cases": [
+  {
+   "id": "callisto-nh-lorri-2007",
+   "title": "Callisto, New Horizons LORRI, 2007-02-27",
+   "epochUtc": "2007-02-27T05:03:16.360",
+   "target": {
+    "naifId": 504,
+    "name": "Callisto"
+   },
+   "instrument": "New Horizons LORRI (1×1)",
+   "rois": [
+    "disk-centre",
+    "limb",
+    "terminator",
+    "disk-integrated",
+    "sky-near",
+    "sky-far"
+   ],
+   "path": "cases/callisto-nh-lorri-2007/case.json"
+  },
+  {
+   "id": "earth-himawari9-2026",
+   "title": "Earth, Himawari-9 AHI, 2026-09-28 04:00 UTC (the app's cloud day), equatorial swath",
+   "epochUtc": "2026-09-28T04:05:34.901",
+   "target": {
+    "naifId": 399,
+    "name": "Earth"
+   },
+   "instrument": "Himawari-9 AHI",
+   "rois": [
+    "disk-centre",
+    "limb",
+    "terminator",
+    "near-centre-130E",
+    "near-centre-150E",
+    "near-centre-141E-12S",
+    "sky-near",
+    "sky-far"
+   ],
+   "path": "cases/earth-himawari9-2026/case.json"
+  },
+  {
+   "id": "earth-moon-epoxi-2008",
+   "title": "Earth and Moon together, EPOXI HRI-VIS, 2008-05-29 02:04 UTC",
+   "epochUtc": "2008-05-29T02:03:47.021",
+   "target": {
+    "naifId": 399,
+    "name": "Earth"
+   },
+   "instrument": "EPOXI HRI-VIS (defocused, PSF FWHM ~9 px)",
+   "rois": [
+    "earth-disk-integrated",
+    "moon-disk-integrated",
+    "earth-centre",
+    "sky-near",
+    "sky-far"
+   ],
+   "path": "cases/earth-moon-epoxi-2008/case.json"
+  },
+  {
+   "id": "europa-nh-lorri-2007",
+   "title": "Europa, New Horizons LORRI, 2007-02-27",
+   "epochUtc": "2007-02-27T02:30:01.366",
+   "target": {
+    "naifId": 502,
+    "name": "Europa"
+   },
+   "instrument": "New Horizons LORRI (1×1)",
+   "rois": [
+    "disk-centre",
+    "limb",
+    "terminator",
+    "disk-integrated",
+    "sky-near",
+    "sky-far"
+   ],
+   "path": "cases/europa-nh-lorri-2007/case.json"
+  },
+  {
+   "id": "ganymede-nh-lorri-2007",
+   "title": "Ganymede, New Horizons LORRI, 2007-02-26",
+   "epochUtc": "2007-02-26T08:25:16.365",
+   "target": {
+    "naifId": 503,
+    "name": "Ganymede"
+   },
+   "instrument": "New Horizons LORRI (1×1)",
+   "rois": [
+    "disk-centre",
+    "limb",
+    "terminator",
+    "disk-integrated",
+    "sky-near",
+    "sky-far"
+   ],
+   "path": "cases/ganymede-nh-lorri-2007/case.json"
+  },
+  {
+   "id": "io-nh-lorri-2007",
+   "title": "Io, New Horizons LORRI, 2007-02-27",
+   "epochUtc": "2007-02-27T01:05:01.367",
+   "target": {
+    "naifId": 501,
+    "name": "Io"
+   },
+   "instrument": "New Horizons LORRI (1×1)",
+   "rois": [
+    "disk-centre",
+    "limb",
+    "terminator",
+    "disk-integrated",
+    "sky-near",
+    "sky-far"
+   ],
+   "path": "cases/io-nh-lorri-2007/case.json"
+  },
+  {
+   "id": "jupiter-nh-lorri-2007",
+   "title": "Jupiter, New Horizons LORRI, 2007-01-22",
+   "epochUtc": "2007-01-22T01:42:01.362",
+   "target": {
+    "naifId": 599,
+    "name": "Jupiter"
+   },
+   "instrument": "New Horizons LORRI (1×1)",
+   "rois": [
+    "disk-centre",
+    "limb",
+    "terminator",
+    "disk-integrated",
+    "sky-near",
+    "sky-far"
+   ],
+   "path": "cases/jupiter-nh-lorri-2007/case.json"
+  },
+  {
+   "id": "neptune-voyager2-1989",
+   "title": "Neptune, Voyager 2 narrow-angle camera, 1989-08-15 (ten days before closest approach)",
+   "epochUtc": "1989-08-15T05:02:16.240",
+   "target": {
+    "naifId": 899,
+    "name": "Neptune"
+   },
+   "instrument": "Voyager 2 ISS NAC",
+   "rois": [
+    "disk-centre",
+    "limb",
+    "terminator",
+    "disk-integrated",
+    "sky-near",
+    "sky-far"
+   ],
+   "path": "cases/neptune-voyager2-1989/case.json"
+  },
+  {
+   "id": "pluto-nh-lorri-2015",
+   "title": "Pluto, New Horizons LORRI, 2015-07-13 (one day before closest approach)",
+   "epochUtc": "2015-07-13T14:36:30.780",
+   "target": {
+    "naifId": 999,
+    "name": "Pluto"
+   },
+   "instrument": "New Horizons LORRI (1×1)",
+   "rois": [
+    "disk-centre",
+    "limb",
+    "terminator",
+    "disk-integrated",
+    "sky-near",
+    "sky-far"
+   ],
+   "path": "cases/pluto-nh-lorri-2015/case.json"
+  },
+  {
+   "id": "saturn-cassini-wac-2016",
+   "title": "Saturn and its rings, Cassini ISS wide-angle camera, 2016-04-25",
+   "epochUtc": "2016-04-25T05:55:23.254",
+   "target": {
+    "naifId": 699,
+    "name": "Saturn"
+   },
+   "instrument": "Cassini ISS WAC",
+   "rois": [
+    "disk-centre",
+    "limb",
+    "terminator",
+    "ring-c",
+    "ring-b",
+    "ring-a",
+    "sky-near",
+    "sky-far"
+   ],
+   "path": "cases/saturn-cassini-wac-2016/case.json"
+  },
+  {
+   "id": "uranus-voyager2-1986",
+   "title": "Uranus, Voyager 2 narrow-angle camera, 1986-01-14",
+   "epochUtc": "1986-01-14T15:53:28.240",
+   "target": {
+    "naifId": 799,
+    "name": "Uranus"
+   },
+   "instrument": "Voyager 2 ISS NAC",
+   "rois": [
+    "disk-centre",
+    "limb",
+    "terminator",
+    "disk-integrated",
+    "sky-near",
+    "sky-far"
+   ],
+   "path": "cases/uranus-voyager2-1986/case.json"
+  }
+ ],
+ "doc": "docs/reports/validation.md (what the renderer must output and how cases are compared)"
+}

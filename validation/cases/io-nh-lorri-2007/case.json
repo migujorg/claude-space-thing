@@ -1,0 +1,1039 @@
+{
+ "schema": "validation-case-v1",
+ "id": "io-nh-lorri-2007",
+ "title": "Io, New Horizons LORRI, 2007-02-27",
+ "summary": "Io from 2.69 million km at phase 35.7°, 13.4 km per pixel, two days before closest approach.",
+ "generated": "2026-09-30T18:47:47+00:00",
+ "observation": {
+  "observer": "New Horizons",
+  "observerHorizonsId": "@-98",
+  "instrument": "New Horizons LORRI (1×1)",
+  "target": {
+   "naifId": 501,
+   "name": "Io"
+  },
+  "images": [
+   {
+    "product": "LOR_0034844219",
+    "opusId": "nh-lorri-lor_0034844219",
+    "band": "lorri.Pan",
+    "utcMid": "2007-02-27T01:05:01.367",
+    "et": 225810400.0,
+    "exposureS": 0.0036,
+    "archiveUrl": "https://opus.pds-rings.seti.org/holdings/volumes/NHxxLO_xxxx/NHJULO_2001/data/20070227_003484/lor_0034844219_0x630_sci.fit",
+    "labelUrl": null,
+    "calibration": "I/F = π·C/(TEXP·RSOLAR)·r²/176; TEXP = 0.0036 s (header EXPTIME 0.003 s); RSOLAR = 234900 (Weaver et al. 2020 Table 2, 1×1; the header's value is 266400)",
+    "horizonsSources": [
+     "horizons-io-nh-lorri-2007_lor_0034844219_501_from_-98"
+    ],
+    "fit": {
+     "targetCentrePx": [
+      295.165,
+      253.855
+     ],
+     "rollDeg": 270.9178,
+     "mirroredDisplayOrder": true,
+     "rss": 54.76355,
+     "rssOtherParity": null,
+     "centreSigmaPx": 0.0049,
+     "residualRmsIoverF": 0.01422967,
+     "modelAmplitudes": [
+      0.6326994,
+      0.001033165
+     ],
+     "freeRollDeg": 275.9306,
+     "rollNote": "roll from the header WCS (reconstructed C-kernel attitude); the free fit's roll differed by -5.01° (a nearly spherical body at low phase fixes the roll only weakly); target position refitted with the roll held"
+    },
+    "registrationSigmaPx": 0.5,
+    "aberrationShiftRad": 1.675795e-05,
+    "pointingChecks": [
+     {
+      "method": "OPUS footprint centre (mission C-kernel pointing) vs fitted boresight + aberration",
+      "fittedBoresightRaDec": [
+       282.4992,
+       -15.63965
+      ],
+      "opusFootprintCentreRaDec": [
+       282.4963,
+       -15.64555
+      ],
+      "insideFootprint": true,
+      "offsetDeg": 0.00654,
+      "offsetNativePx": 23.0,
+      "opusUrl": "https://opus.pds-rings.seti.org/opus/api/metadata/nh-lorri-lor_0034844219.json"
+     },
+     {
+      "method": "LORRI header WCS (reconstructed C-kernel) pixel of the target's apparent direction vs the fitted target centre (0-based array indices of the archive image)",
+      "wcsPixel": [
+       448.56,
+       514.9
+      ],
+      "fittedPixel": [
+       433.17,
+       507.21
+      ],
+      "offsetNativePx": 17.21,
+      "rollDifferenceDeg": -0.001
+     }
+    ],
+    "rollSigmaDeg": 0.0005876845,
+    "geometryCheck": {
+     "method": "LORRI header SPICE geometry (NH SOC) vs Horizons + pck00011",
+     "subObserverDiffDeg": [
+      -0.0004,
+      0.0009
+     ],
+     "subSolarDiffDeg": [
+      0.001,
+      0.0266
+     ],
+     "rangeDiffKm": 0.18
+    }
+   }
+  ],
+  "referenceImage": 0,
+  "pixel": {
+   "nativePitchRad": 4.963e-06,
+   "binning": 2,
+   "note": "4.963 µrad per pixel (FITS WCS; Weaver et al. 2020: 4.96 µrad); distortion < 0.1 pixel",
+   "mirroredDisplayOrder": true,
+   "parityDecision": "header WCS: det(CD) = -8.088e-08 deg², i.e. standard sky orientation with FITS rows running upwards, so the archive order read top-down is mirrored",
+   "mirrorNote": "reference.bin and the ROIs are in the renderer's (right-handed) orientation; if mirroredDisplayOrder is true the archive image was flipped left-right"
+  },
+  "calibration": {
+   "sigmaRel1": [
+    0.02
+   ],
+   "note": "As for Pluto: Weaver et al. (2020) give ~2 % (1σ) for the solar-spectrum keyword; this 2007 archive carries the pre-flight keyword values (RSOLAR 266400 for 1×1), so the in-flight value of Weaver et al. (2020) Table 2 (234900) is used, justified by their finding that LORRI's sensitivity did not change at the ~1 % level over the mission; 2 % (1σ). Exposures of 3-16 ms: the +0.6 ms true-exposure offset (Spencer & Weaver 2020, determined from 2007 Io images to ±0.01 ms) is applied.",
+   "sources": [
+    "nh-soc-inst-icd-2017",
+    "weaver-2020-lorri",
+    "spencer-weaver-2020-lorri-exposure"
+   ]
+  }
+ },
+ "view": {
+  "epochUtc": "2007-02-27T01:05:01.367",
+  "et": 225810366.552344,
+  "camera": {
+   "orient": [
+    0.03305968423341314,
+    -0.9774788299884809,
+    -0.20842791128526292,
+    0.2822459080577348,
+    -0.1909227570582712,
+    0.9401519814487087,
+    -0.9587722903083148,
+    -0.08990905272339805,
+    0.269577553915992
+   ],
+   "fovY": 0.005082101061701598,
+   "width": 512,
+   "height": 512,
+   "pixelPitchRad": 9.926e-06,
+   "convention": "SceneCamera: camera→ICRF, columns (right, up, back), row-major; looks along −Z; pixel (x, y), y down, ray ∝ right·(x+½−W/2)s + up·(H/2−y−½)s − back, s = pixelPitchRad = 2·tan(fovY/2)/height"
+  },
+  "bodies": [
+   {
+    "naifId": 501,
+    "name": "Io",
+    "pos": [
+     560752.0801928639,
+     -2529186.516860962,
+     -726304.0347102284
+    ],
+    "toSun": [
+     312719864.02532893,
+     679820861.9353273,
+     283778344.16730714
+    ],
+    "orient": [
+     0.592375944560028,
+     0.8055186524780605,
+     -0.015180277222242553,
+     -0.7311021745306476,
+     0.529542988212263,
+     -0.430202085108598,
+     -0.3384971945277729,
+     0.26593970020505886,
+     0.9026049662790863
+    ],
+    "radii": [
+     1829.4,
+     1819.4,
+     1815.7
+    ],
+    "rangeKm": 2690491.569090724,
+    "sunDistanceAu": 5.349675810220069,
+    "phaseDeg": 35.62852887424581,
+    "subObserver": {
+     "latDeg": -9.066796092004886,
+     "eastLonDeg": 155.99713144236944
+    },
+    "subSolar": {
+     "latDeg": -2.941452298008062,
+     "eastLonDeg": 120.68163684989426
+    },
+    "rings": false
+   }
+  ],
+  "sun": {
+   "pos": [
+    313280616.1055218,
+    677291675.4184663,
+    283052040.1325969
+   ]
+  }
+ },
+ "reference": {
+  "file": "reference.bin",
+  "dtype": "float32-le",
+  "shape": [
+   1,
+   512,
+   512
+  ],
+  "bands": [
+   "lorri.Pan"
+  ],
+  "quantity": "I/F (NaN = no valid data)",
+  "note": "each band image resampled (area average) onto the view with its own fitted registration; row 0 = top"
+ },
+ "comparison": {
+  "renderOutput": "the renderer's HDR buffer in absolute XYZS radiance (X, Y, Z in cd/m² with K_m = 683.002 lm/W, S in scotopic cd/m² with K'_m = 1700.06 lm/W), before the eye model (no exposure, glare, PSF or tone mapping), rendered for `view` at width × height",
+  "roiStatistic": "mean over the pixels x0 ≤ x < x1, y0 ≤ y < y1 of `rect`",
+  "tolerance": "2σ of the combined 1σ budget (calibration, noise, registration, spectral model); sky ROIs are upper limits"
+ },
+ "rois": [
+  {
+   "id": "disk-centre",
+   "kind": "disk-centre",
+   "note": null,
+   "target": 501,
+   "rect": [
+    293,
+    251,
+    298,
+    256
+   ],
+   "pixels": 25,
+   "geometry": {
+    "classFractions": {
+     "lit surface": 1.0
+    },
+    "incidenceDeg": {
+     "mean": 35.774,
+     "min": 33.495,
+     "max": 38.085
+    },
+    "emissionDeg": {
+     "mean": 1.65,
+     "min": 0.09,
+     "max": 3.182
+    },
+    "phaseDeg": {
+     "mean": 35.628,
+     "min": 35.627,
+     "max": 35.63
+    },
+    "latitudeDeg": {
+     "mean": -9.341,
+     "min": -11.359,
+     "max": -7.317
+    },
+    "eastLongitudeDeg": {
+     "mean": 156.303,
+     "spreadDeg": 1.223
+    }
+   },
+   "bands": [
+    {
+     "filter": "lorri.Pan",
+     "product": "LOR_0034844219",
+     "iof": {
+      "mean": 0.4640604,
+      "std": 0.01460582,
+      "n": 25,
+      "nInRect": 25
+     },
+     "sigmaRel": {
+      "calibration": 0.02,
+      "noise": 0.00629,
+      "registration": 0.01107
+     },
+     "bandRadiance": {
+      "value": 0.007772357,
+      "sigma": 0.0001842771,
+      "unit": "W m-2 sr-1 nm-1",
+      "bandSolarIrradiance1AU": 1.505855
+     }
+    }
+   ],
+   "expected": {
+    "type": "value",
+    "XYZS": [
+     646.8506,
+     673.6986,
+     476.8003,
+     1345.685
+    ],
+    "sigma": [
+     30.38852,
+     26.60116,
+     248.5403,
+     306.7301
+    ],
+    "tolerance": [
+     60.77704,
+     53.20232,
+     497.0805,
+     613.4603
+    ],
+    "comparison": "|renderer mean XYZS over rect − XYZS| ≤ tolerance, per channel",
+    "label": "estimated",
+    "method": "XYZS radiance of r(λ) = p̃(λ)·ρ(λ) (validation/photometry.py): p̃ = the disk-integrated geometric-albedo spectrum of NAIF 501 (the light stage's input, label estimated); ρ from 1 band I/F value(s); Sun at 5.34968 AU (TSIS-1 HSRS, CIE 1931 2° and 1951 scotopic observers).",
+    "budget": {
+     "calibration": [
+      12.93701,
+      13.47397,
+      9.536006,
+      26.9137
+     ],
+     "noiseAndRegistration": [
+      8.236379,
+      8.578236,
+      6.07112,
+      17.13467
+     ],
+     "spectralModel": [
+      26.23467,
+      21.27175,
+      248.283,
+      305.0663
+     ],
+     "spectralModelMethod": "single band: difference between the p̃-shaped and a grey spectrum through the band value"
+    },
+    "bandCentersNm": [
+     651.18
+    ],
+    "rho": [
+     0.7412574
+    ],
+    "colorCriterion": "single band: colour from the shape spectrum only"
+   }
+  },
+  {
+   "id": "limb",
+   "kind": "limb",
+   "note": null,
+   "target": 501,
+   "rect": [
+    282,
+    313,
+    285,
+    316
+   ],
+   "pixels": 9,
+   "geometry": {
+    "classFractions": {
+     "lit surface": 1.0
+    },
+    "incidenceDeg": {
+     "mean": 29.514,
+     "min": 26.413,
+     "max": 32.907
+    },
+    "emissionDeg": {
+     "mean": 65.121,
+     "min": 62.06,
+     "max": 68.476
+    },
+    "phaseDeg": {
+     "mean": 35.664,
+     "min": 35.663,
+     "max": 35.665
+    },
+    "latitudeDeg": {
+     "mean": 5.078,
+     "min": 3.512,
+     "max": 6.698
+    },
+    "eastLongitudeDeg": {
+     "mean": 92.289,
+     "spreadDeg": 1.702
+    }
+   },
+   "bands": [
+    {
+     "filter": "lorri.Pan",
+     "product": "LOR_0034844219",
+     "iof": {
+      "mean": 0.5784194,
+      "std": 0.006460614,
+      "n": 9,
+      "nInRect": 9
+     },
+     "sigmaRel": {
+      "calibration": 0.02,
+      "noise": 0.00372,
+      "registration": 0.00303
+     },
+     "bandRadiance": {
+      "value": 0.009687711,
+      "sigma": 0.0001992608,
+      "unit": "W m-2 sr-1 nm-1",
+      "bandSolarIrradiance1AU": 1.505855
+     }
+    }
+   ],
+   "expected": {
+    "type": "value",
+    "XYZS": [
+     806.255,
+     839.7191,
+     594.2989,
+     1677.304
+    ],
+    "sigma": [
+     36.66443,
+     31.6432,
+     309.7091,
+     381.8061
+    ],
+    "tolerance": [
+     73.32886,
+     63.28639,
+     619.4182,
+     763.6121
+    ],
+    "comparison": "|renderer mean XYZS over rect − XYZS| ≤ tolerance, per channel",
+    "label": "estimated",
+    "method": "XYZS radiance of r(λ) = p̃(λ)·ρ(λ) (validation/photometry.py): p̃ = the disk-integrated geometric-albedo spectrum of NAIF 501 (the light stage's input, label estimated); ρ from 1 band I/F value(s); Sun at 5.34968 AU (TSIS-1 HSRS, CIE 1931 2° and 1951 scotopic observers).",
+    "budget": {
+     "calibration": [
+      16.1251,
+      16.79438,
+      11.88598,
+      33.54608
+     ],
+     "noiseAndRegistration": [
+      3.871656,
+      4.032352,
+      2.853838,
+      8.054455
+     ],
+     "spectralModel": [
+      32.69972,
+      26.51378,
+      309.4678,
+      380.2442
+     ],
+     "spectralModelMethod": "single band: difference between the p̃-shaped and a grey spectrum through the band value"
+    },
+    "bandCentersNm": [
+     651.18
+    ],
+    "rho": [
+     0.9239266
+    ],
+    "colorCriterion": "single band: colour from the shape spectrum only"
+   }
+  },
+  {
+   "id": "terminator",
+   "kind": "terminator",
+   "note": null,
+   "target": 501,
+   "rect": [
+    296,
+    201,
+    299,
+    204
+   ],
+   "pixels": 9,
+   "geometry": {
+    "classFractions": {
+     "lit surface": 1.0
+    },
+    "incidenceDeg": {
+     "mean": 84.419,
+     "min": 82.538,
+     "max": 86.358
+    },
+    "emissionDeg": {
+     "mean": 48.954,
+     "min": 47.139,
+     "max": 50.836
+    },
+    "phaseDeg": {
+     "mean": 35.599,
+     "min": 35.599,
+     "max": 35.6
+    },
+    "latitudeDeg": {
+     "mean": -7.229,
+     "min": -8.588,
+     "max": -5.862
+    },
+    "eastLongitudeDeg": {
+     "mean": 205.184,
+     "spreadDeg": 1.106
+    }
+   },
+   "bands": [
+    {
+     "filter": "lorri.Pan",
+     "product": "LOR_0034844219",
+     "iof": {
+      "mean": 0.1008205,
+      "std": 0.01464602,
+      "n": 9,
+      "nInRect": 9
+     },
+     "sigmaRel": {
+      "calibration": 0.02,
+      "noise": 0.04842,
+      "registration": 0.08902
+     },
+     "bandRadiance": {
+      "value": 0.001688602,
+      "sigma": 0.000174417,
+      "unit": "W m-2 sr-1 nm-1",
+      "bandSolarIrradiance1AU": 1.505855
+     }
+    }
+   ],
+   "expected": {
+    "type": "value",
+    "XYZS": [
+     140.533,
+     146.366,
+     103.5884,
+     292.3599
+    ],
+    "sigma": [
+     15.59468,
+     15.80884,
+     54.99226,
+     72.83325
+    ],
+    "tolerance": [
+     31.18935,
+     31.61769,
+     109.9845,
+     145.6665
+    ],
+    "comparison": "|renderer mean XYZS over rect − XYZS| ≤ tolerance, per channel",
+    "label": "estimated",
+    "method": "XYZS radiance of r(λ) = p̃(λ)·ρ(λ) (validation/photometry.py): p̃ = the disk-integrated geometric-albedo spectrum of NAIF 501 (the light stage's input, label estimated); ρ from 1 band I/F value(s); Sun at 5.34968 AU (TSIS-1 HSRS, CIE 1931 2° and 1951 scotopic observers).",
+    "budget": {
+     "calibration": [
+      2.810661,
+      2.927319,
+      2.071767,
+      5.847198
+     ],
+     "noiseAndRegistration": [
+      14.24106,
+      14.83215,
+      10.49723,
+      29.62659
+     ],
+     "spectralModel": [
+      5.699675,
+      4.621444,
+      53.94131,
+      66.27788
+     ],
+     "spectralModelMethod": "single band: difference between the p̃-shaped and a grey spectrum through the band value"
+    },
+    "bandCentersNm": [
+     651.18
+    ],
+    "rho": [
+     0.1610436
+    ],
+    "colorCriterion": "single band: colour from the shape spectrum only"
+   }
+  },
+  {
+   "id": "disk-integrated",
+   "kind": "disk-integrated",
+   "note": null,
+   "target": 501,
+   "rect": [
+    221,
+    179,
+    370,
+    328
+   ],
+   "pixels": 22201,
+   "geometry": {
+    "classFractions": {
+     "sky": 0.3439,
+     "lit surface": 0.5948,
+     "unlit or ring-shadowed surface": 0.0613
+    },
+    "incidenceDeg": {
+     "mean": 53.391,
+     "min": 0.053,
+     "max": 125.434
+    },
+    "emissionDeg": {
+     "mean": 45.107,
+     "min": 0.09,
+     "max": 89.913
+    },
+    "phaseDeg": {
+     "mean": 35.629,
+     "min": 35.59,
+     "max": 35.667
+    },
+    "latitudeDeg": {
+     "mean": -7.127,
+     "min": -89.605,
+     "max": 79.086
+    },
+    "eastLongitudeDeg": {
+     "mean": 155.941,
+     "spreadDeg": 40.755
+    }
+   },
+   "bands": [
+    {
+     "filter": "lorri.Pan",
+     "product": "LOR_0034844219",
+     "iof": {
+      "mean": 0.2398272,
+      "std": 0.2296157,
+      "n": 22201,
+      "nInRect": 22201,
+      "background": {
+       "level": 0.001355106,
+       "levelSigma": 0.0003911509,
+       "robustPixelSpread": 0.0009986328,
+       "sideMedians": [
+        0.0007277354,
+        0.00177459,
+        0.001504936,
+        0.001498297
+       ],
+       "pixels": 3080,
+       "rawMean": 0.2411823
+      }
+     },
+     "sigmaRel": {
+      "calibration": 0.02,
+      "noise": 0.00163,
+      "registration": 0.0
+     },
+     "bandRadiance": {
+      "value": 0.004016768,
+      "sigma": 8.060204e-05,
+      "unit": "W m-2 sr-1 nm-1",
+      "bandSolarIrradiance1AU": 1.505855
+     }
+    }
+   ],
+   "expected": {
+    "type": "value",
+    "XYZS": [
+     334.2935,
+     348.1686,
+     246.4112,
+     695.4523
+    ],
+    "sigma": [
+     15.12683,
+     13.02548,
+     128.4083,
+     158.2752
+    ],
+    "tolerance": [
+     30.25365,
+     26.05097,
+     256.8167,
+     316.5504
+    ],
+    "comparison": "|renderer mean XYZS over rect − XYZS| ≤ tolerance, per channel",
+    "label": "estimated",
+    "method": "XYZS radiance of r(λ) = p̃(λ)·ρ(λ) (validation/photometry.py): p̃ = the disk-integrated geometric-albedo spectrum of NAIF 501 (the light stage's input, label estimated); ρ from 1 band I/F value(s); Sun at 5.34968 AU (TSIS-1 HSRS, CIE 1931 2° and 1951 scotopic observers).",
+    "budget": {
+     "calibration": [
+      6.68587,
+      6.963372,
+      4.928224,
+      13.90905
+     ],
+     "noiseAndRegistration": [
+      0.5452293,
+      0.5678595,
+      0.4018942,
+      1.134276
+     ],
+     "spectralModel": [
+      13.55812,
+      10.99328,
+      128.3131,
+      157.6588
+     ],
+     "spectralModelMethod": "single band: difference between the p̃-shaped and a grey spectrum through the band value"
+    },
+    "bandCentersNm": [
+     651.18
+    ],
+    "rho": [
+     0.3830831
+    ],
+    "colorCriterion": "single band: colour from the shape spectrum only"
+   },
+   "appDataPreview": {
+    "XYZS": [
+     299.5133,
+     311.9445,
+     220.7753,
+     623.0978
+    ],
+    "phaseDeg": 35.62853,
+    "phi": 0.5213901,
+    "labels": {
+     "geometricAlbedoXYZS": "estimated",
+     "phaseFunction": "measured"
+    },
+    "note": "informational, not a renderer test: photometry.json geometricAlbedoXYZS × Φ(α) / d² × (R/Δ)² / Ω_rect with R the pck00011 mean radius (the albedo's reference)",
+    "ratioToExpected": [
+     0.8959592,
+     0.8959581,
+     0.895963,
+     0.8959606
+    ],
+    "deviationInSigma": [
+     -2.299237,
+     -2.781018,
+     -0.1996435,
+     -0.4571432
+    ]
+   }
+  },
+  {
+   "id": "sky-near",
+   "kind": "sky-near",
+   "note": null,
+   "target": 501,
+   "rect": [
+    368,
+    260,
+    373,
+    265
+   ],
+   "pixels": 25,
+   "geometry": {
+    "classFractions": {
+     "sky": 1.0
+    }
+   },
+   "bands": [
+    {
+     "filter": "lorri.Pan",
+     "product": "LOR_0034844219",
+     "iof": {
+      "mean": 0.002903949,
+      "std": 0.000606685,
+      "n": 25,
+      "nInRect": 25
+     },
+     "sigmaRel": {
+      "calibration": 0.02,
+      "noise": 0.04178,
+      "registration": 0.05918
+     },
+     "bandRadiance": {
+      "value": 4.863706e-05,
+      "sigma": 3.655152e-06,
+      "unit": "W m-2 sr-1 nm-1",
+      "bandSolarIrradiance1AU": 1.505855
+     }
+    }
+   ],
+   "expected": {
+    "type": "upper-limit",
+    "upperLimitXYZS": [
+     5.971867,
+     6.16604,
+     6.433214,
+     14.64609
+    ],
+    "comparison": "every channel of the renderer's mean radiance over rect ≤ upperLimitXYZS",
+    "label": "derived",
+    "method": "Largest band I/F in the window + 2 × its pixel standard deviation (I/F 0.00412), converted with a solar (grey) spectrum. The camera's scattered light and the calibration's zero level make this an upper limit on the true sky."
+   }
+  },
+  {
+   "id": "sky-far",
+   "kind": "sky-far",
+   "note": null,
+   "target": 501,
+   "rect": [
+    1,
+    506,
+    6,
+    511
+   ],
+   "pixels": 25,
+   "geometry": {
+    "classFractions": {
+     "sky": 1.0
+    }
+   },
+   "bands": [
+    {
+     "filter": "lorri.Pan",
+     "product": "LOR_0034844219",
+     "iof": {
+      "mean": 0.0001741292,
+      "std": 0.0002890494,
+      "n": 25,
+      "nInRect": 25
+     },
+     "sigmaRel": {
+      "calibration": 0.02,
+      "noise": 0.33199,
+      "registration": 0.21307
+     },
+     "bandRadiance": {
+      "value": 2.916418e-06,
+      "sigma": 1.151964e-06,
+      "unit": "W m-2 sr-1 nm-1",
+      "bandSolarIrradiance1AU": 1.505855
+     }
+    }
+   ],
+   "expected": {
+    "type": "upper-limit",
+    "upperLimitXYZS": [
+     1.091051,
+     1.126526,
+     1.175338,
+     2.675818
+    ],
+    "comparison": "every channel of the renderer's mean radiance over rect ≤ upperLimitXYZS",
+    "label": "derived",
+    "method": "Largest band I/F in the window + 2 × its pixel standard deviation (I/F 0.000752), converted with a solar (grey) spectrum. The camera's scattered light and the calibration's zero level make this an upper limit on the true sky."
+   }
+  }
+ ],
+ "ratios": [],
+ "appProducts": {
+  "rings.json opticalDepth sources": null,
+  "shape spectrum sources": [
+   "mayorga-2020",
+   "svo-cassini-iss-wac-vio",
+   "svo-cassini-iss-wac-grn",
+   "svo-cassini-iss-wac-red",
+   "svo-cassini-iss-wac-cb2",
+   "svo-cassini-iss-wac-cb3",
+   "naif-pck00011"
+  ]
+ },
+ "notes": [
+  "Single band (350-850 nm): the XYZS expectation takes its spectral shape from the body's disk-integrated spectrum ('estimated'), with the difference to a grey spectrum as uncertainty."
+ ],
+ "sources": [
+  {
+   "id": "naif-lsk-naif0012",
+   "title": "NAIF generic leapseconds kernel naif0012.tls",
+   "citation": "NAIF leapseconds kernel naif0012.tls (NAIF/JPL, 2016-07-14), leap seconds through 2017-01-01 as announced in IERS Bulletin C; TDB-TT formula and constants from Moyer, T. D. (1981), Transformation from proper time on Earth to coordinate time in solar system barycentric space-time frame of reference, Celestial Mechanics 23, 33-56 and 57-68. Acton, C. H. (1996). Ancillary data services of NASA's Navigation and Ancillary Information Facility. Planetary and Space Science 44(1), 65-70. DOI:10.1016/0032-0633(95)00107-7",
+   "url": "https://naif.jpl.nasa.gov/pub/naif/generic_kernels/lsk/naif0012.tls",
+   "retrieved": "2026-09-30",
+   "sha256": "678e32bdb5a744117a467cd9601cd6b373f0e9bc9bbde1371d5eee39600a039b",
+   "version": "naif0012",
+   "license": "NAIF/JPL public data (U.S. Government work); see https://naif.jpl.nasa.gov/naif/rules.html",
+   "notes": "Still the current NAIF LSK: no leap second has been announced since 2017-01-01. A new LSK must be adopted when IERS announces one."
+  },
+  {
+   "id": "naif-pck00011",
+   "title": "NAIF generic text PCK pck00011.tpc (IAU WGCCRE 2015 body shapes and rotation)",
+   "citation": "Acton, C. H. (1996). Ancillary data services of NASA's Navigation and Ancillary Information Facility. Planetary and Space Science 44, 65-70. Kernel content: Archinal, B. A. et al. (2018). Report of the IAU Working Group on Cartographic Coordinates and Rotational Elements: 2015. Celestial Mechanics and Dynamical Astronomy 130, 22. DOI:10.1007/s10569-017-9805-5.",
+   "url": "https://naif.jpl.nasa.gov/pub/naif/generic_kernels/pck/pck00011.tpc",
+   "retrieved": "2026-09-30",
+   "sha256": "3dff7b1dbeceaa01f25467767d3fa25816051c85d162d1edf04acb310ee28bb1",
+   "version": "pck00011"
+  },
+  {
+   "id": "naif-de442s",
+   "title": "JPL planetary and lunar ephemeris DE442 (short-span SPK de442s.bsp)",
+   "citation": "JPL planetary and lunar ephemeris DE442 (integrated 13 May 2024): an update of DE440 adding Uranus occultation data and four more years of Mars-orbiter and Juno ranging. JPL, de442_tech-comments.txt, https://naif.jpl.nasa.gov/pub/naif/generic_kernels/spk/planets/de442_tech-comments.txt. Based on and documented by Park, R. S., Folkner, W. M., Williams, J. G., Boggs, D. H. (2021). The JPL Planetary and Lunar Ephemerides DE440 and DE441. The Astronomical Journal 161(3), 105. DOI:10.3847/1538-3881/abd414. SPK file de442s.bsp distributed by NAIF (2025-02-06). Acton, C. H. (1996). Ancillary data services of NASA's Navigation and Ancillary Information Facility. Planetary and Space Science 44(1), 65-70. DOI:10.1016/0032-0633(95)00107-7",
+   "url": "https://naif.jpl.nasa.gov/pub/naif/generic_kernels/spk/planets/de442s.bsp",
+   "retrieved": "2026-09-30",
+   "sha256": "54d97562a5b094d298b1b8eafa5a2e17e3e010ce85e1a366d07f003ad159323c",
+   "version": "DE442 (de442s.bsp, 1849-2150)",
+   "license": "NAIF/JPL public data (U.S. Government work); see https://naif.jpl.nasa.gov/naif/rules.html",
+   "notes": "Contains barycenters 1-9 and the Sun (10) wrt the SSB, Mercury 199 wrt 1, Venus 299 wrt 2, Moon 301 and Earth 399 wrt the Earth-Moon barycenter 3. Planet centers 499-999 wrt their system barycenters are NOT in this file (see jpl-horizons-center-*)."
+  },
+  {
+   "id": "nh-soc-inst-icd-2017",
+   "title": "New Horizons SOC to Instrument Pipeline ICD (05310-SOCINST-01), September 2017",
+   "citation": "Southwest Research Institute, New Horizons SOC to Instrument Pipeline ICD, Document No. 05310-SOCINST-01, Rev 0 Chg 0, September 2017 (PDS data set NH-P-LORRI-3-PLUTO-V3.0, document/soc_inst_icd.pdf). Distributed by the PDS Ring-Moon Systems Node (SETI Institute), https://pds-rings.seti.org, through its OPUS holdings.",
+   "url": "https://opus.pds-rings.seti.org/holdings/volumes/NHxxLO_xxxx/NHPELO_2001/document/soc_inst_icd.pdf",
+   "retrieved": "2026-09-30",
+   "sha256": "037fc81341f10e8624eb251b203caff9d736323ebb3e40273643c1371c0b6890",
+   "notes": "§9.3.9 (LORRI): radiance at the pivot wavelength I = C/TEXP/RSOLAR for a solar-type spectrum [(DN/s/pixel)/(erg cm⁻² s⁻¹ sr⁻¹ Å⁻¹)]; I/F = π I r² / F_solar with F_solar = 176 erg cm⁻² s⁻¹ Å⁻¹ at 1 AU at the pivot wavelength 6076.2 Å."
+  },
+  {
+   "id": "weaver-2020-lorri",
+   "title": "In-Flight Performance and Calibration of LORRI for the New Horizons Mission",
+   "citation": "Weaver, H. A., Cheng, A. F., Morgan, F., et al. (2020). In-flight performance and calibration of the LOng Range Reconnaissance Imager (LORRI) for the New Horizons mission. Accepted for publication in the Publications of the Astronomical Society of the Pacific (January 2020); arXiv:2001.03524v1.",
+   "url": "https://arxiv.org/pdf/2001.03524v1",
+   "retrieved": "2026-09-30",
+   "sha256": "db6aa6d3b5522898e2ecd09dc8ab008f37d5e5a9072ef3852aa6546c4226cf63",
+   "notes": "Absolute calibration tied to the solar analog HD 37962: 'LORRI's absolute sensitivity is accurate to ~2% (1σ) for targets with solar-type SEDs'; '≤10% (1σ) absolute for non-solar-type SEDs' unless synthetic photometry is used. Pixel scale 4.96 µrad (1×1)."
+  },
+  {
+   "id": "spencer-weaver-2020-lorri-exposure",
+   "title": "Determination of the True Exposure Time of New Horizons LORRI Images (February 2020)",
+   "citation": "Spencer, J. and Weaver, H. (2020). Determination of the True Exposure Time of New Horizons LORRI Images. New Horizons archive documentation, February 2020 (NHxxLO_xxxx/LORRI-True-Exposure-Times.pdf). Distributed by the PDS Ring-Moon Systems Node (SETI Institute), https://pds-rings.seti.org, through its OPUS holdings.",
+   "url": "https://opus.pds-rings.seti.org/holdings/documents/NHxxLO_xxxx/LORRI-True-Exposure-Times.pdf",
+   "retrieved": "2026-09-30",
+   "sha256": "cfdb73e28cd085b858fb3d0d2972cdec0f6dc9e9fb38f5991be8cdc2fc13d8fe",
+   "notes": "True exposure = commanded + 0.6 ms; the pipeline added it to EXPTIME from 2020 on."
+  },
+  {
+   "id": "svo-newhorizons-lorri-pan",
+   "title": "New Horizons LORRI panchromatic system QE, SVO NewHorizons/LORRI.Pan",
+   "citation": "Cheng, A. F. et al. (2008). Long-Range Reconnaissance Imager on New Horizons. Space Science Reviews 140, 189-215. DOI:10.1007/s11214-007-9271-6. Curve as distributed by the SVO Filter Profile Service (profile reference: PDS nh-x-lorri-3-launch-v3.0, calib/). Machine-readable curve from the SVO Filter Profile Service (Rodrigo, C., Solano, E. & Bayo, A. 2012, SVO Filter Profile Service Version 1.0, IVOA Working Draft, ADS 2012ivoa.rept.1015R; Rodrigo, C. & Solano, E. 2020, XIV.0 Scientific Meeting of the Spanish Astronomical Society, 182).",
+   "url": "https://svo2.cab.inta-csic.es/theory/fps/getdata.php?format=ascii&id=NewHorizons/LORRI.Pan",
+   "retrieved": "2026-09-30",
+   "sha256": "1f9f13756e7979bcbf019f0251d5dcc1856faf65316cdbce5b7550b5becd8963",
+   "notes": "System quantum efficiency (filter + CCD), photon counter (SVO DetectorType 1); pivot wavelength 607.6 nm, as used by the LORRI calibration keywords."
+  },
+  {
+   "id": "cie-1931-2deg-cmf",
+   "title": "CIE 1931 colour-matching functions, 2 degree observer (x̄, ȳ, z̄), 360–830 nm, 1 nm",
+   "citation": "CIE (2019). Colour-matching functions of CIE 1931 standard colorimetric observer. International Commission on Illumination (CIE), Vienna. Data table, DOI:10.25039/CIE.DS.xvudnb9b. Original source: CIE 018:2019 The Basis of Physical Photometry, 3rd ed., Table 6 (DOI:10.25039/TR.018.2019); standard: ISO/CIE 11664-1:2019.",
+   "url": "https://files.cie.co.at/Publications-datasets/CIE_xyz_1931_2deg.csv",
+   "retrieved": "2026-09-30",
+   "sha256": "fa663e3535a7e0763a745993a1f0a192eb0275ac46ad2d1befd7626841e713c1",
+   "version": "CIE 018:2019 data table (2019)",
+   "license": "CC BY-SA 4.0",
+   "notes": "Dataset DOI 10.25039/CIE.DS.xvudnb9b; landing page https://cie.co.at/datatable/cie-1931-colour-matching-functions-2-degree-observer. The file's sha256 and column sums were verified against the CIE metadata file https://files.cie.co.at/Publications-datasets/CIE_xyz_1931_2deg.csv_metadata.json (sha256 03abcaecf4e63d77045ef57c4514b52c8bb1a46dd18e1f93a50044a0f4f481c8). K_m = 683.002 lm/W and K'_m = 1700.06 lm/W are taken from the text of CIE 018:2019."
+  },
+  {
+   "id": "cie-1951-scotopic",
+   "title": "CIE spectral luminous efficiency for scotopic vision V′(λ), 380–780 nm, 1 nm",
+   "citation": "CIE (2019). CIE spectral luminous efficiency for scotopic vision. International Commission on Illumination (CIE), Vienna. Data table, DOI:10.25039/CIE.DS.gr6w4b5g. Original source: CIE 018:2019 The Basis of Physical Photometry, 3rd ed., Table 2 (DOI:10.25039/TR.018.2019).",
+   "url": "https://files.cie.co.at/Publications-datasets/CIE_sle_scotopic.csv",
+   "retrieved": "2026-09-30",
+   "sha256": "6a75d3fdbcbf5e9e9a07478511933eefeda953f3e2cc14b74459e5a099ec3759",
+   "version": "CIE 018:2019 data table (2019)",
+   "license": "CC BY-SA 4.0",
+   "notes": "Dataset DOI 10.25039/CIE.DS.gr6w4b5g; landing page https://cie.co.at/datatable/cie-spectral-luminous-efficiency-scotopic-vision. The file's sha256 and column sums were verified against the CIE metadata file https://files.cie.co.at/Publications-datasets/CIE_sle_scotopic.csv_metadata.json (sha256 7addeeca8c7e4fb9594fc87c92e37caa9e5ca4f71de7fe23cb1251abdddbfeee). K_m = 683.002 lm/W and K'_m = 1700.06 lm/W are taken from the text of CIE 018:2019."
+  },
+  {
+   "id": "tsis1-hsrs-v2",
+   "title": "TSIS-1 Hybrid Solar Reference Spectrum (HSRS), Version 2, 0.1 nm resolution, with uncertainties",
+   "citation": "Coddington, O. M., Richard, E. C., Harber, D., Pilewskie, P., Woods, T. N., Snow, M., Chance, K., Liu, X. & Sun, K. (2023). Version 2 of the TSIS-1 Hybrid Solar Reference Spectrum and extension to the full spectrum. Earth and Space Science 10, e2022EA002637. DOI:10.1029/2022EA002637. Method: Coddington, O. M. et al. (2021), The TSIS-1 Hybrid Solar Reference Spectrum, Geophysical Research Letters 48, e2020GL091709, DOI:10.1029/2020GL091709. Distributed by LASP LISIRD.",
+   "url": "https://lasp.colorado.edu/lisird/resources/lasp/hsrs/v2/hybrid_reference_spectrum_p1nm_resolution_c2022-11-30_with_unc.nc",
+   "retrieved": "2026-09-30",
+   "sha256": "7255573e45e41dda651a760188d5f4275dfb5139c76bc514a72ab3ae400e9bf4",
+   "version": "v2, file id final-v2_hybrid_reference_spectrum_p1nm_resolution_c2022-11-30_with_unc.nc",
+   "notes": "Spectral solar irradiance at 1 AU, 202-2730 nm, vacuum wavelengths, 0.1 nm resolution sampled every 0.025 nm, normalized to TSIS-1 SIM (average of 2019 Dec 1-7, solar minimum) and scaled by 0.999061 to TIM TSI. Stated uncertainty 0.3 % (460-2365 nm), 1.3 % elsewhere. Landing page https://lasp.colorado.edu/lisird/data/tsis1_hsrs_p1nm/"
+  },
+  {
+   "id": "iau-2015-b3",
+   "title": "IAU 2015 Resolution B3 on recommended nominal conversion constants for selected solar and planetary properties",
+   "citation": "Prša, A., Harmanec, P., Torres, G., Mamajek, E., Asplund, M., Capitaine, N., Christensen-Dalsgaard, J., Depagne, É., Haberreiter, M., Hekker, S., Hilton, J., Kopp, G., Kostov, V., Kurtz, D. W., Laskar, J., Mason, B. D., Milone, E. F., Montgomery, M., Richards, M., Schmutz, W., Schou, J. & Stewart, S. G. (2016). Nominal values for selected solar and planetary quantities: IAU 2015 Resolution B3. Astronomical Journal 152, 41. DOI:10.3847/0004-6256/152/2/41 (text of the resolution: arXiv:1510.07674).",
+   "url": "https://arxiv.org/pdf/1510.07674v1",
+   "retrieved": "2026-09-30",
+   "sha256": "a4a38ecf4ab6ac71a38780456beffbc43c17c98ed320e82585a127057e498417",
+   "notes": "Nominal solar radius R_sun^N = 6.957e8 m (exact by definition), chosen to match the photospheric radius (tau_Ross = 2/3) of Haberreiter, Schmutz & Kosovichev (2008, ApJ 675, L53): 695 658 +/- 140 km. Also the nominal total solar irradiance S_sun^N = 1361 W m^-2 (cycle-23 mean TSI 1361 +/- 1 W m^-2), used here only as a sanity check of the spectrum integral."
+  },
+  {
+   "id": "neckel-labs-1994",
+   "title": "Solar limb darkening 1986-1990 (303 to 1099 nm): Table I, fifth-order polynomial coefficients",
+   "citation": "Neckel, H. & Labs, D. (1994). Solar limb darkening 1986-1990 (λλ303 to 1099 nm). Solar Physics 153, 91-114. DOI:10.1007/BF00712494.",
+   "url": "https://articles.adsabs.harvard.edu/pdf/1994SoPh..153...91N",
+   "retrieved": "2026-09-30",
+   "sha256": "3a0d1708622e7fae1bd4e35ac04514167f08706d808644d556ee0b636e590975",
+   "notes": "Table I (p. 98), 30 continuum wavelengths, transcribed to pipeline/src/pipeline/photometry/tables/neckel_labs_1994_table1.csv from this ADS scan (see docs/sources/neckel-labs-1994.md). The printed row at 365.875 nm violates the paper's own Eq. 5 (sum A = 0.998) and Eq. 6 (F/I); A2 = 0.17682 instead of the printed 0.17482 restores both exactly and is used (a presumed typesetting error)."
+  },
+  {
+   "id": "edlen-1966",
+   "title": "Dispersion formula for the refractive index of standard air",
+   "citation": "Edlén, B. (1966). The refractive index of air. Metrologia 2, 71-80. DOI:10.1088/0026-1394/2/2/002.",
+   "url": "https://doi.org/10.1088/0026-1394/2/2/002",
+   "retrieved": "2026-09-30",
+   "notes": "Formula only (Eq. 1, standard air: dry, 15 degC, 101 325 Pa, 0.03 % CO2, the same 'standard air' in which the CIE tables are given); no data file is downloaded. Used to convert vacuum wavelengths (TSIS-1 HSRS) to standard-air wavelengths; the shift is about 0.15 nm at 550 nm."
+  },
+  {
+   "id": "mayorga-2020",
+   "title": "Cassini ISS disk-integrated phase curves of the Galilean satellites (Table 5 polynomials)",
+   "citation": "Mayorga, L. C., Charbonneau, D. & Thorngren, D. P. (2020). Reflected light observations of the Galilean satellites from Cassini: a test bed for cold terrestrial exoplanets. Astronomical Journal 160, 238. DOI:10.3847/1538-3881/abb8df (accepted manuscript arXiv:2009.05467v1).",
+   "url": "https://arxiv.org/pdf/2009.05467v1",
+   "retrieved": "2026-09-30",
+   "sha256": "9c2e120d771c216836601a4fdd33286ac678aebc456dc58da96f3b1059015471",
+   "notes": "Cassini ISS WAC (3299 images) and NAC photometry of Io, Europa, Ganymede and Callisto during the 2000-2001 Jupiter flyby, 0-135 deg phase, CISSCAL 3.9 calibration. Table 5 transcribed to photometry/tables/mayorga_2020_table5.csv (docs/sources/mayorga-2020.md)."
+  },
+  {
+   "id": "svo-cassini-iss-wac-vio",
+   "title": "Cassini ISS wide-angle camera VIO system response, SVO Cassini/ISS_WAC.VIO",
+   "citation": "Porco, C. C. et al. (2004). Cassini Imaging Science: instrument characteristics and anticipated scientific investigations at Saturn. Space Science Reviews 115, 363-497. DOI:10.1007/s11214-004-1456-7. Curve as distributed by the SVO Filter Profile Service (profile reference: Cassini ISS Data User's Guide, 2016-09-29). Machine-readable curve from the SVO Filter Profile Service (Rodrigo, C., Solano, E. & Bayo, A. 2012, SVO Filter Profile Service Version 1.0, IVOA Working Draft, ADS 2012ivoa.rept.1015R; Rodrigo, C. & Solano, E. 2020, XIV.0 Scientific Meeting of the Spanish Astronomical Society, 182).",
+   "url": "https://svo2.cab.inta-csic.es/theory/fps/getdata.php?format=ascii&id=Cassini/ISS_WAC.VIO",
+   "retrieved": "2026-09-30",
+   "sha256": "04c72e0c1e1bcfe889f6929cce43dc9cf11ea2b635dd60332513ac4b7b7750ca",
+   "notes": "Full system response (filter + CCD + optics), photon counter (SVO DetectorType 1): band averages weight by T(λ)·E(λ)·λ. The WAC filter combination is CL1/<band> for VIO, GRN, RED and <band>/CL2 for CB2, CB3."
+  },
+  {
+   "id": "svo-cassini-iss-wac-grn",
+   "title": "Cassini ISS wide-angle camera GRN system response, SVO Cassini/ISS_WAC.GRN",
+   "citation": "Porco, C. C. et al. (2004). Cassini Imaging Science: instrument characteristics and anticipated scientific investigations at Saturn. Space Science Reviews 115, 363-497. DOI:10.1007/s11214-004-1456-7. Curve as distributed by the SVO Filter Profile Service (profile reference: Cassini ISS Data User's Guide, 2016-09-29). Machine-readable curve from the SVO Filter Profile Service (Rodrigo, C., Solano, E. & Bayo, A. 2012, SVO Filter Profile Service Version 1.0, IVOA Working Draft, ADS 2012ivoa.rept.1015R; Rodrigo, C. & Solano, E. 2020, XIV.0 Scientific Meeting of the Spanish Astronomical Society, 182).",
+   "url": "https://svo2.cab.inta-csic.es/theory/fps/getdata.php?format=ascii&id=Cassini/ISS_WAC.GRN",
+   "retrieved": "2026-09-30",
+   "sha256": "c92d88c7eac796786aa732d8e370c31a18cb9a2e81217ec64afa776e71ddeb36",
+   "notes": "Full system response (filter + CCD + optics), photon counter (SVO DetectorType 1): band averages weight by T(λ)·E(λ)·λ. The WAC filter combination is CL1/<band> for VIO, GRN, RED and <band>/CL2 for CB2, CB3."
+  },
+  {
+   "id": "svo-cassini-iss-wac-red",
+   "title": "Cassini ISS wide-angle camera RED system response, SVO Cassini/ISS_WAC.RED",
+   "citation": "Porco, C. C. et al. (2004). Cassini Imaging Science: instrument characteristics and anticipated scientific investigations at Saturn. Space Science Reviews 115, 363-497. DOI:10.1007/s11214-004-1456-7. Curve as distributed by the SVO Filter Profile Service (profile reference: Cassini ISS Data User's Guide, 2016-09-29). Machine-readable curve from the SVO Filter Profile Service (Rodrigo, C., Solano, E. & Bayo, A. 2012, SVO Filter Profile Service Version 1.0, IVOA Working Draft, ADS 2012ivoa.rept.1015R; Rodrigo, C. & Solano, E. 2020, XIV.0 Scientific Meeting of the Spanish Astronomical Society, 182).",
+   "url": "https://svo2.cab.inta-csic.es/theory/fps/getdata.php?format=ascii&id=Cassini/ISS_WAC.RED",
+   "retrieved": "2026-09-30",
+   "sha256": "14b9858f41bbfc8f69a98cbc7ecd30d0a4ba67b89631a6e11819ea2cc57dc90c",
+   "notes": "Full system response (filter + CCD + optics), photon counter (SVO DetectorType 1): band averages weight by T(λ)·E(λ)·λ. The WAC filter combination is CL1/<band> for VIO, GRN, RED and <band>/CL2 for CB2, CB3."
+  },
+  {
+   "id": "svo-cassini-iss-wac-cb2",
+   "title": "Cassini ISS wide-angle camera CB2 system response, SVO Cassini/ISS_WAC.CB2",
+   "citation": "Porco, C. C. et al. (2004). Cassini Imaging Science: instrument characteristics and anticipated scientific investigations at Saturn. Space Science Reviews 115, 363-497. DOI:10.1007/s11214-004-1456-7. Curve as distributed by the SVO Filter Profile Service (profile reference: Cassini ISS Data User's Guide, 2016-09-29). Machine-readable curve from the SVO Filter Profile Service (Rodrigo, C., Solano, E. & Bayo, A. 2012, SVO Filter Profile Service Version 1.0, IVOA Working Draft, ADS 2012ivoa.rept.1015R; Rodrigo, C. & Solano, E. 2020, XIV.0 Scientific Meeting of the Spanish Astronomical Society, 182).",
+   "url": "https://svo2.cab.inta-csic.es/theory/fps/getdata.php?format=ascii&id=Cassini/ISS_WAC.CB2",
+   "retrieved": "2026-09-30",
+   "sha256": "9681699c422e752370c2541758ad90c8181f4213032aff098e7898d80b38753e",
+   "notes": "Full system response (filter + CCD + optics), photon counter (SVO DetectorType 1): band averages weight by T(λ)·E(λ)·λ. The WAC filter combination is CL1/<band> for VIO, GRN, RED and <band>/CL2 for CB2, CB3."
+  },
+  {
+   "id": "svo-cassini-iss-wac-cb3",
+   "title": "Cassini ISS wide-angle camera CB3 system response, SVO Cassini/ISS_WAC.CB3",
+   "citation": "Porco, C. C. et al. (2004). Cassini Imaging Science: instrument characteristics and anticipated scientific investigations at Saturn. Space Science Reviews 115, 363-497. DOI:10.1007/s11214-004-1456-7. Curve as distributed by the SVO Filter Profile Service (profile reference: Cassini ISS Data User's Guide, 2016-09-29). Machine-readable curve from the SVO Filter Profile Service (Rodrigo, C., Solano, E. & Bayo, A. 2012, SVO Filter Profile Service Version 1.0, IVOA Working Draft, ADS 2012ivoa.rept.1015R; Rodrigo, C. & Solano, E. 2020, XIV.0 Scientific Meeting of the Spanish Astronomical Society, 182).",
+   "url": "https://svo2.cab.inta-csic.es/theory/fps/getdata.php?format=ascii&id=Cassini/ISS_WAC.CB3",
+   "retrieved": "2026-09-30",
+   "sha256": "0275f677b20be44f05fca1fbe6c9fc11634272aca2778c47a72f9178ca7f0762",
+   "notes": "Full system response (filter + CCD + optics), photon counter (SVO DetectorType 1): band averages weight by T(λ)·E(λ)·λ. The WAC filter combination is CL1/<band> for VIO, GRN, RED and <band>/CL2 for CB2, CB3."
+  },
+  {
+   "id": "io-nh-lorri-2007-lor_0034844219",
+   "title": "New Horizons LORRI (1×1) calibrated image LOR_0034844219 (lorri.Pan)",
+   "citation": "New Horizons LORRI calibrated (Level 2) images of the Jupiter encounter, PDS data set NH-J-LORRI-3-JUPITER, volume NHJULO_2001 as distributed by the PDS Ring-Moon Systems Node (instrument: Cheng, A. F. et al. 2008, Space Science Reviews 140, 189-215, DOI:10.1007/s11214-007-9271-6).",
+   "url": "https://opus.pds-rings.seti.org/holdings/volumes/NHxxLO_xxxx/NHJULO_2001/data/20070227_003484/lor_0034844219_0x630_sci.fit",
+   "retrieved": "2026-09-30",
+   "sha256": "b11b29fe2473757e140a81efc1f4ef570566185e04d0159e5d92f49490bfa0c8"
+  },
+  {
+   "id": "horizons-io-nh-lorri-2007_lor_0034844219_501_from_-98",
+   "title": "JPL Horizons vector table: NAIF 501 from New Horizons (@-98) at 2007-02-27T01:05:01.367 UTC",
+   "citation": "Giorgini, J. D., Yeomans, D. K., Chamberlin, A. B., Chodas, P. W., Jacobson, R. A., Keesey, M. S., Lieske, J. H., Ostro, S. J., Standish, E. M., Wimberly, R. N. (1996). JPL's On-Line Solar System Data Service. Bulletin of the American Astronomical Society 28(3), 1158. JPL Horizons API: https://ssd-api.jpl.nasa.gov/doc/horizons.html",
+   "url": "https://ssd.jpl.nasa.gov/api/horizons.api?format=text&COMMAND=%27501%27&OBJ_DATA=%27NO%27&MAKE_EPHEM=%27YES%27&EPHEM_TYPE=%27VECTORS%27&CENTER=%27%40-98%27&TIME_TYPE=%27TDB%27&REF_SYSTEM=%27ICRF%27&REF_PLANE=%27FRAME%27&OUT_UNITS=%27KM-S%27&VEC_TABLE=%272%27&VEC_CORR=%27LT%27&VEC_LABELS=%27NO%27&CSV_FORMAT=%27YES%27&TLIST_TYPE=%27JD%27&TLIST=%272454158.545909171%27",
+   "retrieved": "2026-09-30",
+   "sha256": "732b26501fc11c581796a8f092bbb4d027418d950f7717e686c85d334d540a24",
+   "notes": "ICRF, km; VEC_CORR='LT' (target at t − light time as seen from the observer at t); reconstructed trajectory as served by Horizons (source named in the file header)."
+  }
+ ]
+}

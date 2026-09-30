@@ -1,0 +1,1707 @@
+{
+ "schema": "validation-case-v1",
+ "id": "uranus-voyager2-1986",
+ "title": "Uranus, Voyager 2 narrow-angle camera, 1986-01-14",
+ "summary": "The whole, nearly featureless disk of Uranus (south pole towards the Sun) from 13.0 million km at phase 13.8°, in the VIOLET, BLUE, ORANGE and GREEN filters (15:34-15:53 UTC).",
+ "generated": "2026-09-30T18:47:04+00:00",
+ "observation": {
+  "observer": "Voyager 2",
+  "observerHorizonsId": "@-32",
+  "instrument": "Voyager 2 ISS NAC",
+  "target": {
+   "naifId": 799,
+   "name": "Uranus"
+  },
+  "images": [
+   {
+    "product": "C2654450",
+    "opusId": "vg-iss-2-u-c2654450",
+    "band": "voyager.nac.Violet",
+    "utcMid": "1986-01-14T15:34:18.160",
+    "et": -440627100.0,
+    "exposureS": 7.68,
+    "archiveUrl": "https://opus.pds-rings.seti.org/holdings/volumes/VGISS_7xxx/VGISS_7204/DATA/C26544XX/C2654450_GEOMED.IMG",
+    "labelUrl": "https://opus.pds-rings.seti.org/holdings/volumes/VGISS_7xxx/VGISS_7204/DATA/C26544XX/C2654450_GEOMED.LBL",
+    "calibration": "FICOR77 I/F = DN × 0.0001",
+    "horizonsSources": [
+     "horizons-uranus-voyager2-1986_c2654450_799_from_-32"
+    ],
+    "fit": {
+     "targetCentrePx": [
+      129.752,
+      117.954
+     ],
+     "rollDeg": 28.1097,
+     "mirroredDisplayOrder": false,
+     "rss": 56.17031,
+     "rssOtherParity": null,
+     "centreSigmaPx": 0.0113,
+     "residualRmsIoverF": 0.03160908,
+     "modelAmplitudes": [
+      0.6555202,
+      0.007444716
+     ],
+     "freeRollDeg": 30.2955,
+     "rssCommonRoll": 56.36031,
+     "rollNote": "common roll of the 4 frames (circular mean of the free fits); their circular spread 1.95° is the roll uncertainty"
+    },
+    "registrationSigmaPx": 0.5,
+    "aberrationShiftRad": 2.135777e-05,
+    "pointingChecks": [
+     {
+      "method": "OPUS footprint centre (mission C-kernel pointing) vs fitted boresight + aberration",
+      "fittedBoresightRaDec": [
+       272.8729,
+       -24.85351
+      ],
+      "opusFootprintCentreRaDec": [
+       272.8593,
+       -24.84374
+      ],
+      "insideFootprint": true,
+      "offsetDeg": 0.01573,
+      "offsetNativePx": 35.01,
+      "opusUrl": "https://opus.pds-rings.seti.org/opus/api/metadata/vg-iss-2-u-c2654450.json"
+     }
+    ],
+    "rollSigmaDeg": 1.950629
+   },
+   {
+    "product": "C2654456",
+    "opusId": "vg-iss-2-u-c2654456",
+    "band": "voyager.nac.Blue",
+    "utcMid": "1986-01-14T15:39:07.120",
+    "et": -440626800.0,
+    "exposureS": 5.76,
+    "archiveUrl": "https://opus.pds-rings.seti.org/holdings/volumes/VGISS_7xxx/VGISS_7204/DATA/C26544XX/C2654456_GEOMED.IMG",
+    "labelUrl": "https://opus.pds-rings.seti.org/holdings/volumes/VGISS_7xxx/VGISS_7204/DATA/C26544XX/C2654456_GEOMED.LBL",
+    "calibration": "FICOR77 I/F = DN × 0.0001",
+    "horizonsSources": [
+     "horizons-uranus-voyager2-1986_c2654456_799_from_-32"
+    ],
+    "fit": {
+     "targetCentrePx": [
+      137.899,
+      116.78
+     ],
+     "rollDeg": 28.1097,
+     "mirroredDisplayOrder": false,
+     "rss": 48.43235,
+     "rssOtherParity": null,
+     "centreSigmaPx": 0.0126,
+     "residualRmsIoverF": 0.02935044,
+     "modelAmplitudes": [
+      0.7235611,
+      0.006157101
+     ],
+     "freeRollDeg": 29.2853,
+     "rssCommonRoll": 48.38828,
+     "rollNote": "common roll of the 4 frames (circular mean of the free fits); their circular spread 1.95° is the roll uncertainty"
+    },
+    "registrationSigmaPx": 0.5,
+    "aberrationShiftRad": 2.135759e-05,
+    "pointingChecks": [
+     {
+      "method": "OPUS footprint centre (mission C-kernel pointing) vs fitted boresight + aberration",
+      "fittedBoresightRaDec": [
+       272.8883,
+       -24.84787
+      ],
+      "opusFootprintCentreRaDec": [
+       272.8648,
+       -24.8464
+      ],
+      "insideFootprint": true,
+      "offsetDeg": 0.02135,
+      "offsetNativePx": 47.52,
+      "opusUrl": "https://opus.pds-rings.seti.org/opus/api/metadata/vg-iss-2-u-c2654456.json"
+     }
+    ],
+    "rollSigmaDeg": 1.950629
+   },
+   {
+    "product": "C2654514",
+    "opusId": "vg-iss-2-u-c2654514",
+    "band": "voyager.nac.Green",
+    "utcMid": "1986-01-14T15:53:28.240",
+    "et": -440625900.0,
+    "exposureS": 11.52,
+    "archiveUrl": "https://opus.pds-rings.seti.org/holdings/volumes/VGISS_7xxx/VGISS_7204/DATA/C26545XX/C2654514_GEOMED.IMG",
+    "labelUrl": "https://opus.pds-rings.seti.org/holdings/volumes/VGISS_7xxx/VGISS_7204/DATA/C26545XX/C2654514_GEOMED.LBL",
+    "calibration": "FICOR77 I/F = DN × 0.0001",
+    "horizonsSources": [
+     "horizons-uranus-voyager2-1986_c2654514_799_from_-32"
+    ],
+    "fit": {
+     "targetCentrePx": [
+      171.334,
+      125.408
+     ],
+     "rollDeg": 28.1097,
+     "mirroredDisplayOrder": false,
+     "rss": 40.37618,
+     "rssOtherParity": null,
+     "centreSigmaPx": 0.0092,
+     "residualRmsIoverF": 0.0268075,
+     "modelAmplitudes": [
+      0.6850658,
+      0.006496561
+     ],
+     "freeRollDeg": 25.1236,
+     "rssCommonRoll": 40.38918,
+     "rollNote": "common roll of the 4 frames (circular mean of the free fits); their circular spread 1.95° is the roll uncertainty"
+    },
+    "registrationSigmaPx": 0.5,
+    "aberrationShiftRad": 2.135707e-05,
+    "pointingChecks": [
+     {
+      "method": "OPUS footprint centre (mission C-kernel pointing) vs fitted boresight + aberration",
+      "fittedBoresightRaDec": [
+       272.9341,
+       -24.79897
+      ],
+      "opusFootprintCentreRaDec": [
+       272.9147,
+       -24.80647
+      ],
+      "insideFootprint": true,
+      "offsetDeg": 0.0192,
+      "offsetNativePx": 42.74,
+      "opusUrl": "https://opus.pds-rings.seti.org/opus/api/metadata/vg-iss-2-u-c2654514.json"
+     }
+    ],
+    "rollSigmaDeg": 1.950629
+   },
+   {
+    "product": "C2654502",
+    "opusId": "vg-iss-2-u-c2654502",
+    "band": "voyager.nac.Orange",
+    "utcMid": "1986-01-14T15:43:50.320",
+    "et": -440626500.0,
+    "exposureS": 15.36,
+    "archiveUrl": "https://opus.pds-rings.seti.org/holdings/volumes/VGISS_7xxx/VGISS_7204/DATA/C26545XX/C2654502_GEOMED.IMG",
+    "labelUrl": "https://opus.pds-rings.seti.org/holdings/volumes/VGISS_7xxx/VGISS_7204/DATA/C26545XX/C2654502_GEOMED.LBL",
+    "calibration": "FICOR77 I/F = DN × 0.0001",
+    "horizonsSources": [
+     "horizons-uranus-voyager2-1986_c2654502_799_from_-32"
+    ],
+    "fit": {
+     "targetCentrePx": [
+      146.412,
+      113.942
+     ],
+     "rollDeg": 28.1097,
+     "mirroredDisplayOrder": false,
+     "rss": 31.01297,
+     "rssOtherParity": null,
+     "centreSigmaPx": 0.0081,
+     "residualRmsIoverF": 0.02348442,
+     "modelAmplitudes": [
+      0.6081164,
+      0.006457168
+     ],
+     "freeRollDeg": 27.7336,
+     "rssCommonRoll": 31.01556,
+     "rollNote": "common roll of the 4 frames (circular mean of the free fits); their circular spread 1.95° is the roll uncertainty"
+    },
+    "registrationSigmaPx": 0.5,
+    "aberrationShiftRad": 2.135742e-05,
+    "pointingChecks": [
+     {
+      "method": "OPUS footprint centre (mission C-kernel pointing) vs fitted boresight + aberration",
+      "fittedBoresightRaDec": [
+       272.9059,
+       -24.84323
+      ],
+      "opusFootprintCentreRaDec": [
+       272.8827,
+       -24.84272
+      ],
+      "insideFootprint": true,
+      "offsetDeg": 0.02108,
+      "offsetNativePx": 46.92,
+      "opusUrl": "https://opus.pds-rings.seti.org/opus/api/metadata/vg-iss-2-u-c2654502.json"
+     }
+    ],
+    "rollSigmaDeg": 1.950629
+   }
+  ],
+  "referenceImage": 2,
+  "pixel": {
+   "nativePitchRad": 7.841764e-06,
+   "binning": 4,
+   "note": "GEOMED pixel 4.4930e-4° (label HORIZONTAL_PIXEL_FOV, 'quite precise for the GEOMED images'); geometry reliable to ~1 GEOMED pixel (VGISS tutorial §6.1). Filter curves: SVO Voyager/ISS-NAC.*, digitized from Smith et al. (1977) Fig. 6 (pre-launch, generic to both Voyagers).",
+   "mirroredDisplayOrder": false,
+   "parityDecision": "from the reference frame C4220129 (1981-06-27T00:05:34.040 UTC; NAIF 699, whose fit fixes the roll, with NAIF 601, 603, 604, 605 in the field): the moons' light at their predicted places sums to 9.069 (I/F × pixels, background-subtracted) with the direct archive order and 0.0335 with the other (per moon: {601: 0.414, 603: 1.6037, 604: 2.879, 605: 4.17215} vs {601: -0.0066, 603: 0.0036, 604: -0.0012, 605: 0.0377}); the primary's own fit residuals differ by a factor 1.563",
+   "mirrorNote": "reference.bin and the ROIs are in the renderer's (right-handed) orientation; if mirroredDisplayOrder is true the archive image was flipped left-right"
+  },
+  "calibration": {
+   "sigmaRel1": [
+    0.1,
+    0.1,
+    0.1,
+    0.1
+   ],
+   "note": "VGISS User Tutorial §6.3: 'Absolute calibration is still probably no more accurate than 5-10%', and the labels' REFLECTANCE_SCALING_FACTOR is 'accurate to the advertised 5-10% level for the CALIB and GEOMED images'. Taken as 10 % (1σ), the upper end, fully correlated between filters.",
+   "sources": [
+    "vgiss-user-tutorial"
+   ]
+  }
+ },
+ "view": {
+  "epochUtc": "1986-01-14T15:53:28.240",
+  "et": -440625936.575675,
+  "camera": {
+   "orient": [
+    -0.8645581927657993,
+    -0.5003780738005857,
+    -0.04648563843974632,
+    0.17384618571487373,
+    -0.3845942242476992,
+    0.9065675851185615,
+    -0.4715046500660676,
+    0.7756990820768876,
+    0.41949290700934266
+   ],
+   "fovY": 0.00784172414493836,
+   "width": 250,
+   "height": 250,
+   "pixelPitchRad": 3.1367057316842095e-05,
+   "convention": "SceneCamera: camera→ICRF, columns (right, up, back), row-major; looks along −Z; pixel (x, y), y down, ray ∝ right·(x+½−W/2)s + up·(H/2−y−½)s − back, s = pixelPitchRad = 2·tan(fovY/2)/height"
+  },
+  "bodies": [
+   {
+    "naifId": 799,
+    "name": "Uranus",
+    "pos": [
+     585985.8115413189,
+     -11740434.8475275,
+     -5443160.633152723
+    ],
+    "toSun": [
+     554522455.9839624,
+     2573299945.744132,
+     1119164588.444727
+    ],
+    "orient": [
+     0.7224447958253586,
+     -0.65812589556456,
+     -0.2119995815377986,
+     -0.3313770179459073,
+     -0.06046176727106892,
+     -0.9415591572895124,
+     0.6068465942576705,
+     0.7504763022812944,
+     -0.2617680858165513
+    ],
+    "radii": [
+     25559.0,
+     25559.0,
+     24973.0
+    ],
+    "rangeKm": 12954118.551976794,
+    "sunDistanceAu": 19.120603498552565,
+    "phaseDeg": 13.83806851711436,
+    "subObserver": {
+     "latDeg": -72.50542079273731,
+     "eastLonDeg": 105.04255607147785
+    },
+    "subSolar": {
+     "latDeg": -82.12618903502268,
+     "eastLonDeg": 54.591315112906685
+    },
+    "rings": false
+   }
+  ],
+  "sun": {
+   "pos": [
+    555108441.7955037,
+    2561559510.8966045,
+    1113721427.8115742
+   ]
+  }
+ },
+ "reference": {
+  "file": "reference.bin",
+  "dtype": "float32-le",
+  "shape": [
+   4,
+   250,
+   250
+  ],
+  "bands": [
+   "voyager.nac.Violet",
+   "voyager.nac.Blue",
+   "voyager.nac.Green",
+   "voyager.nac.Orange"
+  ],
+  "quantity": "I/F (NaN = no valid data)",
+  "note": "each band image resampled (area average) onto the view with its own fitted registration; row 0 = top"
+ },
+ "comparison": {
+  "renderOutput": "the renderer's HDR buffer in absolute XYZS radiance (X, Y, Z in cd/m² with K_m = 683.002 lm/W, S in scotopic cd/m² with K'_m = 1700.06 lm/W), before the eye model (no exposure, glare, PSF or tone mapping), rendered for `view` at width × height",
+  "roiStatistic": "mean over the pixels x0 ≤ x < x1, y0 ≤ y < y1 of `rect`",
+  "tolerance": "2σ of the combined 1σ budget (calibration, noise, registration, spectral model); sky ROIs are upper limits"
+ },
+ "rois": [
+  {
+   "id": "disk-centre",
+   "kind": "disk-centre",
+   "note": null,
+   "target": 799,
+   "rect": [
+    169,
+    122,
+    174,
+    127
+   ],
+   "pixels": 25,
+   "geometry": {
+    "classFractions": {
+     "lit surface": 1.0
+    },
+    "incidenceDeg": {
+     "mean": 13.823,
+     "min": 10.804,
+     "max": 16.743
+    },
+    "emissionDeg": {
+     "mean": 1.722,
+     "min": 0.1,
+     "max": 3.252
+    },
+    "phaseDeg": {
+     "mean": 13.837,
+     "min": 13.831,
+     "max": 13.843
+    },
+    "latitudeDeg": {
+     "mean": -71.64,
+     "min": -74.632,
+     "max": -68.696
+    },
+    "eastLongitudeDeg": {
+     "mean": 104.21,
+     "spreadDeg": 4.265
+    }
+   },
+   "bands": [
+    {
+     "filter": "voyager.nac.Violet",
+     "product": "C2654450",
+     "iof": {
+      "mean": 0.5652151,
+      "std": 0.0009812638,
+      "n": 25,
+      "nInRect": 25
+     },
+     "sigmaRel": {
+      "calibration": 0.1,
+      "noise": 0.00035,
+      "registration": 0.00047
+     },
+     "bandRadiance": {
+      "value": 0.000760385,
+      "sigma": 7.603981e-05,
+      "unit": "W m-2 sr-1 nm-1",
+      "bandSolarIrradiance1AU": 1.545158
+     }
+    },
+    {
+     "filter": "voyager.nac.Blue",
+     "product": "C2654456",
+     "iof": {
+      "mean": 0.6306103,
+      "std": 0.001897988,
+      "n": 25,
+      "nInRect": 25
+     },
+     "sigmaRel": {
+      "calibration": 0.1,
+      "noise": 0.0006,
+      "registration": 0.00087
+     },
+     "bandRadiance": {
+      "value": 0.001083572,
+      "sigma": 0.0001083633,
+      "unit": "W m-2 sr-1 nm-1",
+      "bandSolarIrradiance1AU": 1.973558
+     }
+    },
+    {
+     "filter": "voyager.nac.Green",
+     "product": "C2654514",
+     "iof": {
+      "mean": 0.6125055,
+      "std": 0.0006355714,
+      "n": 25,
+      "nInRect": 25
+     },
+     "sigmaRel": {
+      "calibration": 0.1,
+      "noise": 0.00021,
+      "registration": 0.00012
+     },
+     "bandRadiance": {
+      "value": 0.0009839393,
+      "sigma": 9.839422e-05,
+      "unit": "W m-2 sr-1 nm-1",
+      "bandSolarIrradiance1AU": 1.845064
+     }
+    },
+    {
+     "filter": "voyager.nac.Orange",
+     "product": "C2654502",
+     "iof": {
+      "mean": 0.5483221,
+      "std": 0.00273156,
+      "n": 25,
+      "nInRect": 25
+     },
+     "sigmaRel": {
+      "calibration": 0.1,
+      "noise": 0.001,
+      "registration": 0.00152
+     },
+     "bandRadiance": {
+      "value": 0.0008584023,
+      "sigma": 8.585437e-05,
+      "unit": "W m-2 sr-1 nm-1",
+      "bandSolarIrradiance1AU": 1.798077
+     }
+    }
+   ],
+   "expected": {
+    "type": "value",
+    "XYZS": [
+     60.80672,
+     69.5107,
+     75.34857,
+     177.9044
+    ],
+    "sigma": [
+     6.082147,
+     6.966235,
+     7.536509,
+     17.81059
+    ],
+    "tolerance": [
+     12.16429,
+     13.93247,
+     15.07302,
+     35.62118
+    ],
+    "comparison": "|renderer mean XYZS over rect − XYZS| ≤ tolerance, per channel",
+    "label": "estimated",
+    "method": "XYZS radiance of r(λ) = p̃(λ)·ρ(λ) (validation/photometry.py): p̃ = the disk-integrated geometric-albedo spectrum of NAIF 799 (the light stage's input, label derived); ρ from 4 band I/F value(s); Sun at 19.12060 AU (TSIS-1 HSRS, CIE 1931 2° and 1951 scotopic observers).",
+    "budget": {
+     "calibration": [
+      6.080672,
+      6.95107,
+      7.534857,
+      17.79044
+     ],
+     "noiseAndRegistration": [
+      0.06143036,
+      0.04314278,
+      0.04990796,
+      0.1045252
+     ],
+     "spectralModel": [
+      0.1190589,
+      0.4573762,
+      0.1496913,
+      0.8403741
+     ],
+     "spectralModelMethod": "linear vs monotone-cubic interpolation of ρ between band centres"
+    },
+    "bandCentersNm": [
+     415.72,
+     477.5,
+     560.15,
+     584.07
+    ],
+    "rho": [
+     1.001989,
+     1.072614,
+     1.221476,
+     1.173123
+    ],
+    "colorCriterion": "Band centres 415.719, 477.505, 560.145, 584.067 nm. Colour is 'derived' only if the bands bracket ≥ 99 % of every channel's sunlight-weighted observer integrand (here 54.3 % for the worst channel) and no gap between band centres inside the central 98 % range (409-663 nm) exceeds half the narrowest observer-function FWHM (27 nm; widest gap here 83 nm). Result: estimated."
+   }
+  },
+  {
+   "id": "limb",
+   "kind": "limb",
+   "note": null,
+   "target": 799,
+   "rect": [
+    121,
+    155,
+    124,
+    158
+   ],
+   "pixels": 9,
+   "geometry": {
+    "classFractions": {
+     "lit surface": 1.0
+    },
+    "incidenceDeg": {
+     "mean": 53.076,
+     "min": 48.845,
+     "max": 57.994
+    },
+    "emissionDeg": {
+     "mean": 66.995,
+     "min": 62.757,
+     "max": 71.924
+    },
+    "phaseDeg": {
+     "mean": 13.942,
+     "min": 13.939,
+     "max": 13.945
+    },
+    "latitudeDeg": {
+     "mean": -36.729,
+     "min": -40.779,
+     "max": -32.019
+    },
+    "eastLongitudeDeg": {
+     "mean": 319.707,
+     "spreadDeg": 1.081
+    }
+   },
+   "bands": [
+    {
+     "filter": "voyager.nac.Violet",
+     "product": "C2654450",
+     "iof": {
+      "mean": 0.4691715,
+      "std": 0.01257274,
+      "n": 9,
+      "nInRect": 9
+     },
+     "sigmaRel": {
+      "calibration": 0.1,
+      "noise": 0.00893,
+      "registration": 0.0656
+     },
+     "bandRadiance": {
+      "value": 0.0006311773,
+      "sigma": 7.569728e-05,
+      "unit": "W m-2 sr-1 nm-1",
+      "bandSolarIrradiance1AU": 1.545158
+     }
+    },
+    {
+     "filter": "voyager.nac.Blue",
+     "product": "C2654456",
+     "iof": {
+      "mean": 0.500533,
+      "std": 0.01289529,
+      "n": 9,
+      "nInRect": 9
+     },
+     "sigmaRel": {
+      "calibration": 0.1,
+      "noise": 0.00859,
+      "registration": 0.06478
+     },
+     "bandRadiance": {
+      "value": 0.0008600616,
+      "sigma": 0.0001027422,
+      "unit": "W m-2 sr-1 nm-1",
+      "bandSolarIrradiance1AU": 1.973558
+     }
+    },
+    {
+     "filter": "voyager.nac.Green",
+     "product": "C2654514",
+     "iof": {
+      "mean": 0.4729979,
+      "std": 0.01106454,
+      "n": 9,
+      "nInRect": 9
+     },
+     "sigmaRel": {
+      "calibration": 0.1,
+      "noise": 0.0078,
+      "registration": 0.05753
+     },
+     "bandRadiance": {
+      "value": 0.000759832,
+      "sigma": 8.785958e-05,
+      "unit": "W m-2 sr-1 nm-1",
+      "bandSolarIrradiance1AU": 1.845064
+     }
+    },
+    {
+     "filter": "voyager.nac.Orange",
+     "product": "C2654502",
+     "iof": {
+      "mean": 0.4313388,
+      "std": 0.01012651,
+      "n": 9,
+      "nInRect": 9
+     },
+     "sigmaRel": {
+      "calibration": 0.1,
+      "noise": 0.00783,
+      "registration": 0.05866
+     },
+     "bandRadiance": {
+      "value": 0.0006752641,
+      "sigma": 7.846671e-05,
+      "unit": "W m-2 sr-1 nm-1",
+      "bandSolarIrradiance1AU": 1.798077
+     }
+    }
+   ],
+   "expected": {
+    "type": "value",
+    "XYZS": [
+     47.93391,
+     54.32884,
+     60.77554,
+     140.4245
+    ],
+    "sigma": [
+     5.103583,
+     5.771823,
+     6.685571,
+     15.18735
+    ],
+    "tolerance": [
+     10.20717,
+     11.54365,
+     13.37114,
+     30.3747
+    ],
+    "comparison": "|renderer mean XYZS over rect − XYZS| ≤ tolerance, per channel",
+    "label": "estimated",
+    "method": "XYZS radiance of r(λ) = p̃(λ)·ρ(λ) (validation/photometry.py): p̃ = the disk-integrated geometric-albedo spectrum of NAIF 799 (the light stage's input, label derived); ρ from 4 band I/F value(s); Sun at 19.12060 AU (TSIS-1 HSRS, CIE 1931 2° and 1951 scotopic observers).",
+    "budget": {
+     "calibration": [
+      4.793391,
+      5.432884,
+      6.077554,
+      14.04245
+     ],
+     "noiseAndRegistration": [
+      1.751543,
+      1.938747,
+      2.780249,
+      5.78267
+     ],
+     "spectralModel": [
+      0.04529086,
+      0.1973982,
+      0.1743692,
+      0.1610335
+     ],
+     "spectralModelMethod": "linear vs monotone-cubic interpolation of ρ between band centres"
+    },
+    "bandCentersNm": [
+     415.72,
+     477.5,
+     560.15,
+     584.07
+    ],
+    "rho": [
+     0.8317274,
+     0.8513639,
+     0.9432664,
+     0.9228396
+    ],
+    "colorCriterion": "Band centres 415.719, 477.505, 560.145, 584.067 nm. Colour is 'derived' only if the bands bracket ≥ 99 % of every channel's sunlight-weighted observer integrand (here 54.3 % for the worst channel) and no gap between band centres inside the central 98 % range (409-663 nm) exceeds half the narrowest observer-function FWHM (27 nm; widest gap here 83 nm). Result: estimated."
+   }
+  },
+  {
+   "id": "terminator",
+   "kind": "terminator",
+   "note": null,
+   "target": 799,
+   "rect": [
+    226,
+    110,
+    229,
+    113
+   ],
+   "pixels": 9,
+   "geometry": {
+    "classFractions": {
+     "lit surface": 1.0
+    },
+    "incidenceDeg": {
+     "mean": 79.447,
+     "min": 75.596,
+     "max": 83.799
+    },
+    "emissionDeg": {
+     "mean": 66.636,
+     "min": 62.854,
+     "max": 70.922
+    },
+    "phaseDeg": {
+     "mean": 13.742,
+     "min": 13.738,
+     "max": 13.745
+    },
+    "latitudeDeg": {
+     "mean": -10.788,
+     "min": -14.527,
+     "max": -6.588
+    },
+    "eastLongitudeDeg": {
+     "mean": 149.168,
+     "spreadDeg": 0.906
+    }
+   },
+   "bands": [
+    {
+     "filter": "voyager.nac.Violet",
+     "product": "C2654450",
+     "iof": {
+      "mean": 0.2216557,
+      "std": 0.02223589,
+      "n": 9,
+      "nInRect": 9
+     },
+     "sigmaRel": {
+      "calibration": 0.1,
+      "noise": 0.03344,
+      "registration": 0.24892
+     },
+     "bandRadiance": {
+      "value": 0.0002981939,
+      "sigma": 8.061076e-05,
+      "unit": "W m-2 sr-1 nm-1",
+      "bandSolarIrradiance1AU": 1.545158
+     }
+    },
+    {
+     "filter": "voyager.nac.Blue",
+     "product": "C2654456",
+     "iof": {
+      "mean": 0.2242635,
+      "std": 0.02391231,
+      "n": 9,
+      "nInRect": 9
+     },
+     "sigmaRel": {
+      "calibration": 0.1,
+      "noise": 0.03554,
+      "registration": 0.26036
+     },
+     "bandRadiance": {
+      "value": 0.00038535,
+      "sigma": 0.0001083453,
+      "unit": "W m-2 sr-1 nm-1",
+      "bandSolarIrradiance1AU": 1.973558
+     }
+    },
+    {
+     "filter": "voyager.nac.Green",
+     "product": "C2654514",
+     "iof": {
+      "mean": 0.2199354,
+      "std": 0.01958044,
+      "n": 9,
+      "nInRect": 9
+     },
+     "sigmaRel": {
+      "calibration": 0.1,
+      "noise": 0.02968,
+      "registration": 0.22557
+     },
+     "bandRadiance": {
+      "value": 0.000353308,
+      "sigma": 8.780418e-05,
+      "unit": "W m-2 sr-1 nm-1",
+      "bandSolarIrradiance1AU": 1.845064
+     }
+    },
+    {
+     "filter": "voyager.nac.Orange",
+     "product": "C2654502",
+     "iof": {
+      "mean": 0.1952578,
+      "std": 0.01640455,
+      "n": 9,
+      "nInRect": 9
+     },
+     "sigmaRel": {
+      "calibration": 0.1,
+      "noise": 0.028,
+      "registration": 0.21033
+     },
+     "bandRadiance": {
+      "value": 0.0003056775,
+      "sigma": 7.170325e-05,
+      "unit": "W m-2 sr-1 nm-1",
+      "bandSolarIrradiance1AU": 1.798077
+     }
+    }
+   ],
+   "expected": {
+    "type": "value",
+    "XYZS": [
+     21.88912,
+     24.86194,
+     27.8373,
+     64.03956
+    ],
+    "sigma": [
+     3.646179,
+     4.232981,
+     5.727724,
+     12.25124
+    ],
+    "tolerance": [
+     7.292357,
+     8.465961,
+     11.45545,
+     24.50248
+    ],
+    "comparison": "|renderer mean XYZS over rect − XYZS| ≤ tolerance, per channel",
+    "label": "estimated",
+    "method": "XYZS radiance of r(λ) = p̃(λ)·ρ(λ) (validation/photometry.py): p̃ = the disk-integrated geometric-albedo spectrum of NAIF 799 (the light stage's input, label derived); ρ from 4 band I/F value(s); Sun at 19.12060 AU (TSIS-1 HSRS, CIE 1931 2° and 1951 scotopic observers).",
+    "budget": {
+     "calibration": [
+      2.188912,
+      2.486194,
+      2.78373,
+      6.403956
+     ],
+     "noiseAndRegistration": [
+      2.91601,
+      3.425148,
+      5.000997,
+      10.44221
+     ],
+     "spectralModel": [
+      0.01301962,
+      0.07297796,
+      0.2183915,
+      0.2061339
+     ],
+     "spectralModelMethod": "linear vs monotone-cubic interpolation of ρ between band centres"
+    },
+    "bandCentersNm": [
+     415.72,
+     477.5,
+     560.15,
+     584.07
+    ],
+    "rho": [
+     0.3929419,
+     0.381453,
+     0.4386017,
+     0.4177497
+    ],
+    "colorCriterion": "Band centres 415.719, 477.505, 560.145, 584.067 nm. Colour is 'derived' only if the bands bracket ≥ 99 % of every channel's sunlight-weighted observer integrand (here 54.3 % for the worst channel) and no gap between band centres inside the central 98 % range (409-663 nm) exceeds half the narrowest observer-function FWHM (27 nm; widest gap here 83 nm). Result: estimated."
+   }
+  },
+  {
+   "id": "disk-integrated",
+   "kind": "disk-integrated",
+   "note": null,
+   "target": 799,
+   "rect": [
+    102,
+    56,
+    241,
+    195
+   ],
+   "pixels": 19321,
+   "geometry": {
+    "classFractions": {
+     "sky": 0.358,
+     "lit surface": 0.6333,
+     "unlit or ring-shadowed surface": 0.0088
+    },
+    "incidenceDeg": {
+     "mean": 45.683,
+     "min": 0.085,
+     "max": 103.53
+    },
+    "emissionDeg": {
+     "mean": 44.551,
+     "min": 0.1,
+     "max": 89.818
+    },
+    "phaseDeg": {
+     "mean": 13.838,
+     "min": 13.725,
+     "max": 13.951
+    },
+    "latitudeDeg": {
+     "mean": -42.577,
+     "min": -89.893,
+     "max": 15.964
+    },
+    "eastLongitudeDeg": {
+     "mean": 105.051,
+     "spreadDeg": 97.988
+    }
+   },
+   "bands": [
+    {
+     "filter": "voyager.nac.Violet",
+     "product": "C2654450",
+     "iof": {
+      "mean": 0.294051,
+      "std": 0.2366111,
+      "n": 19321,
+      "nInRect": 19321,
+      "background": {
+       "level": 0.001325066,
+       "levelSigma": 0.0004587591,
+       "robustPixelSpread": 0.0007862778,
+       "sideMedians": [
+        0.001035657,
+        0.002193283,
+        0.001147369,
+        0.001274467
+       ],
+       "pixels": 2880,
+       "rawMean": 0.2953761
+      }
+     },
+     "sigmaRel": {
+      "calibration": 0.1,
+      "noise": 0.00156,
+      "registration": 0.0
+     },
+     "bandRadiance": {
+      "value": 0.0003955874,
+      "sigma": 3.956355e-05,
+      "unit": "W m-2 sr-1 nm-1",
+      "bandSolarIrradiance1AU": 1.545158
+     }
+    },
+    {
+     "filter": "voyager.nac.Blue",
+     "product": "C2654456",
+     "iof": {
+      "mean": 0.3214684,
+      "std": 0.2617297,
+      "n": 19321,
+      "nInRect": 19321,
+      "background": {
+       "level": 0.0006360876,
+       "levelSigma": 0.0003198721,
+       "robustPixelSpread": 0.0007283237,
+       "sideMedians": [
+        0.0008111051,
+        0.001004593,
+        0.0001479675,
+        0.0007351416
+       ],
+       "pixels": 2880,
+       "rawMean": 0.3221045
+      }
+     },
+     "sigmaRel": {
+      "calibration": 0.1,
+      "noise": 0.001,
+      "registration": 0.0
+     },
+     "bandRadiance": {
+      "value": 0.0005523764,
+      "sigma": 5.524037e-05,
+      "unit": "W m-2 sr-1 nm-1",
+      "bandSolarIrradiance1AU": 1.973558
+     }
+    },
+    {
+     "filter": "voyager.nac.Green",
+     "product": "C2654514",
+     "iof": {
+      "mean": 0.3048282,
+      "std": 0.2472345,
+      "n": 19321,
+      "nInRect": 19321,
+      "background": {
+       "level": 0.001496875,
+       "levelSigma": 0.0008825482,
+       "robustPixelSpread": 0.001357506,
+       "sideMedians": [
+        0.001753125,
+        0.002084375,
+        0.00045625,
+        0.00290625
+       ],
+       "pixels": 2420,
+       "rawMean": 0.306325
+      }
+     },
+     "sigmaRel": {
+      "calibration": 0.1,
+      "noise": 0.0029,
+      "registration": 0.0
+     },
+     "bandRadiance": {
+      "value": 0.0004896812,
+      "sigma": 4.898864e-05,
+      "unit": "W m-2 sr-1 nm-1",
+      "bandSolarIrradiance1AU": 1.845064
+     }
+    },
+    {
+     "filter": "voyager.nac.Orange",
+     "product": "C2654502",
+     "iof": {
+      "mean": 0.2692868,
+      "std": 0.2198584,
+      "n": 19321,
+      "nInRect": 19321,
+      "background": {
+       "level": 0.002611059,
+       "levelSigma": 0.0004000136,
+       "robustPixelSpread": 0.001033054,
+       "sideMedians": [
+        0.003051218,
+        0.002810837,
+        0.001974783,
+        0.002602806
+       ],
+       "pixels": 2880,
+       "rawMean": 0.2718978
+      }
+     },
+     "sigmaRel": {
+      "calibration": 0.1,
+      "noise": 0.00149,
+      "registration": 0.0
+     },
+     "bandRadiance": {
+      "value": 0.0004215704,
+      "sigma": 4.216169e-05,
+      "unit": "W m-2 sr-1 nm-1",
+      "bandSolarIrradiance1AU": 1.798077
+     }
+    }
+   ],
+   "expected": {
+    "type": "value",
+    "XYZS": [
+     30.26638,
+     34.63448,
+     38.67375,
+     90.02442
+    ],
+    "sigma": [
+     3.027354,
+     3.469223,
+     3.868272,
+     9.008242
+    ],
+    "tolerance": [
+     6.054707,
+     6.938446,
+     7.736543,
+     18.01648
+    ],
+    "comparison": "|renderer mean XYZS over rect − XYZS| ≤ tolerance, per channel",
+    "label": "estimated",
+    "method": "XYZS radiance of r(λ) = p̃(λ)·ρ(λ) (validation/photometry.py): p̃ = the disk-integrated geometric-albedo spectrum of NAIF 799 (the light stage's input, label derived); ρ from 4 band I/F value(s); Sun at 19.12060 AU (TSIS-1 HSRS, CIE 1931 2° and 1951 scotopic observers).",
+    "budget": {
+     "calibration": [
+      3.026638,
+      3.463448,
+      3.867375,
+      9.002442
+     ],
+     "noiseAndRegistration": [
+      0.03194422,
+      0.05055157,
+      0.03237057,
+      0.1012025
+     ],
+     "spectralModel": [
+      0.05753902,
+      0.1935927,
+      0.07675121,
+      0.306939
+     ],
+     "spectralModelMethod": "linear vs monotone-cubic interpolation of ρ between band centres"
+    },
+    "bandCentersNm": [
+     415.72,
+     477.5,
+     560.15,
+     584.07
+    ],
+    "rho": [
+     0.5212812,
+     0.5467903,
+     0.6078973,
+     0.576133
+    ],
+    "colorCriterion": "Band centres 415.719, 477.505, 560.145, 584.067 nm. Colour is 'derived' only if the bands bracket ≥ 99 % of every channel's sunlight-weighted observer integrand (here 54.3 % for the worst channel) and no gap between band centres inside the central 98 % range (409-663 nm) exceeds half the narrowest observer-function FWHM (27 nm; widest gap here 83 nm). Result: estimated."
+   },
+   "appDataPreview": {
+    "XYZS": [
+     30.20921,
+     33.9426,
+     41.059,
+     91.25324
+    ],
+    "phaseDeg": 13.83807,
+    "phi": 0.9026826,
+    "labels": {
+     "geometricAlbedoXYZS": "derived",
+     "phaseFunction": "measured"
+    },
+    "note": "informational, not a renderer test: photometry.json geometricAlbedoXYZS × Φ(α) / d² × (R/Δ)² / Ω_rect with R the pck00011 mean radius (the albedo's reference)",
+    "ratioToExpected": [
+     0.9981109,
+     0.9800233,
+     1.061676,
+     1.01365
+    ],
+    "deviationInSigma": [
+     -0.01888628,
+     -0.1994349,
+     0.6166195,
+     0.1364103
+    ]
+   }
+  },
+  {
+   "id": "sky-near",
+   "kind": "sky-near",
+   "note": null,
+   "target": 799,
+   "rect": [
+    239,
+    132,
+    244,
+    137
+   ],
+   "pixels": 25,
+   "geometry": {
+    "classFractions": {
+     "sky": 1.0
+    }
+   },
+   "bands": [
+    {
+     "filter": "voyager.nac.Violet",
+     "product": "C2654450",
+     "iof": {
+      "mean": 0.002410952,
+      "std": 0.0004727439,
+      "n": 25,
+      "nInRect": 25
+     },
+     "sigmaRel": {
+      "calibration": 0.1,
+      "noise": 0.03922,
+      "registration": 0.19551
+     },
+     "bandRadiance": {
+      "value": 3.243458e-06,
+      "sigma": 7.235258e-07,
+      "unit": "W m-2 sr-1 nm-1",
+      "bandSolarIrradiance1AU": 1.545158
+     }
+    },
+    {
+     "filter": "voyager.nac.Blue",
+     "product": "C2654456",
+     "iof": {
+      "mean": 0.001704709,
+      "std": 0.0003835997,
+      "n": 25,
+      "nInRect": 25
+     },
+     "sigmaRel": {
+      "calibration": 0.1,
+      "noise": 0.045,
+      "registration": 0.15256
+     },
+     "bandRadiance": {
+      "value": 2.929188e-06,
+      "sigma": 5.503367e-07,
+      "unit": "W m-2 sr-1 nm-1",
+      "bandSolarIrradiance1AU": 1.973558
+     }
+    },
+    {
+     "filter": "voyager.nac.Green",
+     "product": "C2654514",
+     "iof": {
+      "mean": 0.0045,
+      "std": 0.0005079524,
+      "n": 15,
+      "nInRect": 25
+     },
+     "sigmaRel": {
+      "calibration": 0.1,
+      "noise": 0.02915,
+      "registration": 0.11785
+     },
+     "bandRadiance": {
+      "value": 7.228877e-06,
+      "sigma": 1.136957e-06,
+      "unit": "W m-2 sr-1 nm-1",
+      "bandSolarIrradiance1AU": 1.845064
+     }
+    },
+    {
+     "filter": "voyager.nac.Orange",
+     "product": "C2654502",
+     "iof": {
+      "mean": 0.003850898,
+      "std": 0.0008099719,
+      "n": 25,
+      "nInRect": 25
+     },
+     "sigmaRel": {
+      "calibration": 0.1,
+      "noise": 0.04207,
+      "registration": 0.08508
+     },
+     "bandRadiance": {
+      "value": 6.02861e-06,
+      "sigma": 8.311713e-07,
+      "unit": "W m-2 sr-1 nm-1",
+      "bandSolarIrradiance1AU": 1.798077
+     }
+    }
+   ],
+   "expected": {
+    "type": "none",
+    "label": "unknown",
+    "method": "no valid sky pixels in this window (not recorded by the instrument)"
+   }
+  },
+  {
+   "id": "sky-far",
+   "kind": "sky-far",
+   "note": null,
+   "target": 799,
+   "rect": [
+    1,
+    1,
+    6,
+    6
+   ],
+   "pixels": 25,
+   "geometry": {
+    "classFractions": {
+     "sky": 1.0
+    }
+   },
+   "bands": [
+    {
+     "filter": "voyager.nac.Violet",
+     "product": "C2654450",
+     "iof": {
+      "mean": null,
+      "std": null,
+      "n": 0,
+      "nInRect": 25
+     },
+     "sigmaRel": {
+      "calibration": 0.1,
+      "noise": null,
+      "registration": null
+     },
+     "bandRadiance": {
+      "value": null,
+      "sigma": null,
+      "unit": "W m-2 sr-1 nm-1",
+      "bandSolarIrradiance1AU": 1.545158
+     }
+    },
+    {
+     "filter": "voyager.nac.Blue",
+     "product": "C2654456",
+     "iof": {
+      "mean": null,
+      "std": null,
+      "n": 0,
+      "nInRect": 25
+     },
+     "sigmaRel": {
+      "calibration": 0.1,
+      "noise": null,
+      "registration": null
+     },
+     "bandRadiance": {
+      "value": null,
+      "sigma": null,
+      "unit": "W m-2 sr-1 nm-1",
+      "bandSolarIrradiance1AU": 1.973558
+     }
+    },
+    {
+     "filter": "voyager.nac.Green",
+     "product": "C2654514",
+     "iof": {
+      "mean": null,
+      "std": null,
+      "n": 0,
+      "nInRect": 25
+     },
+     "sigmaRel": {
+      "calibration": 0.1,
+      "noise": null,
+      "registration": null
+     },
+     "bandRadiance": {
+      "value": null,
+      "sigma": null,
+      "unit": "W m-2 sr-1 nm-1",
+      "bandSolarIrradiance1AU": 1.845064
+     }
+    },
+    {
+     "filter": "voyager.nac.Orange",
+     "product": "C2654502",
+     "iof": {
+      "mean": null,
+      "std": null,
+      "n": 0,
+      "nInRect": 25
+     },
+     "sigmaRel": {
+      "calibration": 0.1,
+      "noise": null,
+      "registration": null
+     },
+     "bandRadiance": {
+      "value": null,
+      "sigma": null,
+      "unit": "W m-2 sr-1 nm-1",
+      "bandSolarIrradiance1AU": 1.798077
+     }
+    }
+   ],
+   "expected": {
+    "type": "none",
+    "label": "unknown",
+    "method": "no valid sky pixels in this window (not recorded by the instrument)"
+   }
+  }
+ ],
+ "ratios": [],
+ "appProducts": {
+  "rings.json opticalDepth sources": null,
+  "shape spectrum sources": [
+   "karkoschka-1998-pds",
+   "naif-pck00011"
+  ]
+ },
+ "notes": [],
+ "sources": [
+  {
+   "id": "naif-lsk-naif0012",
+   "title": "NAIF generic leapseconds kernel naif0012.tls",
+   "citation": "NAIF leapseconds kernel naif0012.tls (NAIF/JPL, 2016-07-14), leap seconds through 2017-01-01 as announced in IERS Bulletin C; TDB-TT formula and constants from Moyer, T. D. (1981), Transformation from proper time on Earth to coordinate time in solar system barycentric space-time frame of reference, Celestial Mechanics 23, 33-56 and 57-68. Acton, C. H. (1996). Ancillary data services of NASA's Navigation and Ancillary Information Facility. Planetary and Space Science 44(1), 65-70. DOI:10.1016/0032-0633(95)00107-7",
+   "url": "https://naif.jpl.nasa.gov/pub/naif/generic_kernels/lsk/naif0012.tls",
+   "retrieved": "2026-09-30",
+   "sha256": "678e32bdb5a744117a467cd9601cd6b373f0e9bc9bbde1371d5eee39600a039b",
+   "version": "naif0012",
+   "license": "NAIF/JPL public data (U.S. Government work); see https://naif.jpl.nasa.gov/naif/rules.html",
+   "notes": "Still the current NAIF LSK: no leap second has been announced since 2017-01-01. A new LSK must be adopted when IERS announces one."
+  },
+  {
+   "id": "naif-pck00011",
+   "title": "NAIF generic text PCK pck00011.tpc (IAU WGCCRE 2015 body shapes and rotation)",
+   "citation": "Acton, C. H. (1996). Ancillary data services of NASA's Navigation and Ancillary Information Facility. Planetary and Space Science 44, 65-70. Kernel content: Archinal, B. A. et al. (2018). Report of the IAU Working Group on Cartographic Coordinates and Rotational Elements: 2015. Celestial Mechanics and Dynamical Astronomy 130, 22. DOI:10.1007/s10569-017-9805-5.",
+   "url": "https://naif.jpl.nasa.gov/pub/naif/generic_kernels/pck/pck00011.tpc",
+   "retrieved": "2026-09-30",
+   "sha256": "3dff7b1dbeceaa01f25467767d3fa25816051c85d162d1edf04acb310ee28bb1",
+   "version": "pck00011"
+  },
+  {
+   "id": "naif-de442s",
+   "title": "JPL planetary and lunar ephemeris DE442 (short-span SPK de442s.bsp)",
+   "citation": "JPL planetary and lunar ephemeris DE442 (integrated 13 May 2024): an update of DE440 adding Uranus occultation data and four more years of Mars-orbiter and Juno ranging. JPL, de442_tech-comments.txt, https://naif.jpl.nasa.gov/pub/naif/generic_kernels/spk/planets/de442_tech-comments.txt. Based on and documented by Park, R. S., Folkner, W. M., Williams, J. G., Boggs, D. H. (2021). The JPL Planetary and Lunar Ephemerides DE440 and DE441. The Astronomical Journal 161(3), 105. DOI:10.3847/1538-3881/abd414. SPK file de442s.bsp distributed by NAIF (2025-02-06). Acton, C. H. (1996). Ancillary data services of NASA's Navigation and Ancillary Information Facility. Planetary and Space Science 44(1), 65-70. DOI:10.1016/0032-0633(95)00107-7",
+   "url": "https://naif.jpl.nasa.gov/pub/naif/generic_kernels/spk/planets/de442s.bsp",
+   "retrieved": "2026-09-30",
+   "sha256": "54d97562a5b094d298b1b8eafa5a2e17e3e010ce85e1a366d07f003ad159323c",
+   "version": "DE442 (de442s.bsp, 1849-2150)",
+   "license": "NAIF/JPL public data (U.S. Government work); see https://naif.jpl.nasa.gov/naif/rules.html",
+   "notes": "Contains barycenters 1-9 and the Sun (10) wrt the SSB, Mercury 199 wrt 1, Venus 299 wrt 2, Moon 301 and Earth 399 wrt the Earth-Moon barycenter 3. Planet centers 499-999 wrt their system barycenters are NOT in this file (see jpl-horizons-center-*)."
+  },
+  {
+   "id": "vgiss-user-tutorial",
+   "title": "Voyager ISS archive user tutorial (VGISS_5xxx-8xxx)",
+   "citation": "PDS Ring-Moon Systems Node, Voyager Imaging Science Subsystem archive (data set VG1/VG2-S-ISS-2/3/4/6-PROCESSED-V1.1 and successors), User Tutorial (VGISS_5xxx/User-Tutorial.txt). Distributed by the PDS Ring-Moon Systems Node (SETI Institute), https://pds-rings.seti.org, through its OPUS holdings.",
+   "url": "https://opus.pds-rings.seti.org/holdings/documents/VGISS_5xxx/User-Tutorial.txt",
+   "retrieved": "2026-09-30",
+   "sha256": "b83fead0d720a93d29f21185e36e2c9303bc6542a459a885c69ad5e2209076e8",
+   "notes": "§6.3: 'Absolute calibration is still probably no more accurate than 5-10%'; REFLECTANCE_SCALING_FACTOR converts CALIB/GEOMED pixel values to I/F 'accurate to the advertised 5-10% level'. §6.1: GEOMED geometry 'reliable at the level of ~1 pixel', pixel FOV keywords 'quite precise for the GEOMED images'."
+  },
+  {
+   "id": "svo-voyager-iss-nac-violet",
+   "title": "Voyager ISS narrow-angle camera Violet relative spectral response, SVO Voyager/ISS-NAC.Violet",
+   "citation": "Smith, B. A. et al. (1977). Voyager imaging experiment. Space Science Reviews 21, 103-127. DOI:10.1007/BF00200847. Curve as distributed by the SVO Filter Profile Service. Machine-readable curve from the SVO Filter Profile Service (Rodrigo, C., Solano, E. & Bayo, A. 2012, SVO Filter Profile Service Version 1.0, IVOA Working Draft, ADS 2012ivoa.rept.1015R; Rodrigo, C. & Solano, E. 2020, XIV.0 Scientific Meeting of the Spanish Astronomical Society, 182).",
+   "url": "https://svo2.cab.inta-csic.es/theory/fps/getdata.php?format=ascii&id=Voyager/ISS-NAC.Violet",
+   "retrieved": "2026-09-30",
+   "sha256": "414c8f5ea5fdcbf4c60ff0e4ef3ef2cd6bd777739a05c232e57e65d773b508cf",
+   "notes": "Filter + instrument (vidicon) relative response; SVO lists it as an energy counter (DetectorType 0)."
+  },
+  {
+   "id": "svo-voyager-iss-nac-blue",
+   "title": "Voyager ISS narrow-angle camera Blue relative spectral response, SVO Voyager/ISS-NAC.Blue",
+   "citation": "Smith, B. A. et al. (1977). Voyager imaging experiment. Space Science Reviews 21, 103-127. DOI:10.1007/BF00200847. Curve as distributed by the SVO Filter Profile Service. Machine-readable curve from the SVO Filter Profile Service (Rodrigo, C., Solano, E. & Bayo, A. 2012, SVO Filter Profile Service Version 1.0, IVOA Working Draft, ADS 2012ivoa.rept.1015R; Rodrigo, C. & Solano, E. 2020, XIV.0 Scientific Meeting of the Spanish Astronomical Society, 182).",
+   "url": "https://svo2.cab.inta-csic.es/theory/fps/getdata.php?format=ascii&id=Voyager/ISS-NAC.Blue",
+   "retrieved": "2026-09-30",
+   "sha256": "104c306e4d0cdf08f7cef9fff0877b2d4149788fe12f3f4964a721a9d0b5756e",
+   "notes": "Filter + instrument (vidicon) relative response; SVO lists it as an energy counter (DetectorType 0)."
+  },
+  {
+   "id": "svo-voyager-iss-nac-green",
+   "title": "Voyager ISS narrow-angle camera Green relative spectral response, SVO Voyager/ISS-NAC.Green",
+   "citation": "Smith, B. A. et al. (1977). Voyager imaging experiment. Space Science Reviews 21, 103-127. DOI:10.1007/BF00200847. Curve as distributed by the SVO Filter Profile Service. Machine-readable curve from the SVO Filter Profile Service (Rodrigo, C., Solano, E. & Bayo, A. 2012, SVO Filter Profile Service Version 1.0, IVOA Working Draft, ADS 2012ivoa.rept.1015R; Rodrigo, C. & Solano, E. 2020, XIV.0 Scientific Meeting of the Spanish Astronomical Society, 182).",
+   "url": "https://svo2.cab.inta-csic.es/theory/fps/getdata.php?format=ascii&id=Voyager/ISS-NAC.Green",
+   "retrieved": "2026-09-30",
+   "sha256": "92c5a1cdbd781127d018edc9000f50dd420a9d99eb281f9ac43d27890fc689cf",
+   "notes": "Filter + instrument (vidicon) relative response; SVO lists it as an energy counter (DetectorType 0)."
+  },
+  {
+   "id": "svo-voyager-iss-nac-orange",
+   "title": "Voyager ISS narrow-angle camera Orange relative spectral response, SVO Voyager/ISS-NAC.Orange",
+   "citation": "Smith, B. A. et al. (1977). Voyager imaging experiment. Space Science Reviews 21, 103-127. DOI:10.1007/BF00200847. Curve as distributed by the SVO Filter Profile Service. Machine-readable curve from the SVO Filter Profile Service (Rodrigo, C., Solano, E. & Bayo, A. 2012, SVO Filter Profile Service Version 1.0, IVOA Working Draft, ADS 2012ivoa.rept.1015R; Rodrigo, C. & Solano, E. 2020, XIV.0 Scientific Meeting of the Spanish Astronomical Society, 182).",
+   "url": "https://svo2.cab.inta-csic.es/theory/fps/getdata.php?format=ascii&id=Voyager/ISS-NAC.Orange",
+   "retrieved": "2026-09-30",
+   "sha256": "53d0d41c72fcadfecb54c3a4b47de2299de26bb2e16c4978f11db8e50451c6f9",
+   "notes": "Filter + instrument (vidicon) relative response; SVO lists it as an energy counter (DetectorType 0)."
+  },
+  {
+   "id": "cie-1931-2deg-cmf",
+   "title": "CIE 1931 colour-matching functions, 2 degree observer (x̄, ȳ, z̄), 360–830 nm, 1 nm",
+   "citation": "CIE (2019). Colour-matching functions of CIE 1931 standard colorimetric observer. International Commission on Illumination (CIE), Vienna. Data table, DOI:10.25039/CIE.DS.xvudnb9b. Original source: CIE 018:2019 The Basis of Physical Photometry, 3rd ed., Table 6 (DOI:10.25039/TR.018.2019); standard: ISO/CIE 11664-1:2019.",
+   "url": "https://files.cie.co.at/Publications-datasets/CIE_xyz_1931_2deg.csv",
+   "retrieved": "2026-09-30",
+   "sha256": "fa663e3535a7e0763a745993a1f0a192eb0275ac46ad2d1befd7626841e713c1",
+   "version": "CIE 018:2019 data table (2019)",
+   "license": "CC BY-SA 4.0",
+   "notes": "Dataset DOI 10.25039/CIE.DS.xvudnb9b; landing page https://cie.co.at/datatable/cie-1931-colour-matching-functions-2-degree-observer. The file's sha256 and column sums were verified against the CIE metadata file https://files.cie.co.at/Publications-datasets/CIE_xyz_1931_2deg.csv_metadata.json (sha256 03abcaecf4e63d77045ef57c4514b52c8bb1a46dd18e1f93a50044a0f4f481c8). K_m = 683.002 lm/W and K'_m = 1700.06 lm/W are taken from the text of CIE 018:2019."
+  },
+  {
+   "id": "cie-1951-scotopic",
+   "title": "CIE spectral luminous efficiency for scotopic vision V′(λ), 380–780 nm, 1 nm",
+   "citation": "CIE (2019). CIE spectral luminous efficiency for scotopic vision. International Commission on Illumination (CIE), Vienna. Data table, DOI:10.25039/CIE.DS.gr6w4b5g. Original source: CIE 018:2019 The Basis of Physical Photometry, 3rd ed., Table 2 (DOI:10.25039/TR.018.2019).",
+   "url": "https://files.cie.co.at/Publications-datasets/CIE_sle_scotopic.csv",
+   "retrieved": "2026-09-30",
+   "sha256": "6a75d3fdbcbf5e9e9a07478511933eefeda953f3e2cc14b74459e5a099ec3759",
+   "version": "CIE 018:2019 data table (2019)",
+   "license": "CC BY-SA 4.0",
+   "notes": "Dataset DOI 10.25039/CIE.DS.gr6w4b5g; landing page https://cie.co.at/datatable/cie-spectral-luminous-efficiency-scotopic-vision. The file's sha256 and column sums were verified against the CIE metadata file https://files.cie.co.at/Publications-datasets/CIE_sle_scotopic.csv_metadata.json (sha256 7addeeca8c7e4fb9594fc87c92e37caa9e5ca4f71de7fe23cb1251abdddbfeee). K_m = 683.002 lm/W and K'_m = 1700.06 lm/W are taken from the text of CIE 018:2019."
+  },
+  {
+   "id": "tsis1-hsrs-v2",
+   "title": "TSIS-1 Hybrid Solar Reference Spectrum (HSRS), Version 2, 0.1 nm resolution, with uncertainties",
+   "citation": "Coddington, O. M., Richard, E. C., Harber, D., Pilewskie, P., Woods, T. N., Snow, M., Chance, K., Liu, X. & Sun, K. (2023). Version 2 of the TSIS-1 Hybrid Solar Reference Spectrum and extension to the full spectrum. Earth and Space Science 10, e2022EA002637. DOI:10.1029/2022EA002637. Method: Coddington, O. M. et al. (2021), The TSIS-1 Hybrid Solar Reference Spectrum, Geophysical Research Letters 48, e2020GL091709, DOI:10.1029/2020GL091709. Distributed by LASP LISIRD.",
+   "url": "https://lasp.colorado.edu/lisird/resources/lasp/hsrs/v2/hybrid_reference_spectrum_p1nm_resolution_c2022-11-30_with_unc.nc",
+   "retrieved": "2026-09-30",
+   "sha256": "7255573e45e41dda651a760188d5f4275dfb5139c76bc514a72ab3ae400e9bf4",
+   "version": "v2, file id final-v2_hybrid_reference_spectrum_p1nm_resolution_c2022-11-30_with_unc.nc",
+   "notes": "Spectral solar irradiance at 1 AU, 202-2730 nm, vacuum wavelengths, 0.1 nm resolution sampled every 0.025 nm, normalized to TSIS-1 SIM (average of 2019 Dec 1-7, solar minimum) and scaled by 0.999061 to TIM TSI. Stated uncertainty 0.3 % (460-2365 nm), 1.3 % elsewhere. Landing page https://lasp.colorado.edu/lisird/data/tsis1_hsrs_p1nm/"
+  },
+  {
+   "id": "iau-2015-b3",
+   "title": "IAU 2015 Resolution B3 on recommended nominal conversion constants for selected solar and planetary properties",
+   "citation": "Prša, A., Harmanec, P., Torres, G., Mamajek, E., Asplund, M., Capitaine, N., Christensen-Dalsgaard, J., Depagne, É., Haberreiter, M., Hekker, S., Hilton, J., Kopp, G., Kostov, V., Kurtz, D. W., Laskar, J., Mason, B. D., Milone, E. F., Montgomery, M., Richards, M., Schmutz, W., Schou, J. & Stewart, S. G. (2016). Nominal values for selected solar and planetary quantities: IAU 2015 Resolution B3. Astronomical Journal 152, 41. DOI:10.3847/0004-6256/152/2/41 (text of the resolution: arXiv:1510.07674).",
+   "url": "https://arxiv.org/pdf/1510.07674v1",
+   "retrieved": "2026-09-30",
+   "sha256": "a4a38ecf4ab6ac71a38780456beffbc43c17c98ed320e82585a127057e498417",
+   "notes": "Nominal solar radius R_sun^N = 6.957e8 m (exact by definition), chosen to match the photospheric radius (tau_Ross = 2/3) of Haberreiter, Schmutz & Kosovichev (2008, ApJ 675, L53): 695 658 +/- 140 km. Also the nominal total solar irradiance S_sun^N = 1361 W m^-2 (cycle-23 mean TSI 1361 +/- 1 W m^-2), used here only as a sanity check of the spectrum integral."
+  },
+  {
+   "id": "neckel-labs-1994",
+   "title": "Solar limb darkening 1986-1990 (303 to 1099 nm): Table I, fifth-order polynomial coefficients",
+   "citation": "Neckel, H. & Labs, D. (1994). Solar limb darkening 1986-1990 (λλ303 to 1099 nm). Solar Physics 153, 91-114. DOI:10.1007/BF00712494.",
+   "url": "https://articles.adsabs.harvard.edu/pdf/1994SoPh..153...91N",
+   "retrieved": "2026-09-30",
+   "sha256": "3a0d1708622e7fae1bd4e35ac04514167f08706d808644d556ee0b636e590975",
+   "notes": "Table I (p. 98), 30 continuum wavelengths, transcribed to pipeline/src/pipeline/photometry/tables/neckel_labs_1994_table1.csv from this ADS scan (see docs/sources/neckel-labs-1994.md). The printed row at 365.875 nm violates the paper's own Eq. 5 (sum A = 0.998) and Eq. 6 (F/I); A2 = 0.17682 instead of the printed 0.17482 restores both exactly and is used (a presumed typesetting error)."
+  },
+  {
+   "id": "edlen-1966",
+   "title": "Dispersion formula for the refractive index of standard air",
+   "citation": "Edlén, B. (1966). The refractive index of air. Metrologia 2, 71-80. DOI:10.1088/0026-1394/2/2/002.",
+   "url": "https://doi.org/10.1088/0026-1394/2/2/002",
+   "retrieved": "2026-09-30",
+   "notes": "Formula only (Eq. 1, standard air: dry, 15 degC, 101 325 Pa, 0.03 % CO2, the same 'standard air' in which the CIE tables are given); no data file is downloaded. Used to convert vacuum wavelengths (TSIS-1 HSRS) to standard-air wavelengths; the shift is about 0.15 nm at 550 nm."
+  },
+  {
+   "id": "karkoschka-1998-pds",
+   "title": "Full-disk albedo spectra of Jupiter, Saturn, Uranus, Neptune and Titan, 300-1050 nm, July 1995 (PDS ESO-J/S/N/U-SPECTROPHOTOMETER-4-V2.0, file 1995LOW.TAB)",
+   "citation": "Karkoschka, E. (1998). Methane, ammonia, and temperature measurements of the jovian planets and Titan from CCD-spectrophotometry. Icarus 133, 134-146. DOI:10.1006/icar.1998.5913. Data: Karkoschka, E., ESO-J/S/N/U-SPECTROPHOTOMETER-4-V2.0, NASA Planetary Data System Atmospheres Node, volume GBAT_0001, DOI:10.17189/2bp8-k793. Method: Karkoschka, E. (1994), Icarus 111, 174-192, DOI:10.1006/icar.1994.1139.",
+   "url": "https://pds-atmospheres.nmsu.edu/PDS/data/gbat_0001/data/1995low.tab",
+   "retrieved": "2026-09-30",
+   "sha256": "d8071e071c2c0a60052ec6c164e151bd42847acf5d9bfbe1e9b2f76bf49a788b",
+   "version": "PDS3 GBAT_0001 (1999-02-18), product 1995LOW.TAB created 1998-12-17",
+   "notes": "ESO 1.52 m + Boller & Chivens spectrograph, 1995 July 6-10; 1 nm resolution sampled every 0.4 nm; air and vacuum wavelength columns (air used). Jupiter: full-disk albedo at phase 6.8°; Saturn: full-disk albedo at 5.7° for zero ring tilt (rings edge-on; the 3 % of the disk they hid was filled in); Uranus and Neptune: geometric albedo (phase 0.7° and 0.3°). Absolute calibration 4 % (relative 2 %), with an assumed solar V = -26.74 and solar analog HD 105590."
+  },
+  {
+   "id": "uranus-voyager2-1986-parity-c4220129",
+   "title": "Voyager 2 ISS NAC image C4220129 (parity reference)",
+   "citation": "Voyager 2 ISS narrow-angle camera, calibrated and geometrically corrected (GEOMED) images, PDS Ring-Moon Systems Node volumes VGISS_7xxx (Uranus) / VGISS_8xxx (Neptune), data sets VG2-U/N-ISS-2/3/4/6-PROCESSED (instrument: Smith, B. A. et al. 1977, Voyager imaging experiment, Space Science Reviews 21, 103-127, DOI:10.1007/BF00200847).",
+   "url": "https://opus.pds-rings.seti.org/holdings/volumes/VGISS_6xxx/VGISS_6203/DATA/C42201XX/C4220129_GEOMED.IMG",
+   "retrieved": "2026-09-30",
+   "sha256": "0d1991d0fa15c32019095bc781a2bcc0e375403947281a7a136b92044275f964"
+  },
+  {
+   "id": "uranus-voyager2-1986-parity-c4220129-label",
+   "title": "PDS3 label of C4220129",
+   "citation": "Voyager 2 ISS narrow-angle camera, calibrated and geometrically corrected (GEOMED) images, PDS Ring-Moon Systems Node volumes VGISS_7xxx (Uranus) / VGISS_8xxx (Neptune), data sets VG2-U/N-ISS-2/3/4/6-PROCESSED (instrument: Smith, B. A. et al. 1977, Voyager imaging experiment, Space Science Reviews 21, 103-127, DOI:10.1007/BF00200847).",
+   "url": "https://opus.pds-rings.seti.org/holdings/volumes/VGISS_6xxx/VGISS_6203/DATA/C42201XX/C4220129_GEOMED.LBL",
+   "retrieved": "2026-09-30",
+   "sha256": "821f6b2a281805a70a8e7f110b048a267be806c1f2a33d4faa3acdd7f3c6c0d3"
+  },
+  {
+   "id": "horizons-uranus-voyager2-1986_parity_c4220129_699_from_-32",
+   "title": "JPL Horizons vector table: NAIF 699 from Voyager 2 at 1981-06-27T00:05:34.040 UTC",
+   "citation": "Giorgini, J. D., Yeomans, D. K., Chamberlin, A. B., Chodas, P. W., Jacobson, R. A., Keesey, M. S., Lieske, J. H., Ostro, S. J., Standish, E. M., Wimberly, R. N. (1996). JPL's On-Line Solar System Data Service. Bulletin of the American Astronomical Society 28(3), 1158. JPL Horizons API: https://ssd-api.jpl.nasa.gov/doc/horizons.html",
+   "url": "https://ssd.jpl.nasa.gov/api/horizons.api?format=text&COMMAND=%27699%27&OBJ_DATA=%27NO%27&MAKE_EPHEM=%27YES%27&EPHEM_TYPE=%27VECTORS%27&CENTER=%27%40-32%27&TIME_TYPE=%27TDB%27&REF_SYSTEM=%27ICRF%27&REF_PLANE=%27FRAME%27&OUT_UNITS=%27KM-S%27&VEC_TABLE=%272%27&VEC_CORR=%27LT%27&VEC_LABELS=%27NO%27&CSV_FORMAT=%27YES%27&TLIST_TYPE=%27JD%27&TLIST=%272444782.504458614%27",
+   "retrieved": "2026-09-30",
+   "sha256": "f7eacfad0a1ac31f9b2b2c936967423f2e144d3ada8217bbd0440fedeedba0da",
+   "notes": "ICRF, km; VEC_CORR='LT' (target at t − light time as seen from the observer at t); reconstructed trajectory as served by Horizons (source named in the file header)."
+  },
+  {
+   "id": "horizons-uranus-voyager2-1986_parity_c4220129_601_from_-32",
+   "title": "JPL Horizons vector table: NAIF 601 from Voyager 2 at 1981-06-27T00:05:34.040 UTC",
+   "citation": "Giorgini, J. D., Yeomans, D. K., Chamberlin, A. B., Chodas, P. W., Jacobson, R. A., Keesey, M. S., Lieske, J. H., Ostro, S. J., Standish, E. M., Wimberly, R. N. (1996). JPL's On-Line Solar System Data Service. Bulletin of the American Astronomical Society 28(3), 1158. JPL Horizons API: https://ssd-api.jpl.nasa.gov/doc/horizons.html",
+   "url": "https://ssd.jpl.nasa.gov/api/horizons.api?format=text&COMMAND=%27601%27&OBJ_DATA=%27NO%27&MAKE_EPHEM=%27YES%27&EPHEM_TYPE=%27VECTORS%27&CENTER=%27%40-32%27&TIME_TYPE=%27TDB%27&REF_SYSTEM=%27ICRF%27&REF_PLANE=%27FRAME%27&OUT_UNITS=%27KM-S%27&VEC_TABLE=%272%27&VEC_CORR=%27LT%27&VEC_LABELS=%27NO%27&CSV_FORMAT=%27YES%27&TLIST_TYPE=%27JD%27&TLIST=%272444782.504458614%27",
+   "retrieved": "2026-09-30",
+   "sha256": "a3312ff9a6f9b8e0e62447604856097bc4830e4f6b2cfe1b924b8d008a372300",
+   "notes": "ICRF, km; VEC_CORR='LT' (target at t − light time as seen from the observer at t); reconstructed trajectory as served by Horizons (source named in the file header)."
+  },
+  {
+   "id": "horizons-uranus-voyager2-1986_parity_c4220129_603_from_-32",
+   "title": "JPL Horizons vector table: NAIF 603 from Voyager 2 at 1981-06-27T00:05:34.040 UTC",
+   "citation": "Giorgini, J. D., Yeomans, D. K., Chamberlin, A. B., Chodas, P. W., Jacobson, R. A., Keesey, M. S., Lieske, J. H., Ostro, S. J., Standish, E. M., Wimberly, R. N. (1996). JPL's On-Line Solar System Data Service. Bulletin of the American Astronomical Society 28(3), 1158. JPL Horizons API: https://ssd-api.jpl.nasa.gov/doc/horizons.html",
+   "url": "https://ssd.jpl.nasa.gov/api/horizons.api?format=text&COMMAND=%27603%27&OBJ_DATA=%27NO%27&MAKE_EPHEM=%27YES%27&EPHEM_TYPE=%27VECTORS%27&CENTER=%27%40-32%27&TIME_TYPE=%27TDB%27&REF_SYSTEM=%27ICRF%27&REF_PLANE=%27FRAME%27&OUT_UNITS=%27KM-S%27&VEC_TABLE=%272%27&VEC_CORR=%27LT%27&VEC_LABELS=%27NO%27&CSV_FORMAT=%27YES%27&TLIST_TYPE=%27JD%27&TLIST=%272444782.504458614%27",
+   "retrieved": "2026-09-30",
+   "sha256": "3b803a177b6306faca118a3df8455c67d4ef6e0d88c58b5b14a64187bb2713ec",
+   "notes": "ICRF, km; VEC_CORR='LT' (target at t − light time as seen from the observer at t); reconstructed trajectory as served by Horizons (source named in the file header)."
+  },
+  {
+   "id": "horizons-uranus-voyager2-1986_parity_c4220129_604_from_-32",
+   "title": "JPL Horizons vector table: NAIF 604 from Voyager 2 at 1981-06-27T00:05:34.040 UTC",
+   "citation": "Giorgini, J. D., Yeomans, D. K., Chamberlin, A. B., Chodas, P. W., Jacobson, R. A., Keesey, M. S., Lieske, J. H., Ostro, S. J., Standish, E. M., Wimberly, R. N. (1996). JPL's On-Line Solar System Data Service. Bulletin of the American Astronomical Society 28(3), 1158. JPL Horizons API: https://ssd-api.jpl.nasa.gov/doc/horizons.html",
+   "url": "https://ssd.jpl.nasa.gov/api/horizons.api?format=text&COMMAND=%27604%27&OBJ_DATA=%27NO%27&MAKE_EPHEM=%27YES%27&EPHEM_TYPE=%27VECTORS%27&CENTER=%27%40-32%27&TIME_TYPE=%27TDB%27&REF_SYSTEM=%27ICRF%27&REF_PLANE=%27FRAME%27&OUT_UNITS=%27KM-S%27&VEC_TABLE=%272%27&VEC_CORR=%27LT%27&VEC_LABELS=%27NO%27&CSV_FORMAT=%27YES%27&TLIST_TYPE=%27JD%27&TLIST=%272444782.504458614%27",
+   "retrieved": "2026-09-30",
+   "sha256": "2cd402897e1879cd17ef5f27c19d409069bf9f25bfdbeef73b92b29c62826731",
+   "notes": "ICRF, km; VEC_CORR='LT' (target at t − light time as seen from the observer at t); reconstructed trajectory as served by Horizons (source named in the file header)."
+  },
+  {
+   "id": "horizons-uranus-voyager2-1986_parity_c4220129_605_from_-32",
+   "title": "JPL Horizons vector table: NAIF 605 from Voyager 2 at 1981-06-27T00:05:34.040 UTC",
+   "citation": "Giorgini, J. D., Yeomans, D. K., Chamberlin, A. B., Chodas, P. W., Jacobson, R. A., Keesey, M. S., Lieske, J. H., Ostro, S. J., Standish, E. M., Wimberly, R. N. (1996). JPL's On-Line Solar System Data Service. Bulletin of the American Astronomical Society 28(3), 1158. JPL Horizons API: https://ssd-api.jpl.nasa.gov/doc/horizons.html",
+   "url": "https://ssd.jpl.nasa.gov/api/horizons.api?format=text&COMMAND=%27605%27&OBJ_DATA=%27NO%27&MAKE_EPHEM=%27YES%27&EPHEM_TYPE=%27VECTORS%27&CENTER=%27%40-32%27&TIME_TYPE=%27TDB%27&REF_SYSTEM=%27ICRF%27&REF_PLANE=%27FRAME%27&OUT_UNITS=%27KM-S%27&VEC_TABLE=%272%27&VEC_CORR=%27LT%27&VEC_LABELS=%27NO%27&CSV_FORMAT=%27YES%27&TLIST_TYPE=%27JD%27&TLIST=%272444782.504458614%27",
+   "retrieved": "2026-09-30",
+   "sha256": "f4845e6f50594536d50b2ecadd0836e86909cd74456dedf89b19bf80127ac2cf",
+   "notes": "ICRF, km; VEC_CORR='LT' (target at t − light time as seen from the observer at t); reconstructed trajectory as served by Horizons (source named in the file header)."
+  },
+  {
+   "id": "uranus-voyager2-1986-c2654450",
+   "title": "Voyager 2 ISS NAC calibrated image C2654450 (voyager.nac.Violet)",
+   "citation": "Voyager 2 ISS narrow-angle camera, calibrated and geometrically corrected (GEOMED) images, PDS Ring-Moon Systems Node volumes VGISS_7xxx (Uranus) / VGISS_8xxx (Neptune), data sets VG2-U/N-ISS-2/3/4/6-PROCESSED (instrument: Smith, B. A. et al. 1977, Voyager imaging experiment, Space Science Reviews 21, 103-127, DOI:10.1007/BF00200847).",
+   "url": "https://opus.pds-rings.seti.org/holdings/volumes/VGISS_7xxx/VGISS_7204/DATA/C26544XX/C2654450_GEOMED.IMG",
+   "retrieved": "2026-09-30",
+   "sha256": "eb290ae9a7e9d1f00e9dc25d51d18b7b564098cecf9204f9d3386324a211bd4c"
+  },
+  {
+   "id": "uranus-voyager2-1986-c2654450-label",
+   "title": "PDS3 label of C2654450",
+   "citation": "Voyager 2 ISS narrow-angle camera, calibrated and geometrically corrected (GEOMED) images, PDS Ring-Moon Systems Node volumes VGISS_7xxx (Uranus) / VGISS_8xxx (Neptune), data sets VG2-U/N-ISS-2/3/4/6-PROCESSED (instrument: Smith, B. A. et al. 1977, Voyager imaging experiment, Space Science Reviews 21, 103-127, DOI:10.1007/BF00200847).",
+   "url": "https://opus.pds-rings.seti.org/holdings/volumes/VGISS_7xxx/VGISS_7204/DATA/C26544XX/C2654450_GEOMED.LBL",
+   "retrieved": "2026-09-30",
+   "sha256": "ce7e50332c571a1b377abd7090e685da4d4f5d2091161a1c77f5b700b26a6cc7"
+  },
+  {
+   "id": "horizons-uranus-voyager2-1986_c2654450_799_from_-32",
+   "title": "JPL Horizons vector table: NAIF 799 from Voyager 2 (@-32) at 1986-01-14T15:34:18.160 UTC",
+   "citation": "Giorgini, J. D., Yeomans, D. K., Chamberlin, A. B., Chodas, P. W., Jacobson, R. A., Keesey, M. S., Lieske, J. H., Ostro, S. J., Standish, E. M., Wimberly, R. N. (1996). JPL's On-Line Solar System Data Service. Bulletin of the American Astronomical Society 28(3), 1158. JPL Horizons API: https://ssd-api.jpl.nasa.gov/doc/horizons.html",
+   "url": "https://ssd.jpl.nasa.gov/api/horizons.api?format=text&COMMAND=%27799%27&OBJ_DATA=%27NO%27&MAKE_EPHEM=%27YES%27&EPHEM_TYPE=%27VECTORS%27&CENTER=%27%40-32%27&TIME_TYPE=%27TDB%27&REF_SYSTEM=%27ICRF%27&REF_PLANE=%27FRAME%27&OUT_UNITS=%27KM-S%27&VEC_TABLE=%272%27&VEC_CORR=%27LT%27&VEC_LABELS=%27NO%27&CSV_FORMAT=%27YES%27&TLIST_TYPE=%27JD%27&TLIST=%272446445.149460004%27",
+   "retrieved": "2026-09-30",
+   "sha256": "660476b313548694bd03d79cd7c2325a2ab19dda7abcad7ea5b245a554c69363",
+   "notes": "ICRF, km; VEC_CORR='LT' (target at t − light time as seen from the observer at t); reconstructed trajectory as served by Horizons (source named in the file header)."
+  },
+  {
+   "id": "uranus-voyager2-1986-c2654456",
+   "title": "Voyager 2 ISS NAC calibrated image C2654456 (voyager.nac.Blue)",
+   "citation": "Voyager 2 ISS narrow-angle camera, calibrated and geometrically corrected (GEOMED) images, PDS Ring-Moon Systems Node volumes VGISS_7xxx (Uranus) / VGISS_8xxx (Neptune), data sets VG2-U/N-ISS-2/3/4/6-PROCESSED (instrument: Smith, B. A. et al. 1977, Voyager imaging experiment, Space Science Reviews 21, 103-127, DOI:10.1007/BF00200847).",
+   "url": "https://opus.pds-rings.seti.org/holdings/volumes/VGISS_7xxx/VGISS_7204/DATA/C26544XX/C2654456_GEOMED.IMG",
+   "retrieved": "2026-09-30",
+   "sha256": "6db7fb6e9693128c80b04cb989dac2125973073d39574dcf55cd2f9a2fc58b52"
+  },
+  {
+   "id": "uranus-voyager2-1986-c2654456-label",
+   "title": "PDS3 label of C2654456",
+   "citation": "Voyager 2 ISS narrow-angle camera, calibrated and geometrically corrected (GEOMED) images, PDS Ring-Moon Systems Node volumes VGISS_7xxx (Uranus) / VGISS_8xxx (Neptune), data sets VG2-U/N-ISS-2/3/4/6-PROCESSED (instrument: Smith, B. A. et al. 1977, Voyager imaging experiment, Space Science Reviews 21, 103-127, DOI:10.1007/BF00200847).",
+   "url": "https://opus.pds-rings.seti.org/holdings/volumes/VGISS_7xxx/VGISS_7204/DATA/C26544XX/C2654456_GEOMED.LBL",
+   "retrieved": "2026-09-30",
+   "sha256": "fac5bfef9f2cb285970d3479ef70e27ec3947ab529bbf5fb848b8b0c14718972"
+  },
+  {
+   "id": "horizons-uranus-voyager2-1986_c2654456_799_from_-32",
+   "title": "JPL Horizons vector table: NAIF 799 from Voyager 2 (@-32) at 1986-01-14T15:39:07.120 UTC",
+   "citation": "Giorgini, J. D., Yeomans, D. K., Chamberlin, A. B., Chodas, P. W., Jacobson, R. A., Keesey, M. S., Lieske, J. H., Ostro, S. J., Standish, E. M., Wimberly, R. N. (1996). JPL's On-Line Solar System Data Service. Bulletin of the American Astronomical Society 28(3), 1158. JPL Horizons API: https://ssd-api.jpl.nasa.gov/doc/horizons.html",
+   "url": "https://ssd.jpl.nasa.gov/api/horizons.api?format=text&COMMAND=%27799%27&OBJ_DATA=%27NO%27&MAKE_EPHEM=%27YES%27&EPHEM_TYPE=%27VECTORS%27&CENTER=%27%40-32%27&TIME_TYPE=%27TDB%27&REF_SYSTEM=%27ICRF%27&REF_PLANE=%27FRAME%27&OUT_UNITS=%27KM-S%27&VEC_TABLE=%272%27&VEC_CORR=%27LT%27&VEC_LABELS=%27NO%27&CSV_FORMAT=%27YES%27&TLIST_TYPE=%27JD%27&TLIST=%272446445.152804448%27",
+   "retrieved": "2026-09-30",
+   "sha256": "9638100b874be2761bc10090f38233978e1b735ac41ff6904fe36bff88ed1213",
+   "notes": "ICRF, km; VEC_CORR='LT' (target at t − light time as seen from the observer at t); reconstructed trajectory as served by Horizons (source named in the file header)."
+  },
+  {
+   "id": "uranus-voyager2-1986-c2654514",
+   "title": "Voyager 2 ISS NAC calibrated image C2654514 (voyager.nac.Green)",
+   "citation": "Voyager 2 ISS narrow-angle camera, calibrated and geometrically corrected (GEOMED) images, PDS Ring-Moon Systems Node volumes VGISS_7xxx (Uranus) / VGISS_8xxx (Neptune), data sets VG2-U/N-ISS-2/3/4/6-PROCESSED (instrument: Smith, B. A. et al. 1977, Voyager imaging experiment, Space Science Reviews 21, 103-127, DOI:10.1007/BF00200847).",
+   "url": "https://opus.pds-rings.seti.org/holdings/volumes/VGISS_7xxx/VGISS_7204/DATA/C26545XX/C2654514_GEOMED.IMG",
+   "retrieved": "2026-09-30",
+   "sha256": "6f8918ce9c4573a179c0d5e0149ccc08466ad496000d1f260a85b6b38b54962f"
+  },
+  {
+   "id": "uranus-voyager2-1986-c2654514-label",
+   "title": "PDS3 label of C2654514",
+   "citation": "Voyager 2 ISS narrow-angle camera, calibrated and geometrically corrected (GEOMED) images, PDS Ring-Moon Systems Node volumes VGISS_7xxx (Uranus) / VGISS_8xxx (Neptune), data sets VG2-U/N-ISS-2/3/4/6-PROCESSED (instrument: Smith, B. A. et al. 1977, Voyager imaging experiment, Space Science Reviews 21, 103-127, DOI:10.1007/BF00200847).",
+   "url": "https://opus.pds-rings.seti.org/holdings/volumes/VGISS_7xxx/VGISS_7204/DATA/C26545XX/C2654514_GEOMED.LBL",
+   "retrieved": "2026-09-30",
+   "sha256": "def12e2f5f4ce22b0f14572a99cff5abbf35a0a0c46f298ad3d100e62706d71c"
+  },
+  {
+   "id": "horizons-uranus-voyager2-1986_c2654514_799_from_-32",
+   "title": "JPL Horizons vector table: NAIF 799 from Voyager 2 (@-32) at 1986-01-14T15:53:28.240 UTC",
+   "citation": "Giorgini, J. D., Yeomans, D. K., Chamberlin, A. B., Chodas, P. W., Jacobson, R. A., Keesey, M. S., Lieske, J. H., Ostro, S. J., Standish, E. M., Wimberly, R. N. (1996). JPL's On-Line Solar System Data Service. Bulletin of the American Astronomical Society 28(3), 1158. JPL Horizons API: https://ssd-api.jpl.nasa.gov/doc/horizons.html",
+   "url": "https://ssd.jpl.nasa.gov/api/horizons.api?format=text&COMMAND=%27799%27&OBJ_DATA=%27NO%27&MAKE_EPHEM=%27YES%27&EPHEM_TYPE=%27VECTORS%27&CENTER=%27%40-32%27&TIME_TYPE=%27TDB%27&REF_SYSTEM=%27ICRF%27&REF_PLANE=%27FRAME%27&OUT_UNITS=%27KM-S%27&VEC_TABLE=%272%27&VEC_CORR=%27LT%27&VEC_LABELS=%27NO%27&CSV_FORMAT=%27YES%27&TLIST_TYPE=%27JD%27&TLIST=%272446445.162771115%27",
+   "retrieved": "2026-09-30",
+   "sha256": "6ed28a460eba420fd0a2ff99ef7620e3fff4cc8230029899387bd687a1ca0264",
+   "notes": "ICRF, km; VEC_CORR='LT' (target at t − light time as seen from the observer at t); reconstructed trajectory as served by Horizons (source named in the file header)."
+  },
+  {
+   "id": "uranus-voyager2-1986-c2654502",
+   "title": "Voyager 2 ISS NAC calibrated image C2654502 (voyager.nac.Orange)",
+   "citation": "Voyager 2 ISS narrow-angle camera, calibrated and geometrically corrected (GEOMED) images, PDS Ring-Moon Systems Node volumes VGISS_7xxx (Uranus) / VGISS_8xxx (Neptune), data sets VG2-U/N-ISS-2/3/4/6-PROCESSED (instrument: Smith, B. A. et al. 1977, Voyager imaging experiment, Space Science Reviews 21, 103-127, DOI:10.1007/BF00200847).",
+   "url": "https://opus.pds-rings.seti.org/holdings/volumes/VGISS_7xxx/VGISS_7204/DATA/C26545XX/C2654502_GEOMED.IMG",
+   "retrieved": "2026-09-30",
+   "sha256": "43082984c20b55944396f82818d32dbe2c26c2b581b3bc289bd7de1d4afa6007"
+  },
+  {
+   "id": "uranus-voyager2-1986-c2654502-label",
+   "title": "PDS3 label of C2654502",
+   "citation": "Voyager 2 ISS narrow-angle camera, calibrated and geometrically corrected (GEOMED) images, PDS Ring-Moon Systems Node volumes VGISS_7xxx (Uranus) / VGISS_8xxx (Neptune), data sets VG2-U/N-ISS-2/3/4/6-PROCESSED (instrument: Smith, B. A. et al. 1977, Voyager imaging experiment, Space Science Reviews 21, 103-127, DOI:10.1007/BF00200847).",
+   "url": "https://opus.pds-rings.seti.org/holdings/volumes/VGISS_7xxx/VGISS_7204/DATA/C26545XX/C2654502_GEOMED.LBL",
+   "retrieved": "2026-09-30",
+   "sha256": "0438887e121f057a1b769b9ef4efd1e3500898cb7941427815590d09b909b4cc"
+  },
+  {
+   "id": "horizons-uranus-voyager2-1986_c2654502_799_from_-32",
+   "title": "JPL Horizons vector table: NAIF 799 from Voyager 2 (@-32) at 1986-01-14T15:43:50.320 UTC",
+   "citation": "Giorgini, J. D., Yeomans, D. K., Chamberlin, A. B., Chodas, P. W., Jacobson, R. A., Keesey, M. S., Lieske, J. H., Ostro, S. J., Standish, E. M., Wimberly, R. N. (1996). JPL's On-Line Solar System Data Service. Bulletin of the American Astronomical Society 28(3), 1158. JPL Horizons API: https://ssd-api.jpl.nasa.gov/doc/horizons.html",
+   "url": "https://ssd.jpl.nasa.gov/api/horizons.api?format=text&COMMAND=%27799%27&OBJ_DATA=%27NO%27&MAKE_EPHEM=%27YES%27&EPHEM_TYPE=%27VECTORS%27&CENTER=%27%40-32%27&TIME_TYPE=%27TDB%27&REF_SYSTEM=%27ICRF%27&REF_PLANE=%27FRAME%27&OUT_UNITS=%27KM-S%27&VEC_TABLE=%272%27&VEC_CORR=%27LT%27&VEC_LABELS=%27NO%27&CSV_FORMAT=%27YES%27&TLIST_TYPE=%27JD%27&TLIST=%272446445.156082226%27",
+   "retrieved": "2026-09-30",
+   "sha256": "79c2adb14c082691130181aad32bd8b7422f6d70cce6629b4315c33cbdc01776",
+   "notes": "ICRF, km; VEC_CORR='LT' (target at t − light time as seen from the observer at t); reconstructed trajectory as served by Horizons (source named in the file header)."
+  }
+ ]
+}

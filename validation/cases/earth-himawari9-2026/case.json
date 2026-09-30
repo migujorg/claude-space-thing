@@ -1,0 +1,1549 @@
+{
+ "schema": "validation-case-v1",
+ "id": "earth-himawari9-2026",
+ "title": "Earth, Himawari-9 AHI, 2026-09-28 04:00 UTC (the app's cloud day), equatorial swath",
+ "summary": "The swath from the sub-satellite point (0°, 140.7°E; 13:23 local solar time) to ~16°S across the whole disk, from the Indian Ocean at the western limb to the evening terminator in the central Pacific, in AHI bands 1-3 (0.47, 0.51, 0.64 µm), from geostationary orbit (35 786 km).",
+ "generated": "2026-09-30T19:03:04+00:00",
+ "observation": {
+  "observer": "Himawari-9",
+  "observerHorizonsId": "(nominal geostationary position from the image header)",
+  "instrument": "Himawari-9 AHI",
+  "target": {
+   "naifId": 399,
+   "name": "Earth"
+  },
+  "images": [
+   {
+    "product": "HS_H09_20260928_0400_B01_FLDK_R10_S0610.DAT.bz2",
+    "band": "ahi9.B01",
+    "utcMid": "2026-09-28T04:05:34.901",
+    "et": 843840400.0,
+    "exposureS": null,
+    "archiveUrl": "https://noaa-himawari9.s3.amazonaws.com/AHI-L1b-FLDK/2026/09/28/0400/HS_H09_20260928_0400_B01_FLDK_R10_S0610.DAT.bz2",
+    "calibration": "I/F = π L d² / E_band; L = counts × slope + intercept (header block 5); E_band = TSIS-1 HSRS averaged over the AHI-09 response",
+    "horizonsSources": [],
+    "fit": null,
+    "registrationSigmaPx": 0.125,
+    "navigation": {
+     "subLonDeg": 140.7,
+     "distanceKm": 42164.0,
+     "cfac": 40932550.0,
+     "lfac": 40932550.0,
+     "coff": 5500.5,
+     "loff": 5500.5,
+     "firstLine": 5501
+    }
+   },
+   {
+    "product": "HS_H09_20260928_0400_B02_FLDK_R10_S0610.DAT.bz2",
+    "band": "ahi9.B02",
+    "utcMid": "2026-09-28T04:05:35.150",
+    "et": 843840400.0,
+    "exposureS": null,
+    "archiveUrl": "https://noaa-himawari9.s3.amazonaws.com/AHI-L1b-FLDK/2026/09/28/0400/HS_H09_20260928_0400_B02_FLDK_R10_S0610.DAT.bz2",
+    "calibration": "I/F = π L d² / E_band; L = counts × slope + intercept (header block 5); E_band = TSIS-1 HSRS averaged over the AHI-09 response",
+    "horizonsSources": [],
+    "fit": null,
+    "registrationSigmaPx": 0.125,
+    "navigation": {
+     "subLonDeg": 140.7,
+     "distanceKm": 42164.0,
+     "cfac": 40932550.0,
+     "lfac": 40932550.0,
+     "coff": 5500.5,
+     "loff": 5500.5,
+     "firstLine": 5501
+    }
+   },
+   {
+    "product": "HS_H09_20260928_0400_B03_FLDK_R05_S0610.DAT.bz2",
+    "band": "ahi9.B03",
+    "utcMid": "2026-09-28T04:05:34.639",
+    "et": 843840400.0,
+    "exposureS": null,
+    "archiveUrl": "https://noaa-himawari9.s3.amazonaws.com/AHI-L1b-FLDK/2026/09/28/0400/HS_H09_20260928_0400_B03_FLDK_R05_S0610.DAT.bz2",
+    "calibration": "I/F = π L d² / E_band; L = counts × slope + intercept (header block 5); E_band = TSIS-1 HSRS averaged over the AHI-09 response",
+    "horizonsSources": [],
+    "fit": null,
+    "registrationSigmaPx": 0.125,
+    "navigation": {
+     "subLonDeg": 140.7,
+     "distanceKm": 42164.0,
+     "cfac": 81865100.0,
+     "lfac": 81865100.0,
+     "coff": 11000.5,
+     "loff": 11000.5,
+     "firstLine": 11001
+    }
+   }
+  ],
+  "referenceImage": 0,
+  "pixel": {
+   "nativePitchRad": 2.7944e-05,
+   "binning": 8,
+   "note": "AHI 1 km fixed grid (band 3's 0.5 km pixels averaged 2×2), resampled onto the pinhole view by the exact scan-angle mapping",
+   "mirroredDisplayOrder": false
+  },
+  "calibration": {
+   "sigmaRel1": [
+    0.05,
+    0.05,
+    0.05
+   ],
+   "note": "Okuyama et al. (2018), for the AHI of the same design on Himawari-8: vicarious-calibration slopes against radiative-transfer simulations deviate from 1 by up to 3 % in bands 1-3 (Table 7), and the method's own uncertainty is 3.6-4.0 % (§5.2.a); combined in quadrature, 5 % (1σ) per band, fully correlated.",
+   "sources": [
+    "okuyama-2018-ahi-calibration"
+   ]
+  }
+ },
+ "view": {
+  "epochUtc": "2026-09-28T04:05:34.901",
+  "et": 843840404.0833569,
+  "camera": {
+   "orient": [
+    0.48032078283637397,
+    0.016091768603490958,
+    -0.8769452665695077,
+    -0.8770920372547566,
+    0.007414415230991808,
+    -0.4802651191072315,
+    -0.0012262788238024652,
+    0.9998430283949548,
+    0.01767525983549193
+   ],
+   "fovY": 0.03084772498538447,
+   "width": 1375,
+   "height": 138,
+   "pixelPitchRad": 0.00022355196664385673,
+   "convention": "SceneCamera: camera→ICRF, columns (right, up, back), row-major; looks along −Z; pixel (x, y), y down, ray ∝ right·(x+½−W/2)s + up·(H/2−y−½)s − back, s = pixelPitchRad = 2·tan(fovY/2)/height"
+  },
+  "bodies": [
+   {
+    "naifId": 399,
+    "name": "Earth",
+    "pos": [
+     36981.58075802934,
+     20252.31144320158,
+     -97.27201509061693
+    ],
+    "toSun": [
+     -149412645.8472398,
+     -11248704.530662112,
+     -4874749.388429014
+    ],
+    "orient": [
+     0.3745007421085021,
+     -0.9272229339521035,
+     0.002612453527643367,
+     0.9272260657487016,
+     0.3745020987087988,
+     3.254058158819184e-05,
+     -0.0010085417024143783,
+     0.0024101485344346363,
+     0.999996587008014
+    ],
+    "radii": [
+     6378.1366,
+     6378.1366,
+     6356.7519
+    ],
+    "rangeKm": 42163.99999999999,
+    "sunDistanceAu": 1.0021182743219805,
+    "phaseDeg": 24.478497797074066,
+    "subObserver": {
+     "latDeg": 2.301248810749781e-16,
+     "eastLonDeg": 140.7
+    },
+    "subSolar": {
+     "latDeg": -2.0128045756273933,
+     "eastLonDeg": 116.29931487763264
+    },
+    "rings": false
+   }
+  ],
+  "sun": {
+   "pos": [
+    -149375664.26648176,
+    -11228452.21921891,
+    -4874846.660444105
+   ]
+  }
+ },
+ "reference": {
+  "file": "reference.bin",
+  "dtype": "float32-le",
+  "shape": [
+   3,
+   138,
+   1375
+  ],
+  "bands": [
+   "ahi9.B01",
+   "ahi9.B02",
+   "ahi9.B03"
+  ],
+  "quantity": "I/F (NaN = no valid data)",
+  "note": "each band image resampled (area average) onto the view with its own fitted registration; row 0 = top"
+ },
+ "comparison": {
+  "renderOutput": "the renderer's HDR buffer in absolute XYZS radiance (X, Y, Z in cd/m² with K_m = 683.002 lm/W, S in scotopic cd/m² with K'_m = 1700.06 lm/W), before the eye model (no exposure, glare, PSF or tone mapping), rendered for `view` at width × height",
+  "roiStatistic": "mean over the pixels x0 ≤ x < x1, y0 ≤ y < y1 of `rect`",
+  "tolerance": "2σ of the combined 1σ budget (calibration, noise, registration, spectral model); sky ROIs are upper limits"
+ },
+ "rois": [
+  {
+   "id": "disk-centre",
+   "kind": "disk-centre",
+   "note": null,
+   "target": 399,
+   "rect": [
+    685,
+    1,
+    690,
+    6
+   ],
+   "pixels": 25,
+   "geometry": {
+    "classFractions": {
+     "lit surface": 1.0
+    },
+    "incidenceDeg": {
+     "mean": 24.46,
+     "min": 24.277,
+     "max": 24.643
+    },
+    "emissionDeg": {
+     "mean": 0.306,
+     "min": 0.076,
+     "max": 0.52
+    },
+    "phaseDeg": {
+     "mean": 24.482,
+     "min": 24.449,
+     "max": 24.515
+    },
+    "latitudeDeg": {
+     "mean": -0.234,
+     "min": -0.405,
+     "max": -0.063
+    },
+    "eastLongitudeDeg": {
+     "mean": 140.7,
+     "spreadDeg": 0.104
+    }
+   },
+   "bands": [
+    {
+     "filter": "ahi9.B01",
+     "product": "HS_H09_20260928_0400_B01_FLDK_R10_S0610.DAT.bz2",
+     "iof": {
+      "mean": 0.154983,
+      "std": 0.03040375,
+      "n": 25,
+      "nInRect": 25
+     },
+     "sigmaRel": {
+      "calibration": 0.05,
+      "noise": 0.03923,
+      "registration": 0.00172
+     },
+     "bandRadiance": {
+      "value": 0.1003787,
+      "sigma": 0.006382027,
+      "unit": "W m-2 sr-1 nm-1",
+      "bandSolarIrradiance1AU": 2.043361
+     }
+    },
+    {
+     "filter": "ahi9.B02",
+     "product": "HS_H09_20260928_0400_B02_FLDK_R10_S0610.DAT.bz2",
+     "iof": {
+      "mean": 0.1232043,
+      "std": 0.02977766,
+      "n": 25,
+      "nInRect": 25
+     },
+     "sigmaRel": {
+      "calibration": 0.05,
+      "noise": 0.04834,
+      "registration": 0.00206
+     },
+     "bandRadiance": {
+      "value": 0.07497503,
+      "sigma": 0.005216499,
+      "unit": "W m-2 sr-1 nm-1",
+      "bandSolarIrradiance1AU": 1.9199
+     }
+    },
+    {
+     "filter": "ahi9.B03",
+     "product": "HS_H09_20260928_0400_B03_FLDK_R05_S0610.DAT.bz2",
+     "iof": {
+      "mean": 0.08947824,
+      "std": 0.03181498,
+      "n": 25,
+      "nInRect": 25
+     },
+     "sigmaRel": {
+      "calibration": 0.05,
+      "noise": 0.07111,
+      "registration": 0.00306
+     },
+     "bandRadiance": {
+      "value": 0.0459526,
+      "sigma": 0.003997159,
+      "unit": "W m-2 sr-1 nm-1",
+      "bandSolarIrradiance1AU": 1.620244
+     }
+    }
+   ],
+   "expected": {
+    "type": "value",
+    "XYZS": [
+     4569.841,
+     4677.931,
+     7132.87,
+     13497.45
+    ],
+    "sigma": [
+     287.3538,
+     298.2361,
+     441.3652,
+     787.2514
+    ],
+    "tolerance": [
+     574.7076,
+     596.4723,
+     882.7305,
+     1574.503
+    ],
+    "comparison": "|renderer mean XYZS over rect − XYZS| ≤ tolerance, per channel",
+    "label": "estimated",
+    "method": "XYZS radiance of r(λ) = p̃(λ)·ρ(λ) (validation/photometry.py): p̃ = the disk-integrated geometric-albedo spectrum of NAIF 399 (the light stage's input, label estimated); ρ from 3 band I/F value(s); Sun at 1.00212 AU (TSIS-1 HSRS, CIE 1931 2° and 1951 scotopic observers).",
+    "budget": {
+     "calibration": [
+      228.4921,
+      233.8965,
+      356.6435,
+      674.8726
+     ],
+     "noiseAndRegistration": [
+      165.8514,
+      175.0751,
+      259.9904,
+      400.6008
+     ],
+     "spectralModel": [
+      53.44995,
+      59.88268,
+      3.69701,
+      61.8926
+     ],
+     "spectralModelMethod": "linear vs monotone-cubic interpolation of ρ between band centres"
+    },
+    "bandCentersNm": [
+     469.98,
+     509.4,
+     638.2
+    ],
+    "rho": [
+     0.5245108,
+     0.4840464,
+     0.4158106
+    ],
+    "colorCriterion": "Band centres 469.977, 509.398, 638.198 nm. Colour is 'derived' only if the bands bracket ≥ 99 % of every channel's sunlight-weighted observer integrand (here 16.0 % for the worst channel) and no gap between band centres inside the central 98 % range (407-669 nm) exceeds half the narrowest observer-function FWHM (27 nm; widest gap here 129 nm). Result: estimated."
+   },
+   "cloudTimeOffsetH": -0.03
+  },
+  {
+   "id": "limb",
+   "kind": "limb",
+   "note": null,
+   "target": 399,
+   "rect": [
+    41,
+    33,
+    45,
+    37
+   ],
+   "pixels": 16,
+   "geometry": {
+    "classFractions": {
+     "lit surface": 1.0
+    },
+    "incidenceDeg": {
+     "mean": 38.078,
+     "min": 37.618,
+     "max": 38.548
+    },
+    "emissionDeg": {
+     "mean": 70.751,
+     "min": 70.263,
+     "max": 71.248
+    },
+    "phaseDeg": {
+     "mean": 32.686,
+     "min": 32.661,
+     "max": 32.711
+    },
+    "latitudeDeg": {
+     "mean": -2.738,
+     "min": -2.89,
+     "max": -2.587
+    },
+    "eastLongitudeDeg": {
+     "mean": 78.194,
+     "spreadDeg": 0.273
+    }
+   },
+   "bands": [
+    {
+     "filter": "ahi9.B01",
+     "product": "HS_H09_20260928_0400_B01_FLDK_R10_S0610.DAT.bz2",
+     "iof": {
+      "mean": 0.2351662,
+      "std": 0.02181143,
+      "n": 16,
+      "nInRect": 16
+     },
+     "sigmaRel": {
+      "calibration": 0.05,
+      "noise": 0.02319,
+      "registration": 0.00427
+     },
+     "bandRadiance": {
+      "value": 0.1523113,
+      "sigma": 0.008419808,
+      "unit": "W m-2 sr-1 nm-1",
+      "bandSolarIrradiance1AU": 2.043361
+     }
+    },
+    {
+     "filter": "ahi9.B02",
+     "product": "HS_H09_20260928_0400_B02_FLDK_R10_S0610.DAT.bz2",
+     "iof": {
+      "mean": 0.1783308,
+      "std": 0.02366792,
+      "n": 16,
+      "nInRect": 16
+     },
+     "sigmaRel": {
+      "calibration": 0.05,
+      "noise": 0.03318,
+      "registration": 0.006
+     },
+     "bandRadiance": {
+      "value": 0.1085218,
+      "sigma": 0.006544621,
+      "unit": "W m-2 sr-1 nm-1",
+      "bandSolarIrradiance1AU": 1.9199
+     }
+    },
+    {
+     "filter": "ahi9.B03",
+     "product": "HS_H09_20260928_0400_B03_FLDK_R05_S0610.DAT.bz2",
+     "iof": {
+      "mean": 0.1078985,
+      "std": 0.02855729,
+      "n": 16,
+      "nInRect": 16
+     },
+     "sigmaRel": {
+      "calibration": 0.05,
+      "noise": 0.06617,
+      "registration": 0.01209
+     },
+     "bandRadiance": {
+      "value": 0.05541252,
+      "sigma": 0.004644189,
+      "unit": "W m-2 sr-1 nm-1",
+      "bandSolarIrradiance1AU": 1.620244
+     }
+    }
+   ],
+   "expected": {
+    "type": "value",
+    "XYZS": [
+     6204.117,
+     6411.472,
+     10782.34,
+     19745.68
+    ],
+    "sigma": [
+     373.0221,
+     386.7649,
+     588.9871,
+     1068.263
+    ],
+    "tolerance": [
+     746.0443,
+     773.5299,
+     1177.974,
+     2136.527
+    ],
+    "comparison": "|renderer mean XYZS over rect − XYZS| ≤ tolerance, per channel",
+    "label": "estimated",
+    "method": "XYZS radiance of r(λ) = p̃(λ)·ρ(λ) (validation/photometry.py): p̃ = the disk-integrated geometric-albedo spectrum of NAIF 399 (the light stage's input, label estimated); ρ from 3 band I/F value(s); Sun at 1.00212 AU (TSIS-1 HSRS, CIE 1931 2° and 1951 scotopic observers).",
+    "budget": {
+     "calibration": [
+      310.2059,
+      320.5736,
+      539.1169,
+      987.284
+     ],
+     "noiseAndRegistration": [
+      183.0716,
+      186.3872,
+      237.1063,
+      392.0561
+     ],
+     "spectralModel": [
+      96.96718,
+      109.9068,
+      6.271854,
+      112.9124
+     ],
+     "spectralModelMethod": "linear vs monotone-cubic interpolation of ρ between band centres"
+    },
+    "bandCentersNm": [
+     469.98,
+     509.4,
+     638.2
+    ],
+    "rho": [
+     0.7958756,
+     0.700628,
+     0.5014104
+    ],
+    "colorCriterion": "Band centres 469.977, 509.398, 638.198 nm. Colour is 'derived' only if the bands bracket ≥ 99 % of every channel's sunlight-weighted observer integrand (here 16.0 % for the worst channel) and no gap between band centres inside the central 98 % range (407-669 nm) exceeds half the narrowest observer-function FWHM (27 nm; widest gap here 129 nm). Result: estimated."
+   },
+   "cloudTimeOffsetH": -4.19
+  },
+  {
+   "id": "terminator",
+   "kind": "terminator",
+   "note": null,
+   "target": 399,
+   "rect": [
+    1332,
+    29,
+    1336,
+    33
+   ],
+   "pixels": 16,
+   "geometry": {
+    "classFractions": {
+     "lit surface": 1.0
+    },
+    "incidenceDeg": {
+     "mean": 87.26,
+     "min": 86.797,
+     "max": 87.733
+    },
+    "emissionDeg": {
+     "mean": 71.201,
+     "min": 70.704,
+     "max": 71.706
+    },
+    "phaseDeg": {
+     "mean": 16.352,
+     "min": 16.325,
+     "max": 16.378
+    },
+    "latitudeDeg": {
+     "mean": -2.426,
+     "min": -2.577,
+     "max": -2.275
+    },
+    "eastLongitudeDeg": {
+     "mean": 203.641,
+     "spreadDeg": 0.279
+    }
+   },
+   "bands": [
+    {
+     "filter": "ahi9.B01",
+     "product": "HS_H09_20260928_0400_B01_FLDK_R10_S0610.DAT.bz2",
+     "iof": {
+      "mean": 0.06976868,
+      "std": 0.005163869,
+      "n": 16,
+      "nInRect": 16
+     },
+     "sigmaRel": {
+      "calibration": 0.05,
+      "noise": 0.0185,
+      "registration": 0.00642
+     },
+     "bandRadiance": {
+      "value": 0.04518745,
+      "sigma": 0.002426517,
+      "unit": "W m-2 sr-1 nm-1",
+      "bandSolarIrradiance1AU": 2.043361
+     }
+    },
+    {
+     "filter": "ahi9.B02",
+     "product": "HS_H09_20260928_0400_B02_FLDK_R10_S0610.DAT.bz2",
+     "iof": {
+      "mean": 0.05739284,
+      "std": 0.004620617,
+      "n": 16,
+      "nInRect": 16
+     },
+     "sigmaRel": {
+      "calibration": 0.05,
+      "noise": 0.02013,
+      "registration": 0.00597
+     },
+     "bandRadiance": {
+      "value": 0.03492597,
+      "sigma": 0.001893996,
+      "unit": "W m-2 sr-1 nm-1",
+      "bandSolarIrradiance1AU": 1.9199
+     }
+    },
+    {
+     "filter": "ahi9.B03",
+     "product": "HS_H09_20260928_0400_B03_FLDK_R05_S0610.DAT.bz2",
+     "iof": {
+      "mean": 0.04140072,
+      "std": 0.005385088,
+      "n": 16,
+      "nInRect": 16
+     },
+     "sigmaRel": {
+      "calibration": 0.05,
+      "noise": 0.03252,
+      "registration": 0.00228
+     },
+     "bandRadiance": {
+      "value": 0.02126182,
+      "sigma": 0.001269072,
+      "unit": "W m-2 sr-1 nm-1",
+      "bandSolarIrradiance1AU": 1.620244
+     }
+    }
+   ],
+   "expected": {
+    "type": "value",
+    "XYZS": [
+     2103.877,
+     2168.825,
+     3219.514,
+     6189.359
+    ],
+    "sigma": [
+     110.8955,
+     114.3166,
+     171.2118,
+     320.7694
+    ],
+    "tolerance": [
+     221.7909,
+     228.6331,
+     342.4236,
+     641.5387
+    ],
+    "comparison": "|renderer mean XYZS over rect − XYZS| ≤ tolerance, per channel",
+    "label": "estimated",
+    "method": "XYZS radiance of r(λ) = p̃(λ)·ρ(λ) (validation/photometry.py): p̃ = the disk-integrated geometric-albedo spectrum of NAIF 399 (the light stage's input, label estimated); ρ from 3 band I/F value(s); Sun at 1.00212 AU (TSIS-1 HSRS, CIE 1931 2° and 1951 scotopic observers).",
+    "budget": {
+     "calibration": [
+      105.1939,
+      108.4413,
+      160.9757,
+      309.468
+     ],
+     "noiseAndRegistration": [
+      35.06769,
+      36.13424,
+      58.3121,
+      84.37632
+     ],
+     "spectralModel": [
+      1.520504,
+      1.756828,
+      0.08689052,
+      1.78709
+     ],
+     "spectralModelMethod": "linear vs monotone-cubic interpolation of ρ between band centres"
+    },
+    "bandCentersNm": [
+     469.98,
+     509.4,
+     638.2
+    ],
+    "rho": [
+     0.2361189,
+     0.2254856,
+     0.1923916
+    ],
+    "colorCriterion": "Band centres 469.977, 509.398, 638.198 nm. Colour is 'derived' only if the bands bracket ≥ 99 % of every channel's sunlight-weighted observer integrand (here 16.0 % for the worst channel) and no gap between band centres inside the central 98 % range (407-669 nm) exceeds half the narrowest observer-function FWHM (27 nm; widest gap here 129 nm). Result: estimated."
+   },
+   "cloudTimeOffsetH": 4.17
+  },
+  {
+   "id": "near-centre-130E",
+   "kind": "point",
+   "note": "within ±1 h of the VIIRS overpass: the app's clouds are those of this image",
+   "target": 399,
+   "rect": [
+    539,
+    81,
+    543,
+    85
+   ],
+   "pixels": 16,
+   "geometry": {
+    "classFractions": {
+     "lit surface": 1.0
+    },
+    "incidenceDeg": {
+     "mean": 14.247,
+     "min": 14.08,
+     "max": 14.415
+    },
+    "emissionDeg": {
+     "mean": 14.41,
+     "min": 14.186,
+     "max": 14.633
+    },
+    "phaseDeg": {
+     "mean": 26.452,
+     "min": 26.425,
+     "max": 26.478
+    },
+    "latitudeDeg": {
+     "mean": -5.983,
+     "min": -6.12,
+     "max": -5.846
+    },
+    "eastLongitudeDeg": {
+     "mean": 130.007,
+     "spreadDeg": 0.086
+    }
+   },
+   "bands": [
+    {
+     "filter": "ahi9.B01",
+     "product": "HS_H09_20260928_0400_B01_FLDK_R10_S0610.DAT.bz2",
+     "iof": {
+      "mean": 0.1856045,
+      "std": 0.01063507,
+      "n": 16,
+      "nInRect": 16
+     },
+     "sigmaRel": {
+      "calibration": 0.05,
+      "noise": 0.01432,
+      "registration": 0.00515
+     },
+     "bandRadiance": {
+      "value": 0.1202115,
+      "sigma": 0.006283012,
+      "unit": "W m-2 sr-1 nm-1",
+      "bandSolarIrradiance1AU": 2.043361
+     }
+    },
+    {
+     "filter": "ahi9.B02",
+     "product": "HS_H09_20260928_0400_B02_FLDK_R10_S0610.DAT.bz2",
+     "iof": {
+      "mean": 0.1551048,
+      "std": 0.01029698,
+      "n": 16,
+      "nInRect": 16
+     },
+     "sigmaRel": {
+      "calibration": 0.05,
+      "noise": 0.0166,
+      "registration": 0.00591
+     },
+     "bandRadiance": {
+      "value": 0.09438784,
+      "sigma": 0.005003792,
+      "unit": "W m-2 sr-1 nm-1",
+      "bandSolarIrradiance1AU": 1.9199
+     }
+    },
+    {
+     "filter": "ahi9.B03",
+     "product": "HS_H09_20260928_0400_B03_FLDK_R05_S0610.DAT.bz2",
+     "iof": {
+      "mean": 0.121865,
+      "std": 0.01146896,
+      "n": 16,
+      "nInRect": 16
+     },
+     "sigmaRel": {
+      "calibration": 0.05,
+      "noise": 0.02353,
+      "registration": 0.0073
+     },
+     "bandRadiance": {
+      "value": 0.06258518,
+      "sigma": 0.003488481,
+      "unit": "W m-2 sr-1 nm-1",
+      "bandSolarIrradiance1AU": 1.620244
+     }
+    }
+   ],
+   "expected": {
+    "type": "value",
+    "XYZS": [
+     5890.911,
+     6031.778,
+     8576.797,
+     16711.19
+    ],
+    "sigma": [
+     305.0591,
+     312.8671,
+     445.4985,
+     855.9157
+    ],
+    "tolerance": [
+     610.1181,
+     625.7342,
+     890.997,
+     1711.831
+    ],
+    "comparison": "|renderer mean XYZS over rect − XYZS| ≤ tolerance, per channel",
+    "label": "estimated",
+    "method": "XYZS radiance of r(λ) = p̃(λ)·ρ(λ) (validation/photometry.py): p̃ = the disk-integrated geometric-albedo spectrum of NAIF 399 (the light stage's input, label estimated); ρ from 3 band I/F value(s); Sun at 1.00212 AU (TSIS-1 HSRS, CIE 1931 2° and 1951 scotopic observers).",
+    "budget": {
+     "calibration": [
+      294.5456,
+      301.5889,
+      428.8399,
+      835.5597
+     ],
+     "noiseAndRegistration": [
+      77.75945,
+      81.21648,
+      120.6826,
+      184.6107
+     ],
+     "spectralModel": [
+      16.04387,
+      18.27162,
+      1.007967,
+      18.72511
+     ],
+     "spectralModelMethod": "linear vs monotone-cubic interpolation of ρ between band centres"
+    },
+    "bandCentersNm": [
+     469.98,
+     509.4,
+     638.2
+    ],
+    "rho": [
+     0.6281434,
+     0.6093775,
+     0.5663136
+    ],
+    "colorCriterion": "Band centres 469.977, 509.398, 638.198 nm. Colour is 'derived' only if the bands bracket ≥ 99 % of every channel's sunlight-weighted observer integrand (here 16.0 % for the worst channel) and no gap between band centres inside the central 98 % range (407-669 nm) exceeds half the narrowest observer-function FWHM (27 nm; widest gap here 129 nm). Result: estimated."
+   },
+   "cloudTimeOffsetH": -0.74
+  },
+  {
+   "id": "near-centre-150E",
+   "kind": "point",
+   "note": "within ±1 h of the VIIRS overpass: the app's clouds are those of this image",
+   "target": 399,
+   "rect": [
+    813,
+    81,
+    817,
+    85
+   ],
+   "pixels": 16,
+   "geometry": {
+    "classFractions": {
+     "lit surface": 1.0
+    },
+    "incidenceDeg": {
+     "mean": 33.832,
+     "min": 33.68,
+     "max": 33.985
+    },
+    "emissionDeg": {
+     "mean": 12.998,
+     "min": 12.772,
+     "max": 13.223
+    },
+    "phaseDeg": {
+     "mean": 22.971,
+     "min": 22.944,
+     "max": 22.998
+    },
+    "latitudeDeg": {
+     "mean": -5.978,
+     "min": -6.115,
+     "max": -5.842
+    },
+    "eastLongitudeDeg": {
+     "mean": 149.986,
+     "spreadDeg": 0.085
+    }
+   },
+   "bands": [
+    {
+     "filter": "ahi9.B01",
+     "product": "HS_H09_20260928_0400_B01_FLDK_R10_S0610.DAT.bz2",
+     "iof": {
+      "mean": 0.5841472,
+      "std": 0.07459221,
+      "n": 16,
+      "nInRect": 16
+     },
+     "sigmaRel": {
+      "calibration": 0.05,
+      "noise": 0.03192,
+      "registration": 0.00475
+     },
+     "bandRadiance": {
+      "value": 0.3783377,
+      "sigma": 0.02251571,
+      "unit": "W m-2 sr-1 nm-1",
+      "bandSolarIrradiance1AU": 2.043361
+     }
+    },
+    {
+     "filter": "ahi9.B02",
+     "product": "HS_H09_20260928_0400_B02_FLDK_R10_S0610.DAT.bz2",
+     "iof": {
+      "mean": 0.5423712,
+      "std": 0.07191556,
+      "n": 16,
+      "nInRect": 16
+     },
+     "sigmaRel": {
+      "calibration": 0.05,
+      "noise": 0.03315,
+      "registration": 0.00488
+     },
+     "bandRadiance": {
+      "value": 0.3300557,
+      "sigma": 0.01986552,
+      "unit": "W m-2 sr-1 nm-1",
+      "bandSolarIrradiance1AU": 1.9199
+     }
+    },
+    {
+     "filter": "ahi9.B03",
+     "product": "HS_H09_20260928_0400_B03_FLDK_R05_S0610.DAT.bz2",
+     "iof": {
+      "mean": 0.5271674,
+      "std": 0.07399928,
+      "n": 16,
+      "nInRect": 16
+     },
+     "sigmaRel": {
+      "calibration": 0.05,
+      "noise": 0.03509,
+      "registration": 0.00535
+     },
+     "bandRadiance": {
+      "value": 0.270733,
+      "sigma": 0.01660134,
+      "unit": "W m-2 sr-1 nm-1",
+      "bandSolarIrradiance1AU": 1.620244
+     }
+    }
+   ],
+   "expected": {
+    "type": "value",
+    "XYZS": [
+     22409.41,
+     22741.22,
+     27246.56,
+     56900.41
+    ],
+    "sigma": [
+     1234.152,
+     1265.664,
+     1582.531,
+     3103.945
+    ],
+    "tolerance": [
+     2468.304,
+     2531.328,
+     3165.061,
+     6207.889
+    ],
+    "comparison": "|renderer mean XYZS over rect − XYZS| ≤ tolerance, per channel",
+    "label": "estimated",
+    "method": "XYZS radiance of r(λ) = p̃(λ)·ρ(λ) (validation/photometry.py): p̃ = the disk-integrated geometric-albedo spectrum of NAIF 399 (the light stage's input, label estimated); ρ from 3 band I/F value(s); Sun at 1.00212 AU (TSIS-1 HSRS, CIE 1931 2° and 1951 scotopic observers).",
+    "budget": {
+     "calibration": [
+      1120.47,
+      1137.061,
+      1362.328,
+      2845.02
+     ],
+     "noiseAndRegistration": [
+      492.2987,
+      525.834,
+      805.2078,
+      1227.199
+     ],
+     "spectralModel": [
+      159.1224,
+      180.2659,
+      10.323,
+      185.2436
+     ],
+     "spectralModelMethod": "linear vs monotone-cubic interpolation of ρ between band centres"
+    },
+    "bandCentersNm": [
+     469.98,
+     509.4,
+     638.2
+    ],
+    "rho": [
+     1.976936,
+     2.130873,
+     2.449778
+    ],
+    "colorCriterion": "Band centres 469.977, 509.398, 638.198 nm. Colour is 'derived' only if the bands bracket ≥ 99 % of every channel's sunlight-weighted observer integrand (here 16.0 % for the worst channel) and no gap between band centres inside the central 98 % range (407-669 nm) exceeds half the narrowest observer-function FWHM (27 nm; widest gap here 129 nm). Result: estimated."
+   },
+   "cloudTimeOffsetH": 0.59
+  },
+  {
+   "id": "near-centre-141E-12S",
+   "kind": "point",
+   "note": "within ±1 h of the VIIRS overpass: the app's clouds are those of this image",
+   "target": 399,
+   "rect": [
+    690,
+    133,
+    694,
+    137
+   ],
+   "pixels": 16,
+   "geometry": {
+    "classFractions": {
+     "lit surface": 1.0
+    },
+    "incidenceDeg": {
+     "mean": 25.788,
+     "min": 25.62,
+     "max": 25.956
+    },
+    "emissionDeg": {
+     "mean": 11.557,
+     "min": 11.389,
+     "max": 11.726
+    },
+    "phaseDeg": {
+     "mean": 24.624,
+     "min": 24.597,
+     "max": 24.651
+    },
+    "latitudeDeg": {
+     "mean": -9.76,
+     "min": -9.898,
+     "max": -9.622
+    },
+    "eastLongitudeDeg": {
+     "mean": 141.029,
+     "spreadDeg": 0.084
+    }
+   },
+   "bands": [
+    {
+     "filter": "ahi9.B01",
+     "product": "HS_H09_20260928_0400_B01_FLDK_R10_S0610.DAT.bz2",
+     "iof": {
+      "mean": 0.1742905,
+      "std": 0.01331205,
+      "n": 16,
+      "nInRect": 16
+     },
+     "sigmaRel": {
+      "calibration": 0.05,
+      "noise": 0.01909,
+      "registration": 0.00394
+     },
+     "bandRadiance": {
+      "value": 0.1128837,
+      "sigma": 0.006058134,
+      "unit": "W m-2 sr-1 nm-1",
+      "bandSolarIrradiance1AU": 2.043361
+     }
+    },
+    {
+     "filter": "ahi9.B02",
+     "product": "HS_H09_20260928_0400_B02_FLDK_R10_S0610.DAT.bz2",
+     "iof": {
+      "mean": 0.1420849,
+      "std": 0.01647781,
+      "n": 16,
+      "nInRect": 16
+     },
+     "sigmaRel": {
+      "calibration": 0.05,
+      "noise": 0.02899,
+      "registration": 0.00646
+     },
+     "bandRadiance": {
+      "value": 0.08646468,
+      "sigma": 0.005028557,
+      "unit": "W m-2 sr-1 nm-1",
+      "bandSolarIrradiance1AU": 1.9199
+     }
+    },
+    {
+     "filter": "ahi9.B03",
+     "product": "HS_H09_20260928_0400_B03_FLDK_R05_S0610.DAT.bz2",
+     "iof": {
+      "mean": 0.06902875,
+      "std": 0.00976418,
+      "n": 16,
+      "nInRect": 16
+     },
+     "sigmaRel": {
+      "calibration": 0.05,
+      "noise": 0.03536,
+      "registration": 0.00629
+     },
+     "bandRadiance": {
+      "value": 0.03545053,
+      "sigma": 0.002182466,
+      "unit": "W m-2 sr-1 nm-1",
+      "bandSolarIrradiance1AU": 1.620244
+     }
+    }
+   ],
+   "expected": {
+    "type": "value",
+    "XYZS": [
+     4457.138,
+     4779.239,
+     8032.856,
+     15048.48
+    ],
+    "sigma": [
+     273.4277,
+     308.3155,
+     427.2615,
+     813.3203
+    ],
+    "tolerance": [
+     546.8554,
+     616.631,
+     854.523,
+     1626.641
+    ],
+    "comparison": "|renderer mean XYZS over rect − XYZS| ≤ tolerance, per channel",
+    "label": "estimated",
+    "method": "XYZS radiance of r(λ) = p̃(λ)·ρ(λ) (validation/photometry.py): p̃ = the disk-integrated geometric-albedo spectrum of NAIF 399 (the light stage's input, label estimated); ρ from 3 band I/F value(s); Sun at 1.00212 AU (TSIS-1 HSRS, CIE 1931 2° and 1951 scotopic observers).",
+    "budget": {
+     "calibration": [
+      222.8569,
+      238.9619,
+      401.6428,
+      752.4239
+     ],
+     "noiseAndRegistration": [
+      77.46739,
+      104.257,
+      145.5913,
+      261.0986
+     ],
+     "spectralModel": [
+      138.1895,
+      164.5787,
+      6.213628,
+      164.8504
+     ],
+     "spectralModelMethod": "linear vs monotone-cubic interpolation of ρ between band centres"
+    },
+    "bandCentersNm": [
+     469.98,
+     509.4,
+     638.2
+    ],
+    "rho": [
+     0.5898534,
+     0.5582247,
+     0.3207807
+    ],
+    "colorCriterion": "Band centres 469.977, 509.398, 638.198 nm. Colour is 'derived' only if the bands bracket ≥ 99 % of every channel's sunlight-weighted observer integrand (here 16.0 % for the worst channel) and no gap between band centres inside the central 98 % range (407-669 nm) exceeds half the narrowest observer-function FWHM (27 nm; widest gap here 129 nm). Result: estimated."
+   },
+   "cloudTimeOffsetH": -0.01
+  },
+  {
+   "id": "sky-near",
+   "kind": "sky-near",
+   "note": null,
+   "target": 399,
+   "rect": [
+    1370,
+    92,
+    1374,
+    96
+   ],
+   "pixels": 16,
+   "geometry": {
+    "classFractions": {
+     "sky": 1.0
+    }
+   },
+   "bands": [
+    {
+     "filter": "ahi9.B01",
+     "product": "HS_H09_20260928_0400_B01_FLDK_R10_S0610.DAT.bz2",
+     "iof": {
+      "mean": 7.543808e-05,
+      "std": 0.0001131912,
+      "n": 16,
+      "nInRect": 16
+     },
+     "sigmaRel": {
+      "calibration": 0.05,
+      "noise": 0.37511,
+      "registration": 0.04534
+     },
+     "bandRadiance": {
+      "value": 4.885938e-05,
+      "sigma": 1.862211e-05,
+      "unit": "W m-2 sr-1 nm-1",
+      "bandSolarIrradiance1AU": 2.043361
+     }
+    },
+    {
+     "filter": "ahi9.B02",
+     "product": "HS_H09_20260928_0400_B02_FLDK_R10_S0610.DAT.bz2",
+     "iof": {
+      "mean": 9.742453e-06,
+      "std": 6.782593e-05,
+      "n": 16,
+      "nInRect": 16
+     },
+     "sigmaRel": {
+      "calibration": 0.05,
+      "noise": 1.74047,
+      "registration": 0.10959
+     },
+     "bandRadiance": {
+      "value": 5.928694e-06,
+      "sigma": 1.034342e-05,
+      "unit": "W m-2 sr-1 nm-1",
+      "bandSolarIrradiance1AU": 1.9199
+     }
+    },
+    {
+     "filter": "ahi9.B03",
+     "product": "HS_H09_20260928_0400_B03_FLDK_R05_S0610.DAT.bz2",
+     "iof": {
+      "mean": 1.109155e-05,
+      "std": 6.179521e-05,
+      "n": 16,
+      "nInRect": 16
+     },
+     "sigmaRel": {
+      "calibration": 0.05,
+      "noise": 1.39284,
+      "registration": 0.12886
+     },
+     "bandRadiance": {
+      "value": 5.696196e-06,
+      "sigma": 7.972885e-06,
+      "unit": "W m-2 sr-1 nm-1",
+      "bandSolarIrradiance1AU": 1.620244
+     }
+    }
+   ],
+   "expected": {
+    "type": "upper-limit",
+    "upperLimitXYZS": [
+     12.4756,
+     12.88124,
+     13.43938,
+     30.59658
+    ],
+    "comparison": "every channel of the renderer's mean radiance over rect ≤ upperLimitXYZS",
+    "label": "derived",
+    "method": "Largest band I/F in the window + 2 × its pixel standard deviation (I/F 0.000302), converted with a solar (grey) spectrum. The camera's scattered light and the calibration's zero level make this an upper limit on the true sky."
+   }
+  },
+  {
+   "id": "sky-far",
+   "kind": "sky-far",
+   "note": null,
+   "target": 399,
+   "rect": [
+    1,
+    133,
+    5,
+    137
+   ],
+   "pixels": 16,
+   "geometry": {
+    "classFractions": {
+     "sky": 1.0
+    }
+   },
+   "bands": [
+    {
+     "filter": "ahi9.B01",
+     "product": "HS_H09_20260928_0400_B01_FLDK_R10_S0610.DAT.bz2",
+     "iof": {
+      "mean": 0.000842639,
+      "std": 9.347619e-05,
+      "n": 16,
+      "nInRect": 16
+     },
+     "sigmaRel": {
+      "calibration": 0.05,
+      "noise": 0.02773,
+      "registration": 0.00612
+     },
+     "bandRadiance": {
+      "value": 0.0005457565,
+      "sigma": 3.138258e-05,
+      "unit": "W m-2 sr-1 nm-1",
+      "bandSolarIrradiance1AU": 2.043361
+     }
+    },
+    {
+     "filter": "ahi9.B02",
+     "product": "HS_H09_20260928_0400_B02_FLDK_R10_S0610.DAT.bz2",
+     "iof": {
+      "mean": 0.0005985815,
+      "std": 9.777568e-05,
+      "n": 16,
+      "nInRect": 16
+     },
+     "sigmaRel": {
+      "calibration": 0.05,
+      "noise": 0.04084,
+      "registration": 0.0091
+     },
+     "bandRadiance": {
+      "value": 0.0003642621,
+      "sigma": 2.374813e-05,
+      "unit": "W m-2 sr-1 nm-1",
+      "bandSolarIrradiance1AU": 1.9199
+     }
+    },
+    {
+     "filter": "ahi9.B03",
+     "product": "HS_H09_20260928_0400_B03_FLDK_R05_S0610.DAT.bz2",
+     "iof": {
+      "mean": 0.0003925024,
+      "std": 7.731529e-05,
+      "n": 16,
+      "nInRect": 16
+     },
+     "sigmaRel": {
+      "calibration": 0.05,
+      "noise": 0.04925,
+      "registration": 0.01639
+     },
+     "bandRadiance": {
+      "value": 0.0002015742,
+      "sigma": 1.452716e-05,
+      "unit": "W m-2 sr-1 nm-1",
+      "bandSolarIrradiance1AU": 1.620244
+     }
+    }
+   ],
+   "expected": {
+    "type": "upper-limit",
+    "upperLimitXYZS": [
+     42.55764,
+     43.94138,
+     45.84535,
+     104.3732
+    ],
+    "comparison": "every channel of the renderer's mean radiance over rect ≤ upperLimitXYZS",
+    "label": "derived",
+    "method": "Largest band I/F in the window + 2 × its pixel standard deviation (I/F 0.00103), converted with a solar (grey) spectrum. The camera's scattered light and the calibration's zero level make this an upper limit on the true sky."
+   }
+  }
+ ],
+ "ratios": [],
+ "appProducts": {
+  "rings.json opticalDepth sources": null,
+  "shape spectrum sources": [
+   "himawari9-ahi-l1b-fldk-20250320-0230",
+   "jma-ahi9-srf",
+   "payne-2026-earth",
+   "naif-pck00011",
+   "tsis1-hsrs-v2"
+  ]
+ },
+ "notes": [
+  "Clouds: the app's Earth cloud layer is VIIRS/NOAA-20 of 2026-09-28 at ~13:30 local solar time; each ROI's 'cloudTimeOffsetH' is Himawari's local solar time minus 13.5 h at the ROI's mean longitude. Only ROIs within ~±1 h compare the same clouds; elsewhere the ROI tests the cloud statistics only.",
+  "Only segment 6 of 10 was fetched (the swath from the equator to ~16°S): pixels outside it are NaN.",
+  "The Earth's shape spectrum p̃ is the app's (Himawari 2025-03-20 disk average, 'estimated'); it only shapes the spectrum between the three band centres."
+ ],
+ "sources": [
+  {
+   "id": "naif-lsk-naif0012",
+   "title": "NAIF generic leapseconds kernel naif0012.tls",
+   "citation": "NAIF leapseconds kernel naif0012.tls (NAIF/JPL, 2016-07-14), leap seconds through 2017-01-01 as announced in IERS Bulletin C; TDB-TT formula and constants from Moyer, T. D. (1981), Transformation from proper time on Earth to coordinate time in solar system barycentric space-time frame of reference, Celestial Mechanics 23, 33-56 and 57-68. Acton, C. H. (1996). Ancillary data services of NASA's Navigation and Ancillary Information Facility. Planetary and Space Science 44(1), 65-70. DOI:10.1016/0032-0633(95)00107-7",
+   "url": "https://naif.jpl.nasa.gov/pub/naif/generic_kernels/lsk/naif0012.tls",
+   "retrieved": "2026-09-30",
+   "sha256": "678e32bdb5a744117a467cd9601cd6b373f0e9bc9bbde1371d5eee39600a039b",
+   "version": "naif0012",
+   "license": "NAIF/JPL public data (U.S. Government work); see https://naif.jpl.nasa.gov/naif/rules.html",
+   "notes": "Still the current NAIF LSK: no leap second has been announced since 2017-01-01. A new LSK must be adopted when IERS announces one."
+  },
+  {
+   "id": "naif-pck00011",
+   "title": "NAIF generic text PCK pck00011.tpc (IAU WGCCRE 2015 body shapes and rotation)",
+   "citation": "Acton, C. H. (1996). Ancillary data services of NASA's Navigation and Ancillary Information Facility. Planetary and Space Science 44, 65-70. Kernel content: Archinal, B. A. et al. (2018). Report of the IAU Working Group on Cartographic Coordinates and Rotational Elements: 2015. Celestial Mechanics and Dynamical Astronomy 130, 22. DOI:10.1007/s10569-017-9805-5.",
+   "url": "https://naif.jpl.nasa.gov/pub/naif/generic_kernels/pck/pck00011.tpc",
+   "retrieved": "2026-09-30",
+   "sha256": "3dff7b1dbeceaa01f25467767d3fa25816051c85d162d1edf04acb310ee28bb1",
+   "version": "pck00011"
+  },
+  {
+   "id": "naif-de442s",
+   "title": "JPL planetary and lunar ephemeris DE442 (short-span SPK de442s.bsp)",
+   "citation": "JPL planetary and lunar ephemeris DE442 (integrated 13 May 2024): an update of DE440 adding Uranus occultation data and four more years of Mars-orbiter and Juno ranging. JPL, de442_tech-comments.txt, https://naif.jpl.nasa.gov/pub/naif/generic_kernels/spk/planets/de442_tech-comments.txt. Based on and documented by Park, R. S., Folkner, W. M., Williams, J. G., Boggs, D. H. (2021). The JPL Planetary and Lunar Ephemerides DE440 and DE441. The Astronomical Journal 161(3), 105. DOI:10.3847/1538-3881/abd414. SPK file de442s.bsp distributed by NAIF (2025-02-06). Acton, C. H. (1996). Ancillary data services of NASA's Navigation and Ancillary Information Facility. Planetary and Space Science 44(1), 65-70. DOI:10.1016/0032-0633(95)00107-7",
+   "url": "https://naif.jpl.nasa.gov/pub/naif/generic_kernels/spk/planets/de442s.bsp",
+   "retrieved": "2026-09-30",
+   "sha256": "54d97562a5b094d298b1b8eafa5a2e17e3e010ce85e1a366d07f003ad159323c",
+   "version": "DE442 (de442s.bsp, 1849-2150)",
+   "license": "NAIF/JPL public data (U.S. Government work); see https://naif.jpl.nasa.gov/naif/rules.html",
+   "notes": "Contains barycenters 1-9 and the Sun (10) wrt the SSB, Mercury 199 wrt 1, Venus 299 wrt 2, Moon 301 and Earth 399 wrt the Earth-Moon barycenter 3. Planet centers 499-999 wrt their system barycenters are NOT in this file (see jpl-horizons-center-*)."
+  },
+  {
+   "id": "okuyama-2018-ahi-calibration",
+   "title": "Validation of Himawari-8/AHI Radiometric Calibration Based on Two Years of In-Orbit Data",
+   "citation": "Okuyama, A., Takahashi, M., Date, K., Hosaka, K., Murata, H., Tabata, T. and Yoshino, R. (2018). Validation of Himawari-8/AHI radiometric calibration based on two years of in-orbit data. Journal of the Meteorological Society of Japan 96B, 91-109. DOI:10.2151/jmsj.2018-033.",
+   "url": "https://www.jstage.jst.go.jp/article/jmsj/96B/0/96B_2018-033/_pdf",
+   "retrieved": "2026-09-30",
+   "sha256": "4400f54bc61039d069819f714d6f60504ff5fde2b74a5d04490dc6ee557c354c",
+   "notes": "Navigation 'accurate to within 1 km'. VNIR vicarious calibration against radiative-transfer simulations (Table 7): monthly slopes 0.99-1.02 (B01), 1.00-1.03 (B02), 0.97-0.99 (B03); maximum method uncertainties 4.0, 3.8, 3.6 % for bands 1-3 (§5.2.a). Himawari-9 carries an AHI of the same design."
+  },
+  {
+   "id": "jma-ahi9-srf",
+   "title": "AHI-09 spectral response curves (bands 1-16), released October 2013",
+   "citation": "Japan Meteorological Agency, Meteorological Satellite Center: AHI-09 Spectral Response Curves (Excel workbook), https://www.data.jma.go.jp/mscweb/en/himawari89/space_segment/spsg_ahi.html#srf.",
+   "url": "https://www.data.jma.go.jp/mscweb/en/himawari89/space_segment/srf_201310/AHI-09_SpectralResponsivity.zip",
+   "retrieved": "2026-09-30",
+   "sha256": "b05b5c561d9ac77f71aae54e68aeb8c52e82329557e79d24b84e9cc776d225ee",
+   "notes": "Relative spectral responsivity vs wavelength (µm) per band; bands 1-4 used."
+  },
+  {
+   "id": "cie-1931-2deg-cmf",
+   "title": "CIE 1931 colour-matching functions, 2 degree observer (x̄, ȳ, z̄), 360–830 nm, 1 nm",
+   "citation": "CIE (2019). Colour-matching functions of CIE 1931 standard colorimetric observer. International Commission on Illumination (CIE), Vienna. Data table, DOI:10.25039/CIE.DS.xvudnb9b. Original source: CIE 018:2019 The Basis of Physical Photometry, 3rd ed., Table 6 (DOI:10.25039/TR.018.2019); standard: ISO/CIE 11664-1:2019.",
+   "url": "https://files.cie.co.at/Publications-datasets/CIE_xyz_1931_2deg.csv",
+   "retrieved": "2026-09-30",
+   "sha256": "fa663e3535a7e0763a745993a1f0a192eb0275ac46ad2d1befd7626841e713c1",
+   "version": "CIE 018:2019 data table (2019)",
+   "license": "CC BY-SA 4.0",
+   "notes": "Dataset DOI 10.25039/CIE.DS.xvudnb9b; landing page https://cie.co.at/datatable/cie-1931-colour-matching-functions-2-degree-observer. The file's sha256 and column sums were verified against the CIE metadata file https://files.cie.co.at/Publications-datasets/CIE_xyz_1931_2deg.csv_metadata.json (sha256 03abcaecf4e63d77045ef57c4514b52c8bb1a46dd18e1f93a50044a0f4f481c8). K_m = 683.002 lm/W and K'_m = 1700.06 lm/W are taken from the text of CIE 018:2019."
+  },
+  {
+   "id": "cie-1951-scotopic",
+   "title": "CIE spectral luminous efficiency for scotopic vision V′(λ), 380–780 nm, 1 nm",
+   "citation": "CIE (2019). CIE spectral luminous efficiency for scotopic vision. International Commission on Illumination (CIE), Vienna. Data table, DOI:10.25039/CIE.DS.gr6w4b5g. Original source: CIE 018:2019 The Basis of Physical Photometry, 3rd ed., Table 2 (DOI:10.25039/TR.018.2019).",
+   "url": "https://files.cie.co.at/Publications-datasets/CIE_sle_scotopic.csv",
+   "retrieved": "2026-09-30",
+   "sha256": "6a75d3fdbcbf5e9e9a07478511933eefeda953f3e2cc14b74459e5a099ec3759",
+   "version": "CIE 018:2019 data table (2019)",
+   "license": "CC BY-SA 4.0",
+   "notes": "Dataset DOI 10.25039/CIE.DS.gr6w4b5g; landing page https://cie.co.at/datatable/cie-spectral-luminous-efficiency-scotopic-vision. The file's sha256 and column sums were verified against the CIE metadata file https://files.cie.co.at/Publications-datasets/CIE_sle_scotopic.csv_metadata.json (sha256 7addeeca8c7e4fb9594fc87c92e37caa9e5ca4f71de7fe23cb1251abdddbfeee). K_m = 683.002 lm/W and K'_m = 1700.06 lm/W are taken from the text of CIE 018:2019."
+  },
+  {
+   "id": "tsis1-hsrs-v2",
+   "title": "TSIS-1 Hybrid Solar Reference Spectrum (HSRS), Version 2, 0.1 nm resolution, with uncertainties",
+   "citation": "Coddington, O. M., Richard, E. C., Harber, D., Pilewskie, P., Woods, T. N., Snow, M., Chance, K., Liu, X. & Sun, K. (2023). Version 2 of the TSIS-1 Hybrid Solar Reference Spectrum and extension to the full spectrum. Earth and Space Science 10, e2022EA002637. DOI:10.1029/2022EA002637. Method: Coddington, O. M. et al. (2021), The TSIS-1 Hybrid Solar Reference Spectrum, Geophysical Research Letters 48, e2020GL091709, DOI:10.1029/2020GL091709. Distributed by LASP LISIRD.",
+   "url": "https://lasp.colorado.edu/lisird/resources/lasp/hsrs/v2/hybrid_reference_spectrum_p1nm_resolution_c2022-11-30_with_unc.nc",
+   "retrieved": "2026-09-30",
+   "sha256": "7255573e45e41dda651a760188d5f4275dfb5139c76bc514a72ab3ae400e9bf4",
+   "version": "v2, file id final-v2_hybrid_reference_spectrum_p1nm_resolution_c2022-11-30_with_unc.nc",
+   "notes": "Spectral solar irradiance at 1 AU, 202-2730 nm, vacuum wavelengths, 0.1 nm resolution sampled every 0.025 nm, normalized to TSIS-1 SIM (average of 2019 Dec 1-7, solar minimum) and scaled by 0.999061 to TIM TSI. Stated uncertainty 0.3 % (460-2365 nm), 1.3 % elsewhere. Landing page https://lasp.colorado.edu/lisird/data/tsis1_hsrs_p1nm/"
+  },
+  {
+   "id": "iau-2015-b3",
+   "title": "IAU 2015 Resolution B3 on recommended nominal conversion constants for selected solar and planetary properties",
+   "citation": "Prša, A., Harmanec, P., Torres, G., Mamajek, E., Asplund, M., Capitaine, N., Christensen-Dalsgaard, J., Depagne, É., Haberreiter, M., Hekker, S., Hilton, J., Kopp, G., Kostov, V., Kurtz, D. W., Laskar, J., Mason, B. D., Milone, E. F., Montgomery, M., Richards, M., Schmutz, W., Schou, J. & Stewart, S. G. (2016). Nominal values for selected solar and planetary quantities: IAU 2015 Resolution B3. Astronomical Journal 152, 41. DOI:10.3847/0004-6256/152/2/41 (text of the resolution: arXiv:1510.07674).",
+   "url": "https://arxiv.org/pdf/1510.07674v1",
+   "retrieved": "2026-09-30",
+   "sha256": "a4a38ecf4ab6ac71a38780456beffbc43c17c98ed320e82585a127057e498417",
+   "notes": "Nominal solar radius R_sun^N = 6.957e8 m (exact by definition), chosen to match the photospheric radius (tau_Ross = 2/3) of Haberreiter, Schmutz & Kosovichev (2008, ApJ 675, L53): 695 658 +/- 140 km. Also the nominal total solar irradiance S_sun^N = 1361 W m^-2 (cycle-23 mean TSI 1361 +/- 1 W m^-2), used here only as a sanity check of the spectrum integral."
+  },
+  {
+   "id": "neckel-labs-1994",
+   "title": "Solar limb darkening 1986-1990 (303 to 1099 nm): Table I, fifth-order polynomial coefficients",
+   "citation": "Neckel, H. & Labs, D. (1994). Solar limb darkening 1986-1990 (λλ303 to 1099 nm). Solar Physics 153, 91-114. DOI:10.1007/BF00712494.",
+   "url": "https://articles.adsabs.harvard.edu/pdf/1994SoPh..153...91N",
+   "retrieved": "2026-09-30",
+   "sha256": "3a0d1708622e7fae1bd4e35ac04514167f08706d808644d556ee0b636e590975",
+   "notes": "Table I (p. 98), 30 continuum wavelengths, transcribed to pipeline/src/pipeline/photometry/tables/neckel_labs_1994_table1.csv from this ADS scan (see docs/sources/neckel-labs-1994.md). The printed row at 365.875 nm violates the paper's own Eq. 5 (sum A = 0.998) and Eq. 6 (F/I); A2 = 0.17682 instead of the printed 0.17482 restores both exactly and is used (a presumed typesetting error)."
+  },
+  {
+   "id": "edlen-1966",
+   "title": "Dispersion formula for the refractive index of standard air",
+   "citation": "Edlén, B. (1966). The refractive index of air. Metrologia 2, 71-80. DOI:10.1088/0026-1394/2/2/002.",
+   "url": "https://doi.org/10.1088/0026-1394/2/2/002",
+   "retrieved": "2026-09-30",
+   "notes": "Formula only (Eq. 1, standard air: dry, 15 degC, 101 325 Pa, 0.03 % CO2, the same 'standard air' in which the CIE tables are given); no data file is downloaded. Used to convert vacuum wavelengths (TSIS-1 HSRS) to standard-air wavelengths; the shift is about 0.15 nm at 550 nm."
+  },
+  {
+   "id": "naif-earth-pck-high-prec",
+   "title": "NAIF high-precision Earth orientation PCK (ITRF93)",
+   "citation": "NAIF/JPL binary PCK earth_000101_261226_260929.bpc (ITRF93; IAU 1976 precession, IAU 1980 nutation, JPL Earth orientation parameters, https://eop.jpl.nasa.gov/). Acton, C. H. (1996), PSS 44, 65-70.",
+   "url": "https://naif.jpl.nasa.gov/pub/naif/generic_kernels/pck/earth_000101_261226_260929.bpc",
+   "retrieved": "2026-09-30",
+   "sha256": "df5510d1995ec56af62c2682affc38781e3aa4fda37722d2fa0a10e531b90b1d",
+   "version": "earth_000101_261226_260929.bpc"
+  },
+  {
+   "id": "himawari9-ahi-l1b-fldk-20250320-0230",
+   "title": "Himawari-9 AHI L1b full disk, 2025-03-20 02:30 UTC, bands 1-4 (40 segment files)",
+   "citation": "Japan Meteorological Agency, Himawari-9 Advanced Himawari Imager (AHI) Level 1b full-disk data in Himawari Standard Data format, distributed by the NOAA Open Data Dissemination program on Amazon Web Services (s3://noaa-himawari9, https://registry.opendata.aws/noaa-himawari/). Instrument and format: Bessho, K. et al. (2016). An introduction to Himawari-8/9 — Japan's new-generation geostationary meteorological satellites. Journal of the Meteorological Society of Japan 94, 151-183. DOI:10.2151/jmsj.2016-009.",
+   "url": "https://noaa-himawari9.s3.amazonaws.com/AHI-L1b-FLDK/2025/03/20/0230/",
+   "retrieved": "2026-09-30",
+   "sha256": "822c8d7b54bad9dfb229d3e920752bbd52bc4e3ca185eebf859545ad5135de02",
+   "version": "Himawari Standard Data format 1.3",
+   "license": "Open data (NOAA Open Data Dissemination; JMA data policy for Himawari)",
+   "notes": "sha256 is SHA-256 over the per-file sha256 values (one per line; band 1-4, segment 1-10 order); files are in data/raw/earth/himawari9/ and listed with their digests in data/raw/_downloads.json."
+  },
+  {
+   "id": "payne-2026-earth",
+   "title": "Composite geometric albedo spectrum of Earth (Payne et al. 2026, Zenodo)",
+   "citation": "Payne, A., Villanueva, G. L., Kofman, V., Fauchez, T. J., Faggi, S., Mandell, A. M., Roberge, A. & Alei, E. (2026). A comprehensive spectroscopic reference of the solar system and its application to exoplanet direct imaging. The Planetary Science Journal 7, 51. DOI:10.3847/PSJ/ae2feb. Supplementary data: Zenodo, DOI:10.5281/zenodo.17470005 (2025-10-29).",
+   "url": "https://zenodo.org/api/records/17470005/files/earth_albedo.csv/content",
+   "retrieved": "2026-09-30",
+   "sha256": "8ee19b6a1b693c16bdca74f4d7aaeac0872940857cf31337e8fd8502626c2ef3",
+   "version": "Zenodo record 17470005",
+   "license": "CC BY 4.0",
+   "notes": "Whole segment: Planetary Spectrum Generator simulation of the full disk driven by MERRA-2 reanalysis and MODIS surface types for 2022 June 21 (24 h average of 9 time steps; Kofman et al. 2024), validated against DSCOVR/EPIC narrow-band disk-integrated albedos of the same day. Payne et al. Sec. 5, Table 3."
+  },
+  {
+   "id": "himawari9-hs_h09_20260928_0400_b01_fldk_r10_s0610",
+   "title": "Himawari-9 AHI L1b full disk 2026-09-28 0400 UTC, band 1, segment 6/10",
+   "citation": "Japan Meteorological Agency, Himawari-9 Advanced Himawari Imager (AHI) Level 1b full-disk data in Himawari Standard Data format, distributed by the NOAA Open Data Dissemination program on Amazon Web Services (s3://noaa-himawari9, https://registry.opendata.aws/noaa-himawari/). Instrument and format: Bessho, K. et al. (2016). An introduction to Himawari-8/9 — Japan's new-generation geostationary meteorological satellites. Journal of the Meteorological Society of Japan 94, 151-183. DOI:10.2151/jmsj.2016-009.",
+   "url": "https://noaa-himawari9.s3.amazonaws.com/AHI-L1b-FLDK/2026/09/28/0400/HS_H09_20260928_0400_B01_FLDK_R10_S0610.DAT.bz2",
+   "retrieved": "2026-09-30",
+   "sha256": "bbb885317b77f21841be1426e9b93ad387be17771832565faf38296d3830cce2"
+  },
+  {
+   "id": "himawari9-hs_h09_20260928_0400_b02_fldk_r10_s0610",
+   "title": "Himawari-9 AHI L1b full disk 2026-09-28 0400 UTC, band 2, segment 6/10",
+   "citation": "Japan Meteorological Agency, Himawari-9 Advanced Himawari Imager (AHI) Level 1b full-disk data in Himawari Standard Data format, distributed by the NOAA Open Data Dissemination program on Amazon Web Services (s3://noaa-himawari9, https://registry.opendata.aws/noaa-himawari/). Instrument and format: Bessho, K. et al. (2016). An introduction to Himawari-8/9 — Japan's new-generation geostationary meteorological satellites. Journal of the Meteorological Society of Japan 94, 151-183. DOI:10.2151/jmsj.2016-009.",
+   "url": "https://noaa-himawari9.s3.amazonaws.com/AHI-L1b-FLDK/2026/09/28/0400/HS_H09_20260928_0400_B02_FLDK_R10_S0610.DAT.bz2",
+   "retrieved": "2026-09-30",
+   "sha256": "fc4175ebcbfbb2665ae6319af841df4647b6cdce8de0da0865c3fa9f69e09d1c"
+  },
+  {
+   "id": "himawari9-hs_h09_20260928_0400_b03_fldk_r05_s0610",
+   "title": "Himawari-9 AHI L1b full disk 2026-09-28 0400 UTC, band 3, segment 6/10",
+   "citation": "Japan Meteorological Agency, Himawari-9 Advanced Himawari Imager (AHI) Level 1b full-disk data in Himawari Standard Data format, distributed by the NOAA Open Data Dissemination program on Amazon Web Services (s3://noaa-himawari9, https://registry.opendata.aws/noaa-himawari/). Instrument and format: Bessho, K. et al. (2016). An introduction to Himawari-8/9 — Japan's new-generation geostationary meteorological satellites. Journal of the Meteorological Society of Japan 94, 151-183. DOI:10.2151/jmsj.2016-009.",
+   "url": "https://noaa-himawari9.s3.amazonaws.com/AHI-L1b-FLDK/2026/09/28/0400/HS_H09_20260928_0400_B03_FLDK_R05_S0610.DAT.bz2",
+   "retrieved": "2026-09-30",
+   "sha256": "637faf036de6211870ec03c27cdbd38e7e98d782a0a51b4781de6287721c25ed"
+  }
+ ]
+}
