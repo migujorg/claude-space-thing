@@ -5,7 +5,7 @@
 // anything not allowed at the current `exists` level arrives here as null / flagged, so the renderer
 // never needs to reason about provenance labels except for the provenance-tint overlay.
 
-import type { Label, PhaseFunction } from '../data/schema';
+import type { Label, PhaseFunction, SpatialPhotometricModel } from '../data/schema';
 import type { EyeSettings } from '../eye/settings';
 
 export type { EyeSettings };
@@ -34,6 +34,65 @@ export interface SceneBody {
   /** Worst provenance label among what is drawn, for the provenance-tint overlay. */
   worstLabel: Label;
   selected: boolean;
+
+  // ── M2 additions (all optional; see docs/rendering-m2.md) ─────────────────────────────────────
+  /**
+   * Surface maps (docs/architecture.md §4.4). Used only when `orient` is known (a map needs the
+   * body-fixed frame) and the surface is lit and measured. The renderer fetches the tiles itself.
+   */
+  surface?: { albedo?: SurfaceLayerRef; height?: SurfaceLayerRef };
+  /**
+   * Measured spatially resolved photometric model (photometry.json `spatialModel`), already filtered by
+   * the reality level; absent/null → Lambert. It only redistributes light across the disk: the disk
+   * integral stays albedoXYZS·Φ(α) (§4.3).
+   */
+  spatialModel?: SpatialPhotometricModel | null;
+  /** Ring system centred on this body (ring plane through the body centre). */
+  rings?: SceneRings | null;
+  /**
+   * Reality levels best/complete (NORTH_STAR 3.2/3.7): outside the measured phase-angle range of
+   * `phase`, continue Φ(α) with the spatial law's own phase dependence, scaled to be continuous at the
+   * edge of the range; the result is labelled estimated (tint, warning). false/absent (strict): the
+   * sunlit part is hatched as not measured.
+   */
+  allowPhaseExtrapolation?: boolean;
+}
+
+/**
+ * One layer of a surface-map pyramid (architecture §4.4). Tile (L, ty, tx) is fetched from
+ * `${url}/${L}/${ty}/${tx}.bin`, i.e. `url` is `…/surfaces/<naifId>/<layer>`. The header is the parsed
+ * `surfaces/<naifId>/<layer>.json`; the renderer reads only the fields below and ignores the rest.
+ */
+export interface SurfaceLayerRef {
+  url: string;
+  header: {
+    /** Finest pyramid level present (levels 0..maxLevel). */
+    maxLevel: number;
+    /** Tiles not written because every texel is unknown: level (as a string key) → [tx, ty] pairs. */
+    missing?: Record<string, [number, number][]>;
+  };
+}
+
+/**
+ * A planetary ring system as the renderer needs it (docs/rendering-m2.md §5). Radial profiles are
+ * sampled at increasing radii; between samples values are interpolated linearly, outside
+ * [radiusKm[0], radiusKm[last]] there is no ring. Physics: many-particle-thick classical layer with
+ * single scattering (lit face I/F = ϖ0·P(α)/4 · μ0/(μ + μ0) · [1 − e^(−τ(1/μ + 1/μ0))], unlit face
+ * (ϖ0·P/4)·μ0/(μ − μ0)·[e^(−τ/μ) − e^(−τ/μ0)]), direct transmission e^(−τ/μ).
+ */
+export interface SceneRings {
+  /** Unit normal of the ring plane (ICRF); usually the planet's north pole. */
+  normal: Vec3;
+  /** Sample radii, km, strictly increasing. */
+  radiusKm: number[];
+  /** Normal optical depth at each sample; null = not measured there (drawn as a hatched gap, no light, no shadow). */
+  tau: (number | null)[];
+  /** Ring-particle single-scattering albedo ϖ0 per channel (X, Y, Z, scotopic) at each sample; null = unknown (rings then only absorb). */
+  albedoXYZS: ([number, number, number, number] | null)[] | null;
+  /** Particle phase function normalised so ∫P dΩ/4π = 1; null = unknown (rings then only absorb). */
+  particlePhase: { kind: 'hg'; g: number } | { kind: 'tabulated'; alphaDeg: number[]; P: number[] } | null;
+  /** Worst provenance label among the ring data drawn, for the provenance tint. */
+  worstLabel: Label;
 }
 
 export interface SceneSun {
@@ -104,4 +163,18 @@ export interface RendererStats {
   limitingMagnitude?: number;
   /** Things the renderer could not draw as requested, e.g. "Sun: limb darkening unknown → drawn as a point". */
   warnings?: string[];
+  /** GPU time per pass, ms (timestamp queries; absent where the adapter lacks 'timestamp-query'). A frame or two old. */
+  gpuPassMs?: Record<string, number>;
+  /** Sum of gpuPassMs, ms. */
+  gpuFrameMs?: number;
+  /** Surface-map tile cache (virtual texturing). */
+  surfaceCache?: {
+    budgetMiB: number;
+    usedMiB: number;
+    residentTiles: number;
+    pendingFetches: number;
+    /** Tiles wanted this frame that the budget could not hold (finer detail is then deferred). */
+    deferredTiles: number;
+    failedFetches: number;
+  };
 }
