@@ -133,13 +133,15 @@ The resolved renderer must use a surface reflectance model whose disk integral r
 
 Conventions used by the `light` stage: R is the volumetric mean radius (abc)^(1/3) of the body's pck00011 triaxial radii (albedos from sources that used other disk sizes are rescaled by (R_source/R)²). Φ is evaluated only inside its stated domain (`minDeg..maxDeg`, or the table's range); outside it the phase behaviour is unknown. A `poly-mag` whose domain excludes α = 0 may have c0 ≠ 0 (Mercury: the fitted curve starts at 2° and excludes the opposition surge that the zero-phase albedo includes). The reverse also occurs: a surge-free albedo with a curve that includes the surge has Φ > 1 (negative `deltaMag`) near its first node (the Moon: the table starts at 1.55°).
 
-Optional `diskReflectanceModel` (M3; so far only the Moon, kind `rolo-v1`): when a body's disk-integrated brightness depends on more than α, this model gives it directly per channel. The Moon's depends on which hemisphere is lit (the waxing Moon is ~10 % brighter than the waning Moon at 60°) and on libration (up to 7 % or more). The illuminance is
+Optional `diskReflectanceModel` (M3: the Moon, kind `rolo-v1`; the Galilean moons, kind `rotation-slices-v1`): when a body's disk-integrated brightness depends on more than α, this model gives it directly per channel. The Moon's depends on which hemisphere is lit (the waxing Moon is ~10 % brighter than the waning Moon at 60°) and on libration (up to 7 % or more). The illuminance is
 
 ```
 E_obs,c = A_c(g, Φ, θ, φ) · E☉,c(1 AU) · (1/d²) · (radiusKm/Δ)²
 ```
 
 with A_c from the model's `formula`. The inputs are the phase angle g, the Sun's selenographic longitude Φ, and the observer's selenographic latitude and longitude θ, φ. E☉,c is the solar XYZS in `light.json`. The model applies only inside its stated domain (phase range and observer libration range). There it replaces `geometricAlbedoXYZS · Φ(α)`; outside it, the α-only `phaseFunction` applies (within its own domain). `phaseFunction` equals the model's Y channel at zero libration, averaged over waxing and waning (geometric mean), divided by the albedo's Y.
+
+Kind `rotation-slices-v1` (the Galilean moons) adds a measured rotational (orbital-longitude) variation to `geometricAlbedoXYZS · Φ(α)`: a factor F from six longitude slices (Mayorga et al. 2020 Table 4), evaluated at the sub-observer and sub-solar longitudes (the formula is in `schema.ts` `RotationSlicesDiskModel`). F averages to 1 over a rotation, so the albedo and phase function remain the longitude average. As with ROLO, the renderer normalizes a body's surface maps at the viewing geometry when the model applies, so a map's own longitude contrast is not counted twice.
 
 ### 4.4 Surface maps (M2)
 
@@ -191,7 +193,7 @@ When an attribute needed for drawing is below the current `exists` level or `unk
 - `app/tests/` — vitest unit tests; ephemeris and time conversions are checked against independent JPL Horizons outputs saved as test fixtures.
 - `app/scripts/shot.mjs` — headless Chromium (SwiftShader WebGPU) screenshot harness. Usage: `npm run shot -- --url "/?t=2026-09-30T00:00:00Z&target=399&dist=50000" --out shots/earth.png`. The app sets `window.__frameReady = true` after the first frame with all data loaded.
 - The app exposes `window.__app` for tests (read current state, set time, select objects).
-- `validation/` — ground-truth cases built from calibrated spacecraft/satellite images (`uv run python -m pipeline.validation build`; types `ValidationCase` etc. in `schema.ts`). Each case gives an explicit view (camera and bodies at the observation epoch) and pixel regions with the absolute XYZS radiance the HDR buffer must hold there, before the eye model, with 2σ tolerances. The render-test harness renders the view and reads the regions (`readHdrRegion(rect)`); see docs/reports/validation.md.
+- `validation/` — ground-truth cases built from calibrated spacecraft/satellite images (`uv run python -m pipeline.validation build`; types `ValidationCase` etc. in `schema.ts`). Each case gives an explicit view (camera and bodies at the observation epoch) and pixel regions with the absolute XYZS radiance the HDR buffer must hold there, before the eye model, with 2σ tolerances. `cd app && npm run validate` renders every case headless with the real renderer and data (`app/validation.html`, `src/validation/`) and reads the regions from the HDR buffer (`Renderer.readHdrRegion(rect)`, `readHdr()`, render/hdrReadback.ts); results in `app/shots/validation/` (app/e2e/README.md); see docs/reports/validation.md.
 
 ## 6. Data products (app/public/data)
 

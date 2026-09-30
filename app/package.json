@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "shot": "node scripts/shot.mjs",
-    "e2e": "node scripts/e2e.mjs"
+    "e2e": "node scripts/e2e.mjs",
+    "validate": "node scripts/validate.mjs"
   },
   "devDependencies": {
     "@webgpu/types": "^0.1.60",

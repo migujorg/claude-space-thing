@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 
 from ..paths import REPO
 from .build import TOLERANCE_K, VALIDATION
@@ -48,16 +49,22 @@ Pixel (x, y) with y down has the ray right·(x+½−W/2)s + up·(H/2−y−½)s 
 The reference values are **area averages** over each pixel, so the harness should supersample (≥ 4 × 4 per pixel);
 ROIs never contain pixels that straddle a limb, terminator, ring edge or shadow edge (§3.5).
 
-**Interface** (types in `app/src/data/schema.ts`: `ValidationCase`, `ValidationRoi`, `ValidationRatio`):
+**Interface** (types in `app/src/data/schema.ts`: `ValidationCase`, `ValidationRoi`, `ValidationRatio`), implemented
+in the app (`cd app && npm run validate`; app/e2e/README.md "Validation against calibrated images"; results in
+`app/shots/validation/`, and §7 below):
 
 ```ts
-// Render the case's view into the HDR target (no eye model), at view.camera.width × height.
-renderValidationView(c: ValidationCase, opts?: { samplesPerPixel?: number; reality?: RealityLevel }): Promise<void>;
-// Mean, standard deviation and pixel count of the HDR XYZS buffer over [x0, x1) × [y0, y1).
-readHdrRegion(rect: [x0: number, y0: number, x1: number, y1: number]):
+// app/src/validation/runner.ts: the case's view as a SceneSnapshot with the app's data (geometry-only: every body
+// placed and oriented as case.json says, so the epoch need not lie in the app's time window).
+validationScene(c: ValidationCase, data, opts?: { ss?: number; reality?: 'strict' | 'best' | 'complete' }): ValidationScene;
+// validation.html: render it (ss × ss samples per pixel), settle, read and compare every ROI and ratio.
+window.__validation.run(c: ValidationCase, opts?): Promise<RunResult>;
+// app/src/render/renderer.ts (marked hook; render/hdrReadback.ts): the HDR XYZS target of the last frame, before the
+// eye model, in cd/m² (S in scotopic cd/m²): mean, standard deviation and count over [x0, x1) × [y0, y1).
+renderer.readHdrRegion(rect: [x0: number, y0: number, x1: number, y1: number]):
     Promise<{ mean: [X, Y, Z, S]; std: [X, Y, Z, S]; n: number }>;
-// Optional, for pixel-by-pixel residual maps against reference.bin (I/F per band, same grid):
-readHdr(): Promise<Float32Array>;   // width × height × 4 (X, Y, Z, S)
+// The whole target, for residual maps against reference.bin (I/F per band, same grid):
+renderer.readHdr(): Promise<{ width: number; height: number; data: Float32Array }>;   // width × height × 4
 ```
 
 **Pass/fail**, per ROI and channel c:
@@ -297,7 +304,53 @@ def findings(cases: list[dict]) -> str:
     return "\n".join(L) + "\n"
 
 
-def write(extra_sections: str = "") -> None:
+RUN_REPORT = REPO / "app" / "shots" / "validation" / "report.json"
+
+
+def _g(v, d=4):
+    return "—" if v is None or not math.isfinite(v) else f"{v:.{d}g}"
+
+
+def run_section(run: dict, interpretation: str) -> str:
+    """§7: the renderer's run (`npm run validate`, app/shots/validation/report.json): Y per ROI and the verdicts."""
+    o = run["options"]
+    L = ["## 7. The renderer against the cases\n",
+         f"Run of {run['generatedAt'][:16].replace('T', ' ')} UTC (git {run.get('git')}, data built "
+         f"{(run.get('dataGeneratedAt') or '?')[:16].replace('T', ' ')}), reality level {o['reality']}, "
+         f"{o['ss']} × {o['ss']} samples per pixel: `cd app && npm run validate` (the full table, with X, Z, S, is in "
+         "`app/shots/validation/report.md`). Y in cd/m²; the verdict covers X, Y, Z and S (failing channels named).",
+         "", "| case | ROI | expected Y ± 2σ | rendered Y | rendered / expected | σ | verdict |", "|---|---|---|---|---|---|---|"]
+    tally = {True: 0, False: 0, None: 0}
+    for c in run["cases"]:
+        if c.get("error"):
+            L.append(f"| `{c['id']}` | — | — | — | — | — | did not render: {c['error'][:120]} |")
+            continue
+        for q in c["rois"]:
+            tally[q["pass"]] += 1
+            if q["expectedType"] == "value":
+                exp = f"{_g(q['expected'][1])} ± {_g(q['tolerance'][1], 2)}"
+                ratio, dev = f"{q['ratio'][1]:.3f}", f"{q['deviationSigma'][1]:+.1f}"
+            elif q["expectedType"] == "upper-limit":
+                exp, ratio, dev = f"≤ {_g(q['upperLimit'][1])}", "—", "—"
+            else:
+                exp, ratio, dev = "—", "—", "—"
+            v = {True: "pass", False: f"**fail** ({''.join(q['failing'])})", None: "not compared"}[q["pass"]]
+            L.append(f"| `{c['id']}` | {q['id']} | {exp} | {_g(q['rendered']['mean'][1])} | {ratio} | {dev} | {v} |")
+        for r in c.get("ratios", []):
+            v = {True: "pass", False: f"**fail** ({''.join(r['failing'])})", None: "not compared"}[r["pass"]]
+            L.append(f"| `{c['id']}` | {r['numerator']} / {r['denominator']} | {_g(r['expected'][1])} ± "
+                     f"{_g(r['tolerance'][1], 2)} | {_g(r['rendered'][1]) if r['rendered'] else '—'} | — | — | {v} |")
+    L += ["", f"**{tally[True]} pass, {tally[False]} fail, {tally[None]} not compared.** How each body was drawn:", ""]
+    for c in run["cases"]:
+        if c.get("error"):
+            continue
+        bodies = "; ".join(f"{b['name']}: {', '.join(b.get('uses') or []) or b['drawn']}" for b in c["scene"]["bodies"])
+        warn = "; ".join(c.get("stats", {}).get("warnings") or [])
+        L.append(f"* `{c['id']}`: {bodies}." + (f" Renderer warnings: {warn}." if warn else ""))
+    return "\n".join(L) + "\n\n" + interpretation
+
+
+def write(extra_sections: str = "", run: dict | None = None, run_interpretation: str = "") -> None:
     cases = [json.loads(p.read_text(encoding="utf-8")) for p in sorted((VALIDATION / "cases").glob("*/case.json"))]
     parts = [HEADER, "## 4. The cases\n\n", summary_table(cases), "\n",
              "Sizes: `validation/` holds only case.json, reference.bin (float32 I/F on the view grid) and "
@@ -307,6 +360,8 @@ def write(extra_sections: str = "") -> None:
         parts.append(case_section(c) + "\n")
     parts.append(findings(cases))
     parts.append(extra_sections)
+    if run:
+        parts.append("\n" + run_section(run, run_interpretation))
     REPORT.write_text("".join(parts), encoding="utf-8", newline="\n")
 
 
@@ -339,13 +394,59 @@ FINDINGS = """## 6. Limitations and open issues
 8. **Sky ROIs** are upper limits only: every camera's scattered light and zero level are in them.
 9. **Sampling:** the reference is an area average per pixel; a renderer sampling pixel centres only will differ at
    ROI edges by up to the within-ROI gradient × ½ pixel, which the registration term does not include for it.
-10. **The app data preview's misses (§5) are findings about photometry.json, not about a renderer.** Where it is
-    off by more than 2σ, its own methods say why it can be: the **Moon** entry is the ROLO model, fitted to
-    Earth-based photometry of the near side, while EPOXI saw the far side (sub-observer longitude ~175° E), which
-    has a larger highland fraction and is brighter; the **Galilean** entries use Mayorga et al.'s (2020)
-    longitude-averaged GRN phase curve (rotational variations, their Table 4, are not represented; the fit has no
-    data between 30° and 60° phase, where Io's 35.6° and Callisto's 46.5° lie) at every wavelength, with LORRI's broad band compared
-    through the body's single spectral shape. The size of each effect here is not quantified; the next step is the
-    rotational terms of Mayorga et al. Table 4 at the LORRI sub-observer longitudes listed in §5. A renderer
-    comparison is unaffected: it is judged against the observed values, not against this preview.
+10. **The app data preview's misses (§5) are findings about photometry.json, not about a renderer.** The preview is
+    `geometricAlbedoXYZS · Φ(α)` alone, as built with the cases. Where it is off by more than 2σ:
+    - The **Moon** entry is the ROLO model, fitted to Earth-based photometry of the near side. EPOXI saw the far side
+      (sub-observer longitude ~175° E), which has a larger highland fraction and is brighter. photometry.json now
+      states this limitation. The far-side basis is the app's LRO WAC maps; how the renderer would use them is in §7.
+    - The **Galilean** entries use Mayorga et al.'s (2020) longitude-averaged GRN phase curve. Their Table 4
+      rotational variation is now in photometry.json (`diskReflectanceModel`, kind `rotation-slices-v1`). At the
+      LORRI views it multiplies the preview by 0.994, 0.836, 1.058 and 0.970 (Io, Europa, Ganymede, Callisto),
+      which leaves a common deficit of ~11 %. The rendered values are in §7.
+"""
+
+RUN_FINDINGS = """**What the failures say** (numbers from the run above; checks of the runner itself: 2 × 2 samples per pixel
+change no ROI by more than 0.3 %, and the rgba16float fallback targets give the same means as rgba32float):
+
+*In the data (photometry.json, rings.json):*
+
+1. **Disk-resolved photometry is Lambert for every body here.** None of these bodies has a measured `spatialModel`,
+   so the renderer spreads the (correct) disk integral with a Lambert law. The observations are flatter: an
+   effective Minnaert exponent k, from each case's terminator/disk-centre and limb/disk-centre ratios, is 0.7–0.9
+   for Jupiter, Saturn, Uranus, Neptune and Pluto and 0.5–0.8 for the Galilean moons, against 1.0 in the render.
+   Hence the terminators are too dark (0.38–0.65 of the observed; Jupiter and Saturn, whose terminator ROIs lie
+   nearer the limb, are within tolerance), the icy moons' limbs too dark (0.77–0.85), and the disk centres of the
+   giant planets and Pluto too bright (1.15–1.58). The disk-integrated values are unaffected and pass for Jupiter,
+   Uranus, Neptune, Pluto and the EPOXI Earth. The remedy is a measured limb-darkening law per body in
+   `spatialModel` (the renderer already supports Minnaert, lunar-Lambert and Hapke). Fitting it to these cases
+   would be circular, so it must come from the literature.
+2. **Galilean moons, disk-integrated:** with the rotational variation (§6.10) Io, Europa and Ganymede render at
+   0.885, 0.888 and 0.893 of LORRI (−3 to −5σ), the same to 1 %; Callisto at 0.812 (46.5° phase, in Mayorga et al.'s
+   30–60° data gap). The common factor lies between the Cassini-based photometry (CISSCAL 3.9, Mayorga et al.
+   2020) and LORRI (Weaver et al. 2020 in-flight RSOLAR), which agrees with Karkoschka's Jupiter to 3–7 %
+   (Jupiter's disk-integrated ROI: 0.935). It is not resolved. The candidates are the Cassini absolute calibration
+   and the phase polynomials beyond their 25° data edge.
+3. **Saturn's rings are not drawn at 54.6° phase:** `rings.json`'s reflectance model covers 0.25–47°, so the
+   renderer hatches the rings as not measured (ROIs C, B, A render 0). Observed: B ring I/F ~0.11 in the
+   green. A ring phase curve to larger phase angles is needed.
+4. **Pluto's phase function** is measured only to 1.74° (Earth-based), and 15.8° is extrapolated with the
+   spatial law (renderer warning). The disk integral still passes (1.25, tolerance ±34 %).
+
+*In the renderer (for the renderer engineer):*
+
+5. **The Moon's far side (EPOXI):** rendered 130.1 cd/m² against 164.1 ± 17 (0.793, −4.1σ); Moon/Earth ratio
+   0.076 against 0.1016 ± 0.0014. Outside ROLO's libration domain the renderer normalizes the Moon's maps (LRO WAC
+   albedo × Hapke texel law) over a rotation, but photometry.json's p·Φ is ROLO's **near side at zero libration**.
+   On the validation page, the same illumination turned to the near side renders 119.4 with ROLO and 101.1 with
+   the rotation-normalized maps: the maps give far/near = 130.1/101.1 = 1.287. Normalizing at the reference view
+   instead (sub-observer at 0°, 0°, Sun at ±α on the equator, geometric mean, like the product's definition) would
+   give 119.4 × 1.287 = 153.7 (0.937, −1.3σ, a pass). The fix is in `render/frame.ts`: for a body with a
+   `rolo-v1` model, when the view is outside its domain, normalize at the model's reference view.
+6. **Earth (Himawari-9, 2026-09-28 04:05 UTC):** the disk centre (cloud-time offset 0.03 h, so the app's clouds
+   are those of this very time) renders 9354 against 4678 ± 600 cd/m² (2.0×). The three near-centre points render
+   1.17–1.23×. The limb passes (0.98). The terminator renders 0.56, but its clouds are 4.2 h older, so that one is
+   inconclusive. The rendered image shows 8-pixel blocks in the ocean/cloud field around the disk centre
+   (`app/shots/validation/earth-himawari9-2026.hdr.png`). To check: the cloud layer's optical thickness and
+   fraction there, and the sun glint (the specular point is near 130° E). The EPOXI Earth of 2008, seen whole at
+   75° phase, passes: disk-integrated 1.055, centre 1.004.
 """

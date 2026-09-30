@@ -52,6 +52,56 @@ def test_galilean_phase_curves(res):
         assert phase.delta_mag(pf, 131.0) is None
 
 
+def test_mayorga_table4_transcription():
+    """Table 4: six slice albedos for each moon and filter the paper fitted (Io 5, Europa 4, Ganymede 5, Callisto 3),
+    all physical (0 < A < 1) and within a factor 2 of their mean (a digit slip would stand out)."""
+    counts = {501: 5, 502: 4, 503: 5, 504: 3}
+    for n, k in counts.items():
+        s = moons.mayorga_slices(n)
+        assert len(s) == k and "GRN" in s
+        for f, J in s.items():
+            J = np.array(J)
+            assert J.shape == (6,) and np.all((J > 0) & (J < 1)), (n, f)
+            assert np.all(np.abs(J / J.mean() - 1) < 0.5), (n, f)
+
+
+def test_rotation_slices_sign_convention():
+    """East-positive slices: the leading hemisphere (centred on 90 W = -90 E, slices J0-J2) is brighter than the
+    trailing one for Io, Europa and Ganymede and darker for Callisto, in the GRN filter."""
+    for n, leading_brighter in ((501, True), (502, True), (503, True), (504, False)):
+        J = np.array(moons.mayorga_slices(n)["GRN"])
+        assert (J[:3].mean() > J[3:].mean()) == leading_brighter, n
+
+
+def test_slice_factor_matches_planetslicer():
+    """F against PlanetSlicer (Thorngren 2019, slicer.py toPhaseCurve(rel)/toPhaseCurve(1)), Europa GRN; the same
+    reference values as the renderer's test (app/tests/render-rotation-slices.test.ts)."""
+    J = np.array(moons.mayorga_slices(502)["GRN"])
+    rel = J / J.mean()
+    for lo, ls, want in ((67.2, 39.2, 0.836156), (-90, -90, 1.158935), (90, 90, 0.878412), (0, 30, 0.874536),
+                         (170, -160, 1.056665), (-100, 20, 1.039198)):
+        got = moons.slice_factor(moons.SLICE_EDGES_DEG, rel, math.radians(lo), math.radians(ls))
+        assert got == pytest.approx(want, abs=2e-6), (lo, ls)
+    # uniform body, and the rotation average at small phase
+    assert moons.slice_factor(moons.SLICE_EDGES_DEG, np.ones(6), 0.3, 0.9) == pytest.approx(1.0, abs=1e-12)
+    lons = np.linspace(-math.pi, math.pi, 721)[:-1]
+    assert np.mean([moons.slice_factor(moons.SLICE_EDGES_DEG, rel, x, x + 0.2) for x in lons]) == pytest.approx(1, abs=2e-3)
+
+
+def test_galilean_rotation_model_entry(res):
+    for n in (501, 502, 503, 504):
+        e = res[n].entry
+        m = e["diskReflectanceModel"]
+        assert m["label"] == "estimated" and m["sources"] == ["mayorga-2020"]
+        v = m["value"]
+        assert v["kind"] == "rotation-slices-v1"
+        assert v["albedoXYZS"] == e["geometricAlbedoXYZS"]["value"]
+        assert v["phase"] == e["phaseFunction"]["value"]
+        assert v["sliceEdgesEastLonDeg"] == [-180, -120, -60, 0, 60, 120, 180]
+        assert np.mean(v["relativeAlbedo"]) == pytest.approx(1, abs=1e-6)
+    assert "diskReflectanceModel" not in res[601].entry
+
+
 # ---------------------------------------------------------------------------------------------- Saturnian moons
 def test_filacchione_a0_matches_abstract():
     """Abstract values at 0.55 µm (surge excluded): the tabulated 549 nm a0 agree within the quoted errors."""

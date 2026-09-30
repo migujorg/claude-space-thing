@@ -100,6 +100,9 @@ def build_body(naif: int, ctx: BuildContext | None = None) -> BodyResult:
     if naif == 301:
         from . import rolo
         entry["diskReflectanceModel"] = rolo.model_entry(ctx)
+    if naif in moons.GALILEAN and ph is not None:
+        # Measured rotational variation on top of p·Φ (validation finding: docs/reports/validation.md).
+        entry["diskReflectanceModel"] = moons.galilean_rotation_model(naif, xyzs, ph.function, r, ctx)
     published = ph.zero_phase_V10 if ph is not None else None
     if naif == 799:
         # V1(0) = -7.110 - 8.4e-4 phi' ; for the source epoch (1995 July) evaluate at that epoch's phi'
