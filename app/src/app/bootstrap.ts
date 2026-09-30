@@ -218,6 +218,7 @@ export async function startApp(canvas: HTMLCanvasElement, uiRoot: HTMLElement, d
             cometsHeader: t.comets?.header,
             nongrav: t.nongrav?.buffer,
             nongravHeader: t.nongrav?.header,
+            photometry: t.photometry ?? undefined,
           },
           { positionSSB: (id, et) => model.eph?.positionSSB(id, et) ?? null },
         );

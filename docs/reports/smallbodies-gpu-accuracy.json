@@ -1,0 +1,375 @@
+{
+ "precision": "df64-dekker",
+ "selfTest": {
+  "fmaExact": false,
+  "dekkerExact": true,
+  "maxRelError": 1.7937485211718193e-14,
+  "cases": 4096
+ },
+ "objects": 1019,
+ "spacing": 8,
+ "times": [
+  {
+   "days": 0.37,
+   "et": 844030368,
+   "steps": 0,
+   "backgroundSteps": 2,
+   "restoredFrom": null,
+   "gpuMs": 4011,
+   "cpuMs": 27,
+   "n": 1019,
+   "maxKm": 0.00004675922650196557,
+   "p50Km": 5.99760168716255e-7,
+   "p99Km": 0.0000032796098338931292,
+   "meanKm": 8.44930850167554e-7,
+   "maxKmS": 7.56569627343223e-12,
+   "worst": "row 700"
+  },
+  {
+   "days": 30.2,
+   "et": 846607680,
+   "steps": 13,
+   "backgroundSteps": 0,
+   "restoredFrom": 2,
+   "gpuMs": 101,
+   "cpuMs": 185,
+   "n": 1019,
+   "maxKm": 0.0004440741486696331,
+   "p50Km": 0.000021167667571729503,
+   "p99Km": 0.00028062237071289664,
+   "meanKm": 0.000043667559440791124,
+   "maxKmS": 1.1462027189920175e-9,
+   "worst": "row 1401407"
+  },
+  {
+   "days": 200.6,
+   "et": 861330240,
+   "steps": 85,
+   "backgroundSteps": 0,
+   "restoredFrom": null,
+   "gpuMs": 647,
+   "cpuMs": 961,
+   "n": 1019,
+   "maxKm": 0.027693645867561675,
+   "p50Km": 0.0005821943175986014,
+   "p99Km": 0.009906814566069119,
+   "meanKm": 0.0014691865834475758,
+   "maxKmS": 6.35346320145941e-9,
+   "worst": "row 1354268"
+  },
+  {
+   "days": 120.1,
+   "et": 854375040,
+   "steps": 4,
+   "backgroundSteps": 0,
+   "restoredFrom": 56,
+   "gpuMs": 49,
+   "cpuMs": 481,
+   "n": 1019,
+   "maxKm": 0.0067541141220728955,
+   "p50Km": 0.00022985804831447438,
+   "p99Km": 0.0036420570142986857,
+   "meanKm": 0.0005500077678132824,
+   "maxKmS": 1.7169433624247724e-9,
+   "worst": "row 1354268"
+  },
+  {
+   "days": 547.9,
+   "et": 891336960,
+   "steps": 177,
+   "backgroundSteps": 0,
+   "restoredFrom": 96,
+   "gpuMs": 1213,
+   "cpuMs": 1573,
+   "n": 1019,
+   "maxKm": 0.10286273177207651,
+   "p50Km": 0.0048690829652721845,
+   "p99Km": 0.07952192733868013,
+   "meanKm": 0.012065702543776306,
+   "maxKmS": 3.944405413386396e-8,
+   "worst": "row 1431020"
+  },
+  {
+   "days": -0.71,
+   "et": 843937056,
+   "steps": 0,
+   "backgroundSteps": 2,
+   "restoredFrom": 0,
+   "gpuMs": 33,
+   "cpuMs": 12,
+   "n": 1019,
+   "maxKm": 0.00014688132563656835,
+   "p50Km": 6.237164001600847e-7,
+   "p99Km": 0.000005369714898850093,
+   "meanKm": 0.0000010246441166356877,
+   "maxKmS": 1.9193032287214253e-11,
+   "worst": "row 700"
+  },
+  {
+   "days": -60.4,
+   "et": 838779840,
+   "steps": 30,
+   "backgroundSteps": 0,
+   "restoredFrom": null,
+   "gpuMs": 800,
+   "cpuMs": 391,
+   "n": 1019,
+   "maxKm": 0.06063030181175547,
+   "p50Km": 0.00006824607540856298,
+   "p99Km": 0.0011487880475085433,
+   "meanKm": 0.00022304435816956268,
+   "maxKmS": 1.4362411408430787e-8,
+   "worst": "2026 RT34"
+  },
+  {
+   "days": -274.3,
+   "et": 820298880,
+   "steps": 107,
+   "backgroundSteps": 0,
+   "restoredFrom": null,
+   "gpuMs": 882,
+   "cpuMs": 1120,
+   "n": 1019,
+   "maxKm": 0.5196919454196255,
+   "p50Km": 0.0011946651029683157,
+   "p99Km": 0.02024450686714733,
+   "meanKm": 0.0036691034729680796,
+   "maxKmS": 1.1642710588691846e-7,
+   "worst": "2026 RT34"
+  },
+  {
+   "days": -150.9,
+   "et": 830960640,
+   "steps": 3,
+   "backgroundSteps": 0,
+   "restoredFrom": -72,
+   "gpuMs": 33,
+   "cpuMs": 795,
+   "n": 1019,
+   "maxKm": 0.13635395615892174,
+   "p50Km": 0.00036739066644212934,
+   "p99Km": 0.006443164475266953,
+   "meanKm": 0.0011017666093914471,
+   "maxKmS": 1.0674351325429424e-8,
+   "worst": "2026 RT34"
+  },
+  {
+   "days": -547.2,
+   "et": 796720320,
+   "steps": 137,
+   "backgroundSteps": 0,
+   "restoredFrom": -136,
+   "gpuMs": 1081,
+   "cpuMs": 2060,
+   "n": 1019,
+   "maxKm": 1.597637964492549,
+   "p50Km": 0.005981832882698911,
+   "p99Km": 0.10507483353093607,
+   "meanKm": 0.018904910153778817,
+   "maxKmS": 0.0000022106395235356954,
+   "worst": "3200 Phaethon"
+  },
+  {
+   "days": 3.5,
+   "et": 844300800,
+   "steps": 1,
+   "backgroundSteps": 1,
+   "restoredFrom": 0,
+   "gpuMs": 34,
+   "cpuMs": 18,
+   "n": 1019,
+   "maxKm": 0.00009127913761063803,
+   "p50Km": 0.0000014889421905241129,
+   "p99Km": 0.000020681938184335745,
+   "meanKm": 0.000002320911778374889,
+   "maxKmS": 8.354188722173298e-11,
+   "worst": "row 700"
+  },
+  {
+   "days": 365.25,
+   "et": 875556000,
+   "steps": 6,
+   "backgroundSteps": 0,
+   "restoredFrom": 176,
+   "gpuMs": 49,
+   "cpuMs": 1437,
+   "n": 1019,
+   "maxKm": 0.04630568529556088,
+   "p50Km": 0.00198808843245083,
+   "p99Km": 0.03352802805692282,
+   "meanKm": 0.00482766743739021,
+   "maxKmS": 1.3871019074440372e-8,
+   "worst": "row 1401407"
+  }
+ ],
+ "fixtures": [
+  {
+   "label": "1 Ceres",
+   "category": "main belt (dwarf planet)",
+   "maxKm": 0.03344784972067996,
+   "maxKmS": 2.178649131747555e-9
+  },
+  {
+   "label": "2 Pallas",
+   "category": "main belt, i = 35 deg",
+   "maxKm": 0.005056819682448307,
+   "maxKmS": 3.11748392852896e-10
+  },
+  {
+   "label": "4 Vesta",
+   "category": "main belt",
+   "maxKm": 0.005103794732078606,
+   "maxKmS": 3.387602798610356e-10
+  },
+  {
+   "label": "153 Hilda",
+   "category": "Hilda (3:2 with Jupiter)",
+   "maxKm": 0.009496141079048101,
+   "maxKmS": 4.790710719618025e-10
+  },
+  {
+   "label": "624 Hektor",
+   "category": "Jupiter Trojan (L4)",
+   "maxKm": 0.008926183355256447,
+   "maxKmS": 2.737508245714098e-10
+  },
+  {
+   "label": "2060 Chiron",
+   "category": "Centaur",
+   "maxKm": 0.004299666979527263,
+   "maxKmS": 2.1142262948244768e-10
+  },
+  {
+   "label": "10199 Chariklo",
+   "category": "Centaur",
+   "maxKm": 0.0017902228932244924,
+   "maxKmS": 1.3825567976722345e-10
+  },
+  {
+   "label": "136199 Eris",
+   "category": "scattered-disc TNO",
+   "maxKm": 0.0016045455847434591,
+   "maxKmS": 6.513919698704348e-11
+  },
+  {
+   "label": "486958 Arrokoth",
+   "category": "cold classical TNO",
+   "maxKm": 0.0011581632742323278,
+   "maxKmS": 4.0138111755133916e-11
+  },
+  {
+   "label": "433 Eros",
+   "category": "NEO (Amor)",
+   "maxKm": 0.003992631267615796,
+   "maxKmS": 4.0092008746714436e-10
+  },
+  {
+   "label": "1566 Icarus",
+   "category": "NEO (Apollo), q = 0.19 au",
+   "maxKm": 0.12919810251116073,
+   "maxKmS": 2.2656377701642216e-8
+  },
+  {
+   "label": "3200 Phaethon",
+   "category": "NEO (Apollo), q = 0.14 au",
+   "maxKm": 1.597637964492549,
+   "maxKmS": 0.0000022106395235356954
+  },
+  {
+   "label": "99942 Apophis",
+   "category": "NEO (Aten), Yarkovsky A2",
+   "maxKm": 0.007896542154301679,
+   "maxKmS": 1.1042343128719866e-9
+  },
+  {
+   "label": "101955 Bennu",
+   "category": "NEO (Apollo), Yarkovsky A2",
+   "maxKm": 0.013958617228041153,
+   "maxKmS": 2.0502294028619027e-9
+  },
+  {
+   "label": "2026 RT34",
+   "category": "NEO, Earth flyby at 21 000 km on 2026-09-13",
+   "maxKm": 0.5196919454196255,
+   "maxKmS": 1.1642710588691846e-7
+  },
+  {
+   "label": "2P/Encke",
+   "category": "Jupiter-family comet, q = 0.34 au, non-grav",
+   "maxKm": 0.02712446978150468,
+   "maxKmS": 1.0926363364451563e-9
+  },
+  {
+   "label": "67P/Churyumov-Gerasimenko",
+   "category": "Jupiter-family comet, non-grav",
+   "maxKm": 0.004787150099099124,
+   "maxKmS": 6.57404198055285e-10
+  },
+  {
+   "label": "C/2025 A6 (Lemmon)",
+   "category": "long-period comet, non-grav",
+   "maxKm": 0.0076894828537754705,
+   "maxKmS": 3.0386846027841604e-10
+  },
+  {
+   "label": "3I/ATLAS (C/2025 N1)",
+   "category": "interstellar, hyperbolic (e = 6.1), non-grav with DT",
+   "maxKm": 0.08596429328514345,
+   "maxKmS": 3.1680679397863555e-9
+  }
+ ],
+ "random": {
+  "n": 1000,
+  "maxKm": 1.5435279875896348,
+  "p99Km": 0.10286273177207651,
+  "p90Km": 0.0644449391674747,
+  "p50Km": 0.008137166594084054,
+  "worst": [
+   {
+    "row": 1495116,
+    "maxKm": 1.5435279875896348,
+    "flags": 8196,
+    "orbitClass": "APO"
+   },
+   {
+    "row": 1401407,
+    "maxKm": 0.1275743416323299,
+    "flags": 0,
+    "orbitClass": "OMB"
+   },
+   {
+    "row": 739075,
+    "maxKm": 0.1104793713646118,
+    "flags": 2,
+    "orbitClass": "MBA"
+   },
+   {
+    "row": 527864,
+    "maxKm": 0.10949171875065786,
+    "flags": 14,
+    "orbitClass": "APO"
+   },
+   {
+    "row": 1044118,
+    "maxKm": 0.10844947783828002,
+    "flags": 0,
+    "orbitClass": "MBA"
+   }
+  ]
+ },
+ "statusMismatches": 0,
+ "records": {
+  "maxDirErrRad": 1.2772319220475996e-7,
+  "maxDmag": 0.0007671401911568954,
+  "compared": 1014,
+  "lit": 1014
+ },
+ "pick": true,
+ "pickAgreement": "40/40",
+ "stateOfErrKm": 0,
+ "excludeOk": true,
+ "statsStrict": {
+  "drawn": 129,
+  "withheld": 890
+ }
+}

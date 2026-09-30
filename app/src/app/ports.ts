@@ -6,7 +6,7 @@
 // where this port says `eph: EphemerisSetPort`, even if the concrete class has extra/private members.
 
 import type {
-  EphemHeader, IauRotation, Label, OrientationHeader, SmallBodyCoreHeader, SmallBodyPhysicalHeader, SmallBodyTableHeader, Sourced, TimeData,
+  EphemHeader, IauRotation, Label, OrientationHeader, SmallBodyCoreHeader, SmallBodyPhotometry, SmallBodyPhysicalHeader, SmallBodyTableHeader, Sourced, TimeData,
 } from '../data/schema';
 import type { Mat3, RendererStats, SceneSnapshot, StarCatalog, Vec3 } from '../render/scene';
 
@@ -129,6 +129,8 @@ export interface SmallBodyTablesInput {
   cometsHeader?: SmallBodyTableHeader;
   nongrav?: ArrayBuffer;
   nongravHeader?: SmallBodyTableHeader;
+  /** smallbodies/photometry.json: magnitude laws and colours. Without it the field knows no brightness (draws nothing). */
+  photometry?: SmallBodyPhotometry;
 }
 
 /** GPU buffer of point sources the renderer draws with the stars (layout owned by the field and renderer). */

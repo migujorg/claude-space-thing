@@ -25,6 +25,7 @@ import { SurfaceGpu } from './surfaceGpu';
 import type { RingPrep } from './rings';
 import { LAW } from './spatial';
 import { cameraGeom, prepareFrame, type PreparedFrame } from './frame';
+import { ExtraPointSources, type PointSourceBuffer } from './extraPoints';
 import { orbitVertices } from './overlays';
 import { AdaptationState, computeEyeFrame, type EyeFrame } from '../eye/model';
 import { DEFAULT_EYE_SETTINGS, type EyeSettings } from '../eye/settings';
@@ -101,6 +102,7 @@ export class Renderer {
   private stars: StarChunk[] = [];
   private starStride = 7;
   private starCount = 0;
+  private extraPts: ExtraPointSources | null = null;
   private visible: GPUBuffer;
   private maxVisible = 1;
   private frameIndex = 0;
@@ -326,7 +328,20 @@ export class Renderer {
       const info = this.device.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
       this.stars.push({ buffer, count, info });
     }
-    this.maxVisible = Math.max(1, Math.min(catalog.count, MAX_VISIBLE_STARS));
+    this.maxVisible = Math.max(1, Math.min(catalog.count + (this.extraPts?.count ?? 0), MAX_VISIBLE_STARS));
+    this.visible.destroy();
+    this.visible = this.device.createBuffer({ size: this.maxVisible * 32, usage: GPUBufferUsage.STORAGE });
+  }
+
+  /** The renderer's device, for GPU producers of extra point sources (e.g. the small-body field). */
+  get gpuDevice(): GPUDevice {
+    return this.device;
+  }
+
+  /** Extra point sources (star-layout records produced on the GPU, e.g. small bodies) drawn through the star path; null removes them. See ./extraPoints.ts. */
+  setExtraPointSources(src: PointSourceBuffer | null): void {
+    (this.extraPts ??= new ExtraPointSources(this.device)).set(src);
+    this.maxVisible = Math.max(1, Math.min(this.starCount + this.extraPts.count, MAX_VISIBLE_STARS));
     this.visible.destroy();
     this.visible = this.device.createBuffer({ size: this.maxVisible * 32, usage: GPUBufferUsage.STORAGE });
   }
@@ -581,7 +596,7 @@ export class Renderer {
     const veilView = t.levels[0].acc.createView();
     const paintView = t.levels[0].accR.createView();
     const bgView = this.bgView!;
-    if (this.starCount > 0 && !skip.has('cull')) {
+    if ((this.starCount > 0 || (this.extraPts?.count ?? 0) > 0) && !skip.has('cull')) {
       const pass = enc.beginComputePass({ label: 'star cull', timestampWrites: this.tsw('star cull') });
       pass.setPipeline(this.cullPipe);
       for (const c of this.stars) {
@@ -604,6 +619,7 @@ export class Renderer {
         }));
         pass.dispatchWorkgroups(gx, gy);
       }
+      this.extraPts?.cull(pass, this.cullPipe, { frameUB: this.frameUB, eyeUB: this.eyeUB, visible: this.visible, args: this.args, bgView, srcs: this.srcs, maxVisible: this.maxVisible });
       d.queue.writeBuffer(this.clampUB, 0, new Uint32Array([this.maxVisible, 0, 0, 0]));
       pass.setPipeline(this.clampPipe);
       pass.setBindGroup(0, d.createBindGroup({ layout: this.clampPipe.getBindGroupLayout(0), entries: [{ binding: 0, resource: { buffer: this.args } }, { binding: 1, resource: { buffer: this.clampUB } }] }));
@@ -631,7 +647,7 @@ export class Renderer {
       d.queue.writeBuffer(bodyPointsBuf, 0, a);
     }
     const drawPoints = (pipe: GPURenderPipeline, bg: GPUTextureView) => (pass: GPURenderPassEncoder) => {
-      if (this.starCount > 0 && !skip.has('points')) {
+      if ((this.starCount > 0 || (this.extraPts?.count ?? 0) > 0) && !skip.has('points')) {
         pass.setBindGroup(0, this.pointBindGroup(pipe, this.visible, bg));
         pass.drawIndirect(this.args, 0);
       }

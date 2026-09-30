@@ -681,6 +681,17 @@ export interface SmallBodyCoreHeader extends SmallBodyTableHeader {
   flagBits: Record<string, string>;
   /** Population statistic behind estimated diameters: measured p_V per SBDB orbit class ("*" = all). */
   classAlbedo: Record<string, { median: number; p16: number; p84: number; n: number }>;
+  /**
+   * Estimated colour of every asteroid without a measured spectrum: core field colorClass indexes `classes`
+   * (Bus-DeMeo class mean colours from smallbody-class-colors.json, then 'population'); 255 = comet.
+   */
+  colorClasses?: {
+    method: string;
+    sources: string[];
+    classes: { name: string; xyzsPerUnitPV: [number, number, number, number]; pVMedian: number | null }[];
+    counts?: Record<string, number>;
+    physicalFilled?: number;
+  };
   statistics: Record<string, unknown>;
   snapshot: string;
   names: string;
@@ -694,6 +705,12 @@ export interface SmallBodyPhysicalHeader extends SmallBodyTableHeader {
   lcdbU: string[];
   taxonomyB: string[];
   taxonomyT: string[];
+  /** Filter of each H-G1-G2 fit (physical.phaseFilter index), e.g. 'V' = MPC-archive V photometry. */
+  phaseFilters?: string[];
+  phaseFacilities?: string[];
+  spinTechniques?: string[];
+  /** SsODNet best taxonomy per physical.taxonomyBft index: 'scheme|class|technique'. */
+  taxonomySsodnet?: string[];
 }
 
 /** smallbodies/names.json: line i of `file` describes core record i. */
@@ -706,6 +723,33 @@ export interface SmallBodyNamesHeader {
   columns: string[];
   sources: string[];
   notes?: string;
+}
+
+/** One H-G1-G2 basis function (sbpy's clamped cubic spline, linear beyond the end nodes, clipped at 0). */
+export interface PhaseBasisSpline {
+  nodesRad: number[];
+  values: number[];
+  endDerivatives: [number, number];
+  /** Per interval i: [A0, A1, A2, A3] of sum A_k (alpha - nodesRad[i])^k. */
+  coefficients: number[][];
+}
+
+/** smallbodies/photometry.json (pipeline stage sbphotometry): turning small-body magnitudes into light. */
+export interface SmallBodyPhotometry {
+  vSun: Sourced<number>;
+  sunIrradianceXYZS1AU: Sourced<[number, number, number, number]>;
+  hg: { A: [number, number]; B: [number, number]; C: [number, number]; W: number; smallPhase: [number, number, number]; form: string; sources: string[]; note?: string };
+  hg1g2: { phi1: PhaseBasisSpline; phi2: PhaseBasisSpline; phi3: PhaseBasisSpline; sources: string[]; form: string };
+  colour: {
+    definition: string;
+    shapeDerivedRule: string;
+    shapeDerived: number;
+    withSpectrum: number;
+    yOverV: Record<string, number | string>;
+    estimatedColour: string;
+  };
+  comets: { method: string; label: Label };
+  rules: Record<string, string>;
 }
 
 /**
