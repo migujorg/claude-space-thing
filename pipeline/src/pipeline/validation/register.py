@@ -199,7 +199,7 @@ def read_json_cache(path):
     """A cached JSON value, or None when the file is missing or unreadable (e.g. truncated by a full disk)."""
     import json
     try:
-        return json.loads(path.read_text())
+        return json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
 
@@ -210,5 +210,5 @@ def write_json_cache(path, value) -> None:
     import os
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(json.dumps(value))
+    tmp.write_text(json.dumps(value), encoding="utf-8", newline="\n")
     os.replace(tmp, path)

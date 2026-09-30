@@ -48,7 +48,7 @@ def opus_footprint(case_id: str, opus_id: str) -> dict | None:
         path = download.fetch(OPUS_META.format(id=opus_id), f"validation/{case_id}", f"opus_{opus_id}.json")
     except Exception:  # noqa: BLE001 - the check is optional
         return None
-    gc = json.loads(path.read_text()).get("General Constraints", {})
+    gc = json.loads(path.read_text(encoding="utf-8")).get("General Constraints", {})
     try:
         return {k: float(gc[k]) for k in ("rightasc1", "rightasc2", "declination1", "declination2")} | \
             {"url": download.record(path)["url"]}

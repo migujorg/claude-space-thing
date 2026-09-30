@@ -59,7 +59,7 @@ class Frame:
 def cassini_calib(img: Path, lbl: Path) -> Frame:
     """CISSCAL-calibrated Cassini ISS image (RMS Node 'calibrated' holdings): PC_REAL float32 after one VICAR
     header record, units I/F (label DESCRIPTION: UNITS = 'I/F')."""
-    lab = pds3_label(lbl.read_text(errors="replace"))
+    lab = pds3_label(lbl.read_text(encoding="utf-8", errors="replace"))
     if "UNITS = 'I/F'" not in lab.get("DESCRIPTION", ""):
         raise ValueError(f"{img}: calibrated image is not in I/F units")
     rb = int(_num(lab["RECORD_BYTES"]))
@@ -82,7 +82,7 @@ def voyager_geomed(img: Path, lbl: Path) -> Frame:
     """Voyager ISS GEOMED image (calibrated, geometrically corrected, 1000×1000 LSB int16); I/F = DN ×
     REFLECTANCE_SCALING_FACTOR. The blank frame around the resampled area (DN 0) and saturated/negative pixels are
     returned as NaN."""
-    lab = pds3_label(lbl.read_text(errors="replace"))
+    lab = pds3_label(lbl.read_text(encoding="utf-8", errors="replace"))
     rb = int(_num(lab["RECORD_BYTES"]))
     rec = int(re.search(r",\s*(\d+)\s*\)", lab["^IMAGE"]).group(1))
     lines, samples = int(_num(lab["IMAGE.LINES"])), int(_num(lab["IMAGE.LINE_SAMPLES"]))

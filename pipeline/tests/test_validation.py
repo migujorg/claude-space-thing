@@ -139,7 +139,7 @@ def test_companion_signal_finds_the_right_parity():
 @pytest.mark.skipif(not CASES, reason="no validation cases built")
 @pytest.mark.parametrize("path", CASES, ids=[p.parent.name for p in CASES])
 def test_case_file(path: Path):
-    c = json.loads(path.read_text())
+    c = json.loads(path.read_text(encoding="utf-8"))
     assert c["schema"] == "validation-case-v1" and c["id"] == path.parent.name
     cam = c["view"]["camera"]
     W, H = cam["width"], cam["height"]

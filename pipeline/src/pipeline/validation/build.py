@@ -75,7 +75,7 @@ def _rings(naif: int) -> g.RingModel:
     path = OUT / "rings.json"
     if not path.exists():
         raise FileNotFoundError(f"{path} missing: run `uv run python -m pipeline build --only light` first")
-    rj = json.loads(path.read_text())[str(naif)]
+    rj = json.loads(path.read_text(encoding="utf-8"))[str(naif)]
     od = rj["opticalDepth"]
     p = od["value"][0]
     tau = np.array([np.nan if v is None else v for v in p["normalTau"]], float)
@@ -646,7 +646,7 @@ def app_preview(t: g.Target, entry: dict, view: g.Camera) -> dict | None:
     path = OUT / "photometry.json"
     if not path.exists():
         return None
-    ph = json.loads(path.read_text()).get(str(t.naif))
+    ph = json.loads(path.read_text(encoding="utf-8")).get(str(t.naif))
     if not ph or not (ph.get("geometricAlbedoXYZS") or {}).get("value") or not (ph.get("phaseFunction") or {}).get(
             "value"):
         return {"note": "no disk-integrated albedo or phase function in photometry.json"}
@@ -714,7 +714,8 @@ def write_case(case_id: str, built: dict) -> Path:
         out[k] = v
         if k == "observation":
             out["view"] = view
-    (d / "case.json").write_text(json.dumps(out, indent=1, ensure_ascii=False) + "\n")
+    (d / "case.json").write_text(json.dumps(out, indent=1, ensure_ascii=False) + "\n", encoding="utf-8",
+                                 newline="\n")
     preview(d / "preview.png", built["refs"], built["json"]["reference"]["bands"], built["rois"])
     return d
 
@@ -765,12 +766,12 @@ def write_index() -> Path:
     """validation/index.json: the cases present on disk."""
     rows = []
     for p in sorted((VALIDATION / "cases").glob("*/case.json")):
-        c = json.loads(p.read_text())
+        c = json.loads(p.read_text(encoding="utf-8"))
         rows.append({"id": c["id"], "title": c["title"], "epochUtc": c["view"]["epochUtc"],
                      "target": c["observation"]["target"], "instrument": c["observation"]["instrument"],
                      "rois": [r["id"] for r in c["rois"]], "path": f"cases/{c['id']}/case.json"})
     out = {"schema": "validation-index-v1", "cases": rows,
            "doc": "docs/reports/validation.md (what the renderer must output and how cases are compared)"}
     path = VALIDATION / "index.json"
-    path.write_text(json.dumps(out, indent=1, ensure_ascii=False) + "\n")
+    path.write_text(json.dumps(out, indent=1, ensure_ascii=False) + "\n", encoding="utf-8", newline="\n")
     return path

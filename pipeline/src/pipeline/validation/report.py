@@ -281,7 +281,7 @@ def findings(cases: list[dict]) -> str:
                          "ROI).")
             else:
                 L.append(f"* `{c['id']}` {r['id']}: {pv['note']}.")
-    ledger = json.loads((RAW / "_downloads.json").read_text())
+    ledger = json.loads((RAW / "_downloads.json").read_text(encoding="utf-8"))
     fetched = sum(v.get("bytes", 0) for k, v in ledger.items() if k.startswith("validation/")) / 1e6
     L += ["", f"**Sizes:** `validation/` {_du(VALIDATION):.1f} MB (committed); downloaded inputs {fetched:.1f} MB "
           f"(download ledger), git-ignored in `data/raw/validation/` ({_du(RAW / 'validation'):.1f} MB present now: "
@@ -298,7 +298,7 @@ def findings(cases: list[dict]) -> str:
 
 
 def write(extra_sections: str = "") -> None:
-    cases = [json.loads(p.read_text()) for p in sorted((VALIDATION / "cases").glob("*/case.json"))]
+    cases = [json.loads(p.read_text(encoding="utf-8")) for p in sorted((VALIDATION / "cases").glob("*/case.json"))]
     parts = [HEADER, "## 4. The cases\n\n", summary_table(cases), "\n",
              "Sizes: `validation/` holds only case.json, reference.bin (float32 I/F on the view grid) and "
              "preview.png per case; the downloaded images are fetched into `data/raw/validation/` (git-ignored) "
@@ -307,7 +307,7 @@ def write(extra_sections: str = "") -> None:
         parts.append(case_section(c) + "\n")
     parts.append(findings(cases))
     parts.append(extra_sections)
-    REPORT.write_text("".join(parts))
+    REPORT.write_text("".join(parts), encoding="utf-8", newline="\n")
 
 
 FINDINGS = """## 6. Limitations and open issues
