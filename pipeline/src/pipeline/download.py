@@ -11,6 +11,7 @@ import hashlib
 import json
 import time
 from pathlib import Path
+from typing import Callable
 
 import requests
 
@@ -38,26 +39,34 @@ def sha256_file(path: Path) -> str:
 
 
 def fetch(url: str, subdir: str, name: str | None = None, *, params: dict | None = None,
-          retries: int = 4, timeout: float = 120.0) -> Path:
-    """Download url to data/raw/<subdir>/<name> unless already present. Returns the local path."""
+          retries: int = 4, timeout: float = 120.0, headers: dict | None = None,
+          validate: Callable[[Path], bool] | None = None) -> Path:
+    """Download url to data/raw/<subdir>/<name> unless already present. Returns the local path.
+
+    `headers` are extra request headers (some publishers reject the default client). `validate(path)` checks the
+    content (e.g. that a .pdf really is a PDF and not a bot-check page): a cached file that fails it is fetched
+    again, and a fresh download that fails it is retried, then raises ValueError instead of being recorded."""
     name = name or url.rstrip("/").split("/")[-1]
     dest = RAW / subdir / name
     ledger = _load_ledger()
     key = str(dest.relative_to(RAW))
-    if dest.exists() and key in ledger:
+    if dest.exists() and key in ledger and (validate is None or validate(dest)):
         return dest
     dest.parent.mkdir(parents=True, exist_ok=True)
     tmp = dest.with_suffix(dest.suffix + ".part")
     delay = 2.0
     for attempt in range(retries + 1):
         try:
-            with requests.get(url, params=params, stream=True, timeout=timeout) as r:
+            with requests.get(url, params=params, headers=headers, stream=True, timeout=timeout) as r:
                 r.raise_for_status()
                 with tmp.open("wb") as f:
                     for chunk in r.iter_content(1 << 20):
                         f.write(chunk)
+            if validate is not None and not validate(tmp):
+                tmp.unlink()
+                raise ValueError(f"{url}: downloaded content failed validation (not saved)")
             break
-        except requests.RequestException:
+        except (requests.RequestException, ValueError):
             if attempt == retries:
                 raise
             time.sleep(delay)
