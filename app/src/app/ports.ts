@@ -168,8 +168,14 @@ export interface RendererPort {
   resize(w: number, h: number, dpr: number): void;
   render(s: SceneSnapshot): void;
   readonly stats: RendererStats;
-  /** Resolves when the GPU has finished the work submitted so far (used for __frameReady). */
+  /**
+   * Resolves once the view is fully settled: surface tiles loaded and the eye's adaptation converged (the renderer
+   * drives extra frames of the last snapshot to get there). For screenshots (__frameReady, __app.nextFrame()) —
+   * not for pacing the interactive loop.
+   */
   settled(): Promise<void>;
+  /** Optional: resolves when the GPU has finished (and presented) the last submitted frame, without extra frames. */
+  frameDone?(): Promise<void>;
   /** Optional (M3): the renderer's GPUDevice, so the small-body field can share buffers with it. */
   readonly gpuDevice?: GPUDevice;
   /** Optional (M3): extra point sources (small bodies) drawn with the stars; null removes them. */
@@ -201,6 +207,8 @@ export interface AppDeps extends CoreDeps {
   SmallBodyField?: SmallBodyFieldFactory;
   /** Optional (M3): Web Worker factory for the small-body name index (default: a module worker; tests: none). */
   nameWorker?: () => Worker;
+  /** Optional: worker factory for background small-body propagation (default: a module worker; null: main thread). */
+  propagationWorker?: (() => Worker) | null;
   /** Defaults to window.fetch. */
   fetch?: FetchFn;
   /** Base URL of the data products. Defaults to `${import.meta.env.BASE_URL}data/`. */
