@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import math
 
 from ..paths import REPO
 from .build import TOLERANCE_K, VALIDATION
@@ -270,8 +269,11 @@ def findings(cases: list[dict]) -> str:
             pv = r.get("appDataPreview")
             if not pv:
                 continue
+            body = next((b for b in c["view"]["bodies"] if b["naifId"] == r.get("target")), None)
+            where = (f" (phase {body['phaseDeg']:.1f}°, sub-observer {body['subObserver']['latDeg']:+.1f}° "
+                     f"{body['subObserver']['eastLonDeg'] % 360:.1f}° E)" if body else "")
             if "XYZS" in pv and "ratioToExpected" in pv:
-                L.append(f"* `{c['id']}` {r['id']}: app/observed Y = {pv['ratioToExpected'][1]:.3f} "
+                L.append(f"* `{c['id']}` {r['id']}{where}: app/observed Y = {pv['ratioToExpected'][1]:.3f} "
                          f"({pv['deviationInSigma'][1]:+.1f} σ), X {pv['ratioToExpected'][0]:.3f}, "
                          f"Z {pv['ratioToExpected'][2]:.3f}; phase function {pv['labels']['phaseFunction']}.")
             elif "XYZS" in pv:
@@ -279,8 +281,12 @@ def findings(cases: list[dict]) -> str:
                          "ROI).")
             else:
                 L.append(f"* `{c['id']}` {r['id']}: {pv['note']}.")
-    L += ["", f"**Sizes:** `validation/` {_du(VALIDATION):.1f} MB (committed); downloaded inputs "
-          f"`data/raw/validation/` {_du(RAW / 'validation'):.1f} MB (git-ignored).", "",
+    ledger = json.loads((RAW / "_downloads.json").read_text())
+    fetched = sum(v.get("bytes", 0) for k, v in ledger.items() if k.startswith("validation/")) / 1e6
+    L += ["", f"**Sizes:** `validation/` {_du(VALIDATION):.1f} MB (committed); downloaded inputs {fetched:.1f} MB "
+          f"(download ledger), git-ignored in `data/raw/validation/` ({_du(RAW / 'validation'):.1f} MB present now: "
+          "`python -m pipeline.validation clean` deletes the images after a build; `build` fetches them again, and "
+          "the pointing-fit cache is keyed by each image's sha256, so a changed archive file is refitted).", "",
           "**Unit tests** (`pipeline/tests/test_validation.py`): the camera puts the target at the requested pixel "
           "with the pole up; ray casting reproduces a sphere's projected area to 1 % and face-on emission; ring "
           "classes and radii; the pointing fit recovers a synthetic pose to 0.15 px and 2°; grey closure (I/F = 1 "
@@ -295,7 +301,8 @@ def write(extra_sections: str = "") -> None:
     cases = [json.loads(p.read_text()) for p in sorted((VALIDATION / "cases").glob("*/case.json"))]
     parts = [HEADER, "## 4. The cases\n\n", summary_table(cases), "\n",
              "Sizes: `validation/` holds only case.json, reference.bin (float32 I/F on the view grid) and "
-             "preview.png per case; the downloaded images live in `data/raw/validation/` (git-ignored).\n\n"]
+             "preview.png per case; the downloaded images are fetched into `data/raw/validation/` (git-ignored) "
+             "and may be deleted after the build (`clean`).\n\n"]
     for c in cases:
         parts.append(case_section(c) + "\n")
     parts.append(findings(cases))
@@ -332,4 +339,13 @@ FINDINGS = """## 6. Limitations and open issues
 8. **Sky ROIs** are upper limits only: every camera's scattered light and zero level are in them.
 9. **Sampling:** the reference is an area average per pixel; a renderer sampling pixel centres only will differ at
    ROI edges by up to the within-ROI gradient × ½ pixel, which the registration term does not include for it.
+10. **The app data preview's misses (§5) are findings about photometry.json, not about a renderer.** Where it is
+    off by more than 2σ, its own methods say why it can be: the **Moon** entry is the ROLO model, fitted to
+    Earth-based photometry of the near side, while EPOXI saw the far side (sub-observer longitude ~175° E), which
+    has a larger highland fraction and is brighter; the **Galilean** entries use Mayorga et al.'s (2020)
+    longitude-averaged GRN phase curve (rotational variations, their Table 4, are not represented; the fit has no
+    data between 30° and 60° phase, where Io's 35.6° and Callisto's 46.5° lie) at every wavelength, with LORRI's broad band compared
+    through the body's single spectral shape. The size of each effect here is not quantified; the next step is the
+    rotational terms of Mayorga et al. Table 4 at the LORRI sub-observer longitudes listed in §5. A renderer
+    comparison is unaffected: it is judged against the observed values, not against this preview.
 """

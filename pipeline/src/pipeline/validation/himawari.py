@@ -32,7 +32,6 @@ from ..photometry import filters, solar
 from ..photometry.common import Download
 from ..schema import BuildContext, SourceRecord
 from . import geometry as g
-from . import photometry as vp
 from .build import Prepared, shape_for
 from .roi import RoiSpec
 

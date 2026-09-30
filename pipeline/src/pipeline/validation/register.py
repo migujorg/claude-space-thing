@@ -175,7 +175,6 @@ def refit_translation(obs: np.ndarray, targets: list[g.Target], primary: int, pi
     """(cx, cy, rss) with the roll held fixed (e.g. the common roll of several frames of one sequence). Results are
     cached in data/cache/validation/refit/ by a digest of every input."""
     import hashlib
-    import json
 
     from ..paths import CACHE
     h = hashlib.sha256(np.ascontiguousarray(obs).tobytes())
@@ -184,13 +183,32 @@ def refit_translation(obs: np.ndarray, targets: list[g.Target], primary: int, pi
         h.update(b"rings" if t.rings is not None else b"-")
     h.update(repr((primary, pitch, round(cx, 6), round(cy, 6), round(roll_deg, 6))).encode())
     path = CACHE / "validation" / "refit" / f"{h.hexdigest()[:24]}.json"
-    if path.exists():
-        return tuple(json.loads(path.read_text()))
+    cached = read_json_cache(path)
+    if cached is not None:
+        return tuple(cached)
     rss = _rss_fn(obs, targets, primary, pitch, 1)
     opt = optimize.minimize(lambda q: rss([q[0], q[1], roll_deg]), [cx, cy], method="Nelder-Mead",
                             options={"initial_simplex": [[cx, cy], [cx + 0.5, cy], [cx, cy + 0.5]], "xatol": 5e-3,
                                      "fatol": 1e-12, "maxiter": 200})
     out = (float(opt.x[0]), float(opt.x[1]), float(opt.fun))
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(out))
+    write_json_cache(path, out)
     return out
+
+
+def read_json_cache(path):
+    """A cached JSON value, or None when the file is missing or unreadable (e.g. truncated by a full disk)."""
+    import json
+    try:
+        return json.loads(path.read_text())
+    except (OSError, ValueError):
+        return None
+
+
+def write_json_cache(path, value) -> None:
+    """Write a JSON cache file atomically (temporary file + rename), so an interrupted write leaves no stub."""
+    import json
+    import os
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(json.dumps(value))
+    os.replace(tmp, path)

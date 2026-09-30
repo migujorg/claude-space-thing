@@ -151,8 +151,8 @@ def test_case_file(path: Path):
     assert (h, w) == (H, W) and nb == len(ref["bands"])
     assert (path.parent / ref["file"]).stat().st_size == nb * h * w * 4
     for b in c["view"]["bodies"]:
-        O = np.array(b["orient"]).reshape(3, 3)
-        assert np.allclose(O.T @ O, np.eye(3), atol=1e-9)
+        orient = np.array(b["orient"]).reshape(3, 3)
+        assert np.allclose(orient.T @ orient, np.eye(3), atol=1e-9)
     # the reference image's fitted target centre is where the view projects the target
     im = c["observation"]["images"][c["observation"]["referenceImage"]]
     if im.get("fit"):

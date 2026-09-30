@@ -1013,7 +1013,8 @@ export interface ValidationRoi {
     /** Disk-integrated ROIs: `mean` has the local sky level (`background.level`, the camera's scattered light and
      *  zero level in a 5-pixel frame around the rectangle) subtracted; `rawMean` is the plain rectangle mean. */
     iof: { mean: number; std: number; n: number; nInRect: number;
-      background?: { level: number; spread: number; pixels: number; rawMean: number } };
+      background?: { level: number; levelSigma: number; robustPixelSpread: number; sideMedians: number[];
+        pixels: number; rawMean: number } };
     sigmaRel: { calibration: number; noise: number; registration: number };
     bandRadiance: { value: number; sigma: number | null; unit: 'W m-2 sr-1 nm-1'; bandSolarIrradiance1AU: number };
   }[];

@@ -123,7 +123,11 @@ def resample_to_view(native: np.ndarray, cam_native: g.Camera, view: g.Camera, s
     c = rays @ cam_native.M
     x = c[:, 0] / -c[:, 2] / cam_native.pitch + 0.5 * cam_native.width
     y = 0.5 * cam_native.height - c[:, 1] / -c[:, 2] / cam_native.pitch
-    v = ndimage.map_coordinates(native, [y - 0.5, x - 0.5], order=1, mode="constant", cval=np.nan)
+    r, c = y - 0.5, x - 0.5                         # array index coordinates (pixel centres at integers)
+    H, W = native.shape
+    outside = (r < -0.5) | (r > H - 0.5) | (c < -0.5) | (c > W - 0.5)
+    v = ndimage.map_coordinates(native, [np.clip(r, 0, H - 1), np.clip(c, 0, W - 1)], order=1, mode="nearest")
+    v[outside] = np.nan
     v = v.reshape(view.height * sub, view.width * sub)
     return v.reshape(view.height, sub, view.width, sub).mean(axis=(1, 3))
 
@@ -135,16 +139,15 @@ def _fit_cached(case_id: str, product: str, sha: str, b: np.ndarray, targets: li
            + (f"-t{'-'.join(str(t.naif) for t in targets[1:])}" if len(targets) > 1 else ""))
     path = CACHE / "validation" / case_id / f"{key}.json"
     tg = targets[0]
-    if path.exists():
-        d = json.loads(path.read_text())
+    d = register.read_json_cache(path)
+    if d is not None:
         cam = g.camera_for(tg, b.shape[1], b.shape[0], pitch, d["cx"], d["cy"], d["roll"])
         return register.Fit(d["cx"], d["cy"], d["roll"], d["flipped"], d["rss"], d["rss_other"], d["sigma"],
                             d["resid"], cam, d["coef"])
     ft = register.fit_pointing(b, targets, 0, pitch, flips=flips)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps({"cx": ft.cx, "cy": ft.cy, "roll": ft.roll_deg, "flipped": ft.flipped, "rss": ft.rss,
-                                "rss_other": ft.rss_other_parity, "sigma": ft.sigma_px, "resid": ft.residual_rms,
-                                "coef": ft.coef}))
+    register.write_json_cache(path, {"cx": ft.cx, "cy": ft.cy, "roll": ft.roll_deg, "flipped": ft.flipped,
+                                     "rss": ft.rss, "rss_other": ft.rss_other_parity, "sigma": ft.sigma_px,
+                                     "resid": ft.residual_rms, "coef": ft.coef})
     return ft
 
 
@@ -484,9 +487,10 @@ def measure(p: Prepared, sub: int = 4) -> dict:
             st = _stats(a, r.rect, 0.0 if r.spec.kind == "disk-integrated" else delta)
             bg = None
             if r.spec.kind == "disk-integrated":
-                # the camera's scattered light and zero level around the disk: the local sky level in a frame of
-                # BG_WIDTH pixels around the rectangle is subtracted (the renderer has no scattered light); its
-                # pixel spread is the uncertainty of that level under the disk
+                # the camera's scattered light and zero level around the disk: the median sky level in a frame
+                # of BG_WIDTH pixels around the rectangle is subtracted (the renderer has no scattered light). The
+                # level's uncertainty under the disk: the scatter of the frame's four sides' medians (gradients) and
+                # the robust pixel scatter / √n (noise)
                 x0, y0, x1, y1 = r.rect
                 w = BG_WIDTH
                 box = np.zeros(a.shape, bool)
@@ -494,10 +498,19 @@ def measure(p: Prepared, sub: int = 4) -> dict:
                 box[y0:y1, x0:x1] = False
                 ring = box & (cls_pix == g.SKY) & np.isfinite(a)
                 if ring.sum() >= 20:
-                    bg = {"level": float(np.nanmedian(a[ring])), "spread": float(np.nanstd(a[ring])),
-                          "pixels": int(ring.sum()), "rawMean": st["mean"]}
-                    st["mean"] = st["mean"] - bg["level"]
-                    st["sigmaNoise"] = math.hypot(bg["spread"], (sky_std[k] if np.isfinite(sky_std[k]) else 0.0)
+                    vals = a[ring]
+                    lvl = float(np.median(vals))
+                    mad = float(1.4826 * np.median(np.abs(vals - lvl)))
+                    yy, xx = np.nonzero(ring)
+                    sides = [a[yy[m], xx[m]] for m in (yy < y0, yy >= y1, (xx < x0) & (yy >= y0) & (yy < y1),
+                                                       (xx >= x1) & (yy >= y0) & (yy < y1))]
+                    meds = [float(np.median(v)) for v in sides if v.size >= 5]
+                    grad = float(np.std(meds)) if len(meds) >= 2 else mad
+                    sig_lvl = math.hypot(grad, mad / math.sqrt(vals.size))
+                    bg = {"level": lvl, "levelSigma": sig_lvl, "robustPixelSpread": mad,
+                          "sideMedians": meds, "pixels": int(vals.size), "rawMean": st["mean"]}
+                    st["mean"] = st["mean"] - lvl
+                    st["sigmaNoise"] = math.hypot(sig_lvl, (sky_std[k] if np.isfinite(sky_std[k]) else 0.0)
                                                   / np.sqrt(max(st["n"], 1)))
                 elif np.isfinite(sky_std[k]):
                     st["sigmaNoise"] = sky_std[k] / np.sqrt(max(st["n"], 1))

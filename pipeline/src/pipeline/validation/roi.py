@@ -75,7 +75,6 @@ def select(specs: list[RoiSpec], sub_res: dict[str, np.ndarray], sub: int) -> li
     cls_sub, tgt_sub = sub_res["cls"], sub_res["tgt"]
     cls, tgt = g.uniform_class(cls_sub, tgt_sub, sub)
     pv = {k: g.pixel_view(np.nan_to_num(sub_res[k], nan=0.0), sub) for k in ("inc", "emi", "pha", "mu0", "mu")}
-    ring_r = g.pixel_view(np.nan_to_num(sub_res["ring_r"], nan=0.0), sub)
     inc_max = g.pixel_view(np.nan_to_num(sub_res["inc"], nan=180.0), sub, "max")
     inc_min = g.pixel_view(np.nan_to_num(sub_res["inc"], nan=0.0), sub, "min")
     emi_min = g.pixel_view(np.nan_to_num(sub_res["emi"], nan=0.0), sub, "min")
