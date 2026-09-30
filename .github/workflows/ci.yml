@@ -1,8 +1,8 @@
 # Checks on every push and pull request: the app (typecheck + unit tests) and the pipeline (pytest).
-# No data is downloaded or built here: tests that need built products (app/public/data, data/cache) skip
-# themselves, and with PIPELINE_OFFLINE=1 a test whose raw inputs (data/raw) are absent is skipped at its first
-# network access instead of downloading them. `pytest -rs` lists every skip and its reason. The rendered-scene suite (npm run e2e) needs the data and a WebGPU browser, so it
-# runs locally, not in CI (app/e2e/README.md).
+# No data is downloaded or built here. Tests that need built products (app/public/data, data/cache) skip
+# themselves; with PIPELINE_OFFLINE=1 a test whose raw inputs (data/raw) are absent is skipped at its first
+# network access instead of downloading them (`pytest -rs` lists every skip with its reason).
+# The rendered-scene suite (npm run e2e) needs the data and a WebGPU browser: it runs locally (app/e2e/README.md).
 name: ci
 
 on:

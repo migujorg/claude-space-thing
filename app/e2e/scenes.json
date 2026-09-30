@@ -1,0 +1,22 @@
+{
+  "description": "Canonical views for the scene regression suite (app/e2e/README.md). Each scene is a URL query of the real app (app/src/app/url.ts) rendered headless by scripts/e2e.mjs. `defaults` are merged under each scene's params; a scene's `tolerance` overrides the suite defaults in scripts/e2e-lib.mjs.",
+  "viewport": { "width": 1280, "height": 720 },
+  "defaults": { "t": "2026-10-15T00:00:00Z", "smallbodies": "0" },
+  "scenes": [
+    { "id": "earth-day", "title": "Earth, day side (camera on the Sun side)", "params": { "target": "399", "dist": "20000", "az": "0", "el": "0" } },
+    { "id": "earth-day-strict", "title": "Earth, day side, Strict (measured + derived only)", "params": { "target": "399", "dist": "20000", "az": "0", "el": "0", "exists": "strict" } },
+    { "id": "earth-night", "title": "Earth, night side (Sun behind the Earth)", "params": { "target": "399", "dist": "20000", "az": "180", "el": "0" } },
+    { "id": "moon-quarter", "title": "Moon at quarter phase, close up", "params": { "target": "301", "dist": "6000", "az": "90", "el": "0" } },
+    { "id": "jupiter-galileans", "title": "Jupiter and the Galilean moons", "params": { "target": "599", "dist": "4000000" } },
+    { "id": "saturn-rings", "title": "Saturn and its rings from 400,000 km", "params": { "target": "699", "dist": "400000", "el": "25" } },
+    { "id": "uranus", "title": "Uranus", "params": { "target": "799", "dist": "150000" } },
+    { "id": "neptune", "title": "Neptune", "params": { "target": "899", "dist": "150000" } },
+    { "id": "pluto-charon", "title": "Pluto and Charon", "params": { "target": "999", "dist": "60000" } },
+    { "id": "starfield", "title": "Empty star field (looking outward past Pluto, labels off)", "params": { "target": "999", "dist": "3000000000", "labels": "0" } },
+    { "id": "starfield-enhanced", "title": "The same star field, Enhanced +6 stops", "params": { "target": "999", "dist": "3000000000", "labels": "0", "view": "enhanced", "boost": "6" } },
+    { "id": "sun-1au", "title": "The Sun from 1 au", "params": { "target": "10", "dist": "149597871" } },
+    { "id": "juno-closeup", "title": "3 Juno close-up (small body with a measured diameter and colour)", "params": { "target": "20000003", "smallbodies": "1" } },
+    { "id": "mars-map", "title": "Mars surface map, day side", "params": { "target": "499", "dist": "15000", "az": "0", "el": "10" } },
+    { "id": "mercury-map", "title": "Mercury surface map, day side", "params": { "target": "199", "dist": "8000", "az": "0", "el": "10" } }
+  ]
+}
