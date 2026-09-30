@@ -202,8 +202,14 @@ export interface RingSystem {
   planet: number;
   /** Radial profiles of normal optical depth, each from one measured occultation cut. */
   opticalDepth: Sourced<RingProfile[]>;
-  /** Lit-face reflectance vs radius. Reserved: `unknown` until a measured source is processed. */
+  /** Ring I/F model for the lit and unlit faces (per CIE channel, any geometry in its domain), calibrated on the
+   *  measurements below; `unknown` where no measurement exists. See docs/architecture.md §6. */
   reflectance: Sourced<RingReflectance>;
+  /** The measured reflectance data the model is built on, each at its own observed geometry. */
+  reflectanceMeasurements?: {
+    radialProfiles: Sourced<RingIFProfile[]>;
+    regionalPhaseCurves: Sourced<RingRegionalPhaseCurves>;
+  };
 }
 
 export interface RingProfile {
@@ -232,16 +238,68 @@ export interface RingProfile {
   };
 }
 
-/** Reserved for a measured radial I/F profile of the lit face: I/F per radius bin at the given wavelengths and geometry. */
-export interface RingReflectance {
-  kind: 'radial-if';
-  radiusKm: number[];
-  wavelengthNm: number[];
-  /** iOverF[w][r]: I/F at wavelengthNm[w], radiusKm[r]; null = not measured. */
-  iOverF: (number | null)[][];
+/** A radial I/F profile of the rings measured at one geometry. */
+export interface RingIFProfile {
+  name: string;
+  side: 'lit' | 'unlit';
+  instrument: string;
+  filter: string;
+  /** Solar-weighted effective wavelength of the band. */
+  effectiveWavelengthNm: number;
+  start: string;
   phaseDeg: number;
-  incidenceDeg: number;
-  emissionDeg: number;
+  /** Elevation of the Sun above the ring plane, degrees. */
+  solarElevationDeg: number;
+  /** Elevation of the observer: positive on the Sun's side of the ring plane, negative on the unlit side. */
+  observerElevationDeg: number;
+  /** Uniform radial grid: radius of sample i = radiusStartKm + i·radiusStepKm, i < count. */
+  radiusStartKm: number;
+  radiusStepKm: number;
+  count: number;
+  iOverF: (number | null)[];
+}
+
+/** Lit-face phase curves of ring regions: geometrically corrected I/F = a ln α + b (α in degrees). */
+export interface RingRegionalPhaseCurves {
+  definition: string;
+  minPhaseDeg: number;
+  maxPhaseDeg: number;
+  filters: { name: string; effectiveWavelengthNm: number }[];
+  /** Effective elevations Beff (sin Beff = 2μμ0/(μ+μ0)), degrees. */
+  elevationEffDeg: number[];
+  /** a[e][f], b[e][f] for elevationEffDeg[e] and filters[f]. */
+  regions: { name: string; radiusKm: [number, number]; a: number[][]; b: number[][] }[];
+}
+
+/** Ring reflectance model. `formula` states how to evaluate I/F per channel; all arrays are on the uniform radial
+ *  grid radiusStartKm + i·radiusStepKm (i < count); null = not modelled there. */
+export interface RingReflectance {
+  kind: 'single-scattering-v1';
+  formula: string;
+  radiusStartKm: number;
+  radiusStepKm: number;
+  count: number;
+  normalTau: (number | null)[];
+  /** Radial modulation of the particle reflectance (about 1 on average in each calibrated region). */
+  litModulation: (number | null)[];
+  /** Effective optical depth and gain for light diffusely transmitted to the unlit face. */
+  unlitTau: (number | null)[];
+  unlitGain: (number | null)[];
+  /** Grids of the amplitude tables (degrees); the model is defined for minPhaseDeg ≤ α ≤ maxPhaseDeg. */
+  phaseDeg: number[];
+  elevationEffDeg: number[];
+  minPhaseDeg: number;
+  maxPhaseDeg: number;
+  regions: {
+    name: string;
+    radiusKm: [number, number];
+    centerKm: number;
+    /** Exponent n of the power-law particle phase function (π − α)^n used between the calibrated phase ranges. */
+    powerLawExponent: number;
+    /** ϖP (particle albedo × phase function) per CIE channel X, Y, Z, scotopic: amplitudeXYZS[e][p][c] for
+     *  elevationEffDeg[e], phaseDeg[p]. */
+    amplitudeXYZS: number[][][];
+  }[];
 }
 
 export interface SunData {

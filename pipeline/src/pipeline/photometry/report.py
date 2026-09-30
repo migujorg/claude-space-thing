@@ -48,7 +48,7 @@ NOTES = {
          "(assumption: same at all λ, +2.4 %). Agrees with Mallama et al. (2017) B, V, Rc to ≤ 2 % and with Horizons "
          "to 0.02 mag. Strong data. Phase curve: ground + Cassini (measured).",
     699: "Karkoschka (1998) at the 1995 ring-plane crossing, i.e. the GLOBE without rings (what the renderer draws; "
-         "rings are M2). Scaled from 5.7° to 0° with an assumed phase law (+1.7 %). 5 % fainter in V than Mallama & "
+         "rings are separate, see Rings). Scaled from 5.7° to 0° with an assumed phase law (+1.7 %). 5 % fainter in V than Mallama & "
          "Pavlov's synthetic globe magnitude from the same data, but consistent with Karkoschka's own V. Saturn's "
          "globe colour changes with season (hemisphere in view, ring shadow). Phase curve: assumed/modelled "
          "(estimated).",
@@ -300,7 +300,8 @@ def generate() -> str:
       "percent); included for Uranian moons, Triton, Charon, Phobos.\n"
       "9. **Iapetus and Miranda** unknown; **Deimos** grey placeholder; **Titan** and **Triton**/**Charon** phase "
       "curves only near opposition.\n"
-      "10. **Ring brightness** unknown for every ring system (only optical depth is measured here).\n"
+      "10. **Ring brightness**: Saturn's is a calibrated model (unlit face and radii away from the three HST "
+      "regions least certain; low ring elevations only partly checked); Jupiter's, Uranus's and Neptune's unknown.\n"
       "11. **Irregular satellites**: brightness from compiled H only; grey placeholder colour; rough pck00011 radii "
       "(if bodies.json uses a different radius for them, the rendered brightness scales by (R_bodies/R_pck)²).\n")
     return "\n".join(L) + "\n"
@@ -403,14 +404,16 @@ def _moons_section(w, mres, mtexts, mcomps, sun, sx, sy) -> None:
 def _rings_section(w) -> None:
     rj, diag = rings.rings_json(None)
     w("## Rings (`rings.json`)\n")
-    w("Normal optical depth τ⊥ from one occultation per system (label **measured**); lit-face reflectance **unknown** "
-      "for every system. Values below are summaries of the product.\n")
+    w("Normal optical depth τ⊥ from one occultation per system (label **measured**). Reflectance: Saturn's is a "
+      "single-scattering model calibrated on Voyager and HST measurements (label **estimated**; the measurements "
+      "themselves are also in the product, **measured**); Jupiter's, Uranus's and Neptune's are **unknown**. Values "
+      "below are summaries of the product.\n")
     w("| planet | profile | radius range (km) | bins | observation | reflectance |\n|---|---|---|---|---|---|")
     names = {"599": "Jupiter", "699": "Saturn", "799": "Uranus", "899": "Neptune"}
     for key, s in rj.items():
         od = s["opticalDepth"]["value"]
         if od is None:
-            w(f"| {names[key]} | unknown | | | | unknown |")
+            w(f"| {names[key]} | unknown | | | | {s['reflectance']['label']} |")
             continue
         for prof in od:
             ob = prof["observation"]
@@ -432,8 +435,85 @@ def _rings_section(w) -> None:
     w("")
     w("Transmission of a ray crossing the ring plane at elevation B is exp(−τ⊥/|sin B|) to first order; in the A and "
       "B rings self-gravity wakes change the slant optical depth with viewing azimuth by tens of percent. Saturn's "
-      "equinox was in May 2025, so the Sun stays low over the rings throughout the window. Their reflectance is "
-      "unknown here: the renderer must mark ring brightness as not measured.\n")
+      "equinox was in May 2025, so the Sun stays low over the rings throughout the window.\n")
+    _ring_reflectance_section(w, rj, diag)
+
+
+def _ring_reflectance_section(w, rj, diag) -> None:
+    from . import albedo, phase as ph, ring_check, ring_reflectance as rr
+    m = diag["699-model"]
+    refl = rj["699"]["reflectance"]["value"]
+    w("### Saturn's ring reflectance\n")
+    w("Measured inputs: the Voyager 2 lit-face and Voyager 1 unlit-face ISS clear-filter I/F profiles (PDS VG_2810, "
+      "10 km bins) and Salo & French's (2010) HST WFPC2 phase curves of the C, B and A rings (5 filters 336-814 nm, "
+      "α = 0.25-6.3°, six effective elevations 4.5-26.1°, their Table 4). The model is the classical "
+      "single-scattering many-particle-thick ring (Chandrasekhar 1960; Salo & French Eq. 6) with the particle "
+      "term ϖP taken from the HST curves (≤ 6.3°), joined to Voyager at 47° by a power-law particle phase function "
+      "(π − α)^n, and with radial structure and the unlit face fitted to the Voyager profiles. Formula and "
+      "assumptions: docs/architecture.md §6.\n")
+    lit = m.lit
+    b_l = math.degrees(math.asin(rr.mu_eff(math.sin(math.radians(lit.obs_elev)), math.sin(math.radians(lit.solar_elev)))))
+    w(f"**Two independent anchors agree with a Callisto-like particle phase function.** Joining the HST ϖP at 6.3° "
+      f"(at the Voyager 2 effective elevation, {b_l:.1f}°) to the Voyager 2 mean at 47° needs n per region below; "
+      f"Salo & French use n = {rr.POWER_LAW_PUBLISHED} (Callisto, Dones et al. 1993) for the same rings. Particle "
+      "ϖP for the Y channel and the chromaticity of the light the rings reflect (x, y of sunlight × ϖP) at "
+      f"Beff = {m.beff[3]:.1f}°:\n")
+    sun = solar.irradiance_xyzs()
+    ks = [list(rr.PHASE_GRID).index(a) for a in (0.25, 6.3, 47.0)]
+    w("| region | radii (km) | mean τ⊥ (UVIS) | n | ϖP_Y 0.25° | ϖP_Y 6.3° | ϖP_Y 47° | x, y at 0.25° | x, y at ≥ 6.3° |"
+      "\n|---|---|---|---|---|---|---|---|---|")
+    for reg, (name, lo, hi) in rr.REGIONS.items():
+        tab = m.w_xyzs[reg][3]
+        xy = []
+        for k in (ks[0], ks[1]):
+            c = tab[k, :3] * sun[:3]
+            xy.append(f"{c[0] / c.sum():.4f}, {c[1] / c.sum():.4f}")
+        w(f"| {name} | {lo:.0f}-{hi:.0f} | {m.region_check[reg]['mean_tau']:.3f} | {m.n[reg]:.2f} | "
+          f"{tab[ks[0], 1]:.3f} | {tab[ks[1], 1]:.3f} | {tab[ks[2], 1]:.3f} | {xy[0]} | {xy[1]} |")
+    sat = bodies.build_body(699)
+    gc = sat.xyzs[:3] / sat.xyzs[:3].sum()
+    w(f"\nFor comparison Saturn's globe: x, y = {gc[0]:.4f}, {gc[1]:.4f}. The rings are a paler tan than the "
+      "globe, the B and A rings slightly redder than the C ring, and all redden with phase angle up to 6.3° "
+      "(beyond, the colour is held at its 6.3° value: an assumption). ϖP ≫ 1 near opposition is the particles' "
+      "backscattering phase function times their albedo, not an albedo above 1.\n")
+    b = (m.radius >= 100000) & (m.radius <= 107000)
+    w(f"Unlit face: in the B ring core (100 000-107 000 km, median τ⊥ = {np.median(m.tau[b]):.2f}) the Voyager 1 "
+      f"unlit profile needs an effective optical depth of median {np.median(m.unlit_tau[b]):.2f}: light reaches the "
+      "unlit side by multiple scattering and through gaps between self-gravity wakes, which single scattering at "
+      "τ⊥ cannot produce. The fitted unlitTau/unlitGain reproduce that one geometry; at others the unlit face is the "
+      "least certain part of the model.\n")
+    w("**Independent check: Saturn's system brightness.** Mallama & Hilton (2018) fitted Saturn's V magnitude with "
+      "rings (Eq. 10) and of the globe alone (Eq. 11) to ground photometry (α ≤ 6.5°, β ≤ 27°); their difference is "
+      "the net light the rings add (ring light seen minus globe light the rings block). The model gives the same "
+      "quantity by integrating over the ring plane with Saturn as an oblate spheroid that hides and shadows the "
+      "rings and with the rings blocking globe light by 1 − exp(−τ⊥/μ) (Y channel ≈ V; Sun and observer at the same "
+      "elevation β; the rings' shadow on the globe is ignored, small at these phase angles). Ratio model / M&H:\n")
+    alphas = (1.0, 3.0, 6.0)
+    w("| β | " + " | ".join(f"α = {a:.0f}°" for a in alphas) + " |\n|---|" + "---|" * len(alphas))
+    py = sat.xyzs[1] / sun[1]
+    for elev in (5.0, 10.0, 15.0, 20.0, 26.0):
+        row = []
+        for a in alphas:
+            dm = ph.delta_mag(sat.entry["phaseFunction"]["value"], a)
+            ours = ring_check.ring_net_flux(m, a, elev, py, dm)["net"]
+            mh = ring_check.mallama_net_flux(a, elev, albedo.mean_radius(699), albedo.sun_mag("V"))["net"]
+            row.append(f"{ours / mh:.2f}" if mh > 0 else "M&H < 0")
+        w(f"| {elev:.0f}° | " + " | ".join(row) + " |")
+    e10 = ph.mh_reduced_mag(699, 0.0, rings_beta=0.0) - ph.mh_reduced_mag(699, 0.0)
+    e10b = ph.mh_reduced_mag(699, 6.0, rings_beta=0.0) - ph.mh_reduced_mag(699, 6.0)
+    w(f"\nAt β = 15-26° the model agrees with ground photometry within 10 % at α = 1-3° (5-22 % at 6°). At β ≤ 10° it "
+      "is brighter than the M&H difference, but there the difference is not a clean measure of the rings: M&H's "
+      f"Eq. 10 at β = 0 is {e10:+.2f} mag (α = 0°) to {e10b:+.2f} mag (α = 6°) off their globe-only Eq. 11, "
+      "comparable to the whole ring term at low β, and the difference turns negative at β = 5°, α = 6° (rings "
+      "dimming Saturn). The comparison is inconclusive there. The model's own low-β behaviour rests on the HST data "
+      "down to Beff = 4.5°, below which the particle term is held constant.\n")
+    w("Domain: 0.25° ≤ α ≤ 47° (brightness unknown outside: the true-opposition spike below 0.25° and the forward "
+      f"scattering by dust at large α are not in the data used); radii {refl['radiusStartKm']:.0f}-"
+      f"{refl['radiusStartKm'] + refl['radiusStepKm'] * (refl['count'] - 1):.0f} km. Not modelled: the A ring's "
+      "azimuthal (wake) asymmetry, spokes, the F ring.\n")
+    w("Jupiter, Uranus, Neptune: no calibrated machine-readable reflectance profile was found (the PDS Ring-Moon "
+      "Systems Node's Voyager ring-profile series VG_28xx has imaging (ISS) I/F profiles for Saturn only; other "
+      "published photometry of these rings is in figures), so their reflectance stays unknown.\n")
 
 
 def _fixups_section(w) -> None:

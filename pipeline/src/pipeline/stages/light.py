@@ -52,7 +52,7 @@ def run(ctx: BuildContext) -> None:
               f"{labels}")
 
     rj, rdiag = rings.rings_json(ctx)
-    write_json(ctx, "rings.json", rj, "light")
+    write_json(ctx, "rings.json", rj, "light", indent=None)
     for n, prof in rdiag.items():
         tau = prof.tau[np.isfinite(prof.tau)]
         print(f"[light] rings {n}: {prof.radius[0]:.0f}-{prof.radius[-1]:.0f} km, {prof.radius.size} bins, "
