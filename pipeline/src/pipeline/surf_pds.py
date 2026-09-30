@@ -124,21 +124,23 @@ def equirect_grid(label: dict) -> EquirectGrid:
     """EquirectGrid from IMAGE_MAP_PROJECTION with the PDS3 convention (also stated in the LROC labels): the
     centre of the upper-left pixel is (line, sample) = (1, 1) and LINE/SAMPLE_PROJECTION_OFFSET are the offsets
     from that centre to the projection origin, positive when the origin is below/right of it. So the centre of
-    0-based line l is at lat = (L0 − l)/res and of sample s at lon = CENTER_LONGITUDE + (s − S0)/res."""
+    0-based line l is at lat = (L0 − l)/res and of sample s at lon = CENTER_LONGITUDE + (s − S0)/(res·cos φ0), φ0 =
+    CENTER_LATITUDE (the standard parallel)."""
     img = find(label, "IMAGE")
     mp = find(label, "IMAGE_MAP_PROJECTION")
     ptype = str(mp["MAP_PROJECTION_TYPE"]).upper()
     if ptype not in ("EQUIRECTANGULAR", "SIMPLE CYLINDRICAL", "SIMPLE_CYLINDRICAL"):
         raise ValueError(f"not equirectangular: {ptype}")
-    if abs(num(mp, "CENTER_LATITUDE")) > 1e-9:
-        raise ValueError("equirectangular with a non-zero centre latitude is not supported")
+    clat = num(mp, "CENTER_LATITUDE")
     res = num(mp, "MAP_RESOLUTION")
     l0 = num(mp, "LINE_PROJECTION_OFFSET")
     s0 = num(mp, "SAMPLE_PROJECTION_OFFSET")
     clon = num(mp, "CENTER_LONGITUDE")
     if str(mp.get("POSITIVE_LONGITUDE_DIRECTION", "EAST")).upper() != "EAST":
         raise ValueError("west-positive longitudes not supported here")
-    return EquirectGrid(lat0=l0 / res, lon0=clon - s0 / res, dlat=1.0 / res, dlon=1.0 / res,
+    # x = R (λ − λ0) cos φ0, y = R φ: with a standard parallel φ0 ≠ 0 the longitude spacing is 1/(res cos φ0)
+    dlon = 1.0 / (res * np.cos(np.radians(clat)))
+    return EquirectGrid(lat0=l0 / res, lon0=clon - s0 * dlon, dlat=1.0 / res, dlon=dlon,
                         lines=int(img["LINES"]), samples=int(img["LINE_SAMPLES"]))
 
 
