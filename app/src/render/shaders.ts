@@ -1,7 +1,7 @@
 // WGSL sources. Eye-model constants are injected from src/eye/constants.ts (single source of truth);
 // the per-pixel eye functions mirror src/eye/*.ts (keep in sync).
 
-import { CIE146, HUNT, PATTANAIK, SRGB } from '../eye/constants';
+import { CIE146, CIE191, CRUMEY, HUNT, PATTANAIK, SRGB } from '../eye/constants';
 import { SRGB_TO_XYZ, inv3 } from '../eye/display';
 import { XYZ_TO_HPE } from '../eye/tonemap';
 import { LAW_WGSL, MASK_HATCH_SHADER, RING_COMMON, RING_SHADER as RING_SHADER_OF, SURFACE_WGSL } from './shaders-m2';
@@ -59,6 +59,8 @@ struct Eye {
   misc2: vec4f,    // star quad half-extent px, 1/(1-exp(-extent^2/2 sigma^2)), unused, unused
   dark: vec4f,     // dark-light pedestal: L0 cone, L0 rod, R(L0) cone, R(L0) rod
   pts: vec4f,      // points (eye/points.ts): display response at the bleaching luminance, viewer's Ricco area (sr), cone summation area (sr), own veil in the background per lux per pixel solid angle
+  fix: vec4f,      // fixations: unit direction to the Sun, w = cos(angular radius + 1 px) of its disk (2: no Sun)
+  flags: vec4f,    // display black response, cone bleaching (1/0), fixation mode (1 brightness, 0 centre), unused
 };
 
 fn toCam(F: Frame, w: vec3f) -> vec3f {
@@ -107,6 +109,29 @@ fn crumeyPointThreshold(E: Eye, Bin: f32) -> f32 {
   let inner = E.cr0.x * h + E.cr0.y * h * q + E.cr0.z * B;
   let v = sqrt(max(inner, 0.0)) + E.cr0.w * q + E.cr1.x * h;
   return v * v;
+}
+// Crumey (2014) Eq. 39/40 large-target threshold contrast and the Ricco area A_R = ΔI/(C∞·B) (crumey.ts).
+fn crumeyRiccoArea(E: Eye, Bin: f32) -> f32 {
+  let B = max(Bin, E.cr1.y);
+  let iq = 1.0 / sqrt(sqrt(B));
+  let inner = ${f(CRUMEY.b1)} * iq * iq + ${f(CRUMEY.b2)} * iq + ${f(CRUMEY.b3)};
+  let cInf = sqrt(max(inner, 0.0)) + ${f(CRUMEY.b4)} * iq + ${f(CRUMEY.b5)};
+  return crumeyPointThreshold(E, B) / (cInf * B);
+}
+// CIE 191:2010 adaptation coefficient m by the standard's iteration (mesopic.ts), for a local state.
+fn mesopicM(Lp: f32, Ls: f32) -> f32 {
+  let v = ${f(CIE191.vPrimeLambda0)};
+  var m = ${f(CIE191.m0)};
+  for (var i = 0; i < 24; i++) {
+    let Lmes = (m * Lp + (1.0 - m) * Ls * v) / (m + (1.0 - m) * v);
+    m = select(0.0, clamp(${f(CIE191.a)} + ${f(CIE191.b)} * log2(Lmes) * ${f(Math.LOG10E / Math.LOG2E)}, 0.0, 1.0), Lmes > 0.0);
+  }
+  return m;
+}
+// (photopic, scotopic) → Blackwell units at mesopic state m (mesopic.ts blackwellEquivalent).
+fn blackwellEqM(E: Eye, m: f32, qp: f32, qs: f32) -> f32 {
+  let v = E.mes.y;
+  return (m * qp + (1.0 - m) * v * qs) / (m + (1.0 - m) * v * E.mes.z);
 }
 `;
 
@@ -167,6 +192,68 @@ fn intendedLd(R: f32) -> f32 {
 fn colourK(Lc: f32, Ld: f32) -> f32 {
   let rcr = naka(max(Lc, 0.0) + E.dark.x, E.scene.x, E.scene.z);
   let sScene = E.map.z * rcr * (1.0 - rcr / E.scene.z);
+  let rdr = naka(Ld, E.disp.x, E.disp.y);
+  let sDisp = E.map.z * rdr * (1.0 - rdr / E.disp.y);
+  return select(1.0, min(1.0, sScene / sDisp), sDisp > 0.0);
+}
+// ── The scene observer adapted to a local luminance (model.ts localObserver; tonemap.ts): used for point
+// sources, which are judged by the eye looking at them, adapted to their own background.
+struct Obs { sc: f32, sr: f32, bc: f32, br: f32, gain: f32, off: f32, d0c: f32, d0r: f32 };
+fn sigmaConeAt(A: f32) -> f32 {
+  let k = 1.0 / (${f(PATTANAIK.coneKScale)} * A + 1.0);
+  let k4 = k * k * k * k;
+  return ${f(PATTANAIK.coneSigmaNum)} * A / (k4 * A + ${f(PATTANAIK.coneSigmaPow)} * (1.0 - k4) * (1.0 - k4) * pow(A, 1.0 / 3.0));
+}
+fn sigmaRodAt(A: f32) -> f32 {
+  let x = 5.0 * A / ${f(HUNT.scotopicScale)};
+  let j = ${f(HUNT.flsJ)} / (x + ${f(HUNT.flsJ)});
+  let fls = ${f(HUNT.flsJ2)} * j * j * x + ${f(HUNT.flsPow)} * pow(1.0 - j * j, ${f(HUNT.flsExpJ)}) * pow(x, 1.0 / 6.0);
+  return ${f(PATTANAIK.refWhiteFactor)} * A * pow(${f(HUNT.fnHalf)}, 1.0 / E.map.z) / fls;
+}
+fn rodRawO(o: Obs, S: f32) -> f32 {
+  let bs = 0.5 / (1.0 + ${f(HUNT.bsA)} * pow(max(S, 0.0) / ${f(HUNT.scotopicScale)}, ${f(HUNT.bsExp)})) + o.br;
+  return naka(S, o.sr, bs);
+}
+fn respO(o: Obs, Y: f32, S: f32) -> f32 {
+  return naka(max(Y, 0.0) + E.dark.x, o.sc, o.bc) - o.d0c + rodRawO(o, max(S, 0.0) + E.dark.y) - o.d0r;
+}
+/** Observer adapted to (Ac, Ar) with Pattanaik's reference white/black (5·A, 5·A/32) and appearance rules. */
+fn obsAt(AcIn: f32, ArIn: f32) -> Obs {
+  let Ac = max(AcIn, E.cr1.y);
+  let Ar = max(ArIn, E.cr1.y * E.mes.z);
+  var o: Obs;
+  o.sc = sigmaConeAt(Ac);
+  o.sr = sigmaRodAt(Ar);
+  o.bc = select(1.0, ${f(PATTANAIK.coneBleachHalf)} / (${f(PATTANAIK.coneBleachHalf)} + Ac), E.flags.y > 0.5);
+  o.br = 0.5 / (1.0 + ${f(HUNT.bsB)} * (5.0 * Ar / ${f(HUNT.scotopicScale)}));
+  o.d0c = naka(E.dark.x, o.sc, o.bc);
+  o.d0r = rodRawO(o, E.dark.y);
+  let w = respO(o, ${f(PATTANAIK.refWhiteFactor)} * Ac, ${f(PATTANAIK.refWhiteFactor)} * Ar);
+  let b = respO(o, ${f(PATTANAIK.refWhiteFactor / PATTANAIK.refBlackDivisor)} * Ac, ${f(PATTANAIK.refWhiteFactor / PATTANAIK.refBlackDivisor)} * Ar);
+  let dW = E.disp.z;
+  let dB = E.flags.x;
+  o.gain = 1.0;
+  o.off = 0.0;
+  if (w <= dW && b >= dB) {
+  } else if (w - b > dW - dB) {
+    o.gain = (dW - dB) / (w - b);
+    o.off = dB - b * o.gain;
+  } else if (w + b > dW + dB) {
+    o.off = min(0.0, dW - w);
+  } else {
+    o.off = max(0.0, dB - b);
+  }
+  return o;
+}
+fn intendedLdO(o: Obs, R: f32) -> f32 {
+  let Rd = o.gain * R + o.off;
+  if (Rd <= 0.0) { return 0.0; }
+  if (Rd >= E.pts.x) { return ${f(PATTANAIK.coneBleachHalf)}; }
+  return E.disp.x * pow(Rd / (E.disp.y - Rd), 1.0 / E.map.z);
+}
+fn colourKO(o: Obs, Lc: f32, Ld: f32) -> f32 {
+  let rcr = naka(max(Lc, 0.0) + E.dark.x, o.sc, o.bc);
+  let sScene = E.map.z * rcr * (1.0 - rcr / o.bc);
   let rdr = naka(Ld, E.disp.x, E.disp.y);
   let sDisp = E.map.z * rdr * (1.0 - rdr / E.disp.y);
   return select(1.0, min(1.0, sScene / sDisp), sDisp > 0.0);
@@ -525,9 +612,13 @@ ${BG}
   // does not mask it), plus the analytic veil (Sun, off-frame bodies).
   let own = e * (E.pts.w / pixelSolidAngle(F, ndc));
   let bg = max(bgAt(bgTex, ndc) / F.proj.w - own, vec4f(0.0)) + analyticVeil(E, normalize(u));
-  let Bbw = max(E.cr1.z, blackwellEq(E, bg.y, bg.w));
-  let thr = E.mes.w * crumeyPointThreshold(E, Bbw) / E.map.w;
-  if (blackwellEq(E, e.y, e.w) < thr) { return; }
+  // Judged by the eye looking at the star, adapted to that background (Crumey's condition), not to the
+  // frame's global state (eye-model.md §2 "Fixations").
+  let aC = max(bg.y, E.cr1.y);
+  let aR = max(bg.w, E.cr1.y * E.mes.z);
+  let mL = mesopicM(aC, aR);
+  let thr = E.mes.w * crumeyPointThreshold(E, blackwellEqM(E, mL, aC, aR)) / E.map.w;
+  if (blackwellEqM(E, mL, e.y, e.w) < thr) { return; }
   let k = atomicAdd(&args[1], 1u);
   if (k >= info.maxVisible) { return; }
   visible[2u * k] = vec4f(ndc, 0.0, 0.0);
@@ -575,24 +666,34 @@ struct PV {
   o.pos = vec4f(p.xy + offPx * 2.0 * F.size.zw, p.z, 1.0);
   o.off = offPx * vec2f(1.0, -1.0);
   o.e = e;
-  // Appearance (points.ts pointAppearance). Background: coarse veil + analytic veil + bodies, perceived.
+  // Appearance (points.ts pointAppearance). Background: coarse veil + analytic veil + bodies.
   let px = clamp(vec2i((p.xy * vec2f(0.5, -0.5) + 0.5) * F.size.xy), vec2i(0), vec2i(F.size.xy) - 1);
   let dir = normalize(worldDirNdc(F, p.xy));
   // The source's own light is removed from the background (it would otherwise mask itself).
   let own = e * (E.pts.w / pixelSolidAngle(F, p.xy));
-  let bg = (max(bgAt(bgTex, p.xy) / F.proj.w - own, vec4f(0.0)) + analyticVeil(E, dir) + E.glare.x * textureLoad(extTex, px, 0) / F.proj.w) * E.map.w;
+  let bgPhys = max(bgAt(bgTex, p.xy) / F.proj.w - own, vec4f(0.0)) + analyticVeil(E, dir) + E.glare.x * textureLoad(extTex, px, 0) / F.proj.w;
+  // The eye looking at the point is adapted to that background (its own fixation, eye-model.md §2).
+  let ob = obsAt(bgPhys.y, bgPhys.w);
+  let aC = max(bgPhys.y, E.cr1.y);
+  let aR = max(bgPhys.w, E.cr1.y * E.mes.z);
+  let mL = mesopicM(aC, aR);
+  let bBw = blackwellEqM(E, mL, aC, aR);
+  let visible = blackwellEqM(E, mL, e.y, e.w) >= E.mes.w * crumeyPointThreshold(E, bBw) / E.map.w;
+  let aRicco = crumeyRiccoArea(E, bBw);
+  let aCones = crumeyRiccoArea(E, max(bBw, ${f(CIE191.upperCdM2)}));
+  let bg = bgPhys * E.map.w;
   let u = E.glare.x * E.map.w;
-  let eY = e.y * u / E.cr1.w;
-  let eS = e.w * u / E.cr1.w;
-  let Lb = intendedLd(sceneResponse(bg.y, bg.w));
-  let dLd = max(0.0, intendedLd(sceneResponse(bg.y + eY, bg.w + eS)) - Lb);
+  let eY = e.y * u / aRicco;
+  let eS = e.w * u / aRicco;
+  let Lb = intendedLdO(ob, respO(ob, bg.y, bg.w));
+  let dLd = select(0.0, max(0.0, intendedLdO(ob, respO(ob, bg.y + eY, bg.w + eS)) - Lb), visible);
   let wanted = dLd * E.pts.y;
   let Ldb = min(Lb, E.disp.w);
   let splatArea = 2.0 * PI * E.misc.z * E.misc.z * pixelSolidAngle(F, p.xy) / E.misc2.y;
   let capacity = max(0.0, E.disp.w - Ldb) * splatArea;
   let drawn = min(wanted, capacity);
   let peakLd = Ldb + drawn / max(splatArea, 1e-30);
-  let chroma = displayChroma(e.xyz, colourK(bg.y + e.y * u / E.pts.z, peakLd));
+  let chroma = displayChroma(e.xyz, colourKO(ob, bg.y + e.y * u / aCones, peakLd));
   o.disp = vec4f(chroma * drawn, 0.0);
   o.over = vec4f(chroma * (wanted - drawn), 0.0);
   return o;
@@ -814,10 +915,18 @@ var<workgroup> sh: array<vec4f, 256>;
     let ext = textureLoad(extTex, p, 0) / F.proj.w;
     let pt = textureLoad(ptTex, p, 0) / F.proj.w;
     let ret = E.glare.x * ext + textureLoad(veilTex, p, 0) / F.proj.w + analyticVeil(E, dir);
-    if (dot(dir, -F.back.xyz) >= E.misc.y) {
-      // Log-average (geometric mean) over the adaptation field, offset by the dark light so that darkness
-      // is finite: a tiny bright region (a fixated star's own near-core glare) cannot dominate it.
-      acc = vec4f(log(max(ret.y, 0.0) + E.dark.x) * om, log(max(ret.w, 0.0) + E.dark.y) * om, om, 0.0);
+    let lc = log(max(ret.y, 0.0) + E.dark.x);
+    let lr = log(max(ret.w, 0.0) + E.dark.y);
+    if (E.flags.z > 0.5) {
+      // Fixations over the whole frame, drawn to the objects there in proportion to their light (the
+      // unscattered scene, not the glare haze); at each the eye adapts to the retinal image (object plus
+      // veil). The solar disk is never fixated; its veil still counts where the eye looks.
+      let wgt = select((max(ext.y, 0.0) + E.dark.x) * om, 0.0, dot(dir, E.fix.xyz) >= E.fix.w);
+      acc = vec4f(lc * wgt, lr * wgt, wgt, 0.0);
+    } else if (dot(dir, -F.back.xyz) >= E.misc.y) {
+      // One fixation at the view centre: log-average (geometric mean) over the adaptation field, offset by
+      // the dark light so that darkness is finite (Ward Larson et al. 1997).
+      acc = vec4f(lc * om, lr * om, om, 0.0);
     }
     acc.w = (ext.y + pt.y) * om;
   }

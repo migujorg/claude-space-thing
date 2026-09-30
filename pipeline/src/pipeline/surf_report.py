@@ -99,6 +99,34 @@ def verification(hs: dict) -> list[str]:
             reg = h["coverage"]["regions"][0]
             lines.append(f"- **{h['bodyName']}:** data from {reg['latMin']:.0f}° to {reg['latMax']:.0f}° "
                          f"(planetocentric): the {hemi} pole faces Earth in 2025, as expected (test).")
+    if (399, "albedo") in hs and (399, "water") in hs:
+        L = hs[(399, "albedo")]["maxLevel"]
+        y = st.read_level(OUT, 399, "albedo", L, 4, "f16")[..., 1] * hs[(399, "albedo")]["normalization"][
+            "absoluteDiskMean"]["Y"]
+        w = st.read_level(OUT, 399, "water", L, 2, "f16", nodata="nan")[..., 0]
+        lat, lon = st.lat_centers(L), st.lon_centers(L)
+        land, sea = (y > 0) & (w < 0.01), (y > 0) & (w > 0.99)
+        sah = y[(lat > 20) & (lat < 28)][:, (lon > 0) & (lon < 20)]
+        ama = y[(lat > -10) & (lat < 0)][:, (lon > -70) & (lon < -55)]
+        wd = hs[(399, "water")]["diagnostics"]
+        lines.append(f"- **Earth albedo (level {L}, absolute Y):** median land {np.median(y[land]):.3f}, open water "
+                     f"{np.median(y[sea]):.4f}; Sahara (20–28°N, 0–20°E) {np.median(sah[sah > 0]):.3f}, Amazon "
+                     f"forest (0–10°S, 55–70°W) {np.median(ama[ama > 0]):.3f} (tests: land > 2.5× water, Sahara > 1.5× "
+                     f"land median). Water covers {wd['waterAreaFraction'] * 100:.1f} % of the area (ocean ≈ 70.8 % + "
+                     "inland water); MOD44W land samples that have a MUR sea-ice value (coastline mismatch) "
+                     f"{wd['maskAgreement']['mod44wLandSamplesWithSeaIceValue'] * 100:.3f} %.")
+    if (399, "night") in hs:
+        h = hs[(399, "night")]
+        L = h["maxLevel"]
+        r = st.read_level(OUT, 399, "night", L, 2, "f16", nodata="nan")[..., 0]
+        lat, lon = st.lat_centers(L), st.lon_centers(L)
+
+        def peak(la, lo):
+            i, j = int(np.argmin(abs(lat - la))), int(np.argmin(abs(lon - lo)))
+            return float(np.nanmax(r[i - 3:i + 4, j - 3:j + 4]))
+        lines.append(f"- **Earth night lights (level {L}):** peak radiance near Paris {peak(48.86, 2.35):.1f}, New York "
+                     f"{peak(40.71, -74.0):.1f}, Cairo {peak(30.04, 31.24):.1f}, central Sahara {peak(23.0, 12.0):.2f} "
+                     "nW cm⁻² sr⁻¹ (texel means; samples ≥ 38.2 are lower bounds).")
     for (naif, layer), h in sorted(hs.items()):
         g = h.get("diagnostics", {}).get("georeferencing")
         if g and g.get("passed") is not None:
@@ -109,11 +137,65 @@ def verification(hs: dict) -> list[str]:
     return lines
 
 
+def _short(v):
+    if isinstance(v, float):
+        return f"{v:.4g}"
+    if isinstance(v, list):
+        return "[" + ", ".join(_short(x) for x in v) + "]"
+    return v
+
+
+def earth_numbers(hs: dict) -> str:
+    """Computed Earth facts: absolute calibration, composition, epochs."""
+    h = hs[(399, "albedo")]
+    n, d = h["normalization"], h["diagnostics"]
+    a = n["absoluteDiskMean"]
+    lam = n["lambertSphereGeometricAlbedo"]
+    try:
+        phot = json.loads((OUT / "photometry.json").read_text())["399"]
+        pv = phot["geometricAlbedoV"]["value"]
+        sun = json.loads((OUT / "light.json").read_text())["sun"]["irradianceXYZS_1AU"]["value"]
+        pc = [p / s for p, s in zip(phot["geometricAlbedoXYZS"]["value"], sun)]
+    except (FileNotFoundError, KeyError):
+        pv, pc = None, None
+    lines = [f"**Absolute calibration implied by the albedo map.** Disk-mean surface reflectance (cos²φ, known texels) "
+             f"X {a['X']:.4f}, Y {a['Y']:.4f}, Z {a['Z']:.4f}, S {a['S']:.4f}. A Lambertian sphere with this surface "
+             f"would have a geometric albedo of {lam['Y']:.4f} (Y); Earth's disk photometry "
+             + (f"(photometry.json, a radiative-transfer model with clouds and atmosphere) has p_V = {pv:.3f}, so "
+                f"the bare surface is ~{lam['Y'] / pv * 100:.0f} % of the disk's brightness and clouds plus Rayleigh "
+                "scattering make up the rest. Per channel (X, Y, Z, S), the model disk's geometric albedo is "
+                + ", ".join(f"{v:.3f}" for v in pc) + " against the bare-surface Lambert values "
+                + ", ".join(f"{lam[c]:.4f}" for c in "XYZS") + ". " if pv else "is not available here. ")
+             + f"Disk weight: ocean {d['diskWeightShare']['ocean'] * 100:.1f} %, land "
+             f"{d['diskWeightShare']['land'] * 100:.1f} %, MODIS-measured water "
+             f"{d['diskWeightShare']['modisWater'] * 100:.1f} %; {h['coverage']['diskWeightFraction'] * 100:.1f} % of "
+             f"the disk weight is known ({d['mcd43Tiles']} MODIS tiles; negative texels clipped: "
+             f"{d['negativeTexelsClipped']})."]
+    for layer in ("clouds", "night", "water"):
+        if (399, layer) in hs:
+            x = hs[(399, layer)]
+            ep = x.get("epoch", {})
+            lines.append(f"**{layer}:** {x['brightness']['method']} Epoch: {ep.get('observed', '')}. Coverage "
+                         f"{x['coverage']['areaFraction']:.3f} of the area; diagnostics "
+                         + ", ".join(f"{k} {_short(v)}" for k, v in x.get("diagnostics", {}).items()
+                                     if isinstance(v, (int, float)) or k == "daylitLatitudeRange") + ".")
+    return "\n\n".join(lines)
+
+
 def _fmt_mib(b: int) -> str:
     return f"{b / 2**20:.1f}"
 
 
 BODY_NOTES = {
+    399: """**Sources.** Land: MODIS MCD43A4 v061 nadir BRDF-adjusted reflectance, the most recent daily 16-day composite, bands 469/555/645 nm. It comes from the Microsoft Planetary Computer's cloud-optimized copies: the 926 m overview is read by byte range and box-averaged exactly from the sinusoidal grid. Water: ESA OC-CCI v6.0 monthly remote-sensing reflectance (412–665 nm, 4 km), ρw = π·Rrs, for the same season one year earlier (September 2025). Land/water split: MOD44W (250 m) north of 60°S. MOD44W does not map Antarctica, and GIBS draws its no-data value in the water colour, so south of 60°S we use ETOPO 2022 surface elevation ≤ 0 m (ice shelves count as land). Clouds and night lights: NASA GIBS science layers decoded through their published colour maps. Clouds are VIIRS NOAA-20 CLDPROP cloud-top height and optical thickness with phase, one day at the ~13:30 overpass. Night lights are Black Marble VJ146A2 at-surface radiance. Sea ice: GHRSST MUR. Notes: `docs/sources/modis-mcd43a4-v061.md`, `esa-oc-cci-v6-rrs.md`, `nasa-gibs.md`, `night-lights-luminance.md`.
+
+**What we avoided.** GIBS "Corrected Reflectance" true colour is Rayleigh-corrected and contrast-stretched, and GeoColor is partly synthetic, so neither is used. Every value here is a documented physical quantity: reflectance factor, optical thickness, height, or radiance.
+
+**What the renderer does with it.** Surface = albedo × absoluteDiskMean (diffuse; NBAR is the nadir-view reflectance with the Sun at local noon, and land BRDF effects must come from the photometric model). Water adds Fresnel reflection and sun glint on waterFraction × (1 − seaIceFraction). Clouds are shaded from optical thickness, phase and top height at that day's overpass; the cloud layer is unknown in polar night. Rayleigh scattering and aerosols belong to the atmosphere model, not to these maps. Night side: radiance × `toXYZS` for an assumed lamp spectrum (colour `estimated`).
+
+**Known issues.** Sea ice has no reflectance (neither product retrieves it) and is unknown in the albedo. The land colour is estimated from three MODIS bands, and the flat hold beyond 645 nm misses vegetation's red edge. Clouds are one day, each place seen once; cloud-top heights ≥ 12 km are recorded as 12 km (open top bin). Night-light radiances ≥ 38.2 nW cm⁻² sr⁻¹ are lower bounds (censoredFraction). The lamp-spectrum factors are upper limits, because the CIE tables stop at 780 nm while the Day/Night Band reaches ~900 nm.""",
+    999: """**Source.** New Horizons MVIC global colour map (PDS SBN `nh_derived:plutosystem_composition`). Calibrated MVIC scans were converted to normal albedo with a lunar-Lambert function (L(15°) = 0.65), registered to the LORRI base map, and merged with it to full resolution. Blue 475, Red 625 and NIR 870 nm are used; CH4 895 nm is not. This replaces the USGS 8-bit panchromatic mosaic, whose brightness was an inverted display stretch and whose colour was the disk colour. The brightness is now `measured` and the colour varies per texel (`estimated`: two visible bands 150 nm apart). The MVIC map covers less than the panchromatic mosaic did (area 0.72 vs 0.77); the rest is unknown.""",
+    901: """**Source.** New Horizons MVIC global colour map, as for Pluto (1 km/px cube). Brightness `measured`, colour `estimated`. Coverage 0.60 of the area, against 0.74 for the USGS panchromatic mosaic it replaces: the sub-Pluto hemisphere is well covered, and the far side and the dark south are unknown.""",
     301: """**Source.** LROC WAC Hapke-normalized 7-band mosaic (Sato et al. 2017) for 70°S–70°N; LROC WAC empirically normalized polar mosaics (Boyd et al. 2012) poleward, tied to the Hapke product per band in the 62–69.5° ring; LOLA LDEM_64 for height; the LROC per-cell Hapke parameter maps (Sato et al. 2014) exported as the `hapke` layer. Notes: `docs/sources/lroc-wac-hapke-7band.md`, `lroc-wac-hapke-parameters.md`, `lroc-wac-emp-polar.md`, `lola-ldem-64.md`.
 
 **What a texel is.** Normal albedo *without* the shadow-hiding opposition surge, relative to its disk mean, per band, then XYZS. The WAC product is I/F at i = g = 60°, e = 0; we multiply by RADF(0,0,0; B_S0 = 0)/RADF(60,0,60) from the same published per-1°-cell Hapke model that produced the normalization. The surge is left out because the disk albedo the renderer multiplies by (Lane & Irvine 1973) also leaves it out, and because h_s sits at a fit bound (0 or 0.2) in hundreds of cells; keeping it would change texels by the amounts in `diagnostics.surgeSensitivity`. The disk-mean normal albedo in each band (header `normalization.bandNormalAlbedoDiskMean`, 0.074 at 566 nm) is lower than Lane & Irvine's p ≈ 0.12 because their linear extrapolation from 6° keeps part of the broad Hapke surge; only the ratios are used.
@@ -149,22 +231,24 @@ BODY_NOTES = {
 **Not used.** The USGS `EnhancedColor` (PCA stretch) and `MD3Color` (1000/750/430 nm false colour) mosaics, and the single-band basemaps.""",
 }
 
-PAN_NOTE = """**Galilean moons, Pluto, Charon: 8-bit panchromatic mosaics (USGS Astrogeology).** Each is calibrated and photometrically normalized by its producer (Lunar-Lambert for the Galilean satellites), matched across image boundaries and delivered as 8-bit numbers. Except for Pluto and Charon, whose FGDC metadata document the linear 8-bit stretch (inverted here), the DN scaling is not documented; we assume DN ∝ normalized reflectance. Brightness pattern and colour are therefore `estimated` (single band: the local colour is the disk colour). Colour composites (`ClrMosaic`, `ClrMerge`, `FalseColor`), the high-pass-filtered Enceladus mosaics (`_HPF`) and the Triton `GlobalFill` mosaic (undocumented fill) are not used. Georeferencing is checked against a named albedo feature from the IAU Gazetteer at its east longitude and at the mirrored longitude (catches W/E mix-ups)."""
+PAN_NOTE = """**Galilean moons: 8-bit panchromatic mosaics (USGS Astrogeology).** Each is calibrated and photometrically normalized by its producer (Lunar-Lambert), matched across image boundaries and delivered as 8-bit numbers. The DN scaling is not documented; we assume DN ∝ normalized reflectance. Brightness pattern and colour are therefore `estimated` (single band: the local colour is the disk colour). Colour composites (`ClrMosaic`, `ClrMerge`, `FalseColor`), the high-pass-filtered Enceladus mosaics (`_HPF`) and the Triton `GlobalFill` mosaic (undocumented fill) are not used. Georeferencing is checked against a named albedo feature from the IAU Gazetteer at its east longitude and at the mirrored longitude (catches W/E mix-ups)."""
 
 EXCLUDED_NOTE = """## Bodies deliberately without a visible surface map
 
 - **Venus:** the eye sees the cloud deck, featureless to a few percent in the visible; the markings in popular images are ultraviolet. Magellan radar maps show a surface no eye can see. Rendered from photometry.json only.
 - **Titan:** the eye sees an orange haze ball; the surface maps are 938 nm methane-window (ISS) or infrared (VIMS) products with the haze removed. Rendered from photometry.json only.
-- **Saturn's mid-size moons (rejected after checking):** the USGS/CICLOPS Cassini global maps compress large-scale contrast. The Iapetus map implies a leading/trailing brightness ratio of 0.84 (0.18 mag) at zero phase, while Iapetus's leading hemisphere is ~2 mag fainter than its trailing one; the Dione map implies 1.04 and its bright ray crater Creusa does not stand out. Tethys, Rhea and Enceladus come from the same map series and are held back until its brightness scaling is documented or checked (reasons in `surfaces/index.json` → `rejected`).
-- **Earth:** out of scope for this stage (needs daily cloud imagery; research note 1c).
-- **Triton, Uranian moons, Mimas, small moons:** not built yet (see open issues)."""
+- **Saturn's mid-size moons (rejected after checking):** the USGS/CICLOPS Cassini global maps compress large-scale contrast. The Iapetus map implies a leading/trailing brightness ratio of 0.84 (0.18 mag) at zero phase, while Iapetus's leading hemisphere is ~2 mag fainter than its trailing one. The Dione map implies 1.04, and its bright ray crater Creusa does not stand out. We also tested the DLR Cassini ISS cartographic atlas maps in PDS (COISS_3001–3007: Phoebe, Enceladus, Dione, Tethys, Iapetus, Mimas, Rhea). They are 8-bit simple-cylindrical mosaics with a Hapke photometric correction but no documented DN scaling, and they are the source of the USGS maps. They give the same ratios (Iapetus 0.844, Mimas 0.93, Tethys 1.08, Rhea 1.17), so none is used (reasons in `surfaces/index.json` → `rejected`).
+- **Triton:** the USGS products are the 1989 Voyager display colour composite (orange/violet/UV shown as RGB; "GlobalFill" adds synthetic fill) or an 8-bit clear-channel orthographic mosaic without documented scaling. No calibrated Triton map was found. Rejected.
+- **Uranian moons:** no global map product exists in the USGS mosaic archive or PDS; a map would have to be built from calibrated Voyager 2 images (southern hemispheres only). Not built.
+- **Small moons:** not built."""
 
 
 def generate() -> str:
     hs = _headers()
     idx = json.loads((OUT / "surfaces" / "index.json").read_text())
     total = sum(h["stats"]["bytes"] for h in hs.values())
-    meta = sum((OUT / "surfaces" / str(b) / f"{l}{ext}").stat().st_size for (b, l) in hs for ext in (".json", ".sha256"))
+    meta = sum((OUT / "surfaces" / str(b) / f"{lay}{ext}").stat().st_size for (b, lay) in hs
+               for ext in (".json", ".sha256"))
     raw = sum(p.stat().st_size for p in (RAW / "surfaces").rglob("*") if p.is_file()) if (RAW / "surfaces").exists() else 0
     rows = []
     for (naif, layer), h in sorted(hs.items(), key=lambda kv: (kv[0][0], kv[0][1])):
@@ -182,16 +266,19 @@ def generate() -> str:
                     f"| {blabels} | {col} | {ep} | {_fmt_mib(h['stats']['bytes'])} |")
     colour_rows = []
     for (naif, layer), h in sorted(hs.items()):
-        c = h.get("diagnostics", {}).get("color")
-        if not c:
-            continue
-        sp = h["diagnostics"]["interpolationSpread"]
-        above = c["integrandFractionAboveLastBand"]
-        below = c["integrandFractionBelowFirstBand"]
-        colour_rows.append(
-            f"| {h['bodyName']} | {', '.join(f'{b:g}' for b in c['bandCentersNm'])} | {c['widestBandGapNm']:.0f} "
-            f"| {max(below.values()) * 100:.1f} / {max(above.values()) * 100:.1f} "
-            f"| {' / '.join('%.1f' % (sp[k]['p99'] * 100) for k in ('X', 'Y', 'Z', 'S'))} | {h['color']['label']} |")
+        d = h.get("diagnostics", {})
+        for ck, sk, tag in (("color", "interpolationSpread", ""), ("colorLand", "interpolationSpreadLand", " (land)"),
+                            ("colorWater", "interpolationSpreadWater", " (water)")):
+            c = d.get(ck)
+            if not c:
+                continue
+            sp = d[sk]
+            above = c["integrandFractionAboveLastBand"]
+            below = c["integrandFractionBelowFirstBand"]
+            colour_rows.append(
+                f"| {h['bodyName']}{tag} | {', '.join(f'{b:g}' for b in c['bandCentersNm'])} | "
+                f"{c['widestBandGapNm']:.0f} | {max(below.values()) * 100:.1f} / {max(above.values()) * 100:.1f} "
+                f"| {' / '.join('%.1f' % (sp[k]['p99'] * 100) for k in ('X', 'Y', 'Z', 'S'))} | {h['color']['label']} |")
     secs = idx.get("buildSeconds", {})
     git = subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=REPO, capture_output=True, text=True).stdout.strip()
     parts = [
@@ -212,6 +299,11 @@ def generate() -> str:
         "in `missingTiles`.",
         "- **height** (float32, metres above the pck00011 reference ellipsoid named in the header; NaN = unknown).",
         "- **hapke** (Moon only; float16 × 35: w, b, c, B_S0, h_s per LROC band; constants and the model in the header).",
+        "- **Earth only** (float16, NaN = unknown per channel, all dated): **clouds** (cloudFraction, opticalThickness, "
+        "cloudTopHeightM, iceFraction), **night** (Day/Night-Band radiance in nW cm⁻² sr⁻¹ and the censored share; "
+        "`constants.toXYZS` converts to luminance for two lamp spectra), **water** (waterFraction, seaIceFraction). "
+        "Earth's **albedo** is absolute-calibrated: `normalization.absoluteDiskMean` × texel = surface reflectance, "
+        "because Earth's disk photometry includes clouds and atmosphere.",
         "- Every header has per-region provenance (`coverage.regions`), a brightness and a colour label, sources, the "
         "observation epoch and the normalization constants.",
         "",
@@ -228,7 +320,10 @@ def generate() -> str:
         "" + ", ".join(f"{k.removeprefix('surf_')} {v:.0f} s" for k, v in secs.items()) + "; "
         "the Moon and Mercury from their cached reductions). A cold build downloads ~20 GB and took 1096 s for the "
         "Moon (13 GB of LROC mosaics), 431 s for Mercury (4.3 GB of band ranges + the DEM), 106 s for Mars and 35 s "
-        "for the giant planets on this machine (~20-40 MB/s).",
+        "for the giant planets on this machine (~20-40 MB/s). Earth, all four layers, cold: 1509 s for 1.8 GB "
+        "(GIBS renders the 8192 × 4096 WMS blocks slowly; 1890 MODIS byte ranges, 766 MB; OC-CCI 324 MB; ETOPO "
+        "156 MB); only the ETOPO subset, the colour maps and the STAC responses are kept. Pluto and Charon: 42 s "
+        "for 1.27 GB of band ranges, deleted after use.",
         "",
         "## Colour: when is it `derived`?",
         "",
@@ -248,17 +343,19 @@ def generate() -> str:
         "## Per body",
         "",
     ]
-    for naif in (301, 599, 699, 799, 899, 499, 199):
+    for naif in (399, 301, 599, 699, 799, 899, 499, 199, 999, 901):
         if (naif, "albedo") not in hs:
             continue
         h = hs[(naif, "albedo")]
         parts += [f"### {h['bodyName']}", "", BODY_NOTES.get(naif, ""), ""]
-        for layer in ("albedo", "height"):
+        if naif == 399:
+            parts += [earth_numbers(hs), ""]
+        for layer in ("albedo", "height", "water", "clouds", "night"):
             p = REPO / "docs" / "reports" / "img" / f"surfaces-{naif}-{layer}.png"
             if p.exists():
                 parts.append(f"![{h['bodyName']} {layer}](img/{p.name})")
         parts.append("")
-    pans = [h for (n, l), h in sorted(hs.items()) if l == "albedo" and h.get("diagnostics", {}).get("dnStatistics")]
+    pans = [h for (n, lay), h in sorted(hs.items()) if lay == "albedo" and h.get("diagnostics", {}).get("dnStatistics")]
     if pans:
         parts += ["### Panchromatic mosaics", "", PAN_NOTE, "",
                   "| body | source | observed | DN p1 / median / p99 | georeferencing check | leading/trailing (mag) | notes |",
@@ -296,12 +393,20 @@ def generate() -> str:
               "- Galilean moons: DN scaling undocumented (brightness `estimated`). The headers record the leading/trailing "
               "brightness ratio each map implies (`diagnostics.leadingOverTrailing`); comparing it with measured orbital "
               "light curves would confirm or reject the linear-DN assumption, as it rejected the Iapetus map.",
-              "- Saturn's mid-size moons: find a documented-brightness source (e.g. the DLR Cassini ISS cartographic "
-              "volumes COISS_3001-3007 in PDS) or check the CICLOPS maps against disk photometry.",
-              "- Pluto/Charon: New Horizons MVIC colour (PDS composition bundle) not used yet; colour is the disk "
-              "colour. The DEMs (encounter hemisphere only) are not exported.",
-              "- Not built: Triton (Voyager hemisphere only; the USGS 'GlobalFill' fill is undocumented), Uranian moons, "
-              "Mimas (DLR atlas in a zip), Ceres/Vesta (M3), Earth.",
+              "- Saturn's mid-size moons: both public map series (USGS/CICLOPS, DLR COISS_3xxx) fail the brightness "
+              "check. A usable map needs mosaics built from calibrated Cassini ISS images (COISS_2xxx) with a "
+              "published photometric model, or a published albedo map.",
+              "- Pluto/Charon: the MVIC colour maps cover less than the old panchromatic mosaics (Pluto 0.72 vs 0.77, "
+              "Charon 0.60 vs 0.74 of the area). The rest could be filled from the LORRI panchromatic mosaic tied to "
+              "MVIC in the overlap (brightness `estimated` there). The DEMs (encounter hemisphere only) are not "
+              "exported.",
+              "- Not built: Triton, Uranian moons (no calibrated product), Ceres/Vesta (M3), Earth height (ETOPO 2022 "
+              "would need lake surfaces; optional).",
+              "- Earth: the cloud layer is one daytime overpass (the night side and polar night are unknown); a "
+              "renderer at another time should label clouds `estimated`. Geostationary cloud products (GOES/Himawari/"
+              "Meteosat L2) could give hourly clouds for most of the disk; not used yet (the Meteosat L2 archive needs "
+              "a login). The albedo has no sea-ice reflectance (unknown). The MCD43A4 fill share over the 315 tiles "
+              "includes their ocean pixels.",
               "- Giant planets: maps are one rotation at their epoch; advecting clouds with measured zonal wind profiles "
               "(research note 1c) is left to the renderer/M2 follow-up and would be `estimated`.",
               "- Moon: normal albedo excludes the opposition surge by definition (see above); the renderer's opposition "

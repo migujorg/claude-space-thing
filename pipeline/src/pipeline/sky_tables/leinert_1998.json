@@ -1,0 +1,48 @@
+{
+ "_citation": "Leinert, Ch., Bowyer, S., Haikala, L. K., Hanner, M. S., Hauser, M. G., Levasseur-Regourd, A.-Ch., Mann, I., Mattila, K., Reach, W. T., Schlosser, W., Staude, H. J., Toller, G. N., Weiland, J. L., Weinberg, J. L. & Witt, A. N. (1998), 'The 1997 reference of diffuse night sky brightness', Astronomy & Astrophysics Supplement Series 127, 1-99. DOI:10.1051/aas:1998105.",
+ "_transcription": "Transcribed by hand from the PDF recorded in docs/sources/zodiacal-light.md; page numbers are the journal's. The zodiacal-light maps themselves are in leinert_1998_table16.csv / _table17.csv.",
+ "s10_sun": {
+  "_source": "Sect. 2, p. 4: 'With V_sun = -26.74 and the mean solid angle of the solar disc ... 1 S10sun = 6.61 10^-12 F_sun/sr'; Table 2, p. 3: 1 S10sun = 1.28e-8 W m^-2 sr^-1 um^-1 at 0.502 um; Table 2 note a: 1 mag-0 star per sr = 3.046 S10.",
+  "per_sr_of_solar_flux": 6.61e-12,
+  "W_m2_sr_um_at_500nm": 1.28e-8,
+  "V_sun": -26.74
+ },
+ "ecliptic_pole_500nm": {
+  "_source": "Sect. 8.3.1, p. 37, Eq. (19)",
+  "I_S10sun": 60, "I_unc_S10sun": 3, "polarisation": 0.19, "polarisation_unc": 0.01
+ },
+ "map_errors": {
+  "_source": "Sect. 8.3.2, p. 38",
+  "low_values_S10sun": [10, 15], "high_values_fraction": [0.05, 0.10]
+ },
+ "heliocentric_dependence": {
+  "_source": "Sect. 8.2, p. 35, Eqs. (15) and (17)",
+  "helios_0.3_1AU": {"text": "I(R)/I(1 AU) = R^(-2.3 +- 0.1) for elongations 16-160 deg (Helios 1/2; Leinert et al. 1980)", "exponent": -2.3, "unc": 0.1, "range_AU": [0.3, 1.0]},
+  "pioneer10_1_3.3AU": {"text": "I(R)/I(1 AU) = R^(-2.5 +- 0.2) (Pioneer 10; Toller & Weinberg 1985)", "exponent": -2.5, "unc": 0.2, "range_AU": [1.0, 3.3]}
+ },
+ "colour_fco": {
+  "_source": "Sect. 8.4.2, p. 41, Eq. (22): reddening relative to the solar spectrum, colour ratio C(lambda, 500 nm) = f_co, log = log10; f_co = 1 means solar colour. For elongation < 30 deg use the 30 deg relation, > 90 deg the 90 deg relation, interpolate in between. Deviates from 1 by < 20 % from 350 to 800 nm.",
+  "eps30": {"below_500nm": {"slope": 1.2, "range_nm": [220, 500]}, "above_500nm": {"slope": 0.8, "range_nm": [500, 2500]}},
+  "eps90": {"below_500nm": {"slope": 0.9, "range_nm": [220, 500]}, "above_500nm": {"slope": 0.6, "range_nm": [500, 2500]}},
+  "form": "f_co = 1 + slope * log10(lambda / 500 nm)"
+ },
+ "pioneer10_poles_table34": {
+  "_source": "Table 34, p. 75: brightness of background starlight + integrated starlight at the poles, S10sun units, stars with m_V < 6.5 excluded (adapted from Toller et al. 1987). Pioneer 10 (1978) photometry columns only; the SGP red value is blank in the paper.",
+  "blue_4407A": {"NCP": 56, "NEP": 66, "NGP": 29, "SCP": 74, "SEP": 128, "SGP": 33},
+  "red_6419A": {"NCP": 77, "NEP": 82, "NGP": 31, "SCP": 94, "SEP": 125, "SGP": null}
+ },
+ "star_counts_poles_table34": {
+  "_source": "Table 34, p. 75, the 'Star counts' columns (integrated light of catalogued stars fainter than m_V = 6.5, S10sun); blank cells null.",
+  "roach_megill_1961_pg_4250A": {"NCP": 48, "NEP": 52, "NGP": 24, "SCP": 56, "SEP": 50, "SGP": 79},
+  "sharov_lipaeva_1973_B_4400A": {"NCP": 37, "NEP": 50, "NGP": 21, "SCP": 41, "SEP": 39, "SGP": 36},
+  "tanabe_1973_palomar_blue_4150A": {"NCP": 48, "NEP": 66, "NGP": 26, "SCP": null, "SEP": null, "SGP": null},
+  "tanabe_1973_palomar_red_6440A": {"NCP": 76, "NEP": 76, "NGP": 41, "SCP": null, "SEP": null, "SGP": null}
+ },
+ "pioneer_ipp_star_removal": {
+  "_source": "Sect. 10.4, p. 69: 'Individually resolved stars, typically those brighter than 6.5 mag, were removed from the measured brightnesses on the basis of a custom made catalog containing 12457 stars. The absolute calibration was based on the instrument's response to Vega.' Random error 2-3 S10sun, perhaps 5 in the Milky Way and Magellanic clouds (p. 72); spatial resolution ~2 deg.",
+  "removed_brighter_than_mag": 6.5,
+  "catalog_stars": 12457,
+  "random_error_S10sun": [2, 3],
+  "random_error_milky_way_S10sun": 5
+ }
+}

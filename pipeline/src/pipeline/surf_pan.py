@@ -1,4 +1,4 @@
-"""Panchromatic 8-bit global mosaics (USGS Astrogeology): the Galilean moons, Pluto and Charon.
+"""Panchromatic 8-bit global mosaics (USGS Astrogeology): the Galilean moons (Pluto and Charon: see surf_nh).
 
 These mosaics are calibrated and photometrically normalized by their producers (Lunar-Lambert or similar), matched
 across image boundaries, and delivered as 8-bit DN whose scaling to reflectance is not documented. We use DN as
@@ -97,6 +97,11 @@ MAPS = [
            "abstract 2009. Data: USGS Astrogeology, Callisto_Voyager_GalileoSSI_global_mosaic_1km.tif.",
            3, Feature("Valhalla (bright centre)", 14.7, 304.0, 300, "bright", GAZ + ": 14.7°N, 304°E"),
            "Voyager 1979; Galileo 1996-2001", ()),
+]
+
+# Pluto and Charon now come from the New Horizons MVIC colour maps (surf_nh: documented normal albedo, colour per
+# texel). The USGS 8-bit mosaics are kept here for comparison (`build(ctx, work, NH_PAN_MAPS)`).
+NH_PAN_MAPS = [
     PanMap(999, "Pluto", "Pluto_NewHorizons_Global_Mosaic_300m_Jul2017_8bit.tif", "usgs-pluto-newhorizons-300m",
            "Pluto New Horizons LORRI/MVIC global mosaic, 300 m/px (USGS, July 2017)",
            "Schenk, P. M., Beyer, R. A., McKinnon, W. B., Moore, J. M., Spencer, J. R., White, O. L. et al. (2018). "

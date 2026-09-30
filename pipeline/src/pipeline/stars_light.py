@@ -30,6 +30,21 @@ def linear_operator(wl_nm: np.ndarray) -> np.ndarray:
     return W
 
 
+def band_operator(wl_nm: np.ndarray, lo_nm: float, hi_nm: float, step_nm: float = 0.05) -> np.ndarray:
+    """(len(wl),) vector w with f @ w == mean of the linearly interpolated spectrum f over [lo, hi] (a top-hat
+    band average, same units as f)."""
+    fine = np.arange(lo_nm, hi_nm + step_nm / 2, step_nm)
+    if fine[0] < wl_nm[0] or fine[-1] > wl_nm[-1]:
+        raise ValueError("band outside the grid")
+    n = wl_nm.size
+    w = np.empty(n)
+    for j in range(n):
+        e = np.zeros(n)
+        e[j] = 1.0
+        w[j] = np.trapezoid(np.interp(fine, wl_nm, e), fine) / (fine[-1] - fine[0])
+    return w
+
+
 def covers_cie(wl_nm: np.ndarray, valid: np.ndarray) -> bool:
     """True when valid samples bracket 360-830 nm and no sample in between is missing.
 

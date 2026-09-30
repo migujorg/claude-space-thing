@@ -21,11 +21,19 @@
 //     colour exponent (Pattanaik Eq. 3) is set by its own cone signal, B + E·u/A_c with A_c the cone
 //     system's summation area, not by the pixel's (tiny) mean luminance.
 
+//  5. fixation: a point is judged as the eye sees it when looking at it — adapted to its own local
+//     background (the sky plus veil around it), not to the frame's global state. This is the condition of
+//     Crumey's thresholds (an observer adapted to the background at the source) and it keeps faint stars
+//     visible beside a bright body the extended image is adapted to (docs/eye-model.md §2 "Fixations").
+
+import { blackwellEquivalent } from './mesopic';
 import { PATTANAIK } from './constants';
-import type { EyeFrame } from './model';
-import { colourExponent, lumResponse, response } from './tonemap';
+import { localObserver, type EyeFrame, type LocalObserver } from './model';
+import { colourExponent, lumResponse, response, type AppearanceMap, type DisplayObserver, type ObserverState } from './tonemap';
 
 export interface PointAppearance {
+  /** Above the local visibility threshold (Crumey, field factor F, at the point's own background)? */
+  visible: boolean;
   /** Intended display luminance increment of the Ricco-equivalent patch, cd/m² (may exceed the peak). */
   deltaLd: number;
   /** Display flux wanted (ΔL_d·A_R,disp), drawn in the splat, and overflowing (painted as glare), cd·m⁻²·sr. */
@@ -44,31 +52,40 @@ export interface PointAppearance {
  * bounded by Hunt's cone-bleaching luminance (Pattanaik Eq. 6, 2·10⁶ cd/m²), beyond which the display
  * observer's response is no longer defined by the model.
  */
-export function intendedDisplayLd(eye: EyeFrame, Lp: number, Ls: number): number {
-  const d = eye.display;
-  const Rd = eye.map.gain * lumResponse(eye.scene, Lp, Ls) + eye.map.offset;
+export function intendedDisplayLd(o: { scene: ObserverState; map: AppearanceMap; display: DisplayObserver }, Lp: number, Ls: number): number {
+  const d = o.display;
+  const Rd = o.map.gain * lumResponse(o.scene, Lp, Ls) + o.map.offset;
   if (!(Rd > 0)) return 0;
   if (Rd >= response(PATTANAIK.coneBleachHalf, d.sigma, d.B)) return PATTANAIK.coneBleachHalf;
   return d.sigma * Math.pow(Rd / (d.B - Rd), 1 / PATTANAIK.n);
 }
 
+/** The eye looking at a point: adapted to the point's physical local background (Y, S), cd/m². */
+export function pointObserver(eye: EyeFrame, bg: { Y: number; S: number }): LocalObserver {
+  return localObserver(eye.settings, eye.display, bg.Y, bg.S, eye.exposure);
+}
+
 /**
  * @param E point illuminance at the eye, lux: photopic Y and scotopic S
- * @param bg local perceived background luminance (Y, S), cd/m², excluding the source itself
+ * @param bg local physical background luminance (Y, S), cd/m², excluding the source itself; the eye
+ *   judging the point is adapted to it (pointObserver)
  * @param unscattered fraction of the light not scattered out of the core (1 − CIE 146 kernel energy)
  * @param splatAreaSr effective area of the drawn splat (flux / peak luminance), sr
  */
 export function pointAppearance(eye: EyeFrame, E: { Y: number; S: number }, bg: { Y: number; S: number }, unscattered: number, splatAreaSr: number): PointAppearance {
   const x = eye.exposure;
+  const o = pointObserver(eye, bg);
+  const obs = { scene: o.scene, map: o.map, display: eye.display };
+  const visible = blackwellEquivalent(E.Y, E.S, o.mesopic.m) >= o.thresholdBwLux;
   const bY = bg.Y * x, bS = bg.S * x;
-  const eY = (E.Y * unscattered * x) / eye.riccoAreaSr, eS = (E.S * unscattered * x) / eye.riccoAreaSr;
-  const Lb = intendedDisplayLd(eye, bY, bS);
-  const deltaLd = Math.max(0, intendedDisplayLd(eye, bY + eY, bS + eS) - Lb);
+  const eY = (E.Y * unscattered * x) / o.riccoAreaSr, eS = (E.S * unscattered * x) / o.riccoAreaSr;
+  const Lb = intendedDisplayLd(obs, bY, bS);
+  const deltaLd = visible ? Math.max(0, intendedDisplayLd(obs, bY + eY, bS + eS) - Lb) : 0;
   const wantedFlux = deltaLd * eye.displayRiccoSr;
   const Ldb = Math.min(Lb, eye.display.peak);
   const capacity = Math.max(0, eye.display.peak - Ldb) * splatAreaSr;
   const drawnFlux = Math.min(wantedFlux, capacity);
   const peakLd = Ldb + drawnFlux / splatAreaSr;
-  const Lc = bY + (E.Y * unscattered * x) / eye.coneSummationSr;
-  return { deltaLd, wantedFlux, drawnFlux, overflowFlux: wantedFlux - drawnFlux, peakLd, colourExponent: colourExponent(Lc, eye.scene, peakLd, eye.display) };
+  const Lc = bY + (E.Y * unscattered * x) / o.coneSummationSr;
+  return { visible, deltaLd, wantedFlux, drawnFlux, overflowFlux: wantedFlux - drawnFlux, peakLd, colourExponent: colourExponent(Lc, o.scene, peakLd, eye.display) };
 }

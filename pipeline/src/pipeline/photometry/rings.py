@@ -22,6 +22,7 @@ Hedman et al. 2007); the profile given is the one measured along this occultatio
 
 from __future__ import annotations
 
+import math
 import re
 from dataclasses import dataclass
 
@@ -96,7 +97,77 @@ class Profile:
     json: dict
     radius: np.ndarray
     tau: np.ndarray
-    noise: float | None = None     # median half-width of the 68 % interval of τ⊥ (Voyager profiles)
+    noise: float | None = None     # median half-width of the 68 % interval of τ⊥ (Voyager), 1σ photon noise (UVIS)
+    cleaning: dict | None = None   # what clean_saturn_tau changed (UVIS)
+
+
+EDGE_SIGMAS, EDGE_BINS = 5.0, 3        # the C ring inner edge: the first run of ≥ 3 bins above 5σ
+A_RING_MIN_TAU, A_RING_MIN_BINS = 0.2, 20    # the A ring: the last run of ≥ 200 km with τ⊥ > 0.2 (the F ring is narrower)
+BASELINE_BINS = 201                                   # running-median window outside the main rings (2010 km)
+NOISE_SIGMAS = 3.0
+
+
+def photon_sigma(sig, bg, i0, n, mu) -> np.ndarray:
+    """1σ photon-counting uncertainty of τ⊥ per bin: the mean signal of N samples is Poisson, σ_T = √(S/N)/(I0 − B),
+    σ_τ = μ σ_T / T (columns: mean signal S, background B and unocculted-star models I0, samples per bin N)."""
+    T = (sig - bg) / (i0 - bg)
+    return mu * np.sqrt(np.clip(sig, 0.0, None) / np.maximum(n, 1)) / (i0 - bg) / np.clip(T, 1e-3, None)
+
+
+def clean_saturn_tau(r, tau, sigma) -> tuple[np.ndarray, dict]:
+    """Bins consistent with τ⊥ = 0 within their photon noise are set to 0; genuine structure is kept.
+
+    * Inside the main rings (from the C ring inner edge, the first run of ≥ 3 bins above 5σ, to the A ring outer
+      edge, the end of the last run of ≥ 200 km with τ⊥ > 0.2) only negative values change: -1 < τ⊥ < 0 (noise, or unmodelled light near sharp edges;
+      τ⊥ cannot be negative) -> 0.
+    * Outside them (the D ring region inside, the F ring region and beyond outside) a smooth baseline — the
+      2010 km running median of these bins — is removed first. Beyond the F ring this occultation's τ⊥ rises
+      smoothly to 0.10 at its outer end while the region is empty (other occultations at the same geometry show
+      different ramps: an unmodelled instrumental trend, not ring material). A bin whose baseline-removed τ⊥ is
+      within 3σ, or an isolated bin above 3σ, is set to 0; runs of ≥ 2 bins above 3σ are structure (the F ring
+      and its strands) and keep τ⊥ − baseline (≥ 0)."""
+    out = tau.copy()
+    stats = {"negative_in_rings": 0, "zeroed_outside": 0, "kept_outside": 0}
+    def runs(mask, min_len):
+        out, start = [], None
+        for i, b in enumerate(np.append(mask, False)):
+            if b and start is None:
+                start = i
+            elif not b and start is not None:
+                if i - start >= min_len:
+                    out.append((start, i - 1))
+                start = None
+        return out
+    with np.errstate(invalid="ignore"):
+        i_in = runs(tau > EDGE_SIGMAS * sigma, EDGE_BINS)[0][0]
+        i_out = runs(tau > A_RING_MIN_TAU, A_RING_MIN_BINS)[-1][1]
+    stats["main_rings_km"] = (float(r[i_in]), float(r[i_out]))
+    inside = np.zeros(tau.size, bool)
+    inside[i_in:i_out + 1] = True
+    neg = inside & (tau > -1) & (tau < 0)
+    stats["negative_in_rings"] = int(neg.sum())
+    stats["negative_beyond_3sigma"] = int((neg & (-tau > NOISE_SIGMAS * sigma)).sum())
+    out[neg] = 0.0
+    from scipy.ndimage import median_filter
+    for sl in (slice(0, i_in), slice(i_out + 1, tau.size)):
+        seg, sg = tau[sl], sigma[sl]
+        if seg.size == 0:
+            continue
+        base = median_filter(seg, size=min(BASELINE_BINS, seg.size | 1), mode="nearest")
+        res = seg - base
+        hi = res > NOISE_SIGMAS * sg
+        run = hi & (np.roll(hi, 1) | np.roll(hi, -1))
+        run[0] = hi[0] & hi[1] if seg.size > 1 else False
+        run[-1] = hi[-1] & hi[-2] if seg.size > 1 else False
+        new = np.where(run, np.clip(res, 0.0, None), 0.0)
+        out[sl] = new
+        stats["zeroed_outside"] += int((~run).sum())
+        stats["kept_outside"] += int(run.sum())
+        key = "inner" if sl.start == 0 else "outer"
+        stats[f"{key}_baseline_max"] = float(base.max())
+        stats[f"{key}_residual_rms_sigma"] = float(np.std(res[~run] / sg[~run]))
+        stats[f"{key}_sigma_median"] = float(np.median(sg))
+    return out, stats
 
 
 def saturn_profile(ctx: BuildContext | None) -> tuple[dict, list[str], Profile]:
@@ -105,7 +176,12 @@ def saturn_profile(ctx: BuildContext | None) -> tuple[dict, list[str], Profile]:
     d = np.loadtxt(tab.fetch(), delimiter=",")
     r, tau, tmax, flag = d[:, 0], d[:, 4], d[:, 5], d[:, 11].astype(int)
     radii = _radii(r, 10.0)
-    tau_out = [None if t < 0 or (f & 64) else round(float(t), 4) for t, f in zip(tau, flag)]
+    mu = abs(math.sin(math.radians(float(meta["OBSERVED_RING_ELEVATION"]))))
+    sigma = photon_sigma(d[:, 3], d[:, 9], d[:, 8], d[:, 10], mu)
+    missing = (tau == -1) | ((flag & 64) != 0)
+    clean, stats = clean_saturn_tau(r, np.where(missing, np.nan, tau), sigma)
+    tau = np.where(missing, -1.0, clean)
+    tau_out = [None if m else round(float(v), 4) for v, m in zip(tau, missing)]
     tmax_out = [None if t < 0 else round(float(t), 3) for t in tmax]
     js = {
         "name": "main rings",
@@ -121,7 +197,7 @@ def saturn_profile(ctx: BuildContext | None) -> tuple[dict, list[str], Profile]:
         },
     }
     srcs = [lbl.register(ctx) if ctx else lbl.id, tab.register(ctx) if ctx else tab.id]
-    return js, srcs, Profile(js, r, np.where(tau < 0, np.nan, tau))
+    return js, srcs, Profile(js, r, np.where(missing, np.nan, tau), float(np.median(sigma)), stats)
 
 
 def voyager_profile(pair, name: str, ctx: BuildContext | None, step: float) -> tuple[dict, list[str], Profile]:
@@ -167,7 +243,24 @@ def rings_json(ctx: BuildContext | None = None) -> tuple[dict, dict]:
                    "line of sight (least affected by self-gravity wakes and the highest maximum detectable τ, 7-8 in "
                    "the B ring) and complete C-to-F ring coverage. null = unconstrained or corrupted bin. Values at "
                    "or above maxTau are lower limits. Extinction by the (≫ λ) ring particles is taken to be the same "
-                   "at 110-190 nm and in the visible.",
+                   "at 110-190 nm and in the visible. Bins consistent with τ⊥ = 0 are set to 0 (criterion: 1σ photon "
+                   "noise from the archived mean signal, background and unocculted-star models and samples per bin — "
+                   f"{prof.cleaning['outer_sigma_median']:.4f} in the empty regions, where it matches the observed "
+                   f"scatter): {prof.cleaning['negative_in_rings']} "
+                   f"negative values inside the main rings ({prof.cleaning['main_rings_km'][0]:.0f}-"
+                   f"{prof.cleaning['main_rings_km'][1]:.0f} km; {prof.cleaning['negative_beyond_3sigma']} of them "
+                   "below -3σ, near sharp edges) -> 0; outside them, after removing a smooth 2010 km running-median "
+                   "baseline, bins within 3σ and isolated single bins above it -> 0 "
+                   f"({prof.cleaning['zeroed_outside']} bins), runs of ≥ 2 bins above 3σ kept as structure "
+                   f"({prof.cleaning['kept_outside']} bins, the F ring and its strands) with the baseline removed. "
+                   "Beyond the F ring this occultation's archived τ⊥ rises smoothly to "
+                   f"{prof.cleaning['outer_baseline_max']:.2f} at its outer end (151 675 km) where the ring plane is "
+                   "empty to far below this detection limit; the other β Cen occultation at the same elevation "
+                   "(2008-343) shows a ramp of half that size and θ Car (2013-141) a steeper one: an unmodelled "
+                   "instrumental trend, which the baseline removes (residual scatter "
+                   f"{prof.cleaning['outer_residual_rms_sigma']:.2f}σ). Inside the C ring (72 833-"
+                   f"{prof.cleaning['main_rings_km'][0]:.0f} km) the archived values are already consistent with 0 "
+                   f"(scatter {prof.cleaning['inner_residual_rms_sigma']:.2f}σ).",
             uncertainty="photon noise: 25 % at maxTau, much smaller where τ⊥ is well below it; in the A and B rings "
                         "the line-of-sight optical depth varies with viewing azimuth and elevation by tens of percent "
                         "(self-gravity wakes), which a single τ⊥ profile does not capture"),
