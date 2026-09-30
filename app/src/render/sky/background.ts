@@ -97,7 +97,8 @@ fn faceDir(face: u32, sc: f32, tc: f32) -> vec3f {
     let th = f32(k) * 2.39996323;
     let o = (e1 * cos(th) + e2 * sin(th)) * r;
     if ((U.flags & 1u) != 0u) { sum = sum + faint[hpxVec2Pix(${ORDER_FAINT}u, d + o * U.radii.x)]; }
-    if ((U.flags & 8u) != 0u) { sum = sum + stars[hpxVec2Pix(${ORDER_FAINT}u, d + o * U.radii.x)]; }
+    // binned sub-threshold stars: spread over the wider disc (~0.3°), close to the dark-adapted Ricco scale
+    if ((U.flags & 8u) != 0u) { sum = sum + stars[hpxVec2Pix(${ORDER_FAINT}u, d + o * U.radii.y)]; }
     if ((U.flags & 2u) != 0u) { sum = sum + diffuse[hpxVec2Pix(${ORDER_DIFF}u, d + o * U.radii.z)]; }
     if ((U.flags & 4u) != 0u) {
       let p7 = hpxVec2Pix(${ORDER_REM}u, d + o * U.radii.y);
@@ -368,7 +369,7 @@ export class SkyBackground implements SkyBackgroundHook {
     this.zodiKey = key;
     if (!this.zodiTex || this.zodiTex.width !== gw || this.zodiTex.height !== gh) {
       this.zodiTex?.destroy();
-      this.zodiTex = d.createTexture({ label: 'zodiacal grid', size: [gw, gh], format: 'rgba32float', usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING });
+      this.zodiTex = d.createTexture({ label: 'zodiacal grid', size: [gw, gh], format: 'rgba32float', usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_SRC });
     }
     const u = new ArrayBuffer(80);
     const f = new Float32Array(u);
@@ -391,6 +392,46 @@ export class SkyBackground implements SkyBackgroundHook {
     this.stats.zodiUpdates++;
     this.zodiOn = true;
     return true;
+  }
+
+  /**
+   * Debug: sample the composed cube (hardware cube sampling, mip level 0) along ICRF directions, in cd/m²; checks
+   * the face convention of the compose pass against the sampler's.
+   */
+  async sampleCube(dirs: [number, number, number][]): Promise<number[][]> {
+    const d = this.device;
+    const n = dirs.length;
+    const code = /* wgsl */ `
+@group(0) @binding(0) var cube: texture_cube<f32>;
+@group(0) @binding(1) var samp: sampler;
+@group(0) @binding(2) var<storage, read> dirs: array<vec4f>;
+@group(0) @binding(3) var<storage, read_write> outv: array<vec4f>;
+@compute @workgroup_size(1) fn main(@builtin(global_invocation_id) id: vec3u) {
+  outv[id.x] = textureSampleLevel(cube, samp, dirs[id.x].xyz, 0.0);
+}`;
+    const pipe = d.createComputePipeline({ layout: 'auto', compute: { module: d.createShaderModule({ code }), entryPoint: 'main' } });
+    const inb = d.createBuffer({ size: n * 16, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
+    d.queue.writeBuffer(inb, 0, new Float32Array(dirs.flatMap((v) => [v[0], v[1], v[2], 0])));
+    const outb = d.createBuffer({ size: n * 16, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC });
+    const rb = d.createBuffer({ size: n * 16, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ });
+    const enc = d.createCommandEncoder();
+    const pass = enc.beginComputePass();
+    pass.setPipeline(pipe);
+    pass.setBindGroup(0, d.createBindGroup({ layout: pipe.getBindGroupLayout(0), entries: [
+      { binding: 0, resource: this.cube.createView({ dimension: 'cube' }) },
+      { binding: 1, resource: this.sampler },
+      { binding: 2, resource: { buffer: inb } },
+      { binding: 3, resource: { buffer: outb } },
+    ] }));
+    pass.dispatchWorkgroups(n);
+    pass.end();
+    enc.copyBufferToBuffer(outb, 0, rb, 0, n * 16);
+    d.queue.submit([enc.finish()]);
+    await rb.mapAsync(GPUMapMode.READ);
+    const r = new Float32Array(rb.getMappedRange().slice(0));
+    rb.unmap();
+    for (const b of [inb, outb, rb]) b.destroy();
+    return dirs.map((_, i) => [0, 1, 2, 3].map((k) => r[i * 4 + k] / MAP_SCALE));
   }
 
   /** Debug: the zodiacal grid as last computed (XYZS per grid point, row-major), or null. */
