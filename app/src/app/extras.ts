@@ -86,7 +86,11 @@ export function applyExtras(sb: SceneBody, body: Body, extras: SceneExtras | und
   const s = extras.surfaces.get(body.id);
   if (s && sb.radii) {
     const surface: SceneBody['surface'] = {};
-    if (s.albedo && lit && !sb.surfaceUnknown && labelAllowed(s.albedo.label, level)) {
+    // A map of surface-only reflectance (no clouds, no atmosphere: Earth) must not be scaled by disk photometry,
+    // which includes them. Until the renderer draws clouds and air from their own layers, the disk-photometry
+    // colour is the more faithful view, so such a map is withheld.
+    const surfaceOnly = !!(s.albedo?.ref.header as { normalization?: { absoluteDiskMean?: unknown } } | undefined)?.normalization?.absoluteDiskMean;
+    if (s.albedo && lit && !sb.surfaceUnknown && !surfaceOnly && labelAllowed(s.albedo.label, level)) {
       surface.albedo = s.albedo.ref;
       used.push(s.albedo.label);
     }

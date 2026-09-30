@@ -60,6 +60,13 @@ describe('scene extras', () => {
     expect(dark.surface?.albedo).toBeUndefined();
   });
 
+  it('withholds surface-only maps (Earth) that disk photometry must not scale', () => {
+    const earth: SceneExtras = { surfaces: surfaceRefs([layer(1, 'albedo', { maxLevel: 3, brightness: { label: 'measured' }, color: { label: 'estimated' }, normalization: { absoluteDiskMean: { X: 0.03, Y: 0.03, Z: 0.03, S: 0.03 } } })], '/data'), rings: null };
+    const sb = scene();
+    applyExtras(sb, body(1), earth, 'best', true);
+    expect(sb.surface?.albedo).toBeUndefined();
+  });
+
   it('ring normal is the body z axis in ICRF', () => {
     expect(poleOf([1, 0, 0.1, 0, 1, 0.2, 0, 0, 0.97])).toEqual([0.1, 0.2, 0.97]);
   });
