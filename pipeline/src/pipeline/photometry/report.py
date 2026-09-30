@@ -13,7 +13,8 @@ import numpy as np
 
 from ..paths import REPO
 from . import bodies, filters, horizons, moons, rings, solar
-from .common import read_table_csv
+from .. import cie
+from .common import bin_average, read_table_csv
 
 OUT = REPO / "docs" / "reports" / "planet-colors.md"
 
@@ -35,13 +36,12 @@ NOTES = {
          "disk of mean reflectance factor ⟨R⟩ seen at zero phase p ≈ ⅔⟨R⟩, and Earth's ⟨R⟩ ≈ Bond albedo ≈ 0.3 "
          "gives p ≈ 0.2. The high value comes from EPOXI photometry at 58-77° phase extrapolated to 0° with a model "
          "phase curve. Real Earth varies by tens of percent with clouds. Phase curve: model (estimated).",
-    301: "Albedo: Lane & Irvine (1973) whole-disk narrow-band geometric albedos, interpolated linearly between 9 "
-         "bands; surge-free (linear extrapolation to 0°). The narrow-band data give a V-band albedo 13 % above the "
-         "authors' own broadband V (they suspected their broadband transformation) and they flag a possible ~10 % "
-         "excess at 600-850 nm in the 1965 data; the colour is probably too red (ROLO's is less red, see M3 below). "
-         "Phase curve (M3): the ROLO model (Kieffer & Stone 2005) for 1.55-97°, with the opposition surge, "
-         "normalized to that albedo, so the brightness there is ROLO's; Lane & Irvine's shape joined to it for "
-         "97-120° (estimated). Libration and waxing/waning are in diskReflectanceModel.",
+    301: "Albedo (M3): the ROLO model (Kieffer & Stone 2005) whole-disk reflectance in 32 bands at α = 1.55°, the "
+         "model's smallest phase angle (a reference albedo, not a zero-phase one: below 1.55° unknown). Phase curve: "
+         "ROLO for 1.55-97° (Φ(1.55°) = 1), with the opposition surge; Lane & Irvine's shape joined to it for "
+         "97-120° (estimated). Libration and waxing/waning are in diskReflectanceModel. Lane & Irvine's (1973) "
+         "narrow-band albedos, used until M3, are a cross-check (M3 below): redder, with a 13 % internal V "
+         "inconsistency.",
     499: "Reconstructed from Mallama et al. (2017) photometric Johnson UBVRI albedos (rotation/season averaged): a "
          "piecewise-linear spectrum through five band averages. Brightness and B-V are measured; the shape between "
          "bands is assumed (no 530 nm shoulder). A PSG model composite (Payne et al.) was rejected: its B albedo is "
@@ -297,8 +297,8 @@ def generate() -> str:
     w("1. **Earth**: model spectrum; factor-2 disagreement with the magnitude used by Horizons.\n"
       "2. **Pluto**: colour from two broadband points; phase curve only to 1.74°.\n"
       "3. **Venus blue end**: ±20 % between datasets below 480 nm, which sets how yellow Venus looks.\n"
-      "4. **Moon colour**: 1964-65 narrow-band photometry with a known internal 13 % V inconsistency; redder than "
-      "ROLO. Its brightness now follows ROLO (1.55-97°), with the opposition surge.\n"
+      "4. **Moon below 1.55° and beyond 120°**: unknown; the albedo is ROLO's at 1.55° (a reference, not zero "
+      "phase). Colour and brightness now follow ROLO (M3).\n"
       "5. **Uranus/Neptune epoch**: 1995 spectra; both have changed since (Uranus seasonally, strongly in the red).\n"
       "6. **Mars and Mercury shapes**: Mars between broadband nodes; Mercury from disk-resolved spectra.\n"
       "7. **Phase corrections for Jupiter/Saturn** to zero phase (+2.4 %, +1.7 %) assume a grey phase law.\n"
@@ -572,12 +572,25 @@ def _m3_section(w) -> None:
           f"{c[0] / c.sum():.4f}, {c[1] / c.sum():.4f} |")
     res = bodies.build_body(301)
     cl = res.xyzs[:3]
-    w(f"\nLane & Irvine's colour: x, y = {cl[0] / cl.sum():.4f}, {cl[1] / cl.sum():.4f} (kept for "
-      "geometricAlbedoXYZS; ROLO is less red). Below 2° ROLO is brighter than Lane & Irvine's surge-free "
+    from . import albedo as alb
+    li_spec = alb.moon_lane_irvine()
+    li_x = cie.xyzs(bin_average(li_spec.wl, li_spec.p) * solar.spectrum().grid)[:3]
+    w(f"\nColour of the product (ROLO at 1.55°, geometricAlbedoXYZS): x, y = {cl[0] / cl.sum():.4f}, "
+      f"{cl[1] / cl.sum():.4f}; Lane & Irvine's (1973) spectrum, the cross-check: x, y = "
+      f"{li_x[0] / li_x.sum():.4f}, {li_x[1] / li_x.sum():.4f} (redder; they flagged a possible ~10 % excess at "
+      "600-850 nm in their 1965 data). Albedo ratio to 450 nm at the Lane & Irvine band centres (ROLO at 1.55°, "
+      "L&I surge-free at 0°; the ratio compares colour only):\n")
+    wl_li = li_spec.wl
+    wr, ar = rolo.reference_spectrum()
+    w("| λ (nm) | " + " | ".join(f"{x:.0f}" for x in wl_li) + " |\n|---|" + "---|" * len(wl_li))
+    w("| ROLO | " + " | ".join(f"{np.interp(x, wr, ar) / np.interp(450, wr, ar):.3f}" for x in wl_li) + " |")
+    w("| Lane & Irvine | " + " | ".join(f"{np.interp(x, wl_li, li_spec.p) / np.interp(450, wl_li, li_spec.p):.3f}"
+                                      for x in wl_li) + " |")
+    w("\nBelow 2° ROLO is brighter than Lane & Irvine's surge-free "
       "extrapolation (the surge); from 5° on it is 6-22 % fainter, i.e. close to Lane & Irvine's own broadband V "
       "(13 % below their narrow bands) up to 45° and steeper beyond. The waxing Moon is brighter, as Lane & Irvine "
       "and Rougier (1934) observed (0.01-0.09 mag between quadrature and full). The product's phase function is "
-      "ROLO's A_Y divided by Lane & Irvine's p_Y (so the brightness is ROLO's) for 1.55-97°, Lane & Irvine's curve "
+      "ROLO's A_Y divided by ROLO's reference A_Y(1.55°) for 1.55-97°, Lane & Irvine's curve "
       "shifted to join it for 97-120° (label estimated because of the join); diskReflectanceModel carries the full "
       "ROLO geometry per channel (derived).\n")
     _m3_surges(w)

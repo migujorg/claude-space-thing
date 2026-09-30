@@ -44,7 +44,7 @@ Refit of the channel-integrated profiles with a 5th-order polynomial on 201 μ s
 | Mercury | 0.3489 | 0.3550 | 0.137 | 0.139 | `#73665A` | `#6F675C` | `#FFEED6` | estimated | measured | Payne+2026 (MASCS) |
 | Venus | 0.3321 | 0.3540 | 0.683 | 0.680 | `#DDD7C1` | `#D5D9C5` | `#FAFFE8` | estimated | measured | Payne+2026 (VIRS) |
 | Earth | 0.2967 | 0.3062 | 0.216 | 0.213 | `#7D7F8C` | `#78808F` | `#D8E6FF` | estimated | estimated | Payne+2026 (PSG model) |
-| Moon | 0.3643 | 0.3591 | 0.128 | 0.132 | `#766254` | `#726356` | `#FFDFC3` | estimated | estimated | Lane & Irvine 1973 |
+| Moon | 0.3467 | 0.3503 | 0.134 | 0.136 | `#72655B` | `#6F665D` | `#FFECD9` | derived | estimated | Lane & Irvine 1973 |
 | Mars | 0.4092 | 0.3867 | 0.168 | 0.177 | `#926E4C` | `#8F6F4F` | `#FFC891` | estimated | estimated | Mallama+2017 UBVRI |
 | Jupiter | 0.3333 | 0.3501 | 0.528 | 0.528 | `#C8BFAE` | `#C1C1B2` | `#FFFFEB` | estimated | measured | Karkoschka 1998 |
 | Saturn | 0.3564 | 0.3679 | 0.472 | 0.479 | `#CAB597` | `#C3B79A` | `#FFEFCA` | estimated | estimated | Karkoschka 1998 |
@@ -59,7 +59,7 @@ p_V: Bessell V band average of p(λ) (reported as `geometricAlbedoV`); p_Y: phot
 - **Mercury** (199). Spectral shape: MESSENGER/MASCS global-mean reflectance (Izenberg et al. 2014) as composited and scaled by Payne et al. (2026) to Mallama et al.'s (2017) broadband albedos. It is a disk-resolved, photometrically standardized spectrum, not a zero-phase disk integral, so phase reddening is not removed; the colour is probably slightly too red, the level is good to ~3 %. Phase curve: SOHO/LASCO + ground (measured). Sources: `payne-2026-mercury`, `naif-pck00011`, `tsis1-hsrs-v2`, `cie-1931-2deg-cmf`, `cie-1951-scotopic`, `mallama-hilton-2018`.
 - **Venus** (299). Spectral shape: MESSENGER/VIRS equatorial-cloud I/F (Pérez-Hoyos et al. 2018) scaled to p_V = 0.689. This is WEAK in the blue: below ~480 nm it is 20 % below Mallama's photometric B albedo, but Mallama's own synthetic B agrees with it. Venus's hue (how yellow) is therefore uncertain; its brightness is not. (Older disk-integrated data, Irvine 1968 and Barker 1975, lie between the two in Payne et al.'s compilation, their Fig. 3.) Phase curve: SOHO + ground (measured). Sources: `payne-2026-venus`, `naif-pck00011`, `tsis1-hsrs-v2`, `cie-1931-2deg-cmf`, `cie-1951-scotopic`, `mallama-hilton-2018`.
 - **Earth** (399). Spectral shape and level: a radiative-transfer MODEL (PSG with MERRA-2 clouds for 2022 June 21) validated against DSCOVR/EPIC; no machine-readable measured whole-disk zero-phase visible spectrum was reachable (the EPIC L1B granules are in NASA Earthdata Cloud behind Earthdata Login; see 'Fix-ups' below). Its p_V = 0.22 is half of Mallama et al.'s 0.434 (used by Mallama & Hilton and Horizons). A simple check favours the low value: for a disk of mean reflectance factor ⟨R⟩ seen at zero phase p ≈ ⅔⟨R⟩, and Earth's ⟨R⟩ ≈ Bond albedo ≈ 0.3 gives p ≈ 0.2. The high value comes from EPOXI photometry at 58-77° phase extrapolated to 0° with a model phase curve. Real Earth varies by tens of percent with clouds. Phase curve: model (estimated). Sources: `payne-2026-earth`, `naif-pck00011`, `tsis1-hsrs-v2`, `cie-1931-2deg-cmf`, `cie-1951-scotopic`, `mallama-hilton-2018`.
-- **Moon** (301). Albedo: Lane & Irvine (1973) whole-disk narrow-band geometric albedos, interpolated linearly between 9 bands; surge-free (linear extrapolation to 0°). The narrow-band data give a V-band albedo 13 % above the authors' own broadband V (they suspected their broadband transformation) and they flag a possible ~10 % excess at 600-850 nm in the 1965 data; the colour is probably too red (ROLO's is less red, see M3 below). Phase curve (M3): the ROLO model (Kieffer & Stone 2005) for 1.55-97°, with the opposition surge, normalized to that albedo, so the brightness there is ROLO's; Lane & Irvine's shape joined to it for 97-120° (estimated). Libration and waxing/waning are in diskReflectanceModel. Sources: `lane-irvine-1973`, `naif-pck00011`, `tsis1-hsrs-v2`, `cie-1931-2deg-cmf`, `cie-1951-scotopic`, `kieffer-stone-2005`.
+- **Moon** (301). Albedo (M3): the ROLO model (Kieffer & Stone 2005) whole-disk reflectance in 32 bands at α = 1.55°, the model's smallest phase angle (a reference albedo, not a zero-phase one: below 1.55° unknown). Phase curve: ROLO for 1.55-97° (Φ(1.55°) = 1), with the opposition surge; Lane & Irvine's shape joined to it for 97-120° (estimated). Libration and waxing/waning are in diskReflectanceModel. Lane & Irvine's (1973) narrow-band albedos, used until M3, are a cross-check (M3 below): redder, with a 13 % internal V inconsistency. Sources: `kieffer-stone-2005`, `naif-pck00011`, `tsis1-hsrs-v2`, `cie-1931-2deg-cmf`, `cie-1951-scotopic`, `lane-irvine-1973`.
 - **Mars** (499). Reconstructed from Mallama et al. (2017) photometric Johnson UBVRI albedos (rotation/season averaged): a piecewise-linear spectrum through five band averages. Brightness and B-V are measured; the shape between bands is assumed (no 530 nm shoulder). A PSG model composite (Payne et al.) was rejected: its B albedo is 45 % below the photometry. Phase curve: measured to 50°, assumed beyond (estimated). Sources: `mallama-2017`, `svo-johnson-u`, `svo-johnson-b`, `svo-johnson-v`, `svo-johnson-r`, `svo-johnson-i`, `naif-pck00011`, `tsis1-hsrs-v2`, `cie-1931-2deg-cmf`, `cie-1951-scotopic`, `mallama-hilton-2018`.
 - **Jupiter** (599). Karkoschka (1998) ESO spectrophotometry at 6.8° phase, scaled to 0° with Mallama & Hilton's V phase law (assumption: same at all λ, +2.4 %). Agrees with Mallama et al. (2017) B, V, Rc to ≤ 2 % and with Horizons to 0.02 mag. Strong data. Phase curve: ground + Cassini (measured). Sources: `karkoschka-1998-pds`, `naif-pck00011`, `mallama-hilton-2018`, `tsis1-hsrs-v2`, `cie-1931-2deg-cmf`, `cie-1951-scotopic`.
 - **Saturn** (699). Karkoschka (1998) at the 1995 ring-plane crossing, i.e. the GLOBE without rings (what the renderer draws; rings are separate, see Rings). Scaled from 5.7° to 0° with an assumed phase law (+1.7 %). 5 % fainter in V than Mallama & Pavlov's synthetic globe magnitude from the same data, but consistent with Karkoschka's own V. Saturn's globe colour changes with season (hemisphere in view, ring shadow). Phase curve: assumed/modelled (estimated). Sources: `karkoschka-1998-pds`, `naif-pck00011`, `mallama-hilton-2018`, `tsis1-hsrs-v2`, `cie-1931-2deg-cmf`, `cie-1951-scotopic`.
@@ -76,7 +76,7 @@ V(1,0) implied by our p_V and the pck00011 volumetric mean radius R, with V☉ =
 | Mercury | 2439.8 | 0.1372 | -0.666 | -0.694 | +0.028 | -0.694 (surge-inclusive model; the polynomial's own constant is -0.613) |
 | Venus | 6051.8 | 0.6825 | -4.380 | -4.384 | +0.004 | Eq. 3 |
 | Earth | 6371.0 | 0.2160 | -3.243 | -3.990 | +0.747 | Mallama et al. 2017 (EPOXI + model phase curve) |
-| Moon | 1737.4 | 0.1278 | +0.149 | +0.231 | -0.082 | Lane & Irvine broadband m_V(1,0) = -12.72 at the mean lunar distance (also Horizons' 0.23) |
+| Moon | 1737.4 | 0.1343 | +0.095 | +0.231 | -0.136 | Lane & Irvine broadband m_V(1,0) = -12.72 at the mean lunar distance (also Horizons' 0.23) |
 | Mars | 3389.5 | 0.1676 | -1.597 | -1.601 | +0.004 | Eq. 6, mean over L(λe), L(Ls) |
 | Jupiter | 69911.3 | 0.5277 | -9.414 | -9.395 | -0.019 | Eq. 8 |
 | Saturn | 58232.0 | 0.4724 | -8.897 | -8.950 | +0.053 | Eq. 11, globe (Mallama & Pavlov synthetic from Karkoschka 1998) |
@@ -114,8 +114,8 @@ Apparent V at three epochs in the window, using Horizons' own r, Δ, phase angle
 | Earth | 2026-Sep-30 | 65.75 | -2.052 | -2.052 | -1.304 | **+0.748** |  |
 | Earth | 2027-Jan-15 | 134.17 | -0.926 | -0.926 | -0.179 | **+0.747** |  |
 | Earth | 2027-Jun-01 | 86.85 | -1.881 | -1.881 | -1.133 | **+0.748** |  |
-| Moon | 2026-Sep-30 | 42.94 | -11.663 | n/a | -11.578 | **+0.085** | Horizons formula not from Mallama & Hilton |
-| Moon | 2027-Jan-15 | 100.19 | -9.736 | n/a | -9.680 | **+0.056** | Horizons formula not from Mallama & Hilton |
+| Moon | 2026-Sep-30 | 42.94 | -11.663 | n/a | -11.595 | **+0.068** | Horizons formula not from Mallama & Hilton |
+| Moon | 2027-Jan-15 | 100.19 | -9.736 | n/a | -9.697 | **+0.039** | Horizons formula not from Mallama & Hilton |
 | Moon | 2027-Jun-01 | 129.58 | -8.207 | n/a | n/a | **n/a** | Horizons formula not from Mallama & Hilton |
 | Mars | 2026-Sep-30 | 35.92 | +1.092 | +1.123 | +1.127 | **+0.035** | no L(λe), L(Ls) terms |
 | Mars | 2027-Jan-15 | 25.25 | -0.551 | -0.474 | -0.470 | **+0.081** | no L(λe), L(Ls) terms |
@@ -437,7 +437,14 @@ Brightness of the Moon (Y channel, disk-equivalent reflectance A = p·Φ at zero
 | 90° | 0.0105 | 0.0134 | 0.783 | 1.145 | 0.3559, 0.3569 |
 | 97° | 0.0082 | 0.0104 | 0.782 | 1.140 | 0.3561, 0.3571 |
 
-Lane & Irvine's colour: x, y = 0.3643, 0.3591 (kept for geometricAlbedoXYZS; ROLO is less red). Below 2° ROLO is brighter than Lane & Irvine's surge-free extrapolation (the surge); from 5° on it is 6-22 % fainter, i.e. close to Lane & Irvine's own broadband V (13 % below their narrow bands) up to 45° and steeper beyond. The waxing Moon is brighter, as Lane & Irvine and Rougier (1934) observed (0.01-0.09 mag between quadrature and full). The product's phase function is ROLO's A_Y divided by Lane & Irvine's p_Y (so the brightness is ROLO's) for 1.55-97°, Lane & Irvine's curve shifted to join it for 97-120° (label estimated because of the join); diskReflectanceModel carries the full ROLO geometry per channel (derived).
+Colour of the product (ROLO at 1.55°, geometricAlbedoXYZS): x, y = 0.3467, 0.3503; Lane & Irvine's (1973) spectrum, the cross-check: x, y = 0.3643, 0.3591 (redder; they flagged a possible ~10 % excess at 600-850 nm in their 1965 data). Albedo ratio to 450 nm at the Lane & Irvine band centres (ROLO at 1.55°, L&I surge-free at 0°; the ratio compares colour only):
+
+| λ (nm) | 359 | 393 | 416 | 457 | 501 | 626 | 730 | 860 | 1064 |
+|---|---|---|---|---|---|---|---|---|---|
+| ROLO | 0.744 | 0.928 | 0.934 | 1.002 | 1.109 | 1.380 | 1.467 | 1.646 | 1.862 |
+| Lane & Irvine | 0.748 | 0.883 | 0.914 | 1.018 | 1.101 | 1.683 | 1.860 | 1.860 | 2.099 |
+
+Below 2° ROLO is brighter than Lane & Irvine's surge-free extrapolation (the surge); from 5° on it is 6-22 % fainter, i.e. close to Lane & Irvine's own broadband V (13 % below their narrow bands) up to 45° and steeper beyond. The waxing Moon is brighter, as Lane & Irvine and Rougier (1934) observed (0.01-0.09 mag between quadrature and full). The product's phase function is ROLO's A_Y divided by ROLO's reference A_Y(1.55°) for 1.55-97°, Lane & Irvine's curve shifted to join it for 97-120° (label estimated because of the join); diskReflectanceModel carries the full ROLO geometry per channel (derived).
 
 ## M3: opposition surges of Mimas-Rhea, Mercury; Iapetus
 
@@ -462,7 +469,7 @@ The surge brightens these moons by 0.15-0.24 mag at zero phase and 0.01-0.06 mag
 1. **Earth**: model spectrum; factor-2 disagreement with the magnitude used by Horizons.
 2. **Pluto**: colour from two broadband points; phase curve only to 1.74°.
 3. **Venus blue end**: ±20 % between datasets below 480 nm, which sets how yellow Venus looks.
-4. **Moon colour**: 1964-65 narrow-band photometry with a known internal 13 % V inconsistency; redder than ROLO. Its brightness now follows ROLO (1.55-97°), with the opposition surge.
+4. **Moon below 1.55° and beyond 120°**: unknown; the albedo is ROLO's at 1.55° (a reference, not zero phase). Colour and brightness now follow ROLO (M3).
 5. **Uranus/Neptune epoch**: 1995 spectra; both have changed since (Uranus seasonally, strongly in the red).
 6. **Mars and Mercury shapes**: Mars between broadband nodes; Mercury from disk-resolved spectra.
 7. **Phase corrections for Jupiter/Saturn** to zero phase (+2.4 %, +1.7 %) assume a grey phase law.

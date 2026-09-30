@@ -237,6 +237,35 @@ def payne(naif: int, ctx: BuildContext | None = None) -> AlbedoSpectrum:
 
 
 def moon(ctx: BuildContext | None = None) -> AlbedoSpectrum:
+    """The Moon's albedo spectrum from the ROLO model (photometry/rolo.py) at its smallest phase angle."""
+    from . import rolo
+    wl, a = rolo.reference_spectrum()
+    r_ref = mean_radius(301)
+    area = (rolo.RADIUS_KM / r_ref) ** 2
+    sources = [_src(ctx, rolo.ROLO), _src(ctx, PCK)]
+    return AlbedoSpectrum(
+        301, wl, a * area, "derived", sources,
+        f"ROLO lunar model (Kieffer & Stone 2005, version 311g; Eq. 10 with Table 4 and Eq. 11): the disk-equivalent "
+        f"reflectance A_k of the whole Moon in its 32 bands (350-2384 nm), evaluated at the model's smallest phase "
+        f"angle, g = {rolo.MIN_PHASE}°, at zero libration, geometric mean of the waxing and waning Moon (they differ "
+        f"by 0.2 % there), linearly interpolated in wavelength between band centres (5-60 nm apart in the visible). "
+        f"This REFERENCE ALBEDO is at α = {rolo.MIN_PHASE}°, not 0°: the phase function is 1 there and unknown "
+        "below (from Earth, α < 1.55° means the Moon is at the edge of Earth's shadow; the surge probably continues "
+        "to rise). A = p·Φ is referenced to the disk radius of the paper's Eq. 8 (Ω_M = 6.4177e-5 sr at 384 400 km: "
+        f"{rolo.RADIUS_KM:.1f} km = the pck00011 mean radius, ×{area:.4f}). The band-to-band scale of version 311g "
+        "was adjusted to a fitted Apollo 16 soil/breccia laboratory spectrum (paper Sec. 4.2; average adjustment "
+        "3.5 %), so the fine spectral shape partly follows that spectrum. Lane & Irvine's (1973) whole-disk "
+        "narrow-band albedos, used until M3, are kept as a cross-check (docs/reports/planet-colors.md).",
+        "absolute scale uncertain by several percent (paper Sec. 5; Vega-based, 1.5 % at 555.6 nm per Hayes 1985); "
+        "band-to-band: mean absolute fit residual 0.0096 in ln A per band; the choice of the Apollo adjustment "
+        "reference could change 440-700 nm by up to 4 % (Sec. 4.2)",
+        p_v_method="Bessell V band average of the ROLO spectrum above (at α = 1.55°, so that it matches "
+                   "geometricAlbedoXYZS).",
+        notes={"reference_phase_deg": rolo.MIN_PHASE, "area_factor": area})
+
+
+def moon_lane_irvine(ctx: BuildContext | None = None) -> AlbedoSpectrum:
+    """Lane & Irvine (1973) whole-disk albedos: the Moon's spectrum until M3, now a cross-check of ROLO."""
     rows = read_table_csv("lane_irvine_1973.csv")
     narrow = [r for r in rows if r["band"] not in ("U", "B", "V")]
     wl = np.array([float(r["lambda_eff_A"]) / 10.0 for r in narrow])
