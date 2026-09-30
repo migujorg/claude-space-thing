@@ -5,7 +5,11 @@ Writes app/tests/fixtures/:
   horizons_astrometric.json  JPL Horizons light-time-corrected states seen from Earth's center
   core_spice_time.json       SPICE str2et / et2utc with naif0012.tls
   core_spice_rotation.json   SPICE pxform('IAU_<BODY>', 'J2000') with pck00011.tpc
-  core_spice_spk.json        SPICE spkgeo (geometric state, like spkgps + velocity) on the planetary kernel, every segment
+  core_spice_spk.json        SPICE spkgeo (geometric state, like spkgps + velocity) on the planetary kernel, every segment,
+                             and on the satellite kernel excerpts for a sample of each kernel's segments (types 2, 3, 17)
+  horizons_moons.json        JPL Horizons moons relative to their planet's centre
+  core_spice_orient.json     SPICE pxform('ITRF93' / 'MOON_ME_DE440_ME421', 'J2000') with NAIF's Earth and lunar PCKs
+It also downloads a few small satellite kernels whole (VERIFY_ORIGINALS) for pipeline/tests/test_ephem_satellites.py.
 
 Each Horizons entry records the exact query URL. Horizons answers are built on different planetary ephemerides per
 system (HORIZONS_BASE); each epoch carries `toOurs`, the SPICE-computed shift (our planetary kernel minus the one
@@ -25,10 +29,11 @@ import numpy as np
 import spiceypy as sp
 
 from . import ephem_horizons as hz
-from .download import record
+from . import ephem_satellites as sat
+from .download import fetch, record
 from .ephem_kernels import PLANETARY, lsk, naif_planets, pck, planetary
 from .ephem_spk import read_spk
-from .paths import REPO
+from .paths import CACHE, OUT, RAW, REPO
 
 FIXTURES = REPO / "app" / "tests" / "fixtures"
 
@@ -37,10 +42,19 @@ EPOCHS_JD = [2461012.15625, 2461178.84375, 2461313.5078125, 2461487.2890625, 246
 
 GEOMETRIC_TARGETS = [10, 199, 299, 399, 301, 499, 599, 699, 799, 899, 999, 3, 4, 5, 6, 7, 8, 9]
 ASTROMETRIC_TARGETS = [599, 301, 10, 999]
+# (moon, planet centre): Io, Europa, Titan, Enceladus, Phobos, Triton, Charon, Miranda; irregulars Himalia
+# (jup347) and Sycorax (ura184); Janus (sat415, SPK type 3); S/2009 S 2 (sat480, type 17); S/2011 J 4 (5-digit id).
+MOON_TARGETS = [(501, 599), (502, 599), (606, 699), (602, 699), (401, 499), (801, 899), (901, 999), (705, 799),
+                (506, 599), (717, 799), (610, 699), (65304, 699), (55527, 599)]
+SAMPLE_PER_KERNEL = 3
+# Satellite kernels small enough to download whole, so pipeline/tests can compare excerpt and original with SPICE.
+VERIFY_ORIGINALS = ["mar099s", "jup348", "plu060"]
 
 IAU_FRAMES = {10: "IAU_SUN", 199: "IAU_MERCURY", 299: "IAU_VENUS", 399: "IAU_EARTH", 301: "IAU_MOON",
               499: "IAU_MARS", 599: "IAU_JUPITER", 699: "IAU_SATURN", 799: "IAU_URANUS", 899: "IAU_NEPTUNE",
-              999: "IAU_PLUTO"}
+              999: "IAU_PLUTO", 401: "IAU_PHOBOS", 402: "IAU_DEIMOS", 501: "IAU_IO", 502: "IAU_EUROPA",
+              602: "IAU_ENCELADUS", 606: "IAU_TITAN", 610: "IAU_JANUS", 705: "IAU_MIRANDA", 801: "IAU_TRITON",
+              901: "IAU_CHARON"}
 
 # Planetary kernel equivalent to what each Horizons answer is built on, keyed by the source Horizons names:
 # - 'DE441' (Horizons' default): numerically identical to de440s in this era (measured: barycenters 3-9 agree to
@@ -136,6 +150,71 @@ def _rebase(bodies: list[dict], kernels: dict, astrometric: bool) -> None:
             e["toOurs"] = d.tolist()
 
 
+def _window() -> tuple[float, float]:
+    from .stages.ephemeris import MARGIN_S
+    w = json.loads((CACHE / "window.json").read_text())
+    return w["startEt"] - MARGIN_S, w["endEt"] + MARGIN_S
+
+
+def _satellite_spk(epochs_et: list[float]) -> list[dict]:
+    """spkgeo on each satellite excerpt for up to SAMPLE_PER_KERNEL of its product segments (all type 3/17 ones)."""
+    t0, t1 = _window()
+    by_kernel: dict[str, list[tuple[str, dict]]] = {}
+    for p in sorted((OUT / "ephem").glob("sat-*.json")):
+        for s in json.loads(p.read_text())["segments"]:
+            by_kernel.setdefault(s["sources"][0].removeprefix("naif-"), []).append((f"ephem/{p.stem}", s))
+    out = []
+    for k in sat.KERNELS:
+        segs = by_kernel[k.name]
+        pick = [x for x in segs if x[1]["type"] != 2 or x[1]["target"] % 100 == 99 and x[1]["target"] < 1000]
+        pick += [x for x in segs if x not in pick][: max(0, SAMPLE_PER_KERNEL - len(pick))]
+        path = sat.kernel_path(k, t0, t1)
+        sp.furnsh(str(path))
+        try:
+            for product, s in pick:
+                cases = []
+                for e in epochs_et:
+                    st, _ = sp.spkgeo(s["target"], e, "J2000", s["center"])
+                    cases.append({"et": e, "pos": list(st[:3]), "vel": list(st[3:])})
+                out.append({"product": product, "kernel": path.name, "target": s["target"], "center": s["center"],
+                            "type": s["type"], "cases": cases})
+        finally:
+            sp.unload(str(path))
+    return out
+
+
+def _moons(common: dict) -> None:
+    """JPL Horizons: moons relative to their planet's centre (independent of the planetary ephemeris)."""
+    bodies = [_horizons(t, f"500@{c}", "NONE", "moons") for t, c in MOON_TARGETS]
+    _write("horizons_moons.json", {**common, "description": "JPL Horizons geometric states of moons relative to "
+           "their planet's centre (500@<planet>), ICRF, km and km/s, TDB epochs. Checked against "
+           "positionSSB(moon) - positionSSB(planet); the planetary ephemeris cancels.", "bodies": bodies})
+
+
+def _orientation(common: dict, epochs_et: list[float]) -> None:
+    """SPICE pxform for the precise orientation products (ITRF93, MOON_ME_DE440_ME421)."""
+    t0, t1 = _window()
+    pck_dir = RAW / "naif" / "pck"
+    hp = sorted(pck_dir.glob("earth_000101_*.bpc"))[-1]
+    pr = sorted(pck_dir.glob("earth_*_predict.bpc"))[-1]
+    moon_pa = pck_dir / "moon_pa_de440_200625.bpc"
+    moon_fk = RAW / "naif" / "fk-satellites" / "moon_de440_250416.tf"
+    kernels = [pr, hp, moon_pa, moon_fk]  # high-precision after predict: it takes priority, as in orient/earth
+    for k in kernels:
+        sp.furnsh(str(k))
+    try:
+        ets = sorted(set(epochs_et) | {float(x) for x in np.linspace(t0 + 3600, t1 - 3600, 7)})
+        out = [{"id": i, "frame": f, "cases": [{"et": e, "bodyToJ2000": np.array(sp.pxform(f, "J2000", e)).reshape(-1)
+                                                .tolist()} for e in ets]}
+               for i, f in ((399, "ITRF93"), (301, "MOON_ME_DE440_ME421"))]
+    finally:
+        for k in kernels:
+            sp.unload(str(k))
+    _write("core_spice_orient.json", {**common, "kernels": [k.name for k in kernels],
+           "spiceVersion": sp.tkvrsn("TOOLKIT"), "description": "Row-major body-fixed -> J2000 matrices from "
+           "spiceypy.pxform(frame, 'J2000', et) with NAIF's Earth and lunar PCKs.", "bodies": out})
+
+
 def query_check(params: dict, ledger_url: str) -> str:
     url = hz.query_url(params)
     if url != ledger_url:
@@ -198,12 +277,18 @@ def main() -> None:
                 cases.append({"et": e, "pos": list(st[:3]), "vel": list(st[3:])})
             spk.append({"target": s.target, "center": s.center, "cases": cases})
         sr = record(spk_path)
-        _write("core_spice_spk.json", {**common, "kernel": {"file": spk_path.name, "sha256": sr["sha256"]},
-               "spiceVersion": sp.tkvrsn("TOOLKIT"), "description": "spiceypy.spkgeo(target, et, 'J2000', center) "
-               f"on the original kernel for every {PLANETARY} segment.", "segments": spk})
     finally:
         for p in (lsk_path, pck_path, spk_path):
             sp.unload(str(p))
+    _write("core_spice_spk.json", {**common, "kernel": {"file": spk_path.name, "sha256": sr["sha256"]},
+           "spiceVersion": sp.tkvrsn("TOOLKIT"), "description": "spiceypy.spkgeo(target, et, 'J2000', center) "
+           f"on the original kernel for every {PLANETARY} segment; `satellites`: the same on the satellite "
+           "kernel excerpts (each loaded alone) for a sample of every kernel's segments.", "segments": spk,
+           "satellites": _satellite_spk(epochs_et)})
+    _moons(common)
+    _orientation(common, epochs_et)
+    for name in VERIFY_ORIGINALS:
+        fetch(f"{sat.SAT_URL}/{name}.bsp", "naif/spk-satellites-full")  # for pipeline/tests (excerpt vs original)
 
 
 def _write(name: str, obj: dict) -> None:

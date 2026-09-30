@@ -2,8 +2,9 @@
 // app/tests/fixtures. Tests that need built data skip themselves, loudly, when it is missing: build it with
 //   cd pipeline && uv run python -m pipeline build --only time,ephemeris,bodies
 
-import type { Body, EphemHeader, Manifest, TimeData } from '../src/data/schema';
+import type { Body, EphemHeader, Manifest, OrientationHeader, TimeData } from '../src/data/schema';
 import { Ephemeris, EphemerisSet } from '../src/core/ephemeris';
+import { PreciseOrientation } from '../src/core/rotation';
 
 interface Fs {
   existsSync(p: string): boolean;
@@ -49,6 +50,18 @@ export function loadEphemeris(name: string): Ephemeris | null {
   const buf = new ArrayBuffer(u8.byteLength);
   new Uint8Array(buf).set(u8);
   return new Ephemeris(header, new Float64Array(buf));
+}
+
+export function loadOrientation(name: string): PreciseOrientation | null {
+  const hp = dataPath(`${name}.json`);
+  if (!hp) return null;
+  const header = JSON.parse(fs.readFileSync(hp, 'utf8')) as OrientationHeader;
+  const bp = dataPath(header.bin);
+  if (!bp) return null;
+  const u8 = fs.readFileSync(bp);
+  const buf = new ArrayBuffer(u8.byteLength);
+  new Uint8Array(buf).set(u8);
+  return new PreciseOrientation(header, new Float64Array(buf));
 }
 
 /** Names ("ephem/<name>") of every ephemeris product listed in manifest.json. */

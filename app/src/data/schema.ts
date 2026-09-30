@@ -71,7 +71,8 @@ export interface EphemSegment {
   target: number;
   center: number;
   frame: 'J2000';
-  type: 2 | 3;
+  /** SPK type: 2/3 Chebyshev records, or 17 (precessing equinoctial conic: n = 1 record of 12 doubles). */
+  type: 2 | 3 | 17;
   /** Start of first record interval, TDB s past J2000. */
   initEt: number;
   /** Length of each record interval, s. */
@@ -117,6 +118,41 @@ export interface IauRotation {
   nutPrecAnglesDegree?: number;
 }
 
+/** One binary-PCK type 2 segment (SPICE PCKE02): Chebyshev series of three Euler angles, same record layout as SPK type 2. */
+export interface OrientSegment {
+  /** NAIF body id whose orientation this is (399, 301). */
+  body: number;
+  /** PCK frame class id (3000 = ITRF93, 31008 = MOON_PA_DE440). */
+  frameClassId: number;
+  /** Frame the Euler angles are relative to; a key of OrientationHeader.references. */
+  reference: string;
+  type: 2;
+  initEt: number;
+  intLen: number;
+  rsize: number;
+  n: number;
+  offset: number;
+  /** Declared coverage (TDB s past J2000); may be narrower than the records' span. */
+  startEt: number;
+  endEt: number;
+  sources: string[];
+  label: Label;
+  method?: string;
+  uncertainty?: string;
+}
+
+/** orient/<name>.json: precise body orientation. reference → PCK frame = R3(w)·R1(δ)·R3(φ) (angles φ, δ, w). */
+export interface OrientationHeader {
+  /** Path of the binary relative to the data root, e.g. "orient/earth.bin". */
+  bin: string;
+  /** Row-major rotation matrices reference frame → J2000 (ICRF), by frame name (computed by SPICE). */
+  references: Record<string, number[]>;
+  /** Per body id: the body-fixed frame the app uses and the constant row-major rotation body frame → PCK frame. */
+  bodies: Record<string, { frame: string; pckFrame: string; bodyToPck: number[] }>;
+  segments: OrientSegment[];
+  notes?: string;
+}
+
 export type BodyKind = 'star' | 'planet' | 'dwarf-planet' | 'moon' | 'barycenter';
 
 export interface Body {
@@ -125,10 +161,12 @@ export interface Body {
   kind: BodyKind;
   /** Body this one is grouped under in the UI (e.g. Moon -> Earth). */
   parent?: number;
-  /** Which ephemeris file serves this body (holds its own segment), e.g. "ephem/centers"; the loader chains segments to reach the SSB. */
+  /** Which ephemeris file serves this body (holds its own segment), e.g. "ephem/sat-jup"; the loader chains segments to reach the SSB. */
   ephemeris: string;
   /** Every ephemeris file needed to chain this body to the SSB (includes `ephemeris`). Load them all into one EphemerisSet. */
   ephemerisFiles?: string[];
+  /** Precise orientation product for this body ("orient/earth"), preferred over `rotation` where it covers (OrientationSet). */
+  orientation?: string;
   /** Triaxial radii a, b, c in km. */
   radii: Sourced<[number, number, number]>;
   gm: Sourced<number>;

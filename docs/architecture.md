@@ -180,7 +180,8 @@ When an attribute needed for drawing is below the current `exists` level or `unk
 | `manifest.json` | all | build time, validity windows, list of products with sha256 and byte sizes |
 | `sources.json` | all | `SourceRecord[]` |
 | `time.json` | `time` | leap seconds (UTC instants and ΔAT) and TDB formula constants from the LSK |
-| `ephem/<name>.json` + `ephem/<name>.bin` | `ephemeris` | SPK segments restricted to the window; bin is float64 little-endian, native SPK type 2/3 record layout |
+| `ephem/<name>.json` + `ephem/<name>.bin` | `ephemeris` | SPK segments restricted to the window; bin is float64 little-endian, native SPK type 2/3 record layout (type 17: one 12-double record). `ephem/de442s`: planets; `ephem/sat-{mar,jup,sat,ura,nep,plu}`: planet centres and every moon, one file per system (lazy-loadable) |
+| `orient/<name>.json` + `orient/<name>.bin` | `bodies` | Precise body orientation (`OrientationHeader`): binary-PCK Euler-angle records for the window. `orient/earth` (ITRF93), `orient/moon` (DE440 Mean Earth frame); preferred over the IAU model where they cover (`OrientationSet`) |
 | `bodies.json` | `bodies` | `Body[]` with `Sourced` attributes (geometry, rotation, GM, ephemeris wiring) |
 | `photometry.json` | `light` | NAIF id → `BodyPhotometry` (albedo spectra integrated per §4.3, phase functions); merged into bodies by the app loader |
 | `light.json` | `light` | Sun spectrum-derived quantities, CIE constants actually used |

@@ -1,8 +1,7 @@
-"""Ephemeris products vs their raw data. Requires `python -m pipeline build --only ephemeris`.
+"""Planetary ephemeris product vs the kernel. Requires `python -m pipeline build --only ephemeris`.
 
-- planetary (de442s): every extracted segment is bit-identical to the kernel and reproduces SPICE spkgeo to < 1 mm.
-- centers: the fitted records reproduce every raw Horizons state (fitted and hold-out epochs) to < 1 km
-  (the contract), with the actual maxima printed.
+Every extracted segment of the planetary kernel (de442s) is bit-identical to the kernel and reproduces SPICE spkgeo
+to < 1 mm. Satellite products: test_ephem_satellites.py.
 """
 
 import json
@@ -11,15 +10,13 @@ import numpy as np
 import pytest
 import spiceypy as sp
 
-from pipeline import download
-from pipeline import ephem_horizons as hz
 from pipeline.ephem_kernels import PLANETARY, SRC_PLANETARY, planetary
 from pipeline.ephem_spk import evaluate, load_product, read_spk, restrict
-from pipeline.paths import OUT, RAW
-from pipeline.stages.ephemeris import CENTERS, HOLDOUT_OFFSET_MIN, HOLDOUT_STEP_MIN, MARGIN_S, STEP_MIN, center_source_id
+from pipeline.paths import OUT
+from pipeline.stages.ephemeris import MARGIN_S
 
-DE, CEN = OUT / "ephem" / f"{PLANETARY}.json", OUT / "ephem" / "centers.json"
-pytestmark = pytest.mark.skipif(not (DE.exists() and CEN.exists()), reason="ephemeris products not built")
+DE = OUT / "ephem" / f"{PLANETARY}.json"
+pytestmark = pytest.mark.skipif(not DE.exists(), reason="ephemeris products not built")
 
 
 @pytest.fixture(scope="module")
@@ -34,11 +31,6 @@ def kernel():
     sp.furnsh(str(path))
     yield path
     sp.unload(str(path))
-
-
-@pytest.fixture(scope="module")
-def sources():
-    return {s["id"]: s for s in json.loads((OUT / "sources.json").read_text())}
 
 
 def test_all_segments_extracted_bit_identical(kernel, window):
@@ -72,36 +64,13 @@ def test_every_segment_matches_spkgeo(kernel, window):
     print(f"{PLANETARY} vs spkgeo: max |dpos| = {worst_p:.3e} km, max |dvel| = {worst_v:.3e} km/s")
 
 
-def _raw(tgt, ctr, seg, suffix):
-    jd_a = hz.et_to_jd(seg.init)
-    jd_b = hz.et_to_jd(seg.end)
-    return RAW / "horizons" / "centers" / f"{tgt}_wrt_{ctr}_JD{jd_a:.1f}-{jd_b:.1f}_{suffix}.txt"
-
-
-@pytest.mark.parametrize("tgt,ctr,name", CENTERS)
-def test_center_fit_reproduces_horizons(tgt, ctr, name, window, sources):
-    seg = {s.target: s for s in load_product(CEN)}[tgt]
-    assert seg.center == ctr and seg.type == 2 and seg.label == "derived"
-    assert seg.start <= window[0] and seg.end >= window[1]
-    assert seg.sources == [center_source_id(tgt)] and "hold-out" in seg.uncertainty
-    rec = sources[center_source_id(tgt)]
-    fit_path = _raw(tgt, ctr, seg, f"{STEP_MIN}m")
-    ho_path = _raw(tgt, ctr, seg, f"{HOLDOUT_STEP_MIN}m+{HOLDOUT_OFFSET_MIN}")
-    assert rec["sha256"] == download.sha256_file(fit_path)
-    for path, kind in ((fit_path, "fitted"), (ho_path, "hold-out")):
-        t = hz.parse_vectors(path.read_text())
-        et = seg.init + np.round((t.et - seg.init) / 60.0) * 60.0
-        pos, vel = evaluate(seg, et)
-        dp = np.linalg.norm(pos - t.states[:, :3], axis=1).max()
-        dv = np.linalg.norm(vel - t.states[:, 3:], axis=1).max()
-        print(f"{tgt} wrt {ctr} {kind}: {et.size} epochs, max |dpos| {dp:.3e} km, max |dvel| {dv:.3e} km/s")
-        assert dp < 1.0          # contract: < 1 km
-        assert dv < 1e-3
-
-
 def test_chain_reaches_ssb():
-    targets = {s.target: s.center for s in load_product(DE) + load_product(CEN)}
-    for body in (10, 199, 299, 399, 301, 499, 599, 699, 799, 899, 999):
+    targets = {}
+    for p in [DE, *sorted((OUT / "ephem").glob("sat-*.json"))]:
+        for s in load_product(p):
+            assert s.target not in targets, f"{s.target} served twice"
+            targets[s.target] = s.center
+    for body in [10, 199, 299, 399, 301, 499, 599, 699, 799, 899, 999] + [t for t in targets if t > 400]:
         node, hops = body, 0
         while node != 0:
             node = targets[node]
