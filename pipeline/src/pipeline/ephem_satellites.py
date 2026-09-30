@@ -99,6 +99,7 @@ class RemoteFile(io.RawIOBase):
             try:
                 r = self.s.get(self.url, headers={"Range": f"bytes={a}-{b}"}, timeout=120)
                 self.requests += 1
+                download.count(len(r.content))
                 if r.status_code != 206:
                     raise requests.HTTPError(f"{self.url}: expected 206 for a range request, got {r.status_code}")
                 if not head and len(r.content) != b - a + 1:
@@ -153,7 +154,7 @@ def survey(kernel: Kernel, session: requests.Session) -> dict:
     key = f"{r.headers.get('Content-Length')}_{r.headers.get('Last-Modified')}"
     cache = CACHE / "satellite-survey" / f"{kernel.name}.json"
     if cache.exists():
-        c = json.loads(cache.read_text())
+        c = json.loads(cache.read_text(encoding="utf-8"))
         if c.get("key") == key:
             return c
     f = RemoteFile(kernel.url, session)
@@ -165,7 +166,7 @@ def survey(kernel: Kernel, session: requests.Session) -> dict:
                      "start": float(start), "end": float(end), "a0": int(a0), "a1": int(a1)})
     out = {"key": key, "url": kernel.url, "bytes": f.size, "lastModified": f.last_modified, "segments": segs}
     cache.parent.mkdir(parents=True, exist_ok=True)
-    cache.write_text(json.dumps(out))
+    cache.write_text(json.dumps(out), encoding="utf-8", newline="\n")
     return out
 
 
@@ -195,7 +196,7 @@ def excerpt(kernel: Kernel, targets: set[int], t0: float, t1: float, session: re
         return fetch(kernel.url, "naif/spk-satellites")
     jd0, jd1 = 2451545.0 + t0 / 86400.0, 2451545.0 + t1 / 86400.0
     dest = RAW / "naif" / "spk-excerpts" / f"{kernel.name}_JD{jd0:.3f}-{jd1:.3f}.bsp"
-    key = str(dest.relative_to(RAW))
+    key = download.ledger_key(dest)
     ledger = download._load_ledger()
     if dest.exists() and key in ledger and ledger[key].get("excerpt", {}).get("targets") == sorted(targets):
         return dest
@@ -217,8 +218,7 @@ def excerpt(kernel: Kernel, targets: set[int], t0: float, t1: float, session: re
         out.write(b"\0" * (-out.tell() % 1024))
     tmp.replace(dest)
     checked = verify_against_original(kernel, dest, session)
-    ledger = download._load_ledger()  # the ledger helpers of download.py (same as ephem_horizons._forget)
-    ledger[key] = {
+    download.update_ledger(key, {
         "url": kernel.url,
         "sha256": download.sha256_file(dest),
         "retrieved": _dt.date.today().isoformat(),
@@ -226,8 +226,7 @@ def excerpt(kernel: Kernel, targets: set[int], t0: float, t1: float, session: re
         "excerpt": {"of": kernel.url, "originalBytes": f.size, "originalLastModified": f.last_modified,
                     "startEt": t0, "endEt": t1, "targets": sorted(targets), "rangeRequests": f.requests,
                     "verifiedRecords": checked, "tool": f"jplephem {jplephem_version} write_excerpt"},
-    }
-    download._save_ledger(ledger)
+    })
     return dest
 
 
@@ -264,6 +263,7 @@ def _range_doubles(url: str, first: int, last: int, session: requests.Session) -
     a, b = 8 * (first - 1), 8 * last - 1
     r = session.get(url, headers={"Range": f"bytes={a}-{b}"}, timeout=120)
     r.raise_for_status()
+    download.count(len(r.content))
     if r.status_code != 206 or len(r.content) != b - a + 1:
         raise ValueError(f"{url}: bad range response")
     return np.frombuffer(r.content, dtype="<f8")
