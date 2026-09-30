@@ -11,6 +11,8 @@ Attribute rules (NORTH_STAR 3.2; docs/research/m3-small-bodies.md §3):
 - rotation period: LCDB (U >= 2- measured; U = 1-..1+ or unrated estimated; U = 0 and period limits are not used),
   else the SBDB rot_per (measured, quality not given).
 - taxonomy (SMASSII/Bus, Tholen) and B-V, U-B, I-R colours: SBDB, measured.
+- phase function (H, G1, G2 and the phase range fitted), spin pole and SsODNet taxonomy: SsODNet ssoBFT, measured
+  (fits outside the H-G1-G2 constraints are not used).
 - geometricAlbedoXYZS: Gaia DR3 reflectance spectrum x p_V integrated against sunlight and the CIE observers
   (docs/architecture.md §4.3); `derived` when the spectrum bands are unflagged and p_V is measured, `estimated`
   when p_V is the class statistic or a band inside 418-814 nm had to be bridged (the 374 and 858 nm edge bands,
@@ -29,7 +31,7 @@ import numpy as np
 from . import cie
 from .photometry import filters, solar
 from .sb_catalog import Catalog
-from .sb_physical_sources import GaiaSpectra, LcdbEntry, NeowiseFit, unpack_designation
+from .sb_physical_sources import GaiaSpectra, LcdbEntry, NeowiseFit, SsoBft, unpack_designation
 from .sb_table import LABEL_CODE
 
 D_H_CONSTANT_KM = 1329.0  # Pravec & Harris (2007), Icarus 190, 250, Eq. 3: D = 1329 km / sqrt(p_V) * 10^(-H/5)
@@ -47,6 +49,10 @@ class Physical:
     class_albedo: dict[str, dict] = field(default_factory=dict)
     taxonomy_B: list[str] = field(default_factory=lambda: [""])
     taxonomy_T: list[str] = field(default_factory=lambda: [""])
+    phase_filters: list[str] = field(default_factory=lambda: [""])
+    phase_facilities: list[str] = field(default_factory=lambda: [""])
+    spin_techniques: list[str] = field(default_factory=lambda: [""])
+    taxonomy_bft: list[str] = field(default_factory=lambda: [""])
     stats: dict = field(default_factory=dict)
 
 
@@ -88,9 +94,9 @@ def _flt(x) -> float:
 
 # ---------------------------------------------------------------------------------------------- merge
 def build(cat: Catalog, sbdb_phys: dict[int, dict], neowise: list[NeowiseFit], lcdb: list[LcdbEntry],
-          gaia: GaiaSpectra, src: dict[str, int]) -> Physical:
-    """src: source-table indices for 'sbdb', 'neowise', 'lcdb', 'gaia', 'stat' (class albedo statistic),
-    'cie', 'hsrs', 'filterV', 'pravec'."""
+          gaia: GaiaSpectra, src: dict[str, int], bft: SsoBft | None = None) -> Physical:
+    """src: source-table indices for 'sbdb', 'neowise', 'lcdb', 'gaia', 'stat' (class albedo statistic) and, with
+    bft (SsODNet ssoBFT), 'bft'."""
     n = cat.n
     ph = Physical(n)
     c = ph.cols
@@ -98,15 +104,18 @@ def build(cat: Catalog, sbdb_phys: dict[int, dict], neowise: list[NeowiseFit], l
     lab = lambda: np.full(n, U, dtype=np.uint8)          # noqa: E731
     zero = lambda: np.zeros(n, dtype=np.uint8)           # noqa: E731
     for k in ("diameter", "diameterSigma", "albedo", "albedoSigma", "rotPeriod", "diameterEst", "albedoAssumed",
-              "BV", "UB", "IR"):
+              "BV", "UB", "IR", "phaseH", "phaseG1", "phaseG2", "phaseHSigma", "phaseG1Sigma", "phaseG2Sigma",
+              "phaseMinDeg", "phaseMaxDeg", "poleRA", "poleDec", "spinPeriod"):
         c[k] = nan()
     c["geometricAlbedoXYZS"] = np.full((n, 4), np.nan)
     for k in ("diameterLabel", "albedoLabel", "rotLabel", "diameterEstLabel", "colorLabel", "taxonomyLabel",
-              "colorIndexLabel"):
+              "colorIndexLabel", "phaseLabel", "spinLabel", "taxonomyBftLabel"):
         c[k] = lab()
     for k in ("diameterSrc", "albedoSrc", "rotSrc", "diameterEstSrc", "colorSrc", "taxonomySrc", "colorIndexSrc",
-              "rotQuality", "taxonomyB", "taxonomyT", "gaiaBandsUsed"):
+              "rotQuality", "taxonomyB", "taxonomyT", "gaiaBandsUsed", "phaseSrc", "phaseFilter", "phaseFacility",
+              "spinSrc", "spinTechnique", "taxonomyBft", "taxonomyBftSrc"):
         c[k] = zero()
+    c["phaseN"] = np.zeros(n, dtype=np.uint16)
     idx = designation_index(cat)
     row_of_spk = {int(s): i for i, s in enumerate(cat.spkid)}
     is_comet = np.array([str(k).startswith("c") for k in cat.s["kind"]])
@@ -230,12 +239,15 @@ def build(cat: Catalog, sbdb_phys: dict[int, dict], neowise: list[NeowiseFit], l
     # --- Gaia spectra -> geometricAlbedoXYZS
     n_gaia = _gaia_colors(cat, ph, gaia, idx, src, has_a)
 
+    # --- SsODNet ssoBFT: H-G1-G2 phase functions, spin poles, taxonomy where the SBDB has none
+    n_bft = _ssobft(ph, bft, idx, src) if bft is not None else {}
+
     ph.stats = {"sbdbDiameter": n_sbdb_d, "sbdbAlbedo": n_sbdb_a, "neowiseMatchedObjects": len(fits),
                 "neowiseRowsUnmatched": unmatched, "neowiseDiameterAdded": n_nw_d, "neowiseAlbedoAdded": n_nw_a,
                 "sbdbOverNeowiseDiameterRatio": {"n": int(agree.size),
                                                  "median": float(np.median(agree)) if agree.size else None,
                                                  "within1pct": float(np.mean(np.abs(agree - 1) < 0.01)) if agree.size else None},
-                "lcdb": n_lc, "gaia": n_gaia}
+                "lcdb": n_lc, "gaia": n_gaia, "ssobft": n_bft}
     return ph
 
 
@@ -320,3 +332,53 @@ def edge_band_effect(g: GaiaSpectra, limit: int = 2000) -> float:
             out.append(cie.xyzs(r / filters.band_average("V", cie.WAVELENGTHS, r) * sun))
         worst = max(worst, float(np.max(np.abs(out[1] / out[0] - 1.0))))
     return worst
+
+
+# ---------------------------------------------------------------------------------------------- SsODNet
+def _ssobft(ph: Physical, b: SsoBft, idx: dict[str, int], src: dict[str, int]) -> dict:
+    """Phase function (H, G1, G2 and the phase-angle range it was fitted over), spin pole and taxonomy from ssoBFT.
+    A phase function outside the H-G1-G2 constraints (G1 >= 0, G2 >= 0, G1 + G2 <= 1; Muinonen et al. 2010) is not a
+    usable phase curve and is left unknown."""
+    c = ph.cols
+    filt, fac, tech, tax = {"": 0}, {"": 0}, {"": 0}, {"": 0}
+    stats = {"matched": 0, "unmatched": 0, "phase": 0, "phaseOutsideConstraints": 0, "spin": 0, "taxonomy": 0,
+             "taxonomySbdbAlreadyKnown": 0}
+    for k in range(b.number.size):
+        key = str(int(b.number[k])) if b.number[k] else str(b.name[k])
+        i = idx.get(key)
+        if i is None:
+            stats["unmatched"] += 1
+            continue
+        stats["matched"] += 1
+        g1, g2 = b.phase["G1"][k], b.phase["G2"][k]
+        if b.phase_filter[k]:
+            if g1 >= 0 and g2 >= 0 and g1 + g2 <= 1:
+                for col, key2 in (("phaseH", "H"), ("phaseG1", "G1"), ("phaseG2", "G2"), ("phaseHSigma", "H_err"),
+                                  ("phaseG1Sigma", "G1_err"), ("phaseG2Sigma", "G2_err"), ("phaseMinDeg", "phase_min"),
+                                  ("phaseMaxDeg", "phase_max")):
+                    c[col][i] = b.phase[key2][k]
+                c["phaseN"][i] = min(int(b.phase["N"][k]), 65535)
+                c["phaseFilter"][i] = filt.setdefault(str(b.phase_filter[k]), len(filt))
+                c["phaseFacility"][i] = fac.setdefault(str(b.phase_facility[k]), len(fac))
+                c["phaseLabel"][i], c["phaseSrc"][i] = M, src["bft"]
+                stats["phase"] += 1
+            else:
+                stats["phaseOutsideConstraints"] += 1
+        if math.isfinite(b.spin["RA0"][k]):
+            c["poleRA"][i], c["poleDec"][i], c["spinPeriod"][i] = b.spin["RA0"][k], b.spin["DEC0"][k], b.spin["period"][k]
+            c["spinTechnique"][i] = tech.setdefault(str(b.spin_technique[k]), len(tech))
+            c["spinLabel"][i], c["spinSrc"][i] = M, src["bft"]
+            stats["spin"] += 1
+        if b.tax_class[k]:
+            entry = f"{b.tax_scheme[k]}|{b.tax_class[k]}|{b.tax_technique[k]}"
+            c["taxonomyBft"][i] = tax.setdefault(entry, len(tax))
+            c["taxonomyBftLabel"][i], c["taxonomyBftSrc"][i] = M, src["bft"]
+            stats["taxonomy"] += 1
+            if c["taxonomyLabel"][i] == M:
+                stats["taxonomySbdbAlreadyKnown"] += 1
+    for lst, d in ((ph.phase_filters, filt), (ph.phase_facilities, fac), (ph.spin_techniques, tech),
+                   (ph.taxonomy_bft, tax)):
+        if len(d) > 255:
+            raise ValueError("too many distinct ssoBFT codes for a u8 index")
+        lst[:] = sorted(d, key=d.get)
+    return stats

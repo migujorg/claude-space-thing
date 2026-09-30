@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import csv
+import math
 import gzip
 import io
 import zipfile
@@ -69,6 +70,24 @@ def gaia_downloads() -> list[Download]:
                      license="CC BY-NC 3.0 IGO (ESA/Gaia/DPAC)")
             for k in range(20)]
 
+
+SSOBFT = Download(
+    id="ssodnet-ssobft",
+    url="https://ssp.imcce.fr/data/ssoBFT-latest_Asteroid.parquet", subdir="ssodnet", name="ssoBFT-latest_Asteroid.parquet",
+    title="SsODNet ssoBFT: best-estimate physical properties of asteroids (Parquet, IMCCE)",
+    citation="Berthier, J., Carry, B., Mahlke, M. & Normand, J. (2023). SsODNet: Solar system Open Database Network. "
+             "A&A 671, A151. DOI:10.1051/0004-6361/202244878. Phase functions: Mahlke, M., Carry, B. & Denneau, L. "
+             "(2021), Icarus 354, 114094, DOI:10.1016/j.icarus.2020.114094 (ATLAS) and later SsODNet compilations "
+             "(per-row facility); H, G1, G2 system: Muinonen, K. et al. (2010), Icarus 209, 542, "
+             "DOI:10.1016/j.icarus.2010.04.003. Spins: compilation incl. DAMIT (Durech et al. 2010, A&A 513, A46) and "
+             "Gaia DR3 inversions (Durech & Hanus 2023, A&A 675, A24). Taxonomy: Mahlke, Carry & Mattei (2022), A&A 665, "
+             "A26, DOI:10.1051/0004-6361/202243587, and earlier schemes (per-row scheme).",
+    version="ssoBFT-latest, file dated 2026-09-22 (IMCCE updates it weekly)",
+    license="SsODNet data policy: free use with citation of Berthier et al. (2023)",
+    notes="Only the phase_functions, spins and taxonomy columns are read (pyarrow). The flat table gives per-value "
+          "errors, facility/technique and filter, but not the bibcode of each value; the per-value reference is in "
+          "the SsODNet ssoCard of the object.",
+)
 
 MPCORB = Download(
     id="mpc-mpcorb",
@@ -216,6 +235,107 @@ def read_gaia(paths: list[Path]) -> GaiaSpectra:
             refl[i, j], err[i, j], flag[i, j] = r, e, f
     return GaiaSpectra(np.array([k[0] for k in keys]), np.array([k[1] for k in keys], dtype=object), refl, err, flag,
                        GAIA_WAVELENGTHS_NM)
+
+
+# ---------------------------------------------------------------------------------------------- SsODNet ssoBFT
+# One phase function per object: the band closest to V first (the MPC-photometry V fits, then Gaia G, ATLAS o/c,
+# ZTF r/g). One spin solution per object with a pole: lightcurve inversion, radar, occultation-constrained and
+# thermophysical solutions before the statistical amplitude-magnitude (A-M) poles.
+PHASE_FILTER_ORDER = ["V", "G", "orange", "cyan", "r", "g", "R", "i"]
+SPIN_TECHNIQUE_ORDER = ["SPACE", "Radar", "Radar-LC", "KOALA", "ADAM", "SAGE", "LC+Occ", "TE-Occ", "LC+IM", "TE-IM",
+                        "Bin-IM", "LC+TPM", "LC-TPM", "LCI", "TE", "LC"]   # then any other technique, then "A-M"
+
+
+@dataclass
+class SsoBft:
+    number: np.ndarray        # int (0 = unnumbered)
+    name: np.ndarray          # str
+    phase: dict[str, np.ndarray]   # H, G1, G2, H_err, G1_err, G2_err, phase_min, phase_max, rms (float); N (int);
+    phase_filter: np.ndarray       # str ('' = none)
+    phase_facility: np.ndarray     # str
+    spin: dict[str, np.ndarray]    # RA0, DEC0, period (float)
+    spin_technique: np.ndarray     # str
+    tax_class: np.ndarray          # str ('' = none)
+    tax_scheme: np.ndarray
+    tax_technique: np.ndarray
+
+
+def _at(lst, j):
+    """Element j of a Parquet list cell (None when the cell or the element is missing)."""
+    return lst[j] if lst is not None and j < len(lst) else None
+
+
+def _err(lo, hi) -> float:
+    vals = [abs(v) for v in (lo, hi) if v is not None and v == v]
+    return max(vals) if vals else math.nan
+
+
+def read_ssobft(path: Path) -> SsoBft:
+    import pyarrow.parquet as pq
+
+    pf = ["name_filter", "H.value", "H.error.min", "H.error.max", "G1.value", "G1.error.min", "G1.error.max",
+          "G2.value", "G2.error.min", "G2.error.max", "N", "phase.min", "phase.max", "rms", "facility"]
+    sp = ["RA0.value", "DEC0.value", "period.value", "technique"]
+    cols = (["number", "name"] + [f"phase_functions.{c}" for c in pf] + [f"spins.{c}" for c in sp]
+            + ["taxonomy.class", "taxonomy.scheme", "taxonomy.technique"])
+    t = pq.read_table(path, columns=cols)
+    d = {c: t.column(c).to_pylist() for c in cols}
+    n = t.num_rows
+    ph = {k: np.full(n, np.nan) for k in ("H", "G1", "G2", "H_err", "G1_err", "G2_err", "phase_min", "phase_max",
+                                          "rms")}
+    ph["N"] = np.zeros(n, dtype=np.int64)
+    pfilt = np.full(n, "", dtype=object)
+    pfac = np.full(n, "", dtype=object)
+    spin = {k: np.full(n, np.nan) for k in ("RA0", "DEC0", "period")}
+    stech = np.full(n, "", dtype=object)
+    rank_f = {f: k for k, f in enumerate(PHASE_FILTER_ORDER)}
+    rank_s = {f: k for k, f in enumerate(SPIN_TECHNIQUE_ORDER)}
+    rank_s["A-M"] = len(SPIN_TECHNIQUE_ORDER) + 1
+    for i in range(n):
+        filters = d["phase_functions.name_filter"][i]
+        if filters:
+            best = None
+            for j, f in enumerate(filters):
+                g1, g2 = _at(d["phase_functions.G1.value"][i], j), _at(d["phase_functions.G2.value"][i], j)
+                if g1 is None or g2 is None or _at(d["phase_functions.H.value"][i], j) is None:
+                    continue
+                key = (rank_f.get(f, len(rank_f)), -(_at(d["phase_functions.N"][i], j) or 0))
+                if best is None or key < best[0]:
+                    best = (key, j)
+            if best is not None:
+                j = best[1]
+                g = lambda c: _at(d[f"phase_functions.{c}"][i], j)  # noqa: E731
+                ph["H"][i], ph["G1"][i], ph["G2"][i] = g("H.value"), g("G1.value"), g("G2.value")
+                ph["H_err"][i] = _err(g("H.error.min"), g("H.error.max"))
+                ph["G1_err"][i] = _err(g("G1.error.min"), g("G1.error.max"))
+                ph["G2_err"][i] = _err(g("G2.error.min"), g("G2.error.max"))
+                for k, c in (("phase_min", "phase.min"), ("phase_max", "phase.max"), ("rms", "rms")):
+                    v = g(c)
+                    ph[k][i] = v if v is not None else np.nan
+                ph["N"][i] = g("N") or 0
+                pfilt[i] = filters[j]
+                pfac[i] = g("facility") or ""
+        ra = d["spins.RA0.value"][i]
+        if ra:
+            best = None
+            for j, a in enumerate(ra):
+                dec = _at(d["spins.DEC0.value"][i], j)
+                if a is None or dec is None or a != a or dec != dec:
+                    continue
+                tech = _at(d["spins.technique"][i], j) or ""
+                key = rank_s.get(tech, len(SPIN_TECHNIQUE_ORDER))
+                if best is None or key < best[0]:
+                    best = (key, j)
+            if best is not None:
+                j = best[1]
+                spin["RA0"][i], spin["DEC0"][i] = ra[j], _at(d["spins.DEC0.value"][i], j)
+                p = _at(d["spins.period.value"][i], j)
+                spin["period"][i] = p if p is not None else np.nan
+                stech[i] = _at(d["spins.technique"][i], j) or ""
+    num = np.array([x or 0 for x in d["number"]], dtype=np.int64)
+    s = lambda c: np.array([x or "" for x in d[c]], dtype=object)  # noqa: E731
+    return SsoBft(num, np.array(d["name"], dtype=object), ph, pfilt, pfac, spin, stech, s("taxonomy.class"),
+                  s("taxonomy.scheme"), s("taxonomy.technique"))
 
 
 # ---------------------------------------------------------------------------------------------- MPCORB

@@ -105,6 +105,7 @@ def run(ctx: BuildContext) -> None:
     gaia_paths = [d.fetch() for d in phys_dl["gaia"]]
     lcdb_path = ps.LCDB.fetch()
     mpc_path = ps.MPCORB.fetch()
+    bft_path = ps.SSOBFT.fetch()
     t = lap("downloads (cached)", t)
 
     cat = sb_catalog.load_orbits(snap.orbit_pages)
@@ -188,7 +189,8 @@ def run(ctx: BuildContext) -> None:
     ph = sb_physical.build(cat, sb_physical.load_sbdb_phys(snap.phys_pages), ps.read_neowise(neowise_paths),
                            ps.read_lcdb(lcdb_path)[0], ps.read_gaia(gaia_paths),
                            {"sbdb": sidx["jpl-sbdb-physical"], "neowise": sidx["neowise-v2"], "lcdb": sidx["lcdb-2023-10"],
-                            "gaia": sidx["gaia-dr3-sso-reflectance"], "stat": sidx["smallbodies-class-albedo"]})
+                            "gaia": sidx["gaia-dr3-sso-reflectance"], "stat": sidx["smallbodies-class-albedo"],
+                            "bft": sidx["ssodnet-ssobft"]}, bft=ps.read_ssobft(bft_path))
     t = lap("physical attributes", t)
 
     # ------------------------------------------------------------------ core columns
@@ -248,7 +250,8 @@ def run(ctx: BuildContext) -> None:
                          NO_SRC).astype(np.uint8)
 
     has_phys = ((c["diameterLabel"] != U) | (c["albedoLabel"] != U) | (c["rotLabel"] != U) | (c["colorLabel"] != U)
-                | (c["colorIndexLabel"] != U) | (c["taxonomyLabel"] != U))
+                | (c["colorIndexLabel"] != U) | (c["taxonomyLabel"] != U) | (c["phaseLabel"] != U)
+                | (c["spinLabel"] != U) | (c["taxonomyBftLabel"] != U))
     phys_rows = np.nonzero(has_phys)[0]
     phys_row = np.full(n, 0xFFFFFFFF, dtype=np.uint32)
     phys_row[phys_rows] = np.arange(phys_rows.size, dtype=np.uint32)
@@ -311,7 +314,8 @@ def run(ctx: BuildContext) -> None:
                    "diameter": lab_counts(c["diameterLabel"]), "albedo": lab_counts(c["albedoLabel"]),
                    "rotationPeriod": lab_counts(c["rotLabel"]), "geometricAlbedoXYZS": lab_counts(c["colorLabel"]),
                    "colorIndices": lab_counts(c["colorIndexLabel"]), "taxonomy": lab_counts(c["taxonomyLabel"]),
-                   "diameterFromH": lab_counts(d_est_label)},
+                   "diameterFromH": lab_counts(d_est_label), "phaseFunctionHG1G2": lab_counts(c["phaseLabel"]),
+                   "spinPole": lab_counts(c["spinLabel"]), "taxonomySsodnet": lab_counts(c["taxonomyBftLabel"])},
         "propagation": {"status": {k: int(v) for k, v in Counter(status.tolist()).items()},
                         "preEphemerisTwoBody": int(pre.sum()), "horizonsStates": len(hz_rows),
                         "substeps": int(stats[:, 0].sum()), "encounterSubsteps": int(stats[:, 2].sum()),
@@ -373,6 +377,32 @@ def run(ctx: BuildContext) -> None:
         Field("taxonomyB", "u8", 1, {"method": "SMASSII/Bus class index into header taxonomyB (0 = none)"}),
         Field("taxonomyT", "u8", 1, {"method": "Tholen class index into header taxonomyT (0 = none)"}),
         Field("taxonomyLabel", "u8"), Field("taxonomySrc", "u8"),
+        Field("phaseH", "f32", 1, {"unit": "mag", "label": "phaseLabel", "source": "phaseSrc", "method":
+              "H of the H-G1-G2 phase function (Muinonen et al. 2010) fitted to survey photometry, from SsODNet "
+              "ssoBFT; one fit per object, the band closest to V first (header phaseFilters: V = MPC-archive "
+              "photometry fits, orange/cyan = ATLAS, g/r = ZTF, G = Gaia). Fits violating G1, G2 >= 0, G1 + G2 <= 1 "
+              "are not used. Valid only for phase angles phaseMinDeg..phaseMaxDeg (the fitted range)."}),
+        Field("phaseG1", "f32", 1, {"label": "phaseLabel", "source": "phaseSrc"}),
+        Field("phaseG2", "f32", 1, {"label": "phaseLabel", "source": "phaseSrc"}),
+        Field("phaseHSigma", "f32"), Field("phaseG1Sigma", "f32"), Field("phaseG2Sigma", "f32"),
+        Field("phaseMinDeg", "f32", 1, {"unit": "deg"}), Field("phaseMaxDeg", "f32", 1, {"unit": "deg"}),
+        Field("phaseN", "u16", 1, {"method": "number of observations fitted (capped at 65535)"}),
+        Field("phaseFilter", "u8", 1, {"method": "index into header phaseFilters"}),
+        Field("phaseFacility", "u8", 1, {"method": "index into header phaseFacilities"}),
+        Field("phaseLabel", "u8"), Field("phaseSrc", "u8"),
+        Field("poleRA", "f32", 1, {"unit": "deg", "label": "spinLabel", "source": "spinSrc", "method":
+              "Spin-pole right ascension and declination (ICRF/EQJ2000, as compiled) and the sidereal period of the "
+              "same solution, from SsODNet ssoBFT; one solution per object, lightcurve inversion / radar / "
+              "occultation / thermophysical solutions before the statistical amplitude-magnitude (A-M) poles "
+              "(technique in spinTechnique, decoded by header spinTechniques). Pole solutions can be ambiguous "
+              "(mirror poles)."}),
+        Field("poleDec", "f32", 1, {"unit": "deg", "label": "spinLabel", "source": "spinSrc"}),
+        Field("spinPeriod", "f32", 1, {"unit": "h", "label": "spinLabel", "source": "spinSrc"}),
+        Field("spinTechnique", "u8"), Field("spinLabel", "u8"), Field("spinSrc", "u8"),
+        Field("taxonomyBft", "u8", 1, {"label": "taxonomyBftLabel", "source": "taxonomyBftSrc", "method":
+              "SsODNet best taxonomy, index into header taxonomySsodnet ('scheme|class|technique', technique Phot = "
+              "from photometry/colours, Spec = from a spectrum)."}),
+        Field("taxonomyBftLabel", "u8"), Field("taxonomyBftSrc", "u8"),
     ]
     pc = {"row": pr.astype(np.uint32)}
     for f in phys_fields[1:]:
@@ -388,9 +418,11 @@ def run(ctx: BuildContext) -> None:
             if f.name.endswith("Src"):
                 lab = c[f.name[:-3] + "Label"][pr]
                 v = np.where(lab == U, NO_SRC, v)
-            pc[f.name] = v.astype(np.uint8)
+            pc[f.name] = v.astype(np.uint16 if f.type == "u16" else np.uint8)
     write_table(ctx, f"{DIR}/physical", phys_fields, pc, int(pr.size), STAGE, source_table=sources, extra={
-        "lcdbU": sb_physical.LCDB_U_CODES, "taxonomyB": ph.taxonomy_B, "taxonomyT": ph.taxonomy_T}, notes=(
+        "lcdbU": sb_physical.LCDB_U_CODES, "taxonomyB": ph.taxonomy_B, "taxonomyT": ph.taxonomy_T,
+        "phaseFilters": ph.phase_filters, "phaseFacilities": ph.phase_facilities, "spinTechniques": ph.spin_techniques,
+        "taxonomySsodnet": ph.taxonomy_bft}, notes=(
         "Objects with at least one measured physical attribute (row -> core record). Unknown values are NaN / label "
         "unknown; source indices 255 = none."))
 
@@ -596,6 +628,7 @@ def _sources(ctx, snap, src_ids, phys_dl, lcdb_path, mpc_path) -> list[str]:
         license=gd[0].license, notes="SsoReflectanceSpectrum_00..19.csv.gz; sha256 over the per-file sha256 values."))
     ids.append("gaia-dr3-sso-reflectance")
     ids.append(ps.MPCORB.register(ctx))
+    ids.append(ps.SSOBFT.register(ctx))
     r = record(snap.orbit_pages[0])
     ctx.add_source(SourceRecord(
         id="smallbodies-class-albedo",

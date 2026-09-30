@@ -137,3 +137,41 @@ def test_mpcorb_lines(tmp_path):
     assert list(m.U) == ["0", "5"]
     assert m.epoch_packed[0] == "K2669"
     assert m.elems[0, 0] == 274.41935 and m.elems[0, 6] == 2.7655526
+
+
+def test_ssobft_reader_picks_v_band_and_best_spin(tmp_path):
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    def lst(*v):
+        return list(v)
+
+    cols = {
+        "number": [1, None], "name": ["Ceres", "2010 AB12"],
+        "phase_functions.name_filter": [lst("orange", "V"), lst("r")],
+        "phase_functions.H.value": [lst(3.2, 3.5), lst(17.0)],
+        "phase_functions.H.error.min": [lst(-0.1, -0.05), lst(-0.3)],
+        "phase_functions.H.error.max": [lst(0.1, 0.06), lst(0.2)],
+        "phase_functions.G1.value": [lst(0.6, 0.5), lst(0.3)],
+        "phase_functions.G1.error.min": [lst(None, -0.02), lst(None)],
+        "phase_functions.G1.error.max": [lst(None, 0.03), lst(None)],
+        "phase_functions.G2.value": [lst(0.2, 0.25), lst(0.4)],
+        "phase_functions.G2.error.min": [lst(None, None), lst(None)],
+        "phase_functions.G2.error.max": [lst(None, None), lst(None)],
+        "phase_functions.N": [lst(900, 400), lst(50)],
+        "phase_functions.phase.min": [lst(1.0, 2.0), lst(3.0)],
+        "phase_functions.phase.max": [lst(20.0, 25.0), lst(30.0)],
+        "phase_functions.rms": [lst(0.1, 0.2), lst(0.3)],
+        "phase_functions.facility": [lst("ATLAS", "MPCATOBS"), lst("ZTF")],
+        "spins.RA0.value": [lst(10.0, 291.0), None], "spins.DEC0.value": [lst(20.0, 66.0), None],
+        "spins.period.value": [lst(9.07, 9.074), None], "spins.technique": [lst("A-M", "SPACE"), None],
+        "taxonomy.class": ["C", None], "taxonomy.scheme": ["Bus-DeMeo", None], "taxonomy.technique": ["Spec", None],
+    }
+    pq.write_table(pa.table(cols), tmp_path / "bft.parquet")
+    b = ps.read_ssobft(tmp_path / "bft.parquet")
+    assert b.phase_filter[0] == "V" and b.phase["G1"][0] == 0.5 and b.phase["H_err"][0] == 0.06
+    assert b.phase_facility[0] == "MPCATOBS" and b.phase["phase_max"][0] == 25.0 and b.phase["N"][0] == 400
+    assert math.isnan(b.phase["G2_err"][0])
+    assert b.spin_technique[0] == "SPACE" and b.spin["RA0"][0] == 291.0     # spacecraft pole before the A-M one
+    assert b.phase_filter[1] == "r" and math.isnan(b.spin["RA0"][1]) and b.number[1] == 0
+    assert b.tax_class[0] == "C" and b.tax_class[1] == ""

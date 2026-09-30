@@ -126,3 +126,28 @@ def test_gaia_colour_labels():
     y_sun = solar.irradiance_xyzs()[1]
     assert xyz[1] / y_sun == pytest.approx(0.05, rel=0.03)
     assert xyz[0] > 0 and xyz[2] > 0 and xyz[3] > 0
+
+
+def test_ssobft_phase_function_constraints_and_spin():
+    from pipeline.sb_physical_sources import SsoBft
+    cat, phys = _base()
+    nan = float("nan")
+    ph_cols = {k: np.array(v, dtype=float) for k, v in {
+        "H": [7.0, 20.0], "G1": [0.7, 0.9], "G2": [0.2, 0.3], "H_err": [0.1, 0.2], "G1_err": [nan, nan],
+        "G2_err": [nan, nan], "phase_min": [1.0, 2.0], "phase_max": [25.0, 20.0], "rms": [0.1, 0.1]}.items()}
+    ph_cols["N"] = np.array([120, 30])
+    b = SsoBft(np.array([100, 0]), np.array(["hekate", "2010 AB12"], dtype=object), ph_cols,
+               np.array(["V", "orange"], dtype=object), np.array(["MPCATOBS", "ATLAS"], dtype=object),
+               {"RA0": np.array([10.0, nan]), "DEC0": np.array([-5.0, nan]), "period": np.array([27.07, nan])},
+               np.array(["LCI", ""], dtype=object), np.array(["C", ""], dtype=object),
+               np.array(["Mahlke", ""], dtype=object), np.array(["Spec", ""], dtype=object))
+    ph = sb_physical.build(cat, phys, [], [], _no_gaia(), dict(SRC, bft=9), bft=b)
+    c = ph.cols
+    i100, neo = cat.row_of(20000100), cat.row_of(3000001)
+    assert c["phaseLabel"][i100] == M and c["phaseG1"][i100] == 0.7 and c["phaseSrc"][i100] == 9
+    assert ph.phase_filters[c["phaseFilter"][i100]] == "V" and c["phaseMaxDeg"][i100] == 25.0
+    assert c["phaseLabel"][neo] == U                      # G1 + G2 = 1.2 > 1: not a valid H-G1-G2 phase function
+    assert ph.stats["ssobft"]["phaseOutsideConstraints"] == 1
+    assert c["spinLabel"][i100] == M and c["poleRA"][i100] == 10.0
+    assert ph.spin_techniques[c["spinTechnique"][i100]] == "LCI"
+    assert ph.taxonomy_bft[c["taxonomyBft"][i100]] == "Mahlke|C|Spec"

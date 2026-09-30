@@ -5,7 +5,7 @@ Status: first full build on 2026-09-30. The stage is `smallbodies` (`pipeline/sr
 ## 1. What was built
 
 - **Every object in the JPL Small-Body Database:** 1,573,014 asteroids and comets as of the 2026-09-30 snapshot. Orbits are taken at full precision, with their non-gravitational models. Each object's osculating elements are turned into a state at its own epoch, then integrated to one **common epoch**: 2026-09-30 00:00 TDB (ET 843998400), the centre of the manifest window rounded to 0h TDB. The pipeline and the app use the same integrator.
-- **Per-attribute provenance** for H, G, position, diameter, albedo, rotation period, colour, colour indices and taxonomy. Each has a label column and a source column, and the method is documented in the header. Estimated values sit in their own columns and never overwrite a measured or unknown one.
+- **Per-attribute provenance** for H, G, position, diameter, albedo, rotation period, colour, colour indices, taxonomy, the H-G1-G2 phase function and spin pole. Each has a label column and a source column, and the method is documented in the header. Estimated values sit in their own columns and never overwrite a measured or unknown one.
 - **Verification:** 19 objects are compared with JPL Horizons over the ±548-day window, every 2 days. The 16 ordinary objects are within 7 km. Only the comets and a 21,000 km Earth flyby are worse, and they stay within their stated tolerances. A float64 TypeScript propagator reproduces the Python integrator bit for bit (difference 0.0 km).
 
 ## 2. Products (`app/public/data/smallbodies/`)
@@ -14,12 +14,12 @@ All tables are `BinaryTableHeader` + `.bin`, little-endian, fixed stride (`app/s
 
 | File | Records | Stride | Bytes |
 |---|---|---|---|
-| `core.bin` / `core.json` | 1,573,014 (one per object, SBDB spkid order) | 80 | 125,841,120 / 13,941 |
-| `physical.bin` / `.json` | 169,686 (objects with any measured physical attribute) | 68 | 11,538,648 / 6,663 |
-| `comets.bin` / `.json` | 4,077 | 28 | 114,156 / 1,788 |
-| `nongrav.bin` / `.json` | 976 | 88 | 85,888 / 2,071 |
+| `core.bin` / `core.json` | 1,573,014 (one per object, SBDB spkid order) | 80 | 125,841,120 / 16,567 |
+| `physical.bin` / `.json` | 335,431 (objects with any measured physical attribute) | 128 | 42,935,168 / 14,119 |
+| `comets.bin` / `.json` | 4,077 | 28 | 114,156 / 1,808 |
+| `nongrav.bin` / `.json` | 976 | 88 | 85,888 / 2,091 |
 | `names.txt` / `names.json` | 1,573,014 lines | — | 46,923,755 / 555 |
-| **total** | | | **184.5 MB** |
+| **total** | | | **215.9 MB** |
 
 **core** (80 B): `pos` f64×3 km and `vel` f64×3 km/s are heliocentric ICRF states at `epochEt`. Add the Sun's SSB position from the ephemeris to place them. The other fields are:
 - `H`, `G`, `diameterFromH` as f32.
@@ -38,12 +38,15 @@ The header also carries:
 
 At 80 B per object, the 5 million objects expected after two years of LSST come to 400 MB of core. This is acceptable because the orbit is the only per-object float64 state.
 
-**physical** (68 B): `row` u32 (core row). The measured values are:
+**physical** (128 B): `row` u32 (core row). The measured values are:
 - `diameter`, `diameterSigma`, `albedo`, `albedoSigma`, `rotPeriod` (h).
 - `geometricAlbedoXYZS` f32×4, in "lux at 1 AU" per docs/architecture.md §4.3.
 - `BV`, `UB`, `IR`.
+- From SsODNet: the H-G1-G2 phase function (`phaseH`, `phaseG1`, `phaseG2` and their sigmas, valid only over `phaseMinDeg..phaseMaxDeg`), fitted to `phaseN` observations, with filter and facility indices into `phaseFilters` and `phaseFacilities`.
+- From SsODNet: the spin pole `poleRA` and `poleDec` (deg) and `spinPeriod` (h) of the preferred solution, with `spinTechnique` an index into `spinTechniques`.
+- From SsODNet: the best taxonomy `taxonomyBft`, an index into `taxonomySsodnet` (`scheme|class|technique`).
 
-Their labels and sources are in `diameterLabel/Src`, `albedoLabel/Src`, `rotLabel/Src`, `colorLabel/Src`, `colorIndexLabel/Src` and `taxonomyLabel/Src`. Codes and indices:
+Their labels and sources are in `diameterLabel/Src`, `albedoLabel/Src`, `rotLabel/Src`, `colorLabel/Src`, `colorIndexLabel/Src`, `taxonomyLabel/Src`, `phaseLabel/Src`, `spinLabel/Src` and `taxonomyBftLabel/Src`. Codes and indices:
 - `rotQuality`: the LCDB U code, an index into `lcdbU`.
 - `gaiaBands`: the number of Gaia bands used.
 - `taxonomyB` and `taxonomyT`: indices into the header lists (SMASSII/Bus, 35 classes; Tholen, 132 strings).
@@ -64,13 +67,14 @@ Their labels and sources are in `diameterLabel/Src`, `albedoLabel/Src`, `rotLabe
 | `neowise-v2` | NEOWISE Diameters and Albedos V2.0 (PDS) | diameter/p_V where SBDB has none (fit code D/V only) |
 | `lcdb-2023-10` | LCDB public summary | rotation period with reliability U |
 | `gaia-dr3-sso-reflectance` | Gaia DR3, 60,518 spectra | geometricAlbedoXYZS |
+| `ssodnet-ssobft` | SsODNet ssoBFT Parquet, dated 2026-09-22 (856 MB) | H-G1-G2 phase functions, spin poles, taxonomy |
 | `mpc-mpcorb` | MPCORB.DAT, 2026-09-29 | MPC U, cross-check of JPL orbits |
 | `jpl-horizons-sb-states` | Horizons | 4 states at the common epoch (§4.4) and the verification |
 | `jpl-cneos-cad` | CNEOS close-approach API, all planets, < 0.05 au, within the window | flag `closeApproachInWindow` (3,159 objects, 4,125 approaches) |
 | `smallbodies-class-albedo`, `bowell-1989` | population values (docs/sources/smallbodies-class-albedo.md) | estimated diameters, the conventional G |
 | `naif-de442s`, `naif-gm-de440`, `naif-pck00011`, `tsis1-hsrs-v2`, `cie-*`, `bessell-1990-v` | shared with M1 | perturbers, GMs, radii, Earth pole; colour integration |
 
-The raw downloads for this stage total 0.73 GB, and all of `data/raw` is 803 MB. Every file is sha256-recorded in `data/raw/_downloads.json`, and JPL is queried sequentially with pauses. The notes are in `docs/sources/`: `jpl-sbdb.md`, `neowise-v2.md`, `lcdb-2023-10.md`, `gaia-dr3-sso-reflectance.md`, `mpc-mpcorb.md`, `smallbodies-class-albedo.md` and `jpl-horizons-sb-states.md`.
+The raw downloads for this stage total about 1.55 GB (SBDB 560 MB, ssoBFT 817 MB, MPCORB 90 MB, LCDB 39 MB, NEOWISE 27 MB, Gaia 13 MB), and all of `data/raw` is 1.6 GB. Every file is sha256-recorded in `data/raw/_downloads.json`, and JPL is queried sequentially with pauses. The notes are in `docs/sources/`: `jpl-sbdb.md`, `neowise-v2.md`, `lcdb-2023-10.md`, `gaia-dr3-sso-reflectance.md`, `mpc-mpcorb.md`, `ssodnet-ssobft.md`, `smallbodies-class-albedo.md` and `jpl-horizons-sb-states.md`.
 
 ## 4. Propagation
 
@@ -215,13 +219,18 @@ The 2 km to 7 km differences are far below a pixel at any viewing distance excep
 | rotation period | 32,951 | — | 1,664 (LCDB U ≤ 1+ or unrated) | 1,538,399 |
 | colour (geometricAlbedoXYZS) | — | 36,081 | 18,253 (class p_V or gap) | 1,518,680 |
 | B−V / U−B / I−R | 1,021 | — | — | 1,571,993 |
-| taxonomy (SMASSII or Tholen) | 2,174 | — | — | 1,570,840 |
+| taxonomy (SMASSII or Tholen, SBDB) | 2,174 | — | — | 1,570,840 |
+| taxonomy (SsODNet best: Bus-DeMeo 144,588, Bus 16,988, Mahlke 9,391, Tholen 143) | 171,110 | — | — | 1,401,904 |
+| phase function H-G1-G2 (V 175,637; ATLAS o/c 26,192; ZTF r/g 14,298; Gaia G 38; R 13) | 216,178 | — | — | 1,356,836 |
+| spin pole (A-M 65,185; LCI 9,920; LC 3,645; others 841) | 79,591 | — | — | 1,493,423 |
 
 **Diameter.** 139,687 diameters come from the SBDB and 43 more from NEOWISE. Of the 139,066 objects with both, 91% agree within 1% (median ratio 1.000): the SBDB value is mostly NEOWISE. NEOWISE rows whose fit code does not include D are never used as diameters.
 
 **Rotation (LCDB).** LCDB supplies 30,907 measured periods and 1,664 estimated ones. The remaining measured periods come from the SBDB rot_per. 1,988 LCDB entries are period limits and one is U = 0; neither is used.
 
 **Colour (Gaia DR3).** All 60,518 spectra match an SBDB object. 6,184 of them have a flagged or missing band between 418 and 770 nm, and those objects get no colour. The 374 nm band is flagged for 74% of objects. Bridging it changes XYZS by at most 0.37%, the maximum over 2,000 fully good spectra (`edgeBandEffectMax`), so it does not demote the label.
+
+**SsODNet.** All 1,563,708 ssoBFT rows match an SBDB object. 24 phase functions fail the H-G1-G2 constraints and are not used. Among the spin poles, the amplitude-magnitude (A-M) solutions are statistical, low-precision poles; the technique is kept so a renderer can choose.
 
 **Estimated diameters** use the class medians above. The 16th–84th percentile range, e.g. MBA 0.046–0.255, is the honest spread and implies roughly ±40–60% in D.
 
@@ -233,7 +242,7 @@ The 2 km to 7 km differences are far below a pixel at any viewing distance excep
 
 ## 7. Runtime and sizes
 
-The full stage took **17 min 50 s** on 4 vCPUs shared with other jobs. Integrating 1.57 M objects to the common epoch took 865 s: 236 M substeps, 12% of them in encounter mode. The 100,273 objects with non-standard epochs take 63% of that time. The rest of the time breaks down as follows:
+The full cold stage took **17 min 50 s** on 4 vCPUs shared with other jobs, before ssoBFT was added. ssoBFT adds a 32 s download and about 10 s of reading. Integrating 1.57 M objects to the common epoch took 865 s: 236 M substeps, 12% of them in encounter mode. The 100,273 objects with non-standard epochs take 63% of that time. The rest of the time breaks down as follows:
 
 | Step | Time |
 |---|---|
@@ -243,11 +252,11 @@ The full stage took **17 min 50 s** on 4 vCPUs shared with other jobs. Integrati
 | write | 7 s |
 | Horizons verification | 10–80 s (numba JIT warm or cold) |
 
-Propagated states are cached in `data/cache/smallbodies_states_<key>.npz`. The key covers the snapshot, objects, epoch, force model and integrator source. With the cache, a rebuild takes **2 min 10 s**.
+Propagated states are cached in `data/cache/smallbodies_states_<key>.npz`. The key covers the snapshot, objects, epoch, force model and integrator source. With the cache, a rebuild takes **2 min 40 s**.
 
 Across the window, the scheme averages **274 substeps per object** for ±548 days, 9.7% of them RK4. On the CPU this is about 590 µs per object per direction, so ~15 min per direction for the whole catalogue on 4 cores. This is the workload the GPU takes over (§8).
 
-Products total 184.5 MB (§2). Raw downloads for this stage come to 0.73 GB.
+Products total 215.9 MB (§2). Raw downloads for this stage come to about 1.55 GB.
 
 ## 8. Notes for the GPU implementation
 
@@ -260,8 +269,8 @@ Products total 184.5 MB (§2). Raw downloads for this stage come to 0.73 GB.
 
 ## 9. Tests
 
-- **pytest, 29 small-body tests** (78 in the whole suite, all passing):
-  - `test_sb_parsers.py`: MPC packed designations, SBDB pages and non-grav model_pars, NEOWISE, LCDB, Gaia, MPCORB, and time-since-perihelion consistency.
+- **pytest, 31 small-body tests** (80 in the whole suite, all passing):
+  - `test_sb_parsers.py`: MPC packed designations, SBDB pages and non-grav model_pars, NEOWISE, LCDB, Gaia, MPCORB, the ssoBFT reader's band and spin preference, and time-since-perihelion consistency.
   - `test_sb_dynamics.py`:
     - Kepler drift conservation and reversibility for all conic types.
     - Elements against the classical solution.
@@ -270,7 +279,7 @@ Products total 184.5 MB (§2). Raw downloads for this stage come to 0.73 GB.
     - Forward/back reversibility through perihelion.
     - Integration error against DOP853 for 5 objects: Ceres 0.003, Phaethon 0.002, 2026 RT34 0.14, 3I 0.004 and Encke 0.002 km.
     - All 19 objects against Horizons within tolerance, and re-computation of the product's common-epoch states to 10⁻⁶ km.
-  - `test_sb_physical.py`: label rules for SBDB/NEOWISE precedence and fit codes, inverse-variance combination, estimated diameters (never for comets or where measured), LCDB U codes and limits, and Gaia derived versus estimated.
+  - `test_sb_physical.py`: label rules for SBDB/NEOWISE precedence and fit codes, inverse-variance combination, estimated diameters (never for comets or where measured), LCDB U codes and limits, Gaia derived versus estimated, and ssoBFT phase-function constraints, spins and taxonomy.
   - `test_sb_table.py`: layout alignment, float64 round-trip, and consistency of the built products: NaN ⇔ unknown, sources exist, physRow back-links, no measured diameter alongside diameterFromH, names line count, and SABA coefficients summing to 1.
 - **vitest, 16 small-body tests** (130 in the whole suite, all passing):
   - `smallbody-kepler.test.ts`: Stumpff, conservation, reversibility, period closure, elements, obliquity rotation and the step grid.
@@ -285,8 +294,8 @@ Products total 184.5 MB (§2). Raw downloads for this stage come to 0.73 GB.
 4. **Special models.** Bennu, Halley and Siding Spring start from Horizons states but are propagated without their special terms (Bennu: 7 km over the window).
 5. **Orbit uncertainty.** Only U and the condition code are carried. There are no covariances or sigma columns, and no per-object uncertainty ellipsoid yet.
 6. **Physical data not yet ingested:**
-   - SsODNet ssoBFT: G1/G2 phase functions (so G is `measured` for only 120 objects), better H, Mahlke taxonomy.
-   - DAMIT shapes and poles.
+   - The rest of SsODNet ssoBFT: diameters, albedos, masses, densities and colours with their errors. SsODNet's phase-curve H and G1/G2 are stored, but `core.H` and `core.G` remain the SBDB H-G values (G is `measured` for only 120 objects).
+   - DAMIT shape models. Poles are ingested; shapes are not.
    - SDSS MOC colours.
    - The TNO/Centaur albedo compilation. TNOs currently fall back to the all-class median p_V 0.078, which is poor for TNOs.
    - Class-mean spectra as estimated colours for objects without Gaia spectra.
