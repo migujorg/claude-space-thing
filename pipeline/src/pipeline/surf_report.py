@@ -184,7 +184,7 @@ def earth_numbers(hs: dict) -> str:
              f"{d['diskWeightShare']['modisWater'] * 100:.1f} %; {h['coverage']['diskWeightFraction'] * 100:.1f} % of "
              f"the disk weight is known ({d['mcd43Tiles']} MODIS tiles; negative texels clipped: "
              f"{d['negativeTexelsClipped']})."]
-    for layer in ("clouds", "night", "water"):
+    for layer in ("clouds", "cloudTau", "night", "water"):
         if (399, layer) in hs:
             x = hs[(399, layer)]
             ep = x.get("epoch", {})
@@ -313,7 +313,9 @@ def generate() -> str:
         "- **height** (float32, metres above the pck00011 reference ellipsoid named in the header; NaN = unknown).",
         "- **hapke** (Moon only; float16 × 35: w, b, c, B_S0, h_s per LROC band; constants and the model in the header).",
         "- **Earth only** (float16, NaN = unknown per channel, all dated): **clouds** (cloudFraction, opticalThickness, "
-        "cloudTopHeightM, iceFraction), **night** (Day/Night-Band radiance in nW cm⁻² sr⁻¹ and the censored share; "
+        "cloudTopHeightM, iceFraction), **cloudTau** (from the same samples: the share with an optical-thickness "
+        "retrieval and the ln τ moments and ice share of those retrievals, per-sample averages exact at every level; "
+        "docs/rendering-earth.md §2), **night** (Day/Night-Band radiance in nW cm⁻² sr⁻¹ and the censored share; "
         "`constants.toXYZS` converts to luminance for two lamp spectra), **water** (waterFraction, seaIceFraction). "
         "Earth's **albedo** is absolute-calibrated: `normalization.absoluteDiskMean` × texel = surface reflectance, "
         "because Earth's disk photometry includes clouds and atmosphere.",

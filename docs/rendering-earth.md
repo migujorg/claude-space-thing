@@ -28,6 +28,7 @@ columns, `skip=limb` leaves stars undimmed, `stars=N` adds N TEST FIXTURE stars,
 |---|---|---|
 | Surface reflectance | `surfaces/399/albedo`: kind `relative-reflectance`, header `normalization.absoluteDiskMean` | texel × absoluteDiskMean = absolute reflectance factor (MODIS NBAR on land; water-leaving reflectance π·Rrs over water) |
 | Clouds | `surfaces/399/clouds`: kind `cloud-properties` (cloudFraction, opticalThickness, cloudTopHeightM, iceFraction; VIIRS CLDPROP, 2026-09-28 daytime overpass) | cloud reflection and transmission (§2) |
+| Cloud τ statistics | `surfaces/399/cloudTau`: kind `cloud-optical-thickness-moments` (tauRetrievedFraction, lnTauMoment1, lnTauMoment2, iceTauFraction; the same samples) | which share of the cloud has an optical thickness, and its ln τ distribution (§2; not used by the renderer yet) |
 | Water | `surfaces/399/water`: kind `surface-water` (waterFraction, seaIceFraction) | glint, sky reflection, sea ice (§1, §3) |
 | Wind | `surfaces/399/wind`: kind `surface-wind` (10 m speed: AMSR3 ascending ~13:30, daily mean, passes) | glint width (§3) |
 | Night lights | `surfaces/399/night`: kind `emitted-radiance` (VIIRS Black Marble DNB radiance; header `constants.toXYZS`) | emitted light (§5) |
@@ -121,6 +122,40 @@ A fix needs two things from the pipeline: the share of samples with an optical-t
 of the cloudy share is then unknown), and preferably the mean of ln τ (Cahalan et al.'s effective
 thickness). The renderer change is then small. The 8-px blocks in the rendered case are the glint: the wind
 layer's resolution and swath gaps (§3; clear water where the wind is unknown gets no glint).
+
+**The `cloudTau` layer (pipeline side of that fix; the renderer does not use it yet).** It is built from the
+same 16 samples per texel as `clouds` (the rebuilt `clouds` tiles are bit-identical to the previous build),
+float16 × 4:
+
+- `tauRetrievedFraction` f_τ is the share of samples with an optical-thickness retrieval, 0 ≤ f_τ ≤
+  cloudFraction. The cloudy share without a thickness is cloudFraction − f_τ; its thickness is unknown. GIBS
+  serves no cloud mask and no partly-cloudy thickness (CLDPROP's `_PCL` fields), so nothing finer can be said.
+- `lnTauMoment1` = Σ ln τ_i / N and `lnTauMoment2` = Σ (ln τ_i)² / N are taken over the retrieved samples, with N
+  all samples of the texel. So mean ln τ = m1 / f_τ, and var ln τ = m2 / f_τ − (mean ln τ)².
+- `iceTauFraction` is the share of samples with an ice-phase retrieval.
+
+Every channel is a per-sample average, so the pyramid's 2×2 means are exact at every level. A coarse texel's
+variance includes the spread between its texels. That is unlike `clouds`, whose in-cloud means are averaged
+without their counts. ln τ is taken at each colour-map bin's geometric centre: ±0.018 above τ = 1, but the bin
+0.01–1 is taken as τ = 0.1, ±2.3 in ln τ.
+
+The layer measures the problem directly. In the daylit globe, 39 % of the cloud fraction has no thickness
+(μ0-weighted). In the validation swath (40° S–40° N, 125–160° E) it is 47–50 %, depending on the weighting:
+41 % of the cloudy texels have no retrieval at all and 30 % have some. At (0°, 140.7° E), for example,
+cloudFraction = 0.94 but f_τ = 0.06.
+
+For the part that has a thickness, the header's `diagnostics.planeAlbedoCheck` compares the plane albedo
+× f_τ (δ-Eddington, overpass Sun) from the moments with the independent-pixel mean of R(τ_i). The figures
+are bias, then the mean absolute error per texel:
+
+| | level 4 (4.9 km) | level 0 (78 km) |
+|---|---|---|
+| R(linear mean τ) | +3.0 %, 3.0 % | +13–14 %, 13–14 % |
+| R(exp mean ln τ) | −0.1 to −0.3 %, 1.1–1.2 % | −0.3 to −0.5 %, 3.3–3.7 % |
+| 3-point log-normal (nodes μ, μ ± √3σ; weights 2/3, 1/6, 1/6) | +0.1 %, 0.2–0.3 % | +0.5 %, 0.8 % |
+
+The first row is the plane-parallel bias. The log-mean alone is nearly unbiased; the log-normal from both
+moments also holds per texel at coarse levels.
 
 **Not modelled.** Cloud parallax and cloud shadows on the ground. The cloud-top height is used only to
 place the cloud's reflection inside the atmosphere (§4). Also not modelled: 3D cloud effects, the glory,
