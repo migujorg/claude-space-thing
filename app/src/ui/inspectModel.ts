@@ -115,14 +115,17 @@ export function attributeRows(body: Body, level: ExistsLevel, ephs: { path: stri
   rows.push(row('albedoV', 'Geometric albedo (V)', p?.geometricAlbedoV, level));
   rows.push(row('phase', 'Phase function', p?.phaseFunction, level, 'phase'));
   for (const sl of ctx.surfaces ?? []) {
+    // An albedo map carries a brightness pattern and a colour; the drawn map is as grounded as the worse (extras.ts).
+    const label = sl.layer === 'albedo' && sl.colorLabel ? worstOf([sl.label, sl.colorLabel]) : sl.label;
+    const cover = typeof sl.coverage === 'number' ? `, ${Math.round(sl.coverage * 100)}% of the surface covered` : '';
     rows.push({
       key: `surface:${sl.layer}`,
-      name: `Surface map: ${sl.layer} (not drawn by this renderer version yet)`,
-      label: sl.label,
-      value: `${sl.levels ?? '?'} pyramid levels, ${sl.tiles.count} tiles${sl.epoch ? `, observed ${sl.epoch}` : ''}`,
+      name: `Surface map: ${sl.layer}`,
+      label,
+      value: `${sl.levels ?? '?'} pyramid levels, ${sl.tiles.count} tiles${cover}${sl.epoch ? `, observed ${sl.epoch}` : ''}`,
       ...(sl.method ? { method: sl.method } : sl.notes ? { method: sl.notes } : {}),
       sources: sl.sources,
-      withheld: sl.label !== 'unknown' && !labelAllowed(sl.label, level),
+      withheld: label !== 'unknown' && !labelAllowed(label, level),
     });
   }
   return rows;

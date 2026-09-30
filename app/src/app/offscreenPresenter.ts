@@ -2,7 +2,7 @@
 // (?present=offscreen) render into the renderer's offscreen target and blit the displayed pixels into
 // the visible canvas with a 2D context. Real browsers use the renderer directly.
 
-import type { RendererPort } from './ports';
+import type { PointSourceBuffer, RendererPort } from './ports';
 import type { RendererStats, SceneSnapshot, StarCatalog } from '../render/scene';
 import { Renderer } from '../render/renderer';
 
@@ -20,6 +20,16 @@ export class OffscreenPresenter implements RendererPort {
 
   get stats(): RendererStats {
     return this.r.stats;
+  }
+
+  /** Forwarded when the renderer offers it (small-body field). */
+  get gpuDevice(): GPUDevice | undefined {
+    return (this.r as unknown as Partial<Pick<RendererPort, 'gpuDevice'>>).gpuDevice;
+  }
+
+  get setExtraPointSources(): ((src: PointSourceBuffer | null) => void) | undefined {
+    const r = this.r as unknown as Partial<Pick<RendererPort, 'setExtraPointSources'>>;
+    return r.setExtraPointSources ? (src) => r.setExtraPointSources!.call(this.r, src) : undefined;
   }
 
   setStars(c: StarCatalog): void {

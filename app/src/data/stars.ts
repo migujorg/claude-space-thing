@@ -116,6 +116,7 @@ export interface StarName {
  *   [{ name, index }]  (also `row` or `i` for the index)
  *   { names: [...same...] }
  *   { "<row index>": "Name" }   or   { "Name": <row index> }
+ *   { stars: { "<key>": { index, iau?, bayer?, flamsteed? } } }   (the stars stage's names.json)
  */
 export function parseStarNames(json: unknown, rowCount: number): StarName[] {
   const out: StarName[] = [];
@@ -134,7 +135,15 @@ export function parseStarNames(json: unknown, rowCount: number): StarName[] {
   if (Array.isArray(json)) fromArray(json);
   else if (json && typeof json === 'object') {
     const o = json as Record<string, unknown>;
-    if (Array.isArray(o.names)) fromArray(o.names);
+    if (o.stars && typeof o.stars === 'object' && !Array.isArray(o.stars)) {
+      // stars pipeline shape: { stars: { "HIP 32349": { index, hip, iau?, bayer?, flamsteed? } } } — every
+      // name a star is known by becomes a search entry (proper name, Bayer, Flamsteed, catalogue key).
+      for (const [key, v] of Object.entries(o.stars as Record<string, Record<string, unknown>>)) {
+        if (!v || typeof v !== 'object') continue;
+        const names = [v.iau, v.bayer, v.flamsteed, key].filter((n): n is string => typeof n === 'string' && !!n);
+        for (const n of new Set(names)) push(n, v.index);
+      }
+    } else if (Array.isArray(o.names)) fromArray(o.names);
     else {
       for (const [k, v] of Object.entries(o)) {
         if (typeof v === 'string' && /^\d+$/.test(k)) push(v, Number(k));
