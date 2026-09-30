@@ -176,6 +176,11 @@ export class DataLoader {
     this.verify = opts.verifyHashes ?? true;
   }
 
+  /** Base URL of the data directory (products are fetched from base + path). */
+  get base(): string {
+    return this.opts.base;
+  }
+
   setReport(path: string, r: Omit<ProductReport, 'path'>): void {
     const consequence = r.status === 'missing' || r.status === 'error' ? r.consequence ?? CONSEQUENCE[path] : undefined;
     this.reports.set(path, { path, ...r, ...(consequence ? { consequence } : {}) });

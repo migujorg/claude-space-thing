@@ -4,6 +4,8 @@
 
 import type { Body, Label, LightData } from '../data/schema';
 import type { DataLoader, DeferredEphemeris, LoadedData, LoadedEphemeris } from '../data/load';
+import { loadSmallBodyNamesHeader, loadSmallBodyTables, type SmallBodyLoader, type SmallBodyTables } from '../data/smallbodies';
+import { normalizeName } from '../data/nameIndex';
 import { buildStarCatalog, starDirection, type StarFilterResult } from '../data/stars';
 import type { SceneCamera, SceneSnapshot } from '../render/scene';
 import {
@@ -16,10 +18,12 @@ import { Clock, intersectWindows, type TimeWindow } from './clock';
 import { SystemScheduler, systemBarycenter, type SystemInfo, type SystemState } from './lazy';
 import { buildOrientation } from './orientation';
 import { OrbitManager } from './orbits';
-import { pick, type PickTarget, type Viewport } from './picking';
-import type { CoreDeps, EphemerisSetPort, OrientationSetPort, OrientationSourcePort, TimeScalePort, Vec3 } from './ports';
+import { NameService } from './nameService';
+import { angularRadius, pick, pixelRay, pixelsPerRadian, type PickTarget, type Viewport } from './picking';
+import type { CoreDeps, EphemerisSetPort, OrientationSetPort, OrientationSourcePort, SmallBodyFieldPort, TimeScalePort, Vec3 } from './ports';
 import { badgeParts, defaultReality, labelAllowed, type RealityState } from './reality';
-import { buildSnapshot, buildSun, filtered, type OverlayOnlyBody } from './snapshot';
+import { buildSnapshot, buildSun, filtered, sceneBodyOf, type OverlayOnlyBody } from './snapshot';
+import { SmallBodies, sbId, sbRow, type SmallBodyCounts } from './smallbodies';
 import { parseIsoUtc, type UrlView } from './url';
 import { DEG, IDENTITY, len, matFromQuat, norm, quatFromMat, slerpQuat, sub } from './vec';
 import { computeWorld, copy, findSunId, isPhysical, navRadius, type World } from './world';
@@ -39,8 +43,29 @@ export interface FlyInput {
   mod: 'normal' | 'fast' | 'slow';
 }
 
-/** 'loading': background loading of moon systems progressed (UI indicator, search list). */
-export type AppEvent = 'data' | 'selection' | 'reality' | 'time' | 'camera' | 'message' | 'loading';
+/**
+ * 'loading': background loading of moon systems or the small-body catalogue progressed (UI indicator, search list).
+ * 'smallbodies': the small-body catalogue, its name index or its GPU field changed state.
+ */
+export type AppEvent = 'data' | 'selection' | 'reality' | 'time' | 'camera' | 'message' | 'loading' | 'smallbodies';
+
+/** Where the small-body catalogue stands. */
+export interface SmallBodyLoad {
+  /** absent: no products; off: disabled (?smallbodies=0); waiting: loads after the moon systems. */
+  status: 'absent' | 'off' | 'waiting' | 'loading' | 'ready' | 'error';
+  got: number;
+  total: number;
+  message: string | null;
+  /** Wall-clock ms from the start of the download to usable tables. */
+  ms: number | null;
+}
+
+/** Click tolerance for points, CSS px (as picking.pick). */
+const PICK_TOL_PX = 6;
+/** A small body with an admitted shape is drawn resolved (a close-up) from this apparent diameter, device px. */
+const CLOSEUP_MIN_PX = 1;
+/** SBDB SPK-IDs of small bodies are >= 1,000,000 (comets 1000001..., asteroids 2000001... / 20000001...). */
+const SPKID_MIN = 1_000_000;
 
 /** Loads deferred ephemeris binaries (DataLoader in the app; a fake in tests). */
 export type DeferredLoader = Pick<DataLoader, 'loadDeferred'>;
@@ -111,6 +136,15 @@ export class AppModel {
   systems: SystemScheduler | null = null;
   timings: FrameTimings = { world: 0, snapshot: 0, orbits: 0, total: 0, bodies: 0 };
   orbits: OrbitManager | null = null;
+  /** Small-body catalogue (null until its tables have loaded) and its name index (null without names). */
+  smallBodies: SmallBodies | null = null;
+  names: NameService | null = null;
+  sb: SmallBodyLoad = { status: 'absent', got: 0, total: 0, message: null, ms: null };
+  private sbGo: (() => void) | null = null;
+  private sbExcluded = '';
+  private pendingSpkid: { spkid: number; dist?: number; az?: number; el?: number } | null = null;
+  private spkidWaiters: (() => void)[] = [];
+  private spkidResolving = false;
   private deferred = new Map<string, DeferredEphemeris>();
   private loader: DeferredLoader | null = null;
   private idleWaiters: (() => void)[] = [];
@@ -206,8 +240,184 @@ export class AppModel {
     this.clock = new Clock(window ? (window.startEt + window.endEt) / 2 : 0, window);
     this.orbits = this.eph && window ? new OrbitManager(this.eph, this.bodies, this.sunId, window) : null;
     this.starCache.clear();
+    this.names?.dispose();
+    this.names = null;
+    this.smallBodies = null;
+    this.sbExcluded = '';
+    this.sb = { status: d.smallBodies ? 'waiting' : 'absent', got: 0, total: d.smallBodies?.tableBytes ?? 0, message: null, ms: null };
     this.emit('data');
     this.emit('time');
+  }
+
+  // ---- small bodies ---------------------------------------------------------------------------------
+
+  /**
+   * Background loading of the small-body catalogue: the names header at once (search can start indexing), the
+   * tables once the moon systems are in (or at once when something asks for a small body). Resolves when the
+   * tables are usable or have failed. `enabled: false` (?smallbodies=0) skips it.
+   */
+  async initSmallBodies(opts: { loader: SmallBodyLoader; namesUrl(file: string): string; worker?: () => Worker; enabled?: boolean }): Promise<void> {
+    const p = this.data?.smallBodies;
+    if (!p) return;
+    if (opts.enabled === false) {
+      this.sb = { ...this.sb, status: 'off', message: 'Disabled by the URL (smallbodies=0).' };
+      this.failPendingSpkid('small bodies are disabled by the URL (smallbodies=0)');
+      this.emit('smallbodies');
+      return;
+    }
+    const L = opts.loader;
+    void loadSmallBodyNamesHeader(L, p).then((h) => {
+      if (!h) return;
+      const entry = L.manifest?.products[h.file];
+      const svc = new NameService({ url: opts.namesUrl(h.file), header: h, bytes: entry?.bytes, sha256: entry?.sha256, worker: opts.worker });
+      const report = () => {
+        const st = svc.state;
+        if (st === 'loading' || st === 'indexing') L.setReport(h.file, { status: 'loading', bytes: entry?.bytes, message: st === 'indexing' ? 'Indexing names (in a worker).' : 'Loading for search.' });
+        else if (st === 'ready') L.setReport(h.file, { status: 'ok', bytes: entry?.bytes, hash: svc.verified ? 'verified' : 'unchecked' });
+        else if (st === 'error') L.setReport(h.file, { status: 'error', bytes: entry?.bytes, message: svc.error ?? 'failed', consequence: 'Small bodies cannot be searched by name.' });
+        this.emit('smallbodies');
+        this.emit('loading');
+      };
+      svc.onChange(report);
+      this.names = svc;
+      if (this.selectedId !== null && this.selectedId < 0) this.fetchName(sbRow(this.selectedId));
+      this.emit('smallbodies');
+      void this.resolvePendingSpkid();
+    });
+    if (this.sb.status === 'waiting') await Promise.race([this.systemsIdle(), new Promise<void>((r) => (this.sbGo = r))]);
+    this.sbGo = null;
+    if (this.sb.status !== 'waiting') return;
+    this.sb = { ...this.sb, status: 'loading' };
+    this.emit('smallbodies');
+    const t0 = perfNow();
+    let lastEmit = 0;
+    const tables = await loadSmallBodyTables(L, p, (got, total) => {
+      this.sb.got = got;
+      if (total) this.sb.total = total;
+      const t = Date.now();
+      if (t - lastEmit > 100) { lastEmit = t; this.emit('loading'); }
+    }).catch((e) => {
+      this.sb.message = String((e as Error)?.message ?? e);
+      return null;
+    });
+    if (!tables) {
+      this.sb = { ...this.sb, status: 'error', message: this.sb.message ?? 'The core table could not be loaded (see Data).' };
+      this.message('The small-body catalogue could not be loaded: asteroids and comets are missing (see Data).', 'error');
+    } else {
+      this.setSmallBodyTables(tables, perfNow() - t0);
+    }
+    this.emit('smallbodies');
+    this.emit('loading');
+    this.resumePendingGoTo();
+    if (!tables) this.failPendingSpkid('the small-body catalogue could not be loaded');
+  }
+
+  /** Use loaded small-body tables (initSmallBodies does this; tests call it directly). */
+  setSmallBodyTables(t: SmallBodyTables, ms: number | null = null): void {
+    try {
+      this.smallBodies = new SmallBodies(t, { positionSSB: (id, et) => (this.eph ? copy(this.eph.positionSSB(id, et)) : null) });
+    } catch (e) {
+      this.coreErrors.push(`smallbodies: ${(e as Error).message ?? e}`);
+      this.sb = { ...this.sb, status: 'error', message: String((e as Error).message ?? e) };
+      return;
+    }
+    this.sb = { ...this.sb, status: 'ready', got: this.sb.total, ms, message: null };
+    this.sbExcluded = '';
+    if (this.selectedId !== null && this.selectedId < 0) this.fetchName(sbRow(this.selectedId));
+    this.emit('smallbodies');
+    this.resumePendingGoTo();
+    void this.resolvePendingSpkid();
+  }
+
+  /** Attach the GPU field (bootstrap, once the renderer's device is known). */
+  setSmallBodyField(f: SmallBodyFieldPort | null): void {
+    if (!this.smallBodies) return;
+    this.smallBodies.field = f;
+    this.sbExcluded = '';
+    this.emit('smallbodies');
+  }
+
+  /** Start loading the small-body tables now instead of after the moon systems. */
+  requestSmallBodies(): void {
+    this.sbGo?.();
+  }
+
+  /** Resolves once a URL small-body target (SPK-ID) has been resolved or given up. */
+  urlTargetSettled(): Promise<void> {
+    if (!this.pendingSpkid && !this.spkidResolving) return Promise.resolve();
+    return new Promise((res) => this.spkidWaiters.push(res));
+  }
+
+  private failPendingSpkid(why: string): void {
+    const p = this.pendingSpkid;
+    if (!p) return;
+    this.pendingSpkid = null;
+    this.message(`Target ${p.spkid} not shown: ${why}.`, 'warn');
+    this.spkidWaiters.splice(0).forEach((w) => w());
+  }
+
+  private async resolvePendingSpkid(): Promise<void> {
+    const p = this.pendingSpkid;
+    if (!p || !this.names || !this.smallBodies) return;
+    this.pendingSpkid = null;
+    this.spkidResolving = true;
+    try {
+      const row = await this.names.rowOfSpkid(p.spkid);
+      if (row === null) this.message(`Unknown target ${p.spkid}: no body or small body has this id.`, 'warn');
+      else {
+        const r = this.goTo(sbId(row), p.dist, { azDeg: p.az, elDeg: p.el, instant: true });
+        if (typeof r === 'string') this.message(r, 'warn');
+        else await r;
+      }
+    } catch (e) {
+      this.message(`Target ${p.spkid} not shown: ${(e as Error).message ?? e}`, 'warn');
+    } finally {
+      this.spkidResolving = false;
+      this.spkidWaiters.splice(0).forEach((w) => w());
+    }
+  }
+
+  /** Ask the name index for a small body's display name (the inspector and labels pick it up). */
+  private fetchName(row: number): void {
+    const sb = this.smallBodies;
+    // Search results bring the name but not the SPK-ID (needed for links): ask until both are known.
+    if (!this.names || !sb || (sb.knownName(row) && this.names.spkidOf(row) !== null)) return;
+    this.names.display([row]).then(
+      ([n]) => {
+        if (!n) return;
+        sb.setName(row, n);
+        this.emit('selection');
+      },
+      () => undefined,
+    );
+  }
+
+  /** Small bodies drawn / withheld at the current level (field counts, or by labels without a field). */
+  smallBodyCounts(): SmallBodyCounts | null {
+    return this.smallBodies?.countsAt(this.reality.exists) ?? null;
+  }
+
+  /** A body by id: major bodies from bodies.json, small bodies (negative ids) as built by SmallBodies. */
+  bodyOf(id: number): Body | undefined {
+    if (id < 0) {
+      const sb = this.smallBodies, row = sbRow(id);
+      return sb?.has(row) ? sb.pseudoBody(row) : undefined;
+    }
+    return this.byId.get(id);
+  }
+
+  bodyName(id: number): string {
+    return this.bodyOf(id)?.name ?? (id < 0 ? `Small body #${-id}` : String(id));
+  }
+
+  /** For a small body that is also a planetary-ephemeris body (Pluto): that body, matched by name. */
+  planetaryTwin(id: number): number | null {
+    const sb = this.smallBodies;
+    if (id >= 0 || !sb || !sb.hasFlag(sbRow(id), 'planetaryEphemeris')) return null;
+    const n = sb.knownName(sbRow(id));
+    if (!n) return null;
+    const words = new Set(n.split(/[\s()/]+/).map(normalizeName).filter(Boolean));
+    return this.bodies.find((b) => b.kind !== 'barycenter' && words.has(normalizeName(b.name)))?.id ?? null;
   }
 
   // ---- background loading of moon systems ----------------------------------------------------------
@@ -241,13 +451,24 @@ export class AppModel {
     return new Promise((res) => this.idleWaiters.push(res));
   }
 
-  /** Where a body's position stands: 'loaded' (or nothing deferred), else the state of its pending system. */
+  /**
+   * Where a body's position stands: 'loaded' (or nothing deferred), else the state of its pending system.
+   * Small bodies: the state of the small-body catalogue.
+   */
   bodyLoadState(id: number): SystemState {
+    if (id < 0) {
+      const s = this.sb.status;
+      return s === 'ready' ? 'loaded' : s === 'loading' ? 'loading' : s === 'waiting' ? 'queued' : 'error';
+    }
     return this.systems ? this.systems.bodyState(id) : 'loaded';
   }
 
   /** Ask for the systems a body needs, ahead of the others. Returns them (empty if nothing pending). */
   requestBody(id: number): SystemInfo[] {
+    if (id < 0) {
+      this.requestSmallBodies();
+      return [];
+    }
     if (!this.systems) return [];
     const p = this.systems.requestBody(id);
     if (p.length) this.pump();
@@ -311,16 +532,18 @@ export class AppModel {
 
   private resumePendingGoTo(): void {
     const p = this.pendingGoTo;
-    if (!p || !this.systems) return;
-    const st = this.systems.bodyState(p.id);
+    if (!p) return;
+    const st = this.bodyLoadState(p.id);
     if (st === 'loaded') {
       this.pendingGoTo = null;
       const r = this.goTo(p.id, p.dist, p.opts);
-      if (typeof r === 'string') p.reject(new Error(r));
-      else r.then(p.resolve, p.reject);
+      if (typeof r === 'string') {
+        this.message(r, 'warn');
+        p.reject(new Error(r));
+      } else r.then(p.resolve, p.reject);
     } else if (st === 'error') {
       this.pendingGoTo = null;
-      const msg = `${this.byId.get(p.id)?.name ?? p.id}: its ephemeris could not be loaded.`;
+      const msg = p.id < 0 ? `${this.bodyName(p.id)}: the small-body catalogue is not available (see Data).` : `${this.bodyName(p.id)}: its ephemeris could not be loaded.`;
       this.message(msg, 'error');
       p.reject(new Error(msg));
     }
@@ -328,6 +551,8 @@ export class AppModel {
 
   /** Label of the ephemeris chain serving a body (cached per day; cleared when files are added). */
   chainLabel(id: number, et = this.clock.et): Label {
+    // Small bodies: the catalogue's position label (propagation adds no assumption beyond it).
+    if (id < 0) return this.smallBodies?.posLabel(sbRow(id)) ?? 'unknown';
     const c = this.chainCache.get(id);
     if (c && Math.abs(c.et - et) < 86400) return c.label;
     const label = this.eph?.provenance?.(id, et)?.label ?? 'measured';
@@ -337,6 +562,7 @@ export class AppModel {
 
   /** Orientation provenance of a body at the light-emission epoch of the current frame (or now). */
   orientationSource(id: number): OrientationSourcePort | null {
+    if (id < 0) return null;
     const et = this.world?.bodies.get(id)?.app?.emitEt ?? this.clock.et;
     return this.orientations.provenance(id, et);
   }
@@ -420,7 +646,12 @@ export class AppModel {
   }
 
   badge(): string[] {
-    return badgeParts(this.reality, this.realityDefaults);
+    const parts = badgeParts(this.reality, this.realityDefaults);
+    // Away from the default level, say what it does to the asteroids and comets (most brightnesses rest on an
+    // assumed phase law, so Strict withholds most of them).
+    const c = this.reality.exists !== this.realityDefaults.exists ? this.smallBodyCounts() : null;
+    if (c && c.withheld > 0) parts.push(`SMALL BODIES: ${c.withheld.toLocaleString('en-US')} withheld`);
+    return parts;
   }
 
   setFovDeg(deg: number): void {
@@ -431,18 +662,21 @@ export class AppModel {
   // ---- selection & navigation ------------------------------------------------------------------------
 
   select(id: number | null): void {
-    if (id !== null && !this.byId.has(id)) return;
+    if (id !== null && !this.bodyOf(id)) return;
     this.selectedId = id;
     if (id !== null) this.requestBody(id); // a selected moon's system loads next
+    if (id !== null && id < 0) this.fetchName(sbRow(id));
     this.emit('selection');
   }
 
   bodyPos(id: number, et = this.clock.et): Vec3 | null {
+    if (id < 0) return this.smallBodies?.ssb(sbRow(id), et) ?? null;
     // positionSSB returns null when the chain does not cover et (no separate covers() walk).
     return this.eph ? copy(this.eph.positionSSB(id, et)) : null;
   }
 
   radiusOf(id: number): number | null {
+    if (id < 0) return this.smallBodies?.navRadius(sbRow(id)) ?? null;
     const r = navRadius(this.byId.get(id));
     if (r !== null) return r;
     if (id === this.sunId) return this.light?.sun.radius?.value ?? null;
@@ -468,9 +702,29 @@ export class AppModel {
    * Resolves when the travel completes (or is superseded). Returns an error string if impossible.
    */
   goTo(id: number, dist?: number, opts: { azDeg?: number; elDeg?: number; instant?: boolean } = {}): Promise<void> | string {
-    const body = this.byId.get(id);
+    const twin = this.planetaryTwin(id);
+    if (twin !== null) return this.goTo(twin, dist, opts);
+    const body = this.bodyOf(id);
+    if (id < 0 && !body) {
+      // The small-body catalogue is still coming: go there once it has arrived.
+      const s = this.sb.status;
+      if (s !== 'waiting' && s !== 'loading') return s === 'ready' ? `No small body #${-id}.` : 'Small bodies are not available (see Data).';
+      this.requestSmallBodies();
+      this.pendingGoTo?.resolve();
+      this.message('Loading the small-body catalogue…');
+      return new Promise<void>((resolve, reject) => {
+        this.pendingGoTo = { id, dist, opts, resolve, reject };
+      });
+    }
     if (!body || !isPhysical(body)) return `No body with id ${id}.`;
     const tp = this.bodyPos(id);
+    if (!tp && id < 0) {
+      const sb = this.smallBodies!, row = sbRow(id), w = sb.window;
+      if (sb.posLabel(row) === 'unknown') return `No position for ${body.name}: its position is unknown (see its flags).`;
+      if (this.clock.et < w.startEt || this.clock.et > w.endEt)
+        return `No position for ${body.name} at this time: small bodies are propagated only within ${this.formatTimeOrEt(w.startEt)} – ${this.formatTimeOrEt(w.endEt)}.`;
+      return `No position for ${body.name} at this time (propagation stopped, see its flags).`;
+    }
     if (!tp) {
       // Its moon system may still be loading: go there once it has arrived (never to a guessed place).
       const state = this.bodyLoadState(id);
@@ -617,6 +871,11 @@ export class AppModel {
       const p = this.bodyPos(b.id, et);
       if (p) out.push({ center: p, radius: r });
     }
+    // Small bodies the view is about (flight speed near them scales with their size, too).
+    for (const id of this.smallBodyIdsInView()) {
+      const r = this.radiusOf(id), p = r !== null ? this.bodyPos(id, et) : null;
+      if (r !== null && p) out.push({ center: p, radius: r });
+    }
     return out;
   }
 
@@ -645,12 +904,14 @@ export class AppModel {
     this.updateSystemPriorities();
     const t0 = perfNow();
     this.world = computeWorld(et, this.pose.pos, this.bodies, this.eph, this.core, this.sunId);
+    this.addSmallBodyGeoms(this.world);
     const t1 = perfNow();
     if (!this.reality.overlays.orbits && this.orbits) this.orbits.stats = { candidates: 0, drawn: 0, built: 0, pending: 0, ms: 0 };
     const orbits =
       this.reality.overlays.orbits && this.orbits
         ? this.orbits.update({ et, world: this.world, fovY: this.fovY, height: this.viewport.height, selectedId: this.selectedId, isFocus: this.focusPredicate() })
         : [];
+    if (this.reality.overlays.orbits) orbits.push(...this.smallBodyOrbits(this.world));
     const t2 = perfNow();
     const overlayOnly: OverlayOnlyBody[] = [];
     this.snapshot = buildSnapshot({
@@ -663,10 +924,86 @@ export class AppModel {
       orientations: this.orientations,
       chainLabel: (id) => this.chainLabel(id, et),
     }, { overlayOnly });
+    this.addSmallBodyCloseUps(this.snapshot, overlayOnly);
     this.overlayOnly = overlayOnly;
     const t3 = perfNow();
     this.timings = { world: t1 - t0, orbits: t2 - t1, snapshot: t3 - t2, total: t3 - t0, bodies: this.snapshot.bodies.length };
     return this.snapshot;
+  }
+
+  /** Small bodies the view deals with this frame: the selection and the camera's target/anchor. */
+  private smallBodyIdsInView(): number[] {
+    const c = this.cam;
+    const ids = [this.selectedId, this.travel?.target ?? null, c.mode === 'orbit' ? c.target : c.anchor];
+    return [...new Set(ids.filter((id): id is number => id !== null && id < 0))];
+  }
+
+  /** Light-time-corrected geometry of those small bodies (CPU f64; a handful of objects, never the catalogue). */
+  private addSmallBodyGeoms(world: World): void {
+    const sb = this.smallBodies;
+    if (!sb) return;
+    for (const id of this.smallBodyIdsInView()) {
+      const row = sbRow(id);
+      if (!sb.has(row)) continue;
+      const a = sb.apparent(row, world.cameraPos, world.et, this.core);
+      world.bodies.set(id, { id, body: sb.pseudoBody(row), app: a?.app ?? null, toSun: a?.toSun ?? null });
+    }
+  }
+
+  /** Orbit tracks of those small bodies: propagated heliocentric positions, drawn relative to the Sun's apparent position. */
+  private smallBodyOrbits(world: World) {
+    const sb = this.smallBodies;
+    const sunRel = this.sunId !== null ? world.bodies.get(this.sunId)?.app?.rel : undefined;
+    const w = this.clock.window;
+    if (!sb || !sunRel || !w) return [];
+    const out: { id: number; points: Float64Array; selected: boolean }[] = [];
+    for (const id of this.smallBodyIdsInView()) {
+      const tr = sb.orbit(sbRow(id), world.et, w);
+      if (!tr) continue;
+      const pts = new Float64Array(tr.pos.length);
+      for (let i = 0; i < pts.length; i += 3) {
+        pts[i] = sunRel[0] + tr.pos[i];
+        pts[i + 1] = sunRel[1] + tr.pos[i + 1];
+        pts[i + 2] = sunRel[2] + tr.pos[i + 2];
+      }
+      out.push({ id, points: pts, selected: id === this.selectedId });
+    }
+    return out;
+  }
+
+  /**
+   * Small bodies near enough to be resolved, with an admitted shape (a sphere of the measured diameter), are drawn
+   * by the renderer as bodies and taken out of the field's points. Everything else stays a point of the field;
+   * without a field, a body with an admitted shape goes to the renderer (which draws sub-pixel bodies as points)
+   * and one without it gets the overlay marker.
+   */
+  private addSmallBodyCloseUps(snap: SceneSnapshot, overlayOnly: OverlayOnlyBody[]): void {
+    const sb = this.smallBodies;
+    const world = this.world;
+    if (!sb || !world) return;
+    const level = this.reality.exists;
+    const cam = snap.camera;
+    const ppr = cam.height / (2 * Math.tan(cam.fovY / 2));
+    const excluded: number[] = [];
+    for (const g of world.bodies.values()) {
+      if (g.id >= 0 || !g.app) continue;
+      const e = sceneBodyOf(g, level, this.orientations, this.chainLabel(g.id, world.et), this.selectedId);
+      if (!e) continue; // position not admitted at this level
+      if ('body' in e && e.body.radii) {
+        const px = 2 * Math.tan(angularRadius(e.body.radii[0], len(e.body.pos))) * ppr;
+        if (!sb.field || px >= CLOSEUP_MIN_PX) {
+          snap.bodies.push(e.body);
+          if (sb.field) excluded.push(sbRow(g.id));
+          continue;
+        }
+      }
+      if (!sb.field) overlayOnly.push('marker' in e ? e.marker : { id: g.id, name: g.body.name, pos: g.app.rel, worstLabel: e.body.worstLabel, selected: g.id === this.selectedId });
+    }
+    const key = excluded.join(',');
+    if (key !== this.sbExcluded) {
+      this.sbExcluded = key;
+      sb.field?.exclude?.(excluded);
+    }
   }
 
   private updateCamera(dt: number, et: number, fly: FlyInput | null): void {
@@ -727,6 +1064,11 @@ export class AppModel {
       const g = this.world?.bodies.get(this.sunId);
       if (g?.app) t.push({ id: this.sunId, pos: g.app.rel, radii: null, orient: null });
     }
+    // Small bodies in view that the field draws as points (or nothing draws at this level): clickable points.
+    if (this.world) {
+      const have = new Set(t.map((x) => x.id));
+      for (const g of this.world.bodies.values()) if (g.id < 0 && g.app && !have.has(g.id)) t.push({ id: g.id, pos: g.app.rel, radii: null, orient: null });
+    }
     return t;
   }
 
@@ -736,6 +1078,17 @@ export class AppModel {
 
   pickAt(x: number, y: number): number | null {
     return pick(this.cssViewport(), this.pickTargets(), x, y)?.id ?? null;
+  }
+
+  /** pickAt, falling back to the small-body field's GPU pick when no major body is hit. */
+  async pickAtAsync(x: number, y: number): Promise<number | null> {
+    const id = this.pickAt(x, y);
+    if (id !== null) return id;
+    const sb = this.smallBodies;
+    if (!sb?.field) return null;
+    const vp = this.cssViewport();
+    const row = await sb.field.pick(pixelRay(vp, x, y), PICK_TOL_PX / pixelsPerRadian(vp));
+    return row !== null && sb.has(row) ? sbId(row) : null;
   }
 
   // ---- URL & debug --------------------------------------------------------------------------------
@@ -767,7 +1120,11 @@ export class AppModel {
     const candidates = [v.target, ...fallbacks].filter((id, i, a): id is number => id !== undefined && id !== null && a.indexOf(id) === i);
     for (const id of candidates) {
       if (!this.byId.has(id)) {
-        if (id === v.target) this.message(`Unknown target ${id}.`, 'warn');
+        if (id === v.target && id >= SPKID_MIN && this.data?.smallBodies) {
+          // An SBDB SPK-ID: resolved through the name index once the catalogue is in; start somewhere meanwhile.
+          this.pendingSpkid = { spkid: id, dist: v.dist, az: v.az, el: v.el };
+          if (this.sb.status === 'off') this.failPendingSpkid('small bodies are disabled by the URL (smallbodies=0)');
+        } else if (id === v.target) this.message(`Unknown target ${id}.`, 'warn');
         continue;
       }
       const requested = id === v.target;
@@ -781,8 +1138,10 @@ export class AppModel {
     const v: UrlView = {};
     const ms = this.utcMs();
     if (ms !== null) v.tMs = ms;
-    if (this.cam.mode === 'orbit') {
-      v.target = this.cam.target;
+    // A small body is linked by its SBDB SPK-ID (known once its name was fetched); without it, no target.
+    const target = this.cam.mode === 'orbit' ? (this.cam.target < 0 ? this.names?.spkidOf(sbRow(this.cam.target)) ?? null : this.cam.target) : null;
+    if (this.cam.mode === 'orbit' && target !== null) {
+      v.target = target;
       v.dist = this.cam.dist;
       const ae = azElFromDir(sunFrame(this.toSunAt(this.cam.target)), this.cam.dir);
       v.az = ae.az / DEG;
@@ -842,12 +1201,34 @@ export class AppModel {
         : null,
       timings: this.timings,
       orbitStats: this.orbits?.stats ?? null,
+      smallBodies: this.smallBodyDebug(),
       data: {
         loaded: this.data?.report.products.filter((p) => p.status === 'ok').map((p) => p.path) ?? [],
         missing: this.data?.report.products.filter((p) => p.status === 'missing').map((p) => p.path) ?? [],
         errors: [...(this.data?.report.products.filter((p) => p.status === 'error').map((p) => `${p.path}: ${p.message}`) ?? []), ...this.coreErrors],
       },
       messages: this.messages.map((m) => m.text),
+    };
+  }
+
+  private smallBodyDebug() {
+    const sb = this.smallBodies;
+    const sel = this.selectedId !== null && this.selectedId < 0 && sb ? sbRow(this.selectedId) : null;
+    const g = this.selectedId !== null && this.selectedId < 0 ? this.world?.bodies.get(this.selectedId) : undefined;
+    return {
+      status: this.sb.status,
+      message: this.sb.message,
+      loadMs: this.sb.ms,
+      count: sb?.count ?? null,
+      field: !!sb?.field,
+      names: this.names ? { state: this.names.state, count: this.names.count, error: this.names.error } : null,
+      counts: this.smallBodyCounts(),
+      cpuPropagationMs: sb?.cpu.ms ?? null,
+      closeUps: this.snapshot?.bodies.filter((b) => b.id < 0).map((b) => b.id) ?? [],
+      selected:
+        sel !== null && sb
+          ? { row: sel, name: sb.name(sel), spkid: this.names?.spkidOf(sel) ?? null, flags: sb.flags(sel), distKm: g?.app ? len(g.app.rel) : null, lightTimeS: g?.app?.lightTime ?? null }
+          : null,
     };
   }
 
@@ -889,7 +1270,7 @@ export class AppModel {
 
   /** Worst label etc. for a body at the current level (inspector). */
   filtered(id: number) {
-    const b = this.byId.get(id);
+    const b = this.bodyOf(id);
     return b ? filtered(b, this.reality.exists, this.chainLabel(id), this.orientationSource(id)) : null;
   }
 

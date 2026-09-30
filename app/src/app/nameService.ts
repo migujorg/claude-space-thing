@@ -1,7 +1,7 @@
 // Small-body name service: lazily starts the name index (in a Web Worker, names.worker.ts; in-thread when no
 // worker is available, e.g. tests) and answers searches, display names and spkid lookups asynchronously.
 
-import { NameIndex, type NameHit } from '../data/nameIndex';
+import { displayName, NameIndex, type NameHit } from '../data/nameIndex';
 import type { SmallBodyNamesHeader } from '../data/schema';
 
 export type NameRequest =
@@ -15,7 +15,7 @@ export type NameResponse =
   | { type: 'ready'; count: number; verified: boolean }
   | { type: 'error'; id?: number; message: string }
   | { type: 'result'; id: number; hits: NameHit[]; more: boolean }
-  | { type: 'display'; id: number; names: string[] }
+  | { type: 'display'; id: number; names: string[]; spkids: number[] }
   | { type: 'spkid'; id: number; row: number | null };
 
 export type NameState = 'idle' | 'loading' | 'indexing' | 'ready' | 'error';
@@ -45,6 +45,7 @@ export class NameService {
   private pending = new Map<number, (r: NameResponse) => void>();
   private listeners = new Set<() => void>();
   private displayCache = new Map<number, string>();
+  private spkidCache = new Map<number, number>();
 
   constructor(private readonly o: NameServiceOptions) {}
 
@@ -115,15 +116,32 @@ export class NameService {
     return { hits: r.hits, more: r.more };
   }
 
-  /** Display names for core rows (cached). */
+  /** Display names for core rows (cached, with their SPK-IDs). */
   async display(rows: number[]): Promise<string[]> {
-    const missing = rows.filter((r) => !this.displayCache.has(r));
+    const missing = [...new Set(rows.filter((r) => !this.displayCache.has(r)))];
     if (missing.length) {
       await this.start();
-      const names = this.local ? missing.map((r) => this.local!.display(r)) : (await this.ask<Extract<NameResponse, { type: 'display' }>>({ type: 'display', rows: missing })).names;
-      missing.forEach((r, i) => this.displayCache.set(r, names[i]));
+      let names: string[], spkids: number[];
+      if (this.local) {
+        const f = missing.map((r) => (r >= 0 && r < this.local!.count ? this.local!.fields(r) : null));
+        names = f.map((x) => (x ? displayName(x) : ''));
+        spkids = f.map((x) => (x ? x.spkid : NaN));
+      } else {
+        const r = await this.ask<Extract<NameResponse, { type: 'display' }>>({ type: 'display', rows: missing });
+        names = r.names;
+        spkids = r.spkids;
+      }
+      missing.forEach((r, i) => {
+        this.displayCache.set(r, names[i]);
+        if (Number.isFinite(spkids[i])) this.spkidCache.set(r, spkids[i]);
+      });
     }
     return rows.map((r) => this.displayCache.get(r) ?? '');
+  }
+
+  /** SPK-ID of a row whose display name was fetched, else null. */
+  spkidOf(row: number): number | null {
+    return this.spkidCache.get(row) ?? null;
   }
 
   /** Cached display name, or null if not fetched yet. */
@@ -133,8 +151,9 @@ export class NameService {
 
   async rowOfSpkid(spkid: number): Promise<number | null> {
     await this.start();
-    if (this.local) return this.local.rowOfSpkid(spkid);
-    return (await this.ask<Extract<NameResponse, { type: 'spkid' }>>({ type: 'spkid', spkid })).row;
+    const row = this.local ? this.local.rowOfSpkid(spkid) : (await this.ask<Extract<NameResponse, { type: 'spkid' }>>({ type: 'spkid', spkid })).row;
+    if (row !== null) this.spkidCache.set(row, spkid);
+    return row;
   }
 
   dispose(): void {

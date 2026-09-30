@@ -62,17 +62,23 @@ export interface SmallBodyTables {
 export const NO_ROW = 0xffffffff;
 
 /** Load the small-body tables through the loader (sizes/sha256 checked). null if the core table is unusable. */
-export async function loadSmallBodyTables(L: DataLoader, p: SmallBodyProducts, onProgress?: Progress): Promise<SmallBodyTables | null> {
+/** What loading the small-body products needs from the DataLoader. */
+export type SmallBodyLoader = Pick<DataLoader, 'get' | 'setReport' | 'manifest'>;
+
+export async function loadSmallBodyTables(L: SmallBodyLoader, p: SmallBodyProducts, onProgress?: Progress): Promise<SmallBodyTables | null> {
   const json = (b: ArrayBuffer): unknown => JSON.parse(new TextDecoder().decode(b));
   let done = 0;
   const prog = (): Progress | undefined =>
     onProgress && ((got) => onProgress(done + got, p.tableBytes));
   const table = async <H extends SmallBodyTableHeader>(headerPath: string | null, why: string): Promise<SmallBodyTable<H> | null> => {
     if (!headerPath) return null;
+    const loading = (path: string) => L.setReport(path, { status: 'loading', bytes: L.manifest?.products[path]?.bytes, message: 'Loading in the background.' });
+    loading(headerPath);
     const header = await L.get(headerPath, (b) => json(b) as H, why);
     done += L.manifest?.products[headerPath]?.bytes ?? 0;
     if (!header) return null;
     const bin = header.bin.includes('/') ? header.bin : headerPath.replace(/[^/]+$/, '') + header.bin;
+    loading(bin);
     const got = await L.get(bin, (buf) => ({ buf, t: new BinaryTable(header, buf) }), why, prog());
     done += L.manifest?.products[bin]?.bytes ?? 0;
     return got ? { header, buffer: got.buf, table: got.t } : null;
@@ -82,13 +88,27 @@ export async function loadSmallBodyTables(L: DataLoader, p: SmallBodyProducts, o
   const physical = await table<SmallBodyPhysicalHeader>(p.physical, 'No measured sizes, albedos, colours, rotation or phase functions for small bodies.');
   const comets = await table(p.comets, 'No comet magnitude laws.');
   const nongrav = await table(p.nongrav, 'Comets and asteroids with non-gravitational forces are propagated without them.');
-  const namesHeader = p.names ? await L.get(p.names, (b) => json(b) as SmallBodyNamesHeader, 'Small bodies cannot be searched by name.') : null;
+  const namesHeader = await loadSmallBodyNamesHeader(L, p);
   const rowMap = (t: SmallBodyTable | null) => {
     const m = new Map<number, number>();
     if (t?.table.has('row')) for (let k = 0; k < t.table.count; k++) m.set(t.table.get('row', k), k);
     return m;
   };
   return { core, physical, comets, nongrav, namesHeader, cometRow: rowMap(comets), nongravRow: rowMap(nongrav), count: core.table.count };
+}
+
+const namesHeaders = new WeakMap<object, Promise<SmallBodyNamesHeader | null>>();
+
+/** The names header (tiny; fetched once per loader): the name index needs it before the tables arrive. */
+export function loadSmallBodyNamesHeader(L: SmallBodyLoader, p: SmallBodyProducts): Promise<SmallBodyNamesHeader | null> {
+  if (!p.names) return Promise.resolve(null);
+  let h = namesHeaders.get(L);
+  if (!h) {
+    const path = p.names;
+    h = L.get(path, (b) => JSON.parse(new TextDecoder().decode(b)) as SmallBodyNamesHeader, 'Small bodies cannot be searched by name.');
+    namesHeaders.set(L, h);
+  }
+  return h;
 }
 
 /** Physical-table record of a core row, or null. */

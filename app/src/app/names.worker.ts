@@ -1,7 +1,7 @@
 // Web Worker: fetches smallbodies/names.txt, checks its sha256 against the manifest, builds the name index and
 // answers queries (docs: data/nameIndex.ts). Keeps ~100 MB of strings off the main thread.
 
-import { NameIndex } from '../data/nameIndex';
+import { displayName, NameIndex } from '../data/nameIndex';
 import type { NameRequest, NameResponse } from './nameService';
 
 let index: NameIndex | null = null;
@@ -28,7 +28,8 @@ self.onmessage = async (e: MessageEvent<NameRequest>) => {
     } else if (m.type === 'search') {
       post({ type: 'result', id: m.id, ...index.search(m.query, m.limit) });
     } else if (m.type === 'display') {
-      post({ type: 'display', id: m.id, names: m.rows.map((r) => (r >= 0 && r < index!.count ? index!.display(r) : '')) });
+      const f = m.rows.map((r) => (r >= 0 && r < index!.count ? index!.fields(r) : null));
+      post({ type: 'display', id: m.id, names: f.map((x) => (x ? displayName(x) : '')), spkids: f.map((x) => (x ? x.spkid : NaN)) });
     } else if (m.type === 'spkid') {
       post({ type: 'spkid', id: m.id, row: index.rowOfSpkid(m.spkid) });
     }
