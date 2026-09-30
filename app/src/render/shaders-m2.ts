@@ -207,12 +207,17 @@ struct Ring {
   E2: vec4f,    // D·e2 (km)
   o: vec4f,     // camera relative to the centre (km)
   N: vec4f,     // ring-plane normal, w = inner radius (km)
-  geo: vec4f,   // outer radius (km), bins, profile offset (vec4 index), albedo known
+  geo: vec4f,   // outer radius (km), bins, profile base (vec4 index), vec4 slots per bin edge
   sun: vec4f,   // unit direction to the Sun, w = its distance (km)
-  esun: vec4f,  // solar illuminance / π at the rings (XYZS): radiance per unit I/F
-  ph: vec4f,    // particle phase kind (0 unknown, 1 HG, 2 constant), g or P, Sun radius (km), label code
+  esun: vec4f,  // solar illuminance / π at the rings (XYZS) × resolved fraction: radiance per unit I/F
+  ph: vec4f,    // reflectance tables base (vec4 index; < 0: reflectance not measured), Sun radius (km), 0, 0
   pm0: vec4f, pm1: vec4f, pm2: vec4f,  // planet world → unit-sphere rows
 };
+
+const RING_NODES: u32 = 22u;     // F_lit at k_j = 2·2^(j/2)
+const RING_NODES_U: u32 = 44u;   // H_u at m_j = 2^(j/4)
+const RING_SLOT_FLIT: u32 = 1u;
+const RING_SLOT_HU: u32 = 7u;
 
 fn circleOverlap(r1: f32, r2: f32, d: f32) -> f32 {
   if (d >= r1 + r2) { return 0.0; }
@@ -223,46 +228,175 @@ fn circleOverlap(r1: f32, r2: f32, d: f32) -> f32 {
   return a1 + a2 - k;
 }
 
-fn ringCum(base: u32, bins: f32, x: f32) -> array<vec4f, 2> {
-  let xc = clamp(x, 0.0, bins);
-  let j = u32(min(floor(xc), bins - 1.0));
-  let fj = xc - f32(j);
-  let a0 = ringProf[base + 2u * j];
-  let a1 = ringProf[base + 2u * j + 2u];
-  let b0 = ringProf[base + 2u * j + 1u];
-  let b1 = ringProf[base + 2u * j + 3u];
-  return array<vec4f, 2>(mix(a0, a1, fj), mix(b0, b1, fj));
+fn ringC(R: Ring, j: u32, slot: u32) -> vec4f {
+  return ringProf[u32(R.geo.z) + j * u32(R.geo.w) + slot];
 }
 
-struct RingAvg { tau: f32, knownTau: f32, knownAlb: f32, alb: vec4f };
+/** ∫ of cumulative slot over [x0, x1] (bin units, clamped to the profile), from per-bin increments (rings.ts segment). */
+fn ringSeg(R: Ring, slot: u32, x0: f32, x1: f32) -> vec4f {
+  let bins = R.geo.y;
+  let a = clamp(x0, 0.0, bins);
+  let b = clamp(x1, 0.0, bins);
+  if (b <= a) { return vec4f(0.0); }
+  let j0 = u32(min(floor(a), bins - 1.0));
+  let j1 = u32(min(floor(b), bins - 1.0));
+  let d0 = ringC(R, j0 + 1u, slot) - ringC(R, j0, slot);
+  if (j0 == j1) { return (b - a) * d0; }
+  let d1 = ringC(R, j1 + 1u, slot) - ringC(R, j1, slot);
+  return (f32(j0) + 1.0 - a) * d0 + (ringC(R, j1, slot) - ringC(R, j0 + 1u, slot)) + (b - f32(j1)) * d1;
+}
 
-/** Mean over [ra, rb] (km); outside the ring counts as empty, known space (rings.ts ringAverage). */
+struct RingAvg { tau: f32, knownTau: f32, knownRefl: f32, A: f32, x0: f32, x1: f32, span: f32 };
+
+/** Footprint means over [ra, rb] (km); outside the ring counts as empty, known space (rings.ts ringAverage). */
 fn ringAvg(R: Ring, ra0: f32, rb0: f32) -> RingAvg {
   let bins = R.geo.y;
-  let base = u32(R.geo.z);
   let s = bins / (R.geo.x - R.N.w);
   var x0 = (min(ra0, rb0) - R.N.w) * s;
   var x1 = (max(ra0, rb0) - R.N.w) * s;
-  if (x1 - x0 < 1e-3) { x0 -= 5e-4; x1 += 5e-4; }
-  let span = x1 - x0;
-  let c0 = ringCum(base, bins, x0);
-  let c1 = ringCum(base, bins, x1);
+  // Keep the footprint at least a few float32 ulps wide at this bin index (a zero-width footprint, e.g.
+  // a surface point right at the ring plane, would divide 0/0).
+  let h = max(5e-6, 4e-7 * max(abs(x0), abs(x1)));
+  if (x1 - x0 < 2.0 * h) { let c = 0.5 * (x0 + x1); x0 = c - h; x1 = c + h; }
+  let span = max(x1 - x0, 1e-30);
+  let v = ringSeg(R, 0u, x0, x1);
   let inside = clamp(x1, 0.0, bins) - clamp(x0, 0.0, bins);
-  let d = c1[0] - c0[0];
   var o: RingAvg;
-  o.tau = d.x / span;
-  o.knownTau = (d.y + (span - inside)) / span;
-  o.knownAlb = d.z / span;
-  o.alb = select(vec4f(0.0), (c1[1] - c0[1]) / d.z, d.z > 0.0);
+  o.tau = max(v.x / span, 0.0);
+  o.knownTau = (v.y + (span - inside)) / span;
+  o.knownRefl = v.z / span;
+  o.A = v.w / span;
+  o.x0 = x0;
+  o.x1 = x1;
+  o.span = span;
   return o;
 }
 
-/** Single-scattering layer I/F per unit ϖ0P/4 (rings.ts ringReflectance). */
-fn ringRefl(tau: f32, mu: f32, mu0: f32, lit: bool) -> f32 {
-  if (tau <= 0.0 || mu <= 0.0 || mu0 <= 0.0) { return 0.0; }
-  if (lit) { return mu0 / (mu + mu0) * (1.0 - exp(-tau * (1.0 / mu + 1.0 / mu0))); }
-  if (abs(mu - mu0) < 1e-4 * mu0) { return tau / mu0 * exp(-tau / mu0); }
-  return mu0 / (mu - mu0) * (exp(-tau / mu) - exp(-tau / mu0));
+fn ringNode(R: Ring, a: RingAvg, slot: u32, j: u32) -> f32 {
+  let v = ringSeg(R, slot + j / 4u, a.x0, a.x1);
+  return v[j % 4u] / a.span;
+}
+
+fn ringSegOf(n: u32, xN0: f32, step: f32, x: f32) -> u32 {
+  return u32(clamp(floor(log2(x / xN0) / step), 0.0, f32(n - 2u)));
+}
+
+/** Log-linear interpolation between two nodes; returns (F, dF/dx) (rings.ts interpSeg). */
+fn ringInterpSeg(Fa: f32, Fb: f32, xa: f32, xb: f32, x: f32) -> vec2f {
+  if (Fa > 1e-30 && Fb > 1e-30) {
+    let sl = (log(Fb) - log(Fa)) / (xb - xa);
+    let v = Fa * exp(sl * (x - xa));
+    return vec2f(v, v * sl);
+  }
+  let t = clamp((x - xa) / (xb - xa), 0.0, 1.0);
+  return vec2f(max(mix(Fa, Fb, t), 0.0), (Fb - Fa) / (xb - xa));
+}
+
+/** Tabulated footprint mean at x, nodes at xN0·2^(j·step) (rings.ts interpNodes). */
+fn ringInterp(R: Ring, a: RingAvg, slot: u32, n: u32, xN0: f32, step: f32, x: f32) -> f32 {
+  let j = ringSegOf(n, xN0, step, x);
+  let xa = xN0 * exp2(f32(j) * step);
+  return ringInterpSeg(ringNode(R, a, slot, j), ringNode(R, a, slot, j + 1u), xa, xa * exp2(step), x).x;
+}
+
+/** ∫ H_u dm over [lo, hi] of the log-linear interpolant (rings.ts integrateNodes). */
+fn ringIntegrateHu(R: Ring, a: RingAvg, lo: f32, hi: f32) -> f32 {
+  let step = 0.25;
+  var j = ringSegOf(RING_NODES_U, 1.0, step, lo);
+  var x = lo;
+  var total = 0.0;
+  var Ha = ringNode(R, a, RING_SLOT_HU, j);
+  for (var guard = 0u; guard < RING_NODES_U + 2u; guard++) {
+    if (x >= hi) { break; }
+    let xa = exp2(f32(j) * step);
+    let xb = xa * exp2(step);
+    let end = select(min(hi, xb), hi, j >= RING_NODES_U - 2u);
+    let Hb = ringNode(R, a, RING_SLOT_HU, j + 1u);
+    if (Ha > 1e-30 && Hb > 1e-30) {
+      let sl = (log(Hb) - log(Ha)) / (xb - xa);
+      if (abs(sl) < 1e-12) { total += Ha * (end - x); }
+      else { total += Ha * (exp(sl * (end - xa)) - exp(sl * (x - xa))) / sl; }
+    } else {
+      let fx = max(Ha + (Hb - Ha) * (x - xa) / (xb - xa), 0.0);
+      let fe = max(Ha + (Hb - Ha) * (end - xa) / (xb - xa), 0.0);
+      total += 0.5 * (fx + fe) * (end - x);
+    }
+    x = end;
+    if (j < RING_NODES_U - 2u) { j++; Ha = Hb; }
+  }
+  return total;
+}
+
+/** Radial part of the ring I/F (without W) from footprint means (rings.ts ringRadial). */
+fn ringRadial(R: Ring, a: RingAvg, mu: f32, mu0: f32, lit: bool) -> f32 {
+  if (mu <= 0.0 || mu0 <= 0.0) { return 0.0; }
+  if (lit) {
+    let F = ringInterp(R, a, RING_SLOT_FLIT, RING_NODES, 2.0, 0.5, 1.0 / mu + 1.0 / mu0);
+    return mu0 / (4.0 * (mu + mu0)) * max(a.A - F, 0.0);
+  }
+  let m1 = 1.0 / mu;
+  let m0 = 1.0 / mu0;
+  let lo = min(m1, m0);
+  let hi = max(m1, m0);
+  if (hi - lo < 1e-5 * lo) { return ringInterp(R, a, RING_SLOT_HU, RING_NODES_U, 1.0, 0.25, m1) / (4.0 * mu); }
+  return ringIntegrateHu(R, a, lo, hi) / (hi - lo) / (4.0 * mu);
+}
+
+fn ringTab(R: Ring, i: u32) -> vec4f { return ringProf[u32(R.ph.x) + i]; }
+fn ringGrid(R: Ring, start: u32, i: u32) -> f32 { let v = ringTab(R, start + i / 4u); return v[i % 4u]; }
+
+/** Index and fraction of x on a grid of n nodes (clamped to its ends). */
+fn ringGridPos(R: Ring, start: u32, n: u32, x: f32) -> vec2f {
+  if (x <= ringGrid(R, start, 0u)) { return vec2f(0.0, 0.0); }
+  if (x >= ringGrid(R, start, n - 1u)) { return vec2f(f32(n - 2u), 1.0); }
+  var j = 0u;
+  for (var i = 1u; i < n - 1u; i++) { if (ringGrid(R, start, i) <= x) { j = i; } }
+  let g0 = ringGrid(R, start, j);
+  return vec2f(f32(j), (x - g0) / (ringGrid(R, start, j + 1u) - g0));
+}
+
+/** W_c = ϖP (XYZS) at radius r, phase α and effective elevation Beff, degrees (rings.ts ringW). */
+fn ringW(R: Ring, r: f32, alphaDeg: f32, beffDeg: f32) -> vec4f {
+  let h = ringTab(R, 0u);
+  let nP = u32(h.x);
+  let nE = u32(h.y);
+  let nR = u32(h.z);
+  let sP = 2u;
+  let sE = sP + (nP + 3u) / 4u;
+  let sR = sE + (nE + 3u) / 4u;
+  let sT = sR + nR;
+  let pp = ringGridPos(R, sP, nP, alphaDeg);
+  let pe = ringGridPos(R, sE, nE, beffDeg);
+  let p0 = u32(pp.x);
+  let e0 = u32(pe.x);
+  var Wr = array<vec4f, 2>(vec4f(0.0), vec4f(0.0));
+  // Region(s) and radial weight.
+  var k0 = 0u;
+  var k1 = 0u;
+  var t = 0.0;
+  let first = ringTab(R, sR);
+  let last = ringTab(R, sR + nR - 1u);
+  if (r >= last.y) { k0 = nR - 1u; k1 = k0; }
+  else if (r > first.x) {
+    for (var k = 0u; k < nR; k++) {
+      let ed = ringTab(R, sR + k);
+      if (r <= ed.y) {
+        if (r >= ed.x || k == 0u) { k0 = k; k1 = k; }
+        else { k0 = k - 1u; k1 = k; let prev = ringTab(R, sR + k - 1u); t = (r - prev.y) / (ed.x - prev.y); }
+        break;
+      }
+    }
+  }
+  let ks = array<u32, 2>(k0, k1);
+  for (var q = 0u; q < 2u; q++) {
+    let base = sT + ks[q] * nE * nP;
+    let w00 = ringTab(R, base + e0 * nP + p0);
+    let w01 = ringTab(R, base + e0 * nP + p0 + 1u);
+    let w10 = ringTab(R, base + (e0 + 1u) * nP + p0);
+    let w11 = ringTab(R, base + (e0 + 1u) * nP + p0 + 1u);
+    Wr[q] = mix(mix(w00, w01, pp.y), mix(w10, w11, pp.y), pe.y);
+  }
+  return mix(Wr[0], Wr[1], t);
 }
 `;
 
@@ -305,7 +439,7 @@ fn planetShadow(R: Ring, X: vec3f) -> f32 {
   let dp = length(pp);
   let rp = asin(min(1.0 / dp, 1.0));
   let sep = angleBetween(-pp / dp, normalize(sp));
-  let rs = max(asin(min(R.ph.z / R.sun.w, 1.0)), 1e-7);
+  let rs = max(asin(min(R.ph.y / R.sun.w, 1.0)), 1e-7);
   return clamp(1.0 - circleOverlap(rs, rp, sep) / (PI * rs * rs), 0.0, 1.0);
 }
 
@@ -349,19 +483,26 @@ struct FOut {
   let mu = abs(vN);
   let mu0 = abs(sN);
   let lit = vN * sN > 0.0;
-  let ca = clamp(dot(S, V), -1.0, 1.0);
-  var P = 0.0;
-  if (R.ph.x > 0.5 && R.ph.x < 1.5) { let g = R.ph.y; P = (1.0 - g * g) / pow(1.0 + g * g + 2.0 * g * ca, 1.5); }
-  if (R.ph.x > 1.5) { P = R.ph.y; }
+  let alphaDeg = degrees(acos(clamp(dot(S, V), -1.0, 1.0)));
   var L = vec4f(0.0);
-  if (P > 0.0 && a.knownAlb > 0.0) {
-    L = a.alb * (P * 0.25 * ringRefl(a.tau, mu, mu0, lit)) * R.esun * planetShadow(R, X) * cov;
+  var reflKnown = false;
+  if (R.ph.x >= 0.0) {
+    let dom = ringTab(R, 1u);
+    if (alphaDeg >= dom.x && alphaDeg <= dom.y) {
+      reflKnown = a.knownRefl >= 0.5;
+      if (a.knownRefl > 0.0 && mu > 0.0 && mu0 > 0.0) {
+        let beff = degrees(asin(clamp(2.0 * mu * mu0 / (mu + mu0), 0.0, 1.0)));
+        let W = ringW(R, r, alphaDeg, beff);
+        L = W * ringRadial(R, a, mu, mu0, lit) * R.esun * planetShadow(R, X) * cov;
+      }
+    }
   }
   var o: FOut;
   o.ext = toStore(F, L);
   o.w = 1.0;
-  // "Not measured": τ unknown there, or reflectivity unknown where there is material.
-  let unknown = a.knownTau < 0.5 || (a.tau > 1e-3 && (a.knownAlb < 0.5 || P <= 0.0));
+  // "Not measured": τ unknown there, or ring material whose reflectance is unknown (no model, phase angle
+  // outside its domain, or radii it does not cover).
+  let unknown = a.knownTau < 0.5 || (a.tau > 1e-3 && !reflKnown);
   o.mask = select(0.0, cov, unknown);
   o.depth = F.proj.z / max(t * dot(dir, -F.back.xyz), F.proj.z);
   return o;

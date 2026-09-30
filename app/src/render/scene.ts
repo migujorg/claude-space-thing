@@ -5,7 +5,7 @@
 // anything not allowed at the current `exists` level arrives here as null / flagged, so the renderer
 // never needs to reason about provenance labels except for the provenance-tint overlay.
 
-import type { DiskReflectanceModel, Label, PhaseFunction, SpatialPhotometricModel, SurfaceLayerHeader } from '../data/schema';
+import type { DiskReflectanceModel, Label, PhaseFunction, RingReflectance, SpatialPhotometricModel, SurfaceLayerHeader } from '../data/schema';
 import type { EyeSettings } from '../eye/settings';
 
 export type { EyeSettings };
@@ -87,24 +87,27 @@ export interface SurfaceLayerRef {
 }
 
 /**
- * A planetary ring system as the renderer needs it (docs/rendering-m2.md §5). Radial profiles are
- * sampled at increasing radii; between samples values are interpolated linearly, outside
- * [radiusKm[0], radiusKm[last]] there is no ring. Physics: many-particle-thick classical layer with
- * single scattering (lit face I/F = ϖ0·P(α)/4 · μ0/(μ + μ0) · [1 − e^(−τ(1/μ + 1/μ0))], unlit face
- * (ϖ0·P/4)·μ0/(μ − μ0)·[e^(−τ/μ) − e^(−τ/μ0)]), direct transmission e^(−τ/μ).
+ * A planetary ring system as the renderer needs it (docs/rendering-m2.md §5): the planet's entry of
+ * rings.json (`RingSystem`, architecture §6) after the reality filter. The ring plane passes through
+ * the planet centre.
  */
 export interface SceneRings {
-  /** Unit normal of the ring plane (ICRF); usually the planet's north pole. */
+  /** Unit normal of the ring plane (ICRF): the planet's IAU north pole. */
   normal: Vec3;
-  /** Sample radii, km, strictly increasing. */
-  radiusKm: number[];
-  /** Normal optical depth at each sample; null = not measured there (drawn as a hatched gap, no light, no shadow). */
-  tau: (number | null)[];
-  /** Ring-particle single-scattering albedo ϖ0 per channel (X, Y, Z, scotopic) at each sample; null = unknown (rings then only absorb). */
-  albedoXYZS: ([number, number, number, number] | null)[] | null;
-  /** Particle phase function normalised so ∫P dΩ/4π = 1; null = unknown (rings then only absorb). */
-  particlePhase: { kind: 'hg'; g: number } | { kind: 'tabulated'; alphaDeg: number[]; P: number[] } | null;
-  /** Worst provenance label among the ring data drawn, for the provenance tint. */
+  /**
+   * rings.json `opticalDepth.value` (RingProfile[]; only `radiusKm` and `normalTau` are read). The rings
+   * extend over the profiles' radii; where profiles overlap, the first with a value at a radius wins.
+   * τ null → not measured there (hatched, no light, no shadow). Sets the extinction: ring shadows on
+   * bodies, bodies seen through the rings.
+   */
+  opticalDepth: { radiusKm: number[]; normalTau: (number | null)[] }[];
+  /**
+   * rings.json `reflectance.value` (kind 'single-scattering-v1', Saturn) when admitted at the reality
+   * level; null when its label is `unknown` (Jupiter, Uranus, Neptune) or it is not admitted: the rings
+   * then only absorb and cast shadows, and their material is hatched as "not measured".
+   */
+  reflectance: RingReflectance | null;
+  /** Worst provenance label among the ring data drawn (e.g. estimated for Saturn's reflectance). */
   worstLabel: Label;
 }
 

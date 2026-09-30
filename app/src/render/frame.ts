@@ -228,9 +228,14 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
   // Ring systems first (bodies need their indices for ring shadows and transmission).
   const irr = snap.sun ? (snap.sun.irradianceXYZS_1AU as XYZS) : null;
   const rings: RingPrep[] = [];
+  // Reflected light of rings too small to resolve: it joins the planet's point source.
+  const ringPoint = new Map<SceneBody, XYZS>();
   for (const b of snap.bodies) {
-    const rp = prepareRings(b, irr, sunR, g.pixelAngle);
-    if (rp) rings.push(rp);
+    if (!b.rings) continue;
+    const rf = prepareRings(b, irr, sunR, g.pixelAngle);
+    if (rf.draw) rings.push(rf.draw);
+    if (rf.pointE) ringPoint.set(b, rf.pointE);
+    if (rf.draw || inFrame(toCam(g, b.pos))) warnings.push(...rf.warnings);
   }
   const ringFor = (b: SceneBody): { index: number; B: V3 } | null => {
     let best: { index: number; B: V3 } | null = null;
@@ -362,13 +367,20 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
     }
     if (fRes < 1 && c[2] < 0) {
       const ndc = camToNdc(g, c);
-      if (E && E[1] > 0) {
-        const Ep = E.map((v) => v * (1 - fRes)) as XYZS;
+      // The unresolved part of the disk plus the unresolved part of its rings' reflected light.
+      let Ep: XYZS | null = E && E[1] > 0 ? (E.map((v) => v * (1 - fRes)) as XYZS) : null;
+      const rp = ringPoint.get(b);
+      let ptLabel = label;
+      if (rp && rp[1] > 0) {
+        Ep = Ep ? (Ep.map((v, k) => v + rp[k]) as XYZS) : rp;
+        ptLabel = worse(ptLabel, b.rings!.worstLabel);
+      }
+      if (Ep) {
         // Visibility: Crumey threshold at the adaptation state (Blackwell-equivalent units).
         if (blackwellEquivalent(Ep[1], Ep[3], eye.mesopic.m) >= eye.thresholdBwLux) {
           points.push({ ndc, depth: g.near / -c[2], E: Ep });
         }
-        if (tint && fRes < 0.5) ringVertices(ndc, 7, 1.5, tint, g, overlay);
+        if (tintOn && fRes < 0.5) ringVertices(ndc, 7, 1.5, [...PROVENANCE_TINT[ptLabel], PROVENANCE_TINT_ALPHA] as [number, number, number, number], g, overlay);
       }
       // A sub-pixel body without admitted brightness: nothing is drawn (the shell owns those markers).
     }

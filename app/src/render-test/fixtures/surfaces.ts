@@ -6,7 +6,7 @@
 //  app, never written to app/public/data.
 // ════════════════════════════════════════════════════════════════════════════════════════════
 
-import type { SpatialPhotometricModel } from '../../data/schema';
+import type { RingReflectance, SpatialPhotometricModel } from '../../data/schema';
 import type { SceneRings, SurfaceLayerRef } from '../../render/scene';
 import { numberToF16, TILE, tilesX, tilesY } from '../../render/surface';
 
@@ -118,22 +118,51 @@ export const FIXTURE_CRATERS: SurfaceLayerRef = { url: 'fixture://craters/height
 export const FIXTURE_HAPKE: SpatialPhotometricModel = { kind: 'hapke', w: 0.25, b: 0.25, c: 0.4, bs0: 1.8, hs: 0.07, thetaBarDeg: 23.657 };
 
 /**
- * A Saturn-like ring system: τ and ϖ0 profiles shaped like C ring / B ring / Cassini division / A ring /
- * Encke-like gap, with a stretch of unknown τ to show the hatch. Invented values; TEST ONLY.
+ * A Saturn-like ring system in the shape of the pipeline's rings.json entry: an optical-depth profile
+ * shaped like C ring / B ring / Cassini division / A ring / Encke-like gap with a stretch of unknown τ,
+ * and a 'single-scattering-v1' reflectance model whose outer edge is not modelled (hatched) and whose
+ * three regions have invented ϖP tables. Invented values; TEST ONLY.
  */
-export function fixtureRings(normal: [number, number, number]): SceneRings {
-  const radiusKm: number[] = [], tau: (number | null)[] = [], alb: ([number, number, number, number] | null)[] = [];
-  for (let r = 74500; r <= 136800; r += 250) {
-    let t = 0, w = 0.5;
-    if (r < 92000) { t = 0.1; w = 0.35; }
-    else if (r < 117580) { t = 1.2 + 0.8 * Math.sin(r / 900); w = 0.55; }
-    else if (r < 122170) { t = 0.12; w = 0.4; }
-    else { t = 0.5 + 0.1 * Math.sin(r / 400); w = 0.5; }
+export function fixtureRings(normal: [number, number, number], withReflectance = true): SceneRings {
+  const radiusKm: number[] = [], tau: (number | null)[] = [];
+  const start = 74500, step = 50;
+  for (let r = start; r <= 140000; r += step) {
+    let t = 0;
+    if (r < 92000) t = 0.1;
+    else if (r < 117580) t = 1.2 + 0.8 * Math.sin(r / 900);
+    else if (r < 122170) t = 0.12;
+    else if (r < 136800) t = 0.5 + 0.1 * Math.sin(r / 400);
+    else t = r > 139000 && r < 139600 ? 0.3 : 0;
     if (r > 133400 && r < 133700) t = 0;
     radiusKm.push(r);
-    const unknown = r > 100000 && r < 102000;
-    tau.push(unknown ? null : t);
-    alb.push(unknown ? null : [w * 1.05, w, w * 0.8, w * 0.85]);
+    tau.push(r > 100000 && r < 102000 ? null : t);
   }
-  return { normal, radiusKm, tau, albedoXYZS: alb, particlePhase: { kind: 'hg', g: -0.3 }, worstLabel: 'estimated' };
+  const n = radiusKm.length;
+  const reflectance: RingReflectance = {
+    kind: 'single-scattering-v1',
+    formula: 'TEST FIXTURE (see architecture §6 for the model)',
+    radiusStartKm: start,
+    radiusStepKm: step,
+    count: n,
+    normalTau: tau.map((t) => t ?? 0),
+    litModulation: radiusKm.map((r) => (r > 138000 ? null : 1 + 0.1 * Math.sin(r / 1300))),
+    unlitTau: tau.map((t) => (t === null ? 0 : Math.min(t, 1))),
+    unlitGain: radiusKm.map(() => 1.2),
+    phaseDeg: [0.25, 2, 6.3, 20, 47],
+    elevationEffDeg: [4.5, 15, 26],
+    minPhaseDeg: 0.25,
+    maxPhaseDeg: 47,
+    regions: [
+      { name: 'C-like', radiusKm: [78000, 83000], centerKm: 80500, powerLawExponent: 3.5, amplitudeXYZS: fixtureW(1.4, [1.02, 1, 0.9, 0.95]) },
+      { name: 'B-like', radiusKm: [100000, 107000], centerKm: 103500, powerLawExponent: 3.5, amplitudeXYZS: fixtureW(4.8, [1.0, 1, 0.82, 0.9]) },
+      { name: 'A-like', radiusKm: [127000, 129000], centerKm: 128000, powerLawExponent: 3.8, amplitudeXYZS: fixtureW(3.5, [1.0, 1, 0.85, 0.93]) },
+    ],
+  };
+  return { normal, opticalDepth: [{ radiusKm, normalTau: tau }], reflectance: withReflectance ? reflectance : null, worstLabel: 'estimated' };
+}
+
+/** Invented ϖP table [e][p][c]: falls with phase angle, rises slightly with elevation. TEST ONLY. */
+function fixtureW(amp: number, tint: [number, number, number, number]): number[][][] {
+  const phases = [0.25, 2, 6.3, 20, 47];
+  return [0.9, 1, 1.05].map((e) => phases.map((p) => tint.map((t) => amp * e * t * Math.pow((180 - p) / 180, 3.5) * (1 + 0.3 / (1 + p)))));
 }

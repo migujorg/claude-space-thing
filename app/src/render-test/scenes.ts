@@ -163,10 +163,13 @@ export function buildScene(p: URLSearchParams): TestScene {
       // Ring normal tilted toward the camera by `tilt` (lit side) or away from it (unlit side).
       const normal = norm(add(mul(up2, Math.cos(tilt)), mul(fwd, unlit ? Math.sin(tilt) : -Math.sin(tilt))));
       const e = deg(12);
-      const sunDir = norm(add(mul(normal, Math.sin(e)), mul(norm(add(mul(fwd, -1), mul(side, 0.8))), Math.cos(e))));
+      // Sun azimuth offset from the camera direction (default: phase angle ≈ 20–30°, inside the model's
+      // 0.25–47° domain; sunaz=0.8 puts part of the rings beyond 47°, where they are hatched).
+      const sunAz = Number(p.get('sunaz') ?? 0.3);
+      const sunDir = norm(add(mul(normal, Math.sin(e)), mul(norm(add(mul(fwd, -1), mul(side, sunAz))), Math.cos(e))));
       const toSun = mul(sunDir, 9.5 * AU_KM);
       const orient = rotationTaking([0, 0, 1], normal);
-      const body = planet(1, 'Ringed planet', pos, toSun, 60268, fixtureGreyAlbedo(0.34), { radii: [60268, 60268, 54364], orient, rings: fixtureRings(normal) });
+      const body = planet(1, 'Ringed planet', pos, toSun, 60268, fixtureGreyAlbedo(0.34), { radii: [60268, 60268, 54364], orient, rings: fixtureRings(normal, p.get('nomodel') !== '1') });
       return { title: `Rings from the ${unlit ? 'unlit' : 'lit'} face (fixture profiles)`, stars, snapshot: { et: 0, camera: cam(deg(Number(p.get('fovdeg') ?? 50))), sun: sunAt(add(pos, toSun)), bodies: [body], view, orbits: [] } };
     }
     case 'earthshine': {

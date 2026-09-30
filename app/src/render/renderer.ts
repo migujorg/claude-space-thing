@@ -991,11 +991,18 @@ export class Renderer {
     // Profiles: re-upload only when the set of ring systems changes.
     const key = rings.map((r) => r.profile);
     if (key.length !== this.ringProfKey.length || key.some((k, i) => k !== this.ringProfKey[i])) {
+      // Per ring system: cumulative profile (stride vec4 per bin edge), then the reflectance tables.
       const offsets: number[] = [];
       let total = 0;
-      for (const r of rings) { offsets.push(total); total += r.profile.cumulative.length / 4; }
+      for (const r of rings) {
+        offsets.push(total);
+        total += r.profile.cumulative.length / 4 + (r.profile.tables ? r.profile.tables.length / 4 : 0);
+      }
       const data = new Float32Array(Math.max(total * 4, 64));
-      rings.forEach((r, i) => data.set(r.profile.cumulative, offsets[i] * 4));
+      rings.forEach((r, i) => {
+        data.set(r.profile.cumulative, offsets[i] * 4);
+        if (r.profile.tables) data.set(r.profile.tables, offsets[i] * 4 + r.profile.cumulative.length);
+      });
       this.ringProfBuf?.destroy();
       this.ringProfBuf = d.createBuffer({ size: data.byteLength, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST, label: 'ring profiles' });
       d.queue.writeBuffer(this.ringProfBuf, 0, data);
@@ -1007,9 +1014,11 @@ export class Renderer {
     rings.forEach((r, i) => {
       const o = i * STRIDE;
       const p = r.profile;
+      const base = this.ringProfOffsets[i];
+      const tabBase = p.tables ? base + p.cumulative.length / 4 : -1;
       a.set([...r.n, r.D, ...r.e1, r.beta, ...r.e2, r.near ? 1 : 0, ...r.E1, 0, ...r.E2, 0, ...r.o, 0], o);
-      a.set([...r.normal, p.rMin, p.rMax, p.bins, this.ringProfOffsets[i], p.albedoKnown ? 1 : 0], o + 24);
-      a.set([...r.sunDir, r.sunDistKm, ...r.esun, r.phaseKind, r.phaseValue, r.sunRadiusKm, 0], o + 32);
+      a.set([...r.normal, p.rMin, p.rMax, p.bins, base, p.stride], o + 24);
+      a.set([...r.sunDir, r.sunDistKm, ...r.esun, tabBase, r.sunRadiusKm, 0, 0], o + 32);
       const M = r.M;
       a.set([M[0], M[1], M[2], 0, M[3], M[4], M[5], 0, M[6], M[7], M[8], 0], o + 44);
     });
