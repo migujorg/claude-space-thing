@@ -260,7 +260,7 @@ export class ShapeLibrary {
       how = `rotation of its own frame ${o.frame} (mission kernels ${(o.kernels ?? []).join(', ')})`;
     } else if (sb.id > 0 && sb.orient && /^IAU_/.test(o.frame)) {
       M = sb.orient;
-      how = 'the body\'s IAU rotation (pck00011)';
+      how = 'body\'s IAU rotation (pck00011)';
     } else if (isPckConstants(o.appRotation)) {
       M = bodyToIcrfFromConstants(o.appRotation, et);
       how = `pck00011 rotation of ${o.frame}`;
