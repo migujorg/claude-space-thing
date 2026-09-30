@@ -2,13 +2,13 @@
 
 - **Source:** JPL Horizons API vector tables, https://ssd.jpl.nasa.gov/api/horizons.api (`COMMAND='799'`, `CENTER='500@7'`, `EPHEM_TYPE=VECTORS`, `REF_SYSTEM=ICRF`, `REF_PLANE=FRAME`, `TIME_TYPE=TDB`, `OUT_UNITS=KM-S`, `VEC_CORR=NONE`, `CSV_FORMAT=YES`). The exact query URL and the sha256 of the response are in `sources.json` and `data/raw/_downloads.json`. They change whenever the build window moves.
 - **Underlying data:** the JPL satellite ephemeris that Horizons names in its output header, `ura184_merged` (JPL Solar System Dynamics Group, https://ssd.jpl.nasa.gov/sats/ephem/).
-- **Used by:** the `ephemeris` stage, for the `799 wrt 7` segment of `app/public/data/ephem/centers.json` and `.bin`. The app chains it to the SSB through barycenter 7 in `ephem/de440s`.
+- **Used by:** the `ephemeris` stage, for the `799 wrt 7` segment of `app/public/data/ephem/centers.json` and `.bin`. The app chains it to the SSB through barycenter 7 in `ephem/de442s`.
 - **Label:** `derived`, because it is a fit to measured-ephemeris samples.
 - **Citation:** Giorgini, J. D., et al. (1996). JPL's On-Line Solar System Data Service. *BAAS* 28(3), 1158, plus the satellite ephemeris above.
 
 ## Why this source
 
-DE440s has no planet centers relative to their system barycenters. The offset for Uranus is up to 45 km (Titania, Oberon) over the window.
+The planetary ephemeris (DE442s) has no planet centers relative to their system barycenters. The offset for Uranus is up to 45 km (Titania, Oberon) over the window.
 
 The NAIF satellite SPKs that hold these offsets are too big for the 500 MB download budget: jup365 is 1.1 GB, sat441 0.6 GB, ura184 about 4 GB, nep098 about 4 GB, and plu060 0.13 GB. Horizons evaluates exactly these ephemerides and names them in each response, so one uniform method is used for all six systems. The one exception is Mars, where `mar099s.bsp` (64 MB) would also have fit.
 
@@ -27,4 +27,4 @@ The NAIF satellite SPKs that hold these offsets are too big for the 500 MB downl
 
 Each build records its own numbers in the segment's `uncertainty` field, and `pipeline/tests/test_ephem.py` re-checks them against the raw files. These residuals exclude the error of `ura184_merged` itself.
 
-ura184 was built on DE442, not DE440. Horizons' Uranus-wrt-SSB therefore differs from ours by about 1300 km. The whole system moves together; see naif-de440s.md. The offset itself does not depend on the planetary ephemeris.
+ura184 was built on DE442, the same planetary ephemeris we use, so Horizons' Uranus-wrt-SSB agrees with our chain (DE442 barycenter + this offset) to within 7.2e-7 km with no correction (see naif-de442s.md).

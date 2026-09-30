@@ -82,6 +82,12 @@ export interface EphemSegment {
   n: number;
   /** Offset into the .bin Float64Array, in doubles. */
   offset: number;
+  /**
+   * Coverage declared by the source segment, TDB s past J2000; may be narrower than the records' span
+   * [initEt, initEt + n·intLen]. Absent → the records' span. Never evaluate outside it.
+   */
+  startEt?: number;
+  endEt?: number;
   sources: string[];
   /** Provenance of the positions this segment produces (absent → treat as the worst of its sources, i.e. unknown). */
   label?: Label;
@@ -90,7 +96,7 @@ export interface EphemSegment {
 }
 
 export interface EphemHeader {
-  /** Path of the binary relative to the data root (app/public/data), e.g. "ephem/de440s.bin". */
+  /** Path of the binary relative to the data root (app/public/data), e.g. "ephem/de442s.bin". */
   bin: string;
   segments: EphemSegment[];
   notes?: string;

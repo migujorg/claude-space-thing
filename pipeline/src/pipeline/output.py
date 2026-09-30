@@ -43,6 +43,9 @@ def write_manifest(ctx: BuildContext) -> None:
         products = json.loads(mpath.read_text()).get("products", {})
     if spath.exists():
         sources = {s["id"]: s for s in json.loads(spath.read_text())}
+    # A stage that ran in this build replaces all of its previous products (no stale entries after a rename).
+    ran = {p["stage"] for p in ctx.products.values()}
+    products = {k: v for k, v in products.items() if v.get("stage") not in ran}
     products.update(ctx.products)
     sources.update({k: v.to_json() for k, v in ctx.sources.items()})
     manifest = {

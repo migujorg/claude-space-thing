@@ -18,11 +18,12 @@ from .schema import BuildContext, SourceRecord
 
 NAIF = "https://naif.jpl.nasa.gov/pub/naif/generic_kernels"
 LSK_URL = f"{NAIF}/lsk/naif0012.tls"
-# Planetary ephemeris (NAIF spk/planets/<PLANETARY>.bsp); also the product name ephem/<PLANETARY>. DE442 exists and
-# differs from DE440 by up to ~1400 km for Uranus (docs/sources/naif-de440s.md); switching means changing this name
-# and the SourceRecord text in planetary(), then rerunning the build and pipeline.ephem_fixtures.
-PLANETARY = "de440s"
+# Planetary ephemeris (NAIF spk/planets/<PLANETARY>.bsp); also the product name ephem/<PLANETARY>. DE442 is JPL's
+# newest general-purpose ephemeris (docs/sources/naif-de442s.md). Changing it means updating the SourceRecord text in
+# planetary() and rerunning the build and pipeline.ephem_fixtures.
+PLANETARY = "de442s"
 PLANETARY_URL = f"{NAIF}/spk/planets/{PLANETARY}.bsp"
+DE442_TECH_COMMENTS_URL = f"{NAIF}/spk/planets/de442_tech-comments.txt"
 PCK_URL = f"{NAIF}/pck/pck00011.tpc"
 GM_URL = f"{NAIF}/pck/gm_de440.tpc"
 
@@ -64,17 +65,25 @@ def planetary(ctx: BuildContext | None = None) -> Path:
         r = _rec(path)
         ctx.add_source(SourceRecord(
             id=SRC_PLANETARY,
-            title="JPL planetary and lunar ephemeris DE440 (short-span SPK de440s.bsp)",
-            citation="Park, R. S., Folkner, W. M., Williams, J. G., Boggs, D. H. (2021). The JPL Planetary and Lunar "
-                     "Ephemerides DE440 and DE441. The Astronomical Journal 161(3), 105. DOI:10.3847/1538-3881/abd414. "
-                     "SPK file de440s.bsp distributed by NAIF. " + _NAIF_CITE,
-            url=PLANETARY_URL, retrieved=r["retrieved"], sha256=r["sha256"], version="DE440 (de440s.bsp, 1849-2150)",
+            title="JPL planetary and lunar ephemeris DE442 (short-span SPK de442s.bsp)",
+            citation="JPL planetary and lunar ephemeris DE442 (integrated 13 May 2024): an update of DE440 adding "
+                     "Uranus occultation data and four more years of Mars-orbiter and Juno ranging. JPL, "
+                     f"de442_tech-comments.txt, {DE442_TECH_COMMENTS_URL}. Based on and documented by Park, R. S., "
+                     "Folkner, W. M., Williams, J. G., Boggs, D. H. (2021). The JPL Planetary and Lunar Ephemerides "
+                     "DE440 and DE441. The Astronomical Journal 161(3), 105. DOI:10.3847/1538-3881/abd414. "
+                     "SPK file de442s.bsp distributed by NAIF (2025-02-06). " + _NAIF_CITE,
+            url=PLANETARY_URL, retrieved=r["retrieved"], sha256=r["sha256"], version="DE442 (de442s.bsp, 1849-2150)",
             license=_LICENSE,
             notes="Contains barycenters 1-9 and the Sun (10) wrt the SSB, Mercury 199 wrt 1, Venus 299 wrt 2, "
                   "Moon 301 and Earth 399 wrt the Earth-Moon barycenter 3. Planet centers 499-999 wrt their "
                   "system barycenters are NOT in this file (see jpl-horizons-center-*).",
         ))
     return path
+
+
+def naif_planets(name: str) -> Path:
+    """Any NAIF spk/planets kernel, e.g. 'de440s', for verification only (no SourceRecord: not a product input)."""
+    return fetch(f"{NAIF}/spk/planets/{name}.bsp", "naif/spk")
 
 
 def pck(ctx: BuildContext | None = None) -> Path:

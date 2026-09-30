@@ -1,6 +1,6 @@
 """Ephemeris products vs their raw data. Requires `python -m pipeline build --only ephemeris`.
 
-- de440s: every extracted segment reproduces SPICE spkgeo on the original kernel to < 1 mm, bit-identically.
+- planetary (de442s): every extracted segment is bit-identical to the kernel and reproduces SPICE spkgeo to < 1 mm.
 - centers: the fitted records reproduce every raw Horizons state (fitted and hold-out epochs) to < 1 km
   (the contract), with the actual maxima printed.
 """
@@ -48,6 +48,7 @@ def test_all_segments_extracted_bit_identical(kernel, window):
     for k, s in ours.items():
         ref = restrict(theirs[k], *window)
         assert (s.init, s.intlen, s.rsize, s.n) == (ref.init, ref.intlen, ref.rsize, ref.n)
+        assert (s.start, s.end) == (ref.start, ref.end)  # declared coverage carried through
         assert np.array_equal(s.records, ref.records), k
         assert s.start <= window[0] and s.end >= window[1], f"{k} does not cover the window + margin"
         assert s.label == "measured" and s.sources == [SRC_PLANETARY]

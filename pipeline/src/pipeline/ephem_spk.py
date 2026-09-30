@@ -37,6 +37,9 @@ class Segment:
     label: str | None = None
     method: str | None = None
     uncertainty: str | None = None
+    # Coverage declared in the SPK segment summary. It can be narrower than the records' span (de442s: the single
+    # Mercury/Venus record spans 1549-2650, the segments declare 1849-2150); SPICE refuses epochs outside it.
+    declared: tuple[float, float] | None = None
 
     @property
     def n(self) -> int:
@@ -44,11 +47,12 @@ class Segment:
 
     @property
     def start(self) -> float:
-        return self.init
+        return max(self.init, self.declared[0]) if self.declared else self.init
 
     @property
     def end(self) -> float:
-        return self.init + self.n * self.intlen
+        rec_end = self.init + self.n * self.intlen
+        return min(rec_end, self.declared[1]) if self.declared else rec_end
 
     @property
     def ncoef(self) -> int:
@@ -70,7 +74,8 @@ def read_spk(path: Path) -> list[Segment]:
             init, intlen, rsize, n = sp.dafgda(handle, end - 3, end)
             rsize, n = int(rsize), int(n)
             data = np.asarray(sp.dafgda(handle, begin, begin + rsize * n - 1), dtype=np.float64)
-            out.append(Segment(target, center, frame, typ, float(init), float(intlen), rsize, data.reshape(n, rsize)))
+            out.append(Segment(target, center, frame, typ, float(init), float(intlen), rsize, data.reshape(n, rsize),
+                               declared=(float(dc[0]), float(dc[1]))))
     finally:
         sp.dafcls(handle)
     return out
@@ -84,7 +89,8 @@ def restrict(seg: Segment, t0: float, t1: float) -> Segment:
         raise ValueError(f"segment {seg.target} wrt {seg.center} does not cover [{t0}, {t1}]")
     init = seg.init + i0 * seg.intlen
     return Segment(seg.target, seg.center, seg.frame, seg.type, init, seg.intlen, seg.rsize,
-                   seg.records[i0:i1 + 1].copy(), list(seg.sources), seg.label, seg.method, seg.uncertainty)
+                   seg.records[i0:i1 + 1].copy(), list(seg.sources), seg.label, seg.method, seg.uncertainty,
+                   seg.declared)
 
 
 def _clenshaw(c: np.ndarray, s: np.ndarray, deriv: bool) -> tuple[np.ndarray, np.ndarray | None]:
@@ -163,7 +169,7 @@ def write_product(ctx: BuildContext, name: str, segments: list[Segment], stage: 
         d = {
             "target": s.target, "center": s.center, "frame": "J2000", "type": s.type,
             "initEt": s.init, "intLen": s.intlen, "rsize": s.rsize, "n": s.n, "offset": offset,
-            "sources": list(s.sources),
+            "startEt": s.start, "endEt": s.end, "sources": list(s.sources),
         }
         for k in ("label", "method", "uncertainty"):
             if getattr(s, k) is not None:
@@ -188,5 +194,6 @@ def load_product(header_path: Path) -> list[Segment]:
     for d in header["segments"]:
         recs = data[d["offset"]: d["offset"] + d["n"] * d["rsize"]].reshape(d["n"], d["rsize"])
         out.append(Segment(d["target"], d["center"], J2000_FRAME_CODE, d["type"], d["initEt"], d["intLen"], d["rsize"],
-                           recs, d["sources"], d.get("label"), d.get("method"), d.get("uncertainty")))
+                           recs, d["sources"], d.get("label"), d.get("method"), d.get("uncertainty"),
+                           (d["startEt"], d["endEt"]) if "startEt" in d else None))
     return out

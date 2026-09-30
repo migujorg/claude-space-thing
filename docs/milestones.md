@@ -6,7 +6,7 @@ Each milestone is a **vertical slice**: data pipeline → provenance → renderi
 
 Fly anywhere among the Sun, planets, Pluto and the Moon at their real positions for now ± ~18 months, under physically correct sunlight, seen through a first human-eye model, against the real naked-eye star field. Click anything to see where every number came from.
 
-- Pipeline: NAIF LSK (time), DE440s (positions), PCK (radii, rotation), GM; CIE observers; measured solar spectrum; planet albedo spectra and phase curves; bright-star catalog.
+- Pipeline: NAIF LSK (time), DE442s (positions), PCK (radii, rotation), GM; CIE observers; measured solar spectrum; planet albedo spectra and phase curves; bright-star catalog.
 - App: f64 ephemeris + light-time, reversed-Z HDR renderer in absolute photometric units (XYZ + scotopic), Sun disk with measured limb darkening, lit ellipsoids, star splats, eye model v0 (adaptation, glare, visibility threshold, mesopic), sRGB output.
 - UI: fly/orbit camera, go-to, time controls, inspector with provenance, reality dials + badge.
 - Verification: ephemeris vs. independent JPL Horizons vectors; screenshot tests.

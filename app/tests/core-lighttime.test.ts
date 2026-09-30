@@ -5,8 +5,17 @@ import type { Vec3 } from '../src/core/vec';
 import { distance, norm } from '../src/core/vec';
 import { MaxTracker, fixture, loadEphemerisSet } from './core-data';
 
+// Planetary product name, from the SPICE fixture's kernel file (e.g. de442s.bsp -> de442s).
+const planetary = fixture<{ kernel: { file: string } }>('core_spice_spk.json').kernel.file.replace(/\.bsp$/, '');
+
 interface HorizonsFile {
-  bodies: { target: number; center: string; epochs: { jdTdb: number; et: number; pos: number[] }[] }[];
+  ourPlanetary: string;
+  bodies: {
+    target: number;
+    center: string;
+    horizonsPlanetary: string;
+    epochs: { jdTdb: number; et: number; pos: number[]; toOurs: number[] }[];
+  }[];
 }
 
 const set = loadEphemerisSet();
@@ -16,6 +25,7 @@ describe.skipIf(!set)('apparentPosition vs JPL Horizons astrometric (VEC_CORR=LT
     const hz = fixture<HorizonsFile>('horizons_astrometric.json');
     const max = new MaxTracker();
     let n = 0;
+    expect(hz.ourPlanetary, 'fixtures were made for another planetary kernel: regenerate them').toBe(planetary);
     for (const b of hz.bodies) {
       expect(b.center).toBe('500@399');
       for (const e of b.epochs) {
@@ -23,10 +33,13 @@ describe.skipIf(!set)('apparentPosition vs JPL Horizons astrometric (VEC_CORR=LT
         expect(obs, `JD ${e.jdTdb} not covered: regenerate fixtures`).not.toBeNull();
         const ap = apparentPosition(set!, b.target, obs!, e.et)!;
         expect(ap).not.toBeNull();
-        const h = e.pos as Vec3;
+        // Re-based onto our planetary kernel (see core-ephemeris.test.ts and the fixture's `rebase` note).
+        const h: Vec3 = [e.pos[0] + e.toOurs[0], e.pos[1] + e.toOurs[1], e.pos[2] + e.toOurs[2]];
         const dp = distance(ap.rel, h);
+        const raw = distance(ap.rel, e.pos as Vec3);
         const dlt = Math.abs(ap.lightTime - norm(h) / C_KM_S);
-        max.add(`${b.target} position km`, dp, `JD ${e.jdTdb}`);
+        max.add(`${b.target} (Horizons on ${b.horizonsPlanetary}) position km`, dp, `JD ${e.jdTdb}`);
+        max.add(`${b.target} raw (not re-based) position km`, raw, `JD ${e.jdTdb}`);
         max.add(`${b.target} light time s`, dlt, `JD ${e.jdTdb}`);
         expect(dp, `${b.target} JD ${e.jdTdb}`).toBeLessThan(5);
         expect(ap.emitEt).toBe(e.et - ap.lightTime);

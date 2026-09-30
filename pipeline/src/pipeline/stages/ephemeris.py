@@ -1,10 +1,10 @@
-"""`ephemeris` stage -> app/public/data/ephem/{de440s,centers}.{json,bin} (schema EphemHeader).
+"""`ephemeris` stage -> app/public/data/ephem/{<PLANETARY>,centers}.{json,bin} (schema EphemHeader).
 
-de440s: every segment of NAIF's de440s.bsp, restricted to the records overlapping the manifest window
+<PLANETARY> (de442s): every segment of NAIF's de442s.bsp, restricted to the records overlapping the manifest window
 widened by MARGIN_S on both sides (room for light-time: no observer in the solar system sees anything more
 than a few hours in the past). Records are copied bit-for-bit (label `measured`).
 
-centers: DE440s has no planet centers relative to their system barycenters (499 wrt 4 ... 999 wrt 9). Those
+centers: DE442s has no planet centers relative to their system barycenters (499 wrt 4 ... 999 wrt 9). Those
 offsets come from the JPL satellite ephemerides (tens of cm for Mars, ~100 km for Jupiter and Saturn,
 ~2000 km for Pluto). We sample them from JPL Horizons (geometric ICRF states, TDB) every STEP_MIN minutes and
 fit SPK type 2 records, one per day (label `derived`). A second, independent Horizons query on a different
@@ -22,6 +22,7 @@ from .. import ephem_horizons as hz
 from ..download import record
 from ..ephem_kernels import PLANETARY, SRC_PLANETARY, planetary
 from ..ephem_spk import Segment, evaluate, fit_type2, read_spk, restrict, write_product, J2000_FRAME_CODE
+from ..paths import OUT
 from ..schema import BuildContext, SourceRecord
 
 DEPENDS: tuple[str, ...] = ()
@@ -66,9 +67,15 @@ def run(ctx: BuildContext) -> None:
 
     centers = [_center(ctx, tgt, ctr, name, t0, t1) for tgt, ctr, name in CENTERS]
     write_product(ctx, "centers", centers, "ephemeris", notes=(
-        "Planet centers wrt their system barycenters (not in DE440s), fitted to JPL Horizons geometric state "
-        f"vectors: SPK type 2, degree {DEGREE}, {RECORD_S / DAY:g}-day records, samples every {STEP_MIN} min. "
-        f"Chain each to the SSB through the barycenter segments of ephem/{PLANETARY}."))
+        "Planet centers wrt their system barycenters (not in the planetary ephemeris), fitted to JPL Horizons "
+        f"geometric state vectors: SPK type 2, degree {DEGREE}, {RECORD_S / DAY:g}-day records, samples every "
+        f"{STEP_MIN} min. Chain each to the SSB through the barycenter segments of ephem/{PLANETARY}."))
+
+    # ephem/ belongs to this stage: drop products it no longer writes (e.g. after changing PLANETARY).
+    for f in (OUT / "ephem").iterdir():
+        if f"ephem/{f.name}" not in ctx.products:
+            f.unlink()
+            print(f"[ephemeris] removed stale {f.name}")
 
 
 def _center(ctx: BuildContext, tgt: int, ctr: int, name: str, t0: float, t1: float) -> Segment:

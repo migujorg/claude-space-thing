@@ -54,7 +54,10 @@ export class Ephemeris {
       }
       const s: LoadedSegment = {
         meta: m, target: m.target, center: m.center, type: m.type, initEt: m.initEt, intLen: m.intLen,
-        rsize: m.rsize, n: m.n, offset: m.offset, ncoef, startEt: m.initEt, endEt: m.initEt + m.n * m.intLen, data,
+        rsize: m.rsize, n: m.n, offset: m.offset, ncoef, data,
+        // Declared coverage (may be narrower than the records' span, as in SPICE), intersected with the records.
+        startEt: Math.max(m.initEt, m.startEt ?? -Infinity),
+        endEt: Math.min(m.initEt + m.n * m.intLen, m.endEt ?? Infinity),
       };
       this.all.push(s);
       let list = this.byTarget.get(s.target);

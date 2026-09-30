@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { EphemHeader } from '../src/data/schema';
 import { Ephemeris, EphemerisSet } from '../src/core/ephemeris';
+import type { Vec3 } from '../src/core/vec';
 import { distance, norm, sub } from '../src/core/vec';
 import { MaxTracker, fixture, loadEphemeris, loadEphemerisSet } from './core-data';
 
@@ -9,11 +10,17 @@ interface SpiceSpk {
   segments: { target: number; center: number; cases: { et: number; pos: number[]; vel: number[] }[] }[];
 }
 interface HorizonsFile {
-  bodies: { target: number; queryUrl: string; epochs: { jdTdb: number; et: number; pos: number[]; vel: number[] }[] }[];
+  ourPlanetary: string;
+  bodies: {
+    target: number;
+    queryUrl: string;
+    horizonsPlanetary: string;
+    epochs: { jdTdb: number; et: number; pos: number[]; vel: number[]; toOurs: number[] }[];
+  }[];
 }
 
 const spk = fixture<SpiceSpk>('core_spice_spk.json');
-// The planetary product is named after the kernel it was extracted from (e.g. de440s.bsp -> ephem/de440s).
+// The planetary product is named after the kernel it was extracted from (e.g. de442s.bsp -> ephem/de442s).
 const planetary = spk.kernel.file.replace(/\.bsp$/, '');
 const de = loadEphemeris(`ephem/${planetary}`);
 const set = loadEphemerisSet();
@@ -41,13 +48,11 @@ describe.skipIf(!de)(`Ephemeris (TS Chebyshev) vs SPICE spkgeo on the original $
   });
 });
 
-// Horizons computes Uranus (799) and Neptune (899) wrt the SSB through its satellite ephemerides ura184/nep098,
-// which embed the DE442 Uranus/Neptune barycenters, while its own barycenters 7 and 8 wrt the SSB are
-// DE440-equivalent (they match ours to < 1 m, checked below). DE442 moved Uranus by ~1370 km and Neptune by
-// ~380 km relative to DE440 over this window (docs/sources/naif-de440s.md), so for those two bodies this
-// comparison measures DE440 vs DE442, not our code. Their center offsets (799 wrt 7, 899 wrt 8) are verified
-// against independent Horizons hold-out epochs in pipeline/tests/test_ephem.py.
-const DE440_VS_DE442_BOUND_KM: Record<number, number> = { 799: 1500, 899: 500 };
+// Horizons builds each answer on the planetary ephemeris of the satellite ephemeris it uses for that system: DE440
+// (plain barycenter queries, Sun, inner planets, Mars, Jupiter, Saturn, Pluto) or DE442 (Uranus 799, Neptune 899).
+// Each fixture epoch carries `toOurs`: SPICE's (our kernel − Horizons' kernel) for the planetary part of the chain
+// (0 where Horizons already used our kernel). Horizons + toOurs is then the same answer on our planetary ephemeris,
+// and every body must match it to within TOL_KM. The raw (un-rebased) error is reported alongside.
 const TOL_KM = 5;
 
 describe.skipIf(!set)('EphemerisSet vs JPL Horizons geometric SSB states (independent)', () => {
@@ -56,17 +61,21 @@ describe.skipIf(!set)('EphemerisSet vs JPL Horizons geometric SSB states (indepe
   it('matches every body center and barycenter at every fixture epoch within a few km', () => {
     const max = new MaxTracker();
     let n = 0;
+    expect(hz.ourPlanetary, 'fixtures were made for another planetary kernel: regenerate them').toBe(planetary);
     for (const b of hz.bodies) {
-      const tol = DE440_VS_DE442_BOUND_KM[b.target] ?? TOL_KM;
       for (const e of b.epochs) {
         const st = set!.stateSSB(b.target, e.et);
         expect(st, `${b.target} at JD ${e.jdTdb} not covered: regenerate fixtures`).not.toBeNull();
-        const dp = distance(st!.pos, e.pos as [number, number, number]);
-        const dv = distance(st!.vel, e.vel as [number, number, number]);
-        max.add(`${b.target} position km`, dp, `JD ${e.jdTdb}`);
-        max.add(`${b.target} velocity km/s`, dv, `JD ${e.jdTdb}`);
-        expect(dp, `${b.target} JD ${e.jdTdb}`).toBeLessThan(tol);
-        expect(dv, `${b.target} JD ${e.jdTdb}`).toBeLessThan(tol === TOL_KM ? 1e-5 : 1e-3);
+        const expected: Vec3 = [e.pos[0] + e.toOurs[0], e.pos[1] + e.toOurs[1], e.pos[2] + e.toOurs[2]];
+        const dp = distance(st!.pos, expected);
+        const raw = distance(st!.pos, e.pos as Vec3);
+        const dv = distance(st!.vel, e.vel as Vec3);
+        const tag = `${b.target} (Horizons on ${b.horizonsPlanetary})`;
+        max.add(`${tag} position km`, dp, `JD ${e.jdTdb}`);
+        max.add(`${tag} raw (not re-based) position km`, raw, `JD ${e.jdTdb}`);
+        max.add(`${tag} velocity km/s`, dv, `JD ${e.jdTdb}`);
+        expect(dp, `${b.target} JD ${e.jdTdb}`).toBeLessThan(TOL_KM);
+        expect(dv, `${b.target} JD ${e.jdTdb}`).toBeLessThan(1e-5);
         // positionSSB must agree with stateSSB exactly.
         expect(distance(set!.positionSSB(b.target, e.et)!, st!.pos)).toBeLessThan(1e-9);
         n++;
@@ -83,7 +92,7 @@ describe.skipIf(!set)('EphemerisSet vs JPL Horizons geometric SSB states (indepe
     expect(off).toBeLessThan(2500);
   });
 
-  it('reports provenance: measured for DE440s chains, derived when a fitted center is involved', () => {
+  it('reports provenance: measured for planetary-ephemeris chains, derived when a fitted center is involved', () => {
     const et = hz.bodies[0].epochs[0].et;
     expect(set!.provenance(399, et)!.label).toBe('measured');
     const p = set!.provenance(599, et)!;
@@ -142,5 +151,16 @@ describe('EphemerisSet mechanics (synthetic)', () => {
     expect(s.positionSSB(599, 250)).toEqual([1500, 0, 0]);
     expect(s.positionSSB(599, 1000.001)).toBeNull();
     expect(s.positionSSB(599, 1000)).toEqual([3000, 0, 0]);
+  });
+
+  it('honours a declared coverage narrower than the records (as SPICE does)', () => {
+    const e = linearEphemeris(5, 0, 1000, 2, 0, 100, 10);
+    const header: EphemHeader = { ...e.header, segments: [{ ...e.header.segments[0], startEt: 150, endEt: 800 }] };
+    const n = new Ephemeris(header, new Float64Array(e.header.segments[0].n * e.header.segments[0].rsize).map((_, i) => i));
+    expect(n.covers(5, 149)).toBe(false);
+    expect(n.covers(5, 150)).toBe(true);
+    expect(n.covers(5, 800)).toBe(true);
+    expect(n.covers(5, 801)).toBe(false);
+    expect(n.window).toEqual({ startEt: 150, endEt: 800 });
   });
 });
