@@ -1,0 +1,28 @@
+# jpl-horizons-center-999: Pluto center (999) relative to the Pluto system barycenter (9)
+
+- **Source:** JPL Horizons API vector tables, https://ssd.jpl.nasa.gov/api/horizons.api (`COMMAND='999'`, `CENTER='500@9'`, `EPHEM_TYPE=VECTORS`, `REF_SYSTEM=ICRF`, `REF_PLANE=FRAME`, `TIME_TYPE=TDB`, `OUT_UNITS=KM-S`, `VEC_CORR=NONE`, `CSV_FORMAT=YES`). The exact query URL and the sha256 of the response are in `sources.json` and `data/raw/_downloads.json`. They change whenever the build window moves.
+- **Underlying data:** the JPL satellite ephemeris that Horizons names in its output header, `plu060_merged` (JPL Solar System Dynamics Group, https://ssd.jpl.nasa.gov/sats/ephem/).
+- **Used by:** the `ephemeris` stage, for the `999 wrt 9` segment of `app/public/data/ephem/centers.json` and `.bin`. The app chains it to the SSB through barycenter 9 in `ephem/de440s`.
+- **Label:** `derived`, because it is a fit to measured-ephemeris samples.
+- **Citation:** Giorgini, J. D., et al. (1996). JPL's On-Line Solar System Data Service. *BAAS* 28(3), 1158, plus the satellite ephemeris above.
+
+## Why this source
+
+DE440s has no planet centers relative to their system barycenters. The offset for Pluto is up to 2132 km (Charon) over the window.
+
+The NAIF satellite SPKs that hold these offsets are too big for the 500 MB download budget: jup365 is 1.1 GB, sat441 0.6 GB, ura184 about 4 GB, nep098 about 4 GB, and plu060 0.13 GB. Horizons evaluates exactly these ephemerides and names them in each response, so one uniform method is used for all six systems. The one exception is Mars, where `mar099s.bsp` (64 MB) would also have fit.
+
+## Method
+
+- **Sampling:** Horizons geometric states are sampled every 60 min, over the manifest window ± 2 days, snapped outward to 32-day multiples so that rebuilds within about a month reuse the download.
+- **Fit:** SPK type 2 records of 1 day, degree 11, fitted by least squares to the 25 samples each record spans. Records start at 0h TDB, where the satellite ephemerides have their own record boundaries. Straddling those boundaries made fits up to 100× worse (3 m versus 0.2 mm for Uranus).
+- **Hold-out check:** a second, independent Horizons query every 437 min, offset by 13 min, is used only for checking. The build fails if either residual reaches 1 km.
+
+## Result (build of 2026-09-30)
+
+| Check | Value |
+|---|---|
+| Max residual, 26,881 fitted epochs | 9.5e-12 km |
+| Max residual, 3,691 hold-out epochs | 7.3e-12 km |
+
+Each build records its own numbers in the segment's `uncertainty` field, and `pipeline/tests/test_ephem.py` re-checks them against the raw files. These residuals exclude the error of `plu060_merged` itself.
