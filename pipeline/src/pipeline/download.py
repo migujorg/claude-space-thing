@@ -6,9 +6,11 @@ date are recorded in data/raw/_downloads.json so SourceRecords can cite exactly 
 
 from __future__ import annotations
 
+import contextlib
 import datetime as _dt
 import hashlib
 import json
+import os
 import threading
 import time
 from pathlib import Path
@@ -30,9 +32,28 @@ def _load_ledger() -> dict:
 
 def _save_ledger(ledger: dict) -> None:
     # write-then-rename, so a concurrent reader never sees a half-written ledger
-    tmp = _LEDGER.with_suffix(f".{threading.get_ident()}.tmp")
+    tmp = _LEDGER.with_suffix(f".{os.getpid()}.{threading.get_ident()}.tmp")
     tmp.write_text(json.dumps(ledger, indent=2, sort_keys=True))
     tmp.replace(_LEDGER)
+
+
+@contextlib.contextmanager
+def _ledger_locked():
+    """Exclusive access to the ledger across threads and processes (stages may run concurrently)."""
+    with _LEDGER_LOCK, (RAW / "_downloads.lock").open("a+") as f:
+        try:
+            import fcntl
+            fcntl.flock(f, fcntl.LOCK_EX)
+        except ImportError:  # Windows
+            import msvcrt
+            f.seek(0)
+            while True:
+                try:
+                    msvcrt.locking(f.fileno(), msvcrt.LK_LOCK, 1)
+                    break
+                except OSError:
+                    time.sleep(0.05)
+        yield
 
 
 def sha256_file(path: Path) -> str:
@@ -65,7 +86,7 @@ def fetch(url: str, subdir: str, name: str | None = None, *, params: dict | None
             and (validate is None or validate(dest))):
         return dest
     dest.parent.mkdir(parents=True, exist_ok=True)
-    tmp = dest.with_suffix(dest.suffix + f".{threading.get_ident()}.part")
+    tmp = dest.with_suffix(dest.suffix + f".{os.getpid()}.{threading.get_ident()}.part")
     hdrs = dict(headers or {})
     if rng:
         hdrs["Range"] = rng
@@ -105,7 +126,8 @@ def fetch(url: str, subdir: str, name: str | None = None, *, params: dict | None
         "bytes": dest.stat().st_size,
         **extra,
     }
-    with _LEDGER_LOCK:
+    # Re-read under the lock: other threads/processes may have recorded downloads during the transfer.
+    with _ledger_locked():
         ledger = _load_ledger()
         ledger[key] = entry
         _save_ledger(ledger)

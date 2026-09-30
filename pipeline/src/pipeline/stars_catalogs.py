@@ -181,6 +181,89 @@ def load_pulkovo() -> Pulkovo:
                    sptype=sptype, combined=combined, wl=wls, flux=flux, paths=[readme, ps, pt])
 
 
+# --------------------------------------------------------- Sternberg spectrophotometry (III/208 + III/207)
+
+@dataclass
+class Sternberg:
+    hr: np.ndarray          # HR as written ("0361/2" for a combined entry)
+    combined: np.ndarray
+    hd: np.ndarray
+    name: np.ndarray
+    vmag: np.ndarray        # V as listed by III/208
+    wl: np.ndarray          # nm, 322.5-1082.5 in 5 nm steps (air, ground-based)
+    flux: np.ndarray        # (n, len(wl)) W m^-2 nm^-1, spliced; NaN where absent
+    blue: np.ndarray        # (n, 89) III/208 fluxes 322.5-762.5 nm, NaN = zero/absent
+    red: np.ndarray         # (n, 98) III/207 fluxes 597.5-1082.5 nm (NaN if the star is not in III/207)
+    overlap_ratio: np.ndarray   # median III/207 / III/208 in the overlap (NaN without III/207)
+    overlap_rms: np.ndarray     # rms of that ratio about its median
+    paths: list[Path]
+
+
+def _sternberg_table(cat: str, n_e: int) -> tuple[list[str], np.ndarray, Path]:
+    """catalog.dat of III/208 or III/207: fixed-width lines and the E columns (bytes 89.., 8 characters each,
+    erg cm^-2 s^-1 cm^-1 -> x 1e-10 W m^-2 nm^-1; zero flux written with exponent E-12 / as 0.E+00 = absent)."""
+    p = fetch(CDS + f"{cat}/catalog.dat.gz", f"{SUB}/sternberg", f"{cat.replace('/', '_')}_catalog.dat.gz")
+    L = [ln for ln in _read_lines(p) if ln.strip()]
+    return L, parse_sternberg_fluxes(L, n_e), p
+
+
+def parse_sternberg_fluxes(L: list[str], n_e: int) -> np.ndarray:
+    e = np.full((len(L), n_e), np.nan)
+    for i, ln in enumerate(L):
+        for j in range(n_e):
+            s = ln[88 + 8 * j:96 + 8 * j].strip()
+            if s:
+                v = float(s)
+                if v > 1e-9:        # "zero flux is expressed as E-12" (III/208), 0.E+00 (III/207)
+                    e[i, j] = v * 1e-10
+    return e
+
+
+def load_sternberg() -> Sternberg:
+    """III/208 (866 stars, 322.5-762.5 nm) joined with III/207 (223 stars, 597.5-1082.5 nm) by HR number.
+
+    Byte positions (both ReadMe files): HR 7-12, HD 13-20, Name 22-30, Vmag 50-53, E 89- (8 chars per value, 50 A
+    steps). Where a star is in both, the spectrum is III/208 below 597.5 nm, the mean of both in the overlap and
+    III/207 above it; the overlap ratio is kept so the caller can refuse inconsistent pairs.
+    """
+    paths = [fetch(CDS + f"{c}/ReadMe", f"{SUB}/sternberg", f"{c.replace('/', '_')}_ReadMe") for c in ("III/208", "III/207")]
+    Lb, eb, pb = _sternberg_table("III/208", 89)
+    Lr, er, pr = _sternberg_table("III/207", 98)
+    paths += [pb, pr]
+    wb = 322.5 + 5.0 * np.arange(89)
+    wr = 597.5 + 5.0 * np.arange(98)
+    wl = 322.5 + 5.0 * np.arange(153)             # 322.5 .. 1082.5
+    hr_b = _col(Lb, 7, 12, "s")      # "0361/2" = combined light of HR 361 and 362
+    hr_r = _col(Lr, 7, 12, "s")
+    rmap = {h: i for i, h in enumerate(hr_r) if h}
+    n = len(Lb)
+    red = np.full((n, 98), np.nan)
+    flux = np.full((n, wl.size), np.nan)
+    ratio = np.full(n, np.nan)
+    rms = np.full(n, np.nan)
+    ov_b = slice(55, 89)                            # 597.5 .. 762.5 in III/208
+    ov_r = slice(0, 34)                             # the same wavelengths in III/207
+    for i in range(n):
+        flux[i, :89] = eb[i]
+        j = rmap.get(hr_b[i], -1) if hr_b[i] else -1
+        if j < 0:
+            continue
+        red[i] = er[j]
+        q = er[j, ov_r] / eb[i, ov_b]
+        q = q[np.isfinite(q)]
+        if q.size:
+            ratio[i] = np.median(q)
+            rms[i] = float(np.sqrt(np.mean((q / ratio[i] - 1) ** 2)))
+        both = np.nanmean(np.stack([eb[i, ov_b], er[j, ov_r]]), axis=0)
+        flux[i, 55:89] = both
+        flux[i, 89:] = er[j, 34:]
+    hd_s = _col(Lb, 13, 20, "s")
+    hd = np.array([int(re.match(r"\d+", s).group()) if re.match(r"\d+", s) else 0 for s in hd_s])
+    return Sternberg(hr=hr_b, combined=np.array(["/" in h for h in hr_b]), hd=hd, name=_col(Lb, 22, 30, "s"),
+                     vmag=_col(Lb, 50, 53), wl=wl, flux=flux, blue=eb, red=red, overlap_ratio=ratio,
+                     overlap_rms=rms, paths=paths)
+
+
 # ------------------------------------------------------------------------------------- CALSPEC (HST)
 
 CALSPEC_PAGE = ("https://www.stsci.edu/hst/instrumentation/reference-data-for-calibration-and-tools/"

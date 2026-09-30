@@ -102,6 +102,9 @@ DUP_DMAG = 0.15
 DUP_GMAX = 5.0
 #: Spectrophotometric catalogue V must agree with the record's Hipparcos V within this (same light).
 SPEC_V_TOL = 0.10
+#: Sternberg III/208 and III/207 are joined only when they agree in their 597.5-762.5 nm overlap to this fraction
+#: (median ratio and rms of the ratio): the two catalogues were observed and calibrated separately.
+STERNBERG_SPLICE_TOL = 0.05
 
 GAIA_EPOCH = 2016.0
 TYCHO_EPOCH = 2000.0
@@ -113,6 +116,7 @@ SRC_TYC = "tycho-2"
 SRC_HIP2 = "hipparcos-2007"
 SRC_HIP1 = "hipparcos-1997"
 SRC_PULKOVO = "pulkovo-spectrophotometry"
+SRC_STERNBERG = "sternberg-spectrophotometry"
 SRC_CALSPEC = "hst-calspec"
 SRC_SIMBAD = "simbad-sesame"
 SRC_IAU = "iau-wgsn-csn"
@@ -608,6 +612,58 @@ def run(ctx: BuildContext) -> None:
     diag["xpVsCalspec"] = xvc
     log(f"Pulkovo: {pk.hr.size} stars with 320-1080 nm spectra, used for {int((light_route == R_PK).sum())}")
 
+    # 3b. Sternberg spectrophotometry: III/208 (322.5-762.5 nm) spliced with III/207 (597.5-1082.5 nm)
+    sb = sc.load_sternberg()
+    R_SB = route("derived", [SRC_STERNBERG, SRC_HIP1, *cie_srcs],
+                 "Sternberg Astronomical Institute ground-based absolute spectrophotometry (5 nm steps; Glushneva et "
+                 "al.): III/208 322.5-762.5 nm joined with III/207 597.5-1082.5 nm (mean of both in the 597.5-762.5 "
+                 "nm overlap, used only when the two agree there to within %.0f %% in median and rms), linearly "
+                 "interpolated to 1 nm and integrated against the CIE 1931 2° and 1951 scotopic observers. Matched "
+                 "by HD number through the Hipparcos catalogue; used only when the catalogue's V agrees with "
+                 "Hipparcos V within %.2f mag and no measured spectrum above applies." % (100 * STERNBERG_SPLICE_TOL,
+                                                                                         SPEC_V_TOL))
+    sb_diag = []
+    for j in range(sb.hr.size):
+        k = hd_to_rec.get(int(sb.hd[j]), -1)
+        if k < 0 or not np.isfinite(sb.overlap_ratio[j]):
+            continue
+        e = {"hr": sb.hr[j], "hd": int(sb.hd[j]), "name": sb.name[j], "V": float(sb.vmag[j]), "record": int(k),
+             "combined": bool(sb.combined[j]), "overlapRatio": float(sb.overlap_ratio[j]),
+             "overlapRms": float(sb.overlap_rms[j])}
+        splice_ok = abs(sb.overlap_ratio[j] - 1) <= STERNBERG_SPLICE_TOL and sb.overlap_rms[j] <= STERNBERG_SPLICE_TOL
+        ok = sl.covers_cie(sb.wl, np.isfinite(sb.flux[j]))
+        e["covers"] = bool(ok)
+        e["spliceOk"] = bool(splice_ok)
+        if ok:
+            e["xyzs"] = sl.spectrum_xyzs(sb.wl, sb.flux[j]).tolist()
+        e["hipV"] = None if not np.isfinite(r_V[k]) else float(r_V[k])
+        vok = np.isfinite(r_V[k]) and abs(r_V[k] - sb.vmag[j]) <= SPEC_V_TOL
+        e["vConsistent"] = bool(vok)
+        e["routeBefore"] = int(light_route[k])
+        if ok and splice_ok and vok and not sb.combined[j] and not r_blend[k] and light_route[k] < 0:
+            xyzs[k] = np.array(e["xyzs"])
+            light_route[k] = R_SB
+        sb_diag.append(e)
+    diag["sternberg"] = sb_diag
+    # consistency with the measured spectra above (same record, both usable)
+    by_rec = {}
+    for tag, lst in (("calspec", cal_diag), ("pulkovo", pk_diag)):
+        for e in lst:
+            if e.get("xyzs") and e.get("record", -1) >= 0 and (tag == "calspec" or e.get("vConsistent")):
+                by_rec.setdefault(e["record"], (tag, e))
+    svx = []
+    for e in sb_diag:
+        ref = by_rec.get(e["record"])
+        if e.get("xyzs") and e["spliceOk"] and e["vConsistent"] and not e["combined"] and ref is not None:
+            a, b = np.array(e["xyzs"]), np.array(ref[1]["xyzs"])
+            (xa, ya), (xb, yb) = sl.chromaticity(a), sl.chromaticity(b)
+            svx.append({"hd": e["hd"], "vs": ref[0], "dY_mag": float(-2.5 * np.log10(a[1] / b[1])),
+                        "dx": float(xa - xb), "dy": float(ya - yb), "SY_ratio": float((a[3] / a[1]) / (b[3] / b[1]))})
+    diag["sternbergVsMeasured"] = svx
+    log(f"Sternberg: {len(sb_diag)} Hipparcos stars with a spliced 322-1082 nm spectrum, used for "
+        f"{int((light_route == R_SB).sum())}; vs CALSPEC/Pulkovo on {len(svx)} stars: median dY "
+        f"{np.median([s['dY_mag'] for s in svx]) if svx else float('nan'):+.3f} mag")
+
     # 4. photometric estimates, calibrated on XP-derived stars (G >= XP_G_MIN)
     calib = has_xp & ~r_blend & (r_G >= XP_G_MIN)
     rel_V = sl.fit_relation("Hipparcos V, B-V", r_V[calib], r_BV[calib], rec_xp[calib])
@@ -997,7 +1053,7 @@ def _register_sources(ctx, today, gaia, xp_ledger, tyc_path, hip2, hipm, pk, cal
                  "DOI:10.1051/0004-6361/202039587.",
         url=sg.TAP_URL, retrieved=rec0["retrieved"], sha256=_digest(gaia_paths), version="Gaia DR3",
         license="ESA/Gaia/DPAC, CC BY-SA 3.0 IGO",
-        notes=f"ADQL (async TAP): {queries}. sha256 is over the per-file hashes: {_files_note(gaia_paths)}"))
+        notes=f"ADQL (synchronous TAP): {queries}. sha256 is over the per-file hashes: {_files_note(gaia_paths)}"))
     digest = sg.stream_ledger_digest(xp_ledger)
     idx = RAW / sg.XP_SUBDIR / "_MD5SUM.txt"
     ctx.add_source(SourceRecord(
@@ -1051,6 +1107,17 @@ def _register_sources(ctx, today, gaia, xp_ledger, tyc_path, hip2, hipm, pk, cal
                  "et al. 1997, Baltic Astronomy 6, 481 (bibcode 1997BaltA...6..481A).",
         url=CDS_URL("III/201/"), retrieved=record(pk.paths[1])["retrieved"], sha256=_digest(pk.paths),
         notes=_files_note(pk.paths)))
+    sbp = sc.load_sternberg().paths
+    ctx.add_source(SourceRecord(
+        id=SRC_STERNBERG, title="Sternberg spectrophotometric catalogs: III/208 (322.5-762.5 nm, 866 stars) and III/207 "
+                                "(597.5-1082.5 nm, 223 stars)",
+        citation="Glushneva I. N., Doroshenko V. T., Fetisova T. S., Khruzina T. S., Kolotilov E. A., Mossakovskaya L. V., "
+                 "Ovchinnikov S. L. & Voloshina I. B. 1998, VizieR Online Data Catalogs III/208 and III/207 (Trudy "
+                 "Gosud. Astron. Inst. Shternberga 53, 50 (1983) and 54, 3 (1984); bibcodes 1998yCat.3208....0G, "
+                 "1998yCat.3207....0G).",
+        url=CDS_URL("III/208/"), retrieved=record(sbp[2])["retrieved"], sha256=_digest(sbp),
+        notes="Absolute energy distributions in erg cm^-2 s^-1 cm^-1 (III/208 standards calibrated on Hayes 1985 "
+              "Vega; stated mean accuracy 3.2 %). " + _files_note(sbp)))
     cal_paths = [c.path for c in cal] + [cal_page]
     ctx.add_source(SourceRecord(
         id=SRC_CALSPEC, title="HST CALSPEC spectrophotometric standards (current_calspec)",
