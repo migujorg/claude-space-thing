@@ -88,6 +88,10 @@ def test_phase_functions_start_at_zero(built):
             # Moon: ROLO from 1.55 deg (opposition surge above the surge-free Lane & Irvine albedo), unknown below.
             assert pf["alphaDeg"][0] == 1.55 and pf["deltaMag"][0] < 0 and phase.delta_mag(pf, 1.0) is None
             continue
+        if n in (601, 602, 603, 604, 605):
+            # Mimas-Rhea: surge-free VIMS albedo, measured opposition-surge shape: brighter than it at zero phase.
+            assert -0.3 < phase.delta_mag(pf, 0.0) < -0.1, n
+            continue
         assert phase.delta_mag(pf, 0.0) == pytest.approx(0.0, abs=1e-9), n
 
 

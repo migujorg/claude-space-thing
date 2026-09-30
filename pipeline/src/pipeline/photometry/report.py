@@ -81,9 +81,10 @@ MOON_NOTES = {
     504: "Cassini ISS WAC albedos in 3 filters only (VIO, GRN, RED): constant beyond 647 nm, so the red end is "
          "unconstrained.",
     601: "Cassini VIMS model albedo a0 at 14 wavelengths (surge excluded). Phase curve: disk integral of the fitted "
-         "model, 10-120° derived, 0-10° extrapolated without the surge.",
-    602: "As Mimas. Enceladus is the brightest body in the solar system; its known strong opposition surge is NOT in "
-         "these numbers.",
+         "model, 10-120° derived; 0-10° (M3) the measured opposition-surge shape of Enceladus and Rhea (mean) joined "
+         "at 10°, so Φ(0) > 1.",
+    602: "As Mimas, with Enceladus's own measured surge shape. Enceladus is the brightest body in the solar system; "
+         "its albedo here excludes the surge, which the phase function adds (Φ(0) = 1.25).",
     603: "As Mimas.",
     604: "As Mimas.",
     605: "As Mimas.",
@@ -301,8 +302,8 @@ def generate() -> str:
       "5. **Uranus/Neptune epoch**: 1995 spectra; both have changed since (Uranus seasonally, strongly in the red).\n"
       "6. **Mars and Mercury shapes**: Mars between broadband nodes; Mercury from disk-resolved spectra.\n"
       "7. **Phase corrections for Jupiter/Saturn** to zero phase (+2.4 %, +1.7 %) assume a grey phase law.\n"
-      "8. **Opposition surges of the moons**: included for the Moon (ROLO, to 1.55°), Uranian moons, Triton, "
-      "Charon, Phobos; see M3 for Mimas-Rhea.\n"
+      "8. **Opposition surges of the moons**: included for the Moon (ROLO, to 1.55°), Mimas-Rhea (measured shape "
+      "of Enceladus/Rhea at the VIMS level; HST is 1.2-1.4× brighter), Uranian moons, Triton, Charon, Phobos.\n"
       "9. **Iapetus and Miranda** unknown; **Deimos** grey placeholder; **Titan** and **Triton**/**Charon** phase "
       "curves only near opposition.\n"
       "10. **Ring brightness**: Saturn's is a calibrated model (unlit face and radii away from the three HST "
@@ -368,8 +369,8 @@ def _moons_section(w, mres, mtexts, mcomps, sun, sx, sy) -> None:
     w("- **Galilean moons, Titan, Deimos, Dione**: within 0.12 mag. (For Callisto, JPL's own V(1,0) = -1.05 and "
       "albedo 0.17 are not consistent with each other at the pck00011 radius: -1.05 implies p ≈ 0.20.)\n"
       "- **Mimas −0.20, Enceladus +0.13, Tethys +0.21, Rhea +0.16**: Filacchione's albedos exclude the opposition "
-      "surge; JPL's values are older compilations (e.g. Enceladus p = 1.04). Earth-based magnitudes of these moons "
-      "near opposition are brighter than both by the surge.\n"
+      "surge; JPL's values are older compilations (e.g. Enceladus p = 1.04). Since M3 the phase function adds the surge "
+      "(Φ(0) = 1.15-1.25; see M3 below); HST at true opposition is brighter still.\n"
       "- **Ariel −0.47, Umbriel −0.35, Titania −0.24, Oberon −0.25**: HST albedos (Karkoschka 2001) include the "
       "narrow opposition surge. Horizons' albedos are much lower (Ariel 0.34), like the Voyager-based albedos that "
       "DeColibus et al. (2026) note fall below Karkoschka's because Voyager lacked small-phase data.\n"
@@ -403,7 +404,8 @@ def _moons_section(w, mres, mtexts, mcomps, sun, sx, sy) -> None:
       " mag/deg). At α = 8° Horizons makes Io 3.4 mag too faint. Worth reporting to JPL.\n"
       "- **Phobos +1.2…+1.6 at α = 25-38°**: Horizons applies no phase term; the H-G curve dims Phobos by that much.\n"
       "- **Saturnian and Uranian moons**: the differences equal the V(1,0) differences above plus our phase term "
-      "(≤ 0.1 mag at Earth-based α for Saturn's moons; up to 0.45 mag for the Uranian moons' surge).\n")
+      "(−0.09…+0.11 mag at these epochs for Saturn's moons, including their surge since M3; up to 0.45 mag for "
+      "the Uranian moons' surge).\n")
 
 
 def _rings_section(w) -> None:
@@ -578,6 +580,54 @@ def _m3_section(w) -> None:
       "ROLO's A_Y divided by Lane & Irvine's p_Y (so the brightness is ROLO's) for 1.55-97°, Lane & Irvine's curve "
       "shifted to join it for 97-120° (label estimated because of the join); diskReflectanceModel carries the full "
       "ROLO geometry per channel (derived).\n")
+    _m3_surges(w)
+
+
+def _m3_surges(w) -> None:
+    from . import diskint, phase as ph
+    from .common import read_table_json
+    w("## M3: opposition surges of Mimas-Rhea, Mercury; Iapetus\n")
+    tab = read_table_json("saturnian_opposition.json")
+    hst = tab["verbiscer_2007"]["geometric_albedo"]
+    w("**Mimas-Rhea.** The VIMS phase curves (Filacchione et al. 2022) are fitted over 10-120° and their albedos are "
+      "surge-free. Below 10° the phase function now follows measured opposition curves: Enceladus's (Verbiscer et "
+      "al. 2005, HST, data ~0.25-20°) and Rhea's (Domingue et al. 1995; Verbiscer & Veverka 1989), as fitted by Deau "
+      "et al. (2009, Table 3, linear-exponential), joined to the VIMS curve at 10°. Mimas, Tethys and Dione use the "
+      "mean of the two shapes (no accessible curve of their own). Verbiscer et al.'s (2007) HST true-opposition paper "
+      "and supplement were not accessible (science.org 403). Their geometric albedos, as quoted by Filacchione et al. "
+      "(2022), are used only for comparison:\n")
+    w("| moon | p_V (VIMS, surge-free) | Φ(0) | p_V·Φ(0) | HST p (Verbiscer 2007) | HST / ours | Δm 1° old → new | "
+      "Δm 3° old → new | Δm 6° old → new |\n|---|---|---|---|---|---|---|---|---|")
+    res = bodies.build_all(None, [601, 602, 603, 604, 605])
+    for n, r in res.items():
+        pf = r.entry["phaseFunction"]["value"]
+        t_ = moons.filacchione_rows(n)
+        i = int(np.argmin(np.abs(t_["wl"] - moons.PHASE_ROW_NM)))
+        a0, a1, a2 = float(t_["a0"][i]), float(t_["a1"][i]), float(t_["a2"][i])
+
+        def old(a):
+            return -2.5 * math.log10((a0 + a1 * a + a2 * a * a) / a0 * diskint.akimov_integral(a))
+        phi0 = 10 ** (-0.4 * ph.delta_mag(pf, 0.0))
+        cells = " | ".join(f"{old(a):+.2f} → {ph.delta_mag(pf, a):+.2f}" for a in (1.0, 3.0, 6.0))
+        w(f"| {r.name} | {r.p_v:.3f} | {phi0:.3f} | {r.p_v * phi0:.3f} | {hst[str(n)]:.2f} | "
+          f"{hst[str(n)] / (r.p_v * phi0):.2f} | {cells} |")
+    w("\nThe surge brightens these moons by 0.15-0.24 mag at zero phase and 0.01-0.06 mag at 1° relative to the "
+      "surge-free extrapolation (Mimas, whose VIMS curve is steep, comes out 0.01-0.02 mag fainter than before at "
+      "3-6°). Even so, the HST true-opposition albedos are 1.2-1.4× higher. The measured opposition "
+      "curve of Enceladus puts its level at 10° at 1.38 × R(10°)/R(0) ≈ 1.00, vs VIMS 0.81, so the difference is a "
+      "difference of absolute level between the HST and VIMS data sets at all small phase angles, not a missing part "
+      "of the surge. We keep the VIMS level (the albedo) and report the difference. Label: estimated. A 2018 "
+      "corrigendum to Deau et al. (2009) exists and could not be accessed.\n")
+    w("**Mercury.** Mallama & Hilton's curve is measured from 2° and includes the rising surge down to 2°. Its "
+      "zero-phase reference is surge-inclusive (V(1,0) = −0.694 from Mallama et al. 2002's physical model), so views "
+      "at α ≥ 2° are not too faint. Below 2° the curve stays unknown rather than interpolated. From Earth, α < 2° "
+      "occurs only within ~0.6° of the Sun. Mallama et al. (2002, Icarus 155, 253), whose model would cover 0-2°, was "
+      "not accessible.\n")
+    w("**Iapetus.** Still unknown. No machine-readable orbital-longitude lightcurve was found: the arXiv papers on "
+      "Iapetus are not photometric time series, and VizieR's Iapetus tables are astrometric only. The classical "
+      "lightcurves (Millis 1977; Squyres et al. 1984; Buratti & Mosher 1995) and the Cassini-era ones are not openly "
+      "accessible. Deau et al. (2009) give only morphological fit parameters of a trailing-side opposition curve "
+      "(Franklin & Cook 1974), which fixes neither the albedo nor the longitude dependence.\n")
 
 
 if __name__ == "__main__":

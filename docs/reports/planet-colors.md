@@ -187,11 +187,11 @@ Same conventions as the planets. Unknown entries carry their reason in photometr
 - **Europa** (502). Cassini ISS WAC albedos in 4 filters (no 939 nm); constant beyond 752 nm. Sources: `mayorga-2020`, `svo-cassini-iss-wac-vio`, `svo-cassini-iss-wac-grn`, `svo-cassini-iss-wac-red`, `svo-cassini-iss-wac-cb2`, `naif-pck00011`, `tsis1-hsrs-v2`, `cie-1931-2deg-cmf`, `cie-1951-scotopic`.
 - **Ganymede** (503). Cassini ISS WAC albedos in 5 filters. Sources: `mayorga-2020`, `svo-cassini-iss-wac-vio`, `svo-cassini-iss-wac-grn`, `svo-cassini-iss-wac-red`, `svo-cassini-iss-wac-cb2`, `svo-cassini-iss-wac-cb3`, `naif-pck00011`, `tsis1-hsrs-v2`, `cie-1931-2deg-cmf`, `cie-1951-scotopic`.
 - **Callisto** (504). Cassini ISS WAC albedos in 3 filters only (VIO, GRN, RED): constant beyond 647 nm, so the red end is unconstrained. Sources: `mayorga-2020`, `svo-cassini-iss-wac-vio`, `svo-cassini-iss-wac-grn`, `svo-cassini-iss-wac-red`, `naif-pck00011`, `tsis1-hsrs-v2`, `cie-1931-2deg-cmf`, `cie-1951-scotopic`.
-- **Mimas** (601). Cassini VIMS model albedo a0 at 14 wavelengths (surge excluded). Phase curve: disk integral of the fitted model, 10-120° derived, 0-10° extrapolated without the surge. Sources: `filacchione-2022`, `tsis1-hsrs-v2`, `cie-1931-2deg-cmf`, `cie-1951-scotopic`.
-- **Enceladus** (602). As Mimas. Enceladus is the brightest body in the solar system; its known strong opposition surge is NOT in these numbers. Sources: `filacchione-2022`, `tsis1-hsrs-v2`, `cie-1931-2deg-cmf`, `cie-1951-scotopic`.
-- **Tethys** (603). As Mimas. Sources: `filacchione-2022`, `tsis1-hsrs-v2`, `cie-1931-2deg-cmf`, `cie-1951-scotopic`.
-- **Dione** (604). As Mimas. Sources: `filacchione-2022`, `tsis1-hsrs-v2`, `cie-1931-2deg-cmf`, `cie-1951-scotopic`.
-- **Rhea** (605). As Mimas. Sources: `filacchione-2022`, `tsis1-hsrs-v2`, `cie-1931-2deg-cmf`, `cie-1951-scotopic`.
+- **Mimas** (601). Cassini VIMS model albedo a0 at 14 wavelengths (surge excluded). Phase curve: disk integral of the fitted model, 10-120° derived; 0-10° (M3) the measured opposition-surge shape of Enceladus and Rhea (mean) joined at 10°, so Φ(0) > 1. Sources: `filacchione-2022`, `tsis1-hsrs-v2`, `cie-1931-2deg-cmf`, `cie-1951-scotopic`, `deau-2009`.
+- **Enceladus** (602). As Mimas, with Enceladus's own measured surge shape. Enceladus is the brightest body in the solar system; its albedo here excludes the surge, which the phase function adds (Φ(0) = 1.25). Sources: `filacchione-2022`, `tsis1-hsrs-v2`, `cie-1931-2deg-cmf`, `cie-1951-scotopic`, `deau-2009`.
+- **Tethys** (603). As Mimas. Sources: `filacchione-2022`, `tsis1-hsrs-v2`, `cie-1931-2deg-cmf`, `cie-1951-scotopic`, `deau-2009`.
+- **Dione** (604). As Mimas. Sources: `filacchione-2022`, `tsis1-hsrs-v2`, `cie-1931-2deg-cmf`, `cie-1951-scotopic`, `deau-2009`.
+- **Rhea** (605). As Mimas. Sources: `filacchione-2022`, `tsis1-hsrs-v2`, `cie-1931-2deg-cmf`, `cie-1951-scotopic`, `deau-2009`.
 - **Titan** (606). Karkoschka's 1995 full-disk spectrum × 1.02 to zero phase (model-based factor). Phase curve known only 0-5.7° (linear assumption); Titan's strongly forward-scattering Cassini phase curve is published only as figures. Sources: `karkoschka-1998-pds`, `karkoschka-1994-text`, `garcia-munoz-2017`, `naif-pck00011`, `tsis1-hsrs-v2`, `cie-1931-2deg-cmf`, `cie-1951-scotopic`.
 - **Iapetus** (608). UNKNOWN: its leading and trailing hemispheres differ hugely in albedo, so any single value misleads; no machine-readable orbital lightcurve was accessible.
 - **Ariel** (701). Ground-based disk-integrated spectrum (DeColibus et al. 2026) scaled to Karkoschka's (2001) HST 0.63 µm albedo. Phase curve: Titania/Oberon's (assumed). Sources: `decolibus-2026-data`, `decolibus-2026`, `naif-pck00011`, `tsis1-hsrs-v2`, `cie-1931-2deg-cmf`, `cie-1951-scotopic`.
@@ -250,7 +250,7 @@ Our V(1,0) (from p_V and the pck00011 radius) against the V(1,0) and geometric a
 Reading the differences:
 
 - **Galilean moons, Titan, Deimos, Dione**: within 0.12 mag. (For Callisto, JPL's own V(1,0) = -1.05 and albedo 0.17 are not consistent with each other at the pck00011 radius: -1.05 implies p ≈ 0.20.)
-- **Mimas −0.20, Enceladus +0.13, Tethys +0.21, Rhea +0.16**: Filacchione's albedos exclude the opposition surge; JPL's values are older compilations (e.g. Enceladus p = 1.04). Earth-based magnitudes of these moons near opposition are brighter than both by the surge.
+- **Mimas −0.20, Enceladus +0.13, Tethys +0.21, Rhea +0.16**: Filacchione's albedos exclude the opposition surge; JPL's values are older compilations (e.g. Enceladus p = 1.04). Since M3 the phase function adds the surge (Φ(0) = 1.15-1.25; see M3 below); HST at true opposition is brighter still.
 - **Ariel −0.47, Umbriel −0.35, Titania −0.24, Oberon −0.25**: HST albedos (Karkoschka 2001) include the narrow opposition surge. Horizons' albedos are much lower (Ariel 0.34), like the Voyager-based albedos that DeColibus et al. (2026) note fall below Karkoschka's because Voyager lacked small-phase data.
 - **Phobos −0.19**: Hapke albedos with a strong surge (B0 = 2.3) vs JPL's p = 0.06.
 - **Triton −0.14**: p_V = 0.86 (Buratti et al. 2011) vs JPL's 0.7.
@@ -280,21 +280,21 @@ Reading the differences:
 | Callisto | 2026-Sep-30 | 7.97 | +6.893 | +6.761 | **-0.132** |
 | Callisto | 2027-Jan-15 | 5.41 | +6.171 | +6.080 | **-0.091** |
 | Callisto | 2027-Jun-01 | 10.20 | +6.870 | +6.733 | **-0.137** |
-| Mimas | 2026-Sep-30 | 0.59 | +12.805 | +12.613 | **-0.192** |
-| Mimas | 2027-Jan-15 | 5.79 | +13.081 | +12.980 | **-0.101** |
-| Mimas | 2027-Jun-01 | 4.49 | +13.164 | +13.040 | **-0.124** |
-| Enceladus | 2026-Sep-30 | 0.59 | +11.606 | +11.741 | **+0.135** |
-| Enceladus | 2027-Jan-15 | 5.78 | +11.882 | +12.071 | **+0.189** |
-| Enceladus | 2027-Jun-01 | 4.49 | +11.965 | +12.139 | **+0.174** |
-| Tethys | 2026-Sep-30 | 0.59 | +10.104 | +10.323 | **+0.219** |
-| Tethys | 2027-Jan-15 | 5.78 | +10.383 | +10.665 | **+0.282** |
-| Tethys | 2027-Jun-01 | 4.49 | +10.463 | +10.730 | **+0.267** |
-| Dione | 2026-Sep-30 | 0.59 | +10.306 | +10.354 | **+0.048** |
-| Dione | 2027-Jan-15 | 5.78 | +10.583 | +10.702 | **+0.119** |
-| Dione | 2027-Jun-01 | 4.49 | +10.665 | +10.766 | **+0.101** |
-| Rhea | 2026-Sep-30 | 0.59 | +9.606 | +9.770 | **+0.164** |
-| Rhea | 2027-Jan-15 | 5.79 | +9.880 | +10.114 | **+0.234** |
-| Rhea | 2027-Jun-01 | 4.49 | +9.965 | +10.181 | **+0.216** |
+| Mimas | 2026-Sep-30 | 0.59 | +12.805 | +12.573 | **-0.232** |
+| Mimas | 2027-Jan-15 | 5.79 | +13.081 | +12.990 | **-0.091** |
+| Mimas | 2027-Jun-01 | 4.49 | +13.164 | +13.053 | **-0.111** |
+| Enceladus | 2026-Sep-30 | 0.59 | +11.606 | +11.649 | **+0.043** |
+| Enceladus | 2027-Jan-15 | 5.78 | +11.882 | +12.055 | **+0.173** |
+| Enceladus | 2027-Jun-01 | 4.49 | +11.965 | +12.118 | **+0.153** |
+| Tethys | 2026-Sep-30 | 0.59 | +10.104 | +10.233 | **+0.129** |
+| Tethys | 2027-Jan-15 | 5.78 | +10.383 | +10.653 | **+0.270** |
+| Tethys | 2027-Jun-01 | 4.49 | +10.463 | +10.714 | **+0.251** |
+| Dione | 2026-Sep-30 | 0.59 | +10.306 | +10.277 | **-0.029** |
+| Dione | 2027-Jan-15 | 5.78 | +10.583 | +10.695 | **+0.112** |
+| Dione | 2027-Jun-01 | 4.49 | +10.665 | +10.757 | **+0.092** |
+| Rhea | 2026-Sep-30 | 0.59 | +9.606 | +9.673 | **+0.067** |
+| Rhea | 2027-Jan-15 | 5.79 | +9.880 | +10.102 | **+0.222** |
+| Rhea | 2027-Jun-01 | 4.49 | +9.965 | +10.165 | **+0.200** |
 | Titan | 2026-Sep-30 | 0.59 | +8.229 | +8.236 | **+0.007** |
 | Titan | 2027-Jan-15 | 5.79 | +8.500 | n/a | **n/a** |
 | Titan | 2027-Jun-01 | 4.49 | +8.584 | +8.606 | **+0.022** |
@@ -352,7 +352,7 @@ Reading the differences:
 
 - **Io and Ganymede: Horizons appears to be wrong.** Their APmag implies linear phase coefficients of 0.452 and 0.318 mag/deg (the same at all three epochs, so not eclipses), about ten times Mayorga et al.'s measured curves (Io GRN: 0.018 mag/deg over 0-8°) and than Europa's and Callisto's own Horizons coefficients (0.021, 0.056 mag/deg). At α = 8° Horizons makes Io 3.4 mag too faint. Worth reporting to JPL.
 - **Phobos +1.2…+1.6 at α = 25-38°**: Horizons applies no phase term; the H-G curve dims Phobos by that much.
-- **Saturnian and Uranian moons**: the differences equal the V(1,0) differences above plus our phase term (≤ 0.1 mag at Earth-based α for Saturn's moons; up to 0.45 mag for the Uranian moons' surge).
+- **Saturnian and Uranian moons**: the differences equal the V(1,0) differences above plus our phase term (−0.09…+0.11 mag at these epochs for Saturn's moons, including their surge since M3; up to 0.45 mag for the Uranian moons' surge).
 
 ## Rings (`rings.json`)
 
@@ -439,6 +439,24 @@ Brightness of the Moon (Y channel, disk-equivalent reflectance A = p·Φ at zero
 
 Lane & Irvine's colour: x, y = 0.3643, 0.3591 (kept for geometricAlbedoXYZS; ROLO is less red). Below 2° ROLO is brighter than Lane & Irvine's surge-free extrapolation (the surge); from 5° on it is 6-22 % fainter, i.e. close to Lane & Irvine's own broadband V (13 % below their narrow bands) up to 45° and steeper beyond. The waxing Moon is brighter, as Lane & Irvine and Rougier (1934) observed (0.01-0.09 mag between quadrature and full). The product's phase function is ROLO's A_Y divided by Lane & Irvine's p_Y (so the brightness is ROLO's) for 1.55-97°, Lane & Irvine's curve shifted to join it for 97-120° (label estimated because of the join); diskReflectanceModel carries the full ROLO geometry per channel (derived).
 
+## M3: opposition surges of Mimas-Rhea, Mercury; Iapetus
+
+**Mimas-Rhea.** The VIMS phase curves (Filacchione et al. 2022) are fitted over 10-120° and their albedos are surge-free. Below 10° the phase function now follows measured opposition curves: Enceladus's (Verbiscer et al. 2005, HST, data ~0.25-20°) and Rhea's (Domingue et al. 1995; Verbiscer & Veverka 1989), as fitted by Deau et al. (2009, Table 3, linear-exponential), joined to the VIMS curve at 10°. Mimas, Tethys and Dione use the mean of the two shapes (no accessible curve of their own). Verbiscer et al.'s (2007) HST true-opposition paper and supplement were not accessible (science.org 403). Their geometric albedos, as quoted by Filacchione et al. (2022), are used only for comparison:
+
+| moon | p_V (VIMS, surge-free) | Φ(0) | p_V·Φ(0) | HST p (Verbiscer 2007) | HST / ours | Δm 1° old → new | Δm 3° old → new | Δm 6° old → new |
+|---|---|---|---|---|---|---|---|---|
+| Mimas | 0.650 | 1.148 | 0.745 | 0.96 | 1.29 | +0.02 → +0.01 | +0.05 → +0.07 | +0.11 → +0.12 |
+| Enceladus | 0.893 | 1.246 | 1.113 | 1.38 | 1.24 | +0.01 → -0.05 | +0.03 → +0.00 | +0.06 → +0.05 |
+| Tethys | 0.743 | 1.205 | 0.895 | 1.23 | 1.37 | +0.01 → -0.05 | +0.04 → +0.01 | +0.07 → +0.06 |
+| Dione | 0.648 | 1.190 | 0.771 | 1.00 | 1.30 | +0.01 → -0.03 | +0.04 → +0.03 | +0.08 → +0.08 |
+| Rhea | 0.599 | 1.176 | 0.705 | 0.95 | 1.35 | +0.01 → -0.05 | +0.04 → +0.02 | +0.08 → +0.07 |
+
+The surge brightens these moons by 0.15-0.24 mag at zero phase and 0.01-0.06 mag at 1° relative to the surge-free extrapolation (Mimas, whose VIMS curve is steep, comes out 0.01-0.02 mag fainter than before at 3-6°). Even so, the HST true-opposition albedos are 1.2-1.4× higher. The measured opposition curve of Enceladus puts its level at 10° at 1.38 × R(10°)/R(0) ≈ 1.00, vs VIMS 0.81, so the difference is a difference of absolute level between the HST and VIMS data sets at all small phase angles, not a missing part of the surge. We keep the VIMS level (the albedo) and report the difference. Label: estimated. A 2018 corrigendum to Deau et al. (2009) exists and could not be accessed.
+
+**Mercury.** Mallama & Hilton's curve is measured from 2° and includes the rising surge down to 2°. Its zero-phase reference is surge-inclusive (V(1,0) = −0.694 from Mallama et al. 2002's physical model), so views at α ≥ 2° are not too faint. Below 2° the curve stays unknown rather than interpolated. From Earth, α < 2° occurs only within ~0.6° of the Sun. Mallama et al. (2002, Icarus 155, 253), whose model would cover 0-2°, was not accessible.
+
+**Iapetus.** Still unknown. No machine-readable orbital-longitude lightcurve was found: the arXiv papers on Iapetus are not photometric time series, and VizieR's Iapetus tables are astrometric only. The classical lightcurves (Millis 1977; Squyres et al. 1984; Buratti & Mosher 1995) and the Cassini-era ones are not openly accessible. Deau et al. (2009) give only morphological fit parameters of a trailing-side opposition curve (Franklin & Cook 1974), which fixes neither the albedo nor the longitude dependence.
+
 ## Weak data, in order of concern
 
 1. **Earth**: model spectrum; factor-2 disagreement with the magnitude used by Horizons.
@@ -448,7 +466,7 @@ Lane & Irvine's colour: x, y = 0.3643, 0.3591 (kept for geometricAlbedoXYZS; ROL
 5. **Uranus/Neptune epoch**: 1995 spectra; both have changed since (Uranus seasonally, strongly in the red).
 6. **Mars and Mercury shapes**: Mars between broadband nodes; Mercury from disk-resolved spectra.
 7. **Phase corrections for Jupiter/Saturn** to zero phase (+2.4 %, +1.7 %) assume a grey phase law.
-8. **Opposition surges of the moons**: included for the Moon (ROLO, to 1.55°), Uranian moons, Triton, Charon, Phobos; see M3 for Mimas-Rhea.
+8. **Opposition surges of the moons**: included for the Moon (ROLO, to 1.55°), Mimas-Rhea (measured shape of Enceladus/Rhea at the VIMS level; HST is 1.2-1.4× brighter), Uranian moons, Triton, Charon, Phobos.
 9. **Iapetus and Miranda** unknown; **Deimos** grey placeholder; **Titan** and **Triton**/**Charon** phase curves only near opposition.
 10. **Ring brightness**: Saturn's is a calibrated model (unlit face and radii away from the three HST regions least certain; low ring elevations only partly checked); Jupiter's, Uranus's and Neptune's unknown.
 11. **Irregular satellites**: brightness from compiled H only; grey placeholder colour; rough pck00011 radii (if bodies.json uses a different radius for them, the rendered brightness scales by (R_bodies/R_pck)²).
