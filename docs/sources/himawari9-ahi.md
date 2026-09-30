@@ -35,3 +35,9 @@
 - **Phase spread.** From 6.6 Earth radii the per-pixel phase angle spans 0–11.6°.
 - **Calibration.** The AHI visible bands are vicariously calibrated to a few percent.
 - **No ozone band.** The Chappuis band near 600 nm lies between band nodes and is not resolved.
+
+**Validation use (case `earth-himawari9-2026`, `docs/reports/validation.md`):** a second scene, 2026-09-28 04:00 UTC (scan of segment 6 at 04:05:35), the day of the app's VIIRS cloud layer, so that near the sub-satellite point (13:23 local solar time) the image shows the clouds the app renders (NOAA-20 overpass ~13:30). Only segment 6 of 10 (the equator to ~16°S, limb to limb) is fetched, bands 1–3: `HS_H09_20260928_0400_B0{1,2}_FLDK_R10_S0610.DAT.bz2` and `..._B03_FLDK_R05_S0610.DAT.bz2` (10.6 + 10.6 + 40.3 MB) from `https://noaa-himawari9.s3.amazonaws.com/AHI-L1b-FLDK/2026/09/28/0400/`. The 1 km grid is 11 000 columns wide (band 3's 0.5 km grid averaged 2 × 2); it is resampled onto a pinhole view (8 km pixels at the sub-satellite point) through the exact CGMS scan-angle mapping.
+- Earth orientation: NAIF high-precision ITRF93 PCK (`naif-earth-pck-high-prec`), measured EOP on that date.
+- Navigation: "accurate to within 1 km" (Okuyama et al. 2018, below).
+- Calibration accuracy (`okuyama-2018-ahi-calibration`): Okuyama, A. et al. (2018), *Validation of Himawari-8/AHI radiometric calibration based on two years of in-orbit data*, J. Meteor. Soc. Japan 96B, 91–109, DOI [10.2151/jmsj.2018-033](https://doi.org/10.2151/jmsj.2018-033) (open access, J-STAGE). For the AHI of the same design on Himawari-8, monthly vicarious-calibration slopes against radiative-transfer simulations were 0.99–1.02 (band 1), 1.00–1.03 (band 2) and 0.97–0.99 (band 3) (Table 7), with method uncertainties of 4.0, 3.8 and 3.6 % (§5.2.a). The validation takes 5 % (1σ) per band, fully correlated.
+
