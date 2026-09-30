@@ -190,3 +190,88 @@ export interface BinaryTableHeader {
   sourceTable?: string[];
   notes?: string;
 }
+
+// ---------------------------------------------------------------------------------------------- small bodies
+// Products of the `smallbodies` stage (app/public/data/smallbodies/). Each table is a BinaryTableHeader plus
+// per-column documentation; the core header also carries the force model the propagator must use
+// (app/src/core/smallbody.ts). Source-index fields hold 255 when there is no source (label unknown).
+
+/** Documentation of one binary column: its unit, the fields holding its label and source index, and how it was made. */
+export interface BinaryColumnDoc {
+  unit?: string;
+  /** Name of the u8 field holding this column's provenance label. */
+  label?: string;
+  /** Name of the u8 field holding this column's index into sourceTable. */
+  source?: string;
+  method?: string;
+}
+
+export interface SmallBodyTableHeader extends BinaryTableHeader {
+  columns?: Record<string, BinaryColumnDoc>;
+}
+
+/** Force model and integrator settings (written by pipeline/src/pipeline/sb_model.py). */
+export interface SmallBodyForceModel {
+  frame: string;
+  sun: { naifId: number; gm: number; radius: number; sources: string[] };
+  perturbers: { name: string; naifId: number; gm: number; radius: number }[];
+  perturberSources: string[];
+  /** Ephemeris product that serves the perturbers, e.g. "ephem/de442s". */
+  ephemeris: string;
+  indirect: string;
+  zonal: { perturber: number | null; j2: number; referenceRadiusKm: number; poleIcrf: [number, number, number]; source: string; model: string };
+  relativity: { model: string; enabled: boolean; cKmS: number };
+  nonGravitational: string;
+  scheme: { name: string; drift: number[]; kick: number[]; order: string };
+  grid: { baseStepS: number; rule: string };
+  stepControl: {
+    etaSun: number;
+    etaPlanet: number;
+    etaEncounter: number;
+    kmax: number;
+    encounterRatio: number;
+    rule: string;
+    encounter: string;
+  };
+  obliquityArcsec: number;
+  kepler: string;
+}
+
+/** smallbodies/core.json: one record per asteroid/comet (state at epochEt, H, G, flags, labels). */
+export interface SmallBodyCoreHeader extends SmallBodyTableHeader {
+  /** Common epoch of every state and origin of the integration grid, TDB s past J2000. */
+  epochEt: number;
+  epochTdb: string;
+  window: { startEt: number; endEt: number };
+  forceModel: SmallBodyForceModel;
+  orbitClasses: { code: string; name: string }[];
+  /** Bit index of each flag in the u16 `flags` field. */
+  flagBits: Record<string, number>;
+  /** Population statistic behind estimated diameters: measured p_V per SBDB orbit class ("*" = all). */
+  classAlbedo: Record<string, { median: number; p16: number; p84: number; n: number }>;
+  statistics: Record<string, unknown>;
+  snapshot: string;
+  names: string;
+  physical: string;
+  comets: string;
+  nongrav: string;
+}
+
+export interface SmallBodyPhysicalHeader extends SmallBodyTableHeader {
+  /** LCDB reliability code per rotQuality index ('' = not from the LCDB). */
+  lcdbU: string[];
+  taxonomyB: string[];
+  taxonomyT: string[];
+}
+
+/** smallbodies/names.json: line i of `file` describes core record i. */
+export interface SmallBodyNamesHeader {
+  file: string;
+  count: number;
+  encoding: 'utf-8';
+  separator: string;
+  lineSeparator: string;
+  columns: string[];
+  sources: string[];
+  notes?: string;
+}
