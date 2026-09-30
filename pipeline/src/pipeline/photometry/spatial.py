@@ -12,8 +12,9 @@ Sources (all published fits; none from the project's own validation images, whic
     reproduction in Belgacem (2019).
   * Pluto, Charon, Triton: Hapke (2012) parameters of Verbiscer et al. (2022) Table 14 (disk-integrated phase curves
     from Earth, HST and New Horizons).
-  * Saturn additionally: the measured phase dependence of its limb darkening from Pioneer 11 (Barkstrom law of Dones et
-    al. 1993, via Dyudina et al. 2016), converted to a Minnaert k(α) table.
+  * Saturn: beyond small phase, the Barkstrom law with the phase-dependent exponent B(α) that Dones et al. (1993)
+    fitted to Pioneer 11 disk-resolved photometry (via Dyudina et al. 2016); OPAL's k (B = 2k) at 0°.
+  * Mimas, Enceladus, Tethys, Dione, Rhea: the parameter-free Akimov disk function of Filacchione et al. (2022).
   * Io: Hapke (1981/1984) parameters of Simonelli & Veverka (1986), Voyager violet filter.
   * Mars: the mean Martian surface BRDF of Vincendon (2013) in Hapke (1993) form (OMEGA and CRISM, aerosols removed).
 
@@ -27,9 +28,8 @@ renderer uses the law at every phase angle rather than falling back to Lambert.
 
 Not covered (no published fit available to scripted clients, or the law's form is not one the renderer supports):
 Mercury (MESSENGER MDIS Hapke/Kaasalainen-Shkuratov fits of Domingue et al. 2016 are behind a publisher bot check
-and not on arXiv; the MDIS archive SIS names the models but gives no parameter values), the Saturnian mid-sized
-moons (Filacchione et al. 2022 fit an Akimov disk function, which the renderer does not implement yet), the Uranian
-moons and the rest.
+and not on arXiv; the MDIS archive SIS names the models but gives no parameter values),
+the Uranian moons and the rest.
 """
 
 from __future__ import annotations
@@ -139,27 +139,6 @@ def k_at(table: dict[str, float], lam_nm: float) -> float:
     return float(np.interp(lam_nm, [centre_nm(f) for f in fs], [table[f] for f in fs]))
 
 
-def minnaert_equivalent_k(B: float, alpha_deg: float, n: int = 400) -> tuple[float, float]:
-    """The Minnaert k closest to the Barkstrom law r ∝ (μμ0/(μ+μ0))^B / μ over the lit, visible disk at phase α:
-    weighted least squares of ln r = c + k ln μ0 + (k−1) ln μ with the Barkstrom radiance × projected area as the
-    weight (so the fit follows where the light is). Returns (k, flux-weighted rms of the ln-residual)."""
-    a = math.radians(alpha_deg)
-    xs = (np.arange(n) + 0.5) / n * 2 - 1
-    X, Y = np.meshgrid(xs, xs)
-    inside = X ** 2 + Y ** 2 < 1
-    X, Y = X[inside], Y[inside]
-    mu = np.sqrt(1 - X ** 2 - Y ** 2)                     # observer along +z
-    mu0 = X * math.sin(a) + mu * math.cos(a)              # Sun in the x-z plane at phase α
-    lit = mu0 > 1e-4
-    mu, mu0 = mu[lit], mu0[lit]
-    r = (mu * mu0 / (mu + mu0)) ** B / mu
-    y, x, w = np.log(r * mu), np.log(mu0 * mu), r        # ln(r μ) = c + k ln(μ0 μ)
-    xm, ym = np.average(x, weights=w), np.average(y, weights=w)
-    k = float(np.sum(w * (x - xm) * (y - ym)) / np.sum(w * (x - xm) ** 2))
-    res = y - ym - k * (x - xm)
-    return k, float(np.sqrt(np.average(res ** 2, weights=w)))
-
-
 @lru_cache(maxsize=None)
 def _barkstrom() -> dict[str, list[dict]]:
     out: dict[str, list[dict]] = {}
@@ -169,23 +148,44 @@ def _barkstrom() -> dict[str, list[dict]]:
     return out
 
 
-def saturn_k_table(lam_nm: float) -> tuple[list[float], list[float], list[float], list[float]]:
-    """Pioneer 11 phase dependence for Saturn: B(α) interpolated linearly in wavelength between the blue (440 nm) and
-    red (640 nm) passbands to lam_nm, and its Minnaert-equivalent k at each tabulated α (0-150°)."""
+def saturn_b_table(lam_nm: float) -> tuple[list[float], list[float]]:
+    """Pioneer 11 Barkstrom exponent B(α) for Saturn at the tabulated phase angles (0-150°), interpolated linearly in
+    wavelength between the blue (440 nm) and red (640 nm) passbands to lam_nm (held at the ends)."""
     t = _barkstrom()
     red, blue = t["red"], t["blue"]
     lr, lb = 1e3 * float(red[0]["wavelength_um"]), 1e3 * float(blue[0]["wavelength_um"])
     u = min(1.0, max(0.0, (lam_nm - lb) / (lr - lb)))
-    alphas, Bs, ks, rms = [], [], [], []
+    alphas, Bs = [], []
     for rr, rb in zip(red, blue):
         assert rr["alpha_deg"] == rb["alpha_deg"]
-        B = float(rb["B"]) + u * (float(rr["B"]) - float(rb["B"]))
-        k, e = minnaert_equivalent_k(B, float(rr["alpha_deg"]))
         alphas.append(float(rr["alpha_deg"]))
-        Bs.append(B)
-        ks.append(k)
-        rms.append(e)
-    return alphas, Bs, ks, rms
+        Bs.append(float(rb["B"]) + u * (float(rr["B"]) - float(rb["B"])))
+    return alphas, Bs
+
+
+def saturn_barkstrom(k_opal: float, lam: float, opal: str, sid: str, ctx: BuildContext | None = None) -> dict:
+    """Saturn: the Barkstrom law with the Pioneer 11 B(α); at 0° the OPAL Minnaert law, which is exactly the Barkstrom
+    law with B = 2k there (μ0 = μ)."""
+    alphas, Bs = saturn_b_table(lam)
+    nodes = [0.0] + alphas[1:] + [180.0]
+    values = [2.0 * k_opal] + Bs[1:] + [Bs[-1]]
+    pio = ", ".join(f"{a:.0f}° {b:.3f}" for a, b in zip(alphas[1:], Bs[1:]))
+    return sourced(
+        {"kind": "barkstrom", "B": {"alphaDeg": nodes, "values": [round(v, 4) for v in values]}},
+        "estimated", [sid, _src(ctx, DYUDINA_2016)],
+        method=("Barkstrom law r ∝ (1/μ)(μ0μ/(μ0+μ))^B with a phase-dependent B: the form Dones et al. (1993, "
+                "Table V) fitted to the Pioneer 11 disk-resolved reflectances of Saturn (Tomasko & Doose 1984), "
+                "belts and zones averaged, in Pioneer's blue (0.44 µm) and red (0.64 µm) passbands, as reproduced "
+                "in Dyudina et al. (2016, Table 3). B is interpolated linearly in wavelength to "
+                f"{lam:.0f} nm, the mean wavelength of the Y-channel signal: {pio}. At 0°, where μ0 = μ and the "
+                f"Barkstrom law equals Minnaert's with B = 2k, B = {2 * k_opal:.3f} from {opal}, k = {k_opal:.3f}; "
+                "Pioneer's own 0° value (outside its observed phase range) is not used, because at small phase the "
+                "OPAL law is the one divided out of the map the app shows. Between 0° and 30° B is interpolated "
+                "linearly; beyond 150° (no Pioneer data; the paper's 180° column is an extrapolation) it is held at "
+                "the 150° value. The coefficient A(α) is not used: the renderer takes the disk-integrated brightness "
+                "from geometricAlbedoXYZS · Φ(α)."),
+        uncertainty=("B varies with wavelength (Pioneer blue vs red differ by up to 0.37) and between belts and "
+                     "zones; OPAL (2025) and Pioneer (1979) are different epochs; one B serves all channels."))
 
 
 def giant_minnaert(naif: int, p_grid: np.ndarray, ctx: BuildContext | None = None) -> dict:
@@ -197,26 +197,7 @@ def giant_minnaert(naif: int, p_grid: np.ndarray, ctx: BuildContext | None = Non
             f"interpolated linearly in wavelength to {lam:.0f} nm, the mean wavelength of the Y-channel signal "
             "(sunlight × ȳ × the body's albedo spectrum)")
     if naif == 699:
-        # Measured phase dependence (Pioneer 11) where it exists; OPAL at small phase; held beyond 150°.
-        alphas, Bs, ks, rms = saturn_k_table(lam)
-        nodes = [0.0] + alphas[1:] + [180.0]
-        values = [k] + ks[1:] + [ks[-1]]
-        pio = ", ".join(f"{a:.0f}° B {b:.3f} → k {kk:.3f}" for a, b, kk in zip(alphas, Bs, ks))
-        return sourced(
-            {"kind": "minnaert", "k": {"alphaDeg": nodes, "values": [round(v, 4) for v in values]}},
-            "estimated", [sid, _src(ctx, DYUDINA_2016)],
-            method=(f"Minnaert law r ∝ μ0^k μ^(k−1) with a phase-dependent k. At 0° (the Earth-based OPAL images, "
-                    f"small phase): {opal}, k = {k:.3f}. From 30° to 150°: the measured phase dependence of Saturn's "
-                    "disk-resolved reflectance from Pioneer 11 (Tomasko & Doose 1984), as the Barkstrom law "
-                    "I/F = (A/μ)(μμ0/(μ+μ0))^B of Dones et al. (1993, Table V; reproduced in Dyudina et al. 2016, "
-                    f"Table 3), B interpolated linearly in wavelength from the blue (440 nm) and red (640 nm) "
-                    f"passbands to {lam:.0f} nm and converted to the closest Minnaert k over the lit, visible disk "
-                    f"(flux-weighted least squares in ln I/F; rms {min(rms[1:]):.2f}-{max(rms[1:]):.2f} in ln): {pio}. "
-                    "Between 0° and 30° k is interpolated linearly; beyond 150° (no Pioneer data) it is held at the "
-                    "150° value."),
-            uncertainty=("k varies with wavelength (the OPAL table; Pioneer blue vs red) and between belts and zones; "
-                         "the Minnaert form approximates the Barkstrom law to the rms quoted; OPAL (2025) and Pioneer "
-                         "(1979) are different epochs, both near equinox."))
+        return saturn_barkstrom(k, lam, opal, sid, ctx)
     if naif == 599:
         # Pioneer 10/11 disk-resolved photometry supports a phase-independent law close to k = 1 (Dyudina et al. 2016).
         phase_note = ("The OPAL images are taken from Earth (phase ≤ 11°). Beyond that, k is assumed independent of "
@@ -350,6 +331,24 @@ def vincendon_mars(ctx: BuildContext | None = None) -> dict:
                      "parameter sets give similar phase functions; not the dust-storm season."))
 
 
+# ---------------------------------------------------------------------------------------------- Akimov
+SATURN_MIDSIZED = (601, 602, 603, 604, 605)
+
+
+def akimov_filacchione(naif: int, ctx: BuildContext | None = None) -> dict:
+    from .moons import FILACCHIONE, MOONS
+    return sourced(
+        {"kind": "akimov"}, "estimated", [_src(ctx, FILACCHIONE)],
+        method=(f"Akimov disk function (Shkuratov et al. 1999, Icarus 141, 132), parameter-free: "
+                "D = cos(g/2)·cos[π/(π−g)·(γ − g/2)]·(cos β)^(g/(π−g))/cos γ with photometric longitude γ and "
+                f"latitude β, the disk function with which Filacchione et al. (2022, Sec. 4, Eqs. 3-6) reduced all "
+                f"Cassini VIMS pixels of {MOONS[naif]} with i, e ≤ 70° and 10° ≤ g ≤ 120° to their equigonal "
+                "albedo. The form is assumed in the paper, not fitted (it has no free parameters); it is used here "
+                "at all phase angles (D = 1 at g = 0)."),
+        uncertainty=("the paper fits only the phase function under this disk function; residual limb and terminator "
+                     "behaviour is not quantified; outside 10-120° and beyond i, e = 70° the form is extrapolated."))
+
+
 # ---------------------------------------------------------------------------------------------- dispatch
 GALILEAN_ICY = (502, 503, 504)
 VERBISCER_BODIES = (801, 901, 999)
@@ -367,4 +366,6 @@ def spatial_model_for(naif: int, p_grid: np.ndarray | None, ctx: BuildContext | 
         return verbiscer_hapke(naif, ctx)
     if naif == 499:
         return vincendon_mars(ctx)
+    if naif in SATURN_MIDSIZED:
+        return akimov_filacchione(naif, ctx)
     return None
