@@ -12,6 +12,8 @@ export interface LabelItem {
   text: string;
   /** Higher first. */
   priority: number;
+  /** Always placed (the selected body): if no free spot exists it goes to the right, kept on screen. */
+  force?: boolean;
 }
 
 export interface PlacedLabel {
@@ -43,12 +45,14 @@ export function layoutLabels(items: LabelItem[], o: LayoutOptions): PlacedLabel[
   const sorted = [...items].sort((a, b) => b.priority - a.priority || b.r - a.r || a.id - b.id);
   for (const it of sorted) {
     // An anchor inside (or within a few px of) an already labelled body's disk collapses into it.
-    if (anchors.some((a) => Math.hypot(a.x - it.x, a.y - it.y) < a.r + 4)) continue;
+    if (!it.force && anchors.some((a) => Math.hypot(a.x - it.x, a.y - it.y) < a.r + 4)) continue;
     const w = o.measure(it.text);
-    // Right of the disk, vertically centered; if that leaves the screen, try the left side.
+    // Right of the disk, vertically centered; then left; then above/below.
     const tries = [
       { x: it.x + it.r + gap, y: it.y - lh / 2 },
       { x: it.x - it.r - gap - w, y: it.y - lh / 2 },
+      { x: it.x - w / 2, y: it.y - it.r - gap - lh },
+      { x: it.x - w / 2, y: it.y + it.r + gap },
     ];
     // Prefer a side whose box does not cover another body's position (so that body stays clickable);
     // otherwise accept one that only avoids other labels.
@@ -60,6 +64,11 @@ export function layoutLabels(items: LabelItem[], o: LayoutOptions): PlacedLabel[
     const box = boxes.find((b) => !items.some((a) => a.id !== it.id && inside(a.x, a.y, b, 3))) ?? boxes[0];
     if (box) {
       placed.push(box);
+      anchors.push(it);
+    } else if (it.force) {
+      const x = Math.min(Math.max(margin, tries[0].x), o.width - margin - w);
+      const y = Math.min(Math.max(margin, tries[0].y), o.height - margin - lh);
+      placed.push({ id: it.id, x, y, w, h: lh });
       anchors.push(it);
     }
   }

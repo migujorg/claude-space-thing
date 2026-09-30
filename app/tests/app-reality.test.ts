@@ -63,7 +63,7 @@ describe('filterBody', () => {
     const b = body(1, 'A', 'moon', { rLabel: 'estimated', albedo: 'measured', phase: 'measured' });
     const f = filterBody(b, 'strict');
     expect(f.radii).toBeNull();
-    expect(f.rotation).toBeNull(); // orientation is meaningless without a shape
+    expect(f.orientation).toBe(false); // orientation is meaningless without a shape
     expect(f.albedoXYZS).not.toBeNull();
     expect(f.surfaceUnknown).toBe(false);
     expect(whyLine(f, 'strict')).toMatch(/point/);

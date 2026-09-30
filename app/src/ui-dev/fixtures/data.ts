@@ -56,11 +56,18 @@ const BODIES: BodySpec[] = [
   { id: 501, name: 'Io', kind: 'moon', parent: 599, center: 599, orbit: [4.2e5, 1.77 * DAY, 1.2, 0], radii: [1800, 1800, 1800], radiiLabel: 'measured', gm: 5960, photo: { albedo: 'measured', phase: 'unknown' } },
   { id: 999, name: 'Pluto', kind: 'dwarf-planet', center: 0, orbit: [5.9e9, 90000 * DAY, 3.3, 0.3], radii: [1200, 1200, 1200], radiiLabel: 'measured', gm: 870 },
   { id: 5, name: 'Jupiter barycenter', kind: 'barycenter', center: 0, orbit: [0, 1, 0, 0], radii: null, radiiLabel: 'unknown', gm: 1.27e8 },
+  // A crowd of fixture irregular moons of unknown size and brightness (exercise decluttering).
+  ...Array.from({ length: 40 }, (_, i): BodySpec => ({
+    id: 55000 + i, name: `S/Fixture J ${i + 1}`, kind: 'moon', parent: 599, center: 599,
+    orbit: [1e7 + i * 5e5, (500 + i * 20) * DAY, i * 0.7, 0.3 + (i % 7) * 0.35], radii: null, radiiLabel: 'unknown', gm: 0,
+  })),
 ];
 
 const ROT = (w1: number) => ({ poleRa: [0, 0, 0], poleDec: [90, 0, 0], pm: [10, w1] });
 
 export interface FixtureOptions {
+  /** Extra delay (ms) before serving moon-system binaries, to watch lazy loading. */
+  slowSystemsMs?: number;
   /** Products to leave out (e.g. to see the Data panel's "missing" state). */
   omit?: string[];
   /** "now" in fixture ET, for the window. */
@@ -84,23 +91,28 @@ export function buildFixtureFiles(o: FixtureOptions): { files: Map<string, Uint8
   const time: TimeData = { source: 'fixture', leapSeconds: [], deltaTA: 0, k: 0, eb: 0, m0: 0, m1: 0 };
 
   // Ephemeris: one fixture "SPK" with a 4-double record per segment.
-  const segs: EphemSegment[] = [];
-  const bin = new Float64Array(BODIES.length * 4);
-  BODIES.forEach((b, i) => {
-    segs.push({ target: b.id, center: b.center, frame: 'J2000', type: 2, initEt: window.startEt, intLen: window.endEt - window.startEt, rsize: 4, n: 1, offset: i * 4, sources: ['fixture-ephem'] });
-    bin.set(b.orbit, i * 4);
-  });
-  const ephHeader: EphemHeader = { bin: 'fixture.bin', segments: segs };
+  // Planets in the "planetary" fixture file; each planet's moons (and, as in the real data, the planet
+  // centre relative to its barycenter is NOT modelled here) in a per-system file loaded lazily.
+  const fileOf = (b: BodySpec) => (b.center === 499 ? 'sat-mar' : b.center === 599 ? 'sat-jup' : 'fixture');
+  const ephFiles = new Map<string, { segs: EphemSegment[]; data: number[] }>();
+  for (const b of BODIES) {
+    const f = fileOf(b);
+    let e = ephFiles.get(f);
+    if (!e) ephFiles.set(f, (e = { segs: [], data: [] }));
+    e.segs.push({ target: b.id, center: b.center, frame: 'J2000', type: 2, initEt: window.startEt, intLen: window.endEt - window.startEt, rsize: 4, n: 1, offset: e.data.length, sources: ['fixture-ephem'], label: 'measured' });
+    e.data.push(...b.orbit);
+  }
 
   const bodies: Body[] = BODIES.map((b) => ({
     id: b.id,
     name: b.name,
     kind: b.kind,
     ...(b.parent !== undefined ? { parent: b.parent } : {}),
-    ephemeris: F,
+    ephemeris: `ephem/${fileOf(b)}`,
+    ephemerisFiles: fileOf(b) === F ? [`ephem/${F}`] : [`ephem/${fileOf(b)}`, `ephem/${F}`],
     radii: s(b.radii, b.radii ? b.radiiLabel : 'unknown', ['fixture-pck'], 'km', b.radiiLabel === 'estimated' ? 'FIXTURE: size from brightness with an assumed albedo.' : 'FIXTURE: triaxial radii.', b.radiiLabel === 'estimated' ? '±30% (fixture)' : '±1 km (fixture)'),
-    gm: s(b.gm, 'measured', ['fixture-gm'], 'km^3/s^2', 'FIXTURE value.'),
-    rotation: s(ROT(b.id === 10 ? 14 : 360), b.kind === 'barycenter' ? 'unknown' : 'measured', ['fixture-pck'], undefined, 'FIXTURE rotation model.'),
+    gm: s(b.gm, b.gm ? 'measured' : 'unknown', ['fixture-gm'], 'km^3/s^2', 'FIXTURE value.'),
+    rotation: s(ROT(b.id === 10 ? 14 : 360), b.kind === 'barycenter' || !b.radii ? 'unknown' : 'measured', ['fixture-pck'], undefined, 'FIXTURE rotation model.'),
   }));
 
   const photometry: PhotometryFile = {};
@@ -154,8 +166,11 @@ export function buildFixtureFiles(o: FixtureOptions): { files: Map<string, Uint8
   files.set('bodies.json', enc(bodies));
   files.set('photometry.json', enc(photometry));
   files.set('light.json', enc(light));
-  files.set('ephem/fixture.json', enc(ephHeader));
-  files.set('ephem/fixture.bin', new Uint8Array(bin.buffer));
+  for (const [name, e] of ephFiles) {
+    const header: EphemHeader = { bin: `ephem/${name}.bin`, segments: e.segs };
+    files.set(`ephem/${name}.json`, enc(header));
+    files.set(`ephem/${name}.bin`, new Uint8Array(new Float64Array(e.data).buffer));
+  }
   files.set('stars/bright.json', enc(starHeader));
   files.set('stars/fixture-stars.bin', new Uint8Array(starBuf));
   files.set('stars/names.json', enc(names));
@@ -179,7 +194,7 @@ export async function fixtureFetch(o: FixtureOptions): Promise<(url: string) => 
   return async (url: string) => {
     const path = url.replace(/^.*?fixture-data\//, '');
     const b = files.get(path);
-    await new Promise((r) => setTimeout(r, 5));
+    await new Promise((r) => setTimeout(r, /^ephem\/sat-.*\.bin$/.test(path) ? 5 + (o.slowSystemsMs ?? 0) : 5));
     if (!b) return new Response('not found', { status: 404 });
     return new Response(new Blob([b as Uint8Array<ArrayBuffer>]), { status: 200, headers: { 'content-type': path.endsWith('.json') ? 'application/json' : 'application/octet-stream' } });
   };

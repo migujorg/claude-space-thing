@@ -5,12 +5,13 @@
 // (URL parameters applied, data loaded) has been rendered AND renderer.settled() has resolved;
 // window.__frameError is set instead if startup fails. window.__app is the scripting/debug API.
 
-import { loadAll } from '../data/load';
+import { bodyEphemerisPaths, loadAll } from '../data/load';
+import type { Body } from '../data/schema';
 import type { SceneSnapshot } from '../render/scene';
 import { mountUi, type Ui } from '../ui/index';
 import { AppModel } from './model';
 import type { AppDeps, RendererPort } from './ports';
-import { formatUrlParams, parseUrlParams } from './url';
+import { formatUrlParams, parseUrlParams, type UrlView } from './url';
 
 export interface AppHandle {
   model: AppModel;
@@ -43,6 +44,22 @@ declare global {
     __frameReady?: boolean;
     __frameError?: string;
   }
+}
+
+/**
+ * Which ephemeris files load before the first frame: those every body needs (the planetary file), the URL
+ * target's chain, and moon systems named by ?system= ("all" → everything). The rest load in the background.
+ */
+export function eagerEphemeris(view: UrlView): (path: string, bodies: Body[]) => boolean {
+  return (path, bodies) => {
+    if (view.system?.includes('all')) return true;
+    const physical = bodies.filter((b) => b.kind !== 'barycenter');
+    if (physical.length && physical.every((b) => bodyEphemerisPaths(b).includes(path))) return true;
+    const target = view.target !== undefined ? bodies.find((b) => b.id === view.target) : undefined;
+    if (target && bodyEphemerisPaths(target).includes(path)) return true;
+    const key = path.replace(/^ephem\/(sat-)?/, '').replace(/\.json$/, '');
+    return !!view.system?.includes(key);
+  };
 }
 
 export async function startApp(canvas: HTMLCanvasElement, uiRoot: HTMLElement, deps: AppDeps): Promise<AppHandle> {
@@ -83,10 +100,12 @@ export async function startApp(canvas: HTMLCanvasElement, uiRoot: HTMLElement, d
 
   const ready = (async () => {
     ui.status('Loading data…');
+    const { view, errors } = parseUrlParams(deps.search ?? location.search);
     const data = await loadAll({
       fetch: deps.fetch ?? ((u: string) => fetch(u)),
       base: deps.dataBaseUrl ?? `${import.meta.env.BASE_URL}data/`,
       verifyHashes: deps.verifyHashes,
+      eagerEphemeris: eagerEphemeris(view),
     });
     model.setData(data);
     ui.status(null);
@@ -94,7 +113,6 @@ export async function startApp(canvas: HTMLCanvasElement, uiRoot: HTMLElement, d
     if (missing.length) model.message(`${missing.length} data product${missing.length > 1 ? 's' : ''} missing or unusable — see Data (M).`, 'warn');
 
     sizeViewport();
-    const { view, errors } = parseUrlParams(deps.search ?? location.search);
     errors.forEach((e) => model.message(e, 'warn'));
     model.applyUrl(view);
 
@@ -119,29 +137,44 @@ export async function startApp(canvas: HTMLCanvasElement, uiRoot: HTMLElement, d
     window.addEventListener('resize', sizeViewport);
     const input = ui.attachInput(canvas);
 
-    // Initial frame, then declare readiness once the GPU has finished it.
-    const snap = model.frame(0, null);
-    renderer?.render(snap);
-    ui.update(0, renderer?.stats ?? null);
-    if (renderer) await renderer.settled();
-    if (!window.__frameError) window.__frameReady = true;
-
+    // Render loop with backpressure: a new frame is built and submitted only once the GPU has finished the
+    // previous one, so a slow GPU (or software rendering) never accumulates a queue of stale frames, and the
+    // DOM overlays (labels) always match the image on screen. Simulated time still advances by real time.
+    let inFlight = false;
     let last = performance.now();
+    const renderFrame = (dt: number, fly: ReturnType<typeof input.flyInput>) => {
+      const s = model.frame(dt, fly);
+      ui.update(dt, renderer?.stats ?? null);
+      const ws = frameWaiters.splice(0);
+      if (!renderer) { ws.forEach((w) => w()); return; }
+      renderer.render(s);
+      inFlight = true;
+      renderer.settled().then(
+        () => { inFlight = false; ws.forEach((w) => w()); },
+        (e) => { inFlight = false; console.error(e); ws.forEach((w) => w()); },
+      );
+    };
+    // Initial frame first (the user sees something at once), then moon systems load in the background.
+    renderFrame(0, null);
+    model.startBackgroundLoading();
     const loop = (t: number) => {
       if (!running) return;
+      raf = requestAnimationFrame(loop);
+      if (inFlight) return;
       const dt = Math.max(0, (t - last) / 1000);
       last = t;
-      const fly = input.flyInput(Math.min(dt, 0.1));
-      const s = model.frame(dt, fly);
-      renderer?.render(s);
-      ui.update(dt, renderer?.stats ?? null);
-      if (frameWaiters.length) {
-        const ws = frameWaiters.splice(0);
-        (renderer ? renderer.settled() : Promise.resolve()).then(() => ws.forEach((w) => w()));
-      }
-      raf = requestAnimationFrame(loop);
+      renderFrame(dt, input.flyInput(Math.min(dt, 0.1)));
     };
     raf = requestAnimationFrame(loop);
+
+    // Screenshot contract: ready once everything that could appear in the view is loaded and drawn — every
+    // moon system (loaded or failed), all orbit tracks the overlay needs — and the GPU has finished.
+    await model.systemsIdle();
+    const nextFrame = () => new Promise<void>((res) => frameWaiters.push(res));
+    await nextFrame();
+    // Orbit tracks are normally built a few per frame; here finish them at once, then render once more.
+    if (model.finishOrbitWork() > 0) await nextFrame();
+    if (!window.__frameError) window.__frameReady = true;
   })().catch((e) => {
     console.error(e);
     window.__frameError = String((e as Error)?.stack ?? e);
