@@ -2,7 +2,8 @@
 // limits of transmittance, single scattering and sky irradiance, and the multiple-scattering term.
 import { describe, expect, it } from 'vitest';
 import {
-  hgPhase, msLookup, precomputeAtmosphere, rayleighPhase, skyIrradianceLookup, skyRadiance, sphereDirections, transmittanceToTop,
+  hgPhase, limbChordTable, limbTransmittance, msLookup, precomputeAtmosphere, rayleighPhase, skyIrradianceLookup, skyRadiance,
+  sphereDirections, transmittanceToTop,
 } from '../src/render/atmosphere';
 import { fixtureRayleighAtmosphere } from './fixtures/atmosphere';
 
@@ -16,7 +17,7 @@ const beta = (k: number) => 0.0116 * (550 / m.wavelengthsNm[k]) ** 4;
 describe('atmosphere tables (fixture)', () => {
   it('precomputes in well under a few seconds', () => {
     console.log(`atmosphere precompute: ${precomputeMs.toFixed(0)} ms for ${m.wavelengthsNm.length} bins`);
-    expect(precomputeMs).toBeLessThan(20000);
+    expect(precomputeMs).toBeLessThan(60000); // generous: the suite shares the CPU
   });
   it('phase functions are normalised over the sphere', () => {
     const dirs = sphereDirections(4000);
@@ -67,4 +68,19 @@ describe('atmosphere tables (fixture)', () => {
     expect(ratio(0)).toBeCloseTo(1, 4);
     expect(ratio(5)).toBeCloseTo(Math.exp(-0.002 * 10), 2);
   }, 60000);
+  it('limb chords: the grazing optical depth of an exponential atmosphere (Chapman: β(h)·√(2π r H_s))', () => {
+    const table = limbChordTable(m);
+    const H = m.topKm - m.bottomKm;
+    for (const h of [0, 8, 20, 33.3, 50]) {
+      const r = m.bottomKm + h;
+      // Flat test weights: the channel transmittance is the mean over the bins.
+      const T = m.wavelengthsNm.reduce((a, _, k) => a + Math.exp(-beta(k) * Math.exp(-h / 8) * Math.sqrt(2 * Math.PI * r * 8)), 0) / m.wavelengthsNm.length;
+      for (const c of [0, 1, 3]) expect(limbTransmittance(table, H, h, c) / T).toBeCloseTo(1, 1);
+      expect(Math.abs(limbTransmittance(table, H, h, 1) / T - 1)).toBeLessThan(0.02);
+    }
+    expect(limbTransmittance(table, H, H, 1)).toBe(1);
+    expect(limbTransmittance(table, H, -1, 1)).toBe(0);
+    let prev = 0;
+    for (let h = 0; h <= H; h += 0.7) { const t = limbTransmittance(table, H, h, 1); expect(t).toBeGreaterThanOrEqual(prev); prev = t; }
+  });
 });

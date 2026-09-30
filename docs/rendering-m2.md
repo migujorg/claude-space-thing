@@ -108,6 +108,17 @@ Available models (`schema.ts` `SpatialPhotometricModel`; float64 reference in `s
 - Minnaert (1941), with k constant or tabulated vs α.
 - Hapke (2012): the IMSA form with SHOE, CBOE, double Henyey–Greenstein p(g) (b, c), porosity K,
   Hapke's (1984) macroscopic roughness θ̄, and the Hapke (2002) or (1981) H function.
+- Akimov (M5), parameter-free: the disk function of Shkuratov et al. (1999), as Filacchione et al.
+  (2022, arXiv:2111.15541, §4 Eqs. 4–6) apply it to Saturn's mid-sized moons:
+  D = cos(g/2)·cos[π/(π − g)·(γ − g/2)]·(cos β)^{g/(π − g)}/cos γ, with the photometric longitude
+  γ = arctan[(cos i − cos e cos g)/(cos e sin g)] and latitude β = arccos(cos e/cos γ). I/F = D·F(g).
+  - D = 1 at g = 0 (a uniform disk) and 0 at the terminator (γ = g − π/2).
+  - At the bright limb (γ → π/2) the ratio cos[π(γ − g/2)/(π − g)]/cos γ is 0/0. With ε = π/2 − γ it
+    equals sin(kε)/sin ε exactly (k = π/(π − g)), which is how it is evaluated; its limit is k.
+  - g is clamped below 180°.
+- Barkstrom (1973) (M5): I/F ∝ (1/μ)·(μ0μ/(μ0 + μ))^B, with B constant or tabulated vs α (the form of
+  Dones et al.'s fits for Saturn). B = 1 is Lommel–Seeliger. μ is floored at 10⁻³ as for Minnaert, since
+  B < 1 diverges at the limb.
 
 These are per-body constant parameter sets. Per-texel parameters (the Moon's `hapke` layer, Sato et al.
 2014 at 1°, 7 bands) are a surface layer of their own (§2b).
@@ -138,7 +149,12 @@ normalization ignores relief (height maps).
 - The Hapke (2002) H approximation is within 1 % of Chandrasekhar's H. The exact H is solved in the
   test, and the solver itself is checked against the moment identity ∫H dμ = (2/w)(1 − √(1 − w)).
 - Disk integrals match closed forms: Lambert (2/3)Φ_L; Lommel–Seeliger ½[1 − sin(α/2)tan(α/2)ln cot(α/4)];
-  Minnaert geometric albedo 2/(2k + 1).
+  Minnaert geometric albedo 2/(2k + 1); Akimov 1 at g = 0; Barkstrom with B = 1 equals Lommel–Seeliger.
+- Akimov matches Eq. 4 evaluated directly at points given by their photometric latitude and longitude
+  (5–150° phase, to 10 digits), including the terminator and bright-limb limits.
+  `render-test.html?scene=hapke&law2=akimov&phase=5` shows it against Lambert: flat from pole to pole.
+  `law2=barkstrom&B=0.8` shows the Barkstrom law (limb 1.2× the centre at 5°, against 1.05× for B = 1).
+- A model kind the renderer does not know is reported, and the spatial distribution falls back to Lambert.
 - Outside a model's `validPhaseDeg` or its parameter tables, the spatial distribution falls back to
   Lambert, with a warning.
 
@@ -169,11 +185,19 @@ WGSL `texelRadf`).
   - where the photometry is measured at this geometry (ROLO, §4), at this geometry. The map is then
     also normalized at this geometry: ROLO already contains the libration and the waxing/waning
     asymmetry the map would otherwise add a second time;
+  - outside ROLO's domain (M5): at the view the Moon's albedoXYZS·Φ(α) describes. photometry.json
+    defines it as ROLO at zero libration, geometric mean of the waxing and waning Moon ("describes the
+    near side as seen from Earth"). The integral is taken with the observer over 0°, 0° and the Sun on
+    the equator at east longitude +α and −α, geometric mean. The far side, or any view off the
+    Earth–Moon line, then differs from the near side by what the maps and the per-texel law say. It was
+    averaged over rotations until M5, which made the EPOXI far-side view (validation case
+    `earth-moon-epoxi-2008`) 0.79 of the measured brightness. It is now 0.93, within tolerance;
   - elsewhere, averaged over 8 rotations.
 
   The result is cached on the geometry quantized to ~0.06°. A test integrates the rendered sphere by
   brute force against ROLO: agreement within 1 % for a sharp-edged test map, with a per-texel law that
-  changes across the surface.
+  changes across the surface. A second one renders the far side and integrates the same K at the
+  reference view: it gives albedoXYZS·Φ(α) within 1.5 % (0.76 with the rotation average).
 
 ## 3. Height maps: relief normals and self-shadowing
 
@@ -209,7 +233,7 @@ The inputs:
 
 Inside the domain (1.55° ≤ g ≤ 97°, |θ| ≤ 7°, |φ| ≤ 8°), pΦ = A_c · E☉,c(1 AU) · (radiusKm/R)²
 replaces albedoXYZS·Φ(α) in the disk illuminance and in the resolved radiance (§2). Outside it, the
-phase curve applies as before. From a spacecraft far off the Earth–Moon line, that is the curve.
+phase curve applies as before, and the maps are normalized at the curve's reference view (§2).
 Planetshine uses the same value when the Moon is the source (moonshine on Earth).
 
 Tests (`render-rolo.test.ts`):

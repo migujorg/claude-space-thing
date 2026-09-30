@@ -1,13 +1,20 @@
 // WGSL sources. Eye-model constants are injected from src/eye/constants.ts (single source of truth);
 // the per-pixel eye functions mirror src/eye/*.ts (keep in sync).
 
-import { CIE146, CIE191, CRUMEY, HUNT, PATTANAIK, SRGB } from '../eye/constants';
-import { SRGB_TO_XYZ, inv3 } from '../eye/display';
+import { CIE146, CIE191, CRUMEY, HUNT, PATTANAIK, SRGB, WARD1997_ACUITY } from '../eye/constants';
+import { P3_TO_XYZ, SRGB_TO_XYZ, XYZ_TO_P3, inv3 } from '../eye/display';
 import { XYZ_TO_HPE } from '../eye/tonemap';
 import { LAW_WGSL, MASK_HATCH_SHADER, RING_COMMON, RING_SHADER as RING_SHADER_OF, SURFACE_WGSL } from './shaders-m2';
 import { FORESHORTEN_MIN_MU } from './surface';
+import { LAW } from './spatial';
 import { EARTH_WGSL } from './shaders-earth';
-import { ATMOSPHERE_WGSL } from './shaders-atmosphere';
+import { AP_READ_WGSL, ATMOSPHERE_WGSL } from './shaders-atmosphere';
+import { LIMB_N } from './atmosphere';
+
+/** Atmospheres whose limb can dim point sources (CULL_SHADER Limbs; the nearest are kept). */
+export const LIMB_MAX = 4;
+/** Bytes of the Limbs uniform: a count, then per limb 5 vec4 and the LIMB_N-entry table. */
+export const LIMBS_UB_BYTES = 16 + LIMB_MAX * (5 + LIMB_N) * 16;
 
 // Relief self-shadowing: horizon search toward the Sun in geometrically growing steps from one texel
 // (a numerical choice, not a physical constant: 40 steps growing by 15% reach ~230 texels, capped at
@@ -64,11 +71,12 @@ struct Eye {
   cat1: vec4f,
   cat2: vec4f,     // chromatic adaptation matrix rows
   misc: vec4f,     // dither amplitude, cos(adaptation field radius), star sigma px, analytic source count
-  misc2: vec4f,    // star quad half-extent px, 1/(1-exp(-extent^2/2 sigma^2)), unused, unused
+  misc2: vec4f,    // star quad half-extent px, 1/(1-exp(-extent^2/2 sigma^2)), rod threshold elevation 10^(a·ΔB), cone photon catch (bleaching.ts)
   dark: vec4f,     // dark-light pedestal: L0 cone, L0 rod, R(L0) cone, R(L0) rod
   pts: vec4f,      // points (eye/points.ts): display response at the bleaching luminance, viewer's Ricco area (sr), cone summation area (sr), own veil in the background per lux per pixel solid angle
   fix: vec4f,      // never fixated: unit direction to the resolved Sun (or the Sun shield's disc), w = cos(angular radius + 1 px) (2: none)
-  flags: vec4f,    // display black response, cone bleaching (1/0), fixation mode (1 brightness, 0 centre), unused
+  flags: vec4f,    // display black response, cone bleaching (1/0), fixation mode (1 brightness, 0 centre), 1 = low-light acuity (eye mode)
+  hdr: vec4f,      // output: brightest displayable luminance (HDR peak, or white on SDR) cd/m², its display response, 1 = extended (HDR) encoding, 1 = Display P3
 };
 
 fn toCam(F: Frame, w: vec3f) -> vec3f {
@@ -117,6 +125,20 @@ fn crumeyPointThreshold(E: Eye, Bin: f32) -> f32 {
   let inner = E.cr0.x * h + E.cr0.y * h * q + E.cr0.z * B;
   let v = sqrt(max(inner, 0.0)) + E.cr0.w * q + E.cr1.x * h;
   return v * v;
+}
+// Dark adaptation (bleaching.ts thresholdFactor): factor ≥ 1 on the threshold of the eye adapted to (Ac, Ar)
+// from the pigment state, the more sensitive of the rod (Dowling–Rushton) and cone (photon catch) branches.
+fn crumeyBranch(r: vec2f, B: f32) -> f32 {
+  let v = r.x * sqrt(sqrt(B)) + r.y * sqrt(B);
+  return v * v;
+}
+fn darkFactor(E: Eye, Ac: f32, Ar: f32) -> f32 {
+  if (E.misc2.z <= 1.0 && E.misc2.w >= 1.0) { return 1.0; }
+  let split = ${f(CRUMEY.pointSplitB)};
+  let bR = Ar / E.mes.z;
+  let tr = crumeyBranch(vec2f(${f(CRUMEY.r1)}, ${f(CRUMEY.r2)}), clamp(bR, E.cr1.y, split)) * max(1.0, bR / split);
+  let tc = crumeyBranch(vec2f(${f(CRUMEY.r3)}, ${f(CRUMEY.r4)}), max(Ac, split));
+  return max(1.0, min(tr * E.misc2.z, tc / max(E.misc2.w, 1e-12)) / min(tr, tc));
 }
 // Crumey (2014) Eq. 39/40 large-target threshold contrast and the Ricco area A_R = ΔI/(C∞·B) (crumey.ts).
 fn crumeyRiccoArea(E: Eye, Bin: f32) -> f32 {
@@ -186,7 +208,7 @@ fn sceneResponse(Y: f32, S: f32) -> f32 {
 fn displayLd(R: f32) -> f32 {
   let Rd = E.map.x * R + E.map.y;
   if (Rd <= 0.0) { return 0.0; }
-  if (Rd >= E.disp.z) { return E.disp.w; }
+  if (Rd >= E.hdr.y) { return E.hdr.x; }
   return E.disp.x * pow(Rd / (E.disp.y - Rd), 1.0 / E.map.z);
 }
 /** Intended display luminance (points.ts intendedDisplayLd): not clamped at the peak, bounded by bleaching. */
@@ -228,7 +250,9 @@ fn respO(o: Obs, Y: f32, S: f32) -> f32 {
 /** Observer adapted to (Ac, Ar) with Pattanaik's reference white/black (5·A, 5·A/32) and appearance rules. */
 fn obsAt(AcIn: f32, ArIn: f32) -> Obs {
   let Ac = max(AcIn, E.cr1.y);
-  let Ar = max(ArIn, E.cr1.y * E.mes.z);
+  // Rods respond as adapted to their equivalent background (bleaching.ts rodEquivalentAdaptation).
+  let L0r = E.cr1.y * E.mes.z;
+  let Ar = select(max(ArIn, L0r), E.misc2.z * (max(ArIn, L0r) + L0r) - L0r, E.misc2.z > 1.0);
   var o: Obs;
   o.sc = sigmaConeAt(Ac);
   o.sr = sigmaRodAt(Ar);
@@ -300,7 +324,8 @@ fn bgAt(t: texture_2d<f32>, ndc: vec2f) -> vec4f {
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 // Resolved bodies: analytic ellipsoid ray casting on a screen-space quad (see raycast.ts).
 // ─────────────────────────────────────────────────────────────────────────────────────────────
-const BODY_COMMON = /* wgsl */ `
+/** The per-body record (renderer.ts writeBodies), shared by the ellipsoid and the mesh shaders (meshes/). */
+export const BODY_STRUCT = /* wgsl */ `
 struct Body {
   n: vec4f,     // direction to centre (world, unit), w = D (km)
   e1: vec4f,    // tangent basis e1, w = quad half-extent (tan units)
@@ -330,7 +355,9 @@ struct Body {
   nightK: vec4f, // night lights: luminance (cd/m², XYZS) per unit of the layer's radiance
   atm: vec4f,    // atmosphere (shaders-atmosphere.ts): 1 = drawn (shell), march steps, 1 = over the disk too, unused
 };
+`;
 
+const BODY_COMMON = BODY_STRUCT + /* wgsl */ `
 @group(0) @binding(0) var<uniform> F: Frame;
 @group(0) @binding(1) var<storage, read> bodies: array<Body>;
 
@@ -395,11 +422,70 @@ fn depthOf(t: f32, dir: vec3f) -> f32 {
 `;
 
 /**
+ * Eclipses, ring shadows and ring transmission of a body-relative point (km, world axes), shared by the ellipsoid
+ * and the mesh shaders. Needs `F`, `rings` and `ringProf` bound, BODY_STRUCT, RING_COMMON and COMMON.
+ */
+export const BODY_LIGHT_WGSL = /* wgsl */ `
+/** Fraction of the solar disk (uniform-disk approximation) visible from body-relative point p. */
+fn sunVisible(b: Body, p: vec3f) -> f32 {
+  let n = u32(b.misc.z);
+  if (n == 0u) { return 1.0; }
+  let S = b.sun.xyz * b.sun.w - p;
+  let dS = length(S);
+  let sHat = S / dS;
+  let rs = asin(min(b.misc.y / dS, 1.0));
+  var covered = 0.0;
+  for (var i = 0u; i < n; i++) {
+    let O = b.occ[i].xyz - p;
+    let dO = length(O);
+    if (dot(O, S) <= 0.0 || dO >= dS) { continue; }
+    let ro = asin(min(b.occ[i].w / dO, 1.0));
+    let sep = angleBetween(O / dO, sHat);
+    covered += circleOverlap(rs, ro, sep);
+  }
+  return clamp(1.0 - covered / (PI * rs * rs), 0.0, 1.0);
+}
+
+/** Sunlight transmitted through a ring system to body-relative point p (ring shadow, soft by the solar disk). */
+fn ringShadowT(b: Body, p: vec3f) -> f32 {
+  if (b.ring.x < -0.5) { return 1.0; }
+  let R = rings[u32(b.ring.x)];
+  let N = R.N.xyz;
+  let X = p + b.ring.yzw;
+  let s = b.sun.xyz;
+  let sN = dot(s, N);
+  if (abs(sN) < 1e-6) { return 1.0; }
+  let u = -dot(X, N) / sN;
+  if (u <= 0.0) { return 1.0; }
+  let r = length(X + u * s);
+  let delta = u * asin(min(b.misc.y / b.sun.w, 1.0)) / abs(sN);
+  let a = ringAvg(R, r - delta, r + delta);
+  return exp(-a.tau / abs(sN));
+}
+
+/** Light from point p toward the camera transmitted through a ring system in front of it. */
+fn ringViewT(b: Body, p: vec3f, dirN: vec3f, range: f32) -> f32 {
+  if (b.ring.x < -0.5) { return 1.0; }
+  let R = rings[u32(b.ring.x)];
+  let N = R.N.xyz;
+  let X = p + b.ring.yzw;
+  let dN = dot(dirN, N);
+  if (abs(dN) < 1e-6) { return 1.0; }
+  let u = dot(X, N) / dN;
+  if (u <= 0.0 || u >= range) { return 1.0; }
+  let r = length(X - u * dirN);
+  let fw = F.tanHalf.z * (range - u) / abs(dN);
+  let a = ringAvg(R, r - 0.5 * fw, r + 0.5 * fw);
+  return exp(-a.tau / abs(dN));
+}
+`;
+
+/**
  * Body shader variants: 'plain'; 'earth' (Earth's layers, earth.ts, with its atmosphere); 'atm' (a body drawn
  * from its disk photometry under an atmosphere: Mars, Venus, Pluto; docs/rendering-earth.md §8).
  */
 type BodyVariant = 'plain' | 'earth' | 'atm';
-const bodyShader = (v: BodyVariant) => { const earth = v === 'earth'; const atm = v !== 'plain'; return COMMON + BODY_COMMON + RING_COMMON + LAW_WGSL + SURFACE_WGSL + (earth ? EARTH_WGSL : '') + (atm ? ATMOSPHERE_WGSL : '') + /* wgsl */ `
+const bodyShader = (v: BodyVariant) => { const earth = v === 'earth'; const atm = v !== 'plain'; return COMMON + BODY_COMMON + RING_COMMON + LAW_WGSL + SURFACE_WGSL + (earth ? EARTH_WGSL : '') + (atm ? ATMOSPHERE_WGSL + AP_READ_WGSL : '') + /* wgsl */ `
 @group(0) @binding(2) var<storage, read> pageTable: array<u32>;
 @group(0) @binding(3) var albedoPages: texture_2d_array<f32>;
 @group(0) @binding(4) var heightPages: texture_2d_array<f32>;
@@ -410,29 +496,34 @@ const bodyShader = (v: BodyVariant) => { const earth = v === 'earth'; const atm 
 @group(0) @binding(9) var<uniform> TL: TexelLawInfo;
 ${atm ? `@group(0) @binding(12) var<uniform> A: Atm;
 @group(0) @binding(13) var atmTex: texture_2d_array<f32>;
-@group(0) @binding(14) var atmSamp: sampler;` : ''}
+@group(0) @binding(14) var atmSamp: sampler;
+@group(0) @binding(16) var apTex: texture_3d<f32>;` : ''}
 ${earth ? `@group(0) @binding(10) var cloudPages: texture_2d_array<f32>;
 @group(0) @binding(11) var rg16Pages: texture_2d_array<f32>;
 @group(0) @binding(15) var windTex: texture_2d<f32>;
 
-/** Wind layer (one whole level, NaN = unknown): bilinear over known texels per channel. */
+/**
+ * Wind speed from the wind layer (one whole level, NaN = unknown): per texel the ascending pass (the overpass
+ * nearest the cloud layer's ~13:30 local time), else the daily mean, then bilinear over the texels that have
+ * either. Choosing per texel before interpolating keeps the field continuous where the ascending swath ends.
+ * v.x = speed (m/s), known.x = weight of the known texels.
+ */
 fn sampleWind(uv: vec2f) -> LayerSample {
   let d = vec2i(textureDimensions(windTex));
   let c = uv * vec2f(d) - 0.5;
   let i0 = vec2i(floor(c));
   let fr = c - vec2f(i0);
-  var acc = vec4f(0.0);
-  var wk = vec4f(0.0);
+  var acc = 0.0;
+  var wk = 0.0;
   for (var k = 0; k < 4; k++) {
     let dx = k & 1;
     let dy = k >> 1;
     let w = select(1.0 - fr.x, fr.x, dx == 1) * select(1.0 - fr.y, fr.y, dy == 1);
     let t = textureLoad(windTex, vec2i((i0.x + dx + d.x) % d.x, clamp(i0.y + dy, 0, d.y - 1)), 0);
-    let ok = vec4<bool>(isFiniteF(t.x), isFiniteF(t.y), isFiniteF(t.z), isFiniteF(t.w));
-    acc += select(vec4f(0.0), w * t, ok);
-    wk += select(vec4f(0.0), vec4f(w), ok);
+    let u = select(t.y, t.x, isFiniteF(t.x));
+    if (isFiniteF(u)) { acc += w * u; wk += w; }
   }
-  return LayerSample(select(vec4f(0.0), acc / max(wk, vec4f(1e-30)), wk > vec4f(0.0)), wk);
+  return LayerSample(vec4f(select(0.0, acc / max(wk, 1e-30), wk > 0.0), 0.0, 0.0, 0.0), vec4f(wk, 0.0, 0.0, 0.0));
 }` : ''}
 
 struct TexelLawInfo {
@@ -493,59 +584,7 @@ fn texelRadf(uv: vec2f, mu0: f32, mu: f32, g: f32) -> vec4f {
   return select(vec4f(mu0), num / max(dn, vec4f(1e-12)), dn > vec4f(0.0));
 }
 
-/** Fraction of the solar disk (uniform-disk approximation) visible from body-relative point p. */
-fn sunVisible(b: Body, p: vec3f) -> f32 {
-  let n = u32(b.misc.z);
-  if (n == 0u) { return 1.0; }
-  let S = b.sun.xyz * b.sun.w - p;
-  let dS = length(S);
-  let sHat = S / dS;
-  let rs = asin(min(b.misc.y / dS, 1.0));
-  var covered = 0.0;
-  for (var i = 0u; i < n; i++) {
-    let O = b.occ[i].xyz - p;
-    let dO = length(O);
-    if (dot(O, S) <= 0.0 || dO >= dS) { continue; }
-    let ro = asin(min(b.occ[i].w / dO, 1.0));
-    let sep = angleBetween(O / dO, sHat);
-    covered += circleOverlap(rs, ro, sep);
-  }
-  return clamp(1.0 - covered / (PI * rs * rs), 0.0, 1.0);
-}
-
-/** Sunlight transmitted through a ring system to body-relative point p (ring shadow, soft by the solar disk). */
-fn ringShadowT(b: Body, p: vec3f) -> f32 {
-  if (b.ring.x < -0.5) { return 1.0; }
-  let R = rings[u32(b.ring.x)];
-  let N = R.N.xyz;
-  let X = p + b.ring.yzw;
-  let s = b.sun.xyz;
-  let sN = dot(s, N);
-  if (abs(sN) < 1e-6) { return 1.0; }
-  let u = -dot(X, N) / sN;
-  if (u <= 0.0) { return 1.0; }
-  let r = length(X + u * s);
-  let delta = u * asin(min(b.misc.y / b.sun.w, 1.0)) / abs(sN);
-  let a = ringAvg(R, r - delta, r + delta);
-  return exp(-a.tau / abs(sN));
-}
-
-/** Light from point p toward the camera transmitted through a ring system in front of it. */
-fn ringViewT(b: Body, p: vec3f, dirN: vec3f, range: f32) -> f32 {
-  if (b.ring.x < -0.5) { return 1.0; }
-  let R = rings[u32(b.ring.x)];
-  let N = R.N.xyz;
-  let X = p + b.ring.yzw;
-  let dN = dot(dirN, N);
-  if (abs(dN) < 1e-6) { return 1.0; }
-  let u = dot(X, N) / dN;
-  if (u <= 0.0 || u >= range) { return 1.0; }
-  let r = length(X - u * dirN);
-  let fw = F.tanHalf.z * (range - u) / abs(dN);
-  let a = ringAvg(R, r - 0.5 * fw, r + 0.5 * fw);
-  return exp(-a.tau / abs(dN));
-}
-
+${BODY_LIGHT_WGSL}
 struct FOut {
   @location(0) ext: vec4f,
   @location(1) w: f32,
@@ -656,7 +695,7 @@ struct FOut {
     if (mu0 > 0.0 && mu > 0.0) {
       let gph = acos(clamp(dot(S, V), -1.0, 1.0));
       var r4: vec4f;
-      if (b.law0.x > 4.5) {
+      if (abs(b.law0.x - ${LAW.texelHapke}.0) < 0.5) {
         // Per-texel law (the Moon's Hapke maps): parameters of the texel under this point.
         r4 = texelRadf(uvOfBf(hit.h * vec3f(b.rot0.w, b.rot1.w, b.rot2.w)), mu0, mu, gph);
       } else {
@@ -695,24 +734,25 @@ const ATM_OVER_PHOTOMETRY = /* wgsl */ `
       let Hk = A.geo.y - A.geo.x;
       let rS = length(p);
       let sTop = min(-pe + sqrt(max(pe * pe + 2.0 * rS * Hk + Hk * Hk, 0.0)), range);
-      let path = atmMarch(p, dirN, sTop, 0.0, i32(b.atm.y), S, b.m0.xyz, b.m1.xyz, b.m2.xyz, -1.0);
+      // The view path from the aerial-perspective columns, or marched here (disk edge, columns off).
+      var apOk = false;
+      var path = apView(in.pos.xy, -1.0, &apOk);
+      if (!apOk) { path = atmViewOf(atmMarch(p, dirN, sTop, 0.0, i32(b.atm.y), S, b.m0.xyz, b.m1.xyz, b.m2.xyz, -1.0)); }
       let muSg = dot(p, S) / rS;
       var T2 = vec4f(0.0);
       var Sky = vec4f(0.0);
-      var Lp = vec4f(0.0);
       psT = vec4f(0.0);
       for (var j = 0; j < atmK4(); j++) {
-        let ts = atmTsun(A.geo.x, muSg, j) * path.T[j];
-        let es = atmIrr(0.0, muSg, j) * path.T[j];
+        let ts = atmTsun(A.geo.x, muSg, j) * path.Td[j];
+        let es = atmIrr(0.0, muSg, j) * path.Td[j];
         for (var c = 0; c < 4; c++) {
           let w = A.w[4 * c + j];
           T2[c] += dot(w, ts);
           Sky[c] += dot(w, es);
-          Lp[c] += dot(w, path.L[j]);
-          psT[c] += dot(w, path.T[j]);
+          psT[c] += dot(w, path.Td[j]);
         }
       }
-      L = L * T2 + (b.rad * M * Sky + PI * A.sunE * Lp) * sunVisible(b, p);
+      L = L * T2 + (b.rad * M * Sky + PI * A.sunE * path.Lf) * sunVisible(b, p);
     }
 `;
 
@@ -728,12 +768,15 @@ const EARTH_WITH_ATMOSPHERE = /* wgsl */ `
         let Hk = A.geo.y - A.geo.x;
         let rS = length(p);
         let sTop = min(-pe + sqrt(max(pe * pe + 2.0 * rS * Hk + Hk * Hk, 0.0)), range);
-        let path = atmMarch(p, dirN, sTop, 0.0, i32(b.atm.y), S, b.m0.xyz, b.m1.xyz, b.m2.xyz, ein.cthKm);
+        // The view path from the aerial-perspective columns, or marched here (disk edge, columns off).
+        var apOk = false;
+        var path = apView(in.pos.xy, ein.cthKm, &apOk);
+        if (!apOk) { path = atmViewOf(atmMarch(p, dirN, sTop, 0.0, i32(b.atm.y), S, b.m0.xyz, b.m1.xyz, b.m2.xyz, ein.cthKm)); }
         let muSg = dot(p, S) / rS;
         let hv = normalize(S + V);
         let pr = earthParts(ein, mu0, mu, dot(hv, N), dot(hv, S));
         let unknownW = max(1.0 - pr.clear.w - pr.cloudy.w, 0.0);
-        var Lsun = vec4f(0.0);
+        var Lsun = PI * ((pr.clear.w + unknownW) * path.Lf + pr.cloudy.w * path.Lcf);
         var Temit = vec4f(0.0);
         for (var j = 0; j < atmK4(); j++) {
           let ts0 = atmTsun(A.geo.x, muSg, j);
@@ -741,10 +784,10 @@ const EARTH_WITH_ATMOSPHERE = /* wgsl */ `
           let tsc = atmTsun(A.geo.x + ein.cthKm, muSg, j);
           let esc = atmIrr(ein.cthKm, muSg, j);
           for (var c = 0; c < 4; c++) {
-            let clearRad = PI * path.L[j] + path.T[j] * (pr.clear.dir[c] * ts0 + pr.clear.dif[c] * es0);
-            let cloudRad = PI * path.Lc[j] + path.Tc[j] * (pr.cloudy.dir[c] * tsc + pr.cloudy.dif[c] * esc);
-            Lsun[c] += dot(A.w[4 * c + j], pr.clear.w * clearRad + pr.cloudy.w * cloudRad + unknownW * PI * path.L[j]);
-            Temit[c] += dot(A.w[4 * c + j], path.T[j]);
+            let clearRad = path.Td[j] * (pr.clear.dir[c] * ts0 + pr.clear.dif[c] * es0);
+            let cloudRad = path.Tcd[j] * (pr.cloudy.dir[c] * tsc + pr.cloudy.dif[c] * esc);
+            Lsun[c] += dot(A.w[4 * c + j], pr.clear.w * clearRad + pr.cloudy.w * cloudRad);
+            Temit[c] += dot(A.w[4 * c + j], path.Td[j]);
           }
         }
         L = A.sunE * Lsun * sunVisible(b, p);
@@ -754,7 +797,7 @@ const EARTH_WITH_ATMOSPHERE = /* wgsl */ `
         L += nightL * (pr.clear.w * pr.clear.emit + pr.cloudy.w * pr.cloudy.emit) * Temit;
         // An unknown wind marks the water where a possible glint (through both paths) outshines the known light.
         var glintT = 0.0;
-        for (var j = 0; j < atmK4(); j++) { glintT += dot(A.w[4 + j], atmTsun(A.geo.x, muSg, j) * path.T[j]); }
+        for (var j = 0; j < atmK4(); j++) { glintT += dot(A.w[4 + j], atmTsun(A.geo.x, muSg, j) * path.Td[j]); }
         let glintGap = earthGlintGap(pr.glintShare, pr.glintMax * glintT, Lsun.y);
         // Reflected light matters while the sky above is lit (to ~6° below the horizon, sin 6° ≈ 0.1).
         gap = earthGap(max(pr.gap, glintGap), pr.gapEmit, muSg > -0.1, nightL);
@@ -784,11 +827,10 @@ const EARTH_SAMPLE = /* wgsl */ `
         ein.fi = sW.v.y;
       }
       if (b.earthW.w > 0.5) {
-        // Wind (a whole level in its own texture): the ascending pass, else the daily mean.
+        // Wind (a whole level in its own texture): per texel the ascending pass, else the daily mean.
         let wv = sampleWind(uv);
         ein.glint = 1.0;
         if (wv.known.x > 0.0) { ein.u10 = wv.v.x; ein.windKnown = 1.0; }
-        else if (wv.known.y > 0.0) { ein.u10 = wv.v.y; ein.windKnown = 1.0; }
       }
       if (b.earthN.z > 0.5) {
         let baseN = bitcast<u32>(b.earthN.x);
@@ -922,6 +964,42 @@ export const BODY_OVERLAY_SHADER = COMMON + BODY_COMMON + /* wgsl */ `
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 // Stars: GPU visibility culling (Crumey threshold) → compact list + indirect draw arguments.
 // ─────────────────────────────────────────────────────────────────────────────────────────────
+/**
+ * The limbs of the drawn atmospheres, for light from beyond them: point sources (CULL_SHADER) and the sky
+ * background (sky/background.ts). The Limbs uniform is written by renderer.ts writeLimbs.
+ */
+export const LIMB_WGSL = (binding: number) => /* wgsl */ `
+// The drawn atmospheres whose limb light from beyond may cross (renderer.ts writeLimbs;
+// docs/rendering-earth.md §4 "Stars behind the limb"). Per limb: the body centre relative to
+// the camera (km, ICRF) with w = the shell's thickness H (km), the camera in the body's unit-sphere frame,
+// the rows of M (ICRF → unit-sphere frame), and ln τ per XYZS channel of the chord at impact altitude
+// h_i = H·i/(LIMB_N − 1) (atmosphere.ts limbChordTable).
+struct Limb { c: vec4f, o: vec4f, m0: vec4f, m1: vec4f, m2: vec4f, tab: array<vec4f, ${LIMB_N}> };
+struct Limbs { count: vec4f, l: array<Limb, ${LIMB_MAX}> };
+@group(0) @binding(${binding}) var<uniform> LB: Limbs;
+
+/** Transmittance (XYZS) of the atmospheres' limbs along the unit direction u from the camera; 0 behind a solid body. */
+fn limbTransmittance(u: vec3f) -> vec4f {
+  var T = vec4f(1.0);
+  for (var i = 0; i < i32(LB.count.x); i++) {
+    let qu = vec3f(dot(LB.l[i].m0.xyz, u), dot(LB.l[i].m1.xyz, u), dot(LB.l[i].m2.xyz, u));
+    // Closest approach to the centre in the unit-sphere frame (the lowest point of the ray, for a sphere).
+    let s = -dot(LB.l[i].o.xyz, qu) / dot(qu, qu);
+    if (s <= 0.0) { continue; }
+    let q = LB.l[i].o.xyz + s * qu;
+    let p = s * u - LB.l[i].c.xyz;
+    let h = length(p) * (1.0 - 1.0 / length(q));
+    let H = LB.l[i].c.w;
+    if (h >= H) { continue; }
+    if (h <= 0.0) { return vec4f(0.0); }
+    let x = h / H * ${f(LIMB_N - 1)};
+    let k = min(i32(x), ${LIMB_N - 2});
+    T *= exp(-exp(mix(LB.l[i].tab[k], LB.l[i].tab[k + 1], x - f32(k))));
+  }
+  return T;
+}
+`;
+
 export const CULL_SHADER = COMMON + /* wgsl */ `
 struct CullInfo { count: u32, stride: u32, maxVisible: u32, groupsX: u32 };
 @group(0) @binding(0) var<uniform> F: Frame;
@@ -935,14 +1013,18 @@ ${SRCS(0, 7)}
 ${VEIL}
 ${BG}
 
+${LIMB_WGSL(8)}
+
 @compute @workgroup_size(256) fn main(@builtin(global_invocation_id) gid: vec3u) {
   let i = gid.x + gid.y * info.groupsX * 256u;
   if (i >= info.count) { return; }
   let base = i * info.stride;
   let u = vec3f(stars[base], stars[base + 1u], stars[base + 2u]);
-  let e = vec4f(stars[base + 3u], stars[base + 4u], stars[base + 5u], stars[base + 6u]);
+  var e = vec4f(stars[base + 3u], stars[base + 4u], stars[base + 5u], stars[base + 6u]);
   let c = toCam(F, u);
   if (c.z >= 0.0 || occulted(F, u)) { return; }
+  e *= limbTransmittance(u);
+  if (e.y <= 0.0 && e.w <= 0.0) { return; }
   let ndc = vec2f(c.x * F.proj.x, c.y * F.proj.y) / (-c.z);
   let marg = E.misc2.x * 2.0 * F.size.zw;
   if (abs(ndc.x) > 1.0 + marg.x || abs(ndc.y) > 1.0 + marg.y) { return; }
@@ -955,7 +1037,7 @@ ${BG}
   let aC = max(bg.y, E.cr1.y);
   let aR = max(bg.w, E.cr1.y * E.mes.z);
   let mL = mesopicM(aC, aR);
-  let thr = E.mes.w * crumeyPointThreshold(E, blackwellEqM(E, mL, aC, aR)) / E.map.w;
+  let thr = E.mes.w * crumeyPointThreshold(E, blackwellEqM(E, mL, aC, aR)) * darkFactor(E, aC, aR) / E.map.w;
   if (blackwellEqM(E, mL, e.y, e.w) < thr) { return; }
   let k = atomicAdd(&args[1], 1u);
   if (k >= info.maxVisible) { return; }
@@ -1016,7 +1098,7 @@ struct PV {
   let aR = max(bgPhys.w, E.cr1.y * E.mes.z);
   let mL = mesopicM(aC, aR);
   let bBw = blackwellEqM(E, mL, aC, aR);
-  let visible = blackwellEqM(E, mL, e.y, e.w) >= E.mes.w * crumeyPointThreshold(E, bBw) / E.map.w;
+  let visible = blackwellEqM(E, mL, e.y, e.w) >= E.mes.w * crumeyPointThreshold(E, bBw) * darkFactor(E, aC, aR) / E.map.w;
   let aRicco = crumeyRiccoArea(E, bBw);
   let aCones = crumeyRiccoArea(E, max(bBw, ${f(CIE191.upperCdM2)}));
   let bg = bgPhys * E.map.w;
@@ -1026,9 +1108,9 @@ struct PV {
   let Lb = intendedLdO(ob, respO(ob, bg.y, bg.w));
   let dLd = select(0.0, max(0.0, intendedLdO(ob, respO(ob, bg.y + eY, bg.w + eS)) - Lb), visible);
   let wanted = dLd * E.pts.y;
-  let Ldb = min(Lb, E.disp.w);
+  let Ldb = min(Lb, E.hdr.x);
   let splatArea = 2.0 * PI * E.misc.z * E.misc.z * pixelSolidAngle(F, p.xy) / E.misc2.y;
-  let capacity = max(0.0, E.disp.w - Ldb) * splatArea;
+  let capacity = max(0.0, E.hdr.x - Ldb) * splatArea;
   let drawn = min(wanted, capacity);
   let peakLd = Ldb + drawn / max(splatArea, 1e-30);
   let chroma = displayChroma(e.xyz, colourKO(ob, bg.y + e.y * u / aCones, peakLd));
@@ -1216,9 +1298,9 @@ export const OVERFLOW_SHADER = COMMON + TONE + /* wgsl */ `
   if (p.x >= d.x || p.y >= d.y) { return; }
   let perc = textureLoad(wTex, p, 0).x * E.glare.x * textureLoad(extTex, p, 0) / F.proj.w * E.map.w;
   var o = textureLoad(ptExTex, p, 0);
-  let over = intendedLd(sceneResponse(perc.y, perc.w)) - E.disp.w;
+  let over = intendedLd(sceneResponse(perc.y, perc.w)) - E.hdr.x;
   if (over > 0.0 && perc.y > 0.0) {
-    o = o + vec4f(displayChroma(perc.xyz, colourK(perc.y, E.disp.w)) * over, 0.0);
+    o = o + vec4f(displayChroma(perc.xyz, colourK(perc.y, E.hdr.x)) * over, 0.0);
   }
   textureStore(dst, p, o);
 }
@@ -1243,18 +1325,25 @@ export const ADAPT_SHADER = COMMON + /* wgsl */ `
 @group(0) @binding(4) var veilTex: texture_2d<f32>;
 @group(0) @binding(5) var<storage, read_write> partials: array<vec4f>;
 ${SRCS(0, 6)}
+@group(0) @binding(7) var<storage, read_write> darkest: array<vec4f>;
 ${VEIL}
 
-/** One pixel's contribution: (log cone · w, log rod · w, w, flux) (eye-model.md §2). */
-fn adaptSample(p: vec2i) -> vec4f {
+struct AdaptSample { acc: vec4f, ret: vec4f };
+
+/**
+ * One pixel's contribution: (log cone · w, log rod · w, w, flux) (eye-model.md §2), and its retinal
+ * luminance (object + veil), for the darkest background in the frame.
+ */
+fn adaptSample(p: vec2i) -> AdaptSample {
   var acc = vec4f(0.0);
+  var ret = vec4f(0.0);
   {
     let ndc = ndcFromFrag(F, vec2f(p) + 0.5);
     let dir = normalize(worldDirNdc(F, ndc));
     let om = pixelSolidAngle(F, ndc);
     let ext = textureLoad(extTex, p, 0) / F.proj.w;
     let pt = textureLoad(ptTex, p, 0) / F.proj.w;
-    let ret = E.glare.x * ext + textureLoad(veilTex, p, 0) / F.proj.w + analyticVeil(E, dir);
+    ret = E.glare.x * ext + textureLoad(veilTex, p, 0) / F.proj.w + analyticVeil(E, dir);
     let lc = log(max(ret.y, 0.0) + E.dark.x);
     let lr = log(max(ret.w, 0.0) + E.dark.y);
     if (E.flags.z > 0.5) {
@@ -1270,7 +1359,7 @@ fn adaptSample(p: vec2i) -> vec4f {
     }
     acc.w = (ext.y + pt.y) * om;
   }
-  return acc;
+  return AdaptSample(acc, ret);
 }
 
 // Each invocation sums an ADAPT_BLOCK² block of pixels into its own partial: no workgroup barriers or
@@ -1278,14 +1367,20 @@ fn adaptSample(p: vec2i) -> vec4f {
 // GPUs), and the partials are few enough for the single-workgroup reduction below.
 @compute @workgroup_size(8, 8) fn tiles(@builtin(global_invocation_id) g: vec3u, @builtin(num_workgroups) nw: vec3u) {
   var acc = vec4f(0.0);
+  var lo = vec2f(3.0e38);
   let o = vec2i(g.xy) * ${ADAPT_BLOCK};
   for (var j = 0; j < ${ADAPT_BLOCK}; j++) {
     for (var i = 0; i < ${ADAPT_BLOCK}; i++) {
       let p = o + vec2i(i, j);
-      if (f32(p.x) < F.size.x && f32(p.y) < F.size.y) { acc += adaptSample(p); }
+      if (f32(p.x) < F.size.x && f32(p.y) < F.size.y) {
+        let s = adaptSample(p);
+        acc += s.acc;
+        lo = min(lo, max(s.ret.yw, vec2f(0.0)));
+      }
     }
   }
   partials[g.x + g.y * nw.x * 8u] = acc;
+  darkest[g.x + g.y * nw.x * 8u] = vec4f(lo, 0.0, 0.0);
 }
 `;
 
@@ -1294,19 +1389,24 @@ export const ADAPT_REDUCE_SHADER = /* wgsl */ `
 @group(0) @binding(1) var<storage, read_write> result: array<vec4f, 2>;
 @group(0) @binding(2) var<uniform> n: vec4u;
 @group(0) @binding(3) var<storage, read> args: array<u32, 4>;
+@group(0) @binding(4) var<storage, read> darkest: array<vec4f>;
 var<workgroup> sh: array<vec4f, 256>;
+var<workgroup> shLo: array<vec2f, 256>;
 @compute @workgroup_size(256) fn main(@builtin(local_invocation_index) li: u32) {
   var acc = vec4f(0.0);
-  for (var i = li; i < n.x; i += 256u) { acc += partials[i]; }
+  var lo = vec2f(3.0e38);
+  for (var i = li; i < n.x; i += 256u) { acc += partials[i]; lo = min(lo, darkest[i].xy); }
   sh[li] = acc;
+  shLo[li] = lo;
   workgroupBarrier();
   for (var s = 128u; s > 0u; s = s >> 1u) {
-    if (li < s) { sh[li] += sh[li + s]; }
+    if (li < s) { sh[li] += sh[li + s]; shLo[li] = min(shLo[li], shLo[li + s]); }
     workgroupBarrier();
   }
   if (li == 0u) {
     result[0] = sh[0];
-    result[1] = vec4f(f32(args[1]), 0.0, 0.0, 0.0);
+    // Stars drawn, and the darkest retinal luminance in the frame (photopic, scotopic; cd/m²).
+    result[1] = vec4f(f32(args[1]), shLo[0], 0.0);
   }
 }
 `;
@@ -1323,14 +1423,48 @@ export const COMPOSITE_SHADER = COMMON + TONE + /* wgsl */ `
 @group(0) @binding(4) var wTex: texture_2d<f32>;
 @group(0) @binding(5) var paintTex: texture_2d<f32>;    // painted glare: the viewer's veil of the overflow (display XYZ, cd/m²)
 ${SRCS(0, 6)}
+@group(0) @binding(7) var acuTex: texture_2d<f32>;      // EXT as a mip chain: mip j has 2^(j+1) px per texel (pre-exposed)
+@group(0) @binding(8) var veilTex: texture_2d<f32>;     // the in-frame veil on the retina (retina pyramid, pre-exposed)
+
+/** EXT at pyramid level m (0 = full resolution), bilinear at full-resolution position q (px). */
+fn acuAt(m: i32, q: vec2f) -> vec4f {
+  if (m <= 0) { return textureLoad(extTex, clamp(vec2i(q), vec2i(0), vec2i(F.size.xy) - 1), 0); }
+  let d = vec2i(textureDimensions(acuTex, m - 1));
+  let c = q / f32(1 << u32(m)) - 0.5;
+  let i0 = vec2i(floor(c));
+  let fr = c - vec2f(i0);
+  let h = d - 1;
+  let a = mix(textureLoad(acuTex, clamp(i0, vec2i(0), h), m - 1), textureLoad(acuTex, clamp(i0 + vec2i(1, 0), vec2i(0), h), m - 1), fr.x);
+  let b = mix(textureLoad(acuTex, clamp(i0 + vec2i(0, 1), vec2i(0), h), m - 1), textureLoad(acuTex, clamp(i0 + vec2i(1, 1), vec2i(0), h), m - 1), fr.x);
+  return mix(a, b, fr.y);
+}
+/** EXT at a fractional pyramid level (linear between levels, as Ward Larson et al.'s mip map). */
+fn acuSample(k: f32, q: vec2f) -> vec4f {
+  let top = f32(textureNumLevels(acuTex));
+  let kk = clamp(k, 0.0, top);
+  let k0 = i32(floor(kk));
+  let k1 = min(k0 + 1, i32(top));
+  return mix(acuAt(k0, q), acuAt(k1, q), kk - f32(k0));
+}
 ${VEIL}
 
 const XYZ2RGB = mat3x3f(
   vec3f(${f(SRGB.xyzToRgb[0])}, ${f(SRGB.xyzToRgb[3])}, ${f(SRGB.xyzToRgb[6])}),
   vec3f(${f(SRGB.xyzToRgb[1])}, ${f(SRGB.xyzToRgb[4])}, ${f(SRGB.xyzToRgb[7])}),
   vec3f(${f(SRGB.xyzToRgb[2])}, ${f(SRGB.xyzToRgb[5])}, ${f(SRGB.xyzToRgb[8])}));
+const XYZ2P3 = mat3x3f(
+  vec3f(${f(XYZ_TO_P3[0])}, ${f(XYZ_TO_P3[3])}, ${f(XYZ_TO_P3[6])}),
+  vec3f(${f(XYZ_TO_P3[1])}, ${f(XYZ_TO_P3[4])}, ${f(XYZ_TO_P3[7])}),
+  vec3f(${f(XYZ_TO_P3[2])}, ${f(XYZ_TO_P3[5])}, ${f(XYZ_TO_P3[8])}));
 // 1 / (Y of RGB (1,1,1)): the achromatic colour of luminance Y is (Y·GRAY_NORM)·(1,1,1).
 const GRAY_NORM: f32 = ${f(1 / (SRGB_TO_XYZ[3] + SRGB_TO_XYZ[4] + SRGB_TO_XYZ[5]))};
+const GRAY_NORM_P3: f32 = ${f(1 / (P3_TO_XYZ[3] + P3_TO_XYZ[4] + P3_TO_XYZ[5]))};
+/** XYZ (display-linear, relative to white) → the output's linear RGB (sRGB or Display P3 primaries). */
+fn toOutRgb(xyz: vec3f) -> vec3f {
+  if (E.hdr.w > 0.5) { return XYZ2P3 * xyz; }
+  return XYZ2RGB * xyz;
+}
+fn grayNorm() -> f32 { return select(GRAY_NORM, GRAY_NORM_P3, E.hdr.w > 0.5); }
 
 @vertex fn vs(@builtin(vertex_index) vi: u32) -> @builtin(position) vec4f {
   var p = array<vec2f, 3>(vec2f(-1.0, -1.0), vec2f(3.0, -1.0), vec2f(-1.0, 3.0));
@@ -1339,6 +1473,11 @@ const GRAY_NORM: f32 = ${f(1 / (SRGB_TO_XYZ[3] + SRGB_TO_XYZ[4] + SRGB_TO_XYZ[5]
 
 fn srgbEncode(c: f32) -> f32 {
   if (c <= ${f(SRGB.encodeThreshold)}) { return ${f(SRGB.linearSlope)} * c; }
+  return ${f(SRGB.gammaScale)} * pow(c, 1.0 / ${f(SRGB.gamma)}) - ${f(SRGB.gammaOffset)};
+}
+/** The sRGB curve extended beyond 1 (display.ts srgbEncodeExtended; values here are ≥ 0). */
+fn srgbEncodeExt(c: f32) -> f32 {
+  if (c <= ${f(SRGB.encodeThreshold)}) { return ${f(SRGB.linearSlope)} * max(c, 0.0); }
   return ${f(SRGB.gammaScale)} * pow(c, 1.0 / ${f(SRGB.gamma)}) - ${f(SRGB.gammaOffset)};
 }
 
@@ -1354,7 +1493,19 @@ fn hash(p: vec2u) -> f32 {
   let p = vec2i(pos.xy);
   let ndc = ndcFromFrag(F, pos.xy);
   let dir = normalize(worldDirNdc(F, ndc));
-  let ext = textureLoad(extTex, p, 0) / F.proj.w;
+  var extRaw = textureLoad(extTex, p, 0);
+  if (E.flags.w > 0.5) {
+    // Low-light acuity (eye/acuity.ts): Ward Larson et al. (1997) Eq. 15, the fit to Shlaer (1937), from the
+    // luminance of the ~1° foveal field around the pixel plus the veil; the image is resolved only down to
+    // the pyramid level whose texel is half a cycle at that acuity.
+    let pixDeg = F.tanHalf.z * ${f(180 / Math.PI)};
+    let fovea = acuSample(log2(1.0 / pixDeg), pos.xy) / F.proj.w;
+    let La = max(fovea.y * E.glare.x + textureLoad(veilTex, p, 0).y / F.proj.w + analyticVeil(E, dir).y, E.cr1.y);
+    let R = ${f(WARD1997_ACUITY.scale)} * atan(${f(WARD1997_ACUITY.logSlope)} * log2(La) * ${f(Math.LOG10E / Math.LOG2E)} + ${f(WARD1997_ACUITY.logOffset)}) + ${f(WARD1997_ACUITY.offset)};
+    let kR = log2(1.0 / (2.0 * max(R, 1e-6) * pixDeg));
+    if (kR > 0.0) { extRaw = acuSample(kR, pos.xy); }
+  }
+  let ext = extRaw / F.proj.w;
   let w = textureLoad(wTex, p, 0).x;
   // Perceived extended image: unscattered core (small resolved bodies Ricco-weighted) + the analytic veil
   // of the Sun and off-frame bodies (never displayable, so their glare is shown as the scene observer's).
@@ -1367,33 +1518,39 @@ fn hash(p: vec2u) -> f32 {
   // (Pattanaik Eq. 3, tonemap.ts colourExponent).
   var chroma = WHITE_XYZ;
   if (perc.y > 0.0) { chroma = displayChroma(perc.xyz, colourK(perc.y, Ld)); }
-  // Display-linear, relative to the display peak, plus the painted glare.
+  // Display-linear, relative to display white (SDR white on HDR), plus the painted glare.
   let xyzD = chroma * (Ld / E.disp.w) + textureLoad(paintTex, p, 0).xyz / E.disp.w;
   let Yd = xyzD.y;
-  var rgb = XYZ2RGB * xyzD;
+  var rgb = toOutRgb(xyzD);
+  // The output's ceiling relative to white: 1 on SDR, HDR peak / white on HDR (docs/eye-model.md §7).
+  let top = E.hdr.x / E.disp.w;
   // Gamut mapping toward the achromatic colour of equal luminance (docs/eye-model.md §7).
-  let g = Yd * GRAY_NORM;
+  let g = Yd * grayNorm();
   var t = 1.0;
   for (var k = 0; k < 3; k++) {
     let c = rgb[k];
     if (c < 0.0) { t = min(t, g / (g - c)); }
-    if (c > 1.0) { t = min(t, (1.0 - g) / (c - g)); }
+    if (c > top) { t = min(t, (top - g) / (c - g)); }
   }
-  if (g >= 1.0) { rgb = vec3f(1.0); } else { rgb = vec3f(g) + t * (rgb - vec3f(g)); }
-  rgb = clamp(rgb, vec3f(0.0), vec3f(1.0));
-  // Point sources (display units, at most the display peak by construction): hue-preserving fit into the
+  if (g >= top) { rgb = vec3f(top); } else { rgb = vec3f(g) + t * (rgb - vec3f(g)); }
+  rgb = clamp(rgb, vec3f(0.0), vec3f(top));
+  // Point sources (display units, at most the display's top by construction): hue-preserving fit into the
   // gamut, then drawn over the extended image. Where a star's dot and its painted glare together exceed
   // the display, the dot's own colour is kept rather than clipping both to white.
-  var rp = XYZ2RGB * (textureLoad(ptDispTex, p, 0).xyz / E.disp.w);
+  var rp = toOutRgb(textureLoad(ptDispTex, p, 0).xyz / E.disp.w);
   let lo = min(rp.r, min(rp.g, rp.b));
   if (lo < 0.0) {
-    let gp = max(textureLoad(ptDispTex, p, 0).y / E.disp.w, 0.0) * GRAY_NORM;
+    let gp = max(textureLoad(ptDispTex, p, 0).y / E.disp.w, 0.0) * grayNorm();
     rp = vec3f(gp) + (gp / max(gp - lo, 1e-12)) * (rp - vec3f(gp));
   }
   rp = max(rp, vec3f(0.0));
   let hi = max(rp.r, max(rp.g, rp.b));
-  if (hi > 1.0) { rp = rp / hi; }
-  rgb = clamp(rp + rgb * (1.0 - min(1.0, max(rp.r, max(rp.g, rp.b)))), vec3f(0.0), vec3f(1.0));
+  if (hi > top) { rp = rp * (top / hi); }
+  rgb = clamp(rp + rgb * (1.0 - min(1.0, max(rp.r, max(rp.g, rp.b)) / top)), vec3f(0.0), vec3f(top));
+  if (E.hdr.z > 0.5) {
+    // Extended range (rgba16float canvas, toneMapping 'extended'): encoded values, 1.0 = SDR white.
+    return vec4f(srgbEncodeExt(rgb.r), srgbEncodeExt(rgb.g), srgbEncodeExt(rgb.b), 1.0);
+  }
   // sRGB encoding with triangular dither of ±1 LSB against banding.
   let n = hash(vec2u(p)) + hash(vec2u(p) + vec2u(7919u, 104729u)) - 1.0;
   let enc = vec3f(srgbEncode(rgb.r), srgbEncode(rgb.g), srgbEncode(rgb.b)) + n * E.misc.x;
@@ -1420,3 +1577,99 @@ struct LV { @builtin(position) pos: vec4f, @location(0) col: vec4f, @location(1)
 `;
 
 export const RING_SHADER = RING_SHADER_OF(COMMON);
+
+/**
+ * Aerial-perspective columns (docs/rendering-earth.md §4 "Cost"): the view path of the atmosphere over a body,
+ * marched once per column of A.ap.x × A.ap.x pixels instead of per pixel (Hillaire 2020's aerial-perspective
+ * volume, laid out for a planet seen from outside: slices by altitude along each column's ray, not by
+ * distance from the camera). For each slice altitude h_k the texture holds the path radiance folded to XYZS
+ * and the δ-scaled transmittance per bin of the part of the path above h_k (h_0 = 0: the whole path). A
+ * column whose ray misses the body stores −1 (readers march themselves).
+ */
+export const AP_COLUMNS_SHADER = COMMON + BODY_COMMON + ATMOSPHERE_WGSL + /* wgsl */ `
+@group(0) @binding(12) var<uniform> A: Atm;
+@group(0) @binding(13) var atmTex: texture_2d_array<f32>;
+@group(0) @binding(14) var atmSamp: sampler;
+@group(0) @binding(16) var apOut: texture_storage_3d<rgba16float, write>;
+
+fn apStore(q: vec2i, k: i32, L: array<vec4f, 4>, Td: array<vec4f, 4>) {
+  let nq = 1 + atmK4();
+  textureStore(apOut, vec3i(q, k * nq), atmFold(L));
+  for (var j = 0; j < atmK4(); j++) { textureStore(apOut, vec3i(q, k * nq + 1 + j), Td[j]); }
+}
+
+@compute @workgroup_size(8, 8) fn main(@builtin(global_invocation_id) g: vec3u) {
+  let dims = vec2u(u32(A.ap.y), u32(A.ap.z));
+  if (g.x >= dims.x || g.y >= dims.y) { return; }
+  let q = vec2i(g.xy);
+  let ns = i32(A.ap.w);
+  let nq = 1 + atmK4();
+  let b = bodies[u32(A.apB.x)];
+  let ndc = ndcFromFrag(F, (vec2f(g.xy) + 0.5) * A.ap.x);
+  let dirW = normalize(worldDirNdc(F, ndc));
+  var xy = ndc;
+  var hitOk = true;
+  if (b.e2.w < 0.5) {
+    let dn = dot(dirW, b.n.xyz);
+    hitOk = dn > 0.0;
+    xy = vec2f(dot(dirW, b.e1.xyz), dot(dirW, b.e2.xyz)) / max(dn, 1e-12);
+  }
+  let hit = castBody(b, xy);
+  if (!hitOk || hit.disc < 0.0 || hit.t <= 0.0) {
+    for (var k = 0; k < ns * nq; k++) { textureStore(apOut, vec3i(q, k), vec4f(-1.0)); }
+    return;
+  }
+  // As the body shader: body-relative surface point, the segment back to the top of the air (or the camera).
+  let dirN = normalize(hit.dir);
+  let range = hit.t * length(hit.dir);
+  let p = vec3f(dot(b.mi0.xyz, hit.h), dot(b.mi1.xyz, hit.h), dot(b.mi2.xyz, hit.h));
+  let e = -dirN;
+  let pe = dot(p, e);
+  let Hk = A.geo.y - A.geo.x;
+  let rS = length(p);
+  let sTop = min(-pe + sqrt(max(pe * pe + 2.0 * rS * Hk + Hk * Hk, 0.0)), range);
+  // atmMarch (shaders-atmosphere.ts) with a snapshot where the path drops below each slice altitude (the
+  // altitude falls monotonically toward a surface point).
+  let n = i32(b.atm.y);
+  let S = b.sun.xyz;
+  var L: array<vec4f, 4>;
+  var T: array<vec4f, 4>;
+  var Td: array<vec4f, 4>;
+  var phR: array<vec4f, 4>;
+  var phA: array<vec4f, 4>;
+  let nu = dot(dirN, S);
+  for (var j = 0; j < atmK4(); j++) {
+    T[j] = vec4f(1.0);
+    Td[j] = vec4f(1.0);
+    phR[j] = atmRayleighPhase(nu, A.depol[j]);
+    phA[j] = atmParticlePhase(nu, j);
+  }
+  var next = ns - 1;
+  let ds = sTop / f32(n);
+  for (var i = 0; i < n; i++) {
+    let s = sTop - (f32(i) + 0.5) * ds;
+    let pp = p - dirN * s;
+    let rp = length(pp);
+    let qq = vec3f(dot(b.m0.xyz, pp), dot(b.m1.xyz, pp), dot(b.m2.xyz, pp));
+    let h = max(rp - rp / max(length(qq), 1e-6), 0.0);
+    while (next > 0 && h <= atmSliceH(next)) {
+      apStore(q, next, L, Td);
+      next--;
+    }
+    let r = A.geo.x + h;
+    let muS = dot(pp, S) / rp;
+    for (var j = 0; j < atmK4(); j++) {
+      let ext = atmProfile(h, 0, j);
+      let sR = atmProfile(h, 1, j);
+      let sA = atmProfile(h, 2, j);
+      let src = (sR * phR[j] + sA * phA[j]) * atmTsun(r, muS, j) + (sR + sA) * atmMS(h, muS, j);
+      let tr = exp(-ext * ds);
+      let seg = src * select(vec4f(ds), (1.0 - tr) / max(ext, vec4f(1e-12)), ext > vec4f(1e-9));
+      L[j] += T[j] * seg;
+      T[j] *= tr;
+      Td[j] *= exp(-(ext - A.delta[j] * sA) * ds);
+    }
+  }
+  for (var k = next; k >= 0; k--) { apStore(q, k, L, Td); }
+}
+`;

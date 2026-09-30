@@ -303,14 +303,18 @@ export function smallBodyWhy(o: {
   inputs: { what: string; label: Label }[];
   filtered: FilteredBody | null;
   hasDiameter: boolean;
+  /** The body's shape-model status (app/shapes.ts), if it has one. */
+  shape?: { drawn: boolean; text: string } | null;
 }): string {
   const L = EXISTS_TEXT[o.level].name;
   if (o.positionLabel === 'unknown') return 'Its position is unknown (see its flags): nothing can be drawn.';
   const posShown = o.positionLabel === 'measured' ? 'derived' : o.positionLabel;
   if (!labelAllowed(posShown, o.level)) return `Its position is ${posShown}, not admitted at ${L}: nothing is drawn.`;
   const inputs = o.inputs.map((i) => `${i.what} (${i.label})`).join(', ');
+  if (o.drawn === 'closeup' && o.filtered && o.shape?.drawn)
+    return `${whyLine(o.filtered, o.level)} Resolved close-up drawn from its shape model, which also gives its orientation: ${o.shape.text}. The photometric size is the measured diameter or, without one, the model's volume-equivalent radius; the brightness spread over the mesh is derived.`;
   if (o.drawn === 'closeup' && o.filtered)
-    return `${whyLine(o.filtered, o.level)} Resolved close-up: a sphere of the measured diameter — the spherical shape is an assumption.`;
+    return `${whyLine(o.filtered, o.level)} Resolved close-up: a sphere of the measured diameter — the spherical shape is an assumption.${o.shape ? ` Shape model not drawn: ${o.shape.text}.` : ''}`;
   const bright = brightnessAdmitted(o.inputs, o.level);
   if (o.drawn === 'comet')
     return `Drawn with its coma, dust tail and ion tail: the total light is ${inputs}; its split into gas bands and dust, the coma's size and the tails come from the comet model (estimated; docs/reports/comets.md). Too small to resolve, it is a point again.`;

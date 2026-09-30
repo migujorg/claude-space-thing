@@ -68,6 +68,18 @@ fn hapkeRadf(mu0: f32, mu: f32, g: f32, l0: vec4f, l1: vec4f, l2: vec4f) -> f32 
   return K * w / 4.0 * r.x / (r.x + r.y) * (doubleHG(g, l0.z, l0.w) * (1.0 + l1.x * Bs) + H - 1.0) * (1.0 + l1.z * Bc) * r.z;
 }
 /** Radiance factor of the body's law (up to a constant; the normalization is in the radiance prefactor). */
+/** spatial.ts akimovDisk: the Akimov disk function (Shkuratov et al. 1999), parameter-free. */
+fn akimovDisk(mu0: f32, mu: f32, gIn: f32) -> f32 {
+  let g = clamp(gIn, 0.0, PI - 1e-4);
+  if (g < 1e-6) { return 1.0; }
+  let gam = atan2(mu0 - mu * cos(g), mu * sin(g));
+  let eps = 0.5 * PI - gam;
+  let k = PI / (PI - g);
+  let ratio = select(k, sin(k * eps) / sin(eps), eps > 1e-4);
+  let cb = clamp(mu / max(cos(gam), 1e-20), 1e-20, 1.0);
+  return max(cos(0.5 * g) * ratio * pow(cb, g / (PI - g)), 0.0);
+}
+
 fn lawRadf(mu0: f32, mu: f32, g: f32, l0: vec4f, l1: vec4f, l2: vec4f) -> f32 {
   if (mu0 <= 0.0 || mu <= 0.0) { return 0.0; }
   let kind = u32(l0.x + 0.5);
@@ -76,6 +88,8 @@ fn lawRadf(mu0: f32, mu: f32, g: f32, l0: vec4f, l1: vec4f, l2: vec4f) -> f32 {
     case 2u: { return 2.0 * l0.y * mu0 / (mu0 + mu) + (1.0 - l0.y) * mu0; }
     case 3u: { return pow(mu0, l0.y) * pow(max(mu, 1e-3), l0.y - 1.0); }
     case 4u: { return hapkeRadf(mu0, mu, g, l0, l1, l2); }
+    case 6u: { return akimovDisk(mu0, mu, g); }
+    case 7u: { return pow(mu0 * mu / (mu0 + mu), l0.y) / max(mu, 1e-3); }
     default: { return mu0; }
   }
 }

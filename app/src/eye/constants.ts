@@ -95,6 +95,56 @@ export const PATTANAIK = {
 } as const;
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────
+// Photopigment bleaching and dark adaptation (eye/bleaching.ts, docs/eye-model.md §2 "Time").
+// First-order pigment kinetics (Rushton; Hood & Finkelstein 1986, Handbook of Perception and Human
+// Performance ch. 5, eqs. 10–17, the "published consensus" Pattanaik et al. 2000 §4.1.2 cite):
+//   dB/dt = I·(1 − B)/Q − B/τ,   B = bleached fraction, I = retinal illuminance (td),
+// so a steady light bleaches B∞ = I/(I + I₀) with I₀ = Q/τ.
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+export const PIGMENT = {
+  /**
+   * Cone pigment regeneration time constant, s: τ_cone = 110 s, the consensus value Pattanaik et al.
+   * (2000, §4.1.2) take from Hood & Finkelstein (1986). Verified against Pattanaik's text.
+   */
+  coneTauS: 110,
+  /**
+   * Cone pigment half-bleaching retinal illuminance, photopic trolands: 10^4.3 td (Rushton & Henry 1968,
+   * Vision Res. 8; the Rushton–Henry model Hollins & Alpern 1973, J. Gen. Physiol. 62, 430, fit).
+   * Cross-check: Mahroo & Lamb (2004, J. Physiol. 554) fit σ⁻¹ = 710 cd·m⁻²·min with dilated pupils,
+   * i.e. Q ≈ 1.6–2.1·10⁶ td·s for 7–8 mm, against I₀·τ = 2.2·10⁶ td·s here. TRANSCRIBED (secondary).
+   */
+  coneHalfBleachTd: Math.pow(10, 4.3),
+  /** Rhodopsin regeneration time constant, s: τ_rod = 400 s (Hood & Finkelstein 1986 via Pattanaik §4.1.2). */
+  rodTauS: 400,
+  /**
+   * Rhodopsin photosensitivity (bleaching constant) Q, scotopic td·s: log Q = 6.8–7.0 (Rushton & Powell
+   * 1972, Vision Res. 12; Alpern & Pugh 1974, J. Physiol.); 7.0 as adopted by Thomas &
+   * Lamb (1999, J. Physiol. 518, 479). Half-bleaching steady illuminance I₀ = Q/τ = 2.5·10⁴ scot td.
+   */
+  rodBleachTdS: 1e7,
+  /**
+   * Dowling–Rushton relation for human rods, log₁₀(threshold/absolute threshold) = a·B: "the log threshold
+   * is raised 1·2 units for each 10 % of rhodopsin in the bleached state" (Alpern, Rushton & Torii 1970,
+   * "The attenuation of rod signals by bleachings", J. Physiol. 207(2)), a = 12. Reviews give a ≈ 12–20 for man.
+   */
+  rodDowlingRushton: 12,
+} as const;
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+// Visual acuity against luminance: Ward Larson, G., Rushmeier, H., Piatko, C. (1997), A visibility
+// matching tone reproduction operator for high dynamic range scenes, IEEE TVCG 3(4), 291–306, Eq. 15:
+//   R(L_a) = 17.25·arctan(1.4·log10(L_a) + 0.35) + 25.72   cycles/degree, L_a in cd/m²,
+// "a functional fit" to Shlaer (1937), J. Gen. Physiol. 21, 165 (foveal grating acuity, "about
+// 50 cycles/degree" in daylight, "about two" near the limit of vision). Verified against the paper.
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+export const WARD1997_ACUITY = {
+  scale: 17.25,
+  logSlope: 1.4,
+  logOffset: 0.35,
+  offset: 25.72,
+} as const;
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────
 // Hunt's colour-vision model: Hunt, R. W. G. (2004), The Reproduction of Colour, 6th ed., as given
 // in Fairchild, M. D. (2013), Color Appearance Models, 3rd ed., ch. 12 "The Hunt model".
 // Checked against the open-source implementation colour.appearance.hunt (colour-science).

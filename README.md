@@ -21,15 +21,21 @@ The data is built by `cd pipeline && uv run python -m pipeline build --profile <
 
 | profile | cold download | kept in data/raw | disk needed | products | cold build | forced rebuild | stages |
 |---|---|---|---|---|---|---|---|
-| minimal | 117 GB | 2.8 GB | 4.8 GB | 0.2 GB | 61 min | 2 min | time, ephemeris, light, bodies, stars |
-| standard | 143 GB | 8.8 GB | 21 GB | 3.1 GB | 3.6 h | 74 min | all; surfaces.maxLevel=3, shapes.damit=false |
-| full | 145 GB | 8.8 GB | 24 GB | 6.2 GB | 3.7 h | 76 min | all |
+| minimal | 2.2 GB | 2.1 GB | 2.6 GB | 0.2 GB | 31 min | 2 min | time, ephemeris, light, bodies, stars |
+| standard | 49 GB | 8.1 GB | 20 GB | 3.1 GB | 4.1 h | 75 min | all; surfaces.maxLevel=3, shapes.damit=false |
+| full | 50 GB | 8.1 GB | 23 GB | 6.2 GB | 4.1 h | 77 min | all |
 
 - **minimal**: the Sun, planets, all 459 moons, rings, atmospheres and the naked-eye star field. It has no surface maps, shape models, small bodies, deep stars or diffuse sky.
 - **standard**: everything. Surface maps stop at pyramid level 3 (4096 × 2048 texels; the Moon at 2.7 km per texel), and the DAMIT collection of asteroid lightcurve models is left out.
 - **full**: everything at the sources' full resolution.
 
-Most of the download is the star field. The colours of the naked-eye stars come from Gaia's XP spectra, and ESA publishes them only as 114 GB of bulk files. Every profile with stars streams all of them once and keeps only what it needs. That is also why minimal is not quick. `./run.sh minimal --skip stars` (PowerShell: `.\run.ps1 minimal -- --skip stars`) builds an app without stars from 1.2 GB in about 12 minutes. The deep star tiers reuse the same pass. Times were measured at 20–40 MB/s on 4 cores; on a faster line and more cores the streaming shortens (`--set gaia.xpWorkers=8`).
+The star colours come from Gaia's XP spectra. ESA's own archive offers them only as 114 GB of bulk files, so by default the build asks the Gaia TAP service of ARI Heidelberg (a Gaia DPAC partner data centre) for the spectra of just the stars it needs:
+- The naked-eye stars take 0.6 GB.
+- The 15 M deep-tier stars take 21 GB. These spectra are reduced as they arrive and not kept.
+
+The values are bit-identical to the bulk files' (`docs/reports/stars.md` §8). The XP queries run 4 at a time, at about 6.5 MB/s in all. `--set gaia.xpWorkers=8` roughly doubles that.
+
+On a fast line, a full build can still be quicker from the bulk files: `--set stars.xpSource=bulk` streams all 114 GB once for every star tier. This is the older route, 145 GB and about 3.7 h for full. Times were measured at 20–40 MB/s on 4 cores.
 
 Per stage (`python -m pipeline costs` prints this table; the numbers live in `pipeline/src/pipeline/config.py`, measured or taken from each stage's report in `docs/reports/`). "Forced rebuild" is the time to rebuild a stage with `data/raw` already filled, e.g. after a pipeline update changed it; a stage that nothing changed is skipped.
 
@@ -44,8 +50,8 @@ Per stage (`python -m pipeline costs` prints this table; the numbers live in `pi
 | smallbodies | 1.6 GB | 1.6 GB | 2.0 GB | 0.2 GB | 18 min | 3 min | JPL SBDB is queried one request at a time, as JPL asks |
 | sbphotometry | 2 MB | 2 MB | 2 MB | < 1 MB | < 1 min | < 1 min |  |
 | synthetic | 30 MB | 30 MB | 0.2 GB | 0.1 GB | 2 min | 1 min |  |
-| stars | 116 GB | 1.6 GB | 3.2 GB | 24 MB | 50 min | 1 min | streams all 114 GB of Gaia DR3 XP spectra once (only 1.2 GB kept); with deepstars or sky in the same build it also fills their 1.1 GB XP cache in that pass |
-| deepstars | 1.1 GB | 1.1 GB | 3.0 GB | 0.8 GB | 30 min | 3 min | 192 Gaia archive queries; +114 GB / ~75 min of XP streaming if the stars stage did not fill the XP cache (e.g. data/cache deleted) |
+| stars | 0.9 GB | 0.9 GB | 1.0 GB | 24 MB | 20 min | 1 min | XP spectra of the 440 702 selected sources by source_id (207 queries on ARI's Gaia TAP, 0.6 GB); stars.xpSource=bulk streams all 114 GB of ESA's bulk files instead |
+| deepstars | 22 GB | 1.1 GB | 3.0 GB | 0.8 GB | 85 min | 4 min | 192 Gaia archive queries (1.0 GB) + XP spectra of 15.3 M sources (3158 queries, 21 GB, reduced on the fly, 0.5 GB cache; ~55 min at 4 queries at a time); fetched again if data/cache is deleted |
 | sky | 0.1 GB | 0.1 GB | 0.2 GB | 40 MB | 30 min | 2 min | 96 all-sky aggregation queries on the Gaia archive (10-19 min per 48) |
 
 Useful commands (in `pipeline/`, prefixed with `uv run python -m pipeline`):

@@ -86,6 +86,8 @@ export function sceneBodyOf(
   chainLabel: Label | undefined,
   selectedId: number | null,
   extras?: SceneExtras,
+  /** Radians per pixel at the view centre (render/frame.ts cameraGeom), to tell a point from a resolved disk. */
+  pixelAngle?: number,
 ): { body: SceneBody } | { marker: OverlayOnlyBody } | null {
   if (!g.app) return null;
   const emit = g.app.emitEt;
@@ -115,6 +117,19 @@ export function sceneBodyOf(
     allowPhaseExtrapolation: level !== 'strict',
   };
   const used = applyExtras(sb, g.body, extras, level, lit);
+  // Shape model (app/shapes.ts): a mesh in place of the ellipsoid, when its labels are admitted and it can be placed.
+  const mesh = extras?.shapes && sb.radii ? extras.shapes.sceneShape(sb, level, emit) : null;
+  if (mesh && sb.radii) {
+    // Only a disk at least a pixel across is drawn from the mesh (render/frame.ts resolves it at the mean radius);
+    // a point is drawn from the disk photometry alone, so the mesh and its labels are not part of it.
+    const R = Math.cbrt(sb.radii[0] * sb.radii[1] * sb.radii[2]);
+    const D = Math.hypot(sb.pos[0], sb.pos[1], sb.pos[2]);
+    const px = pixelAngle ? (2 * Math.asin(Math.min(1, R / D))) / pixelAngle : Infinity;
+    if (px > 1) {
+      sb.shape = mesh;
+      used.push(mesh.worstLabel);
+    } else extras!.shapes!.asPoint(sb.id);
+  }
   if (used.length) sb.worstLabel = worstOf([sb.worstLabel, ...used]);
   return { body: sb };
 }
@@ -123,10 +138,11 @@ export function buildSnapshot(inp: SnapshotInput, out?: { overlayOnly: OverlayOn
   const { world, reality } = inp;
   const level = reality.exists;
   const bodies: SceneBody[] = [];
+  const pixelAngle = (2 * Math.tan(inp.camera.fovY / 2)) / inp.camera.height;
   for (const g of world.bodies.values()) {
     // Small bodies (negative ids) are drawn by the small-body field; the model adds a resolved close-up itself.
     if (g.id < 0 || g.body.kind === 'star' || g.body.kind === 'barycenter' || !g.app) continue;
-    const e = sceneBodyOf(g, level, inp.orientations, inp.chainLabel?.(g.id), inp.selectedId, inp.extras);
+    const e = sceneBodyOf(g, level, inp.orientations, inp.chainLabel?.(g.id), inp.selectedId, inp.extras, pixelAngle);
     if (!e) continue;
     if ('marker' in e) out?.overlayOnly.push(e.marker);
     else bodies.push(e.body);
@@ -141,6 +157,10 @@ export function buildSnapshot(inp: SnapshotInput, out?: { overlayOnly: OverlayOn
       exposureBoostStops: reality.view === 'enhanced' ? reality.exposureBoostStops : 0,
       overlays: { provenanceTint: reality.overlays.provenanceTint },
       ...(reality.sunShield ? { sunShield: true } : {}),
+      adaptation: {
+        mode: reality.instantAdaptation ? 'instant' : 'realtime',
+        ...(reality.adaptationHistory ? { history: reality.adaptationHistory } : {}),
+      },
     },
     orbits: reality.overlays.orbits ? inp.orbits : [],
   };

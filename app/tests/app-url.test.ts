@@ -18,6 +18,14 @@ describe('URL parameters', () => {
   it('round-trips', () => {
     const v = { tMs: Date.UTC(2026, 0, 2, 3, 4, 5, 600), target: 599, dist: 1234567, az: 12.5, el: -3.25, exists: 'complete' as const, fov: 35, orbits: true, shield: true };
     expect(parseUrlParams(formatUrlParams(v)).view).toEqual(v);
+    const w = { adapt: 'instant' as const, adaptFrom: { luminanceCdM2: 10000, exposureS: 600, elapsedS: 300 } };
+    expect(parseUrlParams(formatUrlParams(w)).view).toEqual(w);
+  });
+  it('eye adaptation: adapt=instant|realtime and a defined history', () => {
+    expect(parseUrlParams('adapt=realtime&adaptfrom=10000,600,300').view).toEqual({ adapt: 'realtime', adaptFrom: { luminanceCdM2: 10000, exposureS: 600, elapsedS: 300 } });
+    const bad = parseUrlParams('adapt=slow&adaptfrom=1,2');
+    expect(bad.view).toEqual({});
+    expect(bad.errors).toHaveLength(2);
   });
   it('treats times without a zone as UTC, never local', () => {
     expect(parseIsoUtc('2026-09-30 12:00')).toBe(Date.UTC(2026, 8, 30, 12));

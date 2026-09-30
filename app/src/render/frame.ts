@@ -361,7 +361,7 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
     try {
       prepareOneBody(b);
     } finally {
-      if (!inView(b.pos, b.radii ? Math.max(...b.radii) : 0)) warnings.length = w0;
+      if (!inView(b.pos, b.radii ? extentOf(b, b.radii) : 0)) warnings.length = w0;
     }
   }
   function prepareOneBody(b: SceneBody): void {
@@ -375,7 +375,7 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
     }
     const R = meanRadius(b.radii);
     const angR = Math.asin(Math.min(1, R / D));
-    const behind = dot(normalize(b.pos), fwd) < -Math.sin(Math.max(angR, Math.asin(Math.min(1, Math.max(...b.radii) / D))));
+    const behind = dot(normalize(b.pos), fwd) < -Math.sin(Math.max(angR, Math.asin(Math.min(1, extentOf(b, b.radii) / D))));
     // Photometry, or the reason it is unavailable.
     let E: XYZS | null = null;
     let K: XYZS = [0, 0, 0, 0];
@@ -407,6 +407,11 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
     // Photometry measured at this very geometry (ROLO): normalize the maps at this geometry, not on a
     // rotational average, or the model's libration and waxing/waning terms would be counted twice.
     const atThisGeometry = pPhi !== null;
+    // Outside a rolo-v1 model's domain (the far side, α beyond 1.55–97°), albedoXYZS·Φ(α) is still the
+    // model's reference view: zero libration, geometric mean of the waxing and waning Moon (photometry.json
+    // 301 geometricAlbedoXYZS and phaseFunction methods: "describes the near side as seen from Earth"). The
+    // maps are normalized there, so the view actually drawn differs from it by what the maps say.
+    const atReferenceView = !atThisGeometry && b.diskReflectanceModel?.kind === 'rolo-v1';
     const texel = surface?.photometry?.texel ?? null;
     if (texel) law = TEXEL_LAW;
     if (!pPhi && !b.surfaceUnknown && b.albedoXYZS && b.phase) {
@@ -441,15 +446,14 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
       let zonal: { profile: ZonalProfile; pole: V3 } | undefined;
       let I: XYZS;
       const map0 = surface?.albedo?.map0 ?? null;
-      if (b.orient && (texel || (atThisGeometry && map0))) {
+      if (b.orient && (texel || ((atThisGeometry || atReferenceView) && map0))) {
         const Rm = b.orient;
         const [px, py, pz] = photometricFrame(normalize(scale(b.pos, -1)), sunDir);
         const toBf = (v: V3): V3 => [Rm[0] * v[0] + Rm[3] * v[1] + Rm[6] * v[2], Rm[1] * v[0] + Rm[4] * v[1] + Rm[7] * v[2], Rm[2] * v[0] + Rm[5] * v[1] + Rm[8] * v[2]];
         const axes: [V3, V3, V3] = [toBf(px), toBf(py), toBf(pz)];
         const rotations = atThisGeometry ? 1 : 8;
         const q = (v: V3) => v.map((x) => x.toFixed(3)).join(',');
-        const key = `map|${b.id}|${texel ? 't' : ''}${map0 ? 'm' : ''}|${alpha.toFixed(3)}|` + (atThisGeometry ? `${q(axes[0])}|${q(axes[2])}` : q([axes[0][2], axes[1][2], axes[2][2]]));
-        I = normCache.get(key, () => mapDiskIntegral(alpha, axes, (lat, lon, mu0, mu, gph) => {
+        const fMap = (lat: number, lon: number, mu0: number, mu: number, gph: number): XYZS => {
           const m = map0 ? sampleLevel0(map0, lat, lon) : [1, 1, 1, 1];
           if (texel) {
             const r = texelRadf(texel, lat, lon, mu0, mu, gph);
@@ -457,7 +461,20 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
           }
           const r = lawRadf(law, mu0, mu, gph);
           return [m[0] * r, m[1] * r, m[2] * r, m[3] * r];
-        }, texel ? 24 : 32, rotations));
+        };
+        const n = texel ? 24 : 32;
+        if (atReferenceView) {
+          // Body-fixed: observer over (0°, 0°), the Sun on the equator at east longitude ±α.
+          const key = `map|${b.id}|${texel ? 't' : ''}${map0 ? 'm' : ''}|${alpha.toFixed(3)}|reference`;
+          I = normCache.get(key, () => {
+            const ref = (sgn: number) => mapDiskIntegral(alpha, photometricFrame([1, 0, 0], [Math.cos(alpha), sgn * Math.sin(alpha), 0]), fMap, n, 1);
+            const a = ref(1), c = ref(-1);
+            return [0, 1, 2, 3].map((k) => Math.sqrt(a[k] * c[k])) as XYZS;
+          });
+        } else {
+          const key = `map|${b.id}|${texel ? 't' : ''}${map0 ? 'm' : ''}|${alpha.toFixed(3)}|` + (atThisGeometry ? `${q(axes[0])}|${q(axes[2])}` : q([axes[0][2], axes[1][2], axes[2][2]]));
+          I = normCache.get(key, () => mapDiskIntegral(alpha, axes, fMap, n, rotations));
+        }
       } else {
         if (surface?.albedo?.zonal && b.orient) {
           const Rm = b.orient;
@@ -485,7 +502,8 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
     let atmB: AtmosphereBinding | null = null;
     let onDisk = false;
     const groundAlbedo = b.albedoXYZS && irr ? [0, 1, 2, 3].map((c) => LAMBERT_ALBEDO_PER_GEOMETRIC_ALBEDO * (b.albedoXYZS![c] / irr[c])) : [0, 0, 0, 0];
-    if (b.atmosphere && b.orient && irr && lit && opts.atmospheres && (earth || pPhi)) {
+    // Only for a resolved disk (smooth(1, 2, diameter px) > 0): a point's light is its disk photometry.
+    if (b.atmosphere && b.orient && irr && lit && opts.atmospheres && (earth || pPhi) && (2 * angR) / g.pixelAngle > 1) {
       const dust = b.atmosphere.body.dustColumn ? marsDustScale(b.atmosphere.body, snap.et) : null;
       const got = opts.atmospheres(b, groundAlbedo, dust ? { scale: dust.scale, bin: dust.bin } : null);
       if (got && 'error' in got) {
@@ -693,6 +711,11 @@ function occulterOutline(g: CameraGeom, n: V3, r: number, out: number[]): void {
 const OCCULTER_OUTLINE_MIN_PX = 5;
 /** Display colour of the occulting disc's outline (a UI marking, not scene light): neutral grey. */
 const OCCULTER_OUTLINE_RGBA = [0.45, 0.45, 0.45, 0.9] as const;
+
+/** Largest extent of a body from its centre: its radii, or its shape mesh where one is drawn (meshes/). */
+function extentOf(b: SceneBody, radii: [number, number, number]): number {
+  return Math.max(...radii, b.shape?.boundRadiusKm ?? 0);
+}
 
 /** Radius of the atmosphere shell around a body: its largest radius plus the atmosphere's height. */
 function atmTop(b: SceneBody): number {

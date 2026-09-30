@@ -19,25 +19,29 @@
 
 import type { RendererStats, SceneBody, SceneSnapshot, StarCatalog } from './scene';
 import {
-  ADAPT_REDUCE_SHADER, ADAPT_SHADER, ADAPT_TILE_PX, ATM_BODY_SHADER, ATMOSPHERE_SHELL_SHADER, BODY_OVERLAY_SHADER, BODY_SHADER, CLAMP_ARGS_SHADER, COMPOSITE_SHADER, EARTH_BODY_SHADER,
+  ADAPT_REDUCE_SHADER, ADAPT_SHADER, ADAPT_TILE_PX, AP_COLUMNS_SHADER, ATM_BODY_SHADER, ATMOSPHERE_SHELL_SHADER, BODY_OVERLAY_SHADER, BODY_SHADER, CLAMP_ARGS_SHADER, COMPOSITE_SHADER, EARTH_BODY_SHADER,
   CULL_SHADER, LINE_SHADER, MASK_HATCH_SHADER, OVERFLOW_SHADER, POINT_SHADER, PYRAMID_BLUR_SIGMA, PYRAMID_SHADER,
-  RING_SHADER, SUN_SHADER,
+  LIMB_MAX, LIMBS_UB_BYTES, RING_SHADER, SUN_SHADER,
 } from './shaders';
+import { LIMB_N, limbChordTable } from './atmosphere';
 import { SurfaceGpu } from './surfaceGpu';
-import { AtmosphereGpu, ATM_UB_BYTES, type AtmosphereBinding } from './atmosphereGpu';
+import { AtmosphereGpu, ATM_UB_BYTES, type ApColumns, type AtmosphereBinding } from './atmosphereGpu';
 import type { RingPrep } from './rings';
 import type { BackgroundTargets } from './sky/background';
 import { LAW } from './spatial';
 import { cameraGeom, prepareFrame, type PreparedFrame } from './frame';
 import { ExtraPointSources, type PointSourceBuffer } from './extraPoints';
+import { MeshBodies } from './meshes/meshBodies';
 import { HdrReadback, type HdrImage, type HdrRect, type HdrRegionStats } from './hdrReadback';  // validation hook
 import { CometLayer } from './comets/layer';
 import type { CometModelProduct } from '../data/schema';
 import { orbitVertices } from './overlays';
-import { AdaptationState, computeEyeFrame, type EyeFrame } from '../eye/model';
+import { AdaptationState, computeEyeFrame, localObserver, type EyeFrame } from '../eye/model';
+import { magnitudeFromLux } from '../eye/crumey';
 import { DEFAULT_EYE_SETTINGS, type EyeSettings } from '../eye/settings';
 import { fitScatterKernel } from '../eye/glare';
-import { DEG2_PER_SR } from '../eye/pupil';
+import { DEG2_PER_SR, pupilDiameterMm } from '../eye/pupil';
+import { adaptationStatus, adaptationStatusText, trolands } from '../eye/bleaching';
 import { DARK_LIGHT_CONE, DARK_LIGHT_ROD, response } from '../eye/tonemap';
 import { CIE191, CRUMEY, PATTANAIK } from '../eye/constants';
 
@@ -71,6 +75,11 @@ interface Level {
   ubR: GPUBuffer;
 }
 
+/** Rows of aerial-perspective columns across the frame (column size = ⌈H / AP_ROWS⌉ px, at least 2). A sampling choice. */
+const AP_ROWS = 270;
+/** Altitude slices of Earth's columns, km: the range of the cloud-top heights the view path is split at. A sampling choice. */
+const AP_SLICES_EARTH_KM = [0, 1, 2, 3, 4, 6, 8, 10, 13, 16];
+
 interface Targets {
   W: number;
   H: number;
@@ -85,9 +94,13 @@ interface Targets {
   w: GPUTexture;
   depth: GPUTexture;
   levels: Level[];
+  /** The extended image alone as a mip chain (mip j: 2^(j+1) px per texel), for the low-light acuity (eye/acuity.ts). */
+  acu: GPUTexture;
   zero: GPUTexture;
   zero2: GPUTexture;
   partials: GPUBuffer;
+  /** Per adaptation block: the darkest retinal luminance (photopic, scotopic). */
+  darkest: GPUBuffer;
   tilesX: number;
   tilesY: number;
 }
@@ -114,6 +127,10 @@ export class Renderer {
   private extraPts: ExtraPointSources | null = null;
   /** Comet comae and tails (./comets), drawn from SceneSnapshot.comets once a model is set. */
   private comets: CometLayer | null = null;
+  /** Shape meshes (meshes/meshBodies.ts), created when a body first brings one. */
+  private meshes: MeshBodies | null = null;
+  /** GPU memory budget for shape-mesh levels (MiB). */
+  meshCacheMiB = 512;
   private visible: GPUBuffer;
   private maxVisible = 1;
   private frameIndex = 0;
@@ -122,8 +139,22 @@ export class Renderer {
   private waiters: ((m: Measurement) => void)[] = [];
   private glareCache = { key: '', weights: [] as number[], unscattered: 1 };
   private lastMeasurementTime = 0;
+  /**
+   * The display output chosen at creation: HDR (rgba16float, toneMapping 'extended'; 1.0 = SDR white) or SDR,
+   * and the canvas colour space. In HDR the eye model's display luminance is shown up to
+   * EyeSettings.hdrPeakCdM2.
+   */
+  displayInfo: { hdr: boolean; colorSpace: 'srgb' | 'display-p3'; format: GPUTextureFormat } = { hdr: false, colorSpace: 'srgb', format: 'rgba8unorm' };
+  /** settled() in progress: pigments held in steady state unless the view gives a history. */
+  private settling = false;
+  /** The adaptation history last applied (ViewSettings.adaptation.history), and whether it has settled. */
+  private historyKey = '';
+  private historySettled = false;
+  /** S/P ratio of sunlight (for a history's scotopic luminance) and the view's field (deg²), from the last frame. */
+  private sunSP = 1;
+  private fieldDeg2 = 0;
   private persistentWarnings: string[] = [];
-  /** Debug: names of passes to skip ('bodies', 'background', 'cull', 'points', 'pyramid', 'sun', 'adapt', 'composite', 'overlays'). */
+  /** Debug: names of passes to skip ('bodies', 'background', 'cull', 'points', 'pyramid', 'sun', 'adapt', 'composite', 'overlays', 'meshShadow'). */
   debugSkip = new Set<string>();
   /** Extended sky light behind the bodies (render/sky/background.ts), drawn into EXT after the bodies pass. */
   private background: { encode(enc: GPUCommandEncoder, t: BackgroundTargets): void } | null = null;
@@ -135,6 +166,7 @@ export class Renderer {
   private eyeUB: GPUBuffer;
   private sunUB: GPUBuffer;
   private clampUB: GPUBuffer;
+  private limbsUB: GPUBuffer;
   private reduceUB: GPUBuffer;
   private args: GPUBuffer;
   private srcs: GPUBuffer;
@@ -197,9 +229,10 @@ export class Renderer {
     const d = device;
     const ub = (size: number) => d.createBuffer({ size, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
     this.frameUB = ub(128);
-    this.eyeUB = ub(16 * 16);  // 16 vec4 (struct Eye)
+    this.eyeUB = ub(17 * 16);  // 17 vec4 (struct Eye)
     this.sunUB = ub(11 * 16);
     this.clampUB = ub(16);
+    this.limbsUB = ub(LIMBS_UB_BYTES);
     this.reduceUB = ub(16);
     this.args = d.createBuffer({ size: 16, usage: GPUBufferUsage.INDIRECT | GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
     this.srcs = d.createBuffer({ size: MAX_GLARE_SOURCES * 32, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
@@ -318,7 +351,16 @@ export class Renderer {
   /**
    * @param options.surfaceCacheMiB GPU memory budget for surface-map tiles (default 1024 MiB); never exceeded.
    */
-  static async create(canvas: HTMLCanvasElement, options: { presentation?: 'canvas' | 'offscreen'; hdr?: 'auto' | 'f16'; surfaceCacheMiB?: number } = {}): Promise<Renderer> {
+  static async create(canvas: HTMLCanvasElement, options: {
+    presentation?: 'canvas' | 'offscreen'; hdr?: 'auto' | 'f16'; surfaceCacheMiB?: number;
+    /**
+     * Display output (docs/eye-model.md §7): 'auto' (default) uses HDR when the screen reports
+     * (dynamic-range: high) and the browser accepts an extended-range canvas, else SDR; 'sdr' / 'hdr' force.
+     */
+    display?: 'auto' | 'sdr' | 'hdr';
+    /** Canvas colour space: 'auto' (default) = Display P3 when the screen covers it ((color-gamut: p3)). */
+    colorSpace?: 'auto' | 'srgb' | 'display-p3';
+  } = {}): Promise<Renderer> {
     if (!navigator.gpu) throw new Error('WebGPU is not available in this browser');
     const adapter = await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' });
     if (!adapter) throw new Error('No WebGPU adapter');
@@ -337,10 +379,11 @@ export class Renderer {
     const offscreen = options.presentation === 'offscreen';
     const ctx = offscreen ? null : canvas.getContext('webgpu');
     if (!offscreen && !ctx) throw new Error('Could not get a WebGPU canvas context');
-    const format: GPUTextureFormat = offscreen ? 'rgba8unorm' : navigator.gpu.getPreferredCanvasFormat();
-    ctx?.configure({ device, format, alphaMode: 'opaque' });
+    const out = ctx ? configureOutput(device, ctx, options.display ?? 'auto', options.colorSpace ?? 'auto') : { format: 'rgba8unorm' as GPUTextureFormat, hdr: false, colorSpace: 'srgb' as const };
+    const format = out.format;
     device.pushErrorScope('validation');
     const r = new Renderer(device, canvas, ctx, format, blend32 ? 'rgba32float' : 'rgba16float', blend32 ? 'r32float' : 'r16float');
+    r.displayInfo = { hdr: out.hdr, colorSpace: out.colorSpace, format };
     const err = await device.popErrorScope();
     if (err) throw new Error(`Renderer pipeline creation failed: ${err.message}`);
     if (!blend32) r.persistentWarnings.push('HDR buffers are rgba16float with pre-exposure (float32-blendable unavailable or disabled)');
@@ -433,10 +476,15 @@ export class Renderer {
       mask: tex(W, H, 'r8unorm', RT, 'MASK'),
       depth: tex(W, H, 'depth32float', RT, 'depth'),
       levels,
+      acu: ((w1: number, h1: number) => d.createTexture({
+        size: [w1, h1], format: 'rgba32float', usage: ST, label: 'acuity mips',
+        mipLevelCount: Math.max(1, Math.min(levels.length - 1, Math.floor(Math.log2(Math.max(w1, h1))) + 1)),
+      }))(levels[1]?.w ?? 1, levels[1]?.h ?? 1),
       zero: tex(1, 1, 'rgba32float', ST, 'zero'),
       zero2: tex(1, 1, 'rgba32float', ST, 'zero2'),
       // One partial per adaptation invocation (8 × 8 per workgroup).
       partials: d.createBuffer({ size: tilesX * tilesY * 64 * 16, usage: GPUBufferUsage.STORAGE }),
+      darkest: d.createBuffer({ size: tilesX * tilesY * 64 * 16, usage: GPUBufferUsage.STORAGE }),
       tilesX, tilesY,
     };
     this.glareCache.key = '';
@@ -496,9 +544,10 @@ export class Renderer {
   private destroyTargets(): void {
     const t = this.targets;
     if (!t) return;
-    for (const x of [t.ext, t.pt, t.ptEx, t.ptDisp, t.w, t.mask, t.depth, t.zero, t.zero2]) x.destroy();
+    for (const x of [t.ext, t.pt, t.ptEx, t.ptDisp, t.w, t.mask, t.depth, t.acu, t.zero, t.zero2]) x.destroy();
     for (const l of t.levels) { l.lvl.destroy(); l.tmp.destroy(); l.blur.destroy(); l.acc.destroy(); l.accR.destroy(); l.ub.destroy(); l.ubR.destroy(); }
     t.partials.destroy();
+    t.darkest.destroy();
     this.targets = null;
   }
 
@@ -513,11 +562,24 @@ export class Renderer {
       this.render(this.lastSnapshot);
       const surfIdle = !this.surf || this.surf.idle();
       const atmIdle = !this.atm || this.atm.idle();
-      if (surfIdle && atmIdle) break;
+      const meshIdle = !this.meshes || this.meshes.idle();  // shape meshes (meshes/)
+      if (surfIdle && atmIdle && meshIdle) break;
       if (!atmIdle) await this.atm!.whenIdle(30000);
+      else if (!meshIdle) await this.meshes!.whenIdle(30000);
       else await this.surf!.whenIdle(10000);
     }
-    await this.settleAdaptation();
+    // Shape meshes (meshes/): their levels can arrive only after frames that ask for them; wait for them longer than
+    // for tiles (a close-up without its mesh would show the ellipsoid).
+    for (let round = 0; round < 64 && this.lastSnapshot && this.meshes && !this.meshes.idle() && performance.now() - t0 < 300000; round++) {
+      await this.meshes.whenIdle(30000);
+      this.render(this.lastSnapshot);
+    }
+    this.settling = true;
+    try {
+      await this.settleAdaptation();
+    } finally {
+      this.settling = false;
+    }
   }
 
   /** Resolves when the GPU has finished the last submitted frame (frame pacing; no extra frames). */
@@ -554,8 +616,13 @@ export class Renderer {
     const d = this.device;
     this.settings = { ...DEFAULT_EYE_SETTINGS, ...(snapshot.view.eye ?? {}) };
     const sunWhite = snapshot.sun ? ([snapshot.sun.irradianceXYZS_1AU[0], snapshot.sun.irradianceXYZS_1AU[1], snapshot.sun.irradianceXYZS_1AU[2]] as [number, number, number]) : null;
-    const eye = computeEyeFrame(this.settings, this.adaptation, snapshot.view.mode, snapshot.view.exposureBoostStops, sunWhite);
+    const ad = snapshot.view.adaptation;
+    this.adaptation.timeDependent = ad?.mode === 'realtime';
+    if (snapshot.sun) this.sunSP = snapshot.sun.irradianceXYZS_1AU[3] / snapshot.sun.irradianceXYZS_1AU[1];
+    const outMax = this.displayInfo.hdr ? Math.max(this.settings.hdrPeakCdM2, this.settings.displayPeakCdM2) : undefined;
+    const eye = computeEyeFrame(this.settings, this.adaptation, snapshot.view.mode, snapshot.view.exposureBoostStops, sunWhite, outMax);
     const g = cameraGeom(snapshot, t.W, t.H, NEAR_KM);
+    this.fieldDeg2 = (2 * Math.atan(g.tanX)) * (2 * Math.atan(g.tanY)) * DEG2_PER_SR;
 
     // Point-splat footprint: the eye's optical core (Watson 2013) or the reconstruction minimum.
     const sigmaPx = Math.max(((eye.coreSigmaDeg * Math.PI) / 180) / g.pixelAngle, SIGMA_MIN_PX);
@@ -577,14 +644,30 @@ export class Renderer {
       surf.flush();
       this.stats.surfaceCache = surf.stats();
     }
-    // Atmospheres whose tables are ready (computed in a worker the first time a body shows one).
+    // Atmospheres whose tables are ready (computed in a worker the first time a body shows one), and the
+    // aerial-perspective columns of those drawn over a disk (AP_COLUMNS_SHADER).
     const atmOf = new Map<number, AtmosphereBinding>();
+    const apOf = new Map<number, { cols: ApColumns; tex: GPUTexture }>();
     prep.resolved.forEach((r, i) => {
       if (!r.atmosphere || !this.atm) return;
-      atmOf.set(i, r.atmosphere.binding);
-      this.atm.writeUniform(r.atmosphere.binding, r.atmosphere.sunE, r.atmosphere.sunAngularRadius, r.atmosphere.shellBeta, r.frame.near, ATM_STEPS);
+      const b = r.atmosphere.binding;
+      atmOf.set(i, b);
+      let ap: ApColumns | null = null;
+      if (r.atmosphere.onDisk && !b.unmeasured && !this.debugSkip.has('ap')) {
+        const colPx = Math.max(2, Math.ceil(t.H / AP_ROWS));
+        const slices = r.earth ? AP_SLICES_EARTH_KM : [0];
+        ap = { colPx, nx: Math.ceil(t.W / colPx), ny: Math.ceil(t.H / colPx), slices, body: i };
+        apOf.set(i, { cols: ap, tex: this.apTexture(b.key, ap, Math.ceil(b.model.wavelengthsNm.length / 4)) });
+      }
+      this.atm.writeUniform(b, r.atmosphere.sunE, r.atmosphere.sunAngularRadius, r.atmosphere.shellBeta, r.frame.near, ATM_STEPS, ap);
     });
     this.atmOf = atmOf;
+    // Shape meshes (meshes/meshBodies.ts): bodies whose mesh is resident are drawn from it, not as ellipsoids.
+    if (!this.meshes && prep.resolved.some((r) => r.body.shape)) this.meshes = new MeshBodies(d, this.hdrFormat, this.weightFormat, this.meshCacheMiB);
+    const meshSet = this.meshes ? this.meshes.prepare(prep, g, { selfShadow: !this.debugSkip.has('meshShadow') }) : null;
+    if (this.meshes) this.stats.meshes = this.meshes.stats();
+    this.apOf = apOf;
+    this.writeLimbs(prep, this.debugSkip.has('atmosphere') || this.debugSkip.has('limb'));
     this.stats.cpuPrepMs = performance.now() - t0;
 
     // Scatter kernel (CIE 146) fitted to this pyramid and field of view.
@@ -623,8 +706,23 @@ export class Renderer {
     const nRes = prep.resolved.length;
     if (nRes) this.writeBodies(prep);  // after atmOf is set (the atmosphere flag)
     const nRings = this.writeRings(prep.rings);
+    if (meshSet?.size && !this.debugSkip.has('bodies')) this.meshes!.encodeShadows(enc);  // meshes: self-shadow maps
     d.queue.writeBuffer(this.surfUB, 0, new Uint32Array([surf?.perRow('albedo') ?? 1, surf?.perRow('height') ?? 1, nRings, 0, surf?.perRow('clouds') ?? 1, surf?.perRow('rg16') ?? 1, 0, 0]));
     const skip = this.debugSkip;
+    // 1a. Aerial-perspective columns of the atmospheres drawn over a disk (AP_COLUMNS_SHADER).
+    if (apOf.size && this.bodiesBuf && !skip.has('atmosphere')) {
+      const pipe = (this.apPipe ??= d.createComputePipeline({ layout: 'auto', compute: { module: d.createShaderModule({ code: AP_COLUMNS_SHADER, label: 'aerial perspective' }), entryPoint: 'main' }, label: 'aerial perspective' }));
+      const cp = enc.beginComputePass({ label: 'aerial perspective', timestampWrites: this.tsw('aerial perspective') });
+      cp.setPipeline(pipe);
+      for (const [i, a] of apOf) {
+        cp.setBindGroup(0, d.createBindGroup({
+          layout: pipe.getBindGroupLayout(0),
+          entries: [{ binding: 0, resource: { buffer: this.frameUB } }, { binding: 1, resource: { buffer: this.bodiesBuf } }, ...this.atmEntries(atmOf.get(i)), { binding: 16, resource: a.tex.createView({ dimension: '3d' }) }],
+        }));
+        cp.dispatchWorkgroups(Math.ceil(a.cols.nx / 8), Math.ceil(a.cols.ny / 8));
+      }
+      cp.end();
+    }
     {
       const pass = enc.beginRenderPass({
         label: 'bodies',
@@ -666,16 +764,17 @@ export class Renderer {
         const overDisk = (k: number) => atmOf.has(k) && !!prep.resolved[k].atmosphere?.onDisk;
         const special = (k: number) => (!!prep.resolved[k].earth && !!surf) || overDisk(k);
         for (let i = 0; i < nRes;) {
+          if (meshSet?.has(i)) { i++; continue; }  // drawn from its shape mesh below
           const earth = !!prep.resolved[i].earth && !!surf;
           const withAtm = !earth && overDisk(i);
           let j = i + 1;
-          if (!earth && !withAtm) while (j < nRes && !special(j)) j++;
+          if (!earth && !withAtm) while (j < nRes && !special(j) && !meshSet?.has(j)) j++;
           const pipe = earth ? (this.earthPipe ??= this.makeBodyPipe(EARTH_BODY_SHADER, 'bodies (Earth)'))
             : withAtm ? (this.atmPipe ??= this.makeBodyPipe(ATM_BODY_SHADER, 'bodies (atmosphere)'))
               : this.bodyPipe;
           if (withAtm) {
             pass.setPipeline(pipe);
-            pass.setBindGroup(0, d.createBindGroup({ layout: pipe.getBindGroupLayout(0), entries: [...entries, ...this.atmEntries(atmOf.get(i))] }));
+            pass.setBindGroup(0, d.createBindGroup({ layout: pipe.getBindGroupLayout(0), entries: [...entries, ...this.atmEntries(atmOf.get(i)), { binding: 16, resource: this.apView(i) }] }));
             bound = null;
           } else if (earth) {
             pass.setPipeline(pipe);
@@ -684,6 +783,7 @@ export class Renderer {
               entries: [
                 ...entries, { binding: 10, resource: surf!.view('clouds') }, { binding: 11, resource: surf!.view('rg16') }, ...this.atmEntries(atmOf.get(i)),
                 { binding: 15, resource: prep.resolved[i].surface?.wind?.view ?? this.windDummy() },
+                { binding: 16, resource: this.apView(i) },
               ],
             }));
             bound = null;
@@ -695,6 +795,7 @@ export class Renderer {
           pass.draw(6, j - i, 0, i);
           i = j;
         }
+        if (meshSet?.size) this.meshes!.draw(pass, { frameUB: this.frameUB, bodies: this.bodiesBuf, rings: ringsRes, ringProf: profRes });
       }
       // Atmosphere shells (after the bodies, whose depth they test against).
       if (atmOf.size && this.bodiesBuf && !skip.has('atmosphere')) {
@@ -724,7 +825,7 @@ export class Renderer {
     }
 
     // 1b. Sky background (render/sky): extended sky light into EXT wherever no body is in front.
-    if (this.background && !skip.has('background')) this.background.encode(enc, { ext: t.ext, depth: t.depth, frameUB: this.frameUB, W: t.W, H: t.H, snapshot });
+    if (this.background && !skip.has('background')) this.background.encode(enc, { ext: t.ext, depth: t.depth, frameUB: this.frameUB, limbs: this.limbsUB, W: t.W, H: t.H, snapshot });
     // 1b. Comets drawn extended: tails and comae into EXT behind the bodies; comae smaller than the Ricco area join
     //     the point sources (prep.points, drawn in step 3).
     if (this.comets && snapshot.comets?.length && !skip.has('comets')) {
@@ -755,11 +856,12 @@ export class Renderer {
             { binding: 5, resource: bgView },
             { binding: 6, resource: { buffer: c.info } },
             { binding: 7, resource: { buffer: this.srcs } },
+            { binding: 8, resource: { buffer: this.limbsUB } },
           ],
         }));
         pass.dispatchWorkgroups(gx, gy);
       }
-      this.extraPts?.cull(pass, this.cullPipe, { frameUB: this.frameUB, eyeUB: this.eyeUB, visible: this.visible, args: this.args, bgView, srcs: this.srcs, maxVisible: this.maxVisible });
+      this.extraPts?.cull(pass, this.cullPipe, { frameUB: this.frameUB, eyeUB: this.eyeUB, visible: this.visible, args: this.args, bgView, srcs: this.srcs, limbs: this.limbsUB, maxVisible: this.maxVisible });
       d.queue.writeBuffer(this.clampUB, 0, new Uint32Array([this.maxVisible, 0, 0, 0]));
       pass.setPipeline(this.clampPipe);
       pass.setBindGroup(0, d.createBindGroup({ layout: this.clampPipe.getBindGroupLayout(0), entries: [{ binding: 0, resource: { buffer: this.args } }, { binding: 1, resource: { buffer: this.clampUB } }] }));
@@ -842,6 +944,7 @@ export class Renderer {
           { binding: 4, resource: veilView },
           { binding: 5, resource: { buffer: t.partials } },
           { binding: 6, resource: { buffer: this.srcs } },
+          { binding: 7, resource: { buffer: t.darkest } },
         ],
       }));
       pass.dispatchWorkgroups(t.tilesX, t.tilesY);
@@ -854,6 +957,7 @@ export class Renderer {
           { binding: 1, resource: { buffer: this.result } },
           { binding: 2, resource: { buffer: this.reduceUB } },
           { binding: 3, resource: { buffer: this.args } },
+          { binding: 4, resource: { buffer: t.darkest } },
         ],
       }));
       pass.dispatchWorkgroups(1);
@@ -869,6 +973,23 @@ export class Renderer {
         pass.draw(6, 1);
       }
     });
+
+    // 6b. The extended image's mip chain for the low-light acuity (eye/acuity.ts; eye mode only).
+    const acuityOn = snapshot.view.mode === 'eye' && !skip.has('acuity');
+    if (acuityOn) {
+      const pass = enc.beginComputePass({ label: 'acuity mips', timestampWrites: this.tsw('acuity mips') });
+      pass.setPipeline(this.pyr.down);
+      const n = t.acu.mipLevelCount;
+      for (let j = 0; j < n; j++) {
+        const src = j === 0 ? t.ext.createView() : t.acu.createView({ baseMipLevel: j - 1, mipLevelCount: 1 });
+        pass.setBindGroup(0, d.createBindGroup({
+          layout: this.pyr.down.getBindGroupLayout(0),
+          entries: [{ binding: 0, resource: src }, { binding: 2, resource: t.acu.createView({ baseMipLevel: j, mipLevelCount: 1 }) }],
+        }));
+        pass.dispatchWorkgroups(Math.ceil(Math.max(1, t.acu.width >> j) / 8), Math.ceil(Math.max(1, t.acu.height >> j) / 8));
+      }
+      pass.end();
+    }
 
     // 7. Composite (eye model) into the canvas.
     const canvasView = this.ctx ? this.ctx.getCurrentTexture().createView() : this.displayTexture().createView();
@@ -886,6 +1007,8 @@ export class Renderer {
           { binding: 4, resource: t.w.createView() },
           { binding: 5, resource: paintView },
           { binding: 6, resource: { buffer: this.srcs } },
+          { binding: 7, resource: t.acu.createView() },
+          { binding: 8, resource: veilView },
         ],
       }));
       pass.draw(3);
@@ -896,8 +1019,9 @@ export class Renderer {
     // 8. Display-space overlays.
     const lines: number[] = [...prep.overlay];
     orbitVertices(snapshot.orbits, g, lines);
-    const ovBodies = prep.resolved.some((r) => r.hatch || r.tint);
-    const ovMask = prep.rings.length > 0 || prep.resolved.some((r) => r.surface?.albedo || r.atmosphere?.binding.unmeasured);
+    // A mesh body's hatch comes through MASK and its tint from its own pass (meshes/), not the ellipsoid overlay.
+    const ovBodies = prep.resolved.some((r, i) => (r.hatch || r.tint) && !meshSet?.has(i));
+    const ovMask = prep.rings.length > 0 || prep.resolved.some((r, i) => r.surface?.albedo || r.atmosphere?.binding.unmeasured || (r.hatch && meshSet?.has(i)));
     if ((ovBodies || ovMask || lines.length) && !skip.has('overlays')) {
       const pass = enc.beginRenderPass({ label: 'overlays', timestampWrites: this.tsw('overlays'), colorAttachments: [{ view: canvasView, loadOp: 'load', storeOp: 'store' }] });
       if (ovMask) {
@@ -910,7 +1034,8 @@ export class Renderer {
         const ov = new Float32Array(nRes * 8);
         prep.resolved.forEach((r, i) => {
           const col = r.tint ?? [0, 0, 0, 0];
-          ov.set([col[0], col[1], col[2], col[3], r.hatch ? 1 : 0, r.tint ? 1 : 0, 0, 0], i * 8);
+          const mesh = !!meshSet?.has(i);
+          ov.set([col[0], col[1], col[2], col[3], r.hatch && !mesh ? 1 : 0, r.tint && !mesh ? 1 : 0, 0, 0], i * 8);
         });
         const buf = this.ensure('overlayBuf', ov.byteLength);
         d.queue.writeBuffer(buf, 0, ov);
@@ -937,6 +1062,7 @@ export class Renderer {
       }
       pass.end();
     }
+    if (meshSet?.size && !skip.has('overlays')) this.meshes!.encodeTint(enc, canvasView, this.format, t.depth.createView(), this.frameUB);
 
     const doReadback = !this.readbackBusy;
     if (doReadback) enc.copyBufferToBuffer(this.result, 0, this.readback, 0, 32);
@@ -950,12 +1076,12 @@ export class Renderer {
     this.stats.pupilDiameterMm = eye.pupilMm;
     this.stats.mesopicM = eye.mesopic.m;
     this.stats.limitingMagnitude = eye.limitingMagnitude;
-    this.stats.warnings = [...this.persistentWarnings, ...prep.warnings, ...(surf?.problems ?? [])];
+    this.stats.warnings = [...this.persistentWarnings, ...prep.warnings, ...(surf?.problems ?? []), ...(this.meshes?.problems ?? [])];
     d.queue.onSubmittedWorkDone().then(() => { this.stats.frameMs = performance.now() - t0; });
 
     if (doReadback) {
       this.readbackBusy = true;
-      const used = { cone: eye.Acone, rod: eye.Arod, offFrameFlux: prep.offFrameFluxDeg2 };
+      const used = { cone: eye.Acone, rod: eye.Arod, offFrameFlux: prep.offFrameFluxDeg2, eye };
       this.readback.mapAsync(GPUMapMode.READ).then(() => {
         const r = new Float32Array(this.readback.getMappedRange().slice(0));
         this.readback.unmap();
@@ -965,7 +1091,7 @@ export class Renderer {
     }
   }
 
-  private handleMeasurement(r: Float32Array, used: { cone: number; rod: number; offFrameFlux: number }): void {
+  private handleMeasurement(r: Float32Array, used: { cone: number; rod: number; offFrameFlux: number; eye: EyeFrame }): void {
     const om = r[2];
     const goal = {
       coneCdM2: om > 0 ? Math.exp(r[0] / om) - DARK_LIGHT_CONE : 0,
@@ -973,8 +1099,15 @@ export class Renderer {
       cornealFlux: r[3] * DEG2_PER_SR + used.offFrameFlux,
     };
     this.stats.starsDrawn = Math.round(r[4]);
+    // The faintest point any part of this frame could show: the eye looking at the darkest background there
+    // (the same local observer the star cull uses, eye-model.md §2 "Fixations").
+    if (Number.isFinite(r[5]) && r[5] < 1e37) {
+      const e = used.eye;
+      this.stats.pointLimitingMagnitude = magnitudeFromLux(localObserver(this.settings, e.display, r[5], r[6], e.exposure, e.dark).thresholdBwLux);
+    }
     const now = performance.now();
-    const dt = this.lastMeasurementTime ? (now - this.lastMeasurementTime) / 1000 : 0;
+    // Real elapsed time, at most 2 s per measurement (a longer gap is a hidden tab, not a stare).
+    const dt = this.lastMeasurementTime ? Math.min((now - this.lastMeasurementTime) / 1000, 2) : 0;
     this.lastMeasurementTime = now;
     const floorC = CRUMEY.zeroBackgroundB;
     const floorR = CRUMEY.zeroBackgroundB * CRUMEY.spRatioBlackwell;
@@ -983,9 +1116,28 @@ export class Renderer {
       Math.abs(Math.log(Math.max(goal.rodCdM2, floorR) / used.rod)),
     );
     const prevFlux = this.adaptation.cornealFlux;
-    this.adaptation.update(goal, dt);
+    const s = this.settings;
+    const pupil = pupilDiameterMm(goal.cornealFlux, s.ageYears, s.eyes);
+    // Time-dependent adaptation (eye/bleaching.ts): settled() holds the pigments in steady state, unless the
+    // view gives a history, which is re-applied under the current goal until the adaptation settles.
+    const hist = this.lastSnapshot?.view.adaptation?.history;
+    const key = hist ? `${hist.luminanceCdM2}|${hist.exposureS}|${hist.elapsedS}` : '';
+    if (key !== this.historyKey) { this.historyKey = key; this.historySettled = false; }
+    const timed = this.adaptation.timeDependent;
+    this.adaptation.timeDependent = timed && !(this.settling && !hist);
+    this.adaptation.update(goal, dt, pupil);
+    this.adaptation.timeDependent = timed;
+    if (hist && timed && !this.historySettled) {
+      const L = hist.luminanceCdM2;
+      const dPre = pupilDiameterMm(L * this.fieldDeg2, s.ageYears, s.eyes);
+      this.adaptation.pigment = null;
+      this.adaptation.applyHistory(trolands(L, dPre), trolands(L * this.sunSP, dPre), hist.exposureS, hist.elapsedS);
+    }
     const fluxStable = Math.abs(goal.cornealFlux - prevFlux) <= 1e-3 * Math.max(goal.cornealFlux, 1e-12);
     const converged = dist < 1e-3 && fluxStable;
+    if (converged && hist) this.historySettled = !this.settling || this.historySettled;
+    const st = adaptationStatus(this.adaptation.dark(), this.adaptation.td.rod);
+    this.stats.darkAdaptation = { fraction: st.fraction, minutesToFull: st.minutesToFull, rodLogElevation: st.rodLogElevation, coneCatch: this.adaptation.dark().coneCatch, text: adaptationStatusText(st) };
     this.onMeasurement?.({ goal, used, converged, starsDrawn: this.stats.starsDrawn });
     const w = this.waiters;
     this.waiters = [];
@@ -1107,11 +1259,12 @@ export class Renderer {
       this.glareCache.unscattered, s.ageYears, s.pigmentation, wPt,
       c[0], c[1], c[2], 0, c[3], c[4], c[5], 0, c[6], c[7], c[8], 0,
       1 / 255, cosField, sigmaPx, nSrc,
-      extentPx, norm, 0, 0,
+      extentPx, norm, Math.pow(10, Math.min(eye.dark.rodLogElevation, 30)), eye.dark.coneCatch,
       DARK_LIGHT_CONE, DARK_LIGHT_ROD, eye.darkResponse[0], eye.darkResponse[1],
       response(PATTANAIK.coneBleachHalf, eye.display.sigma, eye.display.B), eye.displayRiccoSr, eye.coneSummationSr, this.selfVeilPx,
       ...sunFix,
-      eye.display.blackRef, s.coneBleaching ? 1 : 0, s.fixation === 'centre' ? 0 : 1, 0,
+      eye.display.blackRef, s.coneBleaching ? 1 : 0, s.fixation === 'centre' ? 0 : 1, eye.mode === 'eye' && !this.debugSkip.has('acuity') ? 1 : 0,
+      eye.display.maxLd, eye.display.maxResponse, this.displayInfo.hdr ? 1 : 0, this.displayInfo.colorSpace === 'display-p3' ? 1 : 0,
     ]));
     const src = new Float32Array(MAX_GLARE_SOURCES * 8);
     prep.glare.slice(0, nSrc).forEach((gs, i) => src.set([...gs.dir, gs.minDeg, ...gs.E], i * 8));
@@ -1144,6 +1297,62 @@ export class Renderer {
   }
 
   private atmOf = new Map<number, AtmosphereBinding>();
+
+  /**
+   * Point sources seen through an atmosphere's limb are dimmed by the chord's transmittance (CULL_SHADER
+   * limbTransmittance): the drawn, measured atmospheres with the camera above their top, nearest first.
+   */
+  private writeLimbs(prep: PreparedFrame, off: boolean): void {
+    const limbs: { f: PreparedFrame['resolved'][number]['frame']; H: number; tab: Float32Array }[] = [];
+    if (!off) {
+      for (const [i, b] of this.atmOf) {
+        if (b.unmeasured) continue;
+        const f = prep.resolved[i].frame;
+        const H = b.model.topKm - b.model.bottomKm;
+        const lo = Math.hypot(...f.o);
+        if (f.D * (1 - 1 / lo) <= H) continue; // camera inside the shell: not a limb view
+        limbs.push({ f, H, tab: limbChordTable(b.model, b.grid) });
+      }
+      limbs.sort((a, b) => a.f.D - b.f.D);
+    }
+    const n = Math.min(limbs.length, LIMB_MAX);
+    const a = new Float32Array(LIMBS_UB_BYTES / 4);
+    a[0] = n;
+    const per = (5 + LIMB_N) * 4;
+    limbs.slice(0, n).forEach(({ f, H, tab }, k) => {
+      const o = 4 + k * per;
+      const M = f.M;
+      a.set([...f.pos, H, ...f.o, 0, M[0], M[1], M[2], 0, M[3], M[4], M[5], 0, M[6], M[7], M[8], 0], o);
+      a.set(tab, o + 20);
+    });
+    this.device.queue.writeBuffer(this.limbsUB, 0, a);
+  }
+  private apOf = new Map<number, { cols: ApColumns; tex: GPUTexture }>();
+  private apTextures = new Map<string, GPUTexture>();
+  private apPipe: GPUComputePipeline | null = null;
+  private apDummyTex: GPUTexture | null = null;
+
+  /** The aerial-perspective texture of an atmosphere for this frame's grid (kept while the size fits). */
+  private apTexture(key: string, ap: ApColumns, K4: number): GPUTexture {
+    const depth = ap.slices.length * (1 + K4);
+    let tex = this.apTextures.get(key);
+    if (!tex || tex.width !== ap.nx || tex.height !== ap.ny || tex.depthOrArrayLayers !== depth) {
+      tex?.destroy();
+      tex = this.device.createTexture({
+        size: [ap.nx, ap.ny, depth], dimension: '3d', format: 'rgba16float',
+        usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING, label: `aerial perspective ${key}`,
+      });
+      this.apTextures.set(key, tex);
+    }
+    return tex;
+  }
+
+  private apView(i: number): GPUTextureView {
+    const a = this.apOf.get(i);
+    if (a) return a.tex.createView({ dimension: '3d' });
+    this.apDummyTex ??= this.device.createTexture({ size: [1, 1, 1], dimension: '3d', format: 'rgba16float', usage: GPUTextureUsage.TEXTURE_BINDING, label: 'aerial perspective dummy' });
+    return this.apDummyTex.createView({ dimension: '3d' });
+  }
   private windDummyTex: GPUTexture | null = null;
   private windDummy(): GPUTextureView {
     this.windDummyTex ??= this.device.createTexture({ size: [1, 1], format: 'rgba16float', usage: GPUTextureUsage.TEXTURE_BINDING, label: 'wind dummy' });
@@ -1307,4 +1516,28 @@ export class Renderer {
 export function pyramidSigma(k: number): number {
   const p = Math.pow(4, k);
   return Math.sqrt(PYRAMID_BLUR_SIGMA * PYRAMID_BLUR_SIGMA * p + (p - 1) / 12 + (4 * p - 4) / 18);
+}
+
+/**
+ * Configure the canvas for the display (docs/eye-model.md §7). HDR: rgba16float with toneMapping 'extended'
+ * (WebGPU §21.5; Chrome 129+), used when asked for, or in 'auto' when the screen reports
+ * (dynamic-range: high) and the browser reports the extended mode back (getConfiguration). Otherwise the
+ * preferred 8-bit format. Colour space: Display P3 when the screen covers it ((color-gamut: p3)), else sRGB.
+ */
+function configureOutput(device: GPUDevice, ctx: GPUCanvasContext, display: 'auto' | 'sdr' | 'hdr', cs: 'auto' | 'srgb' | 'display-p3'): { format: GPUTextureFormat; hdr: boolean; colorSpace: 'srgb' | 'display-p3' } {
+  const media = (q: string) => typeof matchMedia === 'function' && matchMedia(q).matches;
+  const colorSpace = cs === 'auto' ? (media('(color-gamut: p3)') ? 'display-p3' : 'srgb') : cs;
+  if (display === 'hdr' || (display === 'auto' && media('(dynamic-range: high)'))) {
+    try {
+      ctx.configure({ device, format: 'rgba16float', colorSpace, alphaMode: 'opaque', toneMapping: { mode: 'extended' } } as GPUCanvasConfiguration);
+      const get = (ctx as unknown as { getConfiguration?: () => { toneMapping?: { mode?: string } } | null }).getConfiguration;
+      const mode = get ? get.call(ctx)?.toneMapping?.mode : undefined;
+      if (mode === 'extended' || (display === 'hdr' && mode === undefined)) return { format: 'rgba16float', hdr: true, colorSpace };
+    } catch {
+      // Fall back to SDR below.
+    }
+  }
+  const format = navigator.gpu.getPreferredCanvasFormat();
+  ctx.configure({ device, format, colorSpace, alphaMode: 'opaque' });
+  return { format, hdr: false, colorSpace };
 }

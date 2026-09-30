@@ -132,18 +132,28 @@ export function sceneReferences(s: ObserverState): References {
  * (B_rod = 0.0016 at A = 25 in the paper) and are neglected in the inverse (error < 0.2 %).
  */
 export interface DisplayObserver {
+  /** Display white (SDR white on an HDR display), cd/m²: the observer's reference white, adapted to white/5. */
   peak: number;
   black: number;
   sigma: number;
   B: number;
+  /** Response to display white (reference white). */
   white: number;
   blackRef: number;
+  /**
+   * Brightest luminance the display can show, cd/m²: = peak on SDR; the HDR peak on an HDR display, where
+   * responses above reference white (highlights) are shown up to it (docs/eye-model.md §7).
+   */
+  maxLd: number;
+  /** Response to maxLd. */
+  maxResponse: number;
 }
 
-export function displayObserver(peakCdM2: number, blackCdM2: number): DisplayObserver {
+export function displayObserver(peakCdM2: number, blackCdM2: number, maxCdM2 = peakCdM2): DisplayObserver {
   const A = peakCdM2 / P.refWhiteFactor;
   const sigma = sigmaCone(A);
   const B = 1; // B_cone(A ≈ 40 cd/m²) = 0.99998
+  const maxLd = Math.max(maxCdM2, peakCdM2);
   return {
     peak: peakCdM2,
     black: blackCdM2,
@@ -151,6 +161,8 @@ export function displayObserver(peakCdM2: number, blackCdM2: number): DisplayObs
     B,
     white: response(peakCdM2, sigma, B),
     blackRef: response(blackCdM2, sigma, B),
+    maxLd,
+    maxResponse: response(maxLd, sigma, B),
   };
 }
 
@@ -182,7 +194,7 @@ export function appearanceMap(scene: References, d: DisplayObserver): Appearance
 /** Inverse display response: luminance L_d (cd/m²) that evokes response R_d in the display observer. */
 export function inverseDisplay(Rd: number, d: DisplayObserver): number {
   if (!(Rd > 0)) return 0;
-  if (Rd >= d.white) return d.peak;
+  if (Rd >= d.maxResponse) return d.maxLd;
   return d.sigma * Math.pow(Rd / (d.B - Rd), 1 / P.n);
 }
 

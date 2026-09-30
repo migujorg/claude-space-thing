@@ -269,6 +269,9 @@ export type PhaseDependent = number | { alphaDeg: number[]; values: number[] };
  *  - lommel-seeliger:  r ∝ μ0/(μ0 + μ)
  *  - lunar-lambert:    r ∝ 2L·μ0/(μ0 + μ) + (1 − L)·μ0   (McEwen 1991)
  *  - minnaert:         r ∝ μ0^k·μ^(k−1)                  (Minnaert 1941)
+ *  - akimov:           the parameter-free Akimov disk function D(i, e, g) (Shkuratov et al. 1999; the form of
+ *                      Filacchione et al. 2022, arXiv:2111.15541, §4 Eqs. 4–6), D = 1 at g = 0
+ *  - barkstrom:        r ∝ (1/μ)·(μ0μ/(μ0 + μ))^B          (Barkstrom 1973; B = 1 is Lommel–Seeliger)
  *  - hapke:            Hapke (2012) isotropic multiple-scattering approximation with the shadow-hiding
  *                      (SHOE) and coherent-backscatter (CBOE) opposition effects, a double Henyey–Greenstein
  *                      particle phase function p(g) = (1+c)/2·HG(b, backward) + (1−c)/2·HG(b, forward),
@@ -281,6 +284,8 @@ export type SpatialPhotometricModel =
   | { kind: 'lommel-seeliger'; validPhaseDeg?: [number, number] }
   | { kind: 'lunar-lambert'; L: PhaseDependent; validPhaseDeg?: [number, number] }
   | { kind: 'minnaert'; k: PhaseDependent; validPhaseDeg?: [number, number] }
+  | { kind: 'akimov'; validPhaseDeg?: [number, number] }
+  | { kind: 'barkstrom'; B: PhaseDependent; validPhaseDeg?: [number, number] }
   | {
       kind: 'hapke';
       /** Single-scattering albedo. */
@@ -809,7 +814,10 @@ export interface ShapeModelHeader {
   frame: { name: string; origin: string; axes: string };
   /**
    * Orientation provenance: `frame`, the SPICE kernels that define it for the source, the rotation constants
-   * behind it (`sourceRotation`: POLE_RA/POLE_DEC [deg, deg/century, deg/century²], PM [deg, deg/day, deg/day²]),
+   * behind it (`sourceRotation`: POLE_RA/POLE_DEC [deg, deg/century, deg/century²], PM [deg, deg/day, deg/day²],
+   * and where the kernel has them NUT_PREC_RA/DEC/PM with the system's NUT_PREC_ANGLES and MAX_PHASE_DEGREE, as
+   * SPICE evaluates them; for a frame without constants of its own, e.g. ROS_LUTETIA, the equivalent constant pole
+   * and uniform rate, `derived`),
    * the app's frame for the body (`appFrame`, pck00011) and its constants, the angle between the two frames at
    * given epochs (`differenceDeg`, `poleDifferenceDeg`), and for radar models the published spin state.
    */

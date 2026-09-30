@@ -141,6 +141,8 @@ E_obs,c = A_c(g, Φ, θ, φ) · E☉,c(1 AU) · (1/d²) · (radiusKm/Δ)²
 
 with A_c from the model's `formula`. The inputs are the phase angle g, the Sun's selenographic longitude Φ, and the observer's selenographic latitude and longitude θ, φ. E☉,c is the solar XYZS in `light.json`. The model applies only inside its stated domain (phase range and observer libration range). There it replaces `geometricAlbedoXYZS · Φ(α)`; outside it, the α-only `phaseFunction` applies (within its own domain). `phaseFunction` equals the model's Y channel at zero libration, averaged over waxing and waning (geometric mean), divided by the albedo's Y.
 
+Shape models ([rendering-shapes.md](rendering-shapes.md)): an irregular body drawn from its mesh (`SceneBody.shape`) keeps this contract on average. The radiance prefactor is scaled by πR² / ⟨A_proj⟩, where ⟨A_proj⟩ is the mesh's rotation-mean projected area, so the rotation-averaged illuminance at small phase is still `geometricAlbedoXYZS · Φ(α) · (1/d²) · (R/Δ)²`. The instantaneous brightness then varies with the shape as it rotates (a lightcurve); that variation is `derived`.
+
 Kind `rotation-slices-v1` (the Galilean moons) adds a measured rotational (orbital-longitude) variation to `geometricAlbedoXYZS · Φ(α)`: a factor F from six longitude slices (Mayorga et al. 2020 Table 4), evaluated at the sub-observer and sub-solar longitudes (the formula is in `schema.ts` `RotationSlicesDiskModel`). F averages to 1 over a rotation, so the albedo and phase function remain the longitude average. As with ROLO, the renderer normalizes a body's surface maps at the viewing geometry when the model applies, so a map's own longitude contrast is not counted twice.
 
 ### 4.4 Surface maps (M2)

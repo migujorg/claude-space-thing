@@ -3,7 +3,7 @@
 // spatial law consistent with the measured disk-integrated photometry (architecture §4.3/§4.4).
 import { describe, expect, it } from 'vitest';
 import {
-  gaussLegendre, hapkeRadf, hFunction1981, hFunction2002, LAMBERT_LAW, LAW, lawDiskIntegral, lawRadf,
+  akimovDisk, gaussLegendre, hapkeRadf, hFunction1981, hFunction2002, LAMBERT_LAW, LAW, lawDiskIntegral, lawRadf,
   lommelSeeligerPhase, resolveLaw, type ResolvedLaw, type ZonalProfile,
 } from '../src/render/spatial';
 import { lambertPhase } from '../src/render/photometry';
@@ -139,6 +139,75 @@ describe('disk integrals', () => {
     expect(tilted[1] / lawDiskIntegral(LAMBERT_LAW, 0)[1]).toBeCloseTo(1.5, 3);
   });
   it('law codes are stable (shared with WGSL)', () => {
-    expect(LAW).toEqual({ lambert: 0, lommelSeeliger: 1, lunarLambert: 2, minnaert: 3, hapke: 4, texelHapke: 5 });
+    expect(LAW).toEqual({ lambert: 0, lommelSeeliger: 1, lunarLambert: 2, minnaert: 3, hapke: 4, texelHapke: 5, akimov: 6, barkstrom: 7 });
+  });
+  it('an unknown model kind is an error (the caller falls back to Lambert and warns)', () => {
+    const r = resolveLaw({ kind: 'something-new' } as never, 0.3);
+    expect('error' in r && r.error).toContain('something-new');
+  });
+});
+
+describe('Akimov disk function (Shkuratov et al. 1999; Filacchione et al. 2022 Eqs. 4–6)', () => {
+  // Eq. 4 written in photometric coordinates: with the observer at longitude 0 and the Sun at longitude g
+  // on the photometric equator, a point at (β, γ) has μ = cos β cos γ and μ0 = cos β cos(γ − g).
+  const eq4 = (beta: number, gam: number, g: number) =>
+    (Math.cos(g / 2) * Math.cos((Math.PI / (Math.PI - g)) * (gam - g / 2)) * Math.pow(Math.cos(beta), g / (Math.PI - g))) / Math.cos(gam);
+  it('matches Eq. 4 at points given by their photometric latitude and longitude', () => {
+    for (const gDeg of [5, 30, 60, 90, 120, 150]) {
+      const g = deg(gDeg);
+      for (const bDeg of [0, 20, 45, 70]) for (const cDeg of [-80, -40, 0, 30, 60, 85]) {
+        const beta = deg(bDeg), gam = deg(cDeg);
+        const mu = Math.cos(beta) * Math.cos(gam), mu0 = Math.cos(beta) * Math.cos(gam - g);
+        if (!(mu0 > 0) || !(mu > 0)) continue;
+        expect(akimovDisk(mu0, mu, g)).toBeCloseTo(eq4(beta, gam, g), 10);
+      }
+    }
+  });
+  it('is 1 at zero phase, 0 at the terminator, and finite at the bright limb', () => {
+    for (const mu of [0.1, 0.5, 1]) expect(akimovDisk(mu, mu, 0)).toBe(1);
+    const g = deg(40);
+    // Terminator: γ → g − π/2 (μ0 → 0).
+    const gT = g - Math.PI / 2 + 1e-6;
+    expect(akimovDisk(Math.cos(gT - g), Math.cos(gT), g)).toBeLessThan(1e-5);
+    // Bright limb (γ → π/2, μ → 0 on the photometric equator): D → cos(g/2)·π/(π − g).
+    const lim = Math.cos(g / 2) * (Math.PI / (Math.PI - g));
+    const gL = Math.PI / 2 - 1e-7;
+    expect(akimovDisk(Math.cos(gL - g), Math.cos(gL), g)).toBeCloseTo(lim, 5);
+    // Continuous toward it.
+    const gN = Math.PI / 2 - 1e-3;
+    expect(akimovDisk(Math.cos(gN - g), Math.cos(gN), g) / lim).toBeCloseTo(1, 3);
+    // Clamped below 180°.
+    expect(Number.isFinite(akimovDisk(0.5, 0.5, Math.PI))).toBe(true);
+  });
+  it('is the law of kind akimov; at zero phase the disk is uniform (D = 1), integral 1 against Lambert\'s 2/3', () => {
+    const l = law({ kind: 'akimov' });
+    expect(l.kind).toBe(LAW.akimov);
+    expect(lawRadf(l, 0.6, 0.8, deg(30))).toBe(akimovDisk(0.6, 0.8, deg(30)));
+    expect(lawDiskIntegral(l, 0)[1]).toBeCloseTo(1, 4);
+    expect(lawDiskIntegral(LAMBERT_LAW, 0)[1]).toBeCloseTo(2 / 3, 4);
+    // A finite, positive integral at every phase (the scale then comes from p·Φ(α)).
+    for (const a of [30, 90, 150]) expect(lawDiskIntegral(l, deg(a))[1]).toBeGreaterThan(0);
+  });
+});
+
+describe('Barkstrom law, I/F ∝ (1/μ)(μ0μ/(μ0 + μ))^B', () => {
+  it('is Lommel–Seeliger at B = 1 (radiance factor and disk integral)', () => {
+    const b1 = law({ kind: 'barkstrom', B: 1 });
+    const ls = law({ kind: 'lommel-seeliger' });
+    for (const [mu0, mu] of [[0.9, 0.3], [0.2, 0.8], [0.5, 0.5]]) expect(lawRadf(b1, mu0, mu, 0.4)).toBeCloseTo(lawRadf(ls, mu0, mu, 0.4), 12);
+    // Equal but for the μ ≥ 1e-3 floor at the limb (a few 1e-8).
+    for (const a of [0, 40, 100]) expect(lawDiskIntegral(b1, deg(a))[1]).toBeCloseTo(lawDiskIntegral(ls, deg(a))[1], 6);
+  });
+  it('takes B from its phase table, and is an error outside it', () => {
+    const m = { kind: 'barkstrom' as const, B: { alphaDeg: [0, 60], values: [0.8, 1.2] } };
+    const l = law(m, deg(30));
+    expect(l.kind).toBe(LAW.barkstrom);
+    expect(l.p).toBeCloseTo(1.0, 12);
+    expect(lawRadf(l, 0.7, 0.4, deg(30))).toBeCloseTo(Math.pow((0.7 * 0.4) / 1.1, 1.0) / 0.4, 12);
+    expect('error' in resolveLaw(m, deg(70))).toBe(true);
+  });
+  it('B < 1 brightens the limb relative to B = 1 (normalized at the disk centre)', () => {
+    const r = (B: number, mu: number) => lawRadf(law({ kind: 'barkstrom', B }), mu, mu, 0) / lawRadf(law({ kind: 'barkstrom', B }), 1, 1, 0);
+    expect(r(0.8, 0.2)).toBeGreaterThan(r(1, 0.2));
   });
 });

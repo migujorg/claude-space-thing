@@ -20,8 +20,13 @@ are a cache (`data/cache/stars/xp_reduced/`). New schema types (additive, `app/s
 docs/architecture.md §6. Sources: docs/sources/gaia-dr3.md (new sections), pioneer-ipp.md, zodiacal-light.md,
 star-spectrophotometry.md (Sternberg).
 
-Build time with everything cached: `deepstars` 163 s, `sky` 121 s. First build: 114 GB of XP bulk files streamed
-and reduced (76 min), 192 deep-tier TAP queries (27 min), 3 × 48 aggregation queries (10–19 min each).
+Build time with everything cached: `deepstars` 163 s, `sky` 121 s. The first build also runs:
+- 192 deep-tier TAP queries (27 min) and 3 × 48 aggregation queries (10–19 min each).
+- The XP spectra, by one of two routes (`docs/reports/stars.md` §8). The routes give bit-identical reductions and
+  byte-identical `stars/deep-*` products.
+  - Default: those of the 15.3 M deep-tier sources are fetched by source_id from ARI Heidelberg's Gaia TAP service
+    and reduced on the fly (3158 queries, 21 GB, ≈ 55 min at 4 queries at a time).
+  - `stars.xpSource=bulk`: all 114 GB of bulk files are streamed and reduced (76 min).
 
 ## 1. Deep star tiers (`stars/deep.*`)
 
@@ -64,7 +69,7 @@ Same 48-byte record and header conventions as `stars/bright` (`TiledBinaryTableH
 | G, BP − RP relation fitted on this tier's XP stars (3 859 adaptive bins, BP − RP −0.54 … 7.71, median scatter 0.007 mag in Y; 67 stars outside the colour range use the end bin) | estimated | 1 077 197 |
 | G alone (no BP/RP), population median (scatter 0.14 mag) | estimated | 52 020 |
 
-15 303 880 sources (93.5 %) have XP spectra (every source flagged `has_xp_sampled` was found in the bulk files);
+15 303 880 sources (93.5 %) have XP spectra (every source flagged `has_xp_sampled` was found, in the bulk files and in ARI's table alike);
 71 060 of those are blended (164 405 sources have a comparably bright neighbour within 2″, including bright-tier
 stars) or have a missing sample. Sources without XP are not uniform on the sky: in regions Gaia scanned few times
 (e.g. tile 444: 62 % estimated) the tile is lit mostly by the relation. XP wavelengths are used as vacuum (as the

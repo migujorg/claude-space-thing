@@ -243,8 +243,27 @@ def build_diffuse(ctx: BuildContext, ids: dict, diag: dict) -> None:
     diag["bandFromXYZ"] = br_from_xyz
 
     # --------------------------------------------------------------- stars we render: dir, Y, B, R, HIP V
-    xp_paths, xp_ledger = sdp.stream_deep_xp(log=log, workers=ctx.param("gaia.xpWorkers"))
-    xsid, xred = sg.load_xp_reduced(xp_paths)
+    bh, br = sf.read_table(OUT / "stars" / "bright.json")
+    b_gaia = br["src"] == bh["sourceTable"].index(st.SRC_GAIA)
+    xp_routes = [i for i, r in enumerate(bh["routes"]["light"]) if "XP externally calibrated" in r["method"]]
+    b_xp_lit = b_gaia & np.isin(br["lightRoute"], xp_routes)
+    b_xyzs = br["xyzs"].astype(np.float64)
+    dh = json.loads((OUT / "stars" / "deep.json").read_text(encoding="utf-8"))
+    d_dir, d_xyzs, d_cat, d_route = [], [], [], []
+    for t in dh["tiles"]:
+        raw = np.frombuffer((OUT / "stars" / t["bin"]).read_bytes(), dtype=sf.dtype())
+        d_dir.append(raw["dir"])
+        d_xyzs.append(raw["xyzs"])
+        d_cat.append(raw["catId"])
+        d_route.append(raw["lightRoute"])
+    d_dir = np.concatenate(d_dir).astype(np.float64)
+    d_xyzs = np.concatenate(d_xyzs).astype(np.float64)
+    d_cat = np.concatenate(d_cat)
+    d_route = np.concatenate(d_route)
+    d_xp_lit = d_route == 0
+    # the XP reductions of every star lit by its XP spectrum (cached by the deepstars stage)
+    xsid, xred, _ = sdp.deep_xp(np.concatenate([sf.gaia_id(br["catId"][b_xp_lit]), sf.gaia_id(d_cat[d_xp_lit])]),
+                                source=ctx.param("stars.xpSource"), log=log, workers=ctx.param("gaia.xpWorkers"))
 
     def band_fluxes(xp_lit, cat, xyzs_):
         """IPP-band fluxes from the star's XP spectrum where its light comes from XP, else from its XYZ."""
@@ -258,27 +277,11 @@ def build_diffuse(ctx: BuildContext, ids: dict, diag: dict) -> None:
             out[bad, j] = xyzs_[bad, :3] @ np.array(br_from_xyz[c]["coef"])
         return out, hit & ~bad
 
-    bh, br = sf.read_table(OUT / "stars" / "bright.json")
-    b_gaia = br["src"] == bh["sourceTable"].index(st.SRC_GAIA)
-    xp_routes = [i for i, r in enumerate(bh["routes"]["light"]) if "XP externally calibrated" in r["method"]]
-    b_xyzs = br["xyzs"].astype(np.float64)
-    b_br, b_hit = band_fluxes(b_gaia & np.isin(br["lightRoute"], xp_routes), br["catId"], b_xyzs)
+    b_br, b_hit = band_fluxes(b_xp_lit, br["catId"], b_xyzs)
     hm = sc.load_hip_main()
     vmap = dict(zip(hm.hip.astype(int).tolist(), hm.vmag.tolist()))
     b_v = np.array([vmap.get(int(h), np.nan) if h else np.nan for h in br["hip"]])
-    dh = json.loads((OUT / "stars" / "deep.json").read_text(encoding="utf-8"))
-    d_dir, d_xyzs, d_cat, d_route = [], [], [], []
-    for t in dh["tiles"]:
-        raw = np.frombuffer((OUT / "stars" / t["bin"]).read_bytes(), dtype=sf.dtype())
-        d_dir.append(raw["dir"])
-        d_xyzs.append(raw["xyzs"])
-        d_cat.append(raw["catId"])
-        d_route.append(raw["lightRoute"])
-    d_dir = np.concatenate(d_dir).astype(np.float64)
-    d_xyzs = np.concatenate(d_xyzs).astype(np.float64)
-    d_cat = np.concatenate(d_cat)
-    d_route = np.concatenate(d_route)
-    d_br, d_hit = band_fluxes(d_route == 0, d_cat, d_xyzs)
+    d_br, d_hit = band_fluxes(d_xp_lit, d_cat, d_xyzs)
     diag["deepYFractionDerived"] = float(np.nansum(d_xyzs[d_route == 0, 1]) / np.nansum(d_xyzs[:, 1]))
     xred = None  # free memory
     diag["bandFluxFromXP"] = {"bright": [int(b_hit.sum()), int(b_hit.size)], "deep": [int(d_hit.sum()), int(d_hit.size)]}

@@ -20,6 +20,8 @@ export interface CullBindings {
   args: GPUBuffer;
   bgView: GPUTextureView;
   srcs: GPUBuffer;
+  /** Atmospheric limbs (CULL_SHADER Limbs). */
+  limbs: GPUBuffer;
   maxVisible: number;
 }
 
@@ -60,6 +62,7 @@ export class ExtraPointSources {
         { binding: 5, resource: b.bgView },
         { binding: 6, resource: { buffer: this.info } },
         { binding: 7, resource: { buffer: b.srcs } },
+        { binding: 8, resource: { buffer: b.limbs } },
       ],
     }));
     pass.dispatchWorkgroups(gx, gy);

@@ -17,6 +17,7 @@ import type {
   SourceRecord,
   AtmosphereFile,
   RingsFile,
+  ShapeIndex,
   TimeData,
 } from './schema';
 import { BinaryTable } from './binaryTable';
@@ -107,6 +108,8 @@ export interface LoadedData {
   sky?: SkyHeaders;
   /** atmospheres.json: optical properties for limb/sky rendering. */
   atmospheres?: AtmosphereFile | null;
+  /** shapes/index.json (ShapeIndex); headers, meshes and the DAMIT table are fetched on demand (app/shapes.ts). */
+  shapes?: ShapeIndex | null;
   report: DataReport;
   /** Fetches deferred products later; null when the data came from elsewhere (tests). */
   loader: DataLoader | null;
@@ -136,6 +139,7 @@ const CONSEQUENCE: Record<string, string> = {
   'stars/names.json': 'Star names unavailable in search.',
   'rings.json': 'No ring data: planetary rings are not drawn.',
   'atmospheres.json': 'No atmosphere data: limbs, haze and Earth\'s sky are not drawn.',
+  'shapes/index.json': 'No shape models: irregular bodies are drawn as triaxial ellipsoids.',
 };
 
 class NotFound extends Error {}
@@ -422,6 +426,15 @@ export async function loadAll(opts: LoadOptions): Promise<LoadedData> {
   if (sky.deep) for (const p of deepTilePaths(sky.deep)) tileFiles.add(p);
   if (sky.maps) for (const l of Object.values(sky.maps.layers)) tileFiles.add(mapPath(l));
 
+  // Shape models: the index now (small); headers, meshes and the DAMIT table on demand (app/shapes.ts, render/meshes).
+  const shapes = manifest?.products['shapes/index.json'] ? await L.get('shapes/index.json', (b) => json(b) as ShapeIndex, CONSEQUENCE['shapes/index.json']) : null;
+  const shapeFiles = productPaths.filter((p) => p.startsWith('shapes/') && p !== 'shapes/index.json');
+  if (shapeFiles.length) {
+    const bytes = shapeFiles.reduce((a, p) => a + manifest!.products[p].bytes, 0);
+    L.setReport('shapes/*', { status: 'on-demand', bytes, message: `${shapeFiles.length} files: shape-model headers and meshes and the DAMIT table, fetched when a body is seen up close.` });
+    for (const p of shapeFiles) tileFiles.add(p);
+  }
+
   // Small bodies: tables load in the background after the moon systems; names are indexed when search needs them.
   const smallBodies = discoverSmallBodies(manifest);
   for (const p of smallBodies?.all ?? []) {
@@ -452,7 +465,7 @@ export async function loadAll(opts: LoadOptions): Promise<LoadedData> {
     if (missing.size) notes.push(`Referenced source ids missing from sources.json: ${[...missing].sort().join(', ')}.`);
   }
 
-  return { manifest, sources, time, ephemerides, deferred, orientations, bodies, light, stars, starNames, surfaces, smallBodies, rings: rings ?? null, atmospheres: atmospheres ?? null, sky, report: L.report, loader: L };
+  return { manifest, sources, time, ephemerides, deferred, orientations, bodies, light, stars, starNames, surfaces, smallBodies, rings: rings ?? null, atmospheres: atmospheres ?? null, shapes: shapes ?? null, sky, report: L.report, loader: L };
 }
 
 // ---- light validation (structure only; values are the pipeline's) -------------------------------
