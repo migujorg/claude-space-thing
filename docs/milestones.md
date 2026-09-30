@@ -40,6 +40,14 @@ Landed: 1,573,014 asteroids and comets from JPL SBDB at a common epoch with per-
 
 The full MPC/JPL catalogs of asteroids and comets propagated on the GPU, with measured sizes, colors, rotation and shapes where they exist.
 
+Comets as they would look (landed after M6):
+
+- A comet resolved from the camera is drawn with its coma, its Finson–Probstein dust tail and its CO⁺ ion tail, in absolute light, from its propagated state.
+- The total light is the M1/K1 law; the rendered coma sums to it within 0.5 %.
+- The light is split between gas bands and dust using measured activity: A'Hearn et al. (1995) production rates and Afρ, McDonald band strengths, Lowell fluorescence efficiencies, Jewitt (2015) dust colours, and the Jorda et al. (2008) water–magnitude relation.
+- Tail directions are checked against Horizons PsAng/PsAMV.
+- The comets of the window, with their predicted peaks, are listed in docs/reports/comets.md. The e2e scene `comet-lemmon` shows the best-placed one, C/2025 A6 (Lemmon).
+
 ## M4 — The real sky  *(in progress)*
 
 Data landed: 16.4M deep stars (G 10–14) in HEALPix tiles, the faint-star + diffuse Milky Way map anchored on Pioneer 10/11 photometry from beyond the zodiacal cloud, a Kelsall/Leinert zodiacal light model, Sternberg spectrophotometry for the brightest stars (docs/reports/sky.md). Rendering in progress.

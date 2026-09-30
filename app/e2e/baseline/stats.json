@@ -1,9 +1,9 @@
 {
- "acceptedAt": "2026-09-30T15:59:44.159Z",
- "git": "2a47c86",
+ "acceptedAt": "2026-09-30T20:08:22.813Z",
+ "git": "83e60c5",
  "data": {
-  "manifestGeneratedAt": "2026-09-30T14:59:56+00:00",
-  "manifestSha256": "2a2d65c6d6f6548473aa7e83f1b83450531c13b6816def279680eef18346a888"
+  "manifestGeneratedAt": "2026-09-30T18:32:24+00:00",
+  "manifestSha256": "a17517e89ff7e4749f676555e3ea4bae8e972229f37354104c669c470571030a"
  },
  "viewport": {
   "width": 1280,
@@ -1555,6 +1555,32 @@
    },
    "consoleErrors": [],
    "readyMs": 103224
+  },
+  "comet-lemmon": {
+   "query": "t=2025-10-27T00:00:00Z&smallbodies=1&target=1004054&sbfield=0&dist=40000000&az=90&el=20&shield=1",
+   "stats": {
+    "adaptationLuminance": 0.000010750226534141897,
+    "scotopicAdaptationLuminance": 0.000024833550011256867,
+    "pupilDiameterMm": 7.76111252528496,
+    "mesopicM": 0,
+    "limitingMagnitude": 7.322145509544188,
+    "starsDrawn": 5322,
+    "bodiesDrawn": 3,
+    "bodies": [],
+    "points": [
+     "-3995:derived:marker",
+     "301:estimated",
+     "399:estimated"
+    ],
+    "bodiesInSnapshot": 75,
+    "sun": true,
+    "warnings": [],
+    "badge": [
+     "SUN SHIELDED: occulting disc (viewing aid)"
+    ]
+   },
+   "consoleErrors": [],
+   "readyMs": 71044
   }
  }
 }
