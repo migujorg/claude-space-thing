@@ -130,7 +130,15 @@ E_obs(α)     = E_obs(0) · Φ(α)          with Φ(0) = 1
 
 The resolved renderer must use a surface reflectance model whose disk integral reproduces both p and Φ(α) (energy consistency between "point" and "disk" views). The phase function Φ is itself a `Sourced` value (e.g. a published phase curve) — if the only available model is an assumption such as Lambert, it is labeled `estimated`.
 
-Conventions used by the `light` stage: R is the volumetric mean radius (abc)^(1/3) of the body's pck00011 triaxial radii (albedos from sources that used other disk sizes are rescaled by (R_source/R)²). Φ is evaluated only inside its stated domain (`minDeg..maxDeg`, or the table's range); outside it the phase behaviour is unknown. A `poly-mag` whose domain excludes α = 0 may have c0 ≠ 0 (Mercury: the fitted curve starts at 2° and excludes the opposition surge that the zero-phase albedo includes).
+Conventions used by the `light` stage: R is the volumetric mean radius (abc)^(1/3) of the body's pck00011 triaxial radii (albedos from sources that used other disk sizes are rescaled by (R_source/R)²). Φ is evaluated only inside its stated domain (`minDeg..maxDeg`, or the table's range); outside it the phase behaviour is unknown. A `poly-mag` whose domain excludes α = 0 may have c0 ≠ 0 (Mercury: the fitted curve starts at 2° and excludes the opposition surge that the zero-phase albedo includes). The reverse also occurs: a surge-free albedo with a curve that includes the surge has Φ > 1 (negative `deltaMag`) near its first node (the Moon: the table starts at 1.55°).
+
+Optional `diskReflectanceModel` (M3; so far only the Moon, kind `rolo-v1`): when a body's disk-integrated brightness depends on more than α, this model gives it directly per channel. The Moon's depends on which hemisphere is lit (the waxing Moon is ~10 % brighter than the waning Moon at 60°) and on libration (up to 7 % or more). The illuminance is
+
+```
+E_obs,c = A_c(g, Φ, θ, φ) · E☉,c(1 AU) · (1/d²) · (radiusKm/Δ)²
+```
+
+with A_c from the model's `formula`. The inputs are the phase angle g, the Sun's selenographic longitude Φ, and the observer's selenographic latitude and longitude θ, φ. E☉,c is the solar XYZS in `light.json`. The model applies only inside its stated domain (phase range and observer libration range). There it replaces `geometricAlbedoXYZS · Φ(α)`; outside it, the α-only `phaseFunction` applies (within its own domain). `phaseFunction` equals the model's Y channel at zero libration, averaged over waxing and waning (geometric mean), divided by the albedo's Y.
 
 ### 4.4 Surface maps (M2)
 
@@ -185,10 +193,27 @@ When an attribute needed for drawing is below the current `exists` level or `unk
 | `bodies.json` | `bodies` | `Body[]` with `Sourced` attributes (geometry, rotation, GM, ephemeris wiring) |
 | `photometry.json` | `light` | NAIF id → `BodyPhotometry` (albedo spectra integrated per §4.3, phase functions); merged into bodies by the app loader |
 | `light.json` | `light` | Sun spectrum-derived quantities, CIE constants actually used |
-| `rings.json` | `light` | planet NAIF id → `RingSystem`: measured radial profiles of normal optical depth (occultations), lit-face reflectance (reserved, `unknown` so far); see below |
+| `rings.json` | `light` | planet NAIF id → `RingSystem`: measured radial profiles of normal optical depth (occultations); Saturn: ring I/F model (lit and unlit faces, per channel) and the measured I/F data it is built on; see below |
 | `stars/<name>.json` + `.bin` | `stars` | header + interleaved per-star data |
 | `surfaces/<naifId>/<layer>.json` + tiles | `surfaces` | tiled map pyramids per §4.4 |
 
 Headers (`*.json` next to a `*.bin`) define byte layout explicitly (field name, type, count, stride) so the loader is generic.
 
-`rings.json` (`RingsFile` in schema.ts). Each `RingSystem` lies in its planet's equatorial plane (IAU pole of the planet in `bodies.json`); radii are planet-centred km. `opticalDepth` is a list of `RingProfile`s, each one measured occultation cut: bin-centre radii, normal optical depth τ⊥ (null where unconstrained) and, when the source gives it, the largest measurable τ⊥ (values at or above it are lower limits). Transmission of a ray crossing the ring plane at elevation B is exp(−τ⊥/|sin B|) to first order; in Saturn's A and B rings self-gravity wakes make the true slant optical depth depend on azimuth and elevation by tens of percent, which the profile's `method` text states rather than models. Occultation τ applies at visible wavelengths because the particles are much larger than the wavelength. `reflectance` (lit-face I/F vs radius, `RingReflectance`) is reserved and `unknown` until a measured source is processed; a renderer must mark ring brightness as not measured rather than invent it.
+`rings.json` (`RingsFile` in schema.ts). Each `RingSystem` lies in its planet's equatorial plane (IAU pole of the planet in `bodies.json`); radii are planet-centred km. `opticalDepth` is a list of `RingProfile`s, each one measured occultation cut: bin-centre radii, normal optical depth τ⊥ (null where unconstrained) and, when the source gives it, the largest measurable τ⊥ (values at or above it are lower limits). Transmission of a ray crossing the ring plane at elevation B is exp(−τ⊥/|sin B|) to first order; in Saturn's A and B rings self-gravity wakes make the true slant optical depth depend on azimuth and elevation by tens of percent, which the profile's `method` text states rather than models. Occultation τ applies at visible wavelengths because the particles are much larger than the wavelength. `reflectance` (`RingReflectance`) is Saturn's ring I/F model (label `estimated`) and `unknown` for the other systems (a renderer must mark their ring brightness as not measured rather than invent it). Saturn's `reflectanceMeasurements` carries the measurements the model is calibrated on (label `measured`), each at its own geometry: the Voyager 2 lit-face and Voyager 1 unlit-face ISS clear-filter radial I/F profiles (PDS VG_2810) and the HST WFPC2 phase curves of the C, B and A rings (Salo & French 2010 Table 4: I/F = a ln α + b in 5 filters, 0.25° ≤ α ≤ 6.3°, six effective elevations).
+
+The model (kind `single-scattering-v1`) is the classical single-scattering reflection and diffuse transmission of a many-particle-thick ring layer (Chandrasekhar 1960; Salo & French 2010 Eq. 6). With μ = |sin B| (observer above the ring plane), μ0 = |sin B′| (Sun), sin Beff = 2μμ0/(μ+μ0) and phase angle α, per CIE channel c (X, Y, Z, scotopic):
+
+- lit face (Sun and observer on the same side): I/F_c = A(r) · W_c(r; α, Beff) · μ0/(4(μ+μ0)) · [1 − exp(−τ⊥(r)(1/μ + 1/μ0))]
+- unlit face: I/F_c = A(r) · g_u(r) · W_c(r; α, Beff) · μ0/(4|μ−μ0|) · |exp(−τ_u(r)/μ) − exp(−τ_u(r)/μ0)|; for μ = μ0 this is (τ_u/(4μ)) exp(−τ_u/μ)
+- radiance L_c = I/F_c · E☉,c(d)/π (E☉ from `light.json`, scaled to the Sun's distance d), directly comparable with the planets' reflected light of §4.3.
+
+Arrays on the uniform radial grid (`radiusStartKm + i·radiusStepKm`, i < `count`; null = not modelled): τ⊥ = `normalTau` (UVIS occultation, the same profile as `opticalDepth`), A = `litModulation`, τ_u = `unlitTau`, g_u = `unlitGain`. W_c = ϖP, the particle albedo times phase function, per region in `regions[].amplitudeXYZS[e][p][c]` on the grids `elevationEffDeg` × `phaseDeg`: interpolate bilinearly in (α, Beff), clamping Beff to the grid; inside a region's `radiusKm` use its table, between two regions interpolate linearly in radius from one region's edge to the next, outside all regions use the nearest. The `formula` string in the product states the same.
+
+How the pieces were obtained (the product's `method` has the details):
+
+1. W for α ≤ 6.3°: the HST curves inverted through the lit-face formula with each region's UVIS τ⊥, reconstructed across wavelength piecewise-linearly through the five filters and integrated against sunlight and the CIE observers (like `geometricAlbedoXYZS`).
+2. W for 6.3° < α ≤ 47°: a power-law particle phase function (π − α)^n, the Callisto-like form Salo & French use (n = 3.09), with n per region fitted so that the model reproduces the region's mean Voyager 2 lit I/F at 47°. The fits (n ≈ 3.5-3.8) confirm the two independent anchors are consistent. Colour beyond 6.3° is held at its 6.3° value (assumption).
+3. A(r): radial structure, fitted so that the model reproduces the Voyager 2 lit profile bin by bin at its geometry. Colour, phase and tilt behaviour away from the three HST regions (e.g. Cassini Division, outer B ring) are interpolated (assumption).
+4. τ_u, g_u: fitted so that the model reproduces the Voyager 1 unlit profile bin by bin. In the B ring τ_u ≈ 1 while τ⊥ ≈ 5: light reaches the unlit side by multiple scattering and between self-gravity wakes. The unlit face's colour and phase shape are assumed to follow the lit face's.
+
+Domain: `minPhaseDeg` ≤ α ≤ `maxPhaseDeg` (0.25-47°); outside, ring brightness is unknown (the renderer shows that, e.g. by marking the rings as unmeasured). Not modelled: the A ring's azimuthal wake asymmetry, spokes, the F ring (A null beyond 138 700 km). Independent check: the net light the rings add to Saturn matches Mallama & Hilton's (2018) ground photometry within 10 % for ring elevations 15-26° at α = 1-3° (docs/reports/planet-colors.md).
