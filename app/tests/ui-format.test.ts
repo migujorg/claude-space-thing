@@ -69,6 +69,12 @@ describe('label layout', () => {
   it('flips to the left near the right edge and skips labels that cannot fit', () => {
     const [p] = layoutLabels([{ id: 1, x: 790, y: 300, r: 0, text: 'Edge', priority: 1 }], o);
     expect(p.x + p.w).toBeLessThan(790);
-    expect(layoutLabels([{ id: 1, x: 400, y: 2, r: 0, text: 'Top', priority: 1 }], o)).toEqual([]);
+    // at the top edge the label goes below the anchor
+    const [top] = layoutLabels([{ id: 1, x: 400, y: 2, r: 0, text: 'Top', priority: 1 }], o);
+    expect(top.y).toBeGreaterThan(2);
+    // with no room anywhere it is dropped, unless forced (the selected body)
+    const tiny = { ...o, width: 30, height: 12 };
+    expect(layoutLabels([{ id: 1, x: 15, y: 6, r: 0, text: 'Wide label', priority: 1 }], tiny)).toEqual([]);
+    expect(layoutLabels([{ id: 1, x: 15, y: 6, r: 0, text: 'Wide label', priority: 1, force: true }], tiny)).toHaveLength(1);
   });
 });

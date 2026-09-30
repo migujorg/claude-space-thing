@@ -15,6 +15,10 @@ cd app && npm install && npm run dev
 # open http://localhost:5173
 ```
 
+A first build downloads roughly 2 GB and takes about an hour, most of it streaming Gaia spectra for the star field; rebuilds reuse `data/raw/` and take minutes. Single stages can be rebuilt with `--only time,ephemeris,bodies,light,stars,…`.
+
+In the app press `?` for keys. Click anything to see its provenance; `X` cycles the reality level (Strict / Best estimate / Complete), `V` toggles naked-eye vs enhanced view, `/` searches.
+
 The time window of the data is centered on the moment of the first build and stored in `data/cache/window.json`, so later partial builds (`--only`) stay on it; run `uv run python -m pipeline build --new-window` to recenter it on "now".
 
 ## Layout

@@ -1,7 +1,9 @@
 // URL parameters for reproducible views:
 //   ?t=<ISO UTC>&target=<NAIF id>&dist=<km from target center>&az=<deg>&el=<deg>
 //    &exists=strict|best|complete&view=eye|enhanced&boost=<stops>&fov=<deg, vertical>
-//    &labels=0|1&orbits=0|1&tint=0|1&ui=0|1
+//    &labels=0|1&orbits=0|1&tint=0|1&ui=0|1&system=jup,sat|all
+// `system` names moon systems (ephem/sat-<key>) to load before the first frame instead of in the background;
+// "all" loads every one up front. The target's own system is always loaded up front.
 // az/el are in the target-centered Sun frame (camera.ts sunFrame): az = el = 0 puts the camera on the
 // Sun side of the target. A URL with `t` starts paused at that instant; without `t` the app starts
 // at "now", playing in real time.
@@ -23,6 +25,8 @@ export interface UrlView {
   orbits?: boolean;
   tint?: boolean;
   ui?: boolean;
+  /** Moon systems to load before the first frame (keys like "jup", or "all"). */
+  system?: string[];
 }
 
 /** Parse an ISO-8601 UTC time. A missing zone designator means UTC (never local time). */
@@ -78,6 +82,12 @@ export function parseUrlParams(search: string): { view: UrlView; errors: string[
     if ((VIEW_MODES as readonly string[]).includes(vw)) view.view = vw as ViewMode;
     else errors.push(`Ignoring view=${vw}: expected ${VIEW_MODES.join('|')}.`);
   }
+  const sys = p.get('system');
+  if (sys !== null) {
+    const keys = sys.split(',').map((k) => k.trim().toLowerCase().replace(/^(ephem\/)?sat-/, '')).filter(Boolean);
+    if (keys.length && keys.every((k) => /^[a-z0-9]+$/.test(k))) view.system = keys;
+    else errors.push(`Ignoring system=${sys}: expected keys like jup,sat or all.`);
+  }
   view.labels = bool('labels');
   view.orbits = bool('orbits');
   view.tint = bool('tint');
@@ -99,6 +109,7 @@ export function formatUrlParams(v: UrlView): string {
   if (v.boost !== undefined) p.set('boost', String(v.boost));
   if (v.fov !== undefined) p.set('fov', sig(v.fov, 4));
   for (const k of ['labels', 'orbits', 'tint', 'ui'] as const) if (v[k] !== undefined) p.set(k, v[k] ? '1' : '0');
+  if (v.system?.length) p.set('system', v.system.join(','));
   // ':' is legal in a query string; keep ISO times readable.
   return p.toString().replace(/%3A/gi, ':');
 }

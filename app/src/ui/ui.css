@@ -105,9 +105,12 @@
 .st-search ul { list-style: none; margin: 4px 0 0; padding: 0; max-height: 50vh; overflow-y: auto; }
 .st-search li { padding: 3px 6px; border-radius: 4px; cursor: pointer; display: flex; justify-content: space-between; gap: 8px; }
 .st-search li:hover, .st-search li.st-active { background: rgba(127, 178, 255, 0.18); color: var(--hi); }
-.st-search li .st-kind { color: var(--dim); font-size: 10.5px; }
-.st-search li.st-child { padding-left: 18px; }
-.st-search li.st-nopos { opacity: 0.5; }
+.st-search li .st-kind { color: var(--dim); font-size: 10.5px; white-space: nowrap; }
+.st-search li .st-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.st-search li .st-twisty { color: var(--accent); cursor: pointer; padding: 0 4px; border-radius: 3px; }
+.st-search li .st-twisty:hover { background: rgba(127, 178, 255, 0.2); }
+.st-search li.st-nopos .st-name { opacity: 0.55; }
+.st-search { width: 300px; }
 
 /* ---- right column: reality dials above the inspector ---- */
 .st-right { position: absolute; top: 10px; right: 10px; width: 370px; max-height: calc(100vh - 80px); display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
@@ -159,6 +162,7 @@
 .st-status-missing { color: var(--warn); }
 .st-status-error { color: var(--err); }
 .st-status-unused { color: var(--dim); }
+.st-status-deferred, .st-status-loading, .st-status-on-demand { color: var(--l-derived); }
 
 /* ---- HUD (bottom) ---- */
 .st-hud { position: absolute; left: 10px; right: 10px; bottom: 10px; display: flex; flex-wrap: wrap-reverse; gap: 8px 10px; align-items: stretch; }
@@ -193,3 +197,9 @@
 .st-help .st-keys { display: grid; grid-template-columns: 130px 1fr 130px 1fr; gap: 3px 10px; margin-top: 8px; }
 .st-help .st-keys > div:nth-child(odd) { text-align: right; }
 .st-fatal { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); padding: 16px 20px; max-width: 520px; text-align: center; }
+
+/* ---- background loading indicator ---- */
+.st-loading { left: 10px; bottom: 64px; padding: 5px 10px 6px; display: none; cursor: pointer; font-size: 11px; min-width: 220px; }
+.st-loading.st-show { display: block; }
+.st-loading .st-bar { height: 3px; margin-top: 4px; background: rgba(255, 255, 255, 0.08); border-radius: 2px; overflow: hidden; }
+.st-loading .st-bar > div { height: 100%; width: 0; background: var(--accent); transition: width 0.3s; }

@@ -12,3 +12,5 @@
 - Uranus and Neptune taken as geometric albedos as published (phase 0.7° / 0.3°) → label **derived**.
 
 **Quality:** absolute calibration ±4 %, relative ±2 % (Karkoschka). Our Jupiter agrees with Mallama et al. (2017) B, V, Rc to ≤ 2 % and with Horizons to 0.02 mag. Epoch caveats: Saturn's globe at ring-plane crossing (what the renderer draws, rings excluded); Neptune brightened ~3 % in V after 1995; Uranus's red albedo is 28 % above Mallama's 2000s value (seasonal change).
+
+**Titan (M2).** PDS column 8 is the "Full disk albedo of Titan at phase angle 5.7 deg." (1995LOW.LBL). The disk radius is 2575 km (1994 Table III, `karkoschka-1994-text` = `document/icarus94.asc`, fetched), which equals the pck00011 radius, so no rescaling is needed. The zero-phase factor is 1.02 from García Muñoz et al. (2017, `garcia-munoz-2017.md`) → label **estimated**. Check: dividing our spectrum by 1.02 gives V = −1.25 ± 0.03 at 1 AU and 5.7°, which is 1998 Table II's value (with Karkoschka's solar V = −26.74). The 1998 paper's Table II also shows Titan changing by a few percent over two years (seasons, north–south asymmetry, rotation near 940 nm).

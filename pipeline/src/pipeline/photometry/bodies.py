@@ -8,26 +8,27 @@ from dataclasses import dataclass
 import numpy as np
 
 from .. import cie
-from ..schema import BuildContext, sourced, worst
-from . import albedo, filters, phase, solar
+from ..schema import BuildContext, sourced, unknown, worst
+from . import albedo, filters, moons, phase, solar
 from .common import AU_KM, bin_average
 
-BODIES = {199: "Mercury", 299: "Venus", 399: "Earth", 301: "Moon", 499: "Mars", 599: "Jupiter", 699: "Saturn",
-          799: "Uranus", 899: "Neptune", 999: "Pluto"}
+PLANETS = {199: "Mercury", 299: "Venus", 399: "Earth", 301: "Moon", 499: "Mars", 599: "Jupiter", 699: "Saturn",
+           799: "Uranus", 899: "Neptune", 999: "Pluto"}
+BODIES = {**PLANETS, **moons.MOONS}
 
 
 @dataclass
 class BodyResult:
     naif: int
     name: str
-    spectrum: albedo.AlbedoSpectrum
-    phase: phase.Phase
-    p_grid: np.ndarray
-    xyzs: np.ndarray
-    p_v: float
+    spectrum: albedo.AlbedoSpectrum | None     # None: albedo and colour unknown (see entry)
+    phase: phase.Phase | None                  # None: phase function unknown
+    p_grid: np.ndarray | None
+    xyzs: np.ndarray | None
+    p_v: float | None
     p_v_band: float | None      # Bessell-V band average of the spectrum (equals p_v unless overridden)
     radius_km: float
-    v10: float                  # V(1,0) implied by p_v and radius
+    v10: float | None           # V(1,0) implied by p_v and radius
     v10_published: float | None
     entry: dict
 
@@ -36,9 +37,32 @@ def v10_from_albedo(p_v: float, radius_km: float) -> float:
     return albedo.sun_mag("V") - 2.5 * math.log10(p_v * (radius_km / AU_KM) ** 2)
 
 
+def _spectrum(naif: int, ctx):
+    return albedo.spectrum_for(naif, ctx) if naif in PLANETS else moons.spectrum_for(naif, ctx)
+
+
+def _phase(naif: int, ctx):
+    return phase.phase_for(naif, ctx) if naif in PLANETS else moons.phase_for(naif, ctx)
+
+
 def build_body(naif: int, ctx: BuildContext | None = None) -> BodyResult:
-    spec = albedo.spectrum_for(naif, ctx)
-    ph = phase.phase_for(naif, ctx)
+    spec = _spectrum(naif, ctx)
+    ph = _phase(naif, ctx)
+    r = albedo.mean_radius(naif)
+
+    def uniq(xs):
+        return list(dict.fromkeys(xs))
+
+    if isinstance(ph, moons.Unknown):
+        phase_entry, ph = unknown(ph.reason), None
+    else:
+        phase_entry = sourced(ph.function, ph.label, ph.sources, method=ph.method, uncertainty=ph.uncertainty)
+
+    if isinstance(spec, moons.Unknown):
+        entry = {"geometricAlbedoXYZS": unknown(spec.reason), "geometricAlbedoV": unknown(spec.reason),
+                 "phaseFunction": phase_entry}
+        return BodyResult(naif, BODIES[naif], None, ph, None, None, None, None, r, None, None, entry)
+
     e = solar.spectrum()
     p_grid = bin_average(spec.wl, spec.p)
     if np.isnan(p_grid).any():
@@ -46,7 +70,6 @@ def build_body(naif: int, ctx: BuildContext | None = None) -> BodyResult:
     xyzs = cie.xyzs(p_grid * e.grid)
     p_v_band = filters.band_average("V", spec.wl, spec.p)
     p_v = p_v_band
-    r = albedo.mean_radius(naif)
     v10 = v10_from_albedo(p_v, r)
 
     if ctx is not None:
@@ -55,9 +78,6 @@ def build_body(naif: int, ctx: BuildContext | None = None) -> BodyResult:
     else:
         common_src = [solar.HSRS.id, cie.SOURCE_CMF, cie.SOURCE_SCOTOPIC]
         v_src = ["bessell-1990-v"]
-
-    def uniq(xs):
-        return list(dict.fromkeys(xs))
 
     x_label = worst(spec.label, "derived")
     entry = {
@@ -75,17 +95,20 @@ def build_body(naif: int, ctx: BuildContext | None = None) -> BodyResult:
                 "Johnson V geometric albedo: band average of p(λ) weighted by the Bessell (1990) V passband × the "
                 f"TSIS-1 HSRS solar spectrum, referenced to R = {r:.1f} km."),
             uncertainty=spec.uncertainty),
-        "phaseFunction": sourced(ph.function, ph.label, ph.sources, method=ph.method, uncertainty=ph.uncertainty),
+        "phaseFunction": phase_entry,
     }
-    published = ph.zero_phase_V10
+    if naif == 301:
+        from . import rolo
+        entry["diskReflectanceModel"] = rolo.model_entry(ctx)
+    published = ph.zero_phase_V10 if ph is not None else None
     if naif == 799:
         # V1(0) = -7.110 - 8.4e-4 phi' ; for the source epoch (1995 July) evaluate at that epoch's phi'
         published = None
     return BodyResult(naif, BODIES[naif], spec, ph, p_grid, xyzs, float(p_v), p_v_band, r, v10, published, entry)
 
 
-def build_all(ctx: BuildContext | None = None) -> dict[int, BodyResult]:
-    return {n: build_body(n, ctx) for n in BODIES}
+def build_all(ctx: BuildContext | None = None, ids=None) -> dict[int, BodyResult]:
+    return {n: build_body(n, ctx) for n in (ids or BODIES)}
 
 
 def photometry_json(results: dict[int, BodyResult]) -> dict:

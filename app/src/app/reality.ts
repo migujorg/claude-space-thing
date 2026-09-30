@@ -1,7 +1,7 @@
 // Reality settings (NORTH_STAR 3.7, docs/architecture.md §5.2–5.3) and the per-attribute filter.
 // Pure: no DOM, no GPU.
 
-import { LABEL_ORDER, type Body, type IauRotation, type Label, type PhaseFunction, type Sourced } from '../data/schema';
+import { LABEL_ORDER, type Body, type Label, type PhaseFunction, type Sourced } from '../data/schema';
 
 export type ExistsLevel = 'strict' | 'best' | 'complete';
 export type ViewMode = 'eye' | 'enhanced';
@@ -97,8 +97,11 @@ export interface AttrUse {
 }
 
 export interface FilteredBody {
+  /** The position may be drawn (its label is admitted). When false, nothing about the body is drawn. */
+  position: boolean;
   radii: [number, number, number] | null;
-  rotation: IauRotation | null;
+  /** The orientation may be used (admitted and a shape is drawn); the matrix comes from the OrientationSet. */
+  orientation: boolean;
   albedoXYZS: [number, number, number, number] | null;
   phase: PhaseFunction | null;
   surfaceUnknown: boolean;
@@ -106,27 +109,53 @@ export interface FilteredBody {
   uses: AttrUse[];
 }
 
+/** Per-frame provenance inputs that are not in bodies.json. */
+export interface FilterContext {
+  /**
+   * Label of the ephemeris chain serving the position (EphemerisSet.provenance); the drawn position is at
+   * best 'derived' (light-time correction). Default: 'measured'.
+   */
+  chainLabel?: Label;
+  /**
+   * Orientation provenance at the frame's epoch (OrientationSet.provenance): undefined → body.rotation;
+   * null → unknown. A precise product can be `estimated` (e.g. Earth orientation predictions).
+   */
+  orientation?: { label: Label; kind: 'precise' | 'iau'; frame: string } | null;
+}
+
 /**
  * Apply the `exists` level to one body's drawable attributes.
- * Position is always 'derived' (ephemeris evaluation + light-time correction) and is never withheld.
+ * The position's label is worst('derived', chain label); if it is not admitted nothing is drawn.
  * The surface is drawn lit only when shape, reflectance and phase function are all admitted; when the
  * shape is admitted but either of the others is not, the renderer draws the hatched "not measured"
  * silhouette (surfaceUnknown). worstLabel covers exactly what is drawn.
  */
-export function filterBody(body: Body, level: ExistsLevel): FilteredBody {
+export function filterBody(body: Body, level: ExistsLevel, ctx: FilterContext = {}): FilteredBody {
   const uses: AttrUse[] = [];
-  const use = <T>(key: AttrKey, what: string, s: Sourced<T> | undefined): T | null => {
-    const label: Label = s?.label ?? 'unknown';
-    const v = allowedValue(s, level);
-    uses.push({ key, what, label, used: v !== null, ...(v === null ? { reason: s && s.value !== null && s.value !== undefined && label !== 'unknown' ? 'level' : 'unknown' } : {}) });
-    return v;
+  const push = (key: AttrKey, what: string, label: Label, hasValue: boolean): boolean => {
+    const ok = hasValue && label !== 'unknown' && labelAllowed(label, level);
+    uses.push({ key, what, label: hasValue ? label : 'unknown', used: ok, ...(ok ? {} : { reason: hasValue && label !== 'unknown' ? 'level' : 'unknown' }) });
+    return ok;
   };
-  uses.push({ key: 'position', what: 'position', label: 'derived', used: true });
+  const use = <T>(key: AttrKey, what: string, s: Sourced<T> | undefined): T | null =>
+    push(key, what, s?.label ?? 'unknown', s?.value !== null && s?.value !== undefined) ? (s!.value as T) : null;
+
+  const position = push('position', 'position', worstOf(['derived', ctx.chainLabel ?? 'measured']), true);
   const radii = use('radii', 'shape (radii)', body.radii);
-  const rotation = use('rotation', 'orientation', body.rotation);
+  let orientOk: boolean;
+  if (ctx.orientation === undefined) orientOk = use('rotation', 'orientation (IAU model)', body.rotation) !== null;
+  else if (ctx.orientation === null) orientOk = push('rotation', 'orientation', 'unknown', false);
+  else {
+    const o = ctx.orientation;
+    orientOk = push('rotation', o.kind === 'precise' ? `orientation (${o.frame})` : 'orientation (IAU model)', o.label, true);
+  }
   const albedo = use('albedoXYZS', 'reflectance (albedo)', body.photometry?.geometricAlbedoXYZS);
   const phase = use('phaseFunction', 'phase function', body.photometry?.phaseFunction);
 
+  if (!position) {
+    for (const u of uses) if (u.used && u.key !== 'position') { u.used = false; u.reason = 'dependency'; }
+    return { position: false, radii: null, orientation: false, albedoXYZS: null, phase: null, surfaceUnknown: false, worstLabel: 'unknown', uses };
+  }
   const surfaceKnown = radii !== null && albedo !== null && phase !== null;
   const surfaceUnknown = radii !== null && !surfaceKnown;
   // A point source needs brightness (albedo + phase) but not shape; with neither shape nor brightness
@@ -134,7 +163,6 @@ export function filterBody(body: Body, level: ExistsLevel): FilteredBody {
   // Albedo and phase function are only meaningful together; orientation only with a shape.
   const drawnAlbedo = albedo !== null && phase !== null ? albedo : null;
   const drawnPhase = drawnAlbedo !== null ? phase : null;
-  const drawnRotation = radii !== null ? rotation : null;
   for (const u of uses) {
     const dependent =
       ((u.key === 'albedoXYZS' || u.key === 'phaseFunction') && drawnAlbedo === null) || (u.key === 'rotation' && radii === null);
@@ -144,7 +172,7 @@ export function filterBody(body: Body, level: ExistsLevel): FilteredBody {
     }
   }
   const worstLabel = worstOf(uses.filter((u) => u.used).map((u) => u.label));
-  return { radii, rotation: drawnRotation, albedoXYZS: drawnAlbedo, phase: drawnPhase, surfaceUnknown, worstLabel, uses };
+  return { position: true, radii, orientation: orientOk && radii !== null, albedoXYZS: drawnAlbedo, phase: drawnPhase, surfaceUnknown, worstLabel, uses };
 }
 
 // ---- badge & explanations -----------------------------------------------------------------------
@@ -182,6 +210,7 @@ export function whyLine(f: FilteredBody, level: ExistsLevel): string {
   let s = `At ${EXISTS_TEXT[level].name} the renderer may use: ${used.join(', ') || 'nothing'}.`;
   if (withheld.length) s += ` Withheld at this level: ${withheld.join(', ')}.`;
   if (unknown.length) s += ` Unknown: ${unknown.join(', ')}.`;
+  if (!f.position) return s + ' → The position itself is not admitted at this level: nothing is drawn.';
   if (dep.length) s += ` Not used (its counterpart is missing): ${dep.join(', ')}.`;
   if (f.surfaceUnknown) s += ' → Shape is drawn with the hatched "not measured" material, not a guessed color.';
   else if (f.radii === null && f.albedoXYZS !== null) s += ' → Drawn as a point of its computed brightness (no admitted shape).';

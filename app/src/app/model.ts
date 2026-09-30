@@ -2,8 +2,8 @@
 // per-frame pipeline world → snapshot. No DOM, no GPU: the UI and bootstrap drive it, tests use it
 // with fake core implementations.
 
-import type { Body, LightData } from '../data/schema';
-import type { LoadedData } from '../data/load';
+import type { Body, Label, LightData } from '../data/schema';
+import type { DataLoader, DeferredEphemeris, LoadedData, LoadedEphemeris } from '../data/load';
 import { buildStarCatalog, starDirection, type StarFilterResult } from '../data/stars';
 import type { SceneCamera, SceneSnapshot } from '../render/scene';
 import {
@@ -13,11 +13,13 @@ import {
   type CamState, type Pose, type Sphere, type Travel,
 } from './camera';
 import { Clock, intersectWindows, type TimeWindow } from './clock';
-import { OrbitTracks, trackPolyline } from './orbits';
+import { SystemScheduler, systemBarycenter, type SystemInfo, type SystemState } from './lazy';
+import { buildOrientation } from './orientation';
+import { OrbitManager } from './orbits';
 import { pick, type PickTarget, type Viewport } from './picking';
-import type { CoreDeps, EphemerisSetPort, TimeScalePort, Vec3 } from './ports';
+import type { CoreDeps, EphemerisSetPort, OrientationSetPort, OrientationSourcePort, TimeScalePort, Vec3 } from './ports';
 import { badgeParts, defaultReality, labelAllowed, type RealityState } from './reality';
-import { buildSnapshot, buildSun, filtered } from './snapshot';
+import { buildSnapshot, buildSun, filtered, type OverlayOnlyBody } from './snapshot';
 import { parseIsoUtc, type UrlView } from './url';
 import { DEG, IDENTITY, len, matFromQuat, norm, quatFromMat, slerpQuat, sub } from './vec';
 import { computeWorld, copy, findSunId, isPhysical, navRadius, type World } from './world';
@@ -37,12 +39,29 @@ export interface FlyInput {
   mod: 'normal' | 'fast' | 'slow';
 }
 
-export type AppEvent = 'data' | 'selection' | 'reality' | 'time' | 'camera' | 'message';
+/** 'loading': background loading of moon systems progressed (UI indicator, search list). */
+export type AppEvent = 'data' | 'selection' | 'reality' | 'time' | 'camera' | 'message' | 'loading';
+
+/** Loads deferred ephemeris binaries (DataLoader in the app; a fake in tests). */
+export type DeferredLoader = Pick<DataLoader, 'loadDeferred'>;
+
+/** Wall-clock cost of the last frame's stages, ms. */
+export interface FrameTimings {
+  world: number;
+  snapshot: number;
+  orbits: number;
+  total: number;
+  bodies: number;
+}
+
+const SYSTEM_TITLES: Record<string, string> = { 4: 'Mars system', 5: 'Jupiter system', 6: 'Saturn system', 7: 'Uranus system', 8: 'Neptune system', 9: 'Pluto system' };
 
 export interface AppMessage {
   text: string;
   level: 'info' | 'warn' | 'error';
 }
+
+const perfNow = (): number => (typeof performance !== 'undefined' ? performance.now() : Date.now());
 
 const DEFAULT_FOV_DEG = 50;
 /** Preferred initial target (NAIF id of Earth, a naming convention — not a physical value). */
@@ -77,12 +96,27 @@ export class AppModel {
   pose: Pose = { pos: [0, 0, 0], orient: IDENTITY };
   world: World | null = null;
   snapshot: SceneSnapshot | null = null;
+  /** Bodies with a position but nothing drawable (shown only as overlay markers), this frame. */
+  overlayOnly: OverlayOnlyBody[] = [];
+  /** Top of each body's UI hierarchy (planet/dwarf planet/Sun for moons; itself otherwise). */
+  private roots = new Map<number, number>();
   viewport: ViewportSize = { width: 1, height: 1, dpr: 1 };
   uiHidden = false;
   /** Problems constructing core objects from loaded data (shown in the Data panel). */
   coreErrors: string[] = [];
   messages: AppMessage[] = [];
-  private tracks: OrbitTracks | null = null;
+  /** Body orientation: precise products where they cover, else the IAU model. */
+  orientations: OrientationSetPort;
+  /** Background loading of deferred ephemerides (moon systems); null when nothing is deferred. */
+  systems: SystemScheduler | null = null;
+  timings: FrameTimings = { world: 0, snapshot: 0, orbits: 0, total: 0, bodies: 0 };
+  orbits: OrbitManager | null = null;
+  private deferred = new Map<string, DeferredEphemeris>();
+  private loader: DeferredLoader | null = null;
+  private idleWaiters: (() => void)[] = [];
+  private pendingGoTo: { id: number; dist?: number; opts: { azDeg?: number; elDeg?: number; instant?: boolean }; resolve: () => void; reject: (e: Error) => void } | null = null;
+  private chainCache = new Map<number, { et: number; label: Label }>();
+  private lastPriorityUpdate = -Infinity;
   private starCache = new Map<string, StarFilterResult>();
   private listeners = new Map<AppEvent, Set<() => void>>();
   private readonly now: () => number;
@@ -92,6 +126,7 @@ export class AppModel {
     this.now = opts.now ?? Date.now;
     this.realityDefaults = defaultReality({ syntheticLayerAvailable: opts.syntheticLayerAvailable });
     this.reality = structuredClone(this.realityDefaults);
+    this.orientations = buildOrientation(core, [], []).set;
   }
 
   // ---- events -----------------------------------------------------------------------------------
@@ -119,6 +154,7 @@ export class AppModel {
     this.data = d;
     this.bodies = d.bodies;
     this.byId = new Map(d.bodies.map((b) => [b.id, b]));
+    this.roots.clear();
     this.sunId = findSunId(d.bodies);
     this.light = d.light;
     this.coreErrors = [];
@@ -130,7 +166,7 @@ export class AppModel {
       }
     }
     let ephWindow: TimeWindow | null = null;
-    if (d.ephemerides.length) {
+    if (d.ephemerides.length || d.deferred?.length) {
       const set = new this.core.EphemerisSet();
       let added = 0;
       for (const e of d.ephemerides) {
@@ -141,8 +177,10 @@ export class AppModel {
           this.coreErrors.push(`${e.path} could not be used: ${(err as Error).message ?? err}`);
         }
       }
+      this.eph = set;
+      // The time window comes from what is loaded up front. Files loaded later (moon systems) are not allowed
+      // to shrink it: a body whose file does not cover an epoch is simply not drawn then.
       if (added) {
-        this.eph = set;
         try {
           ephWindow = set.window;
         } catch {
@@ -150,12 +188,157 @@ export class AppModel {
         }
       }
     }
+    const o = buildOrientation(this.core, this.bodies, d.orientations ?? []);
+    this.orientations = o.set;
+    this.coreErrors.push(...o.errors);
+    this.chainCache.clear();
+    this.deferred = new Map((d.deferred ?? []).map((x) => [x.path, x]));
+    this.loader = d.loader ?? null;
+    this.systems = this.deferred.size
+      ? new SystemScheduler(
+          [...this.deferred.values()].map((x): SystemInfo => {
+            const bary = systemBarycenter(x.header.segments);
+            return { path: x.path, name: x.name, title: (bary !== null && SYSTEM_TITLES[bary]) || x.name, bytes: x.bytes, bodies: x.bodies, barycenter: bary };
+          }),
+        )
+      : null;
     const window = intersectWindows(d.manifest?.window, ephWindow);
     this.clock = new Clock(window ? (window.startEt + window.endEt) / 2 : 0, window);
-    if (this.eph && window) this.tracks = new OrbitTracks(this.eph, this.bodies, this.sunId, window);
+    this.orbits = this.eph && window ? new OrbitManager(this.eph, this.bodies, this.sunId, window) : null;
     this.starCache.clear();
     this.emit('data');
     this.emit('time');
+  }
+
+  // ---- background loading of moon systems ----------------------------------------------------------
+
+  /** Add a loaded ephemeris file (e.g. a moon system) to the set. */
+  addEphemeris(e: LoadedEphemeris): boolean {
+    if (!this.eph) this.eph = new this.core.EphemerisSet();
+    try {
+      this.eph.add(new this.core.Ephemeris(e.header, e.data));
+    } catch (err) {
+      this.coreErrors.push(`${e.path} could not be used: ${(err as Error).message ?? err}`);
+      return false;
+    }
+    this.chainCache.clear();
+    const d = this.deferred.get(e.path);
+    this.orbits?.invalidate(d?.bodies);
+    return true;
+  }
+
+  /** Queue every deferred system and start loading (after the first frame). */
+  startBackgroundLoading(): void {
+    if (!this.systems) return;
+    this.updateSystemPriorities(true);
+    this.systems.startAll();
+    this.pump();
+  }
+
+  /** Resolves when no system is queued or loading. */
+  systemsIdle(): Promise<void> {
+    if (!this.systems || this.systems.idle) return Promise.resolve();
+    return new Promise((res) => this.idleWaiters.push(res));
+  }
+
+  /** Where a body's position stands: 'loaded' (or nothing deferred), else the state of its pending system. */
+  bodyLoadState(id: number): SystemState {
+    return this.systems ? this.systems.bodyState(id) : 'loaded';
+  }
+
+  /** Ask for the systems a body needs, ahead of the others. Returns them (empty if nothing pending). */
+  requestBody(id: number): SystemInfo[] {
+    if (!this.systems) return [];
+    const p = this.systems.requestBody(id);
+    if (p.length) this.pump();
+    return p;
+  }
+
+  requestSystem(path: string): void {
+    this.systems?.request(path);
+    this.pump();
+  }
+
+  private pump(): void {
+    const sys = this.systems;
+    if (!sys) return;
+    for (let s = sys.next(); s; s = sys.next()) {
+      const info = s;
+      const def = this.deferred.get(info.path);
+      if (!def || !this.loader) {
+        sys.done(info.path, false, 'no loader');
+        continue;
+      }
+      let lastEmit = 0;
+      this.loader
+        .loadDeferred(def, (got, total) => {
+          if (!total) return;
+          sys.setProgress(info.path, got / total);
+          const t = Date.now();
+          if (t - lastEmit > 100) { lastEmit = t; this.emit('loading'); }
+        })
+        .then(
+          (loaded) => {
+            const ok = !!loaded && this.addEphemeris(loaded);
+            sys.done(info.path, ok, ok ? undefined : 'could not be loaded — see Data (M)');
+            if (!ok) this.message(`${info.title} could not be loaded: its bodies have no positions (see Data).`, 'error');
+          },
+          (err) => sys.done(info.path, false, String(err)),
+        )
+        .finally(() => {
+          this.emit('loading');
+          this.resumePendingGoTo();
+          if (sys.idle) this.idleWaiters.splice(0).forEach((w) => w());
+          this.pump();
+        });
+    }
+    this.emit('loading');
+  }
+
+  /** Closer systems load first (unless something was explicitly requested). */
+  private updateSystemPriorities(force = false): void {
+    const sys = this.systems;
+    if (!sys || !this.eph) return;
+    const t = Date.now();
+    if (!force && t - this.lastPriorityUpdate < 500) return;
+    this.lastPriorityUpdate = t;
+    for (const s of sys.systems) {
+      const p = s.barycenter !== null ? this.bodyPos(s.barycenter) : null;
+      const d = p ? len(sub(p, this.pose.pos)) : Infinity;
+      sys.setBasePriority(s.path, Number.isFinite(d) ? -Math.log10(Math.max(d, 1)) : -100);
+    }
+  }
+
+  private resumePendingGoTo(): void {
+    const p = this.pendingGoTo;
+    if (!p || !this.systems) return;
+    const st = this.systems.bodyState(p.id);
+    if (st === 'loaded') {
+      this.pendingGoTo = null;
+      const r = this.goTo(p.id, p.dist, p.opts);
+      if (typeof r === 'string') p.reject(new Error(r));
+      else r.then(p.resolve, p.reject);
+    } else if (st === 'error') {
+      this.pendingGoTo = null;
+      const msg = `${this.byId.get(p.id)?.name ?? p.id}: its ephemeris could not be loaded.`;
+      this.message(msg, 'error');
+      p.reject(new Error(msg));
+    }
+  }
+
+  /** Label of the ephemeris chain serving a body (cached per day; cleared when files are added). */
+  chainLabel(id: number, et = this.clock.et): Label {
+    const c = this.chainCache.get(id);
+    if (c && Math.abs(c.et - et) < 86400) return c.label;
+    const label = this.eph?.provenance?.(id, et)?.label ?? 'measured';
+    this.chainCache.set(id, { et, label });
+    return label;
+  }
+
+  /** Orientation provenance of a body at the light-emission epoch of the current frame (or now). */
+  orientationSource(id: number): OrientationSourcePort | null {
+    const et = this.world?.bodies.get(id)?.app?.emitEt ?? this.clock.et;
+    return this.orientations.provenance(id, et);
   }
 
   /** Stars admitted at the current `exists` level (cached per level). */
@@ -250,11 +433,13 @@ export class AppModel {
   select(id: number | null): void {
     if (id !== null && !this.byId.has(id)) return;
     this.selectedId = id;
+    if (id !== null) this.requestBody(id); // a selected moon's system loads next
     this.emit('selection');
   }
 
   bodyPos(id: number, et = this.clock.et): Vec3 | null {
-    return this.eph && this.eph.covers(id, et) ? copy(this.eph.positionSSB(id, et)) : null;
+    // positionSSB returns null when the chain does not cover et (no separate covers() walk).
+    return this.eph ? copy(this.eph.positionSSB(id, et)) : null;
   }
 
   radiusOf(id: number): number | null {
@@ -286,7 +471,26 @@ export class AppModel {
     const body = this.byId.get(id);
     if (!body || !isPhysical(body)) return `No body with id ${id}.`;
     const tp = this.bodyPos(id);
-    if (!tp) return `No position for ${body.name} at this time (outside its ephemeris coverage).`;
+    if (!tp) {
+      // Its moon system may still be loading: go there once it has arrived (never to a guessed place).
+      const state = this.bodyLoadState(id);
+      if (state !== 'loaded' && state !== 'error') {
+        const pend = this.requestBody(id);
+        this.select(id);
+        this.pendingGoTo?.resolve();
+        this.message(`Loading ${pend.map((s) => s.title).join(', ') || 'ephemeris'} for ${body.name}…`);
+        return new Promise<void>((resolve, reject) => {
+          this.pendingGoTo = { id, dist, opts, resolve, reject };
+        });
+      }
+      return state === 'error'
+        ? `No position for ${body.name}: its ephemeris could not be loaded (see Data).`
+        : `No position for ${body.name} at this time (outside its ephemeris coverage).`;
+    }
+    if (this.pendingGoTo && this.pendingGoTo.id !== id) {
+      this.pendingGoTo.resolve();
+      this.pendingGoTo = null;
+    }
     const radius = this.radiusOf(id);
     const endDist = clampDist(dist ?? this.defaultDistance(id), radius);
     let dir: Vec3;
@@ -404,12 +608,14 @@ export class AppModel {
     else this.cam = freeRoll(this.cam, a);
   }
 
+  /** Bodies with a known size, as spheres at `et` (flight speed and collision; bodies of unknown size are ignored). */
   private spheres(et = this.clock.et): Sphere[] {
     const out: Sphere[] = [];
     for (const b of this.bodies) {
-      if (!isPhysical(b)) continue;
+      const r = this.radiusOf(b.id);
+      if (!isPhysical(b) || r === null) continue;
       const p = this.bodyPos(b.id, et);
-      if (p) out.push({ center: p, radius: this.radiusOf(b.id) ?? 0 });
+      if (p) out.push({ center: p, radius: r });
     }
     return out;
   }
@@ -436,16 +642,30 @@ export class AppModel {
     const et = this.clock.et;
     // The clock takes real elapsed time; camera motion is capped so a stalled frame doesn't teleport.
     this.updateCamera(Math.min(realDt, 0.1), et, fly);
+    this.updateSystemPriorities();
+    const t0 = perfNow();
     this.world = computeWorld(et, this.pose.pos, this.bodies, this.eph, this.core, this.sunId);
+    const t1 = perfNow();
+    if (!this.reality.overlays.orbits && this.orbits) this.orbits.stats = { candidates: 0, drawn: 0, built: 0, pending: 0, ms: 0 };
+    const orbits =
+      this.reality.overlays.orbits && this.orbits
+        ? this.orbits.update({ et, world: this.world, fovY: this.fovY, height: this.viewport.height, selectedId: this.selectedId, isFocus: this.focusPredicate() })
+        : [];
+    const t2 = perfNow();
+    const overlayOnly: OverlayOnlyBody[] = [];
     this.snapshot = buildSnapshot({
       world: this.world,
       camera: this.sceneCamera(),
       reality: this.reality,
       light: this.light,
       selectedId: this.selectedId,
-      orbits: this.reality.overlays.orbits ? this.orbitPolylines(this.world) : [],
-      core: this.core,
-    });
+      orbits,
+      orientations: this.orientations,
+      chainLabel: (id) => this.chainLabel(id, et),
+    }, { overlayOnly });
+    this.overlayOnly = overlayOnly;
+    const t3 = perfNow();
+    this.timings = { world: t1 - t0, orbits: t2 - t1, snapshot: t3 - t2, total: t3 - t0, bodies: this.snapshot.bodies.length };
     return this.snapshot;
   }
 
@@ -494,21 +714,6 @@ export class AppModel {
     if (cam.anchor === null || anchorPos) this.pose = freePose(cam, anchorPos);
   }
 
-  private orbitPolylines(world: World) {
-    const out = [];
-    const w = this.clock.window;
-    if (!this.tracks || !w) return [];
-    for (const g of world.bodies.values()) {
-      if (!g.app || g.body.kind === 'star') continue;
-      const tr = this.tracks.get(g.id, world.et);
-      if (!tr) continue;
-      const parent = world.bodies.get(tr.parentId);
-      if (!parent?.app) continue;
-      out.push(trackPolyline(tr, world.et, w, parent.app.rel, g.id === this.selectedId));
-    }
-    return out;
-  }
-
   // ---- picking ------------------------------------------------------------------------------------
 
   /** Everything clickable this frame, with drawn (level-filtered) radii. */
@@ -516,6 +721,7 @@ export class AppModel {
     const s = this.snapshot;
     if (!s) return [];
     const t: PickTarget[] = s.bodies.map((b) => ({ id: b.id, pos: b.pos, radii: b.radii, orient: b.orient }));
+    for (const b of this.overlayOnly) t.push({ id: b.id, pos: b.pos, radii: null, orient: null });
     if (s.sun && this.sunId !== null) t.push({ id: this.sunId, pos: s.sun.pos, radii: [s.sun.radius, s.sun.radius, s.sun.radius], orient: null });
     else if (this.sunId !== null) {
       const g = this.world?.bodies.get(this.sunId);
@@ -628,6 +834,14 @@ export class AppModel {
         orbits: this.snapshot?.orbits.length ?? 0,
       },
       noPosition: [...(this.world?.bodies.values() ?? [])].filter((g) => !g.app).map((g) => g.id),
+      loading: this.systems
+        ? {
+            ...this.systems.summary(),
+            systems: Object.fromEntries(this.systems.systems.map((s) => [s.name, this.systems!.state(s.path)])),
+          }
+        : null,
+      timings: this.timings,
+      orbitStats: this.orbits?.stats ?? null,
       data: {
         loaded: this.data?.report.products.filter((p) => p.status === 'ok').map((p) => p.path) ?? [],
         missing: this.data?.report.products.filter((p) => p.status === 'missing').map((p) => p.path) ?? [],
@@ -637,10 +851,46 @@ export class AppModel {
     };
   }
 
+  /** The planet (or dwarf planet, or Sun) a body belongs to in the UI hierarchy; the body itself if top-level. */
+  rootOf(id: number): number {
+    let r = this.roots.get(id);
+    if (r === undefined) {
+      r = id;
+      for (let i = 0, b = this.byId.get(id); b && b.parent !== undefined && this.byId.has(b.parent) && i < 8; i++) {
+        r = b.parent;
+        b = this.byId.get(b.parent);
+      }
+      this.roots.set(id, r);
+    }
+    return r;
+  }
+
+  /** The system the view is about: that of the travel/orbit target, else the free-flight anchor, else the selection. */
+  focusRoot(): number | null {
+    const c = this.cam;
+    const id = this.travel?.target ?? (c.mode === 'orbit' ? c.target : c.anchor) ?? this.selectedId;
+    return id === null ? null : this.rootOf(id);
+  }
+
+  /**
+   * Build every orbit track the overlay still needs now, ignoring the per-frame budget (used before declaring
+   * a screenshot ready, where each rendered frame can be expensive). Returns the number of tracks built.
+   */
+  finishOrbitWork(): number {
+    if (!this.reality.overlays.orbits || !this.orbits || !this.world) return 0;
+    this.orbits.update({ et: this.world.et, world: this.world, fovY: this.fovY, height: this.viewport.height, selectedId: this.selectedId, isFocus: this.focusPredicate() }, Infinity);
+    return this.orbits.stats.built;
+  }
+
+  private focusPredicate(): (id: number) => boolean {
+    const f = this.focusRoot();
+    return (id) => f === null || this.rootOf(id) === f;
+  }
+
   /** Worst label etc. for a body at the current level (inspector). */
   filtered(id: number) {
     const b = this.byId.get(id);
-    return b ? filtered(b, this.reality.exists) : null;
+    return b ? filtered(b, this.reality.exists, this.chainLabel(id), this.orientationSource(id)) : null;
   }
 
   distanceTo(id: number): number | null {

@@ -22,6 +22,8 @@ export class Inspector {
   private why = h('div', { class: 'st-why' });
   private lastLive = 0;
   private id: number | null = null;
+  /** What the attribute rows were built from; a change (load state, orientation source) triggers a rebuild. */
+  private builtKey = '';
 
   constructor(private model: AppModel, private actions: { openSources(ids: string[], title: string): void }) {
     this.el = h('div', { class: 'st-panel st-inspector' });
@@ -29,6 +31,7 @@ export class Inspector {
     model.on('reality', () => this.build());
     model.on('data', () => this.build());
     model.on('time', () => { this.lastLive = 0; });
+    model.on('loading', () => { if (this.id !== null && this.stateKey(this.id) !== this.builtKey) this.build(); });
   }
 
   get visible(): boolean {
@@ -89,7 +92,14 @@ export class Inspector {
     const isSun = body.id === m.sunId;
     this.setWhy(isSun ? '' : whyLine(f, level)); // the Sun's line depends on this frame: set in updateLive
 
-    let rows = attributeRows(body, level, m.data?.ephemerides ?? []);
+    this.builtKey = this.stateKey(body.id);
+    const st = m.bodyLoadState(body.id);
+    const loading = st === 'loaded' ? null : st === 'error' ? 'its ephemeris file failed to load (see Data)' : 'its ephemeris file is still loading';
+    let rows = attributeRows(body, level, [...(m.data?.ephemerides ?? []), ...(m.data?.deferred ?? [])], {
+      orientation: m.orientationSource(body.id),
+      loading,
+      surfaces: m.data?.surfaces.filter((x) => x.bodyId === body.id) ?? [],
+    });
     // The Sun is drawn from light.json, not from reflectance data.
     if (isSun) rows = [...rows.filter((r) => !['albedoXYZS', 'albedoV', 'phase'].includes(r.key)), ...sunRows(m.light, level)];
     this.el.append(h('h3', null, `Attributes (at ${EXISTS_TEXT[level].name})`));
@@ -128,6 +138,12 @@ export class Inspector {
     this.updateLive(true);
   }
 
+  /** Load state + orientation source of a body: when this changes, the rows must be rebuilt. */
+  private stateKey(id: number): string {
+    const o = this.model.orientationSource(id);
+    return `${this.model.bodyLoadState(id)}|${o ? `${o.kind}:${o.label}:${o.frame}` : '-'}|${this.model.reality.exists}`;
+  }
+
   private setWhy(line: string): void {
     const enh = this.model.reality.view === 'enhanced' ? ' View is ENHANCED: brighter than an eye would see.' : '';
     setText(this.why, `Why does it look like this? ${line}${enh}`);
@@ -155,7 +171,18 @@ export class Inspector {
       setText(c.chip, label ?? '—');
       c.chip.title = label ? `${label}: ${LABEL_TEXT[label]}` : 'not available';
     };
+    if (this.stateKey(id) !== this.builtKey) {
+      // e.g. Earth's orientation turning from measured to a prediction as time passes 2026-09-29
+      this.build();
+      return;
+    }
     if (!g?.app) {
+      const st = m.bodyLoadState(id);
+      if (st !== 'loaded') {
+        for (const k of this.live.keys()) set(k, '—');
+        set('dist', st === 'error' ? 'no position: its ephemeris failed to load' : 'loading its moon system…');
+        return;
+      }
       for (const k of this.live.keys()) set(k, '—');
       set('dist', 'no position now (outside ephemeris coverage)');
       return;

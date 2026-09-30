@@ -1,10 +1,12 @@
 {
  "_citation": "Karkoschka, E. (1994), 'Spectrophotometry of the jovian planets and Titan at 300- to 1000-nm wavelength: the methane spectrum', Icarus 111, 174-192, DOI:10.1006/icar.1994.1139, Table III; and Karkoschka, E. (1998), 'Methane, ammonia, and temperature measurements of the jovian planets and Titan from CCD-spectrophotometry', Icarus 133, 134-146, DOI:10.1006/icar.1998.5913, Sec. III. Both texts are in the PDS volume GBAT_0001 (document/icarus94.asc, icarus98.asc).",
  "_note": "Radii of the equal-area circles Karkoschka used to convert flux to albedo (albedo = (delta r / (R r0))^2 * DN_planet / DN_sun). 1995 data use the 1994 radii except Saturn: 'equatorial radius of 60,268 km and oblateness of 0.10 were used' (icarus98.asc, Sec. III); with the rings edge-on the sub-Earth latitude was ~0.6 deg, so the equal-area radius is sqrt(60268 * 60268 * 0.90).",
- "radius_km": {"599": 69140.0, "799": 25450.0, "899": 24510.0},
+ "radius_km": {"599": 69140.0, "799": 25450.0, "899": 24510.0, "606": 2575.0},
  "saturn_equatorial_km": 60268.0,
  "saturn_oblateness": 0.10,
- "phase_angle_deg_1995": {"599": 6.8, "699": 5.7, "799": 0.7, "899": 0.3},
+ "phase_angle_deg_1995": {"599": 6.8, "699": 5.7, "799": 0.7, "899": 0.3, "606": 5.7},
+ "titan_note": "Titan: disk radius 2575 km (1994 Table III; the solid-body radius, used unchanged for the 1995 data); PDS column 8 'TITAN ALBEDO' is the 'Full disk albedo of Titan at phase angle 5.7 deg.' (1995LOW.LBL); 1998 Table II gives V = -1.25 at 1 AU, alpha = 5.7 deg.",
+ "titan_V_1995": -1.25,
  "phase_angle_source": "Karkoschka (1998) Table II, and the PDS label 1995LOW.LBL column descriptions",
  "solar_V_assumed": -26.74,
  "absolute_calibration_uncertainty": "4 percent (relative between planets 2 percent), Karkoschka (1994) Sec. II and (1998) Sec. IV"

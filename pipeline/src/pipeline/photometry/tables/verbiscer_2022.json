@@ -1,0 +1,11 @@
+{
+ "_citation": "Verbiscer, A. J., Helfenstein, P., Porter, S. B., Benecchi, S. D., Kavelaars, J. J., Lauer, T. R., Peng, J., Protopapa, S., Spencer, J. R., Stern, S. A., Weaver, H. A., Buie, M. W., Buratti, B. J., Olkin, C. B., Parker, J., Singer, K. N. & Young, L. A. (2022), 'The diverse shapes of dwarf planet and large KBO phase curves observed from New Horizons', The Planetary Science Journal 3, 95. DOI:10.3847/PSJ/ac63a6.",
+ "_transcription": "Table 2 (p. 2, 'Size, Albedo, Colors, and Surface Composition of Dwarf Planets, Satellites, and Large KBOs Observed by New Horizons'; checked against a 200 dpi rendering of the page) and Table 3 (p. 4, 'Summary of Previous Visible Earth-based Observations'). Table 2 references for Triton: (21) Buratti et al. 2011, (22) Cruikshank et al. 1993; for Charon: (24) Stern et al. 2015, (25) Buie et al. 2010. Table 3 reference (30) for Triton: Buratti et al. 2011. The photometric system of V-R is not stated.",
+ "table2": {
+  "801": {"name": "Triton", "diameter_km": 2706.8, "p_V": 0.86, "p_V_err": 0.004, "B_minus_V": 0.791, "B_minus_V_err": 0.002, "V_minus_R": 0.608, "V_minus_R_err": 0.002},
+  "901": {"name": "Charon", "diameter_km": 1212, "p_V": 0.41, "p_V_err": 0.01, "B_minus_V": 0.7315, "B_minus_V_err": 0.0013, "V_minus_R": 0.4}
+ },
+ "table3": {
+  "801": {"dates": "2000-2004", "phase_range_deg": [0.0022, 1.26], "beta_V_mag_per_deg": 0.025, "beta_err": 0.005, "rotation_amplitude_V": 0.052, "rotation_period_h": 141.04, "reference": "Buratti et al. 2011"}
+ }
+}

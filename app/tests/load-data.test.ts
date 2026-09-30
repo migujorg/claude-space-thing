@@ -126,6 +126,73 @@ describe('loadAll', () => {
   });
 });
 
+describe('M2 products: deferred systems, orientation, surfaces', () => {
+  const orientHeader = {
+    bin: 'orient/earth.bin', references: { REF: [1, 0, 0, 0, 1, 0, 0, 0, 1] },
+    bodies: { '399': { frame: 'ITRF93', pckFrame: 'ITRF93', bodyToPck: [1, 0, 0, 0, 1, 0, 0, 0, 1] } },
+    segments: [{ body: 399, frameClassId: 3000, reference: 'REF', type: 2, initEt: 0, intLen: 1e6, rsize: 5, n: 1, offset: 0, startEt: 0, endEt: 1e6, sources: ['src-eph'], label: 'measured' }],
+  };
+  function m2(): Files {
+    const f = full();
+    (f['bodies.json'] as ReturnType<typeof body>[]).push({ ...body(501, 'Io', 'moon', { parent: 399 }), ephemeris: 'ephem/sat', ephemerisFiles: ['ephem/sat', 'ephem/de'] });
+    (f['bodies.json'] as ReturnType<typeof body>[])[1].orientation = 'orient/earth';
+    f['ephem/sat.json'] = { bin: 'ephem/sat.bin', segments: [{ ...ephHeader.segments[0], target: 501, center: 399 }] };
+    f['ephem/sat.bin'] = new Float64Array([5e5, 5e5, 3, 4]).buffer;
+    f['orient/earth.json'] = orientHeader;
+    f['orient/earth.bin'] = new Float64Array([5e5, 5e5, 0.1, 0.2, 0.3]).buffer;
+    f['surfaces/301/albedo.json'] = { levels: 3, label: 'derived', sources: ['src-eph'], epoch: '2009-2024', notes: 'test map' };
+    f['surfaces/301/albedo/0/0/0.bin'] = new Uint8Array(16);
+    f['surfaces/301/albedo/0/0/1.bin'] = new Uint8Array(16);
+    return f;
+  }
+
+  it('defers ephemeris binaries the caller does not want now, but reads their headers', async () => {
+    const { fetch, requested } = await fakeServer(m2());
+    const d = await loadAll({ fetch, base: '/data/', eagerEphemeris: (p) => p === 'ephem/de.json' });
+    expect(d.ephemerides.map((e) => e.path)).toEqual(['ephem/de.json']);
+    expect(d.deferred).toHaveLength(1);
+    expect(d.deferred[0]).toMatchObject({ path: 'ephem/sat.json', binPath: 'ephem/sat.bin', bodies: [501], bytes: 32 });
+    expect(requested).toContain('ephem/sat.json');
+    expect(requested).not.toContain('ephem/sat.bin');
+    expect(d.report.products.find((p) => p.path === 'ephem/sat.bin')!.status).toBe('deferred');
+
+    // later: fetched with the same integrity checks, progress reported, report updated in place
+    const progress: number[] = [];
+    const e = await d.loader!.loadDeferred(d.deferred[0], (got) => progress.push(got));
+    expect(Array.from(e!.data)).toEqual([5e5, 5e5, 3, 4]);
+    expect(progress.at(-1)).toBe(32);
+    expect(d.report.products.find((p) => p.path === 'ephem/sat.bin')).toMatchObject({ status: 'ok', hash: 'verified' });
+  });
+
+  it('a deferred binary that fails its integrity check is not used', async () => {
+    const { fetch } = await fakeServer(m2(), { tamper: 'ephem/sat.bin' });
+    const d = await loadAll({ fetch, base: '/data/', eagerEphemeris: (p) => p === 'ephem/de.json' });
+    expect(await d.loader!.loadDeferred(d.deferred[0])).toBeNull();
+    expect(d.report.products.find((p) => p.path === 'ephem/sat.bin')).toMatchObject({ status: 'error', hash: 'mismatch' });
+  });
+
+  it('loads precise orientation products named by bodies', async () => {
+    const { fetch } = await fakeServer(m2());
+    const d = await loadAll({ fetch, base: '/data/' });
+    expect(d.orientations).toHaveLength(1);
+    expect(d.orientations[0].path).toBe('orient/earth.json');
+    expect(Array.from(d.orientations[0].data)).toEqual([5e5, 5e5, 0.1, 0.2, 0.3]);
+    expect(d.ephemerides.map((e) => e.path)).toEqual(['ephem/de.json', 'ephem/sat.json']); // default: all eager
+  });
+
+  it('reads surface layer headers; tiles are summarized as on-demand, not listed one by one', async () => {
+    const { fetch, requested } = await fakeServer(m2());
+    const d = await loadAll({ fetch, base: '/data/' });
+    expect(d.surfaces).toHaveLength(1);
+    expect(d.surfaces[0]).toMatchObject({ bodyId: 301, layer: 'albedo', levels: 3, label: 'derived', sources: ['src-eph'], epoch: '2009-2024', tiles: { count: 2, bytes: 32 }, tilePrefix: 'surfaces/301/albedo/' });
+    expect(requested.some((p) => p.endsWith('.bin') && p.startsWith('surfaces/'))).toBe(false);
+    const paths = d.report.products.map((p) => p.path);
+    expect(paths).toContain('surfaces/301/albedo/*');
+    expect(paths.filter((p) => p.startsWith('surfaces/301/albedo/0'))).toEqual([]);
+    expect(d.report.products.find((p) => p.path === 'surfaces/301/albedo/*')!.status).toBe('on-demand');
+  });
+});
+
 describe('path helpers', () => {
   it('resolves bin paths relative to the header directory or the data root', () => {
     expect(resolveBinPath('ephem/de.json', 'de.bin', null)).toBe('ephem/de.bin');

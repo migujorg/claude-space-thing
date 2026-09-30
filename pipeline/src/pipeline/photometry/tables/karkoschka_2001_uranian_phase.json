@@ -1,0 +1,11 @@
+{
+ "_citation": "DeColibus, R. A., Cartwright, R. J., Grundy, W. M., Buratti, B. J., Hicks, M. D. & Mishra, I. (2026), 'Optical spectroscopy of the Uranian moons from equinox to northern summer', The Planetary Science Journal 7, 67. DOI:10.3847/PSJ/ae4a1b. Sec. 2.4 (TMO 24-inch photometry, p. 9), applying the phase function of Karkoschka, E. (2001), 'Comprehensive photometry of the rings and 16 satellites of Uranus with the Hubble Space Telescope', Icarus 151, 51-68, DOI:10.1006/icar.2001.6596.",
+ "formula": "Δm(α) = β α + 0.5 α / (α0 + α), α in degrees (magnitude difference between phase α and zero phase)",
+ "quote": "We use the parameters given in K2001 for both Titania and Oberon (α0 = 0.5, β = 0.023) to correct the mean opposition magnitudes to a phase angle of zero, assuming that this phase function holds true even down to zero phase angle.",
+ "alpha0_deg": 0.5,
+ "beta_mag_per_deg": 0.023,
+ "applies_to": ["703", "704"],
+ "check": "Reproduces the zero-phase corrections in the Zenodo dataset's Titania_phot_mags.csv and Oberon_phot_mags.csv (oppmag - corrmag), e.g. 0.412 mag at α = 1.5301 deg (tests/test_photometry_moons.py).",
+ "earth_phase_limit_deg": 3.1,
+ "earth_phase_limit_note": "Uranus is never seen from Earth at more than about 3.1 deg phase; Karkoschka's HST data and the TMO photometry lie inside that range."
+}

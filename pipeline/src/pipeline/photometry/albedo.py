@@ -222,8 +222,8 @@ def payne(naif: int, ctx: BuildContext | None = None) -> AlbedoSpectrum:
         399: ("Earth", "This is a radiative-transfer MODEL of one day's disk (2022 June 21, MERRA-2 clouds), "
                        "validated against DSCOVR/EPIC narrow bands; Earth's real disk-integrated albedo varies with "
                        "clouds, season and the hemisphere in view by tens of percent. No machine-readable measured "
-                       "zero-phase visible spectrum of the whole Earth was available to this pipeline (the EPIC L1B "
-                       "archive at NASA ASDC was not reachable).",
+                       "zero-phase visible spectrum of the whole Earth was available to this pipeline (the calibrated "
+                       "DSCOVR/EPIC L1B granules are in NASA Earthdata Cloud and require an Earthdata Login).",
               "tens of percent (cloud cover); in the blue the model lies up to ~10 % above the EPIC points "
               "(Payne et al. Fig. 4)"),
     }[naif]
@@ -314,7 +314,7 @@ MALLAMA_2017 = Download(
 )
 
 
-def broadband_reconstruction(bands: dict[str, float]) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+def broadband_reconstruction(bands: dict[str, float], wl_min: float = 300.0) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Piecewise-linear p(λ) with one node at each band's solar-weighted effective wavelength (constant beyond the
     end nodes), solved exactly so that every band average ∫pET/∫ET equals the given albedo. Returns
     (λ grid, p, node wavelengths)."""
@@ -322,7 +322,7 @@ def broadband_reconstruction(bands: dict[str, float]) -> tuple[np.ndarray, np.nd
     nodes = np.array([filters.effective_wavelength(k) for k in keys])
     order = np.argsort(nodes)
     keys, nodes = [keys[i] for i in order], nodes[order]
-    wl = np.arange(300.0, 1200.01, 0.5)
+    wl = np.arange(wl_min, 1200.01, 0.5)
 
     def hat(k):
         y = np.zeros_like(nodes)

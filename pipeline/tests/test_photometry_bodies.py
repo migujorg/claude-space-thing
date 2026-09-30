@@ -8,7 +8,7 @@ from pipeline.photometry import bodies, filters, phase, solar
 from pipeline.photometry.common import read_table_csv
 from pipeline.schema import BuildContext, LABEL_ORDER
 
-NAIF = (199, 299, 399, 301, 499, 599, 699, 799, 899, 999)
+NAIF = tuple(bodies.BODIES)     # planets, the Moon, Pluto and the major moons (moons: see test_photometry_moons.py)
 
 
 @pytest.fixture(scope="module")
@@ -20,8 +20,9 @@ def built():
 def _check_sourced(s, ctx):
     assert s["label"] in LABEL_ORDER
     assert (s["value"] is None) == (s["label"] == "unknown")
-    assert s["sources"] and all(sid in ctx.sources for sid in s["sources"])
-    assert s.get("method")
+    if s["label"] != "unknown":
+        assert s["sources"] and all(sid in ctx.sources for sid in s["sources"])
+    assert s.get("method")      # unknown entries say why
 
 
 def test_entries_match_schema(built):
@@ -29,20 +30,26 @@ def test_entries_match_schema(built):
     out = bodies.photometry_json(res)
     assert sorted(out) == sorted(str(n) for n in NAIF)
     for key, e in out.items():
-        assert set(e) == {"geometricAlbedoXYZS", "geometricAlbedoV", "phaseFunction"}
+        assert {"geometricAlbedoXYZS", "geometricAlbedoV", "phaseFunction"} <= set(e)
+        assert set(e) - {"geometricAlbedoXYZS", "geometricAlbedoV", "phaseFunction"} <= {"diskReflectanceModel"}
         for s in e.values():
             _check_sourced(s, ctx)
         v = e["geometricAlbedoXYZS"]["value"]
-        assert len(v) == 4 and all(isinstance(x, float) and x > 0 for x in v)
-        assert isinstance(e["geometricAlbedoV"]["value"], float)
+        if v is not None:
+            assert len(v) == 4 and all(isinstance(x, float) and x > 0 for x in v)
+            assert isinstance(e["geometricAlbedoV"]["value"], float)
+        else:
+            assert e["geometricAlbedoV"]["value"] is None
         pf = e["phaseFunction"]["value"]
+        if pf is None:
+            continue
         assert pf["kind"] in ("poly-mag", "tabulated", "lambert")
         if pf["kind"] == "poly-mag":
             assert set(pf) == {"kind", "coeffs", "minDeg", "maxDeg"} and pf["minDeg"] < pf["maxDeg"]
         if pf["kind"] == "tabulated":
             a = pf["alphaDeg"]
             assert set(pf) == {"kind", "alphaDeg", "deltaMag"} and len(a) == len(pf["deltaMag"])
-            assert a[0] == 0.0 and all(y > x for x, y in zip(a, a[1:]))
+            assert a[0] >= 0.0 and all(y > x for x, y in zip(a, a[1:]))
 
 
 def test_every_source_record_is_complete(built):
@@ -70,10 +77,20 @@ def test_phase_functions_start_at_zero(built):
     _, res = built
     for n, r in res.items():
         pf = r.entry["phaseFunction"]["value"]
+        if pf is None:
+            continue
         if n == 199:
             # Mercury: surge-exclusive polynomial referenced to the surge-inclusive V(1,0); valid from 2 deg.
             assert pf["minDeg"] == 2.0 and pf["coeffs"][0] == pytest.approx(0.081)
             assert phase.delta_mag(pf, 1.0) is None
+            continue
+        if n == 301:
+            # Moon: ROLO from 1.55 deg (opposition surge above the surge-free Lane & Irvine albedo), unknown below.
+            assert pf["alphaDeg"][0] == 1.55 and pf["deltaMag"][0] < 0 and phase.delta_mag(pf, 1.0) is None
+            continue
+        if n in (601, 602, 603, 604, 605):
+            # Mimas-Rhea: surge-free VIMS albedo, measured opposition-surge shape: brighter than it at zero phase.
+            assert -0.3 < phase.delta_mag(pf, 0.0) < -0.1, n
             continue
         assert phase.delta_mag(pf, 0.0) == pytest.approx(0.0, abs=1e-9), n
 
@@ -83,6 +100,8 @@ def test_y_channel_matches_visual_albedo(built):
     _, res = built
     ey = solar.irradiance_xyzs()[1]
     for n, r in res.items():
+        if r.xyzs is None:
+            continue
         py = r.xyzs[1] / ey
         assert py == pytest.approx(r.p_v, rel=0.06), n
 
