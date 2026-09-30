@@ -203,3 +203,8 @@
 .st-loading.st-show { display: block; }
 .st-loading .st-bar { height: 3px; margin-top: 4px; background: rgba(255, 255, 255, 0.08); border-radius: 2px; overflow: hidden; }
 .st-loading .st-bar > div { height: 100%; width: 0; background: var(--accent); transition: width 0.3s; }
+.st-hide { display: none !important; }
+.st-flags { margin: 4px 0 0; padding-left: 16px; color: var(--dim); }
+.st-flags li { margin-top: 2px; }
+.st-flags b { color: var(--fg); font-weight: 500; }
+.st-legend h3 + div { margin-top: 2px; }

@@ -15,6 +15,7 @@ export class TopBar {
     this.alert = h('div', { class: 'st-alert' });
     this.el = h('div', { class: 'st-top' }, banner ? h('div', { class: 'st-banner' }, banner) : null, this.badge, this.alert);
     model.on('reality', () => this.renderBadge());
+    model.on('smallbodies', () => this.renderBadge());
     this.renderBadge();
   }
 

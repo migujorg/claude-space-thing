@@ -2,13 +2,14 @@
 
 import type { AppModel } from '../app/model';
 import { clear, h, toggleClass } from './dom';
-import { formatBytes } from './format';
+import { formatBytes, sig } from './format';
 
 export class DataPanel {
   readonly el = h('div', { class: 'st-panel st-modal st-data' });
 
   constructor(private model: AppModel, private actions: { openSources(ids: string[], title: string): void }) {
     model.on('data', () => { if (this.open) this.render(); });
+    model.on('smallbodies', () => { if (this.open) this.render(); });
     let last = 0;
     model.on('loading', () => {
       const t = Date.now();
@@ -56,6 +57,8 @@ export class DataPanel {
         h('div', null, d.surfaces.length ? d.surfaces.map((s) => `${m.byId.get(s.bodyId)?.name ?? s.bodyId} ${s.layer} (${s.label}, ${s.tiles.count} tiles)`).join(', ') + ' — not drawn by this renderer version yet' : 'none'),
         h('div', null, 'Stars'),
         h('div', null, this.starsLine()),
+        h('div', null, 'Small bodies'),
+        h('div', null, this.smallBodiesLine()),
         h('div', null, 'Sources'),
         h('div', null, d.sources.size ? h('span', { class: 'st-link', onclick: () => this.actions.openSources([...d.sources.keys()], 'All sources') }, `${d.sources.size} records`) : h('span', { class: 'st-warn' }, 'none')),
       ),
@@ -106,6 +109,37 @@ export class DataPanel {
       list.append(row);
     }
     return list;
+  }
+
+  private smallBodiesLine(): Node | string {
+    const m = this.model;
+    const s = m.sb;
+    const sb = m.smallBodies;
+    const n = (x: number) => x.toLocaleString('en-US');
+    const names = m.names ? `names: ${m.names.state}${m.names.state === 'ready' ? ` (${n(m.names.count)}${m.names.verified ? ', sha256 matches manifest' : ''})` : m.names.error ? ` — ${m.names.error}` : ' (indexed when search first needs them)'}` : 'names: not available';
+    switch (s.status) {
+      case 'absent':
+        return 'none (no smallbodies/* products)';
+      case 'off':
+        return 'not loaded (smallbodies=0 in the URL)';
+      case 'waiting':
+        return h('div', null, `waiting for the moon systems (${formatBytes(s.total)}) `, h('button', { onclick: () => m.requestSmallBodies() }, 'load now'));
+      case 'loading':
+        return `loading ${s.total ? Math.round((100 * s.got) / s.total) : 0}% of ${formatBytes(s.total)}`;
+      case 'error':
+        return h('span', { class: 'st-err' }, s.message ?? 'failed');
+    }
+    if (!sb) return '';
+    const c = m.smallBodyCounts();
+    const w = sb.window;
+    const drawnBy = sb.field ? 'drawn by the GPU small-body field' : 'not drawn: no small-body renderer in this build (search, inspect and go-to work)';
+    return h(
+      'div',
+      { class: 'st-small' },
+      h('div', null, `${n(sb.count)} objects${s.ms !== null ? `, usable ${sig(s.ms / 1000, 2)} s after the download began` : ''}; ${drawnBy}.`),
+      c ? h('div', null, `At ${m.reality.exists}: ${n(c.drawn)} ${sb.field ? 'drawn' : 'admitted'}, ${n(c.withheld)} withheld, ${n(c.noPosition)} without a position (${c.from === 'field' ? 'counted by the field' : 'by catalogue labels'}).`) : null,
+      h('div', null, `Positions propagated within ${m.formatTime(w.startEt)} → ${m.formatTime(w.endEt)}; ${names}.`),
+    );
   }
 
   private starsLine(): string {
