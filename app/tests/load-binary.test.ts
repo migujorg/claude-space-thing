@@ -125,4 +125,13 @@ describe('star catalog', () => {
     expect(parseStarNames([{ name: 'X', index: 99 }, { name: 'Y', index: 1 }], 3)).toEqual([{ name: 'Y', index: 1 }]);
     expect(() => parseStarNames({ foo: 'bar' }, 3)).toThrow(/names.json/);
   });
+
+  it("parses the stars stage's names.json: every name a star is known by", () => {
+    const names = parseStarNames(
+      { catalog: 'stars/bright.json', key: 'HIP', sources: [], stars: { 'HIP 32349': { index: 0, hip: 32349, iau: 'Sirius', bayer: 'α CMa', flamsteed: '9 CMa' }, 'HIP 30438': { index: 1, iau: 'Canopus' } } },
+      3,
+    );
+    expect(names.filter((n) => n.index === 0).map((n) => n.name).sort()).toEqual(['9 CMa', 'HIP 32349', 'Sirius', 'α CMa']);
+    expect(names.find((n) => n.name === 'Canopus')!.index).toBe(1);
+  });
 });
