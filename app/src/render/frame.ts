@@ -10,6 +10,7 @@ import { camToNdc, MARKER_COLOR, PROVENANCE_TINT, PROVENANCE_TINT_ALPHA, ringVer
 import { blackwellEquivalent } from '../eye/mesopic';
 import type { EyeFrame } from '../eye/model';
 import { CIE146 } from '../eye/constants';
+import { DEG2_PER_SR } from '../eye/pupil';
 
 export interface ResolvedBody {
   body: SceneBody;
@@ -50,6 +51,8 @@ export interface GlareSource {
   /** Angle below which the source's own angular radius applies, degrees. */
   minDeg: number;
   E: XYZS;
+  /** Whether the source's centre is inside the frame (its light is then in the HDR image). */
+  inFrame: boolean;
 }
 
 export interface PreparedFrame {
@@ -61,6 +64,12 @@ export interface PreparedFrame {
   overlay: number[];
   warnings: string[];
   adaptedWhite: V3 | null;
+  /**
+   * Corneal flux ∫L dΩ (cd·m⁻²·deg²) of glare sources in the visual field (≤ 100° from fixation) whose
+   * centre is outside the frame. Their light is not in the HDR image but still reaches the eye, so it
+   * drives the pupil (Watson & Yellott 2012) together with the frame's own flux.
+   */
+  offFrameFluxDeg2: number;
 }
 
 export function cameraGeom(snap: SceneSnapshot, W: number, H: number, near: number): CameraGeom {
@@ -131,6 +140,7 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
     let fRes = s.limbDarkening ? smooth(1, 2, diamPx) : 0;
     if (!s.limbDarkening && diamPx > 1) warnings.push('Sun: limb darkening unknown → drawn as an unresolved point of the correct illuminance (no uniform disk assumed)');
     const c = toCam(g, s.pos);
+    const sunInFrame = inFrame(c);
     // Visible fraction of the disk (bodies in front), for the analytic glare veil.
     let covered = 0;
     for (const b of snap.bodies) {
@@ -141,7 +151,7 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
       covered += diskOverlapFraction(rho, rb, angle(b.pos, s.pos));
     }
     const vis = Math.max(0, 1 - covered);
-    glare.push({ dir: n, minDeg: (rho * 180) / Math.PI, E: E.map((v) => v * vis) as XYZS });
+    glare.push({ dir: n, minDeg: (rho * 180) / Math.PI, E: E.map((v) => v * vis) as XYZS, inFrame: sunInFrame });
     const coeffs: number[][] = [0, 1, 2, 3].map((k) => {
       const src = s.limbDarkening?.[k] ?? [1];
       if (src.length > 6) warnings.push('Sun: limb-darkening polynomial truncated to degree 5');
@@ -202,7 +212,7 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
     const ricco = Math.min(1, Math.max(At, pointFootprintSr) / AR);
 
     // Off-frame bright bodies still veil the view (analytic glare).
-    if (E && !inFrame(c)) glare.push({ dir: normalize(b.pos), minDeg: (angR * 180) / Math.PI, E });
+    if (E && !inFrame(c)) glare.push({ dir: normalize(b.pos), minDeg: (angR * 180) / Math.PI, E, inFrame: false });
 
     if (behind) continue;
     if (fRes > 0) {
@@ -253,7 +263,9 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
   // A glare source contributes only if it lies within the CIE 146 validity range (≤ 100°) of the
   // fixation direction (the view centre): beyond that it is outside the field of the fixating eye.
   const inField = glare.filter((gs) => (angle(gs.dir, fwd) * 180) / Math.PI <= CIE146.maxDeg);
-  return { resolved, points, sun, glare: inField, overlay, warnings, adaptedWhite };
+  // Illuminance E (lux = cd·sr·m⁻²) of a small source equals its ∫L dΩ; convert sr → deg².
+  const offFrameFluxDeg2 = inField.reduce((a, gs) => a + (gs.inFrame ? 0 : gs.E[1] * DEG2_PER_SR), 0);
+  return { resolved, points, sun, glare: inField, overlay, warnings, adaptedWhite, offFrameFluxDeg2 };
 }
 
 function tangent(n: V3): [V3, V3] {

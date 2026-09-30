@@ -43,7 +43,9 @@ export function watsonMTF(u: number, dMm: number): number {
   const s = u / u0;
   const diffraction = (2 / Math.PI) * (Math.acos(s) - s * Math.sqrt(1 - s * s));
   const u1 = WATSON2013.u1c0 + WATSON2013.u1c1 * dMm + WATSON2013.u1c2 * dMm * dMm;
-  return diffraction * Math.pow(1 + (u / u1) ** 2, WATSON2013.exponent);
+  // Watson 2013 Eq. 4/5: the polychromatic mean MTF is sqrt(D(u)) × (1 + (u/u1)²)^-0.62 — the square root of
+  // the diffraction-limited MTF (the "diffraction" factor is the square-root term in his formula).
+  return Math.sqrt(diffraction) * Math.pow(1 + (u / u1) ** 2, WATSON2013.exponent);
 }
 
 /**

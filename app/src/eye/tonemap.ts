@@ -2,11 +2,12 @@
 // adaptation for fast realistic image display" (SIGGRAPH 2000): a forward model of the scene
 // observer's rod and cone responses (Naka–Rushton with Hunt's semi-saturation and bleaching terms),
 // an appearance model (reference white/black), and the inverse pair for the display observer.
+// Eye model v1: the rod path is Hunt's own (F_LS, B_S), not Pattanaik's Eq. 4/6 (see HUNT in constants.ts).
 //
 // This file is the reference implementation (float64, used by tests and on the CPU for per-frame
 // scalars). The per-pixel part is mirrored in WGSL (wgsl.ts); keep them in sync.
 
-import { CRUMEY, PATTANAIK as P } from './constants';
+import { CRUMEY, HUNT as H, PATTANAIK as P } from './constants';
 
 export function sigmaCone(A: number): number {
   const a = Math.max(A, 1e-12);
@@ -15,19 +16,37 @@ export function sigmaCone(A: number): number {
   return (P.coneSigmaNum * a) / (k4 * a + P.coneSigmaPow * (1 - k4) * (1 - k4) * Math.cbrt(a));
 }
 
+/**
+ * Hunt's scotopic luminance-level adaptation factor F_LS (constants.ts HUNT). A = L_AS, scotopic cd/m².
+ */
+export function huntFLS(A: number): number {
+  const x = (5 * Math.max(A, 1e-12)) / H.scotopicScale;
+  const j = H.flsJ / (x + H.flsJ);
+  const j2 = j * j;
+  return H.flsJ2 * j2 * x + H.flsPow * Math.pow(1 - j2, H.flsExpJ) * Math.pow(x, 1 / 6);
+}
+
+/**
+ * Hunt's rod response f_n(F_LS·S/S_w)/40 with reference white S_w = 5·A, written in Naka–Rushton
+ * form: semi-saturation σ_rod = 5·A·2^(1/n)/F_LS(A) (the cone path has the same structure, with F_L).
+ */
 export function sigmaRod(A: number): number {
   const a = Math.max(A, 1e-12);
-  const j = 1 / (P.rodJScale * a + 1);
-  const j2 = j * j;
-  return (P.rodSigmaNum * a) / (P.rodSigmaJ2 * j2 * a + P.rodSigmaPow * Math.pow(1 - j2, 4) * Math.pow(a, 1 / 6));
+  return (P.refWhiteFactor * a * Math.pow(H.fnHalf, 1 / P.n)) / huntFLS(a);
+}
+
+/** Adaptation-dependent part of Hunt's rod saturation B_S: 0.5/(1 + 5·(5·L_AS/2.26)). */
+export function rodSaturationAdapt(A: number): number {
+  return 0.5 / (1 + H.bsB * ((5 * A) / H.scotopicScale));
+}
+
+/** Stimulus-dependent part of B_S: 0.5/(1 + 0.3·((5·L_AS/2.26)·S/S_w)^0.3), with S_w = 5·L_AS. */
+export function rodSaturationStimulus(S: number): number {
+  return 0.5 / (1 + H.bsA * Math.pow(Math.max(S, 0) / H.scotopicScale, H.bsExp));
 }
 
 export function bleachCone(A: number): number {
   return P.coneBleachHalf / (P.coneBleachHalf + A);
-}
-
-export function bleachRod(A: number): number {
-  return P.rodBleachHalf / (P.rodBleachHalf + A);
 }
 
 /** Naka–Rushton response B·Lⁿ/(Lⁿ + σⁿ) (Eq. 2), written to avoid overflow. */
@@ -44,7 +63,8 @@ export interface ObserverState {
   sigmaCone: number;
   sigmaRod: number;
   Bcone: number;
-  Brod: number;
+  /** Adaptation-dependent part of Hunt's rod saturation (the stimulus part is per pixel). */
+  BrodAdapt: number;
 }
 
 /**
@@ -58,7 +78,7 @@ export function observerState(Acone: number, Arod: number, coneBleaching: boolea
     sigmaCone: sigmaCone(Acone),
     sigmaRod: sigmaRod(Arod),
     Bcone: coneBleaching ? bleachCone(Acone) : 1,
-    Brod: bleachRod(Arod),
+    BrodAdapt: rodSaturationAdapt(Arod),
   };
 }
 
@@ -76,8 +96,13 @@ export function coneResponse(s: ObserverState, Lp: number): number {
   return response(Math.max(Lp, 0) + DARK_LIGHT_CONE, s.sigmaCone, s.Bcone) - response(DARK_LIGHT_CONE, s.sigmaCone, s.Bcone);
 }
 
+/** Hunt rod response with rod saturation B_S(S) = stimulus part + adaptation part. */
+export function rodResponseRaw(s: ObserverState, S: number): number {
+  return response(S, s.sigmaRod, rodSaturationStimulus(S) + s.BrodAdapt);
+}
+
 export function rodResponse(s: ObserverState, Ls: number): number {
-  return response(Math.max(Ls, 0) + DARK_LIGHT_ROD, s.sigmaRod, s.Brod) - response(DARK_LIGHT_ROD, s.sigmaRod, s.Brod);
+  return rodResponseRaw(s, Math.max(Ls, 0) + DARK_LIGHT_ROD) - rodResponseRaw(s, DARK_LIGHT_ROD);
 }
 
 /** R_lum = R_rod + R_cone (§4.2). */
@@ -164,8 +189,8 @@ export function inverseDisplay(Rd: number, d: DisplayObserver): number {
 export interface ToneResult {
   /** Display luminance, cd/m² (≤ peak). */
   Ld: number;
-  /** Fraction of the luminance response carried by cones, R_cone/(R_cone + R_rod): 1 = full colour. */
-  coneFraction: number;
+  /** Exponent applied to cone-space colour ratios (colourExponent): 1 = colorimetric colour, 0 = grey. */
+  colourExponent: number;
 }
 
 /** Map one pixel's (photopic, scotopic) luminance to display luminance. */
@@ -174,5 +199,46 @@ export function toneMap(Lp: number, Ls: number, s: ObserverState, map: Appearanc
   const rr = rodResponse(s, Ls);
   const R = rc + rr;
   const Rd = map.gain * R + map.offset;
-  return { Ld: inverseDisplay(Rd, d), coneFraction: R > 0 ? rc / R : 1 };
+  const Ld = inverseDisplay(Rd, d);
+  return { Ld, colourExponent: colourExponent(Lp, s, Ld, d) };
+}
+
+/**
+ * Colour appearance, Pattanaik et al. (2000) Eq. 3 and §4.3: chromatic signals come from cones only
+ * (as in Hunt's model), with a strength proportional to the slope of the cone response,
+ * S = dR/d ln L = n·R·(1 − R/B). Matching the scene's to the display observer's chromatic response
+ * raises cone-space colour ratios to the power S_scene/S_display. Rods add brightness but no colour, so
+ * colour fades as cone responses fall toward the dark-light noise.
+ *
+ * v1 caps the exponent at 1: colour is lost where the eye loses it, but never exaggerated beyond
+ * colorimetric fidelity, which leaves the Hunt effect out (docs/eye-model.md §5).
+ */
+export function colourExponent(Lp: number, s: ObserverState, Ld: number, d: DisplayObserver): number {
+  const r = response(Math.max(Lp, 0) + DARK_LIGHT_CONE, s.sigmaCone, s.Bcone);
+  const sScene = P.n * r * (1 - r / s.Bcone);
+  const rd = response(Ld, d.sigma, d.B);
+  const sDisp = P.n * rd * (1 - rd / d.B);
+  if (!(sDisp > 0)) return 1;
+  return Math.min(1, sScene / sDisp);
+}
+
+/** Hunt–Pointer–Estevez XYZ → LMS (Hunt 2004; Fairchild 2013, as used by Hunt's model). */
+export const XYZ_TO_HPE = [0.38971, 0.68898, -0.07868, -0.22981, 1.1834, 0.04641, 0, 0, 1] as const;
+
+/**
+ * Apply a colour exponent to a chromaticity (XYZ with Y = 1) relative to a white (XYZ, Y = 1):
+ * ρ_i = LMS_i/LMS_white,i → ρ_i^k, back to XYZ, renormalised to Y = 1.
+ */
+export function applyColourExponent(xyz: [number, number, number], white: [number, number, number], k: number): [number, number, number] {
+  const M = XYZ_TO_HPE;
+  const lms = (v: number[]) => [M[0] * v[0] + M[1] * v[1] + M[2] * v[2], M[3] * v[0] + M[4] * v[1] + M[5] * v[2], v[2]];
+  const a = lms(xyz), w = lms(white);
+  const l = [0, 1, 2].map((i) => Math.pow(Math.max(a[i] / w[i], 1e-9), k) * w[i]);
+  // Inverse of the HPE matrix (third row is Z = S).
+  const det = M[0] * M[4] - M[1] * M[3];
+  const Z = l[2];
+  const bx = l[0] - M[2] * Z, by = l[1] - M[5] * Z;
+  const X = (M[4] * bx - M[1] * by) / det;
+  const Y = (-M[3] * bx + M[0] * by) / det;
+  return [X / Y, 1, Z / Y];
 }

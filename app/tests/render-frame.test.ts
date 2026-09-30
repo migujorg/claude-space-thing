@@ -90,4 +90,23 @@ describe('Sun', () => {
     expect(p.sun!.resolvedFraction).toBe(1);
     expect(p.sun!.point).toBeNull();
   });
+  it('off-screen Sun: veils the frame and drives the pupil, but only within 100° of fixation', () => {
+    const eye = computeEyeFrame(DEFAULT_EYE_SETTINGS, eyeState(), 'eye', 0, null);
+    const at = (deg: number) => {
+      const r = (deg * Math.PI) / 180;
+      const s = { ...sun(null), pos: [AU_KM * Math.sin(r), 0, -AU_KM * Math.cos(r)] as [number, number, number] };
+      const sn = snap([], 20, s);
+      return prepareFrame(sn, cameraGeom(sn, W, H, 1e-7), eye, 1e-9);
+    };
+    const inside = at(5);
+    expect(inside.glare.length).toBe(1);
+    expect(inside.offFrameFluxDeg2).toBe(0); // in frame: its light is in the HDR image already
+    const off = at(45);
+    expect(off.glare.length).toBe(1);
+    expect(off.glare[0].inFrame).toBe(false);
+    expect(off.offFrameFluxDeg2).toBeCloseTo(1.28e5 * (180 / Math.PI) ** 2, -2);
+    const behind = at(120);
+    expect(behind.glare.length).toBe(0);
+    expect(behind.offFrameFluxDeg2).toBe(0);
+  });
 });

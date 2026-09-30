@@ -1,8 +1,13 @@
 // WGSL sources. Eye-model constants are injected from src/eye/constants.ts (single source of truth);
 // the per-pixel eye functions mirror src/eye/*.ts (keep in sync).
 
-import { CIE146, SRGB } from '../eye/constants';
-import { SRGB_TO_XYZ } from '../eye/display';
+import { CIE146, HUNT, SRGB } from '../eye/constants';
+import { SRGB_TO_XYZ, inv3 } from '../eye/display';
+import { XYZ_TO_HPE } from '../eye/tonemap';
+
+const HPE_INV_M = inv3([...XYZ_TO_HPE]);
+/** Column-major WGSL constructor arguments for the inverse HPE matrix. */
+const HPE_INV_COLS = [0, 1, 2].map((c) => `vec3f(${[0, 1, 2].map((r) => HPE_INV_M[r * 3 + c].toPrecision(9)).join(', ')})`).join(', ');
 
 const f = (x: number) => {
   const s = x.toPrecision(9);
@@ -30,7 +35,7 @@ fn toStore(F: Frame, v: vec4f) -> vec4f {
 }
 
 struct Eye {
-  scene: vec4f,    // sigmaCone, sigmaRod, Bcone, Brod
+  scene: vec4f,    // sigmaCone, sigmaRod, Bcone, adaptation part of Hunt's rod saturation B_S
   map: vec4f,      // gain, offset, n, exposure
   disp: vec4f,     // sigmaD, BD, displayWhiteResponse, peak cd/m2
   mes: vec4f,      // m (CIE 191), V'(lambda0), rho2850, field factor F
@@ -590,6 +595,8 @@ const XYZ2RGB = mat3x3f(
   vec3f(${f(SRGB.xyzToRgb[1])}, ${f(SRGB.xyzToRgb[4])}, ${f(SRGB.xyzToRgb[7])}),
   vec3f(${f(SRGB.xyzToRgb[2])}, ${f(SRGB.xyzToRgb[5])}, ${f(SRGB.xyzToRgb[8])}));
 const WHITE_XYZ = vec3f(${f(SRGB.whiteX / SRGB.whiteY)}, 1.0, ${f((1 - SRGB.whiteX - SRGB.whiteY) / SRGB.whiteY)});
+const HPE = mat3x3f(vec3f(${f(XYZ_TO_HPE[0])}, ${f(XYZ_TO_HPE[3])}, ${f(XYZ_TO_HPE[6])}), vec3f(${f(XYZ_TO_HPE[1])}, ${f(XYZ_TO_HPE[4])}, ${f(XYZ_TO_HPE[7])}), vec3f(${f(XYZ_TO_HPE[2])}, ${f(XYZ_TO_HPE[5])}, ${f(XYZ_TO_HPE[8])}));
+const HPE_INV = mat3x3f(${HPE_INV_COLS});
 // 1 / (Y of RGB (1,1,1)): the achromatic colour of luminance Y is (Y·GRAY_NORM)·(1,1,1).
 const GRAY_NORM: f32 = ${f(1 / (SRGB_TO_XYZ[3] + SRGB_TO_XYZ[4] + SRGB_TO_XYZ[5]))};
 
@@ -601,6 +608,12 @@ const GRAY_NORM: f32 = ${f(1 / (SRGB_TO_XYZ[3] + SRGB_TO_XYZ[4] + SRGB_TO_XYZ[5]
 fn naka(L: f32, sigma: f32, B: f32) -> f32 {
   if (L <= 0.0) { return 0.0; }
   return B / (1.0 + pow(sigma / L, E.map.z));
+}
+
+// Hunt rod response (tonemap.ts rodResponseRaw): B_S(S)·Sⁿ/(Sⁿ + σ_rodⁿ), B_S = stimulus + adaptation parts.
+fn rodRaw(S: f32) -> f32 {
+  let bs = 0.5 / (1.0 + ${f(HUNT.bsA)} * pow(max(S, 0.0) / ${f(HUNT.scotopicScale)}, ${f(HUNT.bsExp)})) + E.scene.w;
+  return naka(S, E.scene.y, bs);
 }
 
 fn srgbEncode(c: f32) -> f32 {
@@ -630,7 +643,7 @@ fn hash(p: vec2u) -> f32 {
   // Pattanaik et al. (2000): rod and cone responses of the scene observer.
   // Increment over the dark-light pedestal (tonemap.ts coneResponse/rodResponse).
   let rc = naka(max(perc.y, 0.0) + E.dark.x, E.scene.x, E.scene.z) - E.dark.z;
-  let rr = naka(max(perc.w, 0.0) + E.dark.y, E.scene.y, E.scene.w) - E.dark.w;
+  let rr = rodRaw(max(perc.w, 0.0) + E.dark.y) - E.dark.w;
   let R = rc + rr;
   let Rd = E.map.x * R + E.map.y;
   var Ld = 0.0;
@@ -638,15 +651,24 @@ fn hash(p: vec2u) -> f32 {
     if (Rd >= E.disp.z) { Ld = E.disp.w; }
     else { Ld = E.disp.x * pow(Rd / (E.disp.y - Rd), 1.0 / E.map.z); }
   }
-  // Colour: chromatic adaptation to the display white, then desaturation by the rod share.
+  // Colour: chromatic adaptation to the display white, then the cone colour-appearance exponent.
   let cat = mat3x3f(vec3f(E.cat0.x, E.cat1.x, E.cat2.x), vec3f(E.cat0.y, E.cat1.y, E.cat2.y), vec3f(E.cat0.z, E.cat1.z, E.cat2.z));
   var chroma = WHITE_XYZ;
   if (perc.y > 0.0) {
     let a = cat * perc.xyz;
     if (a.y > 0.0) { chroma = a / a.y; }
   }
-  let coneFrac = select(1.0, rc / R, R > 0.0);
-  chroma = mix(WHITE_XYZ, chroma, coneFrac);
+  // Pattanaik Eq. 3 (tonemap.ts colourExponent): cone chromatic strength ∝ response slope; colour
+  // ratios in Hunt–Pointer–Estevez cone space are raised to min(1, S_scene/S_display).
+  let rcr = naka(max(perc.y, 0.0) + E.dark.x, E.scene.x, E.scene.z);
+  let sScene = E.map.z * rcr * (1.0 - rcr / E.scene.z);
+  let rdr = naka(Ld, E.disp.x, E.disp.y);
+  let sDisp = E.map.z * rdr * (1.0 - rdr / E.disp.y);
+  let kc = select(1.0, min(1.0, sScene / sDisp), sDisp > 0.0);
+  let lmsW = HPE * WHITE_XYZ;
+  let lms = pow(max((HPE * chroma) / lmsW, vec3f(1e-9)), vec3f(kc)) * lmsW;
+  let c2 = HPE_INV * lms;
+  chroma = c2 / max(c2.y, 1e-12);
   let Yd = Ld / E.disp.w;               // relative display luminance (chroma.y = 1)
   var rgb = XYZ2RGB * (chroma * Yd);
   // Gamut mapping toward the achromatic colour of equal luminance (docs/eye-model.md §7).

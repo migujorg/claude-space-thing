@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { SRGB_TO_XYZ, XYZ_TO_SRGB, cat02Matrix, displayWhiteXYZ, gamutMap, mul, mulM, srgbDecode, srgbEncode, type V3 } from '../src/eye/display';
-import { bleachRod, displayObserver, observerState, response, sceneReferences, appearanceMap, sigmaCone, toneMap } from '../src/eye/tonemap';
+import { applyColourExponent, displayObserver, observerState, response, sceneReferences, appearanceMap, sigmaCone, toneMap } from '../src/eye/tonemap';
 import { PATTANAIK } from '../src/eye/constants';
 
 describe('IEC 61966-2-1 sRGB', () => {
@@ -45,7 +45,7 @@ describe('Pattanaik et al. (2000) adaptation model', () => {
   it("reproduces the paper's display constants for its CRT (A = 25 cd/m²)", () => {
     // §4.3: σ_cone = 646 cd/m², B_rod = 0.0016 for A_rod = A_cone = 25.
     expect(sigmaCone(25)).toBeCloseTo(646, 0);
-    expect(bleachRod(25)).toBeCloseTo(0.0016, 4);
+    expect(0.04 / (0.04 + 25)).toBeCloseTo(0.0016, 4); // Pattanaik Eq. 6 B_rod (their table)
   });
   it("reproduces the paper's display slope S_d = 0.1383 (response per log10 between REF_blk = 4 and REF_wht = 125)", () => {
     const s = sigmaCone(25);
@@ -54,10 +54,10 @@ describe('Pattanaik et al. (2000) adaptation model', () => {
   });
   it('rods saturate in daylight and dominate in the dark', () => {
     const day = observerState(1e3, 2.3e3, false);
-    expect(day.Brod).toBeLessThan(1e-4);
+    expect(day.BrodAdapt).toBeLessThan(1e-4);
     const night = observerState(1e-4, 2.3e-4, false);
     const tm = toneMap(1e-4, 2.3e-4, night, appearanceMap(sceneReferences(night), displayObserver(200, 0)), displayObserver(200, 0));
-    expect(tm.coneFraction).toBeLessThan(0.05);
+    expect(tm.colourExponent).toBeLessThan(0.05);
   });
   it('"Neptune is not dark": an adapted surface at 30 AU (~20 cd/m²) is shown bright and in colour', () => {
     const d = displayObserver(200, 0);
@@ -66,7 +66,7 @@ describe('Pattanaik et al. (2000) adaptation model', () => {
       const r = toneMap(A, 2.3 * A, s, appearanceMap(sceneReferences(s), d), d);
       expect(r.Ld / d.peak).toBeGreaterThan(0.08);
       expect(r.Ld / d.peak).toBeLessThan(0.6);
-      expect(r.coneFraction).toBeGreaterThan(0.95);
+      expect(r.colourExponent).toBeGreaterThan(0.7);
     }
   });
   it('the same surface at 1 AU (~900× brighter) maps to a similar display level (adaptation)', () => {
@@ -91,4 +91,39 @@ describe('Pattanaik et al. (2000) adaptation model', () => {
     }
   });
   it('uses the published exponent', () => expect(PATTANAIK.n).toBe(0.73));
+  it("Pattanaik's cone path equals Hunt's: σ_cone = 5·2^(1/n)·A/F_L(A)", () => {
+    for (const A of [1e-3, 0.1, 10, 1e4]) {
+      const k = 1 / (5 * A + 1);
+      const FL = 0.2 * k ** 4 * (5 * A) + 0.1 * (1 - k ** 4) ** 2 * Math.cbrt(5 * A); // Hunt F_L (Fairchild 2013 Eq. 12.1)
+      expect(sigmaCone(A) / ((5 * Math.pow(2, 1 / 0.73) * A) / FL)).toBeCloseTo(1, 3);
+    }
+  });
+  it('v1 (Hunt rods): adapted brightness rises monotonically from starlight to indoor levels', () => {
+    const d = displayObserver(200, 0);
+    let prev = 0;
+    for (const A of [1e-5, 1e-4, 1e-3, 1e-2, 0.1, 1, 10]) {
+      const s = observerState(A, 2.3 * A, false);
+      const Ld = toneMap(A, 2.3 * A, s, appearanceMap(sceneReferences(s), d), d).Ld;
+      expect(Ld).toBeGreaterThan(prev);
+      prev = Ld;
+    }
+  });
+  it('colour: full in daylight, fading through mesopic, gone in scotopic', () => {
+    const d = displayObserver(200, 0);
+    const k = (A: number) => { const s = observerState(A, 2.3 * A, false); return toneMap(A, 2.3 * A, s, appearanceMap(sceneReferences(s), d), d).colourExponent; };
+    expect(k(1e4)).toBe(1);
+    expect(k(0.1)).toBeGreaterThan(0.2);
+    expect(k(0.1)).toBeLessThan(0.9);
+    expect(k(1e-3)).toBeLessThan(0.1);
+  });
+  it('colour exponent: identity at 1, grey at 0, white stays white', () => {
+    const w: [number, number, number] = [0.9505, 1, 1.089];
+    const c: [number, number, number] = [0.6, 1, 0.4];
+    const id = applyColourExponent(c, w, 1);
+    for (let i = 0; i < 3; i++) expect(id[i]).toBeCloseTo(c[i], 9);
+    const g = applyColourExponent(c, w, 0);
+    for (let i = 0; i < 3; i++) expect(g[i]).toBeCloseTo(w[i], 9);
+    const ww = applyColourExponent(w, w, 0.3);
+    for (let i = 0; i < 3; i++) expect(ww[i]).toBeCloseTo(w[i], 9);
+  });
 });

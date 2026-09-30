@@ -616,7 +616,7 @@ export class Renderer {
 
     if (doReadback) {
       this.readbackBusy = true;
-      const used = { cone: eye.Acone, rod: eye.Arod };
+      const used = { cone: eye.Acone, rod: eye.Arod, offFrameFlux: prep.offFrameFluxDeg2 };
       this.readback.mapAsync(GPUMapMode.READ).then(() => {
         const r = new Float32Array(this.readback.getMappedRange().slice(0));
         this.readback.unmap();
@@ -626,12 +626,12 @@ export class Renderer {
     }
   }
 
-  private handleMeasurement(r: Float32Array, used: { cone: number; rod: number }): void {
+  private handleMeasurement(r: Float32Array, used: { cone: number; rod: number; offFrameFlux: number }): void {
     const om = r[2];
     const goal = {
       coneCdM2: om > 0 ? r[0] / om : 0,
       rodCdM2: om > 0 ? r[1] / om : 0,
-      cornealFlux: r[3] * DEG2_PER_SR,
+      cornealFlux: r[3] * DEG2_PER_SR + used.offFrameFlux,
     };
     this.stats.starsDrawn = Math.round(r[4]);
     const now = performance.now();
@@ -687,7 +687,7 @@ export class Renderer {
     const norm = 1 / (1 - Math.exp(-(SPLAT_EXTENT_SIGMA * SPLAT_EXTENT_SIGMA) / 2));
     const c = eye.cat;
     d.queue.writeBuffer(this.eyeUB, 0, new Float32Array([
-      eye.scene.sigmaCone, eye.scene.sigmaRod, eye.scene.Bcone, eye.scene.Brod,
+      eye.scene.sigmaCone, eye.scene.sigmaRod, eye.scene.Bcone, eye.scene.BrodAdapt,
       eye.map.gain, eye.map.offset, PATTANAIK.n, eye.exposure,
       eye.display.sigma, eye.display.B, eye.display.white, eye.display.peak,
       eye.mesopic.m, CIE191.vPrimeLambda0, CRUMEY.spRatioBlackwell, s.fieldFactor,

@@ -5,7 +5,7 @@ import { CRUMEY, PATTANAIK } from './constants';
 import { luxFromMagnitude, magnitudeFromLux, pointThreshold, riccoArea } from './crumey';
 import { blackwellEquivalent, mesopic, type MesopicResult } from './mesopic';
 import { pupilDiameterMm } from './pupil';
-import { appearanceMap, displayObserver, observerState, response, sceneReferences, DARK_LIGHT_CONE, DARK_LIGHT_ROD, type AppearanceMap, type DisplayObserver, type ObserverState, type References } from './tonemap';
+import { appearanceMap, displayObserver, observerState, response, rodResponseRaw, sceneReferences, DARK_LIGHT_CONE, DARK_LIGHT_ROD, type AppearanceMap, type DisplayObserver, type ObserverState, type References } from './tonemap';
 import { cat02Matrix, degreeOfAdaptation, displayWhiteXYZ, type M3, type V3 } from './display';
 import { opticalCoreSigmaDeg } from './glare';
 import type { EyeSettings } from './settings';
@@ -128,7 +128,7 @@ export function computeEyeFrame(
     limitingMagnitude,
     coreSigmaDeg: opticalCoreSigmaDeg(pupilMm),
     cat,
-    darkResponse: [response(DARK_LIGHT_CONE, scene.sigmaCone, scene.Bcone), response(DARK_LIGHT_ROD, scene.sigmaRod, scene.Brod)],
+    darkResponse: [response(DARK_LIGHT_CONE, scene.sigmaCone, scene.Bcone), rodResponseRaw(scene, DARK_LIGHT_ROD)],
   };
 }
 
