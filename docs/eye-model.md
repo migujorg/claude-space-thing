@@ -110,7 +110,12 @@ kernel. An image pyramid (2× box downsample, σ = 1 texel separable Gaussian at
 upsample-and-add) realises a sum of Gaussians whose effective widths are known in closed form
 (`pyramidSigma`); non-negative least squares (`fitScatterKernel`) finds the level weights that
 reproduce the CIE profile, matching it to < 10 % at every radius and its energy to < 3 % (tested). The
-composite keeps 1 − Σw of the light unscattered, so energy is conserved exactly. Light scattered
+composite keeps 1 − Σw of the light unscattered, so energy is conserved exactly. The fit starts at half a
+pixel; inside 0.1° (below the CIE validity range) the kernel is held at its 0.1° value. v0 fitted only
+from 0.1° outward, which left the narrowest Gaussians unconstrained at fine pixel scales: at 1440p and 4K
+the fitted "scattered" energy could exceed 100 % and the unscattered fraction turned negative (stars and
+bodies vanished at 4K). The bounded continuation makes the scattered fraction ~0.45–0.5 at every
+resolution from 720p to 4K (tested). Light scattered
 beyond the frame edge is lost (the scene outside the frame is not rendered).
 
 The Sun, and bodies whose centre is outside the frame, are veiled analytically per pixel
