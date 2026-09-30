@@ -81,11 +81,13 @@ class LayerSpec:
     diagnostics: dict | None = None
     notes: list[str] = field(default_factory=list)
     min_level: int = 0
+    nodata: str = "zero"             # 'zero' (all channels 0 = unknown) or 'nan' (NaN per channel = unknown)
 
 
 def write_layer(ctx: BuildContext, spec: LayerSpec, top: np.ndarray, known: np.ndarray, top_level: int) -> dict:
     """Write tiles, listing and header; register the products; return the header dict."""
-    ts = st.write_pyramid(OUT, spec.naif, spec.layer, top, known, top_level, spec.fmt, min_level=spec.min_level)
+    ts = st.write_pyramid(OUT, spec.naif, spec.layer, top, known, top_level, spec.fmt, min_level=spec.min_level,
+                          nodata=spec.nodata)
     listing_rel = f"surfaces/{spec.naif}/{spec.layer}.sha256"
     write_bin(ctx, listing_rel, ts.listing(), STAGE)
     ctx.products[f"surfaces/{spec.naif}/{spec.layer}/"] = {
@@ -113,8 +115,9 @@ def write_layer(ctx: BuildContext, spec: LayerSpec, top: np.ndarray, known: np.n
         "tileListing": listing_rel,
         "missingTiles": {str(k): v for k, v in sorted(ts.missing.items())},
         "noData": ("texels whose channels are all exactly 0 are unknown (no data); tiles listed in missingTiles are "
-                   "entirely unknown and not stored") if spec.fmt == "f16" else
-                  "NaN marks unknown texels; tiles listed in missingTiles are entirely unknown and not stored",
+                   "entirely unknown and not stored") if (spec.fmt == "f16" and spec.nodata == "zero") else
+                  ("NaN marks an unknown value (per channel; a texel with all channels NaN has no data at all); "
+                   "tiles listed in missingTiles are entirely unknown and not stored"),
         "geometry": {"projection": "equirectangular", "latitude": "planetocentric", "longitude": "east",
                      "u": "(lonE + 180) / 360", "v": "(90 - lat) / 180",
                      "texelValue": "average over the texel's lat/lon cell"},

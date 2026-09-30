@@ -9,6 +9,7 @@ from __future__ import annotations
 import datetime as _dt
 import hashlib
 import json
+import threading
 import time
 from pathlib import Path
 from typing import Callable
@@ -18,6 +19,7 @@ import requests
 from .paths import RAW
 
 _LEDGER = RAW / "_downloads.json"
+_LEDGER_LOCK = threading.Lock()  # fetch may be called from worker threads; ledger updates are read-modify-write
 
 
 def _load_ledger() -> dict:
@@ -27,7 +29,10 @@ def _load_ledger() -> dict:
 
 
 def _save_ledger(ledger: dict) -> None:
-    _LEDGER.write_text(json.dumps(ledger, indent=2, sort_keys=True))
+    # write-then-rename, so a concurrent reader never sees a half-written ledger
+    tmp = _LEDGER.with_suffix(f".{threading.get_ident()}.tmp")
+    tmp.write_text(json.dumps(ledger, indent=2, sort_keys=True))
+    tmp.replace(_LEDGER)
 
 
 def sha256_file(path: Path) -> str:
@@ -60,7 +65,7 @@ def fetch(url: str, subdir: str, name: str | None = None, *, params: dict | None
             and (validate is None or validate(dest))):
         return dest
     dest.parent.mkdir(parents=True, exist_ok=True)
-    tmp = dest.with_suffix(dest.suffix + ".part")
+    tmp = dest.with_suffix(dest.suffix + f".{threading.get_ident()}.part")
     hdrs = dict(headers or {})
     if rng:
         hdrs["Range"] = rng
@@ -92,16 +97,18 @@ def fetch(url: str, subdir: str, name: str | None = None, *, params: dict | None
             time.sleep(delay)
             delay *= 2
     tmp.replace(dest)
-    ledger = _load_ledger()
     shown = record_url or url
-    ledger[key] = {
+    entry = {
         "url": shown if not params or record_url else f"{url}?{requests.compat.urlencode(params)}",
         "sha256": sha256_file(dest),
         "retrieved": _dt.date.today().isoformat(),
         "bytes": dest.stat().st_size,
         **extra,
     }
-    _save_ledger(ledger)
+    with _LEDGER_LOCK:
+        ledger = _load_ledger()
+        ledger[key] = entry
+        _save_ledger(ledger)
     return dest
 
 
