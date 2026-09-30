@@ -634,6 +634,9 @@ export interface SurfaceLevelInfo {
  * 'height': metres above the reference ellipsoid. 'photometric-parameters': model constants per texel.
  * Earth only (all dated, float16 with NaN = unknown per channel):
  * 'cloud-properties': [cloudFraction, opticalThickness, cloudTopHeightM, iceFraction] of one day's daytime overpass;
+ * 'cloud-optical-thickness-moments' (layer 'cloudTau', the same samples): [tauRetrievedFraction, lnTauMoment1,
+ * lnTauMoment2, iceTauFraction], per-sample averages (exact at every level): meanLnTau = m1 / f, varLnTau =
+ * m2 / f − meanLnTau², ice share = iceTauFraction / f; cloudFraction − f is cloud without an optical thickness;
  * 'emitted-radiance': [dnbRadiance (nW cm⁻² sr⁻¹), censoredFraction]; `constants.toXYZS` converts to luminance;
  * 'surface-water': [waterFraction, seaIceFraction] (where the renderer adds Fresnel reflection and glint);
  * 'surface-wind': [windSpeed10mAscending, windSpeed10mDailyMean, passes] in m/s at 10 m (for the Cox & Munk glint
@@ -644,6 +647,7 @@ export type SurfaceLayerKind =
   | 'height'
   | 'photometric-parameters'
   | 'cloud-properties'
+  | 'cloud-optical-thickness-moments'
   | 'emitted-radiance'
   | 'surface-water'
   | 'surface-wind';
