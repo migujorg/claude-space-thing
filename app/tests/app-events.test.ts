@@ -11,7 +11,7 @@ import {
 import { eventBookmarks, staticBookmarks, CURATED_TUNING } from '../src/app/events/curated';
 import type { Category, EngineInit } from '../src/app/events/engine';
 import {
-  EventService, hashKey, storageCache, type EventComputePort, type EventServiceHost, type FindResult, type Readiness,
+  EventService, hashKey, indexedDbCache, storageCache, type EventCache, type EventComputePort, type EventServiceHost, type FindResult, type Readiness,
 } from '../src/app/events/service';
 import { forwardOf } from '../src/app/camera';
 import { len, norm, sub } from '../src/app/vec';
@@ -195,7 +195,7 @@ function memoryStorage(): Storage & { map: Map<string, string> } {
 
 describe('EventService', () => {
   const flush = () => new Promise((r) => setTimeout(r, 0));
-  function make(ready: Partial<Record<Category, Readiness>>, cache = storageCache(() => memoryStorage())) {
+  function make(ready: Partial<Record<Category, Readiness>>, cache: EventCache | null = null) {
     let port: FakePort | null = null;
     const host: EventServiceHost = {
       readiness: (c) => ready[c] ?? { state: 'ready' },
@@ -257,6 +257,7 @@ describe('EventService', () => {
     const cache = storageCache(() => st);
     const a = make({}, cache);
     a.svc.start();
+    await flush(); // nothing cached yet: computed
     a.port().pending.shift()!.resolve({ events: [fakeEvent('e1', 1.23456789, { method: 'long method text' }), fakeEvent('e2', 2, { method: 'long method text' })], ms: 1, errors: [] });
     await flush();
     const stored = JSON.parse(st.map.get('st-events:eclipses')!);
@@ -264,17 +265,24 @@ describe('EventService', () => {
     expect(stored.methods).toEqual(['long method text']);
     const b = make({}, cache);
     b.svc.start();
+    expect(b.svc.state('eclipses').status).toBe('reading');
+    await flush();
     expect(b.svc.state('eclipses')).toMatchObject({ status: 'ready', cached: true });
     expect(b.svc.state('eclipses').events.map((e) => [e.id, e.et, e.method])).toEqual([['e1', 1.235, 'long method text'], ['e2', 2, 'long method text']]);
     expect(b.port().calls[0]).toBe('planets');
     // Another data build: a miss.
-    expect(cache.load('eclipses', 'other')).toBeNull();
+    expect(await cache.load('eclipses', 'other')).toBeNull();
+    // Without IndexedDB nothing is kept, and nothing throws.
+    const none = indexedDbCache(() => null);
+    await none.save('eclipses', 'k', []);
+    expect(await none.load('eclipses', 'k')).toBeNull();
   });
 
   it('failures reject waiters and do not block the queue; storage errors are swallowed', async () => {
     const broken = { getItem: () => { throw new Error('denied'); }, setItem: () => { throw new Error('quota'); } } as unknown as Storage;
     const { svc, port } = make({}, storageCache(() => broken));
     const p = svc.whenReady('eclipses');
+    await flush();
     port().pending.shift()!.reject(new Error('boom'));
     await expect(p).rejects.toThrow('boom');
     await flush();
@@ -344,6 +352,18 @@ describe('model: events, "go there" and the first-run view', () => {
     expect(model.selectedId).toBe(301);
     expect(model.reality).toMatchObject({ view: 'enhanced', exposureBoostStops: 4 });
     expect(model.badge().join(' ')).toMatch(/ENHANCED/);
+  });
+
+  it('a view may ask for the Sun shield; it round-trips through the URL and is badged', async () => {
+    const { model } = modelSetup();
+    await model.showView({ label: 'belt', target: 10, rel: [0, 0, 2e9], sunShield: true, enhancedStops: 14 }, T0, { instant: true });
+    expect(model.reality).toMatchObject({ sunShield: true, view: 'enhanced', exposureBoostStops: 14 });
+    const v = model.currentUrlView();
+    expect(v).toMatchObject({ shield: true, view: 'enhanced', boost: 14, target: 10 });
+    const b = modelSetup().model;
+    b.applyUrl(v);
+    expect(b.reality.sunShield).toBe(true);
+    expect(b.badge()).toContain('SUN SHIELDED: occulting disc (viewing aid)');
   });
 
   it('first run (no URL parameters): now, playing, the Earth framed with the Moon 14° from the centre', () => {

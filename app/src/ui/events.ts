@@ -4,7 +4,6 @@
 import type { AppModel } from '../app/model';
 import type { Category } from '../app/events/engine';
 import type { EventView, SkyEvent } from '../app/events/finder';
-import { eventBookmarks, staticBookmarks, type Bookmark } from '../app/events/curated';
 import type { CategoryState } from '../app/events/service';
 import { sbRow } from '../app/smallbodies';
 import { chip } from './chips';
@@ -21,7 +20,6 @@ export class EventsPanel {
   private neoSort: 'distance' | 'time' = 'distance';
   private readonly showAll = new Set<Category>();
   private readonly expanded = new Set<string>();
-  private statics: { key: string; list: Bookmark[] } | null = null;
   private namesAsked = new Set<number>();
   private scroll = 0;
 
@@ -34,7 +32,7 @@ export class EventsPanel {
       if (!timer) timer = setTimeout(() => { timer = null; last = Date.now(); if (this.open) this.render(); }, 300);
     };
     model.on('events', rerender);
-    model.on('data', () => { this.statics = null; rerender(); });
+    model.on('data', rerender);
   }
 
   get open(): boolean {
@@ -85,19 +83,7 @@ export class EventsPanel {
 
   private renderCurated(): void {
     const m = this.model;
-    const now = m.nowEt() ?? m.clock.et;
-    const key = `${m.data?.manifest?.generatedAt ?? ''}:${Math.round(now / 86400)}`;
-    if (!this.statics || this.statics.key !== key) {
-      const inp = m.finderInput();
-      let list: Bookmark[] = [];
-      try {
-        list = inp ? staticBookmarks(inp, now) : [];
-      } catch (e) {
-        console.error(e);
-      }
-      this.statics = { key, list };
-    }
-    const list = [...eventBookmarks(m.events?.all() ?? [], now), ...this.statics.list];
+    const list = m.curatedViews();
     this.el.append(h('h3', null, 'Curated views'));
     if (!list.length) {
       this.el.append(h('p', { class: 'st-muted st-small' }, 'Computing…'));
@@ -111,7 +97,11 @@ export class EventsPanel {
           h(
             'div',
             { class: 'st-ev st-ev-curated' },
-            h('div', { class: 'st-ev-head' }, h('span', { class: 'st-ev-time' }, eventTime(m, b.et)), h('span', { class: 'st-ev-title' }, b.title), h('button', { class: 'st-ev-go', onclick: () => this.go(b.view, b.et, b.title) }, 'Go')),
+            h('div', { class: 'st-ev-head' },
+              h('span', { class: 'st-ev-time' }, eventTime(m, b.et)),
+              h('span', { class: 'st-ev-title', title: b.method }, b.title),
+              chip(eventProvenance(m, { bodies: b.bodies, orientations: b.event?.orientations, et: b.et }).label),
+              h('button', { class: 'st-ev-go', onclick: () => this.go(b.view, b.et, b.title) }, 'Go')),
             h('div', { class: 'st-ev-detail' }, b.detail),
           ),
         ),
@@ -125,6 +115,7 @@ export class EventsPanel {
       case 'idle':
       case 'queued': return t('queued');
       case 'waiting': return t(s.message ?? 'waiting for its data');
+      case 'reading': return t('reading results computed earlier…');
       case 'running': return h('span', { class: 'st-small st-muted' }, `computing ${s.progress !== null ? `${Math.round(100 * s.progress)} %` : '…'}`, h('span', { class: 'st-evbar' }, h('span', { style: `width:${Math.round(100 * (s.progress ?? 0))}%` })));
       case 'ready': return t(`${s.events.length.toLocaleString('en-US')} found${s.cached ? ' (computed earlier for this data build)' : s.ms !== null ? ` in ${(s.ms / 1000).toFixed(1)} s` : ''}`);
       case 'error': return t(`failed: ${s.message}`, 'st-err');

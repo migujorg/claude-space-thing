@@ -32,6 +32,7 @@ import { computeWorld, copy, findSunId, isPhysical, navRadius, type World } from
 import { EventService, EventWorkerClient, FINDER_VERSION, hashKey, InProcessEvents, type EventCache, type EventComputePort, type Readiness } from './events/service';
 import { EventEngine, type Category, type EngineInit } from './events/engine';
 import type { EventView, FinderInput, SkyEvent } from './events/finder';
+import { eventBookmarks, staticBookmarks, type Bookmark } from './events/curated';
 
 export interface ViewportSize {
   /** CSS pixels */
@@ -174,6 +175,7 @@ export class AppModel {
   /** Event finder ("Moments"); computes on demand (the Moments panel, scripts). */
   events: EventService | null = null;
   private readonly eventWorker: (() => Worker) | null;
+  private staticViews: { key: string; list: Bookmark[] } | null = null;
   private readonly eventCache: EventCache | null;
 
   constructor(core: CoreDeps, opts: { now?: () => number; syntheticLayerAvailable?: boolean; eventWorker?: () => Worker; eventCache?: EventCache | null } = {}) {
@@ -513,7 +515,7 @@ export class AppModel {
       return false;
     }
     this.loadedEphem.push(e);
-    this.events?.addEphem({ path: e.path, header: e.header, data: e.data });
+    if (this.eventFiles([...this.loadedEphem]).includes(e)) this.events?.addEphem({ path: e.path, header: e.header, data: e.data });
     this.chainCache.clear();
     const d = this.deferred.get(e.path);
     this.orbits?.invalidate(d?.bodies);
@@ -1197,7 +1199,7 @@ export class AppModel {
     return {
       readiness: (c: Category) => this.eventReadiness(c),
       engineInit: (): EngineInit => ({
-        ephem: this.loadedEphem.map((e) => ({ path: e.path, header: e.header, data: e.data })),
+        ephem: this.eventFiles(this.loadedEphem).map((e) => ({ path: e.path, header: e.header, data: e.data })),
         bodies: this.bodies.map((b) => ({ id: b.id, radii: b.radii, rotation: b.rotation })),
         orientations: (this.data?.orientations ?? []).map((o) => ({ path: o.path, header: o.header, data: o.data })),
         window: this.clock.window ?? { startEt: 0, endEt: 0 },
@@ -1210,6 +1212,21 @@ export class AppModel {
       },
       cacheKey: (c: Category) => this.eventCacheKey(c),
     };
+  }
+
+  /**
+   * The ephemeris files the event finder needs (copied to its worker): in load order, each file that brings a
+   * body the finder uses (barycentres, Sun, planets, the Moon, the Galilean moons, Charon) not already brought by
+   * an earlier one. The other moon systems (tens of MB) stay on this thread.
+   */
+  private eventFiles(files: LoadedEphemeris[]): LoadedEphemeris[] {
+    const used = new Set([...Array.from({ length: 11 }, (_, i) => i), 199, 299, 301, 399, 499, 599, 699, 799, 899, 999, 501, 502, 503, 504, 901]);
+    const have = new Set<number>();
+    return files.filter((f) => {
+      const brings = f.header.segments.map((s) => s.target).filter((t) => used.has(t) && !have.has(t));
+      brings.forEach((t) => have.add(t));
+      return brings.length > 0;
+    });
   }
 
   /** Whether the inputs of a category of events are loaded. */
@@ -1275,6 +1292,23 @@ export class AppModel {
     return { eph: { positionSSB: (id, et) => copy(eph.positionSSB(id, et)) }, radii, orientation: (id, et) => this.orientations.orientation(id, et), window: w };
   }
 
+  /** Curated views: the most striking events found so far, and a few placed near the current time. */
+  curatedViews(): Bookmark[] {
+    const now = this.nowEt() ?? this.clock.et;
+    const key = `${this.data?.manifest?.generatedAt ?? ''}:${this.loadedEphem.length}:${Math.round(now / 86400)}`;
+    if (this.staticViews?.key !== key) {
+      const inp = this.finderInput();
+      let list: Bookmark[] = [];
+      try {
+        list = inp ? staticBookmarks(inp, now) : [];
+      } catch (e) {
+        this.coreErrors.push(`curated views: ${(e as Error).message ?? e}`);
+      }
+      this.staticViews = { key, list };
+    }
+    return [...eventBookmarks(this.events?.all() ?? [], now), ...this.staticViews.list];
+  }
+
   /**
    * Show an event: jump to its time (paused) and place the camera as the view says — orbiting its target, or
    * fixed near a surface looking at another body. Resolves when the camera is there.
@@ -1290,6 +1324,7 @@ export class AppModel {
     this.setEt(et);
     this.setFovDeg(v.fovDeg ?? DEFAULT_FOV_DEG);
     if (v.enhancedStops !== undefined) this.setReality({ view: 'enhanced', exposureBoostStops: v.enhancedStops });
+    if (v.sunShield) this.setReality({ sunShield: true });
     const rel = v.rel, d = len(rel);
     if (v.lookAt === undefined) return this.goTo(v.target, d, { dir: norm(rel), up: v.up, instant: opts.instant });
     // A fixed viewpoint (near a surface): the camera keeps its offset from `target` and looks at `lookAt`.
@@ -1380,7 +1415,10 @@ export class AppModel {
       if (moonOff(mid) < want) lo = mid; else hi = mid;
     }
     const r2 = this.goTo(DEFAULT_TARGET, dist, { dir: dirAt(0.5 * (lo + hi)), instant: true });
-    return typeof r2 !== 'string';
+    if (typeof r2 === 'string') return false;
+    // Nothing selected: the view is uncluttered, and the hint invites a click.
+    this.select(null);
+    return true;
   }
 
   currentUrlView(): UrlView {

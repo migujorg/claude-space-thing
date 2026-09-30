@@ -19,7 +19,7 @@ export interface Bookmark {
   method: string;
 }
 
-const SUN = 10, EARTH = 399, MOON = 301, JUPITER = 599, PLUTO = 999, CHARON = 901;
+const SUN = 10, EARTH = 399, MOON = 301, JUPITER = 599, PLUTO = 999, CHARON = 901, EMB = 3;
 const DAY = 86400;
 
 const sub = (a: Vec3, b: Vec3): Vec3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
@@ -43,6 +43,9 @@ export const CURATED_TUNING = {
   fovDeg: 50,
   /** Pluto framing: camera distance in Pluto–Charon separations. */
   plutoSeparations: 4,
+  /** Inner solar system from above: Jupiter's orbit at this fraction of the half field of view; exposure boost. */
+  beltFill: 0.85,
+  beltBoostStops: 14,
 };
 
 /** The event with the best rank (ties: nearest to `nowEt`, future first). */
@@ -55,7 +58,7 @@ function best(events: SkyEvent[], nowEt: number, pred: (e: SkyEvent) => boolean)
 
 function fromEvent(e: SkyEvent | null, view: number, title: string): Bookmark[] {
   if (!e || !e.views[view]) return [];
-  return [{ id: `${e.id}#${view}`, title, detail: `${e.title}: ${e.detail}`, et: e.views[view].et ?? e.et, view: e.views[view], event: e, bodies: e.bodies, method: e.method }];
+  return [{ id: `${e.id}#${view}`, title, detail: e.detail, et: e.views[view].et ?? e.et, view: e.views[view], event: e, bodies: e.bodies, method: e.method }];
 }
 
 /** Bookmarks from found events (whatever categories are ready). */
@@ -133,6 +136,23 @@ export function staticBookmarks(inp: FinderInput, nowEt: number): Bookmark[] {
       view: { label: 'Jupiter system', target: JUPITER, rel: mul(unit(sub(E, J)), d) },
       bodies: [SUN, EARTH, JUPITER, ...gal],
       method: 'Camera on the Jupiter–Earth line, far enough to frame the outermost of the four moons.',
+    });
+  }
+
+  // The asteroid belt from above the ecliptic, framed by Jupiter's orbit, enhanced, the Sun covered, now.
+  if (ok(SUN, t0) && ok(JUPITER, t0) && ok(EMB, t0)) {
+    const S = g.pos(SUN, t0), J = g.pos(JUPITER, t0);
+    const r0 = sub(g.pos(EMB, t0), S), r1 = sub(g.pos(EMB, t0 + 3600), g.pos(SUN, t0 + 3600));
+    const north = unit(cross(r0, sub(r1, r0)));
+    const d = len(sub(J, S)) / Math.tan(T.beltFill * (T.fovDeg / 2) * DEG);
+    out.push({
+      id: 'static:belt',
+      title: 'The asteroid belt from above (enhanced, Sun covered)',
+      detail: `now, from above the ecliptic, Jupiter's orbit filling the view; +${T.beltBoostStops} stops and the Sun shield, both badged`,
+      et: t0,
+      view: { label: 'Inner solar system from above', target: SUN, rel: mul(north, d), enhancedStops: T.beltBoostStops, sunShield: true, fovDeg: T.fovDeg, note: 'Enhanced view with the Sun covered by an occulting disc (viewing aids, both badged): the eye alone would see only the Sun and a few planets from here.' },
+      bodies: [SUN, EMB, JUPITER],
+      method: 'Camera on the ecliptic pole (the Earth–Moon barycentre\'s orbital angular momentum, from the ephemeris) above the Sun, framing Jupiter\'s distance; asteroids and comets as the small-body field draws them.',
     });
   }
 

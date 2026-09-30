@@ -17,6 +17,9 @@
     { "id": "sun-1au", "title": "The Sun from 1 au", "params": { "target": "10", "dist": "149597871" } },
     { "id": "juno-closeup", "title": "3 Juno close-up (small body with a measured diameter and colour)", "params": { "target": "20000003", "smallbodies": "1" } },
     { "id": "mars-map", "title": "Mars surface map, day side", "params": { "target": "499", "dist": "15000", "az": "0", "el": "10" } },
-    { "id": "mercury-map", "title": "Mercury surface map, day side", "params": { "target": "199", "dist": "8000", "az": "0", "el": "10" } }
+    { "id": "mercury-map", "title": "Mercury surface map, day side", "params": { "target": "199", "dist": "8000", "az": "0", "el": "10" } },
+    { "id": "eclipse-2027-above", "title": "Event: total solar eclipse of 2027-08-02 at greatest eclipse, from the shadow axis above the Earth (Moments view 1)", "params": { "t": "2027-08-02T10:06:41.000Z", "target": "399", "dist": "28715.92", "az": "0.65", "el": "1.69" } },
+    { "id": "eclipse-2027-ground", "title": "Event: the same eclipse from 1 km above the greatest-eclipse point, looking at the Moon and the Sun (6° field)", "params": { "t": "2027-08-02T10:06:41.000Z", "target": "301", "dist": "351072.7", "az": "179.99", "el": "0", "fov": "6" } },
+    { "id": "jupiter-double-shadow", "title": "Event: Europa's and Callisto's shadows on Jupiter together (2027-01-30), from the Earth's direction", "params": { "t": "2027-01-30T15:12:07.461Z", "target": "599", "dist": "700000", "az": "2.32", "el": "0.58" } }
   ]
 }

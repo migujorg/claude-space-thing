@@ -14,7 +14,7 @@ import type { AppDeps, RendererPort } from './ports';
 import { sbId } from './smallbodies';
 import type { Category } from './events/engine';
 import type { SkyEvent } from './events/finder';
-import { storageCache } from './events/service';
+import { indexedDbCache } from './events/service';
 import { formatUrlParams, parseUrlParams, type UrlView } from './url';
 
 export interface AppHandle {
@@ -48,6 +48,9 @@ export interface DebugApi {
   events: {
     find(category: Category): Promise<SkyEvent[]>;
     goTo(id: string, view?: number): Promise<void>;
+    /** Curated views (ids and titles), and showing one (instant). */
+    curated(): { id: string; title: string; et: number }[];
+    showCurated(id: string): Promise<void>;
   };
   model: AppModel;
 }
@@ -58,13 +61,7 @@ const defaultNameWorker = (): Worker => new Worker(new URL('./names.worker.ts', 
 const defaultPropagationWorker = (): Worker => new Worker(new URL('./sbprop.worker.ts', import.meta.url), { type: 'module' });
 /** The event finder runs in a module worker. */
 const defaultEventWorker = (): Worker => new Worker(new URL('./events/events.worker.ts', import.meta.url), { type: 'module' });
-const defaultStorage = (): Storage | null => {
-  try {
-    return window.localStorage;
-  } catch {
-    return null;
-  }
-};
+
 
 declare global {
   interface Window {
@@ -98,7 +95,7 @@ export async function startApp(canvas: HTMLCanvasElement, uiRoot: HTMLElement, d
   const model = new AppModel(deps, {
     now: deps.now,
     eventWorker: deps.eventWorker === null ? undefined : deps.eventWorker ?? defaultEventWorker,
-    eventCache: deps.eventStorage === null ? null : storageCache(deps.eventStorage ?? defaultStorage),
+    eventCache: deps.eventCache === null ? null : deps.eventCache ?? indexedDbCache(),
   });
   const ui = mountUi(uiRoot, model, { banner: deps.banner });
   let renderer: RendererPort | null = null;
@@ -143,6 +140,14 @@ export async function startApp(canvas: HTMLCanvasElement, uiRoot: HTMLElement, d
         const ev = model.events?.byId(id);
         if (!ev) throw new Error(`no event ${id} (compute its category first)`);
         const r = model.goToEvent(ev, view, { instant: true });
+        if (typeof r === 'string') throw new Error(r);
+        await r;
+      },
+      curated: () => model.curatedViews().map((b) => ({ id: b.id, title: b.title, et: b.et })),
+      showCurated: async (id) => {
+        const b = model.curatedViews().find((x) => x.id === id);
+        if (!b) throw new Error(`no curated view ${id}`);
+        const r = model.showView(b.view, b.et, { instant: true });
         if (typeof r === 'string') throw new Error(r);
         await r;
       },

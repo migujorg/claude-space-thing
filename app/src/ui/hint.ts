@@ -1,5 +1,5 @@
-// First-run hint line (opened without URL parameters): what to press. Dismissible; once dismissed (or once the
-// help or the Moments panel has been opened) it is not shown again in this browser.
+// First-run hint line (opened without URL parameters): what to press. It stays until dismissed (×, Esc) or until
+// the help or the Moments panel is opened; after that it is not shown again in this browser.
 
 import type { AppModel } from '../app/model';
 import { h, toggleClass } from './dom';
@@ -26,12 +26,8 @@ export function rememberHintDismissed(storage: Storage | null): void {
   }
 }
 
-/** Hide by itself after this long (a framing choice), ms. */
-const HINT_MS = 30_000;
-
 export class FirstRunHint {
   readonly el: HTMLElement;
-  private timer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(private model: AppModel, private storage: () => Storage | null = () => (typeof localStorage !== 'undefined' ? localStorage : null)) {
     this.el = h('div', { class: 'st-hint' }, h('span', null, HINT_TEXT), h('button', { class: 'st-x', title: 'Dismiss', onclick: () => this.dismiss() }, '×'));
@@ -41,7 +37,6 @@ export class FirstRunHint {
   maybeShow(): void {
     if (!shouldShowHint(this.model.firstRun, this.store())) return;
     toggleClass(this.el, 'st-show', true);
-    this.timer = setTimeout(() => this.hide(), HINT_MS);
   }
 
   get shown(): boolean {
@@ -49,8 +44,6 @@ export class FirstRunHint {
   }
 
   hide(): void {
-    if (this.timer) clearTimeout(this.timer);
-    this.timer = null;
     toggleClass(this.el, 'st-show', false);
   }
 

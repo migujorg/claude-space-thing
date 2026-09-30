@@ -148,6 +148,7 @@ export class Input {
       case 'l': case 'L': m.setReality({ overlays: { labels: !m.reality.overlays.labels } }); return true;
       case 'o': case 'O': m.setReality({ overlays: { orbits: !m.reality.overlays.orbits } }); return true;
       case 'p': case 'P': m.setReality({ overlays: { provenanceTint: !m.reality.overlays.provenanceTint } }); return true;
+      case 'k': case 'K': m.setReality({ sunShield: !m.reality.sunShield }); return true;
       case 'i': case 'I': this.actions.toggleInspector(); return true;
       case 'm': case 'M': this.actions.toggleData(); return true;
       case 'u': case 'U': this.actions.copyLink(); return true;

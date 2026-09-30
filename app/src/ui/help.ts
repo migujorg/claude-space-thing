@@ -26,6 +26,7 @@ export const KEYS: [string, string][] = [
   ['V', 'naked eye ↔ enhanced'],
   ['− / =', 'exposure boost (enhanced)'],
   ['L / O / P', 'labels / orbits / provenance tint'],
+  ['K', 'Sun shield: occulting disc over the Sun (viewing aid)'],
   ['E', 'Moments: eclipses, transits, oppositions, close approaches'],
   ['I', 'inspector'],
   ['M', 'data products'],

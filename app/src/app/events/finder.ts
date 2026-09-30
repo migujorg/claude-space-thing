@@ -36,6 +36,8 @@ export interface EventView {
   fovDeg?: number;
   /** Viewing mode for faint things (always labelled ENHANCED by the app's badge). */
   enhancedStops?: number;
+  /** Cover the Sun with the occulting disc (a viewing aid, badged). */
+  sunShield?: boolean;
   /** Time of the view when it differs from the event time (TDB s). */
   et?: number;
   note?: string;
@@ -383,7 +385,8 @@ export function solarEclipses(g: Geometry): SkyEvent[] {
       orientations: [EARTH],
       observer: 'the Earth',
       method: `Greatest eclipse: the time the Moon's shadow axis passes closest to the Earth's centre; point, type and duration from the umbra/antumbra cone at the first intersection of the axis with the Earth's ellipsoid (orientation: the Earth's orientation model), with the Moon's mean radius (published predictions use a slightly smaller lunar radius for central durations, so theirs are a few seconds shorter). ${EPHEM_METHOD}.`,
-      rank: e.kind === 'total' ? 100 : e.kind === 'annular' ? 80 : 30,
+      // Longer central phases rank higher (the curated list shows the best one).
+      rank: (e.kind === 'total' ? 90 : e.kind === 'annular' ? 70 : 30) + (Number.isFinite(e.durationS) ? Math.min(10, e.durationS / 60) : 0),
       views,
       data: { gamma: e.gamma, latDeg: e.latDeg, lonDeg: e.lonDeg, magnitude: e.magnitude, ratio: e.ratio, durationS: e.durationS, sunAltDeg: e.sunAltDeg, umbraKm: e.umbraKm },
     });
@@ -443,7 +446,6 @@ export function lunarEclipses(g: Geometry): SkyEvent[] {
         target: MOON,
         rel: mul(toEarth, RM + 2),
         lookAt: EARTH,
-        up: toEarth,
         fovDeg: 6,
         note: 'The camera is 2 km above the Moon\'s surface, below the Earth. The red ring of sunlight refracted by the Earth\'s atmosphere is not rendered yet, so the Earth is a black disk.',
       },
@@ -466,7 +468,7 @@ export function lunarEclipses(g: Geometry): SkyEvent[] {
       bodies: [SUN, EARTH, MOON],
       observer: 'the Earth\'s night side',
       method: `Greatest eclipse: the time the Moon's centre passes closest to the axis of the Earth's shadow; magnitudes and contacts from the geometric umbra and penumbra of the Earth's mean radius, with no enlargement for the atmosphere (published predictions enlarge the shadow slightly, so their magnitudes and contact times differ a little). ${EPHEM_METHOD}.`,
-      rank: kind === 'total' ? 70 : kind === 'partial' ? 40 : 10,
+      rank: (kind === 'total' ? 60 : kind === 'partial' ? 40 : 10) + (tot ? Math.min(10, (tot.b - tot.a) / 600) : 0),
       views,
       data: { umbral, penumbral },
     });

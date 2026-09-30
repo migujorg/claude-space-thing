@@ -1,6 +1,6 @@
 // Main-thread side of the event finder: schedules the categories (one at a time, in a worker), waits for the
-// inputs each needs (a moon system, the small-body catalogue), caches results per data build (browser storage,
-// keyed by the sha256 of every input file and the finder's version) and tells the UI what stands where.
+// inputs each needs (a moon system, the small-body catalogue), caches results per data build (IndexedDB in the
+// browser, keyed by the sha256 of every input file and the finder's version) and tells the UI what stands where.
 
 import type { EngineInit, EphemFile, SmallBodyInit } from './engine';
 import { CATEGORIES, EventEngine, type Category } from './engine';
@@ -114,18 +114,63 @@ export class InProcessEvents implements EventComputePort {
 
 // ---- cache ------------------------------------------------------------------------------------------------------
 
+/** Results per category, one entry each (a new data build replaces it). Never rejects. */
 export interface EventCache {
-  load(c: Category, key: string): SkyEvent[] | null;
-  save(c: Category, key: string, events: SkyEvent[]): void;
+  load(c: Category, key: string): Promise<SkyEvent[] | null>;
+  save(c: Category, key: string, events: SkyEvent[]): Promise<void>;
+}
+
+/**
+ * IndexedDB (the browser default: the Galilean-moon and close-approach lists run to megabytes, more than
+ * localStorage holds). Without IndexedDB, or on any error, nothing is cached and results are recomputed.
+ */
+export function indexedDbCache(factory: () => IDBFactory | null = () => (typeof indexedDB !== 'undefined' ? indexedDB : null)): EventCache {
+  let db: Promise<IDBDatabase | null> | null = null;
+  const open = () =>
+    (db ??= new Promise<IDBDatabase | null>((resolve) => {
+      try {
+        const f = factory();
+        if (!f) return resolve(null);
+        const req = f.open('st-events', 1);
+        req.onupgradeneeded = () => req.result.createObjectStore('results');
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => resolve(null);
+        req.onblocked = () => resolve(null);
+      } catch {
+        resolve(null);
+      }
+    }));
+  const run = async <T,>(mode: IDBTransactionMode, f: (s: IDBObjectStore) => IDBRequest<T>): Promise<T | null> => {
+    const d = await open();
+    if (!d) return null;
+    return new Promise<T | null>((resolve) => {
+      try {
+        const r = f(d.transaction('results', mode).objectStore('results'));
+        r.onsuccess = () => resolve(r.result);
+        r.onerror = () => resolve(null);
+      } catch {
+        resolve(null);
+      }
+    });
+  };
+  return {
+    async load(c, key) {
+      const v = (await run('readonly', (s) => s.get(c))) as { key?: string; events?: SkyEvent[] } | null | undefined;
+      return v && v.key === key && Array.isArray(v.events) ? v.events : null;
+    },
+    async save(c, key, events) {
+      await run('readwrite', (s) => s.put({ key, events }, c));
+    },
+  };
 }
 
 interface Stored { key: string; methods: string[]; events: (Omit<SkyEvent, 'method'> & { method: number })[] }
 
-/** One entry per category in browser storage (a new data build replaces it). Never throws. */
+/** Web Storage (small; tests use it with an in-memory Storage). */
 export function storageCache(storage: () => Storage | null): EventCache {
   const name = (c: Category) => `st-events:${c}`;
   return {
-    load(c, key) {
+    async load(c, key) {
       try {
         const s = storage()?.getItem(name(c));
         if (!s) return null;
@@ -136,7 +181,7 @@ export function storageCache(storage: () => Storage | null): EventCache {
         return null;
       }
     },
-    save(c, key, events) {
+    async save(c, key, events) {
       try {
         const methods: string[] = [];
         const idx = new Map<string, number>();
@@ -184,7 +229,7 @@ export interface EventServiceHost {
   cacheKey(c: Category): string | null;
 }
 
-export type CategoryStatus = 'idle' | 'waiting' | 'queued' | 'running' | 'ready' | 'error' | 'unavailable';
+export type CategoryStatus = 'idle' | 'waiting' | 'reading' | 'queued' | 'running' | 'ready' | 'error' | 'unavailable';
 
 export interface CategoryState {
   key: Category;
@@ -314,16 +359,31 @@ export class EventService {
       s.message = r.why;
       return;
     }
-    const hit = key && this.cache ? this.cache.load(s.key, key) : null;
-    if (hit) {
-      s.events = hit;
-      s.cached = true;
-      s.ms = null;
-      this.settle(s, 'ready', null);
+    s.message = null;
+    if (!key || !this.cache) {
+      s.status = 'queued';
       return;
     }
-    s.status = 'queued';
-    s.message = null;
+    // Results computed earlier for this data build, if any; else compute.
+    s.status = 'reading';
+    this.cache.load(s.key, key).then(
+      (hit) => {
+        if (s.status !== 'reading') return;
+        if (hit) {
+          s.events = hit;
+          s.cached = true;
+          s.ms = null;
+          this.settle(s, 'ready', null);
+        } else s.status = 'queued';
+        this.changed();
+        this.pump();
+      },
+      () => {
+        if (s.status !== 'reading') return;
+        s.status = 'queued';
+        this.pump();
+      },
+    );
   }
 
   private settle(s: CategoryState, status: 'ready' | 'error' | 'unavailable', message: string | null): void {
@@ -381,7 +441,7 @@ export class EventService {
         s.cached = false;
         this.errors.push(...r.errors);
         const key = this.host.cacheKey(s.key);
-        if (key && this.cache) this.cache.save(s.key, key, r.events);
+        if (key && this.cache) void this.cache.save(s.key, key, r.events).catch(() => undefined);
         this.settle(s, 'ready', null);
       },
       (e: Error) => this.settle(s, 'error', e.message),
