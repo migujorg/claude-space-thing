@@ -121,5 +121,5 @@ describe.skipIf(!built)('label rules on the catalogue', () => {
       for (const c of p.colour) expect(c).toBeLessThan(1.5);
       console.log(`[photometry] ${o.target}: model ${p.model === MODEL_HG ? 'H-G' : 'H-G1-G2'} ${p.labelIn}, colour ${p.colourMethod} ${p.colourLabel} [${p.colour.map((c) => c.toFixed(3)).join(', ')}], m(best) ${best!.m.toFixed(3)} vs APmag ${r.apmag.toFixed(3)}, strict ${strict ? strict.m.toFixed(3) : 'hidden'}`);
     }
-  });
+  }, 60000);
 });

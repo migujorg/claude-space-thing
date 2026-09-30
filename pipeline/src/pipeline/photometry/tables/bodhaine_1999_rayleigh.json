@@ -1,0 +1,36 @@
+{
+ "_citation": "Bodhaine, B. A., Wood, N. B., Dutton, E. G. & Slusser, J. R. (1999). On Rayleigh optical depth calculations. Journal of Atmospheric and Oceanic Technology 16, 1854-1861. DOI:10.1175/1520-0426(1999)016<1854:ORODC>2.0.CO;2. Transcribed from the AMS full-text page, whose equations and tables are images (journals.ametsoc.org/view/journals/atot/16/11/images/full-i1520-0426-16-11-1854-{e5,e6,e18,e19,e21,e22,e23,e24,e25,e27,t02,t03,t301}.gif).",
+ "_wavelengths": "lambda in micrometres, used as the vacuum wavelength (the dispersion formulas are functions of the vacuum wavenumber 1/lambda); Table 3's 'WV' column likewise.",
+ "eq5_F_N2": "F(N2) = 1.034 + 3.17e-4 / lambda^2",
+ "eq6_F_O2": "F(O2) = 1.096 + 1.385e-3 / lambda^2 + 1.448e-4 / lambda^4",
+ "eq18_n300": "(n300 - 1) 1e8 = 8060.51 + 2480990 / (132.274 - lambda^-2) + 17455.7 / (39.32957 - lambda^-2)   (Peck & Reeder 1972, dry air with 300 ppm CO2, 288.15 K, 1013.25 mb)",
+ "eq19_co2_scaling": "(n - 1)_CO2 / (n - 1)_300 = 1 + 0.54 (CO2 - 0.0003), CO2 in parts per volume (Edlen 1966)",
+ "eq21_n360": "(n360 - 1) 1e8 = 8060.77 + 2481070 / (132.274 - lambda^-2) + 17456.3 / (39.32957 - lambda^-2)",
+ "eq22_sigma": "sigma = 24 pi^3 (n^2 - 1)^2 / (lambda^4 Ns^2 (n^2 + 2)^2) * (6 + 3 rho) / (6 - 7 rho), lambda in cm, Ns in cm^-3",
+ "eq23_F_air": "F(air, CO2) = (78.084 F(N2) + 20.946 F(O2) + 0.934 * 1.00 + C_CO2 * 1.15) / (78.084 + 20.946 + 0.934 + C_CO2), C_CO2 in percent by volume (0.036 for 360 ppm)",
+ "eq24_Ns": "Ns = 6.0221367e23 / 22.4141 * 273.15 / 288.15 / 1000 = 2.546899e19 cm^-3 (288.15 K, 1013.25 mb)",
+ "eq25_tau": "tau_R = sigma P A / (m_a g)",
+ "eq27_n_co2": "(n_CO2 - 1) 1e8 = 22822.1 + 117.8 lambda^-2 + 2406030 / (130 - lambda^-2) + 15997 / (38.9 - lambda^-2)   (Owens 1967, 15 C, 1013.25 mb); used with F(CO2) = 1.15 and Ns as above",
+ "constants": {
+  "N_A_per_mol": 6.0221367e23,
+  "Ns_cm3": 2.546899e19,
+  "m_a_360ppm_g_per_mol": 28.9649,
+  "m_a_formula": "m_a = 15.0556 CO2 + 28.9595 (CO2 in parts per volume)",
+  "F_Ar": 1.00,
+  "F_CO2": 1.15,
+  "C_CO2_percent_360ppm": 0.036
+ },
+ "table2_co2": {
+  "_what": "Table 2: optical depths of the constituents of air at 1013.25 mb, altitude 0; tau(CO2) for 360 ppm",
+  "lambda_nm": [300, 340, 370],
+  "tau_N2_O2_Ar": [1.2232, 0.7163, 0.5015],
+  "tau_CO2": [0.001031, 0.0006058, 0.0004248]
+ },
+ "table3": {
+  "_what": "Table 3: scattering cross section per molecule of dry air with 360 ppm CO2, Rayleigh optical depth at sea level (1013.25 mb, 45 deg latitude) and King factor (subset: every 0.05 um from 0.35 to 0.85 um)",
+  "lambda_um": [0.350, 0.400, 0.450, 0.500, 0.550, 0.600, 0.650, 0.700, 0.750, 0.800, 0.850],
+  "sigma_cm2": [2.9289e-26, 1.6738e-26, 1.0274e-26, 6.6614e-27, 4.5105e-27, 3.1640e-27, 2.2856e-27, 1.6926e-27, 1.2803e-27, 9.8642e-28, 7.7235e-28],
+  "tau_sea_level_45N": [0.63031, 0.36022, 0.22111, 0.14336, 0.097069, 0.068092, 0.049188, 0.036424, 0.027552, 0.021228, 0.016621],
+  "king_factor": [1.05312, 1.05126, 1.05011, 1.04935, 1.04882, 1.04844, 1.04815, 1.04793, 1.04776, 1.04762, 1.04751]
+ }
+}
