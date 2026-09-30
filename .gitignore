@@ -12,3 +12,5 @@ __pycache__/
 .vite/
 test-results/
 /app/shots/
+# Agent worktrees (temporary, per-session)
+/.claude/worktrees/
