@@ -65,9 +65,12 @@ export function spatialScale(pf: PhaseFunction, phiMeasured: number, alpha: numb
   return phiMeasured / pl;
 }
 
-/** Mean radius of a triaxial body, (a+b+c)/3 (the IAU WGCCRE "mean radius" convention). */
+/**
+ * Radius R of the reflected-light contract: the volumetric mean radius (abc)^(1/3) of the triaxial
+ * radii (docs/architecture.md §4.3, the convention the `light` stage uses for geometricAlbedoXYZS).
+ */
 export function meanRadius(r: [number, number, number]): number {
-  return (r[0] + r[1] + r[2]) / 3;
+  return Math.cbrt(r[0] * r[1] * r[2]);
 }
 
 /** Disk-integrated illuminance at the observer (lux, XYZS), architecture §4.3. */
