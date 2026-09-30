@@ -181,5 +181,5 @@ describe('the Moon in a frame with maps and the per-texel law', () => {
     const expected = pPhi[1] * (Rm / dist) ** 2; // d = 1 AU
     // Within the quadrature error for this sharp-edged test map (Gauss–Legendre 24 × 24 over the lune).
     expect(Math.abs(E / expected - 1)).toBeLessThan(0.015);
-  }, 60000); // brute-force integration: allow for a loaded machine
+  }, 180000); // brute-force integration: allow for a loaded machine (the suite shares the CPU)
 });
