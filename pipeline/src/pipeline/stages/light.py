@@ -4,6 +4,7 @@ Writes
   light.json       LightData: Sun (X, Y, Z, S) at 1 AU from TSIS-1 HSRS, IAU 2015 B3 radius, per-channel limb
                    darkening from Neckel & Labs (1994); the CIE constants used.
   photometry.json  PhotometryFile: NAIF id -> BodyPhotometry for Mercury..Pluto, the Moon and the major moons.
+  rings.json       RingsFile: planet NAIF id -> RingSystem (radial optical-depth profiles from occultations).
 
 All inputs are fetched through pipeline.download.fetch (sha256-recorded) or transcribed published tables under
 pipeline/src/pipeline/photometry/tables/ (see docs/sources/). Diagnostics are printed and summarized in
@@ -12,8 +13,10 @@ docs/reports/planet-colors.md (regenerate with `uv run python -m pipeline.photom
 
 from __future__ import annotations
 
+import numpy as np
+
 from ..output import write_json
-from ..photometry import bodies, phase, solar
+from ..photometry import bodies, phase, rings, solar
 from ..schema import BuildContext
 
 DEPENDS: tuple[str, ...] = ()
@@ -48,3 +51,9 @@ def run(ctx: BuildContext) -> None:
         print(f"[light] {r.name:9s} p_V={r.p_v:.4f} xy=({x:.4f}, {y:.4f}) V(1,0)={r.v10:+.3f} (published {pub}) "
               f"{labels}")
 
+    rj, rdiag = rings.rings_json(ctx)
+    write_json(ctx, "rings.json", rj, "light")
+    for n, prof in rdiag.items():
+        tau = prof.tau[np.isfinite(prof.tau)]
+        print(f"[light] rings {n}: {prof.radius[0]:.0f}-{prof.radius[-1]:.0f} km, {prof.radius.size} bins, "
+              f"max normal tau {tau.max():.2f}")

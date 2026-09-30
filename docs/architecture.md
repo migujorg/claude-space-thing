@@ -173,6 +173,9 @@ When an attribute needed for drawing is below the current `exists` level or `unk
 | `bodies.json` | `bodies` | `Body[]` with `Sourced` attributes (geometry, rotation, GM, ephemeris wiring) |
 | `photometry.json` | `light` | NAIF id → `BodyPhotometry` (albedo spectra integrated per §4.3, phase functions); merged into bodies by the app loader |
 | `light.json` | `light` | Sun spectrum-derived quantities, CIE constants actually used |
+| `rings.json` | `light` | planet NAIF id → `RingSystem`: measured radial profiles of normal optical depth (occultations), lit-face reflectance (reserved, `unknown` so far); see below |
 | `stars/<name>.json` + `.bin` | `stars` | header + interleaved per-star data |
 
 Headers (`*.json` next to a `*.bin`) define byte layout explicitly (field name, type, count, stride) so the loader is generic.
+
+`rings.json` (`RingsFile` in schema.ts). Each `RingSystem` lies in its planet's equatorial plane (IAU pole of the planet in `bodies.json`); radii are planet-centred km. `opticalDepth` is a list of `RingProfile`s, each one measured occultation cut: bin-centre radii, normal optical depth τ⊥ (null where unconstrained) and, when the source gives it, the largest measurable τ⊥ (values at or above it are lower limits). Transmission of a ray crossing the ring plane at elevation B is exp(−τ⊥/|sin B|) to first order; in Saturn's A and B rings self-gravity wakes make the true slant optical depth depend on azimuth and elevation by tens of percent, which the profile's `method` text states rather than models. Occultation τ applies at visible wavelengths because the particles are much larger than the wavelength. `reflectance` (lit-face I/F vs radius, `RingReflectance`) is reserved and `unknown` until a measured source is processed; a renderer must mark ring brightness as not measured rather than invent it.

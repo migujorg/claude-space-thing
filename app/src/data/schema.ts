@@ -156,6 +156,56 @@ export type PhaseFunction =
   /** Polynomial in phase angle (degrees) giving magnitude correction, e.g. Mallama & Hilton (2018). Valid in [minDeg, maxDeg]. */
   | { kind: 'poly-mag'; coeffs: number[]; minDeg: number; maxDeg: number };
 
+/** rings.json: planet NAIF id (as string) → ring system. Produced by the `light` stage. See docs/architecture.md §6. */
+export type RingsFile = Record<string, RingSystem>;
+
+export interface RingSystem {
+  /** NAIF id of the planet. The ring plane is its equator (IAU pole from bodies.json); radii are planet-centred. */
+  planet: number;
+  /** Radial profiles of normal optical depth, each from one measured occultation cut. */
+  opticalDepth: Sourced<RingProfile[]>;
+  /** Lit-face reflectance vs radius. Reserved: `unknown` until a measured source is processed. */
+  reflectance: Sourced<RingReflectance>;
+}
+
+export interface RingProfile {
+  /** What the profile covers, as named by the source (e.g. "main rings", "ring system"). */
+  name: string;
+  /** Bin-centre radii, km, increasing (nominally uniform; spacing may vary by < 1 %). */
+  radiusKm: number[];
+  /** Normal optical depth τ⊥ per bin; null = not constrained. Without self-gravity wakes the slant optical depth
+   *  along a ray at elevation B above the ring plane is τ⊥ / |sin B|. */
+  normalTau: (number | null)[];
+  /** Largest measurable τ⊥ per bin (values at or above it are lower limits), when the source provides it. */
+  maxTau?: (number | null)[];
+  /** Geometry of the occultation that produced the profile. */
+  observation: {
+    instrument: string;
+    star: string;
+    direction: string;
+    /** UTC (as archived) of the first and last samples. */
+    start: string;
+    stop: string;
+    wavelengthNm: [number, number];
+    /** Elevation of the line of sight above the ring plane, degrees. */
+    ringElevationDeg: number;
+    ringLongitudeDeg?: [number, number];
+    observedRingAzimuthDeg?: [number, number];
+  };
+}
+
+/** Reserved for a measured radial I/F profile of the lit face: I/F per radius bin at the given wavelengths and geometry. */
+export interface RingReflectance {
+  kind: 'radial-if';
+  radiusKm: number[];
+  wavelengthNm: number[];
+  /** iOverF[w][r]: I/F at wavelengthNm[w], radiusKm[r]; null = not measured. */
+  iOverF: (number | null)[][];
+  phaseDeg: number;
+  incidenceDeg: number;
+  emissionDeg: number;
+}
+
 export interface SunData {
   /** Solar irradiance at 1 AU integrated against the CIE observers: X, Y (lux), Z, scotopic lux. */
   irradianceXYZS_1AU: Sourced<[number, number, number, number]>;
