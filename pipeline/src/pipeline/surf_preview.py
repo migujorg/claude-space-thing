@@ -39,7 +39,10 @@ def albedo_rgb(header: dict, level: int) -> np.ndarray:
     light = json.loads((OUT / "light.json").read_text())
     sun = np.array(light["sun"]["irradianceXYZS_1AU"]["value"][:3])
     sun_xy = sun[:2] / sun.sum()
-    if phot and phot["geometricAlbedoXYZS"]["value"]:
+    absolute = (header.get("normalization") or {}).get("absoluteDiskMean")
+    if absolute:  # Earth: absolute surface reflectance per channel (the disk photometry includes clouds)
+        base = np.array([absolute[c] for c in "XYZ"]) * sun / sun[1]
+    elif phot and phot["geometricAlbedoXYZS"]["value"]:
         base = np.array(phot["geometricAlbedoXYZS"]["value"][:3]) / sun[1]
     else:
         base = sun / sun[1]  # no disk spectrum: grey under sunlight
@@ -74,12 +77,42 @@ def height_rgb(header: dict, level: int) -> np.ndarray:
     return np.where(known[..., None], np.repeat(g[..., None], 3, axis=2), _checker(h, w))
 
 
+def field_rgb(header: dict, level: int) -> np.ndarray:
+    """Earth's dated layers, for review only. clouds: grey = cloudFraction · τ/(τ + 13.3) (a two-stream estimate of
+    cloud reflectance with asymmetry g = 0.85); night: log10 radiance 0.3-100 nW cm⁻² sr⁻¹ in warm white; water:
+    blue = waterFraction, white = sea ice. NaN (unknown) as the checkerboard."""
+    a = st.read_level(OUT, header["body"], header["layer"], level, len(header["channels"]), "f16", nodata="nan")
+    kind = header["kind"]
+    if kind == "cloud-properties":
+        f, tau = a[..., 0], np.nan_to_num(a[..., 1])
+        g = f * tau / (tau + 13.3)
+        known = np.isfinite(f)
+        rgb = np.repeat(np.nan_to_num(g)[..., None], 3, axis=2)
+    elif kind == "emitted-radiance":
+        r = a[..., 0]
+        v = np.clip((np.log10(np.maximum(np.nan_to_num(r), 1e-3)) + 0.5) / 2.5, 0, 1)
+        # texels without a Black Marble value (open ocean) are drawn dark blue instead of the checkerboard
+        rgb = np.where(np.isfinite(r)[..., None], v[..., None] * np.array([1.0, 0.8, 0.5]), np.array([0, 0, 0.08]))
+        known = np.ones(r.shape, bool)
+    else:  # surface-water
+        w, ice = a[..., 0], np.nan_to_num(a[..., 1])
+        known = np.isfinite(w)
+        rgb = (w * (1 - ice))[..., None] * np.array([0.1, 0.25, 0.7]) + (w * ice)[..., None] * np.array([0.95] * 3)
+        rgb += (1 - w)[..., None] * np.array([0.35, 0.3, 0.2])
+    return np.where(known[..., None], rgb, _checker(*known.shape))
+
+
 def write(header: dict) -> Path | None:
     kind = header["kind"]
-    if kind not in ("relative-reflectance", "height"):
+    if kind not in ("relative-reflectance", "height", "cloud-properties", "emitted-radiance", "surface-water"):
         return None
     level = max(header["minLevel"], min(header["maxLevel"], 1))
-    rgb = albedo_rgb(header, level) if kind == "relative-reflectance" else height_rgb(header, level)
+    if kind == "relative-reflectance":
+        rgb = albedo_rgb(header, level)
+    elif kind == "height":
+        rgb = height_rgb(header, level)
+    else:
+        rgb = field_rgb(header, max(header["minLevel"], min(header["maxLevel"], 2)))
     img = Image.fromarray((np.clip(rgb, 0, 1) * 255 + 0.5).astype(np.uint8))
     if img.width > MAX_W:
         img = img.resize((MAX_W, MAX_W // 2), Image.LANCZOS)

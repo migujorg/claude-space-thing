@@ -1,0 +1,12 @@
+{
+ "scene": "above",
+ "mode": "enhanced",
+ "level": "best",
+ "lit": 1570433,
+ "brightestY": 9.241747644939124e-11,
+ "brightestV": 11.097699027789387,
+ "smallBodiesAboveThreshold": 13247,
+ "pointsDrawn": 23326,
+ "limitingV": 21.900910087044853,
+ "adaptation": 0.00001
+}

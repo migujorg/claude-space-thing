@@ -16,14 +16,23 @@ What landed:
 
 Known limitations carried forward: planets are uniform-colored ellipsoids (maps come in M2); Earth's disk spectrum is a model (0.75 mag off Mallama & Hilton — measured DSCOVR EPIC data need an Earthdata login); no Milky Way diffuse light or zodiacal light yet (M4); eye adaptation is instantaneous.
 
-## M2 — True-color worlds up close  *(in progress)*
+## M2 — True-color worlds up close  *(nearly done)*
 
-Done so far: every known moon (459 besides the Moon) with kernel-exact positions; measured photometry for 39 bodies; ring optical-depth profiles for Saturn, Uranus and Neptune; lazy-loaded moon systems and a body browser.
+Surface maps from mission mosaics, every moon, rings, measured photometric models, shadows, eclipses and planetshine.
 
+Landed:
+- **Every moon:** 459 moons besides the Moon with bit-exact NAIF satellite-kernel positions (types 2, 3, 17), radii/GM/rotation where published (else unknown); lazy-loaded per planetary system; hierarchical body browser.
+- **Photometry:** measured colours and phase curves for 39 bodies (Galilean moons from Cassini ISS, Saturn's mid-size moons from VIMS with opposition surges, Uranian moons, Triton, Charon, Phobos, irregulars); the Moon from the ROLO model (colour, surge, waxing/waning asymmetry, libration); Earth's disk albedo measured from a Himawari-9 full-disk scan and checked against EPOXI (docs/reports/planet-colors.md).
+- **Rings:** optical-depth profiles for Saturn (Cassini UVIS), Uranus and Neptune (Voyager PPS); Saturn ring reflectance from a single-scattering model calibrated on HST and Voyager measurements (both faces); unmeasured ring reflectance drawn as not measured.
+- **Surfaces:** 3 GB of relative-reflectance tile pyramids calibrated by disk photometry (architecture §4.4): Moon (LROC WAC 7-band + LOLA relief + Hapke parameters), Mercury (MDIS 8-colour + DEM), Mars (HRSC colour + MOLA), Jupiter/Saturn/Uranus/Neptune (Hubble OPAL, dated 2025), Io/Europa/Ganymede/Callisto, Pluto, Charon (docs/reports/surfaces.md). Titan and Venus deliberately have no visible surface map (the eye sees haze/cloud).
+- **Renderer:** GPU virtual texturing, relief normals, Hapke/Lommel–Seeliger/Minnaert spatial laws normalized to disk photometry, ring rendering with shadows both ways, planetshine, eclipses, phase-curve continuation only at Best estimate (docs/rendering-m2.md).
 
-Surface maps from mission mosaics, major moons of every planet, Saturn's rings from Cassini profiles, measured photometric models, shadows and eclipses, planetshine.
+Remaining: Earth surface, today's clouds and night lights; Saturn's icy-moon maps from documented-brightness sources; local eye adaptation (bright close-ups currently saturate when the view centre is dark).
 
-## M3 — Every known small body
+## M3 — Every known small body  *(in progress)*
+
+Landed: 1,573,014 asteroids and comets from JPL SBDB at a common epoch with per-attribute provenance (NEOWISE diameters/albedos, LCDB rotation, Gaia DR3 spectra, SsODNet phase functions/spins/taxonomy), a Kepler-drift + planetary-kick propagator verified against Horizons (≤ 7 km for most objects over ±18 months; docs/reports/small-bodies.md), class colours from measured mean spectra, and the app side (search, inspector, selection, close-ups). Remaining: GPU propagation and drawing of all objects as points.
+
 
 The full MPC/JPL catalogs of asteroids and comets propagated on the GPU, with measured sizes, colors, rotation and shapes where they exist.
 

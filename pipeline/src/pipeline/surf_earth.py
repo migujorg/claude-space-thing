@@ -1,0 +1,902 @@
+"""Earth (NAIF 399): surface albedo, water, clouds, night lights (docs/architecture.md §4.4; research note m2 1c).
+
+Every Earth layer is dated. All inputs are public and need no login.
+
+clouds  VIIRS (NOAA-20) cloud properties of one UTC day, product CLDPROP_L2_VIIRS_NOAA20 v1.1 (Platnick et al. 2021),
+        as served by NASA GIBS: cloud-top height (daytime) and cloud optical thickness with its thermodynamic phase,
+        decoded exactly (to one colour-map bin) from the published GIBS colour maps. Sampled at ~1.1 km and
+        aggregated to level 4 (4.9 km): cloud fraction (share of samples with a cloud-top retrieval), mean in-cloud
+        optical thickness, mean cloud-top height and ice fraction. Each place is seen at the NOAA-20 daytime overpass
+        (~13:30 local solar time) of that day.
+night   VIIRS (NOAA-20) Black Marble gap-filled, lunar-BRDF-corrected nighttime-light radiance VJ146A2 (Román et al.
+        2018) of one day, decoded from its GIBS colour map (bins 0.1 nW cm⁻² sr⁻¹ wide below 5, up to 0.6 near the
+        top, open-ended above 38.2: those samples are lower bounds and counted in a censored-fraction channel). The
+        header gives the factors that turn Day/Night-Band radiance into X, Y, Z, S luminance for CIE lamp spectra
+        (an assumption: the spectrum of the light is not measured).
+albedo  Nadir reflectance factor relative to its disk mean (XYZS; the absolute disk means are in the header): land
+        from the MODIS MCD43A4 v061 nadir BRDF-adjusted reflectance (Schaaf et al. 2002; Planetary Computer
+        cloud-optimized copies), water from the ESA Ocean Colour CCI v6.0 monthly remote-sensing reflectance
+        (ρw = π Rrs). See `build_albedo`.
+water   Fraction of each texel that is water (ocean and inland water) and the sea-ice concentration, so the renderer
+        can add Fresnel reflection and sun glint (not part of the albedo) where they apply.
+"""
+
+from __future__ import annotations
+
+import concurrent.futures as cf
+import datetime as _dt
+import json
+import os
+import threading
+import time
+import urllib.parse
+import zipfile
+from pathlib import Path
+
+import numpy as np
+import requests
+
+from . import cie
+from . import surf_cog
+from . import surf_gibs as gb
+from . import surf_layers as sl
+from . import surf_tiles as st
+from .download import fetch, record
+from .schema import BuildContext
+from .surf_fetch import discard
+
+NAIF = 399
+NAME = "Earth"
+SUBDIR = "surfaces/earth"
+LEVEL = 4
+SAMPLES = 4                      # WMS pixels per texel along each axis (1.1 km samples for 4.9 km texels)
+DAY_SZA_MAX = 81.36              # CLDPROP daytime retrieval limit (solar zenith angle, degrees)
+OVERPASS_LST_H = 13.5            # NOAA-20 ascending-node local solar time
+
+L_COT = "VIIRS_NOAA20_Cloud_Optical_Thickness"
+L_CTH = "VIIRS_NOAA20_Cloud_Top_Height_Day"
+L_DNB = "VIIRS_NOAA20_GapFilled_BRDF_Corrected_DayNightBand_Radiance"
+
+FRAME = {"name": "IAU_EARTH (≈ ITRF93 at this resolution)",
+         "sourceLatitude": "WGS84 geodetic (all sources); texel rows are resampled to planetocentric latitude "
+                           "(nearest row, shift ≤ 0.19°)",
+         "note": "Longitudes are WGS84/ITRF; the IAU_EARTH rotation model (no nutation, UT1 or polar motion) "
+                 "matches ITRF to ≲ 40″, a fraction of a level-4 texel (0.044°)."}
+
+SOLAR_SOURCE = "tsis1-hsrs-v2"   # registered by the light stage (photometry.solar)
+SRC_GIBS = "nasa-gibs"
+SRC_CLDPROP = "viirs-noaa20-cldprop"
+SRC_VJ146 = "viirs-noaa20-vj146a2"
+SRC_DNB_RSR = "noaa20-viirs-dnb-rsr"
+SRC_CIE_HP = "cie-illuminants-hp"
+SRC_CIE_LED = "cie-illuminants-led"
+
+
+# ---------------------------------------------------------------------------------------------- helpers
+
+
+def _fetch_blocks(layer: str, day: str) -> list[tuple[tuple, int, int, Path]]:
+    """Download the 16 WMS blocks of a layer (4 in parallel; download.fetch is thread-safe)."""
+    h, w = st.level_shape(LEVEL)
+    bw, bh = w * SAMPLES // 4, h * SAMPLES // 4
+    items = list(gb.blocks(4, 4))
+    with cf.ThreadPoolExecutor(4) as ex:
+        paths = list(ex.map(lambda it: gb.getmap(layer, day, it[0], bw, bh), items))
+    return [(it[0], it[1], it[2], p) for it, p in zip(items, paths)]
+
+
+def _reshape_blocks(a: np.ndarray) -> np.ndarray:
+    """(H·S, W·S) block → (H, W, S·S) samples per texel."""
+    hh, ww = a.shape[0] // SAMPLES, a.shape[1] // SAMPLES
+    return a.reshape(hh, SAMPLES, ww, SAMPLES).transpose(0, 2, 1, 3).reshape(hh, ww, SAMPLES * SAMPLES)
+
+
+WGS84_F = 1 / 298.257223563
+
+
+def geodetic_from_centric(lat_deg):
+    """WGS84 geodetic latitude of a planetocentric latitude (tan φg = tan φc / (1 − f)²)."""
+    return np.degrees(np.arctan(np.tan(np.radians(lat_deg)) / (1 - WGS84_F) ** 2))
+
+
+def centric_from_geodetic(lat_deg):
+    return np.degrees(np.arctan(np.tan(np.radians(lat_deg)) * (1 - WGS84_F) ** 2))
+
+
+def centric_rows(level: int) -> np.ndarray:
+    """For each planetocentric texel row, the row of the same-size grid in WGS84 geodetic latitude (all Earth
+    products are on geodetic latitude) that contains its centre: `planetocentric = geodetic[centric_rows]`.
+    Nearest-row resampling, so positions are within half a texel; the shift is up to 0.19° (≈ 4 level-4 rows)."""
+    h, _ = st.level_shape(level)
+    g = geodetic_from_centric(st.lat_centers(level))
+    return np.clip(np.floor((90.0 - g) / (180.0 / h)).astype(np.int64), 0, h - 1)
+
+
+def solar_declination_deg(day: str) -> float:
+    """Solar declination at noon UTC of `day` (Spencer 1971 Fourier series, J. Opt. Soc. Am. 61, 1159), only used to
+    decide which latitudes had daylight at the overpass (a coverage mask, not a data value)."""
+    d = _dt.date.fromisoformat(day)
+    g = 2 * np.pi * (d.timetuple().tm_yday - 1) / 365.0
+    dec = (0.006918 - 0.399912 * np.cos(g) + 0.070257 * np.sin(g) - 0.006758 * np.cos(2 * g)
+           + 0.000907 * np.sin(2 * g) - 0.002697 * np.cos(3 * g) + 0.00148 * np.sin(3 * g))
+    return float(np.degrees(dec))
+
+
+def daylit_rows(day: str) -> np.ndarray:
+    """Texel rows whose latitude had the Sun above the CLDPROP daytime limit at the ~13:30 overpass."""
+    lat = np.radians(st.lat_centers(LEVEL))
+    dec = np.radians(solar_declination_deg(day))
+    hour = np.radians(15.0 * (OVERPASS_LST_H - 12.0))
+    cos_sza = np.sin(lat) * np.sin(dec) + np.cos(lat) * np.cos(dec) * np.cos(hour)
+    return cos_sza > np.cos(np.radians(DAY_SZA_MAX))
+
+
+def _register_gibs(ctx: BuildContext) -> str:
+    caps = gb.capabilities()
+    return sl.register_dataset(
+        ctx, SRC_GIBS, "NASA Global Imagery Browse Services (GIBS) WMTS/WMS and colour maps",
+        "NASA Global Imagery Browse Services (GIBS), part of NASA's Earth Science Data and Information System "
+        "(ESDIS). https://earthdata.nasa.gov/gibs. Colour maps: https://gibs.earthdata.nasa.gov/colormaps/v1.3/.",
+        gb.CAPS, {caps.name: record(caps)}, license="NASA data policy (no restrictions on use; cite GIBS)",
+        notes="Capabilities document of the build day; layer images are fetched by WMS GetMap and decoded through "
+              "the layer's colour map (see the layer sources).")
+
+
+# ---------------------------------------------------------------------------------------------- clouds
+
+
+def build_clouds(ctx: BuildContext) -> dict:
+    caps = gb.capabilities()
+    i_cot, i_cth = gb.layer_info(caps, L_COT), gb.layer_info(caps, L_CTH)
+    day = min(i_cot["default"], i_cth["default"])
+    cm_cot, cm_cth = gb.colormap(i_cot["colormap"]), gb.colormap(i_cth["colormap"])
+    ice_cls = next(i for i, c in enumerate(cm_cot.classes) if "Ice" in c)
+    h, w = st.level_shape(LEVEL)
+    top = np.full((h, w, 4), np.nan, np.float32)
+    files, stats = {}, {"unmatchedColours": 0, "cthCensored": 0}
+    for (bbox, bi, bj, p_cot), (_, _, _, p_cth) in zip(_fetch_blocks(L_COT, day), _fetch_blocks(L_CTH, day)):
+        cot, cls, _, u1 = gb.decode(gb.read_rgba(p_cot), cm_cot)
+        cth, _, cen, u2 = gb.decode(gb.read_rgba(p_cth), cm_cth)
+        stats["unmatchedColours"] += u1 + u2
+        stats["cthCensored"] += int(cen.sum())
+        files[p_cot.name], files[p_cth.name] = record(p_cot), record(p_cth)
+        discard(p_cot)
+        discard(p_cth)
+        cot_s, cth_s, cls_s = _reshape_blocks(cot), _reshape_blocks(cth), _reshape_blocks(cls)
+        n = SAMPLES * SAMPLES
+        cloudy = np.isfinite(cth_s) | np.isfinite(cot_s)
+        f = cloudy.sum(axis=2) / n
+        n_cot = np.isfinite(cot_s).sum(axis=2)
+        n_cth = np.isfinite(cth_s).sum(axis=2)
+        with np.errstate(invalid="ignore", divide="ignore"):
+            cot_m = np.where(n_cot > 0, np.nansum(cot_s, axis=2) / np.maximum(n_cot, 1), np.nan)
+            cth_m = np.where(n_cth > 0, np.nansum(cth_s, axis=2) / np.maximum(n_cth, 1), np.nan)
+            ice = np.where(n_cot > 0, (cls_s == ice_cls).sum(axis=2) / np.maximum(n_cot, 1), np.nan)
+        clear = f == 0
+        blk = np.stack([f, np.where(clear, 0, cot_m), np.where(clear, 0, cth_m), np.where(clear, 0, ice)], axis=-1)
+        rows = slice(bi * (h // 4), (bi + 1) * (h // 4))
+        cols = slice(bj * (w // 4), (bj + 1) * (w // 4))
+        top[rows, cols] = blk
+    top = top[centric_rows(LEVEL)]
+    known = np.repeat(daylit_rows(day)[:, None], w, axis=1)
+    top[~known] = np.nan
+    gibs_id = _register_gibs(ctx)
+    sl.register_dataset(
+        ctx, SRC_CLDPROP, f"VIIRS/NOAA-20 cloud properties (CLDPROP_L2_VIIRS_NOAA20 v1.1), {day}, via GIBS",
+        "Platnick, S., Meyer, K., Wind, G., Holz, R. E., Amarasinghe, N., Hubanks, P. A., Marchant, B., Dutcher, S. "
+        "& Veglio, P. (2021). The NASA MODIS-VIIRS continuity cloud optical properties products. Remote Sensing 13, "
+        "2. doi:10.3390/rs13010002. Product: CLDPROP_L2_VIIRS_NOAA20 v1.1 (LAADS DAAC), GIBS layers "
+        f"{L_COT} and {L_CTH}.",
+        gb.WMS, files, version=f"CLDPROP v1.1, GIBS day {day}", license="NASA data policy (no restrictions)",
+        notes=f"WMS GetMap PNG blocks (EPSG:4326, {SAMPLES}×{SAMPLES} samples per level-{LEVEL} texel) decoded with "
+              f"{cm_cot.url} ({len(cm_cot.keys)} bins, ice/water phase) and {cm_cth.url} ({len(cm_cth.keys)} bins, "
+              "50 m). Blocks deleted after decoding.")
+    frac = top[..., 0][known]
+    spec = sl.LayerSpec(
+        naif=NAIF, body=NAME, layer="clouds", kind="cloud-properties", fmt="f16", nodata="nan",
+        channels=["cloudFraction", "opticalThickness", "cloudTopHeightM", "iceFraction"],
+        frame=FRAME,
+        sources=[SRC_CLDPROP, gibs_id],
+        brightness=sl.Provenance("measured", [SRC_CLDPROP, gibs_id],
+                                 "L2 retrievals (cloud-top height from the IR/CO2-slicing algorithm, optical thickness "
+                                 "at 0.65/0.86 µm with its phase) decoded to one colour-map bin, aggregated per texel "
+                                 f"from {SAMPLES * SAMPLES} ~1.1 km samples.",
+                                 "COT bins ~4 % wide (1-100; one bin 0.01-1 and one 100-150); CTH bins 50 m, ≥ 12 km "
+                                 "open-ended (value = 12 km, a lower bound)"),
+        regions=[sl.Region(float(st.lat_centers(LEVEL)[known[:, 0]].min()),
+                           float(st.lat_centers(LEVEL)[known[:, 0]].max()), -180, 180,
+                           sl.Provenance("measured", [SRC_CLDPROP], "daylit at the NOAA-20 overpass"),
+                           note="Poleward of the daylit band (Sun below the CLDPROP day limit at ~13:30 local) the "
+                                "layer is unknown.")],
+        epoch={"start": f"{day}T00:00:00Z", "end": f"{day}T23:59:59Z",
+               "observed": f"{day}, each place at the NOAA-20 daytime overpass (~13:30 local solar time)",
+               "changes": "clouds change within minutes to hours; this is a one-day snapshot, 'estimated' at any other "
+                          "time"},
+        units=None,
+        constants={"channels": {
+            "cloudFraction": "share of the texel's samples with a retrieved cloud top (0-1); clear and failed "
+                             "retrievals are not distinguished",
+            "opticalThickness": "mean retrieved cloud optical thickness of the samples that have one (in-cloud "
+                                "mean; 0 where cloudFraction = 0; NaN = cloudy but no optical-thickness retrieval)",
+            "cloudTopHeightM": "mean cloud-top height (m, as in CLDPROP) of the cloudy samples",
+            "iceFraction": "share of optical-thickness samples retrieved as ice phase"},
+            "samplesPerTexel": SAMPLES * SAMPLES, "sourceDate": day},
+        diagnostics={"meanCloudFraction": float(np.nanmean(frac)), "unmatchedColours": stats["unmatchedColours"],
+                     "cthCensoredSamples": stats["cthCensored"],
+                     "daylitLatitudeRange": [float(st.lat_centers(LEVEL)[known[:, 0]].min()),
+                                             float(st.lat_centers(LEVEL)[known[:, 0]].max())]},
+        notes=["Cloud fraction counts cloud-top retrievals, so partly cloudy pixels with a retrieval count as cloudy; "
+               "optical thickness is only retrieved for overcast pixels, so its mean is biased towards thick cloud.",
+               "Over bright snow and ice the cloud mask is less reliable.",
+               "Rendering: in-cloud optical thickness with the cloud fraction and phase, at the cloud-top height, "
+               "gives the cloud's reflectance and transmission; GIBS true-colour imagery is not used."],
+    )
+    return sl.write_layer(ctx, spec, top, known, LEVEL)
+
+
+# ---------------------------------------------------------------------------------------------- night lights
+
+RSR_ZIP = "https://ncc.nesdis.noaa.gov/NOAA-20/docs/J1_VIIRS_RSR_DAWG_At-Launch_Public_Release_V2.1_Nov2016.zip"
+RSR_MEMBER = "J1_VIIRS_BA_RSR_V2F/J1_VIIRS_RSR_DNBLGS_BA_Fused_V2FS.txt"
+CIE_BASE = "https://files.cie.co.at/Publications-datasets/"
+
+
+def dnb_rsr() -> tuple[np.ndarray, Path]:
+    """NOAA-20 VIIRS DNB (low-gain stage) band-averaged relative spectral response on the CIE grid."""
+    path = fetch(RSR_ZIP, SUBDIR)
+    with zipfile.ZipFile(path) as z:
+        rows = [ln.split() for ln in z.read(RSR_MEMBER).decode("latin-1").splitlines()
+                if ln.strip() and not ln.startswith("%")]
+    wl = np.array([float(r[1]) for r in rows])
+    rsr = np.array([float(r[2]) for r in rows])
+    o = np.argsort(wl)
+    return np.interp(cie.WAVELENGTHS, wl[o], rsr[o], left=0.0, right=0.0), path
+
+
+def cie_lamp(file: str, meta_suffix: str, column: str) -> tuple[np.ndarray, Path]:
+    """One column of a CIE illuminant table on the CIE grid (linear interpolation, zero outside, as the CIE
+    metadata specifies). The table is checked against the sha256 and column sums published in its metadata, and
+    the column is found by the metadata's column titles (the CSV has no header row)."""
+    path = fetch(CIE_BASE + file, "cie")
+    meta_path = fetch(CIE_BASE + file + meta_suffix, "cie")
+    meta = json.loads(meta_path.read_text())
+    data = np.loadtxt(path, delimiter=",")
+    cie._validate(path, meta_path, data)
+    titles = [c["title"] for c in meta["datatableInfo"]["columnHeaders"]]
+    if len(titles) != data.shape[1] or titles[0] != "lambda":
+        raise ValueError(f"{file}: metadata columns {titles} do not match the table")
+    j = titles.index(column)
+    return np.interp(cie.WAVELENGTHS, data[:, 0], data[:, j], left=0.0, right=0.0), path
+
+
+def luminance_factors(rsr: np.ndarray, spectrum: np.ndarray) -> list[float]:
+    """X, Y, Z, S (cd m⁻² etc.) per 1 nW cm⁻² sr⁻¹ of DNB radiance for a light of spectral shape `spectrum`,
+    with DNB radiance = ∫ L(λ) RSR(λ) dλ (RSR peak-normalized)."""
+    obs = np.vstack([cie.cmfs().T, cie.scotopic()[None, :]])
+    k = np.array([cie.KM_PHOTOPIC] * 3 + [cie.KM_SCOTOPIC])
+    per_band = (obs * spectrum[None, :]).sum(axis=1) * k / (spectrum * rsr / rsr.max()).sum()
+    return [float(v) * 1e-5 for v in per_band]   # 1 nW cm⁻² sr⁻¹ = 1e-5 W m⁻² sr⁻¹
+
+
+def build_night(ctx: BuildContext) -> dict:
+    rsr, rsr_path = dnb_rsr()
+    hp1, hp_path = cie_lamp("CIE_illum_HPs.csv", "_metadata_v2.json", "HP1")
+    led, led_path = cie_lamp("CIE_illum_LEDs_1nm.csv", "_metadata.json", "LED-B3")
+    f_hp1, f_led = luminance_factors(rsr, hp1), luminance_factors(rsr, led)
+    caps = gb.capabilities()
+    info = gb.layer_info(caps, L_DNB)
+    day = info["default"]
+    cm = gb.colormap(info["colormap"])
+    h, w = st.level_shape(LEVEL)
+    top = np.full((h, w, 2), np.nan, np.float32)
+    files, unmatched = {}, 0
+    for bbox, bi, bj, p in _fetch_blocks(L_DNB, day):
+        val, _, cen, u = gb.decode(gb.read_rgba(p), cm)
+        unmatched += u
+        files[p.name] = record(p)
+        discard(p)
+        v, c = _reshape_blocks(val), _reshape_blocks(cen)
+        n = np.isfinite(v).sum(axis=2)
+        with np.errstate(invalid="ignore", divide="ignore"):
+            mean = np.where(n > 0, np.nansum(v, axis=2) / np.maximum(n, 1), np.nan)
+            cfr = np.where(n > 0, c.sum(axis=2) / np.maximum(n, 1), np.nan)
+        rows = slice(bi * (h // 4), (bi + 1) * (h // 4))
+        cols = slice(bj * (w // 4), (bj + 1) * (w // 4))
+        top[rows, cols] = np.stack([mean, cfr], axis=-1)
+    top = top[centric_rows(LEVEL)]
+    known = np.isfinite(top[..., 0])
+    gibs_id = _register_gibs(ctx)
+    sl.register_dataset(
+        ctx, SRC_VJ146, f"VIIRS/NOAA-20 Black Marble gap-filled BRDF-adjusted nighttime lights VJ146A2, {day}, via GIBS",
+        "Román, M. O. et al. (2018). NASA's Black Marble nighttime lights product suite. Remote Sensing of "
+        "Environment 210, 113-143. doi:10.1016/j.rse.2018.03.017. Product: VJ146A2 v2 (VIIRS/JPSS1 Gap-Filled Lunar "
+        f"BRDF-Adjusted Nighttime Lights Daily L3, 15 arc-second), GIBS layer {L_DNB}.",
+        gb.WMS, files, version=f"VJ146A2 v2, GIBS day {day}", license="NASA data policy (no restrictions)",
+        notes=f"Decoded with {cm.url}: bins 0.1 nW cm⁻² sr⁻¹ wide below 5, widening to 0.6 at 38.2, then one "
+              "open-ended bin; blocks deleted.")
+    rsr_id = sl.register_dataset(
+        ctx, SRC_DNB_RSR, "NOAA-20 (JPSS-1) VIIRS relative spectral responses, DAWG at-launch release V2.1",
+        "NOAA/NESDIS STAR and the JPSS VIIRS Data Analysis Working Group (2016). J1 VIIRS RSR DAWG At-Launch Public "
+        "Release V2.1 (Nov 2016); band-averaged fused DNB low-gain-stage RSR (J1_VIIRS_RSR_DNBLGS_BA_Fused_V2FS).",
+        RSR_ZIP, {rsr_path.name: record(rsr_path)}, license="public domain (NOAA)")
+    for sid, pth, title in ((SRC_CIE_HP, hp_path, "high-pressure discharge lamp illuminants HP1-HP5"),
+                            (SRC_CIE_LED, led_path, "illuminants representing typical LED lamps (1 nm)")):
+        sl.register_dataset(ctx, sid, f"CIE relative spectral power distributions of {title}",
+                            "CIE 015:2018 Colorimetry, 4th ed., DOI:10.25039/TR.015.2018; data table published by the "
+                            "CIE (files.cie.co.at, Publications-datasets).", CIE_BASE + pth.name,
+                            {pth.name: record(pth)}, license="CC BY-SA 4.0")
+    spec = sl.LayerSpec(
+        naif=NAIF, body=NAME, layer="night", kind="emitted-radiance", fmt="f16", nodata="nan",
+        channels=["dnbRadiance", "censoredFraction"],
+        frame=FRAME,
+        sources=[SRC_VJ146, gibs_id, rsr_id, SRC_CIE_HP, SRC_CIE_LED],
+        brightness=sl.Provenance("measured", [SRC_VJ146, gibs_id],
+                                 "Black Marble at-surface nighttime-light radiance in the VIIRS Day/Night Band "
+                                 "(500-900 nm), moonlight, atmosphere and viewing-angle effects removed by the product, "
+                                 f"cloud gaps filled from earlier clear nights; mean of {SAMPLES * SAMPLES} samples per "
+                                 "texel.",
+                                 "quantization 0.1 (below 5) to 0.6 nW cm⁻² sr⁻¹ (near 38); samples ≥ 38.2 are lower "
+                                 "bounds (share in censoredFraction), so bright city cores are underestimated"),
+        color=sl.Provenance("estimated", [rsr_id, SRC_CIE_HP, SRC_CIE_LED],
+                            "Luminance needs the lamps' spectrum, which is not measured: constants.toXYZS gives "
+                            "X, Y, Z, S per nW cm⁻² sr⁻¹ for CIE HP1 (high-pressure sodium) and CIE LED-B3 (4000 K "
+                            "phosphor LED), computed with the NOAA-20 DNB response.",
+                            f"Y factors differ by {abs(f_hp1[1] / f_led[1] - 1) * 100:.0f} % between the two spectra; "
+                            "the CIE tables end at 780 nm while the DNB responds to ~900 nm, so lamp emission beyond "
+                            "780 nm (e.g. the 819 nm sodium lines of HPS lamps) is missing from the DNB integral and "
+                            "the factors are upper limits"),
+        units="nW cm⁻² sr⁻¹",
+        regions=[sl.Region(-90, 90, -180, 180, sl.Provenance("measured", [SRC_VJ146], "VJ146A2 land tiles"),
+                           note="Open ocean and other areas without a Black Marble value are unknown.")],
+        epoch={"start": f"{day}T00:00:00Z", "end": f"{day}T23:59:59Z",
+               "observed": f"night of {day} (NOAA-20 overpass ~01:30 local), gaps filled from earlier nights",
+               "changes": "lights vary nightly (fires, fishing fleets, gas flares, outages) and seasonally"},
+        constants={"toXYZS": {"HP1": f_hp1, "LED-B3": f_led,
+                              "units": "cd m⁻² (X, Y, Z; scotopic cd m⁻² for S) per nW cm⁻² sr⁻¹",
+                              "definition": "DNB radiance = ∫ L(λ) RSR(λ) dλ with the RSR normalized to peak 1; "
+                                            "luminance = K_m ∫ L(λ) V(λ) dλ"},
+                   "censoredAbove": 38.2, "sourceDate": day},
+        diagnostics={"unmatchedColours": unmatched,
+                     "knownFraction": float(known.mean()),
+                     "texelsWithCensoring": int((top[..., 1] > 0).sum())},
+        notes=["Radiance, not luminance, is stored because the conversion depends on the unmeasured lamp spectrum."],
+    )
+    return sl.write_layer(ctx, spec, top, known, LEVEL)
+
+
+# ---------------------------------------------------------------------------------------------- water
+
+
+L_WATER = "MODIS_Terra_L3_Land_Water_Mask"
+L_SEAICE = "GHRSST_L4_MUR_Sea_Ice_Concentration"
+WATER_RGB = (168, 248, 255)
+SRC_MOD44W = "modis-mod44w-v6-water-mask"
+SRC_MUR_ICE = "ghrsst-mur-sea-ice"
+
+
+SOUTH_LIMIT = -60.0     # south of this, MOD44W "water" also means "not mapped" (see WaterMask)
+ETOPO_DAP = ("https://www.ngdc.noaa.gov/thredds/dodsC/global/ETOPO2022/60s/60s_surface_elev_netcdf/"
+             "ETOPO_2022_v1_60s_N90W180_surface.nc")
+SRC_ETOPO = "noaa-etopo-2022"
+
+
+def etopo_south() -> tuple[np.ndarray, Path]:
+    """ETOPO 2022 60″ surface elevation (m, EGM2008) for 90°S-60°S, all longitudes: (1800, 21600), row 0 at
+    89.99°S (the file's latitude is ascending). Read as one OPeNDAP binary subset (DAP2 XDR, big-endian)."""
+    rows = int(round((SOUTH_LIMIT + 90.0) * 60))
+    url = f"{ETOPO_DAP}.dods?z.z[0:1:{rows - 1}][0:1:21599]"
+    path = fetch(url, f"{SUBDIR}/etopo", f"etopo2022-60s-surface-south{int(-SOUTH_LIMIT)}.dods", timeout=900,
+                 validate=lambda q: b"Data:\n" in q.read_bytes()[:2000])
+    raw = path.read_bytes()
+    i = raw.index(b"Data:\n")
+    if f"z[lat = {rows}][lon = 21600]".encode() not in raw[:i]:
+        raise ValueError(f"{path.name}: unexpected DAP structure {raw[:i]!r}")
+    n = np.frombuffer(raw, ">u4", 2, i + 6)
+    if n[0] != rows * 21600:
+        raise ValueError(f"{path.name}: {n[0]} values, expected {rows * 21600}")
+    z = np.frombuffer(raw, ">f4", rows * 21600, i + 14).astype(np.float32).reshape(rows, 21600)
+    return z, path
+
+
+class WaterMask:
+    """Land/water mask at SAMPLES × SAMPLES points per level-4 texel on the WGS84 geodetic grid, kept as packed bits
+    (1 = water), with the texel water fraction and sea-ice concentration on the planetocentric grid.
+
+    North of 60°S: MOD44W v6 (GIBS). Its colour map draws the product's no-data value (253) in the water colour
+    (`sourceValue="1,253"`), and MOD44W does not map Antarctica, so the whole continent comes out as water. South
+    of 60°S the mask is therefore taken from ETOPO 2022 instead: a sample is water where the 60″ surface
+    elevation (ice surface on land and on the floating ice shelves, bathymetry at sea) is ≤ 0 m.
+    """
+
+    def __init__(self):
+        caps = gb.capabilities()
+        self.info = gb.layer_info(caps, L_WATER)
+        self.day = self.info["default"]
+        self.ice_info = gb.layer_info(caps, L_SEAICE)
+        self.ice_day = self.ice_info["default"]
+        cm = gb.colormap(self.ice_info["colormap"])
+        self.ice_cm_url = cm.url
+        h, w = st.level_shape(LEVEL)
+        self.sh, self.sw = h * SAMPLES, w * SAMPLES
+        self.bits = np.zeros((self.sh, self.sw // 8), np.uint8)
+        frac = np.zeros((h, w), np.float32)
+        ice = np.full((h, w), np.nan, np.float32)
+        self.files, self.ice_files = {}, {}
+        self.unmatched = 0
+        agree = {"mod44wLandWithMur": 0, "mod44wLand": 0}
+        lat_s = 90.0 - (np.arange(self.sh) + 0.5) * (180.0 / self.sh)    # geodetic latitude of sample rows
+        lon_s = -180.0 + (np.arange(self.sw) + 0.5) * (360.0 / self.sw)
+        etopo, self.etopo_path = etopo_south()
+        et_col = np.clip(np.floor((lon_s + 180.0) * 60).astype(np.int64), 0, 21599)
+        for (bbox, bi, bj, p), (_, _, _, q) in zip(_fetch_blocks(L_WATER, self.day),
+                                                    _fetch_blocks(L_SEAICE, self.ice_day)):
+            rgba = gb.read_rgba(p)
+            opaque = rgba[..., 3] > 0
+            wat = (opaque & (rgba[..., 0] == WATER_RGB[0]) & (rgba[..., 1] == WATER_RGB[1])
+                   & (rgba[..., 2] == WATER_RGB[2]))
+            if (opaque & ~wat).any():
+                raise ValueError(f"{p.name}: unexpected opaque colours in the water mask")
+            val, _, _, u = gb.decode(gb.read_rgba(q), cm)
+            self.unmatched += u
+            self.files[p.name], self.ice_files[q.name] = record(p), record(q)
+            discard(p)
+            discard(q)
+            r0, c0 = bi * rgba.shape[0], bj * rgba.shape[1]
+            north = (lat_s[r0:r0 + rgba.shape[0]] >= SOUTH_LIMIT)[:, None]
+            mur = np.isfinite(val)       # MUR has a sea-ice value (only near the ice, not a full ocean mask)
+            agree["mod44wLandWithMur"] += int((~wat & mur & north).sum())
+            agree["mod44wLand"] += int((~wat & north).sum())
+            south = ~north[:, 0]
+            if south.any():
+                et_row = np.clip(np.floor((lat_s[r0:r0 + rgba.shape[0]][south] + 90.0) * 60).astype(np.int64), 0,
+                                 etopo.shape[0] - 1)
+                wat[south] = etopo[et_row][:, et_col[c0:c0 + rgba.shape[1]]] <= 0
+            self.bits[r0:r0 + rgba.shape[0], c0 // 8:(c0 + rgba.shape[1]) // 8] = np.packbits(wat, axis=1)
+            rs = slice(r0 // SAMPLES, (r0 + rgba.shape[0]) // SAMPLES)
+            cs = slice(c0 // SAMPLES, (c0 + rgba.shape[1]) // SAMPLES)
+            frac[rs, cs] = _reshape_blocks(wat).mean(axis=2)
+            v = _reshape_blocks(val)
+            n = np.isfinite(v).sum(axis=2)
+            with np.errstate(invalid="ignore", divide="ignore"):
+                ice[rs, cs] = np.where(n > 0, np.nansum(v, axis=2) / np.maximum(n, 1), np.nan) / 100.0
+        rows = centric_rows(LEVEL)
+        self.fraction = frac[rows]
+        self.ice = ice[rows]
+        self.agreement = {
+            "mod44wLandSamplesWithSeaIceValue": round(agree["mod44wLandWithMur"] / max(agree["mod44wLand"], 1), 5),
+            "what": "north of 60°S, share of MOD44W land samples where the MUR analysis has a sea-ice value (a "
+                    "coastline mismatch between the two products; should be ≪ 1)"}
+
+    def at(self, lat_g_deg: np.ndarray, lon_deg: np.ndarray) -> np.ndarray:
+        """Water flag (bool) at geodetic latitude / east longitude points."""
+        r = np.clip(np.floor((90.0 - lat_g_deg) * (self.sh / 180.0)).astype(np.int64), 0, self.sh - 1)
+        c = np.floor((np.asarray(lon_deg) + 180.0) * (self.sw / 360.0)).astype(np.int64) % self.sw
+        return ((self.bits[r, c >> 3] >> (7 - (c & 7))) & 1).astype(bool)
+
+
+def build_water(ctx: BuildContext, mask: WaterMask) -> dict:
+    h, w = st.level_shape(LEVEL)
+    day, files, unmatched, ice = mask.ice_day, mask.ice_files, mask.unmatched, mask.ice
+    top = np.stack([mask.fraction, ice], axis=-1)
+    known = np.ones((h, w), bool)
+    gibs_id = _register_gibs(ctx)
+    sl.register_dataset(
+        ctx, SRC_MOD44W, "MODIS/Terra land/water mask MOD44W v6 (250 m), via GIBS",
+        "Carroll, M. L., DiMiceli, C. M., Wooten, M. R., Hubbard, A. B., Sohlberg, R. A. & Townshend, J. R. G. "
+        "(2017). MOD44W MODIS/Terra Land Water Mask Derived from MODIS and SRTM L3 Global 250m SIN Grid V006. NASA "
+        "EOSDIS Land Processes DAAC. doi:10.5067/MODIS/MOD44W.006. GIBS layer " + L_WATER + ".",
+        gb.WMS, mask.files, version=f"MOD44W v6, year {mask.day[:4]}", license="NASA data policy (no restrictions)",
+        notes=f"Two-class colour map {mask.info['colormap']}: land transparent, water AND the no-data value 253 "
+              f"opaque {WATER_RGB}; MOD44W does not map Antarctica, so it is used only north of 60°S. Blocks deleted "
+              "after decoding.")
+    sl.register_dataset(
+        ctx, SRC_ETOPO, "NOAA ETOPO 2022 global relief, 60 arc-second surface elevation (90°S-60°S subset)",
+        "NOAA National Centers for Environmental Information (2022). ETOPO 2022 15 Arc-Second Global Relief Model. "
+        "doi:10.25921/fd45-gt74. 60 arc-second surface-elevation version (ice surface over Antarctica and Greenland, "
+        "bathymetry at sea; heights relative to EGM2008).",
+        ETOPO_DAP, {mask.etopo_path.name: record(mask.etopo_path)}, version="ETOPO 2022 v1",
+        license="public domain (NOAA)",
+        notes="OPeNDAP binary subset of rows 90°S-60°S, all longitudes; used only as the land/water mask south of "
+              "60°S (water = elevation ≤ 0 m).")
+    sl.register_dataset(
+        ctx, SRC_MUR_ICE, f"GHRSST MUR L4 sea-ice concentration, {day}, via GIBS",
+        "JPL MUR MEaSUREs Project (2015). GHRSST Level 4 MUR Global Foundation Sea Surface Temperature Analysis "
+        "(v4.1), sea_ice_fraction variable (from EUMETSAT OSI SAF passive-microwave sea-ice concentration). PO.DAAC, "
+        "doi:10.5067/GHGMR-4FJ04. GIBS layer " + L_SEAICE + ".",
+        gb.WMS, files, version=f"MUR v4.1, GIBS day {day}", license="NASA data policy (no restrictions)",
+        notes=f"Decoded with {mask.ice_cm_url} (1 % bins); blocks deleted. The analysis has values only near the "
+              "sea ice (none on land or over the open ocean far from ice).")
+    spec = sl.LayerSpec(
+        naif=NAIF, body=NAME, layer="water", kind="surface-water", fmt="f16", nodata="nan",
+        channels=["waterFraction", "seaIceFraction"],
+        frame=FRAME, sources=[SRC_MOD44W, SRC_ETOPO, SRC_MUR_ICE, gibs_id],
+        brightness=sl.Provenance("measured", [SRC_MOD44W, SRC_ETOPO, SRC_MUR_ICE, gibs_id],
+                                 f"waterFraction: share of the texel's {SAMPLES * SAMPLES} samples that are water "
+                                 "(ocean and inland water): MOD44W 250 m north of 60°S, ETOPO 2022 surface elevation "
+                                 "≤ 0 m south of it (MOD44W does not map Antarctica; ice shelves count as land). seaIceFraction: mean MUR sea-ice concentration "
+                                 "(0-1) of the texel's samples that have one (NaN where none, e.g. land).",
+                                 "MOD44W is from 2000-2015 MODIS/SRTM data; coastlines and reservoirs that changed "
+                                 "since are not updated. Sea-ice concentration from passive microwave (~10-25 km "
+                                 "footprints) interpolated by the MUR analysis."),
+        epoch={"start": f"{day}T00:00:00Z", "end": f"{day}T23:59:59Z",
+               "observed": f"land/water mask: MOD44W v6 year {mask.day[:4]}; sea ice: MUR analysis of {day}",
+               "changes": "sea ice changes daily to seasonally (Arctic minimum in September); the land/water mask "
+                          "changes on years to decades"},
+        constants={"channels": {
+            "waterFraction": "fraction of the texel that is open or ice-covered water (0-1)",
+            "seaIceFraction": "sea-ice concentration (0-1) over the texel's water; NaN = no value in the analysis "
+                              "(land, and open ocean away from the ice: no ice)"},
+            "samplesPerTexel": SAMPLES * SAMPLES, "seaIceDate": day, "waterMaskYear": mask.day[:4]},
+        diagnostics={"unmatchedColours": unmatched, "maskAgreement": mask.agreement,
+                     "waterAreaFraction": round(st.area_mean(mask.fraction, LEVEL), 5),
+                     "texelsWithSeaIceOver15pc": int((ice > 0.15).sum())},
+        notes=["The renderer adds specular (Fresnel) reflection and sun glint of the water surface on waterFraction "
+               "× (1 − seaIceFraction); the albedo layer holds only the diffuse, water-leaving part."],
+    )
+    return sl.write_layer(ctx, spec, top, known, LEVEL)
+
+
+# ---------------------------------------------------------------------------------------------- albedo
+
+PC_STAC = "https://planetarycomputer.microsoft.com/api/stac/v1/search"
+PC_SAS = "https://planetarycomputer.microsoft.com/api/sas/v1/token/modiseuwest/modis-061-cogs"
+MCD_COLLECTION = "modis-43A4-061"
+MCD_BANDS = (("Nadir_Reflectance_Band3", 469.0), ("Nadir_Reflectance_Band4", 555.0),
+             ("Nadir_Reflectance_Band1", 645.0))
+MCD_PAGE = 1                        # 926.6 m overview (2 × 2 reduction of the 463 m product)
+MCD_SCALE = 1e-4
+MODIS_R = 6371007.181               # radius of the MODIS sinusoidal grid sphere (m)
+SRC_MCD43 = "modis-mcd43a4-v061"
+SRC_PC = "microsoft-planetary-computer"
+SRC_OCCCI = "esa-oc-cci-v6-rrs"
+OC_BANDS = (412.0, 443.0, 490.0, 510.0, 560.0, 665.0)
+OC_MONTH = "2025-09"
+OC_NCSS = ("https://www.oceancolour.org/thredds/ncss/cci/v6.0-release/geographic/monthly/rrs/{y}/"
+           "ESACCI-OC-L3S-RRS-MERGED-1M_MONTHLY_4km_GEO_PML_RRS-{y}{m}-fv6.0.nc")
+
+
+class _Sas:
+    """Planetary Computer read token for the MODIS container (a URL signature; never written to the ledger)."""
+
+    def __init__(self):
+        self.token, self.expiry = None, 0.0
+        self.lock = threading.Lock()
+
+    def params(self) -> dict:
+        with self.lock:
+            if self.token is None or time.time() > self.expiry - 600:
+                r = requests.get(PC_SAS, timeout=60)
+                r.raise_for_status()
+                j = r.json()
+                self.token = j["token"]
+                exp = j.get("msft:expiry", "")
+                self.expiry = (_dt.datetime.fromisoformat(exp.replace("Z", "+00:00")).timestamp() if exp
+                               else time.time() + 1800)
+            return dict(urllib.parse.parse_qsl(self.token))
+
+
+def mcd43_items() -> tuple[str, list[dict], list[Path]]:
+    """STAC items of the most recent MCD43A4 day (all tiles), and the saved STAC responses."""
+    today = _dt.datetime.now(_dt.timezone.utc).date().isoformat()
+    latest = fetch(PC_STAC, f"{SUBDIR}/mcd43a4", f"stac-latest-{today}.json",
+                   params={"collections": MCD_COLLECTION, "limit": "1", "sortby": "-datetime"})
+    dt = json.loads(latest.read_text())["features"][0]["properties"]["datetime"]
+    day = dt[:10]
+    doy = f"A{day[:4]}{_dt.date.fromisoformat(day).timetuple().tm_yday:03d}"
+    items, paths, k = [], [latest], 0
+    url, params = PC_STAC, {"collections": MCD_COLLECTION, "datetime": dt, "limit": "1000"}
+    while url:
+        pth = fetch(url, f"{SUBDIR}/mcd43a4", f"stac-{doy}-{k}.json", params=params)
+        paths.append(pth)
+        page = json.loads(pth.read_text())
+        items += [f for f in page["features"] if f"{doy}." in f["id"]]
+        nxt = [ln for ln in page.get("links", []) if ln.get("rel") == "next"]
+        url, params, k = (nxt[0]["href"], None, k + 1) if nxt else (None, None, k)
+    if len(items) < 250:
+        raise RuntimeError(f"MCD43A4 {doy}: only {len(items)} tiles in the STAC catalogue")
+    return doy, sorted(items, key=lambda f: f["id"]), paths
+
+
+def _mcd43_tile(item: dict, sas: _Sas) -> tuple[object, np.ndarray, dict]:
+    """(COG level info, reflectance (3, n, n) float32 with NaN = fill, ledger records) of one tile."""
+    out, recs, lv0 = [], {}, None
+    for band, _ in MCD_BANDS:
+        href = item["assets"][band]["href"]
+        stem = href.rsplit("/", 1)[1].removesuffix(".tif")
+        img, lv, paths = surf_cog.read_level(href, sas.params(), f"{SUBDIR}/mcd43a4", stem, MCD_PAGE, href)
+        for pth in paths:
+            recs[pth.name] = record(pth)
+            discard(pth)
+        nod = lv.nodata if lv.nodata is not None else 32767
+        # values below the product's valid range (0..32766) occur only as ringing of the cubic overview filter
+        # next to dark or fill pixels (0.1 % of pixels, median −0.0008); they are kept so that averages over
+        # texels stay unbiased
+        out.append(np.where(img != nod, img.astype(np.float32) * np.float32(MCD_SCALE), np.nan))
+        lv0 = lv0 or lv
+    return lv0, np.stack(out), recs
+
+
+def _sinusoidal_texels(lv, n: int, mask: WaterMask) -> tuple[np.ndarray, np.ndarray]:
+    """For the n × n pixels of a tile overview: texel flat index (planetocentric level-4 grid; −1 off the globe)
+    and water flag. Pixel centres are mapped exactly (sinusoidal inverse on the MODIS sphere, whose latitude is
+    WGS84 geodetic)."""
+    h, w = st.level_shape(LEVEL)
+    s = lv.scale[0] * lv.full_shape[0] / n
+    x0, y0 = lv.tiepoint
+    x = x0 + (np.arange(n) + 0.5) * s
+    y = y0 - (np.arange(n) + 0.5) * s
+    phi_g = np.degrees(y / MODIS_R)
+    coslat = np.cos(np.radians(phi_g))
+    lam = np.degrees(x[None, :] / (MODIS_R * np.maximum(coslat[:, None], 1e-12)))
+    on = np.abs(lam) <= 180.0
+    phi_c = centric_from_geodetic(phi_g)
+    row = np.clip(np.floor((90.0 - phi_c) / (180.0 / h)).astype(np.int64), 0, h - 1)
+    col = np.floor((np.clip(lam, -180, 180 - 1e-9) + 180.0) / (360.0 / w)).astype(np.int64)
+    idx = np.where(on, row[:, None] * w + col, -1)
+    wat = mask.at(np.repeat(phi_g[:, None], n, axis=1), np.where(on, lam, 0.0))
+    return idx, wat
+
+
+def land_accumulate(mask: WaterMask) -> dict:
+    """Box-average MCD43A4 NBAR (3 bands) into level-4 texels, separately for MOD44W land and water pixels."""
+    h, w = st.level_shape(LEVEL)
+    acc = {k: np.zeros((h * w, 3), np.float32) for k in ("land", "water")}
+    cnt = {k: np.zeros(h * w, np.uint16) for k in ("land", "water")}
+    doy, items, stac_paths = mcd43_items()
+    sas = _Sas()
+    files, fill = {}, [0, 0]
+    t0 = time.time()
+    with cf.ThreadPoolExecutor(6) as ex:
+        for k0 in range(0, len(items), 12):
+            for lv, refl, recs in ex.map(lambda it: _mcd43_tile(it, sas), items[k0:k0 + 12]):
+                files.update(recs)
+                n = refl.shape[1]
+                idx, wat = _sinusoidal_texels(lv, n, mask)
+                good = np.isfinite(refl).all(axis=0)
+                fill[0] += int(((idx >= 0) & ~good).sum())
+                fill[1] += int((idx >= 0).sum())
+                ok = (idx >= 0) & good
+                for kind, sel in (("land", ok & ~wat), ("water", ok & wat)):
+                    ii = idx[sel]
+                    if ii.size == 0:
+                        continue
+                    lo = int(ii.min())
+                    loc = ii - lo
+                    m = int(loc.max()) + 1
+                    cnt[kind][lo:lo + m] += np.bincount(loc, minlength=m).astype(np.uint16)
+                    for b in range(3):
+                        acc[kind][lo:lo + m, b] += np.bincount(loc, weights=refl[b][sel],
+                                                               minlength=m).astype(np.float32)
+            print(f"[surfaces] Earth MCD43A4 {doy}: {min(k0 + 12, len(items))}/{len(items)} tiles "
+                  f"({time.time() - t0:.0f} s)", flush=True)
+    return {"doy": doy, "items": items, "stac": stac_paths, "files": files, "acc": acc, "cnt": cnt,
+            "fillFraction": fill[0] / max(fill[1], 1)}
+
+
+def ocean_rrs() -> tuple[np.ndarray, dict, str]:
+    """OC-CCI v6.0 monthly Rrs (6 bands) at each level-4 texel centre (nearest 4 km cell), as ρw = π·Rrs;
+    NaN where a band is missing. Downloaded in four longitude blocks through the THREDDS subset service."""
+    import h5py
+    h, w = st.level_shape(LEVEL)
+    y, m = OC_MONTH.split("-")
+    base = OC_NCSS.format(y=y, m=m)
+    names = [f"Rrs_{int(b)}" for b in OC_BANDS]
+    out = np.full((h, w, len(OC_BANDS)), np.nan, np.float32)
+    lat_g = geodetic_from_centric(st.lat_centers(LEVEL))
+    lon = st.lon_centers(LEVEL)
+    files = {}
+    for q in range(4):
+        west, east = -180 + 90 * q, -90 + 90 * q
+        query = "&".join([f"var={v}" for v in names] + [f"north=90&south=-90&west={west}&east={east}",
+                                                         "horizStride=1&accept=netcdf4"])
+        pth = fetch(f"{base}?{query}", f"{SUBDIR}/occci", f"occci-rrs-{y}{m}-lon{west}.nc", timeout=900,
+                    validate=lambda p: p.read_bytes()[:8] == b"\x89HDF\r\n\x1a\n")
+        files[pth.name] = record(pth)
+        with h5py.File(pth, "r") as f:
+            la, lo = f["lat"][:], f["lon"][:]
+            dla, dlo = abs(la[1] - la[0]), abs(lo[1] - lo[0])
+            sel = (lon >= west) & (lon < east)
+            ci = np.clip(np.round((lon[sel] - lo[0]) / dlo).astype(int), 0, lo.size - 1)
+            if la[0] > la[-1]:
+                ri = np.clip(np.round((la[0] - lat_g) / dla).astype(int), 0, la.size - 1)
+            else:
+                ri = np.clip(np.round((lat_g - la[0]) / dla).astype(int), 0, la.size - 1)
+            if np.abs(lo[ci] - lon[sel]).max() > dlo or np.abs(la[ri] - lat_g).max() > dla:
+                raise ValueError(f"{pth.name}: grid lookup failed")
+            for b, v in enumerate(names):
+                ds = f[v]
+                fillv = ds.attrs.get("_FillValue")
+                a = (ds[0] if ds.ndim == 3 else ds[:])[np.ix_(ri, ci)].astype(np.float32)
+                if fillv is not None:
+                    a[a == np.float32(np.ravel(fillv)[0])] = np.nan
+                a[~(np.abs(a) < 1)] = np.nan
+                out[:, sel, b] = np.pi * a
+        discard(pth)
+    return out, files, base
+
+
+def build_albedo(ctx: BuildContext, mask: WaterMask) -> dict:
+    from . import surf_color as sc
+    from .photometry import solar
+    h, w = st.level_shape(LEVEL)
+    e = solar.spectrum().grid
+    ones = np.ones_like(e)
+    c_land = [b[1] for b in MCD_BANDS]
+    W_land = sc.channel_weights(c_land, ones, e)
+    W_oc = sc.channel_weights(OC_BANDS, ones, e)
+    diag_land = sc.diagnostics(c_land, ones, e)
+    diag_oc = sc.diagnostics(OC_BANDS, ones, e)
+
+    oc, oc_files, oc_url = ocean_rrs()
+    neg = int((oc < 0).sum())
+    oc = np.maximum(oc, 0)
+    la = land_accumulate(mask)
+    fw = mask.fraction
+    top = np.zeros((h, w, 4), np.float32)
+    known = np.zeros((h, w), bool)
+    part = {"land": 0.0, "ocean": 0.0, "modisWater": 0.0}
+    rng = np.random.default_rng(NAIF)
+    samples_land, samples_oc = [], []
+    strip = 256
+    lat = st.lat_centers(LEVEL)
+    for r0 in range(0, h, strip):
+        rs = slice(r0, r0 + strip)
+        fl = slice(r0 * w, (r0 + strip) * w)
+        nl = la["cnt"]["land"][fl].reshape(strip, w)
+        nw = la["cnt"]["water"][fl].reshape(strip, w)
+        with np.errstate(invalid="ignore", divide="ignore"):
+            bl = la["acc"]["land"][fl].reshape(strip, w, 3) / nl[..., None]
+            bw = la["acc"]["water"][fl].reshape(strip, w, 3) / nw[..., None]
+        L = bl @ W_land.T
+        Wm = bw @ W_land.T
+        ocs = oc[rs]
+        oc_x = ocs @ W_oc.T
+        ko = np.isfinite(oc_x).all(axis=-1)
+        kl = nl > 0
+        kw_m = nw > 0
+        water_val = np.where(ko[..., None], oc_x, Wm)
+        kw = ko | kw_m
+        f = fw[rs]
+        wl = np.where(kl & (f < 1), 1 - f, 0).astype(np.float32)
+        ww = np.where(kw & (f > 0), f, 0).astype(np.float32)
+        den = wl + ww
+        k = den > 0
+        with np.errstate(invalid="ignore", divide="ignore"):
+            val = (wl[..., None] * np.nan_to_num(L) + ww[..., None] * np.nan_to_num(water_val)) / den[..., None]
+        top[rs] = np.where(k[..., None], val, 0)
+        known[rs] = k
+        wr = np.cos(np.radians(lat[rs]))[:, None] ** 2
+        part["land"] += float((wr * wl).sum())
+        part["ocean"] += float((wr * ww * ko).sum())
+        part["modisWater"] += float((wr * ww * (~ko & kw_m)).sum())
+        jl = np.argwhere(kl & (f == 0))
+        if jl.size:
+            pick = jl[rng.choice(len(jl), size=min(300, len(jl)), replace=False)]
+            samples_land += [bl[a, b] for a, b in pick]
+        jo = np.argwhere(ko & (f == 1))
+        if jo.size:
+            pick = jo[rng.choice(len(jo), size=min(300, len(jo)), replace=False)]
+            samples_oc += [ocs[a, b] for a, b in pick]
+    del la["acc"], la["cnt"], oc
+    negative_texels = int((known & (top < 0).any(axis=-1)).sum())
+    np.maximum(top, 0, out=top)
+    absolute = st.disk_mean(top, known, LEVEL)
+    top /= absolute.astype(np.float32)[None, None, :]
+    top[~known] = 0
+    check = st.disk_mean(top, known, LEVEL)
+    spread_land = sc.interpolation_spread(np.array(samples_land), c_land, ones, e)
+    spread_oc = sc.interpolation_spread(np.array(samples_oc), OC_BANDS, ones, e)
+    tot = sum(part.values())
+    share = {k: round(v / tot, 5) for k, v in part.items()}
+
+    first = la["items"][0]["properties"]
+    pc_id = sl.register_dataset(
+        ctx, SRC_PC, "Microsoft Planetary Computer STAC API and cloud-optimized MODIS v061 copies",
+        "Microsoft Open Source, McFarland, M., Emanuele, R., Morris, D. & Augspurger, T. (2022). "
+        "microsoft/PlanetaryComputer: October 2022 (2022.10.28). Zenodo. doi:10.5281/zenodo.7261897. Collection "
+        f"{MCD_COLLECTION} (cloud-optimized GeoTIFF conversions of the LP DAAC HDF files).",
+        PC_STAC, {p.name: record(p) for p in la["stac"]}, license="MODIS data: no restrictions (NASA data policy)",
+        notes="STAC search responses of the build day. Files are read with an anonymous read token that is not "
+              "recorded.")
+    sl.register_dataset(
+        ctx, SRC_MCD43, f"MODIS Terra+Aqua BRDF-adjusted nadir reflectance MCD43A4 v061, {la['doy']}",
+        "Schaaf, C. & Wang, Z. (2021). MODIS/Terra+Aqua BRDF/Albedo Nadir BRDF Adjusted Ref Daily L3 Global - 500m "
+        "V061. NASA EOSDIS Land Processes DAAC. doi:10.5067/MODIS/MCD43A4.061. Algorithm: Schaaf, C. B. et al. "
+        "(2002). First operational BRDF, albedo nadir reflectance products from MODIS. Remote Sensing of "
+        "Environment 83, 135-148. doi:10.1016/S0034-4257(02)00091-3.",
+        la["items"][0]["assets"][MCD_BANDS[0][0]]["href"].rsplit("/", 4)[0], la["files"], version="v061",
+        license="NASA data policy (no restrictions)",
+        notes=f"{len(la['items'])} sinusoidal tiles of {la['doy']} (16-day window {first['start_datetime'][:10]} to "
+              f"{first['end_datetime'][:10]}), bands 3 (459-479 nm), 4 (545-565 nm), 1 (620-670 nm); for each "
+              "band file the COG header and the first overview (926.6 m, a GDAL cubic 2 × 2 reduction as stated in "
+              "the file's IMAGE_STRUCTURE metadata) were read by byte range and deleted after use.")
+    sl.register_dataset(
+        ctx, SRC_OCCCI, f"ESA Ocean Colour CCI v6.0 monthly remote-sensing reflectance, {OC_MONTH}",
+        "Sathyendranath, S., Jackson, T., Brockmann, C., Brotas, V., Calton, B., Chuprin, A., Clements, O., "
+        "Cipollini, P., Danne, O., Dingle, J., Donlon, C., Grant, M., Groom, S., Krasemann, H., Lavender, S., "
+        "Mazeran, C., Mélin, F., Müller, D., Steinmetz, F., Valente, A., Zühlke, M., Feldman, G., Franz, B., Frouin, "
+        "R., Werdell, J. & Platt, T. (2023). ESA Ocean Colour Climate Change Initiative (Ocean_Colour_cci): Version "
+        "6.0, 4km resolution data. NERC EDS Centre for Environmental Data Analysis. "
+        "doi:10.5285/5011d22aae5a4671b0cbc7d05c56c4f0.",
+        oc_url, oc_files, version="v6.0", license="free and open (ESA CCI data policy; cite the dataset)",
+        notes="THREDDS NetCDF subset service, variables " + ", ".join(f"Rrs_{int(b)}" for b in OC_BANDS)
+              + ", four 90° longitude blocks at full 1/24° resolution; files deleted after use.")
+    solar_src = SOLAR_SOURCE
+    cie_src = ["cie-1931-2deg-cmf", "cie-1951-scotopic"]
+    spec = sl.LayerSpec(
+        naif=NAIF, body=NAME, layer="albedo", kind="relative-reflectance", fmt="f16", channels=list(sc.CHANNELS),
+        coarse="half", frame=FRAME, sources=[SRC_MCD43, SRC_OCCCI, SRC_MOD44W, SRC_ETOPO, pc_id, solar_src, *cie_src],
+        brightness=sl.Provenance(
+            "measured", [SRC_MCD43, SRC_OCCCI, SRC_MOD44W, SRC_ETOPO],
+            "Land: MODIS nadir BRDF-adjusted reflectance (reflectance factor for a nadir view with the Sun at local "
+            "solar noon, from the 16-day multi-angle BRDF inversion; atmospherically corrected), box-averaged from "
+            "926 m pixels. Water: water-leaving reflectance ρw = π·Rrs from the OC-CCI monthly composite (nearest "
+            "4 km cell); where it has no value, the MODIS NBAR of water pixels (inland and coastal water). A texel "
+            "mixes its land and water parts by the water fraction of the water layer; if one part is unknown, the "
+            "texel is the known part. Channels are absolute reflectances ∫E☉·obs_c·r dλ / ∫E☉·obs_c dλ divided by their disk "
+            "means (normalization.absoluteDiskMean).",
+            "MCD43A4 NBAR: a few % (relative), more where only a magnitude inversion was possible; ocean ρw: tens "
+            "of % in the red and in turbid or coastal water (atmospheric-correction residuals)"),
+        color=sl.Provenance(
+            sl.worst(diag_land.label, diag_oc.label), [SRC_MCD43, SRC_OCCCI, solar_src, *cie_src],
+            "Reflectance interpolated linearly between band centres and held flat outside, integrated against "
+            "sunlight and the CIE observers. Land: " + diag_land.reason + " Water: " + diag_oc.reason,
+            "linear vs monotone-cubic interpolation, 99th percentile |Δ|: land "
+            + ", ".join(f"{k} {v['p99'] * 100:.1f} %" for k, v in spread_land.items()) + "; water "
+            + ", ".join(f"{k} {v['p99'] * 100:.1f} %" for k, v in spread_oc.items())
+            + ". Vegetation's red edge (> 690 nm) is not sampled: the flat hold beyond 645 nm underestimates X "
+              "slightly for green vegetation."),
+        regions=[sl.Region(-90, 90, -180, 180,
+                           sl.Provenance("measured", [SRC_MCD43, SRC_OCCCI], "land MCD43A4, water OC-CCI"),
+                           note="Unknown: sea ice (neither product retrieves it), polar night and persistently "
+                                "cloudy areas (no retrieval in the 16-day / monthly windows).")],
+        epoch={"start": first["start_datetime"][:19] + "Z", "end": first["end_datetime"][:19] + "Z",
+               "observed": f"land: MCD43A4 {la['doy']} (16-day window {first['start_datetime'][:10]} to "
+                           f"{first['end_datetime'][:10]}, weighted to its centre day {first['datetime'][:10]}); "
+                           f"water: OC-CCI monthly composite {OC_MONTH} (the same season one year earlier, the "
+                           "most recent September available)",
+               "changes": "vegetation, snow, crops, fires and phytoplankton change over days to months; the map "
+                          "is one season"},
+        normalization={
+            "weighting": "cos²(lat) projected area at zero phase, equatorial observer, rotation-averaged; known "
+                         "texels only",
+            "absoluteDiskMean": {c: round(float(v), 6) for c, v in zip(sc.CHANNELS, absolute)},
+            "absoluteMeaning": "texel × absoluteDiskMean[c] = absolute surface reflectance factor in channel c "
+                               "(sunlight-weighted observer average of the reflectance spectrum; no atmosphere, no "
+                               "clouds, no specular water reflection). Earth's disk photometry (photometry.json) "
+                               "includes clouds and atmosphere and must not be used to scale this map.",
+            "lambertSphereGeometricAlbedo": {c: round(float(v) * 2 / 3, 6) for c, v in zip(sc.CHANNELS, absolute)},
+            "channelWeights": {"land": {"bandsNm": c_land, "W": [[round(float(x), 6) for x in r] for r in W_land]},
+                               "water": {"bandsNm": list(OC_BANDS),
+                                         "W": [[round(float(x), 6) for x in r] for r in W_oc]}},
+            "texelDiskMeanCheck": [round(float(x), 5) for x in check]},
+        diagnostics={"colorLand": diag_land.to_json(), "colorWater": diag_oc.to_json(),
+                     "interpolationSpreadLand": spread_land, "interpolationSpreadWater": spread_oc,
+                     "diskWeightShare": share, "mcd43FillFraction": round(la["fillFraction"], 5),
+                     "negativeRrsClipped": neg, "negativeTexelsClipped": negative_texels,
+                     "mcd43Tiles": len(la["items"])},
+        notes=["NBAR is the reflectance for a nadir view with the Sun at the local-noon zenith angle of the centre "
+               "day, not the reflectance at normal incidence; land surfaces are strongly non-Lambertian (hot spot, "
+               "forward scattering), which the renderer's photometric model must supply.",
+               "Water texels hold only the diffuse water-leaving part; the specular Fresnel reflection of sun and sky "
+               "and the glint follow from the water layer.",
+               "MOD44W water pixels without an OC-CCI value (lakes, rivers, some coasts) use the MCD43A4 NBAR, whose "
+               "land atmospheric correction is less suited to dark water."],
+    )
+    return sl.write_layer(ctx, spec, top, known, LEVEL)
+
+
+def build(ctx: BuildContext, work: Path) -> list[dict]:
+    only = {s.strip() for s in os.environ.get("SURFACES_EARTH_LAYERS", "").split(",") if s.strip()}
+    out = []
+    if not only or "clouds" in only:
+        out.append(build_clouds(ctx))
+    if not only or "night" in only:
+        out.append(build_night(ctx))
+    if not only or {"water", "albedo"} & only:
+        mask = WaterMask()
+        if not only or "water" in only:
+            out.append(build_water(ctx, mask))
+        if not only or "albedo" in only:
+            out.append(build_albedo(ctx, mask))
+    return out

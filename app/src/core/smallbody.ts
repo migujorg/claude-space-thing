@@ -21,9 +21,14 @@
 // Conventions (2010) Eq. 10.12 (1PN); Marsden, Sekanina & Yeomans (1973) AJ 78, 211 (non-gravitational g(r)).
 
 import type { SmallBodyForceModel } from '../data/schema';
-import type { EphemerisSet } from './ephemeris';
+import type { Vec3 } from './vec';
 
 export type { SmallBodyForceModel };
+
+/** What the propagator needs from an ephemeris (EphemerisSet satisfies it): SSB positions by NAIF id, km. */
+export interface PlanetPositions {
+  positionSSB(id: number, et: number): Vec3 | null;
+}
 
 export const SB_OK = 0;
 /** Passed inside a perturber's (or the Sun's) radius: later positions are meaningless. */
@@ -236,12 +241,12 @@ export interface PropagationStats {
 }
 
 /**
- * The propagator bound to a force model and an ephemeris. Heliocentric perturber positions come from
- * `eph.positionSSB(id) − eph.positionSSB(sun)`.
+ * The propagator bound to a force model and an ephemeris (e.g. an EphemerisSet). Heliocentric perturber positions
+ * come from `eph.positionSSB(id) − eph.positionSSB(sun)`.
  */
 export class SmallBodyPropagator {
   readonly model: SmallBodyForceModel;
-  readonly eph: EphemerisSet;
+  readonly eph: PlanetPositions;
   readonly mu: number;
   readonly obliquity: number;
   private readonly ids: number[];
@@ -259,7 +264,7 @@ export class SmallBodyPropagator {
   private readonly rpe: Float64Array;
   private readonly a = new Float64Array(3);
 
-  constructor(model: SmallBodyForceModel, eph: EphemerisSet) {
+  constructor(model: SmallBodyForceModel, eph: PlanetPositions) {
     this.model = model;
     this.eph = eph;
     this.mu = model.sun.gm;

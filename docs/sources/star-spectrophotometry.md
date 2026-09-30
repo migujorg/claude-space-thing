@@ -44,3 +44,27 @@ sample between 360 and 830 nm is measured.
   corrected; it is the systematic uncertainty of the ~200 stars lit this way.
 - **Not used:** `table6.dat` (320–735 nm only): its range stops short of 830 nm, so integrating it would need
   an assumed red tail.
+
+## Sternberg spectrophotometric catalogues — `sternberg-spectrophotometry`
+
+- **What:** VizieR III/208 (866 stars, 322.5–762.5 nm) and III/207 (223 stars, 597.5–1082.5 nm), absolute energy
+  distributions in 5 nm steps from the Crimean station of the Sternberg Astronomical Institute (48 and 60 cm
+  reflectors, 1970–1984), standards calibrated on Hayes' (1985) Vega; stated mean accuracy 3.2 %. Units
+  erg cm⁻² s⁻¹ cm⁻¹ (× 10⁻¹⁰ → W m⁻² nm⁻¹). Ground-based, so wavelengths are in air (as the CIE tables).
+- **Citation:** Glushneva I. N., Doroshenko V. T., Fetisova T. S., Khruzina T. S., Kolotilov E. A.,
+  Mossakovskaya L. V., Ovchinnikov S. L. & Voloshina I. B. 1998, VizieR catalogues III/208 and III/207
+  (1998yCat.3208....0G, 1998yCat.3207....0G), from Trudy Gosud. Astron. Inst. Shternberga 53, 50 (1983) and 54, 3
+  (1984).
+- **URL:** `https://cdsarc.cds.unistra.fr/ftp/III/208/` and `.../III/207/` (`ReadMe`, `catalog.dat.gz`).
+- **Parsing notes:** 8-character E fields from byte 89; III/208 writes an absent sample with exponent `E-12`
+  (e.g. `103.E-12`), III/207 as `0.E+00` — both read as missing (anything below 10⁻⁹ in file units). HR written
+  `0361/2` is the combined light of two HR stars (not used).
+- **Splice:** a star needs both catalogues to cover 360–830 nm. The spectrum is III/208 below 597.5 nm, the mean
+  of both in the 597.5–762.5 nm overlap and III/207 above. The two were observed and calibrated separately, so a
+  star is used only when the median III/207 / III/208 ratio in the overlap is within 5 % of 1 and its rms about
+  the median ≤ 5 % (170 Hipparcos stars have both; 53 fail this).
+- **Matching:** as Pulkovo (HD → Hipparcos, V within 0.10 mag, no blend), and only when no CALSPEC, XP or
+  Pulkovo spectrum applies. 50 records use it, among them Aldebaran, Spica and Polaris (previously photometric
+  estimates).
+- **Absolute scale:** on 58 stars also measured by Pulkovo, Sternberg Y is 0.7 % brighter (median; rms 0.048 mag)
+  and slightly bluer (Δx −0.004, Δy −0.005) — docs/reports/sky.md §2.

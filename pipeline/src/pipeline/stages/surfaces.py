@@ -10,6 +10,7 @@ Environment:
   SURFACES_BODIES=301,599   rebuild only these bodies (others' products are kept in the manifest)
   SURFACES_KEEP_CACHE=1     keep data/cache/surfaces (reduced intermediates) for fast re-runs; by default it is
                             deleted when the stage finishes (large raw mosaics are deleted right after reduction).
+  SURFACES_EARTH_LAYERS=clouds,night   rebuild only these Earth layers (albedo, water, clouds, night)
 """
 
 from __future__ import annotations
@@ -32,7 +33,9 @@ BUILDERS: list[tuple[str, tuple[int, ...]]] = [
     ("surf_giants", (599, 699, 799, 899)),
     ("surf_mars", (499,)),
     ("surf_mercury", (199,)),
-    ("surf_pan", (501, 502, 503, 504, 999, 901)),
+    ("surf_pan", (501, 502, 503, 504)),
+    ("surf_nh", (999, 901)),
+    ("surf_earth", (399,)),
 ]
 
 # Bodies whose surface the naked eye cannot see: no visible-light surface map is produced for them.
@@ -45,18 +48,30 @@ EXCLUDED = {
 }
 
 # Bodies with a candidate map that failed a check (so they are rendered from photometry only for now).
+_DLR = ("The DLR Cassini ISS cartographic atlas maps archived in PDS (COISS_3001-3007, Roatsch et al.; 8-bit "
+        "simple-cylindrical mosaics with a Hapke/Henyey-Greenstein photometric correction but no documented DN "
+        "scaling) were tested too and give the same ratios: they are the source of the USGS mosaics.")
 REJECTED = {
-    608: "Iapetus: the USGS/CICLOPS Cassini-Voyager global mosaic (783 m) implies a leading/trailing brightness ratio "
-         "of only 0.84 (0.18 mag) at zero phase, against the ~2 mag asymmetry observed since Cassini (1671): its "
-         "large-scale contrast is compressed, so it is not a reflectance map.",
+    608: "Iapetus: the USGS/CICLOPS Cassini-Voyager global mosaic (783 m) and the DLR atlas map SI_3M_0_0_SIMP "
+         "(COISS_3005) both imply a leading/trailing brightness ratio of only 0.84 (0.18 mag) at zero phase, against "
+         "the ~2 mag asymmetry observed since Cassini (1671): their large-scale contrast is compressed, so they are "
+         "not reflectance maps. " + _DLR,
     604: "Dione: the USGS/CICLOPS global mosaic (154 m) implies a leading/trailing ratio of 1.04 and the bright ray "
-         "crater Creusa does not stand out; same map series as Iapetus, brightness scaling unverified.",
-    603: "Tethys: USGS/CICLOPS global mosaic (293 m) from the same map series as Iapetus and Dione; brightness scaling "
-         "unverified (implied leading/trailing ratio 1.09).",
-    605: "Rhea: USGS/CICLOPS global mosaic (417 m), same map series; brightness scaling unverified (implied "
-         "leading/trailing ratio 1.17).",
-    602: "Enceladus: the 110 m mosaic (Bland et al. 2018; non-HPF version) derives from the same CICLOPS map series; "
-         "brightness scaling unverified.",
+         "crater Creusa does not stand out; same map series as Iapetus, brightness scaling unverified. " + _DLR,
+    603: "Tethys: USGS/CICLOPS global mosaic (293 m) and DLR map ST_1M_0_0_SIMP (COISS_3004), same series as "
+         "Iapetus; brightness scaling unverified (implied leading/trailing ratio 1.08-1.09).",
+    605: "Rhea: USGS/CICLOPS global mosaic (417 m) and DLR map SR_1500K_0_0_SIMP (COISS_3007), same series; "
+         "brightness scaling unverified (implied leading/trailing ratio 1.17).",
+    602: "Enceladus: the 110 m mosaic (Bland et al. 2018; non-HPF version) and DLR map SE_400K_0_0_SIMP (COISS_3002) "
+         "derive from the same map series; brightness scaling unverified.",
+    601: "Mimas: DLR map SM_1M_0_0_SIMP (COISS_3006), same series as Iapetus; brightness scaling unverified (implied "
+         "leading/trailing ratio 0.93).",
+    609: "Phoebe: DLR map SP_1M_0_0_SIMP (COISS_3001), same series (8-bit, undocumented DN scaling; 20 % of the map "
+         "has no data).",
+    801: "Triton: the USGS global and orthographic colour mosaics are the 1989 Voyager 2 display composite PIA00317 "
+         "(orange, violet and ultraviolet images shown as red, green, blue; the GlobalFill version adds synthetic "
+         "fill), and the orthographic clear-channel mosaic is an 8-bit product without documented scaling; no "
+         "calibrated Triton map was found in PDS.",
 }
 
 
@@ -67,7 +82,7 @@ def run(ctx: BuildContext) -> None:
     work_root = CACHE / "surfaces"
     index_path = OUT / "surfaces" / "index.json"
     index = json.loads(index_path.read_text()) if (only and index_path.exists()) else {"bodies": {}}
-    built: set[int] = set()
+    built: set[tuple[int, str]] = set()
     for modname, ids in BUILDERS:
         if only and not (set(ids) & only):
             continue
@@ -77,7 +92,7 @@ def run(ctx: BuildContext) -> None:
         for h in headers:
             b = index["bodies"].setdefault(str(h["body"]), {"name": h["bodyName"], "layers": {}})
             b["layers"][h["layer"]] = f"surfaces/{h['body']}/{h['layer']}.json"
-            built.add(h["body"])
+            built.add((h["body"], h["layer"]))
         print(f"[surfaces] {modname}: {time.time() - t:.0f} s")
         index.setdefault("buildSeconds", {})[modname] = round(time.time() - t, 1)
     if only:
@@ -92,8 +107,8 @@ def run(ctx: BuildContext) -> None:
     print(f"[surfaces] stage time {time.time() - t0:.0f} s")
 
 
-def _carry_over(ctx: BuildContext, rebuilt: set[int]) -> None:
-    """Keep the manifest entries of bodies not rebuilt in a partial run (write_manifest drops a stage's old
+def _carry_over(ctx: BuildContext, rebuilt: set[tuple[int, str]]) -> None:
+    """Keep the manifest entries of layers not rebuilt in a partial run (write_manifest drops a stage's old
     products whenever the stage runs)."""
     mpath = OUT / "manifest.json"
     if not mpath.exists():
@@ -102,5 +117,8 @@ def _carry_over(ctx: BuildContext, rebuilt: set[int]) -> None:
         if entry.get("stage") != "surfaces" or rel == "surfaces/index.json":
             continue
         parts = rel.split("/")
-        if len(parts) >= 2 and parts[1].isdigit() and int(parts[1]) not in rebuilt and (OUT / rel).exists():
+        if len(parts) < 3 or not parts[1].isdigit():
+            continue
+        layer = parts[2].removesuffix(".json").removesuffix(".sha256")
+        if (int(parts[1]), layer) not in rebuilt and (OUT / rel).exists():
             ctx.products.setdefault(rel, entry)

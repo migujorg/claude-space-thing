@@ -501,7 +501,21 @@ export interface SurfaceLevelInfo {
   texelDeg: number;
 }
 
-export type SurfaceLayerKind = 'relative-reflectance' | 'height' | 'photometric-parameters';
+/**
+ * 'relative-reflectance': XYZS normal reflectance relative to its disk mean (albedo layers).
+ * 'height': metres above the reference ellipsoid. 'photometric-parameters': model constants per texel.
+ * Earth only (all dated, float16 with NaN = unknown per channel):
+ * 'cloud-properties': [cloudFraction, opticalThickness, cloudTopHeightM, iceFraction] of one day's daytime overpass;
+ * 'emitted-radiance': [dnbRadiance (nW cm⁻² sr⁻¹), censoredFraction]; `constants.toXYZS` converts to luminance;
+ * 'surface-water': [waterFraction, seaIceFraction] (where the renderer adds Fresnel reflection and glint).
+ */
+export type SurfaceLayerKind =
+  | 'relative-reflectance'
+  | 'height'
+  | 'photometric-parameters'
+  | 'cloud-properties'
+  | 'emitted-radiance'
+  | 'surface-water';
 
 export interface SurfaceLayerHeader {
   body: number;
@@ -522,9 +536,14 @@ export interface SurfaceLayerHeader {
   tilePath: string;
   /** Path of the "sha256  path" listing of every stored tile. */
   tileListing: string;
+  /** How the coarser levels were built from the top level (layers built before this field: mean of known texels). */
+  coarseLevels?: string;
   /** level (as string) → [tx, ty][] of tiles that are entirely unknown and therefore not stored. */
   missingTiles: Record<string, [number, number][]>;
-  /** How unknown texels are encoded (float16 layers: all channels exactly 0; float32 layers: NaN). */
+  /**
+   * How unknown texels are encoded: float16 reflectance/height layers use all channels exactly 0; float32 layers
+   * and the Earth cloud/night/water layers use NaN per channel (the text says which).
+   */
   noData: string;
   geometry: {
     projection: 'equirectangular';
@@ -574,7 +593,12 @@ export interface SurfaceLayerHeader {
   normalization?: {
     weighting: string;
     texelDiskMeanCheck: number[];
-    channelWeights?: { bandsNm: number[]; W: number[][] };
+    channelWeights?: { bandsNm: number[]; W: number[][] } | Record<string, { bandsNm: number[]; W: number[][] }>;
+    /**
+     * Earth: absolute surface reflectance = texel × absoluteDiskMean[channel]. Earth's disk photometry includes
+     * clouds and atmosphere, so it must not be used to scale Earth's surface map.
+     */
+    absoluteDiskMean?: Record<'X' | 'Y' | 'Z' | 'S', number>;
     [k: string]: unknown;
   };
   /** Height layers: 'm' (above the pck00011 reference ellipsoid named in `frame`). */
@@ -592,6 +616,10 @@ export interface SurfaceIndex {
   bodies: Record<string, { name: string; layers: Record<string, string> }>;
   /** NAIF id → why the body deliberately has no visible-light surface map (e.g. Venus, Titan). */
   excluded: Record<string, string>;
+  /** NAIF id → why a candidate map failed a check (the body is rendered from photometry only). */
+  rejected?: Record<string, string>;
+  /** Builder module → wall-clock seconds of the last build. */
+  buildSeconds?: Record<string, number>;
   notes?: string;
 }
 
@@ -653,6 +681,17 @@ export interface SmallBodyCoreHeader extends SmallBodyTableHeader {
   flagBits: Record<string, string>;
   /** Population statistic behind estimated diameters: measured p_V per SBDB orbit class ("*" = all). */
   classAlbedo: Record<string, { median: number; p16: number; p84: number; n: number }>;
+  /**
+   * Estimated colour of every asteroid without a measured spectrum: core field colorClass indexes `classes`
+   * (Bus-DeMeo class mean colours from smallbody-class-colors.json, then 'population'); 255 = comet.
+   */
+  colorClasses?: {
+    method: string;
+    sources: string[];
+    classes: { name: string; xyzsPerUnitPV: [number, number, number, number]; pVMedian: number | null }[];
+    counts?: Record<string, number>;
+    physicalFilled?: number;
+  };
   statistics: Record<string, unknown>;
   snapshot: string;
   names: string;
@@ -666,6 +705,12 @@ export interface SmallBodyPhysicalHeader extends SmallBodyTableHeader {
   lcdbU: string[];
   taxonomyB: string[];
   taxonomyT: string[];
+  /** Filter of each H-G1-G2 fit (physical.phaseFilter index), e.g. 'V' = MPC-archive V photometry. */
+  phaseFilters?: string[];
+  phaseFacilities?: string[];
+  spinTechniques?: string[];
+  /** SsODNet best taxonomy per physical.taxonomyBft index: 'scheme|class|technique'. */
+  taxonomySsodnet?: string[];
 }
 
 /** smallbodies/names.json: line i of `file` describes core record i. */
@@ -678,4 +723,138 @@ export interface SmallBodyNamesHeader {
   columns: string[];
   sources: string[];
   notes?: string;
+}
+
+/** One H-G1-G2 basis function (sbpy's clamped cubic spline, linear beyond the end nodes, clipped at 0). */
+export interface PhaseBasisSpline {
+  nodesRad: number[];
+  values: number[];
+  endDerivatives: [number, number];
+  /** Per interval i: [A0, A1, A2, A3] of sum A_k (alpha - nodesRad[i])^k. */
+  coefficients: number[][];
+}
+
+/** smallbodies/photometry.json (pipeline stage sbphotometry): turning small-body magnitudes into light. */
+export interface SmallBodyPhotometry {
+  vSun: Sourced<number>;
+  sunIrradianceXYZS1AU: Sourced<[number, number, number, number]>;
+  hg: { A: [number, number]; B: [number, number]; C: [number, number]; W: number; smallPhase: [number, number, number]; form: string; sources: string[]; note?: string };
+  hg1g2: { phi1: PhaseBasisSpline; phi2: PhaseBasisSpline; phi3: PhaseBasisSpline; sources: string[]; form: string };
+  colour: {
+    definition: string;
+    shapeDerivedRule: string;
+    shapeDerived: number;
+    withSpectrum: number;
+    yOverV: Record<string, number | string>;
+    estimatedColour: string;
+  };
+  comets: { method: string; label: Label };
+  rules: Record<string, string>;
+}
+
+/**
+ * A star tier split into HEALPix tiles (stars/deep.json): every tile file holds records with the header's fields
+ * and stride, sorted brightest first (by Y), so reading a prefix of a tile loads it to a magnitude limit.
+ */
+export interface TiledBinaryTableHeader extends Omit<BinaryTableHeader, 'bin'> {
+  /** Tile file name pattern, e.g. "deep-o3-{pix:03d}.bin" (next to the header). */
+  binPattern: string;
+  tiling: {
+    scheme: 'HEALPix';
+    ordering: 'NESTED';
+    order: number;
+    nside: number;
+    frame: 'ICRS';
+    assignment: string;
+    sort: string;
+    /** Y thresholds (lux) for StarTile.prefixCounts. */
+    prefixY: number[];
+    prefixNote: string;
+  };
+  tiles: StarTile[];
+  tier: { name: string; gaiaGMin: number; gaiaGMax: number; brighterTier: string };
+}
+
+export interface StarTile {
+  pix: number;
+  bin: string;
+  count: number;
+  /** ICRF unit vector of the HEALPix pixel centre. */
+  center: [number, number, number];
+  /** Every record of the tile lies within this angle of `center` (degrees). */
+  radiusDeg: number;
+  yMax: number | null;
+  yMin: number | null;
+  /** Number of leading records with Y >= tiling.prefixY[k]. */
+  prefixCounts: number[];
+}
+
+/** One all-sky HEALPix map of radiance (sky/diffuse.json layers). */
+export interface HealpixMapLayer {
+  bin: string;
+  scheme: 'HEALPix';
+  ordering: 'NESTED';
+  order: number;
+  nside: number;
+  npix: number;
+  frame: 'ICRS';
+  /** Channel order within a pixel, e.g. ["X", "Y", "Z", "S"]. */
+  channels: string[];
+  dtype: 'f32';
+  /** e.g. "pixel-major: value[pix * 4 + channel]". */
+  layout: string;
+  unit: string;
+  label: Label;
+  sources: string[];
+  method: string;
+  /** Effective angular resolution (FWHM, degrees) when coarser than the pixels; null = pixel size. */
+  resolutionFwhmDeg: number | null;
+  uncertainty: string;
+  /** Optional per-pixel u8 method codes (labelCodes explains them). */
+  labelBin?: string;
+  labelCodes?: Record<string, string>;
+  pixelSolidAngleSr?: number;
+  stats?: Record<string, unknown>;
+}
+
+export interface SkyMapsFile {
+  kind: 'skyMaps';
+  version: number;
+  layers: Record<string, HealpixMapLayer>;
+  composition: string;
+  bands: Record<string, { centerNm: number; widthNm: number }>;
+}
+
+/** sky/zodiacal.json: measured zodiacal light at 1 AU plus a 3-D dust model for other observer positions. */
+export interface ZodiacalLightModel {
+  kind: 'zodiacalLightModel';
+  version: number;
+  frame: string;
+  at1AU: Sourced<{
+    dlamDeg: number[];
+    betaDeg: number[];
+    /** s10[i][j] in S10sun at 500 nm; null = not tabulated. */
+    s10: (number | null)[][];
+    axes: string;
+    eclipticPoleS10: number;
+  }>;
+  s10ToXYZS: Sourced<{ eps30: number[]; eps90: number[]; solarColour: number[]; use: string }>;
+  cloud: Sourced<{
+    model: string;
+    components: Record<string, unknown>;
+    equations: Record<string, string>;
+    rOutAU: number;
+    densityUnit: string;
+  }>;
+  scattering: Sourced<{
+    phaseFunction: string;
+    C0: number;
+    C1: number;
+    C2: number;
+    N: number;
+    albedo: number;
+    brightness: string;
+    perSolarFluxPerSr: { eps30: number[]; eps90: number[] };
+  }>;
+  notes: string;
 }
