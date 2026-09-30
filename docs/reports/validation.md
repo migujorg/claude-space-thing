@@ -7,6 +7,20 @@ The question each case answers is *"is this what you would actually see?"*: for 
 moon or ring system, the renderer must reproduce the **absolute radiance** in a few well-defined regions of the
 picture, within tolerances that come from the data's own uncertainties.
 
+**Method: the cases test the model; they never select it.** The app's data (albedos, phase curves, spatial laws,
+calibrations) are chosen by the sources' own merits and by their coverage of the geometry: which body, phase angles,
+latitudes, season and wavelengths they measure, and how directly. How a choice scores on these cases plays no part.
+- **Competing published laws:** when two exist, or a published law and an approximation of it, the better-supported
+  one is used even if the other scores better here. For example, Saturn keeps the native Barkstrom law of Dones et
+  al. (1993) although its Minnaert approximation passed the terminator ROI and the exact law fails it (§7).
+- **Sources must exclude the cases:** a source whose data include a validation frame is not used for the quantity
+  that frame tests (e.g. Belgacem's regional Europa fits).
+- **No correction factors from the cases:** a factor derived from a case (e.g. the Galilean LORRI offset) is
+  documented as a bound, not applied.
+
+A choice made after seeing a case must be justifiable without it; otherwise the test leaks into the model and the
+case no longer measures anything.
+
 ## 1. What the renderer must output
 
 **Quantity.** The HDR buffer in absolute **XYZS radiance**, before the eye model: X, Y, Z in cd/m² (K_m = 683.002
@@ -604,7 +618,7 @@ These offsets are the missions' attitude-knowledge errors plus ours; the fits th
 
 ## 7. The renderer against the cases
 
-Run of 2026-09-30 21:22 UTC (git 5979450, data built 2026-09-30 21:19), reality level best, 1 × 1 samples per pixel: `cd app && npm run validate` (the full table, with X, Z, S, is in `app/shots/validation/report.md`). Y in cd/m²; the verdict covers X, Y, Z and S (failing channels named).
+Run of 2026-09-30 22:03 UTC (git 228cc84, data built 2026-09-30 22:01), reality level best, 1 × 1 samples per pixel: `cd app && npm run validate` (the full table, with X, Z, S, is in `app/shots/validation/report.md`). Y in cd/m²; the verdict covers X, Y, Z and S (failing channels named).
 
 | case | ROI | expected Y ± 2σ | rendered Y | rendered / expected | σ | verdict |
 |---|---|---|---|---|---|---|
@@ -614,20 +628,20 @@ Run of 2026-09-30 21:22 UTC (git 5979450, data built 2026-09-30 21:19), reality 
 | `callisto-nh-lorri-2007` | disk-integrated | 64.85 ± 3.8 | 52.6 | 0.811 | -6.4 | **fail** (XYS) |
 | `callisto-nh-lorri-2007` | sky-near | ≤ 1.197 | 0 | — | — | pass |
 | `callisto-nh-lorri-2007` | sky-far | ≤ 0.2372 | 0 | — | — | pass |
-| `earth-himawari9-2026` | disk-centre | 4678 ± 6e+02 | 9354 | 2.000 | +15.7 | **fail** (XYZS) |
-| `earth-himawari9-2026` | limb | 6411 ± 7.7e+02 | 6295 | 0.982 | -0.3 | pass |
-| `earth-himawari9-2026` | terminator | 2169 ± 2.3e+02 | 1206 | 0.556 | -8.4 | **fail** (XYZS) |
-| `earth-himawari9-2026` | near-centre-130E | 6032 ± 6.3e+02 | 7418 | 1.230 | +4.4 | **fail** (XYZS) |
-| `earth-himawari9-2026` | near-centre-150E | 2.274e+04 ± 2.5e+03 | 2.756e+04 | 1.212 | +3.8 | **fail** (XYS) |
-| `earth-himawari9-2026` | near-centre-141E-12S | 4779 ± 6.2e+02 | 5610 | 1.174 | +2.7 | **fail** (XYZS) |
+| `earth-himawari9-2026` | disk-centre | 4678 ± 6e+02 | 9707 | 2.075 | +16.9 | **fail** (XYZS) |
+| `earth-himawari9-2026` | limb | 6411 ± 7.7e+02 | 6347 | 0.990 | -0.2 | pass |
+| `earth-himawari9-2026` | terminator | 2169 ± 2.3e+02 | 1228 | 0.566 | -8.2 | **fail** (XYZS) |
+| `earth-himawari9-2026` | near-centre-130E | 6032 ± 6.3e+02 | 7544 | 1.251 | +4.8 | **fail** (XYZS) |
+| `earth-himawari9-2026` | near-centre-150E | 2.274e+04 ± 2.5e+03 | 2.758e+04 | 1.213 | +3.8 | **fail** (XYS) |
+| `earth-himawari9-2026` | near-centre-141E-12S | 4779 ± 6.2e+02 | 5770 | 1.207 | +3.2 | **fail** (XYZS) |
 | `earth-himawari9-2026` | sky-near | ≤ 12.88 | 0.0006613 | — | — | pass |
 | `earth-himawari9-2026` | sky-far | ≤ 43.94 | 0 | — | — | pass |
-| `earth-moon-epoxi-2008` | earth-disk-integrated | 1616 ± 1.6e+02 | 1704 | 1.055 | +1.1 | pass |
-| `earth-moon-epoxi-2008` | moon-disk-integrated | 164.1 ± 17 | 130.1 | 0.793 | -4.1 | **fail** (XYZS) |
-| `earth-moon-epoxi-2008` | earth-centre | 3260 ± 4.8e+02 | 3272 | 1.004 | +0.0 | pass |
+| `earth-moon-epoxi-2008` | earth-disk-integrated | 1616 ± 1.6e+02 | 1726 | 1.068 | +1.4 | pass |
+| `earth-moon-epoxi-2008` | moon-disk-integrated | 164.1 ± 17 | 153 | 0.933 | -1.3 | pass |
+| `earth-moon-epoxi-2008` | earth-centre | 3260 ± 4.8e+02 | 3296 | 1.011 | +0.1 | pass |
 | `earth-moon-epoxi-2008` | sky-near | ≤ 183.6 | 0 | — | — | pass |
 | `earth-moon-epoxi-2008` | sky-far | — | 0 | — | — | not compared |
-| `earth-moon-epoxi-2008` | moon-disk-integrated / earth-disk-integrated | 0.1016 ± 0.0014 | 0.07635 | — | — | **fail** (XYZS) |
+| `earth-moon-epoxi-2008` | moon-disk-integrated / earth-disk-integrated | 0.1016 ± 0.0014 | 0.08865 | — | — | **fail** (XYS) |
 | `europa-nh-lorri-2007` | disk-centre | 721.1 ± 43 | 651.6 | 0.904 | -3.2 | **fail** (XY) |
 | `europa-nh-lorri-2007` | limb | 843.4 ± 48 | 754 | 0.894 | -3.8 | **fail** (XY) |
 | `europa-nh-lorri-2007` | terminator | 219.9 ± 44 | 166.3 | 0.756 | -2.4 | **fail** (XY) |
@@ -658,15 +672,15 @@ Run of 2026-09-30 21:22 UTC (git 5979450, data built 2026-09-30 21:19), reality 
 | `neptune-voyager2-1989` | disk-integrated | 11.69 ± 2.4 | 11.15 | 0.954 | -0.5 | pass |
 | `neptune-voyager2-1989` | sky-near | ≤ 0.164 | 0 | — | — | pass |
 | `neptune-voyager2-1989` | sky-far | — | 0 | — | — | not compared |
-| `pluto-nh-lorri-2015` | disk-centre | 19.49 ± 6.6 | 20.86 | 1.070 | +0.4 | pass |
-| `pluto-nh-lorri-2015` | limb | 19.32 ± 6.6 | 19.22 | 0.995 | -0.0 | pass |
-| `pluto-nh-lorri-2015` | terminator | 6.802 ± 2.7 | 6.229 | 0.916 | -0.4 | pass |
-| `pluto-nh-lorri-2015` | disk-integrated | 11.47 ± 3.9 | 11.45 | 0.998 | -0.0 | pass |
+| `pluto-nh-lorri-2015` | disk-centre | 19.49 ± 6.6 | 20.78 | 1.066 | +0.4 | pass |
+| `pluto-nh-lorri-2015` | limb | 19.32 ± 6.6 | 19.27 | 0.998 | -0.0 | pass |
+| `pluto-nh-lorri-2015` | terminator | 6.802 ± 2.7 | 6.244 | 0.918 | -0.4 | pass |
+| `pluto-nh-lorri-2015` | disk-integrated | 11.47 ± 3.9 | 11.44 | 0.997 | -0.0 | pass |
 | `pluto-nh-lorri-2015` | sky-near | ≤ 0.231 | 0.01232 | — | — | pass |
 | `pluto-nh-lorri-2015` | sky-far | ≤ 0.01838 | 0 | — | — | pass |
-| `saturn-cassini-wac-2016` | disk-centre | 118.3 ± 24 | 106.5 | 0.900 | -1.0 | pass |
-| `saturn-cassini-wac-2016` | limb | 99.82 ± 20 | 91.01 | 0.912 | -0.9 | pass |
-| `saturn-cassini-wac-2016` | terminator | 20.61 ± 4.6 | 22.9 | 1.111 | +1.0 | pass |
+| `saturn-cassini-wac-2016` | disk-centre | 118.3 ± 24 | 104.4 | 0.882 | -1.2 | pass |
+| `saturn-cassini-wac-2016` | limb | 99.82 ± 20 | 108.9 | 1.091 | +0.9 | pass |
+| `saturn-cassini-wac-2016` | terminator | 20.61 ± 4.6 | 14.53 | 0.705 | -2.6 | **fail** (XYZS) |
 | `saturn-cassini-wac-2016` | ring-c | 8.478 ± 1.8 | 0 | 0.000 | -9.5 | **fail** (XYZS) |
 | `saturn-cassini-wac-2016` | ring-b | 84.36 ± 17 | 0 | 0.000 | -9.9 | **fail** (XYZS) |
 | `saturn-cassini-wac-2016` | ring-a | 40.33 ± 8.1 | 0 | 0.000 | -9.9 | **fail** (XYZS) |
@@ -700,9 +714,10 @@ change no ROI by more than 0.3 %, and the rgba16float fallback targets give the 
 
 1. **Disk-resolved photometry: published laws, tested here independently.** photometry.json now carries a
    `spatialModel` from published fits for Jupiter, Saturn, Uranus and Neptune (Minnaert k from the Hubble OPAL
-   READMEs, at the Y-channel wavelength; for Saturn k varies with phase as measured by Pioneer 11), Io (Hapke,
-   Simonelli & Veverka 1986), Europa, Ganymede and Callisto (Hapke, Domingue & Verbiscer 1997), Pluto, Charon and
-   Triton (Hapke, Verbiscer et al. 2022) and Mars (Vincendon 2013); all *estimated*
+   READMEs, at the Y-channel wavelength; for Saturn beyond small phase the Barkstrom law with B(α) from Pioneer 11),
+   Io (Hapke, Simonelli & Veverka 1986), Europa, Ganymede and Callisto (Hapke, Domingue & Verbiscer 1997), Mimas to
+   Rhea (Akimov, Filacchione et al. 2022; no validation frame), Pluto, Charon and Triton (Hapke, Verbiscer et al.
+   2022) and Mars (Vincendon 2013); all *estimated*
    (docs/sources/spatial-photometry.md). Before them every disk was Lambert (effective Minnaert k 1.0, against the
    observed 0.7–0.9 for the planets and Pluto and 0.5–0.8 for the icy moons). Rendered / observed, Lambert → the
    published law:
@@ -712,25 +727,34 @@ change no ROI by more than 0.3 %, and the rgba16float fallback targets give the 
    - **closer, already within tolerance:** Neptune centre 1.157 → 1.002, limb 0.824 → 0.958, terminator
      0.567 → 0.837; Jupiter terminator 0.931 → 0.978. Jupiter's centre stays too bright (1.235 → 1.212); its
      2025 OPAL map shows other belt features than the 2007 planet.
-   - **Saturn (54.6°): now within tolerance.** Rendered / observed for centre, limb and terminator:
+   - **Saturn (54.6°): the published law fails at the terminator.** Rendered / observed for centre, limb and
+     terminator:
 
      | Stage | Centre | Limb | Terminator |
      |---|---|---|---|
      | Lambert | 1.311 | 1.032 | 1.034 |
      | OPAL's k = 0.72 at all phases | 1.187 | 1.316 | 1.719 |
-     | k(α) from Pioneer 11 (Dones et al. 1993 Barkstrom law, k(54.6°) = 0.79) | 1.223 | 1.239 | 1.509 |
-     | Now, with the Cassini ISS disk-integrated phase curve | 0.900 | 0.912 | 1.111 |
+     | Minnaert k(α), fitted to Pioneer's Barkstrom B(α) | 1.223 | 1.239 | 1.509 |
+     | Same, with the Cassini ISS disk-integrated phase curve | 0.900 | 0.912 | 1.111 |
+     | Now: the native Barkstrom law with Pioneer's B(α) | 0.882 | 1.091 | 0.705 |
 
-     The Pioneer law fixed the shape (limb / centre 1.109 → 1.013, terminator / centre 1.448 → 1.234). The
-     remaining common factor was the disk-integrated brightness at 54.6°. Mallama & Hilton's Eq. 12 is a fit to
-     the red-light Pioneer 11 model, and it is 1.36× brighter there than the full-disk reflectance that Wang et
-     al. (2024) measured with Cassini ISS in GRN, 2004–2017. Their dataset keeps only images within 3° of the
-     ring plane, so it excludes this frame (28.7° above it). Beyond 5.7°, the app now uses that curve, digitized
-     from the paper's Fig. 7 (docs/sources/wang-2024.md). All three disk ROIs pass (−1.0σ, −0.9σ, +1.0σ in Y).
-     Two limits remain:
-     - the terminator is still 23 % too bright relative to the centre (the Minnaert approximation of the
-       Barkstrom law);
-     - both sides are CISSCAL-calibrated, so a common ISS calibration error would not show.
+     - **Disk-integrated brightness (the step to 0.900 / 0.912 / 1.111):** Mallama & Hilton's Eq. 12, a fit to
+       the red-light Pioneer 11 model, is 1.36× brighter at 54.6° than the full-disk reflectance that Wang et al.
+       (2024) measured with Cassini ISS in GRN, 2004–2017. Their dataset keeps only images within 3° of the ring
+       plane, so it excludes this frame (28.7° above it). Beyond 5.7°, the app now uses that curve, digitized from
+       the paper's Fig. 7 (docs/sources/wang-2024.md).
+     - **Spatial law (the last step):** the renderer now evaluates Dones et al.'s (1993) Barkstrom law exactly,
+       with B(54.6°) = 1.34 interpolated to 562 nm, instead of its Minnaert approximation. Relative to the centre:
+       - the terminator goes from 1.234 to 0.80, so its excess turns into a 20 % deficit (−2.6σ; −3.2σ in Z);
+       - the limb goes from 1.013 to 1.237 (still +0.9σ).
+     - **Reading:** the exact Pioneer law darkens toward the terminator (∝ μ0^B) more steeply than this 2016 frame
+       shows. The Minnaert approximation matched better by accident of its disk-averaged fit. Possible causes, not
+       tested:
+       - epoch and latitude: Pioneer in 1979 saw equatorial belts and zones; this frame looks from 28.7° north in
+         northern summer;
+       - the Barkstrom fit's behaviour at small μ0.
+     - **Other limit:** both sides of the phase-curve comparison are CISSCAL-calibrated, so a common ISS
+       calibration error would not show.
 
      Nothing is tuned to this frame.
    - **Galilean moons:** measured against the disk-integrated value (which carries the common offset of item 2),
@@ -769,18 +793,14 @@ change no ROI by more than 0.3 %, and the rgba16float fallback targets give the 
 
 *In the renderer (for the renderer engineer):*
 
-5. **The Moon's far side (EPOXI):** rendered 130.1 cd/m² against 164.1 ± 17 (0.793, −4.1σ); Moon/Earth ratio
-   0.076 against 0.1016 ± 0.0014. Outside ROLO's libration domain the renderer normalizes the Moon's maps (LRO WAC
-   albedo × Hapke texel law) over a rotation, but photometry.json's p·Φ is ROLO's **near side at zero libration**.
-   On the validation page, the same illumination turned to the near side renders 119.4 with ROLO and 101.1 with
-   the rotation-normalized maps: the maps give far/near = 130.1/101.1 = 1.287. Normalizing at the reference view
-   instead (sub-observer at 0°, 0°, Sun at ±α on the equator, geometric mean, like the product's definition) would
-   give 119.4 × 1.287 = 153.7 (0.937, −1.3σ, a pass). The fix is in `render/frame.ts`: for a body with a
-   `rolo-v1` model, when the view is outside its domain, normalize at the model's reference view.
+5. **The Moon's far side (EPOXI): fixed in the renderer.** It now renders 153.0 cd/m² against 164.1 ± 17 (0.933,
+   −1.3σ). Before the fix it rendered 130.1 (0.793, −4.1σ), with the Moon's maps normalized over a rotation rather
+   than at ROLO's reference view. The Moon/Earth ratio still fails: 0.089 against 0.1016 ± 0.0014, since the Earth
+   renders 1.068 there.
 6. **Earth (Himawari-9, 2026-09-28 04:05 UTC):** the disk centre (cloud-time offset 0.03 h, so the app's clouds
-   are those of this very time) renders 9354 against 4678 ± 600 cd/m² (2.0×). The three near-centre points render
-   1.17–1.23×. The limb passes (0.98). The terminator renders 0.56, but its clouds are 4.2 h older, so that one is
+   are those of this very time) renders 9707 against 4678 ± 600 cd/m² (2.1×). The three near-centre points render
+   1.21–1.25×. The limb passes (0.99). The terminator renders 0.57, but its clouds are 4.2 h older, so that one is
    inconclusive. The rendered image shows 8-pixel blocks in the ocean/cloud field around the disk centre
    (`app/shots/validation/earth-himawari9-2026.hdr.png`). To check: the cloud layer's optical thickness and
    fraction there, and the sun glint (the specular point is near 130° E). The EPOXI Earth of 2008, seen whole at
-   75° phase, passes: disk-integrated 1.055, centre 1.004.
+   75° phase, passes: disk-integrated 1.068, centre 1.011.

@@ -271,3 +271,101 @@ def test_earth_wind_layer():
     wl = w.reshape(w.shape[0] // step, step, w.shape[1] // step, step).mean(axis=(1, 3))
     assert (wl[fin] > 0.5).mean() > 0.97                       # the winds are over water
     assert "12.5 m" in h["constants"]["coxMunk"]["height"]
+
+
+# ------------------------------------------------------------------------------------------------ cloud τ moments
+
+
+def test_ln_tau_at_the_geometric_bin_centre():
+    lo, hi = np.array([0.01, 1.0, 100.001]), np.array([1.0, 1.038, 150.0])
+    cm = gb.Colormap("t", np.array([1, 2, 3]), lo, hi, 0.5 * (lo + hi), np.zeros(3, bool), np.zeros(3, int), ["x"],
+                     np.array([], np.int64), None)
+    vs, lns = se._ln_bin_centres(cm)
+    cot = np.array([0.5 * (0.01 + 1.0), np.nan, 0.5 * (100.001 + 150.0)], np.float32)
+    ln = se._ln_of(cot, vs, lns)
+    assert ln[0] == pytest.approx(np.log(0.1), abs=1e-6) and np.isnan(ln[1])
+    assert ln[2] == pytest.approx(0.5 * (np.log(100.001) + np.log(150.0)), abs=1e-5)
+    with pytest.raises(ValueError, match="bin centre"):
+        se._ln_of(np.array([7.0], np.float32), vs, lns)
+
+
+def test_tau_moments_are_exact_under_the_pyramid_means():
+    rng = np.random.default_rng(1)
+    ln = rng.normal(2.0, 0.8, (4, 4, 16)).astype(np.float32)
+    ln[rng.random((4, 4, 16)) < 0.4] = np.nan              # samples without a retrieval
+    ice = rng.random((4, 4, 16)) < 0.3
+    m = se.tau_moments(ln, ice)
+    f, m1, m2, fi = (m[..., k] for k in range(4))
+    np.testing.assert_allclose(f, np.isfinite(ln).mean(-1))
+    np.testing.assert_allclose(m1 / f, np.nanmean(ln, -1), rtol=1e-5)
+    np.testing.assert_allclose(m2 / f - (m1 / f) ** 2, np.nanvar(ln, -1), atol=1e-4)
+    assert (fi <= f).all()
+    # the 2×2 mean of four texels' moments is the moments of their pooled samples (what a coarser level holds)
+    pooled = se.tau_moments(ln[:2, :2].reshape(1, 1, 64), ice[:2, :2].reshape(1, 1, 64))[0, 0]
+    np.testing.assert_allclose(m[:2, :2].mean(axis=(0, 1)), pooled, rtol=1e-5)
+
+
+def test_plane_albedo_from_the_moments():
+    mu0, one = 0.7, np.ones(1)
+    tau = np.array([2.0, 8.0, 30.0, 0.5])
+    ipa = se.cloud_plane_albedo(tau, se.G_LIQUID, mu0).mean()
+    ln = np.log(tau)
+    a = se._TauDiagnostics.approximations(one, one * ln.mean(), one * (ln ** 2).mean(), one * tau.mean(), 0 * one, mu0)
+    assert a["linearMeanTau"][0] > ipa                     # the plane-parallel bias (R is concave in τ)
+    assert abs(a["logNormal3"][0] - ipa) < abs(a["logMeanTau"][0] - ipa) < abs(a["linearMeanTau"][0] - ipa)
+    # a single thickness: all three are the plane albedo itself, scaled by the retrieved fraction
+    b = se._TauDiagnostics.approximations(0.5 * one, 0.5 * one * np.log(8), 0.5 * one * np.log(8) ** 2, 4 * one,
+                                          0 * one, mu0)
+    for v in b.values():
+        assert v[0] == pytest.approx(0.5 * se.cloud_plane_albedo(8.0, se.G_LIQUID, mu0), rel=1e-6)
+
+
+def test_plane_albedo_check_sums_and_report():
+    rng = np.random.default_rng(2)
+    h, w = 32, 64
+    ln = rng.normal(1.5, 1.0, (h, w, 16)).astype(np.float32)
+    ln[rng.random((h, w, 16)) < 0.5] = np.nan
+    ice = rng.random((h, w, 16)) < 0.2
+    m = se.tau_moments(ln, ice)
+    has = np.isfinite(ln)
+    tau = np.where(has, np.exp(np.where(has, ln, 0)), 0)
+    mu0 = np.linspace(0.2, 0.9, h).astype(np.float32)
+    g = np.where(ice, se.G_ICE, se.G_LIQUID)
+    ipa = np.where(has, se.cloud_plane_albedo(tau, g, mu0[:, None, None]), 0).sum(-1) / 16
+    lat, lon = np.linspace(-20, 20, h), np.linspace(120, 170, w)
+    d = se._TauDiagnostics()
+    d.add_block(lat, lon, np.minimum(m[..., 0] + 0.2, 1), m[..., 0], m[..., 1], m[..., 2], tau.sum(-1) / 16, m[..., 3],
+                ipa, mu0)
+    r = d.report()
+    assert set(r) == {"global", "swath", "global.level0", "swath.level0"}
+    assert 0 < r["global"]["cloudyShareWithoutTau"] < 1
+    for key in r:
+        assert r[key]["linearMeanTau"]["ratioToIpa"] > 1
+        assert abs(r[key]["logNormal3"]["ratioToIpa"] - 1) < abs(r[key]["linearMeanTau"]["ratioToIpa"] - 1)
+
+
+def test_cloud_day_is_checked_against_the_advertised_periods():
+    info = {"periods": ["2023-12-06/2024-04-15/P1D", "2024-09-23/2026-09-28/P1D"]}
+    assert se._serves(info, "2026-09-28") and se._serves(info, "2024-01-01")
+    assert not se._serves(info, "2024-06-01") and not se._serves(info, "2026-09-29")
+
+
+def test_earth_cloud_tau_layer():
+    h, c = _header("cloudTau"), _header("clouds")
+    assert h["constants"]["sourceDate"] == c["constants"]["sourceDate"] == se.CLOUD_DAY
+    a, cl = _top(h), _top(c)
+    f, m1, m2, fi = (a[..., k] for k in range(4))
+    ok = np.isfinite(f)
+    assert (ok == np.isfinite(cl[..., 0])).all()           # same coverage (the daylit band)
+    assert (f[ok] <= cl[..., 0][ok] + 1e-3).all() and (fi[ok] <= f[ok] + 1e-3).all()
+    # cloudy with no retrieval at all (opticalThickness NaN) is exactly where the retrieved fraction is 0
+    no_tau = ok & np.isnan(cl[..., 1])
+    assert (f[no_tau] == 0).all() and (cl[..., 0][no_tau] > 0).all()
+    pos = ok & (f > 0.2)
+    mean_ln = m1[pos] / f[pos]
+    assert (mean_ln > np.log(0.1) - 0.01).all() and (mean_ln < np.log(150) + 0.01).all()
+    assert (m2[pos] / f[pos] - mean_ln ** 2 > -0.05).all()   # variance ≥ 0 up to float16 rounding
+    d = h["diagnostics"]["planeAlbedoCheck"]
+    assert 0 < d["swath"]["cloudyShareWithoutTau"] < 1
+    for key in ("global", "swath", "global.level0", "swath.level0"):
+        assert d[key]["linearMeanTau"]["ratioToIpa"] >= 1  # plane-parallel bias

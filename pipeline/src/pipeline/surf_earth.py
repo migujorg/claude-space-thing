@@ -8,6 +8,9 @@ clouds  VIIRS (NOAA-20) cloud properties of one UTC day, product CLDPROP_L2_VIIR
         aggregated to level 4 (4.9 km): cloud fraction (share of samples with a cloud-top retrieval), mean in-cloud
         optical thickness, mean cloud-top height and ice fraction. Each place is seen at the NOAA-20 daytime overpass
         (~13:30 local solar time) of that day.
+cloudTau  From the same samples: the share with an optical-thickness retrieval and the ln τ moments of those
+        retrievals (per-sample averages, exact at every pyramid level), so that the cloudy share without a
+        thickness is known and a renderer can use a distribution-aware albedo.
 night   VIIRS (NOAA-20) Black Marble gap-filled, lunar-BRDF-corrected nighttime-light radiance VJ146A2 (Román et al.
         2018) of one day, decoded from its GIBS colour map (bins 0.1 nW cm⁻² sr⁻¹ wide below 5, up to 0.6 near the
         top, open-ended above 38.2: those samples are lower bounds and counted in a censored-fraction channel). The
@@ -144,15 +147,165 @@ def _register_gibs(ctx: BuildContext) -> str:
 # ---------------------------------------------------------------------------------------------- clouds
 
 
-def build_clouds(ctx: BuildContext) -> dict:
+CLOUD_DAY = "2026-09-28"         # the cloud snapshot: the wind layer and the validation case earth-himawari9-2026 use it
+TAU_LAYER = "cloudTau"
+G_LIQUID, G_ICE = 0.867, 0.75    # the retrieval's asymmetry parameters (docs/rendering-earth.md §2); diagnostics only
+SWATH = (-40.0, 40.0, 125.0, 160.0)  # lat/lon box of the validation case's swath (Himawari-9, docs/rendering-earth.md §2)
+
+
+def _serves(info: dict, day: str) -> bool:
+    """Whether a GIBS layer advertises `day` in its time periods ('start/end/P1D' or single dates)."""
+    for p in info["periods"]:
+        parts = p.split("/")
+        if (len(parts) >= 2 and parts[0][:10] <= day <= parts[1][:10]) or parts[0][:10] == day:
+            return True
+    return False
+
+
+def _ln_bin_centres(cm: gb.Colormap) -> tuple[np.ndarray, np.ndarray]:
+    """For each decoded value (the arithmetic bin centre, as gb.decode returns it), ln of the bin's geometric centre
+    ½(ln lo + ln hi): the value to average in ln τ (the bins are ~3.7 % wide in ln τ above 1, one bin 0.01-1)."""
+    hi = np.where(np.isfinite(cm.hi), cm.hi, cm.lo)
+    v = cm.value.astype(np.float32)
+    ln = (0.5 * (np.log(cm.lo) + np.log(hi))).astype(np.float32)
+    order = np.argsort(v, kind="stable")
+    return v[order], ln[order]
+
+
+def _ln_of(cot_s: np.ndarray, vs: np.ndarray, lns: np.ndarray) -> np.ndarray:
+    """ln τ (geometric bin centre) of decoded COT samples; NaN where there is no retrieval."""
+    ok = np.isfinite(cot_s)
+    idx = np.clip(np.searchsorted(vs, np.where(ok, cot_s, 0)), 0, vs.size - 1)
+    if not np.all(vs[idx][ok] == cot_s[ok]):
+        raise ValueError("COT sample that is not a colour-map bin centre")
+    return np.where(ok, lns[idx], np.nan)
+
+
+def tau_moments(ln_s: np.ndarray, ice_s: np.ndarray) -> np.ndarray:
+    """(H, W, N) ln τ per sample (NaN: no retrieval) and ice-phase flags → (H, W, 4): the share of samples with a
+    retrieval, Σ ln τ / N, Σ (ln τ)² / N, and the share with an ice-phase retrieval. Per-sample averages, so the
+    mean over several texels is the same quantity for their union (the pyramid's 2×2 means are exact)."""
+    n = ln_s.shape[-1]
+    has = np.isfinite(ln_s)
+    lt = np.where(has, ln_s, 0.0)
+    return np.stack([has.sum(axis=-1) / n, lt.sum(axis=-1) / n, (lt * lt).sum(axis=-1) / n,
+                     (ice_s & has).sum(axis=-1) / n], axis=-1)
+
+
+def cloud_plane_albedo(tau, g, mu0):
+    """δ-Eddington plane albedo of a conservative layer over a black surface (as app/src/render/earth.ts)."""
+    tt = (1 - g) * tau
+    tp = (1 - g * g) * tau
+    m = np.maximum(mu0, 1e-4)
+    return np.clip((tt + (2 / 3 - m) * (1 - np.exp(-tp / m))) / (4 / 3 + tt), 0, 1)
+
+
+def _overpass_mu0(lat_deg: np.ndarray, day: str) -> np.ndarray:
+    """cos of the solar zenith angle at the ~13:30 overpass (diagnostics only; 0 outside the CLDPROP day limit)."""
+    lat = np.radians(lat_deg)
+    dec = np.radians(solar_declination_deg(day))
+    hour = np.radians(15.0 * (OVERPASS_LST_H - 12.0))
+    mu = np.sin(lat) * np.sin(dec) + np.cos(lat) * np.cos(dec) * np.cos(hour)
+    return np.where(mu > np.cos(np.radians(DAY_SZA_MAX)), mu, 0.0)
+
+
+class _TauDiagnostics:
+    """How well the layer's ln τ moments give the cloud's plane albedo, against the independent-pixel mean over the
+    retrieved samples (Cahalan et al. 1994), per texel (level 4) and per level-0 texel (16 × 16 level-4 texels,
+    aggregated as the pyramid does). Sums are weighted by μ0 (reflected flux) and cos(latitude) (area)."""
+
+    APPROX = ("linearMeanTau", "logMeanTau", "logNormal3")
+
+    def __init__(self):
+        self.sums: dict[str, dict[str, float]] = {}
+
+    def _add(self, key: str, name: str, v: float) -> None:
+        self.sums.setdefault(key, {}).setdefault(name, 0.0)
+        self.sums[key][name] += float(v)
+
+    @staticmethod
+    def approximations(f, m1, m2, fl, fice, mu0) -> dict[str, np.ndarray]:
+        """Plane albedo × retrieved fraction from the moments (f: retrieved fraction, m1, m2: ln τ moments per sample,
+        fl: linear τ moment per sample, fice: ice share per sample)."""
+        with np.errstate(invalid="ignore", divide="ignore"):
+            fs = np.maximum(f, 1e-12)
+            mu, var = m1 / fs, np.maximum(m2 / fs - (m1 / fs) ** 2, 0)
+            g = G_LIQUID + (G_ICE - G_LIQUID) * np.clip(fice / fs, 0, 1)
+            sd = np.sqrt(var)
+            out = {"linearMeanTau": f * cloud_plane_albedo(fl / fs, g, mu0),
+                   "logMeanTau": f * cloud_plane_albedo(np.exp(mu), g, mu0),
+                   # probabilists' 3-point Gauss-Hermite: nodes μ, μ ± √3 σ, weights 2/3, 1/6, 1/6
+                   "logNormal3": f * (2 / 3 * cloud_plane_albedo(np.exp(mu), g, mu0)
+                                      + 1 / 6 * cloud_plane_albedo(np.exp(mu + np.sqrt(3) * sd), g, mu0)
+                                      + 1 / 6 * cloud_plane_albedo(np.exp(mu - np.sqrt(3) * sd), g, mu0))}
+        return {k: np.where(f > 0, v, 0.0) for k, v in out.items()}
+
+    def add_block(self, lat_c: np.ndarray, lon_c: np.ndarray, f_cloud, f, m1, m2, fl, fice, ipa, mu0_rows) -> None:
+        wrow = mu0_rows * np.cos(np.radians(lat_c))
+        in_swath = ((lat_c >= SWATH[0]) & (lat_c <= SWATH[1]))[:, None] & ((lon_c >= SWATH[2]) & (lon_c <= SWATH[3]))[None, :]
+        day = (mu0_rows > 0)[:, None] & np.ones_like(in_swath)
+        texel = self.approximations(f, m1, m2, fl, fice, mu0_rows[:, None])
+        for key, sel in (("global", day), ("swath", day & in_swath)):
+            ww = np.where(sel, wrow[:, None], 0.0)
+            self._add(key, "cloudFraction", (ww * f_cloud).sum())
+            self._add(key, "tauRetrievedFraction", (ww * f).sum())
+            self._add(key, "ipa", (ww * ipa).sum())
+            for k in self.APPROX:
+                self._add(key, k, (ww * texel[k]).sum())
+                self._add(key, k + "|abs", (ww * np.abs(texel[k] - ipa)).sum())
+        # Level 0 (16 × 16 level-4 texels): moments and IPA averaged as the pyramid averages them.
+        c = 2 ** LEVEL
+        if f.shape[0] % c or f.shape[1] % c:
+            return
+
+        def pool(a):
+            return a.reshape(a.shape[0] // c, c, a.shape[1] // c, c).mean(axis=(1, 3))
+        mu0c = pool(np.repeat(mu0_rows[:, None], f.shape[1], axis=1))
+        daylit = pool(np.repeat((mu0_rows > 0)[:, None].astype(np.float64), f.shape[1], axis=1)) == 1
+        coarse = self.approximations(pool(f), pool(m1), pool(m2), pool(fl), pool(fice), mu0c)
+        ipac = pool(ipa)
+        wc = mu0c * np.cos(np.radians(pool(np.repeat(lat_c[:, None], f.shape[1], axis=1))))
+        swc = pool(in_swath.astype(np.float64)) == 1
+        for key, sel in (("global.level0", daylit), ("swath.level0", daylit & swc)):
+            ww = np.where(sel, wc, 0.0)
+            self._add(key, "ipa", (ww * ipac).sum())
+            for k in self.APPROX:
+                self._add(key, k, (ww * coarse[k]).sum())
+                self._add(key, k + "|abs", (ww * np.abs(coarse[k] - ipac)).sum())
+
+    def report(self) -> dict:
+        out = {}
+        for key, s in self.sums.items():
+            r = {}
+            if "cloudFraction" in s and s["cloudFraction"] > 0:
+                r["cloudyShareWithoutTau"] = round(1 - s["tauRetrievedFraction"] / s["cloudFraction"], 4)
+            for k in self.APPROX:
+                if s.get("ipa", 0) > 0:
+                    r[k] = {"ratioToIpa": round(s[k] / s["ipa"], 4), "meanAbsErrorOverIpa": round(s[k + "|abs"] / s["ipa"], 4)}
+            out[key] = r
+        return out
+
+
+def build_clouds(ctx: BuildContext) -> list[dict]:
+    """The cloud-properties layer and, from the same samples, its optical-thickness moments (layer `cloudTau`)."""
     caps = gb.capabilities()
     i_cot, i_cth = gb.layer_info(caps, L_COT), gb.layer_info(caps, L_CTH)
-    day = min(i_cot["default"], i_cth["default"])
+    day = CLOUD_DAY
+    for i in (i_cot, i_cth):
+        if not _serves(i, day):
+            raise RuntimeError(f"GIBS no longer advertises {i['layer']} for {day} (periods {i['periods'][-2:]})")
     cm_cot, cm_cth = gb.colormap(i_cot["colormap"]), gb.colormap(i_cth["colormap"])
     ice_cls = next(i for i, c in enumerate(cm_cot.classes) if "Ice" in c)
+    vs, lns = _ln_bin_centres(cm_cot)
     h, w = st.level_shape(LEVEL)
+    lon_c = (np.arange(w) + 0.5) * 360.0 / w - 180.0
+    lat_geod = 90.0 - (np.arange(h) + 0.5) * 180.0 / h       # sample rows are on WGS84 geodetic latitude
+    mu0_geod = _overpass_mu0(lat_geod, day).astype(np.float32)
     top = np.full((h, w, 4), np.nan, np.float32)
+    mom = np.full((h, w, 4), np.nan, np.float32)
+    diag = _TauDiagnostics()
     files, stats = {}, {"unmatchedColours": 0, "cthCensored": 0}
+    n = SAMPLES * SAMPLES
     for (bbox, bi, bj, p_cot), (_, _, _, p_cth) in zip(_fetch_blocks(L_COT, day), _fetch_blocks(L_CTH, day)):
         cot, cls, _, u1 = gb.decode(gb.read_rgba(p_cot), cm_cot)
         cth, _, cen, u2 = gb.decode(gb.read_rgba(p_cth), cm_cth)
@@ -162,23 +315,42 @@ def build_clouds(ctx: BuildContext) -> dict:
         discard(p_cot)
         discard(p_cth)
         cot_s, cth_s, cls_s = _reshape_blocks(cot), _reshape_blocks(cth), _reshape_blocks(cls)
-        n = SAMPLES * SAMPLES
-        cloudy = np.isfinite(cth_s) | np.isfinite(cot_s)
+        del cot, cth, cls
+        has_tau = np.isfinite(cot_s)
+        cloudy = np.isfinite(cth_s) | has_tau
         f = cloudy.sum(axis=2) / n
-        n_cot = np.isfinite(cot_s).sum(axis=2)
+        n_cot = has_tau.sum(axis=2)
         n_cth = np.isfinite(cth_s).sum(axis=2)
+        ice_s = (cls_s == ice_cls) & has_tau
         with np.errstate(invalid="ignore", divide="ignore"):
             cot_m = np.where(n_cot > 0, np.nansum(cot_s, axis=2) / np.maximum(n_cot, 1), np.nan)
             cth_m = np.where(n_cth > 0, np.nansum(cth_s, axis=2) / np.maximum(n_cth, 1), np.nan)
-            ice = np.where(n_cot > 0, (cls_s == ice_cls).sum(axis=2) / np.maximum(n_cot, 1), np.nan)
+            ice = np.where(n_cot > 0, ice_s.sum(axis=2) / np.maximum(n_cot, 1), np.nan)
         clear = f == 0
         blk = np.stack([f, np.where(clear, 0, cot_m), np.where(clear, 0, cth_m), np.where(clear, 0, ice)], axis=-1)
         rows = slice(bi * (h // 4), (bi + 1) * (h // 4))
         cols = slice(bj * (w // 4), (bj + 1) * (w // 4))
         top[rows, cols] = blk
-    top = top[centric_rows(LEVEL)]
+        # Optical-thickness moments per sample of the texel (sums over the samples with a retrieval, divided by all
+        # samples): 2×2 means of them are the same quantities for the coarser texel, so every pyramid level is exact.
+        ln_s = _ln_of(cot_s, vs, lns)
+        mb = tau_moments(ln_s, ice_s)
+        mom[rows, cols] = mb
+        f_tau, m1, m2, f_ice = (mb[..., k] for k in range(4))
+        # Diagnostics: the independent-pixel plane albedo over the retrieved samples, per sample of the texel.
+        mu0 = mu0_geod[rows][:, None, None]
+        tau_g = np.where(has_tau, np.exp(np.where(has_tau, ln_s, np.float32(0))), np.float32(0))
+        g_s = np.where(ice_s, np.float32(G_ICE), np.float32(G_LIQUID))
+        ipa = np.where(has_tau, cloud_plane_albedo(tau_g, g_s, mu0), 0.0).sum(axis=2) / n
+        fl = tau_g.sum(axis=2) / n
+        diag.add_block(lat_geod[rows], lon_c[cols], f, f_tau, m1, m2, fl, f_ice, ipa, mu0_geod[rows])
+        del cot_s, cth_s, cls_s, ln_s, mb, tau_g, g_s, ipa
+    idx = centric_rows(LEVEL)
     known = np.repeat(daylit_rows(day)[:, None], w, axis=1)
+    top = top[idx]
     top[~known] = np.nan
+    mom = mom[idx]
+    mom[~known] = np.nan
     gibs_id = _register_gibs(ctx)
     sl.register_dataset(
         ctx, SRC_CLDPROP, f"VIIRS/NOAA-20 cloud properties (CLDPROP_L2_VIIRS_NOAA20 v1.1), {day}, via GIBS",
@@ -191,6 +363,15 @@ def build_clouds(ctx: BuildContext) -> dict:
               f"{cm_cot.url} ({len(cm_cot.keys)} bins, ice/water phase) and {cm_cth.url} ({len(cm_cth.keys)} bins, "
               "50 m). Blocks deleted after decoding.")
     frac = top[..., 0][known]
+    lat_known = st.lat_centers(LEVEL)[known[:, 0]]
+    regions = [sl.Region(float(lat_known.min()), float(lat_known.max()), -180, 180,
+                         sl.Provenance("measured", [SRC_CLDPROP], "daylit at the NOAA-20 overpass"),
+                         note="Poleward of the daylit band (Sun below the CLDPROP day limit at ~13:30 local) the "
+                              "layer is unknown.")]
+    epoch = {"start": f"{day}T00:00:00Z", "end": f"{day}T23:59:59Z",
+             "observed": f"{day}, each place at the NOAA-20 daytime overpass (~13:30 local solar time)",
+             "changes": "clouds change within minutes to hours; this is a one-day snapshot, 'estimated' at any other "
+                        "time"}
     spec = sl.LayerSpec(
         naif=NAIF, body=NAME, layer="clouds", kind="cloud-properties", fmt="f16", nodata="nan",
         channels=["cloudFraction", "opticalThickness", "cloudTopHeightM", "iceFraction"],
@@ -202,35 +383,96 @@ def build_clouds(ctx: BuildContext) -> dict:
                                  f"from {SAMPLES * SAMPLES} ~1.1 km samples.",
                                  "COT bins ~4 % wide (1-100; one bin 0.01-1 and one 100-150); CTH bins 50 m, ≥ 12 km "
                                  "open-ended (value = 12 km, a lower bound)"),
-        regions=[sl.Region(float(st.lat_centers(LEVEL)[known[:, 0]].min()),
-                           float(st.lat_centers(LEVEL)[known[:, 0]].max()), -180, 180,
-                           sl.Provenance("measured", [SRC_CLDPROP], "daylit at the NOAA-20 overpass"),
-                           note="Poleward of the daylit band (Sun below the CLDPROP day limit at ~13:30 local) the "
-                                "layer is unknown.")],
-        epoch={"start": f"{day}T00:00:00Z", "end": f"{day}T23:59:59Z",
-               "observed": f"{day}, each place at the NOAA-20 daytime overpass (~13:30 local solar time)",
-               "changes": "clouds change within minutes to hours; this is a one-day snapshot, 'estimated' at any other "
-                          "time"},
+        regions=regions,
+        epoch=epoch,
         units=None,
         constants={"channels": {
-            "cloudFraction": "share of the texel's samples with a retrieved cloud top (0-1); clear and failed "
-                             "retrievals are not distinguished",
+            "cloudFraction": "share of the texel's samples with a retrieved cloud top or optical thickness (0-1); "
+                             "clear and failed retrievals are not distinguished",
             "opticalThickness": "mean retrieved cloud optical thickness of the samples that have one (in-cloud "
-                                "mean; 0 where cloudFraction = 0; NaN = cloudy but no optical-thickness retrieval)",
+                                "mean; 0 where cloudFraction = 0; NaN = cloudy but no optical-thickness retrieval). "
+                                f"It does not say how much of the cloud fraction has a retrieval: see the {TAU_LAYER} "
+                                "layer",
             "cloudTopHeightM": "mean cloud-top height (m, as in CLDPROP) of the cloudy samples",
             "iceFraction": "share of optical-thickness samples retrieved as ice phase"},
-            "samplesPerTexel": SAMPLES * SAMPLES, "sourceDate": day},
+            "samplesPerTexel": SAMPLES * SAMPLES, "sourceDate": day,
+            "companionLayers": {TAU_LAYER: f"surfaces/{NAIF}/{TAU_LAYER}.json (same samples, same grid)"}},
         diagnostics={"meanCloudFraction": float(np.nanmean(frac)), "unmatchedColours": stats["unmatchedColours"],
                      "cthCensoredSamples": stats["cthCensored"],
-                     "daylitLatitudeRange": [float(st.lat_centers(LEVEL)[known[:, 0]].min()),
-                                             float(st.lat_centers(LEVEL)[known[:, 0]].max())]},
+                     "daylitLatitudeRange": [float(lat_known.min()), float(lat_known.max())]},
         notes=["Cloud fraction counts cloud-top retrievals, so partly cloudy pixels with a retrieval count as cloudy; "
-               "optical thickness is only retrieved for overcast pixels, so its mean is biased towards thick cloud.",
+               "optical thickness is only retrieved for overcast pixels (CLDPROP gives partly cloudy pixels' "
+               "thickness only in a separate field that GIBS does not serve), so its mean is biased towards thick "
+               f"cloud. The {TAU_LAYER} layer gives the share of samples with a thickness and its ln τ moments.",
                "Over bright snow and ice the cloud mask is less reliable.",
+               "Coarser levels are 2×2 means of each channel. That is exact for cloudFraction, but opticalThickness, "
+               "cloudTopHeightM and iceFraction are in-cloud means, averaged without their sample counts; the "
+               f"{TAU_LAYER} layer's moments are exact at every level.",
                "Rendering: in-cloud optical thickness with the cloud fraction and phase, at the cloud-top height, "
                "gives the cloud's reflectance and transmission; GIBS true-colour imagery is not used."],
     )
-    return sl.write_layer(ctx, spec, top, known, LEVEL)
+    out = [sl.write_layer(ctx, spec, top, known, LEVEL)]
+    del top
+    mfrac = mom[..., 0][known]
+    rep = diag.report()
+    tau_spec = sl.LayerSpec(
+        naif=NAIF, body=NAME, layer=TAU_LAYER, kind="cloud-optical-thickness-moments", fmt="f16", nodata="nan",
+        channels=["tauRetrievedFraction", "lnTauMoment1", "lnTauMoment2", "iceTauFraction"],
+        frame=FRAME,
+        sources=[SRC_CLDPROP, gibs_id],
+        brightness=sl.Provenance("measured", [SRC_CLDPROP, gibs_id],
+                                 "Counts and ln τ moments of the L2 optical-thickness retrievals (0.65/0.86 µm, with "
+                                 f"phase) among the {SAMPLES * SAMPLES} ~1.1 km samples of each texel: the same "
+                                 "samples as the clouds layer.",
+                                 "τ quantized to its colour-map bin; ln τ taken at the bin's geometric centre: "
+                                 "±0.018 in ln τ above τ = 1, but ±2.3 for the one bin 0.01-1 (taken as τ = 0.1)"),
+        regions=regions,
+        epoch=epoch,
+        units=None,
+        constants={
+            "channels": {
+                "tauRetrievedFraction": "f_τ: share of the texel's samples with an optical-thickness retrieval "
+                                        "(0 ≤ f_τ ≤ cloudFraction of the clouds layer)",
+                "lnTauMoment1": "Σ ln τ_i / N over the samples with a retrieval, N = all samples of the texel "
+                                "(= f_τ · mean ln τ)",
+                "lnTauMoment2": "Σ (ln τ_i)² / N over the same samples (= f_τ · mean (ln τ)²)",
+                "iceTauFraction": "share of the texel's samples with an ice-phase optical-thickness retrieval "
+                                  "(= f_τ · ice share)"},
+            "use": {
+                "meanLnTau": "lnTauMoment1 / tauRetrievedFraction (where tauRetrievedFraction > 0); exp of it is "
+                             "Cahalan et al.'s (1994) effective thickness",
+                "varLnTau": "lnTauMoment2 / tauRetrievedFraction − meanLnTau² (the spread of ln τ inside the "
+                            "texel, for a distribution-aware albedo)",
+                "iceShare": "iceTauFraction / tauRetrievedFraction",
+                "cloudyWithoutTau": "cloudFraction (clouds layer) − tauRetrievedFraction: cloud-top retrievals "
+                                    "without an optical thickness (partly cloudy pixels, failed retrievals); their "
+                                    "thickness is unknown",
+                "levels": "every channel is a per-sample average, so the pyramid's 2×2 means are the same "
+                          "quantities for the coarser texel (exact at every level, including the ln τ spread between "
+                          "texels)"},
+            "samplesPerTexel": SAMPLES * SAMPLES, "sourceDate": day,
+            "companionOf": f"surfaces/{NAIF}/clouds.json"},
+        diagnostics={
+            "meanTauRetrievedFraction": float(np.nanmean(mfrac)),
+            "meanCloudFraction": float(np.nanmean(frac)),
+            "planeAlbedoCheck": {
+                "what": "plane albedo × f_τ of the retrieved part from the moments, against the mean over the "
+                        "samples of R(τ_i) (independent pixels), at the overpass Sun; δ-Eddington with g = 0.867 "
+                        "liquid / 0.75 ice; sums weighted by μ0·cos(latitude); 'swath' = 40° S-40° N, 125-160° E "
+                        "(the validation case); 'level0' = texels 16 × 16 level-4 texels, moments averaged as the "
+                        "pyramid does",
+                **rep}},
+        notes=["The clouds layer's cloudFraction counts every sample with a cloud top; its opticalThickness is the "
+               "mean over the samples that also have an optical-thickness retrieval. This layer says how many do "
+               "(tauRetrievedFraction) and how their thickness is distributed (ln τ moments), so a renderer can give "
+               "the thickness only to the share that has one and treat the rest as unknown.",
+               "GIBS serves no cloud mask and no partly-cloudy optical thickness (CLDPROP's _PCL fields) for VIIRS "
+               "NOAA-20: the cloudy share without a thickness is known only as cloudFraction − tauRetrievedFraction.",
+               "The mean of R over a texel's retrievals is below R(mean τ) (plane-parallel bias); see "
+               "diagnostics.planeAlbedoCheck for how close exp(mean ln τ) and a log-normal from the two moments come."],
+    )
+    out.append(sl.write_layer(ctx, tau_spec, mom, known, LEVEL))
+    return out
 
 
 # ---------------------------------------------------------------------------------------------- night lights
@@ -885,7 +1127,7 @@ def build_albedo(ctx: BuildContext, mask: WaterMask) -> dict:
 
 # ---------------------------------------------------------------------------------------------- wind
 
-WIND_DAY = "2026-09-28"               # the day of the cloud snapshot
+WIND_DAY = CLOUD_DAY                  # the day of the cloud snapshot
 WIND_LEVEL = 2                        # 0.176° texels; the sources are on a 0.25° grid
 AMSR3_URL = ("https://data.remss.com/amsr3/ocean/L3/V2.0/daily/{y}/RSS_AMSR3_ocean_L3_daily_{d}_v2.0.nc")
 GMI_URL = "https://data.remss.com/gmi/bmaps_v08.2/y{y}/m{m}/f35_{ymd}v8.2.gz"
@@ -992,7 +1234,7 @@ def build(ctx: BuildContext, work: Path) -> list[dict]:
     only = set(ctx.param("surfaces.earthLayers"))
     out = []
     if not only or "clouds" in only:
-        out.append(build_clouds(ctx))
+        out.extend(build_clouds(ctx))          # clouds and cloudTau (same samples)
     if not only or "night" in only:
         out.append(build_night(ctx))
     if not only or {"water", "albedo"} & only:
