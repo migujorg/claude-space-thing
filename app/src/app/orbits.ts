@@ -139,6 +139,12 @@ export const ORBIT_TUNING = {
   selectedMinPerOrbit: 256,
   /** Cap on polyline points handed to the renderer per frame (lowest-priority orbits dropped first). */
   maxPointsPerFrame: 150_000,
+  /** Cap on orbits drawn per frame (plus the selected body's). */
+  maxOrbits: 80,
+  /** Moons outside the system in focus: drawn only when their orbit is at least this large on screen (radius, px). */
+  otherSystemMinRadiusPx: 40,
+  /** Cap on orbits of moons of unknown size (small irregulars), unless selected. */
+  maxUnknownSizeOrbits: 12,
   /** Time budget for sampling per frame, ms (at least one track is built per frame). */
   budgetMs: 3,
 };
@@ -158,6 +164,8 @@ export interface OrbitView {
   fovY: number;
   height: number;
   selectedId: number | null;
+  /** Whether a body belongs to the system in focus (default: all do). */
+  isFocus?: (id: number) => boolean;
 }
 
 /** Lazily built, budgeted orbit tracks for all bodies. */
@@ -198,7 +206,7 @@ export class OrbitManager {
   update(v: OrbitView, budgetMs = ORBIT_TUNING.budgetMs): OrbitPolyline[] {
     const t0 = this.now();
     const pxPerRad = v.height / (2 * Math.tan(v.fovY / 2));
-    const cands: { id: number; parentRel: Vec3; perOrbit: number; prio: number; sel: boolean }[] = [];
+    const cands: { id: number; parentRel: Vec3; perOrbit: number; prio: number; sel: boolean; unknownSize: boolean }[] = [];
     for (const g of v.world.bodies.values()) {
       if (!g.app || g.body.kind === 'star' || g.body.kind === 'barycenter') continue;
       const pid = this.parentOf(g.id);
@@ -209,9 +217,27 @@ export class OrbitManager {
       const rPx = dParent > a ? (a / dParent) * pxPerRad : 1e5;
       const sel = g.id === v.selectedId;
       if (rPx < ORBIT_TUNING.minRadiusPx && !sel) continue;
+      // Moons of other systems only when their orbit is large on screen (otherwise they are clutter).
+      const isMoon = g.body.kind === 'moon';
+      if (isMoon && !sel && v.isFocus && !v.isFocus(g.id) && rPx < ORBIT_TUNING.otherSystemMinRadiusPx) continue;
       let perOrbit = Math.ceil((2 * Math.PI * Math.min(rPx, 1e5)) / ORBIT_TUNING.segmentPx);
       perOrbit = Math.max(sel ? ORBIT_TUNING.selectedMinPerOrbit : ORBIT_TUNING.minPerOrbit, Math.min(ORBIT_TUNING.maxPerOrbit, perOrbit));
-      cands.push({ id: g.id, parentRel: p.app.rel, perOrbit, prio: (sel ? 1e12 : 0) + rPx, sel });
+      // Planets, then moons of known size, then the rest; larger on screen first, but orbits that enclose the
+      // camera (lines sweeping across the whole view) last within their tier.
+      const tier = g.body.kind !== 'moon' ? 1e7 : g.body.radii?.value ? 1e6 : 0;
+      const encloses = dParent <= a;
+      cands.push({ id: g.id, parentRel: p.app.rel, perOrbit, prio: (sel ? 1e12 : 0) + tier + (encloses ? 0 : 1 + Math.min(rPx, 9e5)), sel, unknownSize: g.body.kind === 'moon' && !g.body.radii?.value });
+    }
+    cands.sort((a, b) => b.prio - a.prio);
+    let unknown = 0;
+    for (let i = 0; i < cands.length; i++) {
+      if (!cands[i].unknownSize || cands[i].sel) continue;
+      if (++unknown > ORBIT_TUNING.maxUnknownSizeOrbits) cands.splice(i--, 1);
+    }
+    if (cands.length > ORBIT_TUNING.maxOrbits) {
+      const sel = cands.find((c) => c.sel);
+      cands.length = ORBIT_TUNING.maxOrbits;
+      if (sel && !cands.includes(sel)) cands.push(sel);
     }
     // Work list: missing, stale (outside ±¼ period of its centre) or under-resolved tracks.
     const work = cands
@@ -235,7 +261,7 @@ export class OrbitManager {
     }
     const out: OrbitPolyline[] = [];
     let points = 0;
-    for (const c of [...cands].sort((a, b) => b.prio - a.prio)) {
+    for (const c of cands) {
       const t = this.tracks.get(c.id);
       if (!t) continue;
       if (points > ORBIT_TUNING.maxPointsPerFrame && !c.sel) break;

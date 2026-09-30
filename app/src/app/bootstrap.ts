@@ -172,7 +172,8 @@ export async function startApp(canvas: HTMLCanvasElement, uiRoot: HTMLElement, d
     await model.systemsIdle();
     const nextFrame = () => new Promise<void>((res) => frameWaiters.push(res));
     await nextFrame();
-    for (let i = 0; i < 600 && model.reality.overlays.orbits && (model.orbits?.stats.pending ?? 0) > 0; i++) await nextFrame();
+    // Orbit tracks are normally built a few per frame; here finish them at once, then render once more.
+    if (model.finishOrbitWork() > 0) await nextFrame();
     if (!window.__frameError) window.__frameReady = true;
   })().catch((e) => {
     console.error(e);

@@ -66,9 +66,9 @@ export function scoreCandidate(c: OverlayCandidate, focusDist: number | null): n
 
 export function declutter(cands: OverlayCandidate[], o: DeclutterOptions): DeclutterResult {
   const maxLabels = o.maxLabels ?? Math.max(10, Math.round((o.width * o.height) / 40000));
-  const maxUnknown = o.maxUnknownLabels ?? 8;
-  const maxMarkers = o.maxMarkers ?? 60;
-  const sep = o.markerMinSepPx ?? 9;
+  const maxUnknown = o.maxUnknownLabels ?? 6;
+  const maxMarkers = o.maxMarkers ?? 30;
+  const sep = o.markerMinSepPx ?? 14;
   const scored = cands.map((c) => ({ c, s: scoreCandidate(c, o.focusDist) })).sort((a, b) => b.s - a.s || a.c.id - b.c.id);
 
   // Markers: focus system or selected, spaced apart, capped.

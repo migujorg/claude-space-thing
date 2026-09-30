@@ -646,9 +646,10 @@ export class AppModel {
     const t0 = perfNow();
     this.world = computeWorld(et, this.pose.pos, this.bodies, this.eph, this.core, this.sunId);
     const t1 = perfNow();
+    if (!this.reality.overlays.orbits && this.orbits) this.orbits.stats = { candidates: 0, drawn: 0, built: 0, pending: 0, ms: 0 };
     const orbits =
       this.reality.overlays.orbits && this.orbits
-        ? this.orbits.update({ et, world: this.world, fovY: this.fovY, height: this.viewport.height, selectedId: this.selectedId })
+        ? this.orbits.update({ et, world: this.world, fovY: this.fovY, height: this.viewport.height, selectedId: this.selectedId, isFocus: this.focusPredicate() })
         : [];
     const t2 = perfNow();
     const overlayOnly: OverlayOnlyBody[] = [];
@@ -869,6 +870,21 @@ export class AppModel {
     const c = this.cam;
     const id = this.travel?.target ?? (c.mode === 'orbit' ? c.target : c.anchor) ?? this.selectedId;
     return id === null ? null : this.rootOf(id);
+  }
+
+  /**
+   * Build every orbit track the overlay still needs now, ignoring the per-frame budget (used before declaring
+   * a screenshot ready, where each rendered frame can be expensive). Returns the number of tracks built.
+   */
+  finishOrbitWork(): number {
+    if (!this.reality.overlays.orbits || !this.orbits || !this.world) return 0;
+    this.orbits.update({ et: this.world.et, world: this.world, fovY: this.fovY, height: this.viewport.height, selectedId: this.selectedId, isFocus: this.focusPredicate() }, Infinity);
+    return this.orbits.stats.built;
+  }
+
+  private focusPredicate(): (id: number) => boolean {
+    const f = this.focusRoot();
+    return (id) => f === null || this.rootOf(id) === f;
   }
 
   /** Worst label etc. for a body at the current level (inspector). */
