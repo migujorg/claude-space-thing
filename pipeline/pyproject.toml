@@ -16,6 +16,7 @@ dependencies = [
   "tifffile>=2026.3.3",
   "numba>=0.67.0",
   "pyarrow>=25.0.1",
+  "fast-simplification>=0.2.0",
 ]
 
 [dependency-groups]
