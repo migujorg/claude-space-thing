@@ -167,4 +167,23 @@ export interface BinaryTableHeader {
   /** Source ids referenced by index from source-index fields. */
   sourceTable?: string[];
   notes?: string;
+  /** Epoch of time-dependent fields (e.g. star directions), TDB seconds past J2000. */
+  epochEt?: number;
+  /**
+   * Per-record provenance routes. A u8 field `<kind>Route` (e.g. posRoute, lightRoute) indexes routes[kind];
+   * each route states the label, all SourceRecord ids and the method that produced that record's values.
+   */
+  routes?: Record<string, BinaryRoute[]>;
+  /** How catalogue-id fields are to be read, keyed by sourceTable id. */
+  idEncoding?: Record<string, string>;
+  /** Meaning of the bits of a u8 `flags` field, keyed by bit value ("1", "2", "4", ...). */
+  flagBits?: Record<string, string>;
+  /** Free-form completeness statement of a catalogue product. */
+  completeness?: Record<string, unknown>;
+}
+
+export interface BinaryRoute {
+  label: Label;
+  sources: string[];
+  method: string;
 }
