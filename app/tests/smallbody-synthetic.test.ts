@@ -128,6 +128,16 @@ describe('synthetic objects in the app shell', () => {
     expect(m.badge()).toEqual([]);
     m.setReality({ exists: 'best' });
     expect(m.badge()[0]).toMatch(/BEST ESTIMATE/);
+    // smallbodies=0 in the URL: no synthetic layer, so Best estimate stays the default.
+    const off = setup(true);
+    off.applyUrl({ smallbodies: false });
+    expect(off.reality.exists).toBe('best');
+    expect(off.realityDefaults.exists).toBe('best');
+    // A level set in the URL is kept whatever the default.
+    const url = setup(true);
+    url.applyUrl({ exists: 'strict' });
+    expect(url.reality.exists).toBe('strict');
+    expect(url.realityDefaults.exists).toBe('complete');
   });
 
   it('gives synthetic rows an identity, synthetic labels and positions, and admits them at Complete only', () => {
