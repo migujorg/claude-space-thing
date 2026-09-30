@@ -205,6 +205,8 @@ interface Layer {
   /** CPU copy of level 0 (albedo: zonal mean for the normalization). */
   level0: (ArrayBuffer | null)[];
   zonal: ZonalProfile | null;
+  /** Level 0 decoded (albedo), for normalizations that need longitude structure. */
+  map0: Level0Map | null;
   /** Level 0 was looked for and every tile is known (loaded or absent). */
   level0Done: boolean;
 }
@@ -251,7 +253,7 @@ export class TileCache {
   }
 
   /** Register (idempotently) a layer and return its page-table base and addressed max level. */
-  layer(ref: SurfaceLayerRef): { base: number; maxLevel: number; zonal: ZonalProfile | null } {
+  layer(ref: SurfaceLayerRef): { base: number; maxLevel: number; zonal: ZonalProfile | null; map0: Level0Map | null } {
     const key = layerKey(ref);
     let l = this.layers.get(key);
     if (!l) {
@@ -261,10 +263,10 @@ export class TileCache {
         const L = Number(lvl);
         if (L <= maxLevel) for (const [tx, ty] of list) missing.add(tileIndex(L, tx, ty));
       }
-      l = { ref, format: this.format, base: this.allocBase(layerEntries(maxLevel)), maxLevel, missing, level0: [null, null], zonal: null, level0Done: false };
+      l = { ref, format: this.format, base: this.allocBase(layerEntries(maxLevel)), maxLevel, missing, level0: [null, null], zonal: null, map0: null, level0Done: false };
       this.layers.set(key, l);
     }
-    return { base: l.base, maxLevel: l.maxLevel, zonal: l.zonal };
+    return { base: l.base, maxLevel: l.maxLevel, zonal: l.zonal, map0: l.map0 };
   }
 
   /** Start a frame: requests made until the next beginFrame count as "in use". */
@@ -356,7 +358,10 @@ export class TileCache {
     const done = [0, 1].every((t) => layer.level0[t] !== null || layer.missing.has(tileIndex(0, t, 0)));
     if (!done) return;
     layer.level0Done = true;
-    if (this.format === 'albedo') layer.zonal = zonalMeanOfLevel0(layer.level0);
+    if (this.format === 'albedo') {
+      layer.zonal = zonalMeanOfLevel0(layer.level0);
+      layer.map0 = level0Map(layer.level0);
+    }
   }
 
   getStats(): CacheStats {
@@ -411,6 +416,48 @@ export function numberToF16(v: number): number {
   m >>>= 13;
   if (r > 0x1000 || (r === 0x1000 && (m & 1))) { m++; if (m === 0x400) { m = 0; e++; if (e >= 31) return sign | 0x7c00; } }
   return sign | (e << 10) | m;
+}
+
+/** Level 0 of an albedo layer decoded to float32 XYZS (512 × 256), unknown texels = 1 (as shaded). */
+export interface Level0Map {
+  width: number;
+  height: number;
+  data: Float32Array;
+}
+
+export function level0Map(tiles: (ArrayBuffer | null)[]): Level0Map {
+  const width = 2 * TILE, height = TILE;
+  const data = new Float32Array(width * height * 4).fill(1);
+  for (let t = 0; t < 2; t++) {
+    const buf = tiles[t];
+    if (!buf) continue;
+    const h = new Uint16Array(buf);
+    for (let j = 0; j < TILE; j++) for (let i = 0; i < TILE; i++) {
+      const o = (j * TILE + i) * 4;
+      if ((h[o] | h[o + 1] | h[o + 2] | h[o + 3]) === 0) continue;
+      const d = (j * width + t * TILE + i) * 4;
+      for (let k = 0; k < 4; k++) data[d + k] = f16ToNumber(h[o + k]);
+    }
+  }
+  return { width, height, data };
+}
+
+/** Bilinear sample of a level-0 map at planetocentric latitude/longitude (radians), XYZS. */
+export function sampleLevel0(m: Level0Map, lat: number, lon: number): [number, number, number, number] {
+  const u = ((lon + Math.PI) / (2 * Math.PI)) * m.width - 0.5;
+  const v = ((Math.PI / 2 - lat) / Math.PI) * m.height - 0.5;
+  const i0 = Math.floor(u), j0 = Math.floor(v);
+  const fu = u - i0, fv = v - j0;
+  const out: [number, number, number, number] = [0, 0, 0, 0];
+  for (let k = 0; k < 4; k++) {
+    const di = k & 1, dj = k >> 1;
+    const w = (di ? fu : 1 - fu) * (dj ? fv : 1 - fv);
+    const ii = (((i0 + di) % m.width) + m.width) % m.width;
+    const jj = Math.min(Math.max(j0 + dj, 0), m.height - 1);
+    const o = (jj * m.width + ii) * 4;
+    for (let c = 0; c < 4; c++) out[c] += w * m.data[o + c];
+  }
+  return out;
 }
 
 /**

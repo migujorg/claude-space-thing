@@ -1,12 +1,13 @@
 # Surface maps: review report
 
-Generated 2026-09-30 (commit 94a6808) by `cd pipeline && uv run python -m pipeline.surf_report`, from the layer headers and tiles in `app/public/data/surfaces/`. Numbers are computed; prose is hand-written in `pipeline/src/pipeline/surf_report.py`. Contract: docs/architecture.md §4.4; header type `SurfaceLayerHeader` in app/src/data/schema.ts.
+Generated 2026-09-30 (commit bb4dd77) by `cd pipeline && uv run python -m pipeline.surf_report`, from the layer headers and tiles in `app/public/data/surfaces/`. Numbers are computed; prose is hand-written in `pipeline/src/pipeline/surf_report.py`. Contract: docs/architecture.md §4.4; header type `SurfaceLayerHeader` in app/src/data/schema.ts.
 
 ## What the tiles contain
 
 - **albedo** (float16 X, Y, Z, S): local normal reflectance relative to the body's disk average, per channel. The disk average — cos²(latitude)-weighted, i.e. projected area at zero phase for an equatorial observer, averaged over rotation — is 1 in every channel (checked per level by `tests/test_surf_products.py`). The renderer multiplies by `geometricAlbedoXYZS` from photometry.json and rescales so the disk integral keeps p and Φ(α). Unknown texels are exactly 0 in all channels; wholly unknown tiles are not stored and are listed in `missingTiles`.
 - **height** (float32, metres above the pck00011 reference ellipsoid named in the header; NaN = unknown).
 - **hapke** (Moon only; float16 × 35: w, b, c, B_S0, h_s per LROC band; constants and the model in the header).
+- **Earth only** (float16, NaN = unknown per channel, all dated): **clouds** (cloudFraction, opticalThickness, cloudTopHeightM, iceFraction), **night** (Day/Night-Band radiance in nW cm⁻² sr⁻¹ and the censored share; `constants.toXYZS` converts to luminance for two lamp spectra), **water** (waterFraction, seaIceFraction). Earth's **albedo** is absolute-calibrated: `normalization.absoluteDiskMean` × texel = surface reflectance, because Earth's disk photometry includes clouds and atmosphere.
 - Every header has per-region provenance (`coverage.regions`), a brightness and a colour label, sources, the observation epoch and the normalization constants.
 
 ## Summary
@@ -18,6 +19,10 @@ Generated 2026-09-30 (commit 94a6808) by `cd pipeline && uv run python -m pipeli
 | Moon (301) | albedo | lroc-wac-hapke-7band, lroc-wac-hapke-parameters… | 0–5 (16384×8192, 0.67 km) | 0.993 / 0.999 | derived/estimated | estimated | 2010-01-21/2013-05-01 | 1365.0 |
 | Moon (301) | hapke | lroc-wac-hapke-parameters | 0–0 (512×256, 21.32 km) | 0.942 / 0.983 | measured | – | 2010-02/2011-10 | 8.8 |
 | Moon (301) | height | lola-ldem-64 | 0–4 (8192×4096, 1.33 km) | 1.000 / 1.000 | measured | – | 2009-07-13/2016-11-29 | 170.5 |
+| Earth (399) | albedo | modis-mcd43a4-v061, esa-oc-cci-v6-rrs… | 0–4 (8192×4096, 4.89 km) | 0.896 / 0.940 | measured | estimated | 2026-09-06 → 2026-09-21 | 314.5 |
+| Earth (399) | clouds | viirs-noaa20-cldprop, nasa-gibs | 0–4 (8192×4096, 4.89 km) | 0.986 / 0.998 | measured | – | 2026-09-28 → 2026-09-28 | 341.0 |
+| Earth (399) | night | viirs-noaa20-vj146a2, nasa-gibs… | 0–4 (8192×4096, 4.89 km) | 0.962 / 0.990 | measured | estimated | 2026-09-28 → 2026-09-28 | 162.5 |
+| Earth (399) | water | modis-mod44w-v6-water-mask, noaa-etopo-2022… | 0–4 (8192×4096, 4.89 km) | 1.000 / 1.000 | measured | – | 2026-09-29 → 2026-09-29 | 170.5 |
 | Mars (499) | albedo | hrsc-global-colour-mosaic, mallama-2017… | 0–4 (8192×4096, 2.60 km) | 1.000 / 1.000 | measured | estimated | Mars Express high-altitude campaign (2004 onwards; images selected for low dust) | 341.0 |
 | Mars (499) | height | mola-megdr-32ppd, naif-pck00011 | 0–4 (8192×4096, 2.60 km) | 1.000 / 1.000 | measured | – | 1997-09/2001-06 (MGS mapping) | 170.5 |
 | Io (501) | albedo | usgs-io-galileo-voyager-1km | 0–3 (4096×2048, 2.81 km) | 1.000 / 1.000 | estimated | estimated | Voyager 1979; Galileo 1996-2001 | 85.0 |
@@ -28,10 +33,10 @@ Generated 2026-09-30 (commit 94a6808) by `cd pipeline && uv run python -m pipeli
 | Saturn (699) | albedo | opal-saturn-2025b, karkoschka-1998-pds… | 0–2 (2048×1024, 184.90 km) | 0.910 / 0.950 | measured | estimated | 2025-08-29 → 2025-08-29 | 21.0 |
 | Uranus (799) | albedo | opal-uranus-2025b, karkoschka-1998-pds… | 0–1 (1024×512, 156.83 km) | 0.509 / 0.512 | measured | estimated | 2025-10-24 → 2025-10-24 | 5.0 |
 | Neptune (899) | albedo | opal-neptune-2025c, karkoschka-1998-pds… | 0–1 (1024×512, 151.95 km) | 0.896 / 0.945 | measured | estimated | 2025-08-24 → 2025-08-25 | 5.0 |
-| Charon (901) | albedo | usgs-charon-newhorizons-300m | 0–2 (2048×1024, 1.86 km) | 0.740 / 0.792 | estimated | estimated | 2015-07 (New Horizons flyby, 2015-07-14) | 17.0 |
-| Pluto (999) | albedo | usgs-pluto-newhorizons-300m | 0–3 (4096×2048, 1.82 km) | 0.769 / 0.824 | estimated | estimated | 2015-07 (New Horizons flyby, 2015-07-14) | 65.0 |
+| Charon (901) | albedo | nh-mvic-global-color-maps, buie-2010a… | 0–2 (2048×1024, 1.86 km) | 0.600 / 0.623 | measured | estimated | 2015-07-12 → 2015-07-14 | 16.5 |
+| Pluto (999) | albedo | nh-mvic-global-color-maps, buie-2010a… | 0–3 (4096×2048, 1.82 km) | 0.721 / 0.771 | measured | estimated | 2015-07-12 → 2015-07-14 | 65.0 |
 
-**Product size:** 2977 MiB of tiles (3.12 GB) + 0.7 MiB of headers and tile listings. **Raw downloads kept** in data/raw/surfaces: 2.90 GB (the LROC mosaics — 8.2 GB Hapke + 4.9 GB polar — and the 4.3 GB of Mercury band ranges are reduced and deleted right after download; their sha256 stays in the ledger). **Stage time** per module (last full run: moon 512 s, giants 14 s, mars 46 s, mercury 34 s, pan 45 s; the Moon and Mercury from their cached reductions). A cold build downloads ~20 GB and took 1096 s for the Moon (13 GB of LROC mosaics), 431 s for Mercury (4.3 GB of band ranges + the DEM), 106 s for Mars and 35 s for the giant planets on this machine (~20-40 MB/s).
+**Product size:** 3965 MiB of tiles (4.16 GB) + 1.0 MiB of headers and tile listings. **Raw downloads kept** in data/raw/surfaces: 3.01 GB (the LROC mosaics — 8.2 GB Hapke + 4.9 GB polar — and the 4.3 GB of Mercury band ranges are reduced and deleted right after download; their sha256 stays in the ledger). **Stage time** per module (last full run: moon 512 s, giants 14 s, mars 46 s, mercury 34 s, pan 45 s, earth 728 s, nh 42 s; the Moon and Mercury from their cached reductions). A cold build downloads ~20 GB and took 1096 s for the Moon (13 GB of LROC mosaics), 431 s for Mercury (4.3 GB of band ranges + the DEM), 106 s for Mars and 35 s for the giant planets on this machine (~20-40 MB/s). Earth, all four layers, cold: 1509 s for 1.8 GB (GIBS renders the 8192 × 4096 WMS blocks slowly; 1890 MODIS byte ranges, 766 MB; OC-CCI 324 MB; ETOPO 156 MB); only the ETOPO subset, the colour maps and the STAC responses are kept. Pluto and Charon: 42 s for 1.27 GB of band ranges, deleted after use.
 
 ## Colour: when is it `derived`?
 
@@ -41,13 +46,40 @@ Band ratios are interpolated linearly between band centres and held flat outside
 |---|---|---|---|---|---|
 | Mercury | 430, 480, 560, 630, 750, 830 | 120 | 11.4 / 0.0 | 0.2 / 0.3 / 1.1 / 0.5 | estimated |
 | Moon | 321, 360, 415, 566, 604, 643, 689 | 151 | 0.0 / 0.3 | 0.2 / 0.4 / 1.0 / 0.8 | estimated |
+| Earth (land) | 469, 555, 645 | 90 | 73.9 / 5.0 | 10.9 / 11.8 / 6.2 / 15.1 | estimated |
+| Earth (water) | 412, 443, 490, 510, 560, 665 | 105 | 1.6 / 1.4 | 13.4 / 8.2 / 3.3 / 1.9 | estimated |
 | Mars | 440, 530, 675, 750 | 145 | 21.5 / 0.0 | 5.5 / 4.7 / 2.8 / 4.8 | estimated |
 | Jupiter | 395, 467, 502, 631, 658 | 129 | 0.1 / 2.3 | 1.3 / 1.3 / 1.7 / 0.5 | estimated |
 | Saturn | 395, 467, 502, 631, 763 | 132 | 0.1 / 0.0 | 1.8 / 1.0 / 7.2 / 1.3 | estimated |
 | Uranus | 467, 547, 657, 763 | 110 | 70.7 / 0.0 | 0.3 / 0.8 / 0.3 / 0.9 | estimated |
 | Neptune | 467, 547, 657 | 110 | 72.0 / 1.1 | 3.0 / 2.9 / 0.3 / 1.4 | estimated |
+| Charon | 475, 625, 870 | 245 | 80.5 / 0.0 | 0.5 / 0.8 / 0.1 / 0.5 | estimated |
+| Pluto | 475, 625, 870 | 245 | 79.0 / 0.0 | 1.6 / 2.2 / 0.2 / 1.6 | estimated |
 
 ## Per body
+
+### Earth
+
+**Sources.** Land: MODIS MCD43A4 v061 nadir BRDF-adjusted reflectance, the most recent daily 16-day composite, bands 469/555/645 nm. It comes from the Microsoft Planetary Computer's cloud-optimized copies: the 926 m overview is read by byte range and box-averaged exactly from the sinusoidal grid. Water: ESA OC-CCI v6.0 monthly remote-sensing reflectance (412–665 nm, 4 km), ρw = π·Rrs, for the same season one year earlier (September 2025). Land/water split: MOD44W (250 m) north of 60°S. MOD44W does not map Antarctica, and GIBS draws its no-data value in the water colour, so south of 60°S we use ETOPO 2022 surface elevation ≤ 0 m (ice shelves count as land). Clouds and night lights: NASA GIBS science layers decoded through their published colour maps. Clouds are VIIRS NOAA-20 CLDPROP cloud-top height and optical thickness with phase, one day at the ~13:30 overpass. Night lights are Black Marble VJ146A2 at-surface radiance. Sea ice: GHRSST MUR. Notes: `docs/sources/modis-mcd43a4-v061.md`, `esa-oc-cci-v6-rrs.md`, `nasa-gibs.md`, `night-lights-luminance.md`.
+
+**What we avoided.** GIBS "Corrected Reflectance" true colour is Rayleigh-corrected and contrast-stretched, and GeoColor is partly synthetic, so neither is used. Every value here is a documented physical quantity: reflectance factor, optical thickness, height, or radiance.
+
+**What the renderer does with it.** Surface = albedo × absoluteDiskMean (diffuse; NBAR is the nadir-view reflectance with the Sun at local noon, and land BRDF effects must come from the photometric model). Water adds Fresnel reflection and sun glint on waterFraction × (1 − seaIceFraction). Clouds are shaded from optical thickness, phase and top height at that day's overpass; the cloud layer is unknown in polar night. Rayleigh scattering and aerosols belong to the atmosphere model, not to these maps. Night side: radiance × `toXYZS` for an assumed lamp spectrum (colour `estimated`).
+
+**Known issues.** Sea ice has no reflectance (neither product retrieves it) and is unknown in the albedo. The land colour is estimated from three MODIS bands, and the flat hold beyond 645 nm misses vegetation's red edge. Clouds are one day, each place seen once; cloud-top heights ≥ 12 km are recorded as 12 km (open top bin). Night-light radiances ≥ 38.2 nW cm⁻² sr⁻¹ are lower bounds (censoredFraction). The lamp-spectrum factors are upper limits, because the CIE tables stop at 780 nm while the Day/Night Band reaches ~900 nm.
+
+**Absolute calibration implied by the albedo map.** Disk-mean surface reflectance (cos²φ, known texels) X 0.0339, Y 0.0327, Z 0.0333, S 0.0319. A Lambertian sphere with this surface would have a geometric albedo of 0.0218 (Y); Earth's disk photometry (photometry.json, a radiative-transfer model with clouds and atmosphere) has p_V = 0.216, so the bare surface is ~10 % of the disk's brightness and clouds plus Rayleigh scattering make up the rest. Per channel (X, Y, Z, S), the model disk's geometric albedo is 0.213, 0.213, 0.265, 0.239 against the bare-surface Lambert values 0.0226, 0.0218, 0.0222, 0.0212. Disk weight: ocean 74.0 %, land 25.5 %, MODIS-measured water 0.5 %; 94.0 % of the disk weight is known (315 MODIS tiles; negative texels clipped: 148).
+
+**clouds:** L2 retrievals (cloud-top height from the IR/CO2-slicing algorithm, optical thickness at 0.65/0.86 µm with its phase) decoded to one colour-map bin, aggregated per texel from 16 ~1.1 km samples. Epoch: 2026-09-28, each place at the NOAA-20 daytime overpass (~13:30 local solar time). Coverage 0.986 of the area; diagnostics meanCloudFraction 0.7083, unmatchedColours 0, cthCensoredSamples 23591630, daylitLatitudeRange [-82.46, 78.77].
+
+**night:** Black Marble at-surface nighttime-light radiance in the VIIRS Day/Night Band (500-900 nm), moonlight, atmosphere and viewing-angle effects removed by the product, cloud gaps filled from earlier clear nights; mean of 16 samples per texel. Epoch: night of 2026-09-28 (NOAA-20 overpass ~01:30 local), gaps filled from earlier nights. Coverage 0.962 of the area; diagnostics unmatchedColours 0, knownFraction 0.8325, texelsWithCensoring 68047.
+
+**water:** waterFraction: share of the texel's 16 samples that are water (ocean and inland water): MOD44W 250 m north of 60°S, ETOPO 2022 surface elevation ≤ 0 m south of it (MOD44W does not map Antarctica; ice shelves count as land). seaIceFraction: mean MUR sea-ice concentration (0-1) of the texel's samples that have one (NaN where none, e.g. land). Epoch: land/water mask: MOD44W v6 year 2015; sea ice: MUR analysis of 2026-09-29. Coverage 1.000 of the area; diagnostics unmatchedColours 0, waterAreaFraction 0.7137, texelsWithSeaIceOver15pc 3806982.
+
+![Earth albedo](img/surfaces-399-albedo.png)
+![Earth water](img/surfaces-399-water.png)
+![Earth clouds](img/surfaces-399-clouds.png)
+![Earth night](img/surfaces-399-night.png)
 
 ### Moon
 
@@ -120,9 +152,21 @@ Band ratios are interpolated linearly between band centres and held flat outside
 ![Mercury albedo](img/surfaces-199-albedo.png)
 ![Mercury height](img/surfaces-199-height.png)
 
+### Pluto
+
+**Source.** New Horizons MVIC global colour map (PDS SBN `nh_derived:plutosystem_composition`). Calibrated MVIC scans were converted to normal albedo with a lunar-Lambert function (L(15°) = 0.65), registered to the LORRI base map, and merged with it to full resolution. Blue 475, Red 625 and NIR 870 nm are used; CH4 895 nm is not. This replaces the USGS 8-bit panchromatic mosaic, whose brightness was an inverted display stretch and whose colour was the disk colour. The brightness is now `measured` and the colour varies per texel (`estimated`: two visible bands 150 nm apart). The MVIC map covers less than the panchromatic mosaic did (area 0.72 vs 0.77); the rest is unknown.
+
+![Pluto albedo](img/surfaces-999-albedo.png)
+
+### Charon
+
+**Source.** New Horizons MVIC global colour map, as for Pluto (1 km/px cube). Brightness `measured`, colour `estimated`. Coverage 0.60 of the area, against 0.74 for the USGS panchromatic mosaic it replaces: the sub-Pluto hemisphere is well covered, and the far side and the dark south are unknown.
+
+![Charon albedo](img/surfaces-901-albedo.png)
+
 ### Panchromatic mosaics
 
-**Galilean moons, Pluto, Charon: 8-bit panchromatic mosaics (USGS Astrogeology).** Each is calibrated and photometrically normalized by its producer (Lunar-Lambert for the Galilean satellites), matched across image boundaries and delivered as 8-bit numbers. Except for Pluto and Charon, whose FGDC metadata document the linear 8-bit stretch (inverted here), the DN scaling is not documented; we assume DN ∝ normalized reflectance. Brightness pattern and colour are therefore `estimated` (single band: the local colour is the disk colour). Colour composites (`ClrMosaic`, `ClrMerge`, `FalseColor`), the high-pass-filtered Enceladus mosaics (`_HPF`) and the Triton `GlobalFill` mosaic (undocumented fill) are not used. Georeferencing is checked against a named albedo feature from the IAU Gazetteer at its east longitude and at the mirrored longitude (catches W/E mix-ups).
+**Galilean moons: 8-bit panchromatic mosaics (USGS Astrogeology).** Each is calibrated and photometrically normalized by its producer (Lunar-Lambert), matched across image boundaries and delivered as 8-bit numbers. The DN scaling is not documented; we assume DN ∝ normalized reflectance. Brightness pattern and colour are therefore `estimated` (single band: the local colour is the disk colour). Colour composites (`ClrMosaic`, `ClrMerge`, `FalseColor`), the high-pass-filtered Enceladus mosaics (`_HPF`) and the Triton `GlobalFill` mosaic (undocumented fill) are not used. Georeferencing is checked against a named albedo feature from the IAU Gazetteer at its east longitude and at the mirrored longitude (catches W/E mix-ups).
 
 | body | source | observed | DN p1 / median / p99 | georeferencing check | leading/trailing (mag) | notes |
 |---|---|---|---|---|---|---|
@@ -130,15 +174,11 @@ Band ratios are interpolated linearly between band centres and held flat outside
 | Europa | usgs-europa-voyager-galileo-500m | Voyager 1979; Galileo 1996-2003 | 78 / 153 / 210 | Pwyll (bright ray crater): 1.09 vs mirrored 0.99 | 1.249 (+0.24) | Image resolutions vary widely (tens of m to ~20 km/px gap fill). |
 | Ganymede | usgs-ganymede-voyager-galileo-1km | Voyager 1979; Galileo 1996-2000 | 34 / 76 / 147 | Galileo Regio (dark): 0.80 vs mirrored 1.01 | 1.351 (+0.33) | Input resolutions 180 m to 20 km/px (gap fill). |
 | Callisto | usgs-callisto-voyager-galileo-1km | Voyager 1979; Galileo 1996-2001 | 31 / 55 / 143 | Valhalla (bright centre): 1.38 vs mirrored 0.97 | 1.294 (+0.28) |  |
-| Charon | usgs-charon-newhorizons-300m | 2015-07 (New Horizons flyby, 2015-07-14) | 7 / 123 / 234 | none selected | – | Encounter hemisphere at high resolution, far side from approach images; the south was in polar night. |
-| Pluto | usgs-pluto-newhorizons-300m | 2015-07 (New Horizons flyby, 2015-07-14) | 5 / 123 / 225 | Belton Regio (dark): 0.28 vs mirrored 0.66 | – | Encounter hemisphere (centred near 180°E) at up to ~0.3-1 km/px; the far hemisphere only at ~20-40 km/px from approach images; south of ~30°S was in polar night and is unknown. Pluto's surface volatiles (N2, CH4, CO ices) move seasonally; this is the July 2015 state. |
 
 ![Io](img/surfaces-501-albedo.png)
 ![Europa](img/surfaces-502-albedo.png)
 ![Ganymede](img/surfaces-503-albedo.png)
 ![Callisto](img/surfaces-504-albedo.png)
-![Charon](img/surfaces-901-albedo.png)
-![Pluto](img/surfaces-999-albedo.png)
 
 Previews: display renderings of relative reflectance × the body's disk colour, disk mean at display luminance 0.30, adapted to sunlight (Bradford → D65), 256-colour palette; heights: grey = height plus a 10× exaggerated hillshade. Magenta/black checkerboard = unknown. `uv run python -m pipeline.surf_preview`.
 
@@ -146,9 +186,10 @@ Previews: display renderings of relative reflectance × the body's disk colour, 
 
 - **Venus:** the eye sees the cloud deck, featureless to a few percent in the visible; the markings in popular images are ultraviolet. Magellan radar maps show a surface no eye can see. Rendered from photometry.json only.
 - **Titan:** the eye sees an orange haze ball; the surface maps are 938 nm methane-window (ISS) or infrared (VIMS) products with the haze removed. Rendered from photometry.json only.
-- **Saturn's mid-size moons (rejected after checking):** the USGS/CICLOPS Cassini global maps compress large-scale contrast. The Iapetus map implies a leading/trailing brightness ratio of 0.84 (0.18 mag) at zero phase, while Iapetus's leading hemisphere is ~2 mag fainter than its trailing one; the Dione map implies 1.04 and its bright ray crater Creusa does not stand out. Tethys, Rhea and Enceladus come from the same map series and are held back until its brightness scaling is documented or checked (reasons in `surfaces/index.json` → `rejected`).
-- **Earth:** out of scope for this stage (needs daily cloud imagery; research note 1c).
-- **Triton, Uranian moons, Mimas, small moons:** not built yet (see open issues).
+- **Saturn's mid-size moons (rejected after checking):** the USGS/CICLOPS Cassini global maps compress large-scale contrast. The Iapetus map implies a leading/trailing brightness ratio of 0.84 (0.18 mag) at zero phase, while Iapetus's leading hemisphere is ~2 mag fainter than its trailing one. The Dione map implies 1.04, and its bright ray crater Creusa does not stand out. We also tested the DLR Cassini ISS cartographic atlas maps in PDS (COISS_3001–3007: Phoebe, Enceladus, Dione, Tethys, Iapetus, Mimas, Rhea). They are 8-bit simple-cylindrical mosaics with a Hapke photometric correction but no documented DN scaling, and they are the source of the USGS maps. They give the same ratios (Iapetus 0.844, Mimas 0.93, Tethys 1.08, Rhea 1.17), so none is used (reasons in `surfaces/index.json` → `rejected`).
+- **Triton:** the USGS products are the 1989 Voyager display colour composite (orange/violet/UV shown as RGB; "GlobalFill" adds synthetic fill) or an 8-bit clear-channel orthographic mosaic without documented scaling. No calibrated Triton map was found. Rejected.
+- **Uranian moons:** no global map product exists in the USGS mosaic archive or PDS; a map would have to be built from calibrated Voyager 2 images (southern hemispheres only). Not built.
+- **Small moons:** not built.
 
 ## Verification
 
@@ -160,18 +201,21 @@ Previews: display renderings of relative reflectance × the body's disk colour, 
 - **Jupiter, Great Red Spot:** the reddest (max X/Z) large feature between 10°S and 35°S is at 20.7°S planetocentric, 322°W System III (east 38°); expected 19.6°S planetocentric (≈ 22.2°S planetographic; e.g. Simon et al. 2018, AJ 155, 151), test tolerance 1.5°. **Longitude direction:** the 23.7°N prograde jet moved +4.3° east between the two December 2025 rotations (9.42 h), as it must if east longitude increases to the right in the converted maps.
 - **Uranus:** data from -1° to 90° (planetocentric): the north pole faces Earth in 2025, as expected (test).
 - **Neptune:** data from -90° to 52° (planetocentric): the south pole faces Earth in 2025, as expected (test).
+- **Earth albedo (level 4, absolute Y):** median land 0.068, open water 0.0062; Sahara (20–28°N, 0–20°E) 0.245, Amazon forest (0–10°S, 55–70°W) 0.044 (tests: land > 2.5× water, Sahara > 1.5× land median). Water covers 71.4 % of the area (ocean ≈ 70.8 % + inland water); MOD44W land samples that have a MUR sea-ice value (coastline mismatch) 0.076 %.
+- **Earth night lights (level 4):** peak radiance near Paris 38.2, New York 38.2, Cairo 38.2, central Sahara 0.06 nW cm⁻² sr⁻¹ (texel means; samples ≥ 38.2 are lower bounds).
 - **Io, Loki Patera** (13.01°, 51.21°E; IAU Gazetteer of Planetary Nomenclature (planetarynames.wr.usgs.gov)): contrast to its surroundings 0.72 vs 0.98 at the mirrored longitude (expected dark).
 - **Europa, Pwyll (bright ray crater)** (-25.20°, 88.60°E; IAU Gazetteer of Planetary Nomenclature (planetarynames.wr.usgs.gov)): contrast to its surroundings 1.09 vs 0.99 at the mirrored longitude (expected bright).
 - **Ganymede, Galileo Regio (dark)** (45.00°, -127.00°E; IAU Gazetteer of Planetary Nomenclature (planetarynames.wr.usgs.gov)): contrast to its surroundings 0.80 vs 1.01 at the mirrored longitude (expected dark).
 - **Callisto, Valhalla (bright centre)** (14.70°, -56.00°E; IAU Gazetteer of Planetary Nomenclature (planetarynames.wr.usgs.gov)): contrast to its surroundings 1.38 vs 0.97 at the mirrored longitude (expected bright).
-- **Pluto, Belton Regio (dark)** (-9.21°, 91.42°E; IAU Gazetteer of Planetary Nomenclature (planetarynames.wr.usgs.gov)): contrast to its surroundings 0.28 vs 0.66 at the mirrored longitude (expected dark).
+- **Pluto, Belton Regio (dark)** (-9.21°, 91.42°E; IAU Gazetteer of Planetary Nomenclature (planetarynames.wr.usgs.gov)): contrast to its surroundings 0.25 vs 0.66 at the mirrored longitude (expected dark).
 
 ## Open issues
 
 - Galilean moons: DN scaling undocumented (brightness `estimated`). The headers record the leading/trailing brightness ratio each map implies (`diagnostics.leadingOverTrailing`); comparing it with measured orbital light curves would confirm or reject the linear-DN assumption, as it rejected the Iapetus map.
-- Saturn's mid-size moons: find a documented-brightness source (e.g. the DLR Cassini ISS cartographic volumes COISS_3001-3007 in PDS) or check the CICLOPS maps against disk photometry.
-- Pluto/Charon: New Horizons MVIC colour (PDS composition bundle) not used yet; colour is the disk colour. The DEMs (encounter hemisphere only) are not exported.
-- Not built: Triton (Voyager hemisphere only; the USGS 'GlobalFill' fill is undocumented), Uranian moons, Mimas (DLR atlas in a zip), Ceres/Vesta (M3), Earth.
+- Saturn's mid-size moons: both public map series (USGS/CICLOPS, DLR COISS_3xxx) fail the brightness check. A usable map needs mosaics built from calibrated Cassini ISS images (COISS_2xxx) with a published photometric model, or a published albedo map.
+- Pluto/Charon: the MVIC colour maps cover less than the old panchromatic mosaics (Pluto 0.72 vs 0.77, Charon 0.60 vs 0.74 of the area). The rest could be filled from the LORRI panchromatic mosaic tied to MVIC in the overlap (brightness `estimated` there). The DEMs (encounter hemisphere only) are not exported.
+- Not built: Triton, Uranian moons (no calibrated product), Ceres/Vesta (M3), Earth height (ETOPO 2022 would need lake surfaces; optional).
+- Earth: the cloud layer is one daytime overpass (the night side and polar night are unknown); a renderer at another time should label clouds `estimated`. Geostationary cloud products (GOES/Himawari/Meteosat L2) could give hourly clouds for most of the disk; not used yet (the Meteosat L2 archive needs a login). The albedo has no sea-ice reflectance (unknown). The MCD43A4 fill share over the 315 tiles includes their ocean pixels.
 - Giant planets: maps are one rotation at their epoch; advecting clouds with measured zonal wind profiles (research note 1c) is left to the renderer/M2 follow-up and would be `estimated`.
 - Moon: normal albedo excludes the opposition surge by definition (see above); the renderer's opposition effect must come from the disk phase curve or the exported Hapke layer.
 - Several bodies (the Galilean moons, Charon) have no photometry.json entry yet, so the renderer has no absolute colour/brightness for them; their maps are ready for when it does.

@@ -13,7 +13,7 @@ the build of 2026-09-30 (window mid-epoch J2026.746); the stage writes them to `
 |---|---|
 | Stars | **482 459** (Gaia DR3 482 105, Hipparcos-only 104, Tycho-2-only 22, missing binary components 228) |
 | Completeness | every star with **V < 9.8** that Gaia DR3, Hipparcos or Tycho-2 knows (99.9 % point of G − V; V < 10.0 at 99 %) |
-| Light labels | **derived 437 627 (90.7 %)**, estimated 44 832 (9.3 %), unknown 0 |
+| Light labels | **derived 437 677 (90.7 %)**, estimated 44 781 (9.3 %), unknown 0 (M4 rebuild with the Sternberg route; M1: 437 627 / 44 832) |
 | Position labels | derived 481 820, estimated 639 |
 | Size | bright.bin 23.2 MB + bright.json 10 kB + names.json 0.7 MB = 23.9 MB |
 | Raw data kept | 1.5 GB (`data/raw/stars/`), of which 1.2 GB the XP spectra of the selected sources |
@@ -103,11 +103,14 @@ Parallax is not applied (directions are from the solar-system barycentre).
 | 1 | **HST CALSPEC** STIS spectrum, observed over all of 360–830 nm | derived | 50 |
 | 2 | **Gaia DR3 XP** sampled spectrum (336–1020 nm) for G ≥ 4.0 (§2), no blending neighbour, all four integrals > 0 | derived | 437 372 |
 | 3 | **Pulkovo** spectrophotometry 320–1080 nm, V agrees with Hipparcos to 0.10 mag, not a combined entry | derived | 205 |
-| 4 | Hipparcos V, B − V → photometric relation | estimated | 477 |
-| 5 | Gaia G, BP − RP → photometric relation | estimated | 43 795 |
+| 3b | **Sternberg** III/208 + III/207 spectrophotometry 322–1082 nm, the two agree to 5 % in their overlap, V agrees with Hipparcos (M4; docs/reports/sky.md §2) | derived | 50 |
+| 4 | Hipparcos V, B − V → photometric relation | estimated | 436 |
+| 5 | Gaia G, BP − RP → photometric relation | estimated | 43 786 |
 | 6 | Tycho VT, BT − VT → photometric relation | estimated | 27 |
 | 7 | magnitude only (G, V or VT) → population-median relation | estimated | 298 |
-| 8 | Hipparcos multiple entry: system light not carried by other records | estimated | 235 |
+| 8 | Hipparcos multiple entry: system light not carried by other records | estimated | 234 |
+
+(Counts from the M4 rebuild, 482 458 records; the M1 build had 477 on route 4, 43 795 on route 5 and 235 on route 8.)
 
 *Photometric relations.* XYZS = 10^(−0.4 m) · k(c) with k the median of XYZS · 10^(0.4 m) over the stars of the
 same colour index c (50-star bins) whose XYZS is derived from their own XP spectrum (G ≥ 4.0, not blended). The
@@ -199,17 +202,21 @@ differ in passband, so red stars sit ~0.1 mag brighter in Y):
 | α Cen A | V, B − V | estimated | 2.677e-06 | 0.3245 | 0.3330 | 2.352 | −0.01 | 2.564e-06 | −0.047 |
 | Procyon | Pulkovo | derived | 1.819e-06 | 0.3035 | 0.3143 | 2.550 | +0.40 | 1.757e-06 | −0.037 |
 | Altair | Pulkovo | derived | 1.265e-06 | 0.2857 | 0.2954 | 2.753 | +0.76 | 1.261e-06 | −0.003 |
-| Aldebaran | V, B − V | estimated | 1.257e-06 | 0.4057 | 0.3910 | 1.682 | +0.87 | 1.140e-06 | −0.106 |
-| Spica | V, B − V | estimated | 1.048e-06 | 0.2564 | 0.2562 | 3.236 | +0.98 | 1.030e-06 | −0.018 |
+| Aldebaran | Sternberg ³ | derived | 1.111e-06 | 0.3990 | 0.3912 | 1.704 | +0.87 | 1.140e-06 | +0.028 |
+| Spica | Sternberg ³ | derived | 9.973e-07 | 0.2501 | 0.2461 | 3.307 | +0.98 | 1.030e-06 | +0.035 |
 | Deneb | Pulkovo | derived | 7.887e-07 | 0.2800 | 0.2890 | 2.827 | +1.25 | 8.032e-07 | +0.020 |
 | Achernar | Pulkovo | derived | 1.677e-06 | 0.2561 | 0.2591 | 3.190 | +0.45 | 1.678e-06 | +0.001 |
 | Capella | Pulkovo | derived | 2.471e-06 | 0.3381 | 0.3481 | 2.215 | +0.08 | 2.360e-06 | −0.050 |
-| Polaris | V, B − V | estimated | 4.309e-07 | 0.3182 | 0.3274 | 2.413 | +1.97 | 4.138e-07 | −0.044 |
+| Polaris | Sternberg ³ | derived | 3.922e-07 | 0.3168 | 0.3263 | 2.418 | +1.97 | 4.138e-07 | +0.058 |
 
 ¹ Hipparcos V for Canopus is −0.62; the Pulkovo catalogue's own V is −0.72, with which the difference is −0.03.
 ² Semiregular variables; the value is for the catalogue's mean V.
-Betelgeuse, Antares, Aldebaran, Spica and α Cen A are in no measured spectrophotometric catalogue used here
-(Pulkovo's 320–1080 nm table lacks them; α Cen A/B have only its 320–735 nm table) and Gaia cannot observe them.
+³ Since M4: Sternberg III/208 + III/207 spectrophotometry (docs/sources/star-spectrophotometry.md,
+docs/reports/sky.md §2). Before, these three were V, B − V estimates (Aldebaran Y 1.257e-06, Spica 1.048e-06,
+Polaris 4.309e-07).
+Betelgeuse (III/207 only, no blue half), Antares and α Cen A are in no measured spectrophotometric catalogue used
+here (Pulkovo's 320–1080 nm table lacks them; α Cen A/B have only its 320–735 nm table) and Gaia cannot observe
+them.
 
 ## 5. Colour trend
 
@@ -323,10 +330,9 @@ variable designations; names product).
   (f32, with a label) would cost 4 bytes per record.
 * **Proper motion within the window** is not in the file; over ±18 months the fastest bright star (α Cen,
   3.7″/yr) moves 5.5″. The app treats `dir` as fixed at `epochEt`.
-* **Brightest stars without spectra.** The 477 stars on the Hipparcos V, B − V route (Betelgeuse, Antares,
-  Aldebaran, Spica, α Cen A/B, Hadar, Acrux, ...: brighter than G = 4 or missing from Gaia) are `estimated`. Measured
-  spectrophotometry covering 360–830 nm exists for some (the Sternberg catalogues III/208, 322–762 nm, and III/207,
-  598–1082 nm, joined at their overlap, cover Aldebaran and Spica) and would make them `derived`.
+* **Brightest stars without spectra.** The 436 stars on the Hipparcos V, B − V route (Betelgeuse, Antares,
+  α Cen A/B, Hadar, Acrux, ...: brighter than G = 4 or missing from Gaia) are `estimated`. Since M4 the Sternberg
+  catalogues (III/208 + III/207) make 50 of the former ones `derived`, among them Aldebaran, Spica and Polaris.
 * **Pulkovo absolute scale** differs from HST by 3–7 % and ~0.005 in chromaticity (§3); not corrected (a
   cross-calibration would itself be an assumption).
 * **Variable stars** carry catalogue-mean brightness (flag 1); Betelgeuse varies by ~1 mag.

@@ -151,7 +151,10 @@ def test_panchromatic_maps_pass_their_feature_checks():
     for h in pans:
         g = h["diagnostics"]["georeferencing"]
         assert g["passed"] in (True, None), (h["bodyName"], g)
-        assert h["color"]["label"] == "estimated" and h["brightness"]["label"] == "estimated"
+        # USGS 8-bit mosaics: brightness estimated (undocumented or inverted stretch); New Horizons MVIC colour maps
+        # (Pluto, Charon): documented normal albedo, brightness measured
+        want = "measured" if h["body"] in (999, 901) else "estimated"
+        assert h["color"]["label"] == "estimated" and h["brightness"]["label"] == want, h["bodyName"]
 
 
 def test_opal_longitude_direction_from_jet_drift():

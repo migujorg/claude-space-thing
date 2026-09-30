@@ -7,6 +7,7 @@ Status: first full build on 2026-09-30. The stage is `smallbodies` (`pipeline/sr
 - **Every object in the JPL Small-Body Database:** 1,573,014 asteroids and comets as of the 2026-09-30 snapshot. Orbits are taken at full precision, with their non-gravitational models. Each object's osculating elements are turned into a state at its own epoch, then integrated to one **common epoch**: 2026-09-30 00:00 TDB (ET 843998400), the centre of the manifest window rounded to 0h TDB. The pipeline and the app use the same integrator.
 - **Per-attribute provenance** for H, G, position, diameter, albedo, rotation period, colour, colour indices, taxonomy, the H-G1-G2 phase function and spin pole. Each has a label column and a source column, and the method is documented in the header. Estimated values sit in their own columns and never overwrite a measured or unknown one.
 - **Verification:** 19 objects are compared with JPL Horizons over the ±548-day window, every 2 days. The 16 ordinary objects are within 7 km. Only the comets and a 21,000 km Earth flyby are worse, and they stay within their stated tolerances. A float64 TypeScript propagator reproduces the Python integrator bit for bit (difference 0.0 km).
+- **On the GPU (§11):** `app/src/gpu/smallbodies/` propagates all 1.57 M objects with the same scheme in double-single WGSL and lights them as star-like point sources through the renderer's star path. Against the float64 reference over the whole window it agrees to 8 m (median) and 0.10 km (99th percentile) for 1,000 random objects. Brightness comes from H-G / H-G1-G2 / comet laws (`smallbodies/photometry.json`, stage `sbphotometry`), gated per reality level.
 
 ## 2. Products (`app/public/data/smallbodies/`)
 
@@ -29,10 +30,12 @@ All tables are `BinaryTableHeader` + `.bin`, little-endian, fixed stride (`app/s
 - `conditionCode` u8 (JPL) and `mpcU` u8 (MPC), on the U scale 0–9, with 255 for none.
 - Labels: `posLabel`, `hLabel`, `gLabel`, `diameterFromHLabel`.
 - Sources: `orbitSrc`, `hSrc`, `gSrc`, `diameterFromHSrc`.
+- `colorClass` u8 (in the former padding at offset 77, so the stride is unchanged): an index into the header's `colorClasses`, the class whose mean colour is the object's **estimated** colour where it has no measured spectrum; 255 means comet. The classes are the 24 Bus-DeMeo classes of the light stage's `smallbody-class-colors.json` plus `population`. The class is the SsODNet best taxonomy class, else SMASSII, else Tholen, mapped through that product's aliases. Counts: 165,666 from SsODNet, 3 from SMASSII, 7 from Tholen, and 1,403,261 `population`.
 
 The header also carries:
 - `forceModel`: everything the propagator needs (§4).
 - `classAlbedo`: the population statistic behind the estimated diameters.
+- `colorClasses`: the method, `xyzsPerUnitPV` and `pVMedian` per class, and counts. The estimated colour is p_V × xyzsPerUnitPV. p_V is the measured value, else the class median, else the orbit-class median.
 - `statistics`: the counts in this report.
 - `epochEt`, `window` and `snapshot`.
 
@@ -49,11 +52,19 @@ At 80 B per object, the 5 million objects expected after two years of LSST come 
 Their labels and sources are in `diameterLabel/Src`, `albedoLabel/Src`, `rotLabel/Src`, `colorLabel/Src`, `colorIndexLabel/Src`, `taxonomyLabel/Src`, `phaseLabel/Src`, `spinLabel/Src` and `taxonomyBftLabel/Src`. Codes and indices:
 - `rotQuality`: the LCDB U code, an index into `lcdbU`.
 - `gaiaBands`: the number of Gaia bands used.
+- `geometricAlbedoXYZS` of records without a Gaia spectrum: the estimated class colour. 280,980 records have it, with `colorSrc` = `smallbody-class-colors` and `colorLabel` = estimated. Adding it creates no new records.
 - `taxonomyB` and `taxonomyT`: indices into the header lists (SMASSII/Bus, 35 classes; Tholen, 132 strings).
 
 **comets** (28 B): `row`. Total-magnitude law `M1`, `K1`. Nuclear law `M2`, `K2`, `PC`. Labels `totalLabel` and `nuclearLabel`, with the SBDB as source. A brightness predicted from these laws is `estimated`: comets depart from them by 1–2 mag.
 
 **nongrav** (88 B): `row`, then `A1 A2 A3` (km/s²), `DT` (s), `ALN`, `R0` (km), `NM`, `NN`, `NK` as f64. The propagator needs these, keyed by core row (`readNonGrav` in `app/src/core/smallbodyCatalog.ts`).
+
+**photometry.json** (stage `sbphotometry`, after `smallbodies`): what the GPU field needs to turn magnitudes into light. It holds:
+- `vSun` = −26.76 (Willmer 2018).
+- `sunIrradianceXYZS1AU`, recomputed and checked equal to light.json.
+- The H-G and H-G1-G2 phase-function constants, parsed from sbpy 0.6.0 (docs/sources/sbpy-0.6.0.md).
+- Colour statistics.
+- The label rules as text (§11.4).
 
 **names**: line *i* describes core record *i*. The tab-separated columns are `spkid`, `designation` (the number for numbered asteroids), `name`, `prefix` (comets) and `principalProvisionalDesignation`.
 
@@ -281,7 +292,9 @@ Products total 215.9 MB (§2). Raw downloads for this stage come to about 1.55 G
     - All 19 objects against Horizons within tolerance, and re-computation of the product's common-epoch states to 10⁻⁶ km.
   - `test_sb_physical.py`: label rules for SBDB/NEOWISE precedence and fit codes, inverse-variance combination, estimated diameters (never for comets or where measured), LCDB U codes and limits, Gaia derived versus estimated, and ssoBFT phase-function constraints, spins and taxonomy.
   - `test_sb_table.py`: layout alignment, float64 round-trip, and consistency of the built products: NaN ⇔ unknown, sources exist, physRow back-links, no measured diameter alongside diameterFromH, names line count, and SABA coefficients summing to 1.
-- **vitest, 16 small-body tests** (130 in the whole suite, all passing):
+- **pytest `test_sb_photometry.py`** (5): class-colour assignment order and aliases, filling of physical records (measured p_V, class median, orbit-class median), the sbpy constants and the spline construction (nodes, end slopes, clipping), and the built products.
+- **vitest, GPU field and photometry** (§11.8): `smallbody-photometry.test.ts` (6) and `smallbody-gpu-table.test.ts` (3). The GPU itself is tested on the device with `node scripts/sb-gpu.mjs` (§11.3).
+- **vitest, 16 small-body tests** (130 in the whole suite at the time; 340 now, all passing):
   - `smallbody-kepler.test.ts`: Stumpff, conservation, reversibility, period closure, elements, obliquity rotation and the step grid.
   - `smallbody-catalog.test.ts`: core, non-grav and names readers, labels and flags.
   - `smallbody-propagation.test.ts`: elementsToState against Python to 10⁻¹⁴; propagation against Python (0.0 km) and against Horizons within tolerance; the built core holds the fixture states bit for bit.
@@ -298,8 +311,198 @@ Products total 215.9 MB (§2). Raw downloads for this stage come to about 1.55 G
    - DAMIT shape models. Poles are ingested; shapes are not.
    - SDSS MOC colours.
    - The TNO/Centaur albedo compilation. TNOs currently fall back to the all-class median p_V 0.078, which is poor for TNOs.
-   - Class-mean spectra as estimated colours for objects without Gaia spectra.
+   - (Done since: class-mean colours for objects without Gaia spectra, from the light stage's `smallbody-class-colors.json`; see §2 `colorClass`.)
 7. **Stale or restricted sources.** The LCDB public release dates from 2023-10. The Gaia DR3 SSO licence is CC BY-NC.
 8. **Sampling bias.** The class-albedo statistic uses the currently measured sample, which is biased (§3).
 9. **Rebuild cost.** A full rebuild takes 18 minutes, dominated by the 100k objects with non-standard epochs. Sharing perturber positions per grid step (§8) would speed it up, and so would taking JPL's standard-epoch elements where they exist.
-10. **Loader.** The app loader (`app/src/data/load.ts`) does not load the smallbodies products yet. That belongs to the renderer and app integration; `smallbodyCatalog.ts` provides the readers.
+10. **Loader.** (Done since: the app loads the products in the background, `app/src/data/smallbodies.ts`, including `photometry.json` for the GPU field.)
+11. GPU field issues: see §11.9.
+
+## 11. GPU field (`app/src/gpu/smallbodies/`)
+
+The catalogue is propagated and lit on the GPU every frame and drawn as point sources through the renderer's star path. The numbers below come from `node scripts/sb-gpu.mjs` (app/), which runs `sb-test.html` in headless Chromium on SwiftShader WebGPU. The full accuracy result is in `docs/reports/smallbodies-gpu-accuracy.json`.
+
+### 11.1 API (as the app's port, `app/src/app/ports.ts`)
+
+`SmallBodyField.create(device, tables, planets, options?)` → `update(encoder, et, cameraSSB, { brightness })`, `pointSources`, `pick(dirICRF, tolRad)`, `stateOf(index, et)`, `stats`, `exclude(indices)`.
+
+Differences from the spec as first given:
+- `tables.photometry` is new and optional. It is `smallbodies/photometry.json`; without it no brightness is known and every record is dark. The app's loader (`data/smallbodies.ts`) loads it, and `bootstrap.ts` passes it on. This is the one change to the port (`SmallBodyTablesInput`).
+- `options` (4th argument) is optional: checkpoint budget, background-builder steps per update, objects per dispatch, and a debug state buffer.
+- `stateOf` returns the **heliocentric** state, as the port requires; the app adds the Sun.
+- `stats` returns `{drawn, withheld}` from GPU counters: objects with a position whose brightness is admitted, or not, at the level. The readback is asynchronous, so the values are one or two updates old.
+- `exclude(rows)` replaces the set of objects the shell draws itself. They get no light but keep their direction, so `pick` still finds them.
+- Objects flagged `planetaryEphemeris` (Pluto) or `positionLost`, or with an unknown position, are neither propagated nor drawn. `stateOf` gives Pluto from the planetary ephemeris (999, else barycentre 9).
+- Contract: submit the encoder of one `update()` before calling the next. Uniforms are written with `queue.writeBuffer`, and buffers are retired one update later.
+
+Test hooks, not in the port: `info` (precision mode, self-test, checkpoint spacing, last update's steps and timings), `slotOf`, `readDebugStates` (needs `{debug: true}`), `readRecords` and `destroy`.
+
+### 11.2 Propagation design
+
+- **Same scheme as the float64 reference.** SABA3 Kepler drift plus kicks, the step grid `epochEt + m·2 d`, 2^level substeps chosen from the state at the step start (same rule), and RK4 substeps in encounter mode. All constants are generated into the WGSL from the header's `forceModel` as exact float32 or double-single literals (`wgslConst.ts`); no numeric constant is written by hand.
+- **Working state W.** It holds every object at one grid point m_W. For time et the target is m\*, the grid point between the epoch and et that is nearest et.
+  - W is advanced step by step to m\* when et moves away from the epoch. This is the incremental path used when time runs.
+  - Otherwise W is first restored, by a GPU buffer copy, from the checkpoint nearest m\* on the epoch side.
+  - The last partial step m\* → et is taken in the shade kernel every frame and not stored.
+  - So the state at et is the one the CPU computes with `propagateOne(epochEt → et)`: the same steps and the same levels.
+- **Checkpoints.** States are kept at every C-th grid point. C is sized so that all checkpoints fit the budget: the default 1 GiB gives 13 slots and C = 46 steps (92 days) for the full catalogue; 2 GiB gives C = 22. They are stored when W passes them, or by a background builder. The builder walks out from the epoch, forward then backward, 2 steps per update when the update itself took fewer, and frees its buffer when done. A jump therefore integrates fewer than C steps.
+- **Perturbers.** For each 2-day grid interval, 65 samples (45 min apart) of every perturber's heliocentric position come from the float64 ephemeris (`planetTable.ts`). They are stored in double-single with the indirect acceleration, filled lazily per interval (0.1–1 ms each), and uploaded with `writeBuffer`.
+  - Kicks interpolate with 4-point Lagrange polynomials, on the differences between samples added to the nearest sample's double-single position, so float32 holds them to ~0.008 km.
+  - Measured interpolation error against the ephemeris, emulating the kernel's float32 arithmetic (`smallbody-gpu-table.test.ts`): **≤ 0.018 km** (Venus), 0.010 km for the Moon.
+- **Ordering.** Objects are stored by perihelion distance. Objects that need substeps (near-Sun, NEAs) then share workgroups instead of stalling main-belt ones. Records carry the core index in slot 7.
+- **Arithmetic** (`kernels.ts` header comment):
+  - The state is double-single.
+  - The drift solves the universal Kepler equation in float32, then takes one Newton step with r0·G1 + η·G2 − dt in double-single.
+  - The Lagrange coefficients are all double-single, sharing one division k = μ/(r·r0): f−1 = −k·r·G2, g = dt − μG3, ḟ = −k·G1, ġ−1 = −k·r0·G2.
+  - Stumpff c2 and c3 are carried as ½ + tail and 1/6 + tail. β = 2μ/r0 − v² is formed in double-single because it cancels up to ×18 near perihelion.
+  - Kicks are float32 accelerations from double-single differences planet − object.
+  - RK4 stage positions are double-single, and the Sun's acceleration is summed over the stages in double-single.
+- **Exactness guard.** The error-free transformations (two_sum, Dekker split/two_prod) pass intermediates through an XOR with a runtime zero from a uniform, so no compiler can fuse or re-associate them. A device self-test at create compares two_prod and two_sum bit for bit, and dd_mul, add, div and sqrt to 2⁻⁴³, with float64 on 4,096 random pairs. It picks `fma()` for two_prod when fma is verified exact (`precision: 'df64-fma'`), else Dekker (`'df64-dekker'`), else reports `'degraded'`. On SwiftShader fma is not fused, so Dekker is used; the self-test's max relative error was 1.8e-14.
+
+### 11.3 Accuracy against the float64 reference
+
+The setup: 19 verification objects plus 1,000 random objects with known positions. The GPU is updated to 12 times in an order that exercises incremental steps, checkpoint restores and the background builder: +0.37, +30.2, +200.6, +120.1 (jump back), +547.9, −0.71, −60.4, −274.3, −150.9, −547.2, +3.5 and +365.25 days. The GPU's double-single state at et is compared with `propagateOne(epochEt → et)` in float64.
+
+| | max \|Δr\| over the window |
+|---|---|
+| 1,000 random objects | median **0.008 km**, p90 0.064 km, p99 **0.10 km**, max 1.54 km (an Apollo with an in-window close approach) |
+| main belt, Trojans, Hildas, Centaurs, TNOs (Ceres … Arrokoth) | 0.001–0.033 km |
+| Eros, Apophis, Bennu, Encke, 67P, C/2025 A6 | 0.004–0.027 km |
+| 3I/ATLAS (hyperbolic, non-grav with DT) | 0.086 km |
+| 1566 Icarus (q 0.19 au) | 0.13 km |
+| 2026 RT34 (21,000 km Earth flyby) | 0.52 km |
+| 3200 Phaethon (q 0.14 au), at −547 d | 1.60 km |
+
+Other results:
+- By time, the p99 grows from 0.01 km at ±200 d to 0.08–0.11 km at ±548 d.
+- At 1 au, 0.1 km is 0.14 mas and 1.6 km is 2 mas.
+- For the selected object, `stateOf` is the float64 reference itself.
+
+Unit checks on the device (`mode=unit`, 4,000 random catalogue states):
+- One Kepler drift of c·H against float64: the relative error of the velocity increment is ≤ 2.4e-10, and positions agree to ≤ 0.4 m for a whole 2-day drift.
+- One kick acceleration: ≤ 1.2e-15 km/s² absolute.
+
+How the precision was reached, measured on the same test:
+- Float32 (f−1)x and (ġ−1)v terms and c2 rounded to float32 gave 2.4e-9 relative. Fixed as above.
+- RK4 with a float32 Sun term gave 9 km for main-belt objects: Jupiter's pull exceeds 10⁻³ of the Sun's for many of them, so they are in encounter mode. Fixed with double-single.
+- β in float32 gave Icarus 1.35 km. Fixed with double-single β.
+
+Records (direction and light):
+- The float32 direction agrees with float64 geometry from the same state to 1.3e-7 rad.
+- The GPU illuminance agrees with the TypeScript photometry (`SmallBodyLight.apparent`) to 0.0008 mag, from half-float parameters.
+- `pick` agrees with a CPU scan of the records 40/40, for cones from 1e-5 to 0.2 rad.
+
+### 11.4 Light: magnitude laws, colours and labels (`core/smallbodyPhotometry.ts`, `smallbodies/photometry.json`)
+
+**Magnitude, per object:**
+- **H-G1-G2** (Muinonen et al. 2010) where SsODNet has a **V-band** fit, with its own H: 175,637 objects. Fits in other bands (ATLAS o/c, ZTF g/r, Gaia G; 40,541 objects) are not used, because their H is not a V magnitude.
+- Else **H-G** (Bowell et al. 1989, Eq. A4) with the SBDB H and G.
+- Comets: the total law M1 + 5 log Δ + K1 log r, else the nuclear law with PC·α.
+- The phase-function constants come from sbpy 0.6.0 (parsed, sha256-checked).
+
+**Illuminance:** E_k = E☉,k(1 au) · c_k · 10^(−0.4(m − V☉)), with V☉ = −26.76 (Willmer 2018) and E☉ the Sun's XYZS from light.json.
+
+**Colour c, relative to sunlight:**
+- The object's Gaia DR3 colour: c = geometricAlbedoXYZS / (p_V E☉), in which p_V cancels.
+- Else the class colour of `core.colorClass`: c = xyzsPerUnitPV / E☉, from smallbody-class-colors.json.
+- Comets use c = 1 (the Sun's colour), label estimated.
+
+**Light time:** first order. The position is back-dated by τ = Δ/c along the SSB velocity; the residual is ~a·τ²/2, a few km at 5 au.
+
+**Label rules**, with the level passed in `allowed.brightness` (text also in `photometry.json` `rules`):
+
+| level | drawn if | colour |
+|---|---|---|
+| strict | position and brightness measured or derived. Brightness = worst of H and phase function at the current phase angle: a V-band H-G1-G2 fit counts only inside its fitted phase range (outside it is extrapolated, hence estimated), and SBDB G only where fitted (120 objects). Comets are never drawn (their laws are estimates). | The Gaia colour where its spectral shape is derived (37,811 objects). Otherwise **brightness only**: the measured V drawn with the Sun's colour (c = 1), which is neutral rather than a plausible asteroid colour. The Y error of that rule is the object's c_Y, which lies in 0.992–1.022 for 98% of the Gaia sample (0.975–1.036 overall). |
+| best | adds estimated inputs: G = 0.15, H-G1-G2 outside its range, estimated positions (pre-1850 epochs), comet laws | Gaia colour (derived or estimated), else the class colour (estimated) |
+| complete | as best (no synthetic small bodies yet) | as best |
+
+At the epoch, seen from 6 au above the Sun, 107,728 objects are admitted at strict and 1,570,433 at best.
+
+**Against JPL Horizons APmag** (`smallbody-photometry.test.ts`; 6 asteroids × 3 dates at Horizons' geometry, with our catalogue H and G, which equal Horizons'):
+- |ΔV| ≤ 0.020 mag, and ≤ 0.005 mag beyond 15° phase. The residual is the difference between the IAU law and the exponential approximation Horizons evaluates.
+- The H-G1-G2 path differs from APmag by up to 0.32 mag (433 Eros at 28°). That is the V-band fit's own H against the SBDB H-G H, whose systematic offsets are known (Pravec et al. 2012).
+
+### 11.5 Timing and memory
+
+All 1,573,014 objects on SwiftShader (headless Chromium, 4 vCPUs shared with other jobs), in chunks of 131,072 objects per dispatch:
+
+| | time |
+|---|---|
+| create (CPU: read, sort by q, pack light parameters, self-test) | 3.2 s |
+| shade only (et on the grid; first call 5.9 s with shader compilation) | 1.6 s |
+| shade with a 0.5-day display step | 7.0 s |
+| one 2-day grid step | 13.8 s (mean of 2) |
+
+**Desktop estimate.** From an operation count of the WGSL: ~11.5 k float32 operations per object per level-0 SABA3 step (4 drifts ≈ 2 k each, 3 kicks ≈ 650, level selection ≈ 1.4 k), or ~8.6 k where fma is exact. That is ~18 G operations per step for the catalogue:
+- A discrete GPU sustaining 5–10 T op/s on this code (20–40 TFLOPS peak): **2–4 ms per step**.
+- An integrated GPU (0.5–1 T op/s): 20–35 ms.
+- A frame with time running costs about one step: the display step, plus ~10% for shading.
+- A jump costs fewer than C steps: C = 46 with the 1 GiB default, so ≤ 0.2 s on a discrete GPU.
+- SwiftShader here reaches ~1.3 G op/s.
+
+**Memory (full catalogue):**
+- 48 B/object per state set (75.5 MB): W, the epoch states, each checkpoint, and the builder while it runs.
+- Point records: 50 MB. Light parameters: 50 MB. Propagation info: 6 MB.
+- Perturber table: 13.7 MB for the whole window. Debug states, only with `{debug: true}`: 100 MB.
+
+### 11.6 Renderer hook
+
+- **New `app/src/render/extraPoints.ts`.** It holds the extra-source cull dispatch: its own info uniform, and a bind group on the renderer's existing cull pipeline.
+- **`app/src/render/renderer.ts`** (17 lines):
+  - an import;
+  - a field `extraPts`;
+  - `get gpuDevice()`;
+  - `setExtraPointSources(src | null)`, which also re-sizes the `visible` buffer to stars + extras (cap 2²²);
+  - `setStars` sizing `visible` for stars + extras;
+  - the cull and point-draw conditions `starCount > 0 || extras`;
+  - one call in the cull pass (`this.extraPts?.cull(...)`).
+- The records go through the same Crumey-threshold cull and point splats as stars. Points are drawn at infinite depth, so a resolved body hides them even when they are in front of it.
+
+### 11.7 Real-data renders (SwiftShader, 2026-09-29/30)
+
+![inside the belt, eye](img/smallbodies-inside-belt-eye.png)
+
+**Inside the main belt, eye mode** (2.7 au from the Sun, looking away from it). Only stars are drawn. The brightest small body is V 7.8 and the eye's limit is 7.6, so **no small body is above the threshold**: the belt looks empty, as it should.
+
+![from 6 au above, enhanced +10](img/smallbodies-belt-above-enhanced.png)
+
+**From 6 au above the Sun, enhanced +10 stops.** The Sun, 40–50° from every part of the belt, sets the adaptation (limiting V −2.1). Nothing else is drawn. The same holds from 3 au, where the belt lies within 48° of the Sun: boosting further whites the frame out with the Sun's veil.
+
+![diagnostic: Sun and stars removed](img/smallbodies-belt-above-diagnostic.png)
+
+**DIAGNOSTIC, same view, Sun and stars left out of the scene** (dark-adapted eye, +19 stops, limiting V 21.9). 23,326 small bodies are drawn and the main belt ring stands out. At strict (`img/smallbodies-belt-above-diagnostic-strict.png`) 107,728 objects are admitted and 4,048 drawn.
+
+![the app with the field](img/smallbodies-app-vesta-enhanced.png)
+
+**The app, with the field wired in** (`node scripts/shot.mjs --url "/?t=2026-09-30T00:00:00Z&target=20000004&dist=4000000&view=enhanced&boost=10"`). 4 Vesta is selected, 4 million km away, and drawn by the field. The HUD counts come from the field's GPU counters: 1,570,414 drawn and 2,539 withheld at Best estimate. The frame takes 3.0 s on SwiftShader.
+
+### 11.8 Tests and how to run
+
+- **vitest `smallbody-photometry.test.ts`:**
+  - Phase functions against sbpy's definitions (1e-16).
+  - Magnitude → illuminance.
+  - Half-float packing.
+  - Horizons APmag (≤ 0.025 mag).
+  - Label rules on the built catalogue.
+- **vitest `smallbody-gpu-table.test.ts`:** double-single literals, and the perturber table interpolated as the kernel does it (≤ 0.02 km).
+- **On the device** (from `app/`), `node scripts/sb-gpu.mjs --query "<q>" [--json out.json] [--out shot.png]`:
+  - `mode=accuracy&n=1000`: GPU against float64 as in §11.3, plus records, pick, exclude and stats.
+  - `mode=unit`: drift and kick against float64.
+  - `mode=timing&chunk=131072`.
+  - `mode=render&scene=inside|above|above-off&hau=6&boost=19&nosun=1&nostars=1&level=strict`.
+
+### 11.9 Open issues (GPU field)
+
+1. **Renderer, wide field.** With fovY ≳ 100° the renderer's image is black, stars included (seen at 110°; 60° is fine). This is in the renderer, not the field.
+2. **Enhanced mode near the Sun.** The exposure boost also amplifies the Sun's glare veil, so the belt cannot be shown from above with the Sun in the scene. Showing it would need a glare-free enhanced option, which is a decision for the eye model.
+3. **Per-frame cost.** The display step costs about one grid step per frame. Possible savings:
+   - exact perturber positions uploaded per level-0 step, skipping interpolation;
+   - reusing the display step while et changes by less than a threshold;
+   - fma, which is used automatically where the self-test verifies it.
+4. **Deep encounters and near-Sun objects.** The planetary acceleration is float32 and the table's positions carry up to 0.018 km. After a flyby within ~10⁵ km the GPU drifts from the CPU by up to ~1.5 km (the 2026 RT34 fixture flies by at 21,000 km). Phaethon reaches 1.6 km at the far window edge.
+5. **Deep substep levels run serially in one thread.** Level 16 means 65,536 RK4 substeps. A grazing encounter inside a step can hitch a frame.
+6. **Other limitations:**
+   - Comets are drawn as points with the Sun's colour.
+   - Non-V-band H-G1-G2 fits are unused.
+   - The checkpoint budget (default 1 GiB) should be tuned per device.

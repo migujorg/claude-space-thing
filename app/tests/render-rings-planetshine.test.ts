@@ -127,6 +127,17 @@ describe('ring profiles and footprint averaging', () => {
   });
 });
 
+describe('ring data caching (no per-frame rebuilds)', () => {
+  it('a SceneRings wrapper rebuilt every frame around the same data arrays reuses the same profile', () => {
+    const m = fixtureModel(() => 0.5);
+    const a = fixtureRings(m, () => 0.5);
+    const b: SceneRings = { ...a, opticalDepth: a.opticalDepth.map((p) => ({ radiusKm: p.radiusKm, normalTau: p.normalTau })) };
+    expect(ringProfile(b)).toBe(ringProfile(a));
+    // Different data, or no model: a different profile.
+    expect(ringProfile({ ...b, reflectance: null })).not.toBe(ringProfile(a));
+  });
+});
+
 describe('ring systems per frame', () => {
   const base = (rings: SceneRings, pos: [number, number, number], toSun: [number, number, number]): SceneBody => ({
     id: 699, name: 'R', pos, toSun, orient: null, radii: [1, 1, 1],

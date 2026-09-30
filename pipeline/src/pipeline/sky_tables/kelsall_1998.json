@@ -1,0 +1,60 @@
+{
+ "_citation": "Kelsall, T., Weiland, J. L., Franz, B. A., Reach, W. T., Arendt, R. G., Dwek, E., Freudenreich, H. T., Hauser, M. G., Moseley, S. H., Odegard, N. P., Silverberg, R. F. & Wright, E. L. (1998), 'The COBE Diffuse Infrared Background Experiment Search for the Cosmic Infrared Background. II. Model of the Interplanetary Dust Cloud', Astrophysical Journal 508, 44-73. DOI:10.1086/306380. Preprint arXiv:astro-ph/9806250v1.",
+ "_transcription": "Transcribed by hand from arXiv:astro-ph/9806250v1 (docs/sources/zodiacal-light.md): Table 1 'Density and Geometrical Parameters of the IPD Model' (final values; 68% joint confidence uncertainties in 'unc', null where the paper says 'fixed'), the scattering parameters of Table 2 'Source Function Parameters of the IPD Model', and the functional forms of Sect. 4.1-4.2 (Eqs. 1-9). Eq. 4 of the preprint prints Y' = X - Y0; the intended Y' = Y - Y0 is used (it is the only reading consistent with the offset (X0, Y0, Z0) of the cloud centre).",
+ "frame": "heliocentric ecliptic (X, Y, Z) in AU; mean ecliptic and equinox of the DIRBE epoch (J2000 in the analysis)",
+ "equations": {
+  "brightness_eq1": "Z_lambda = sum_c integral n_c(X,Y,Z) [A_c F_sun(R) Phi(Theta) + (1 - A_c) E_c B_lambda(T) K] ds; F_sun(R) = F_sun(1 AU) / R^2",
+  "phase_eq2": "Phi(Theta) = N [C0 + C1 Theta + exp(C2 Theta)], Theta = scattering angle in rad, N normalises the integral over 4 pi sr to 1",
+  "tilt_eq5": "Z_c = X' sin(Omega) sin(i) - Y' cos(Omega) sin(i) + Z' cos(i)",
+  "smooth_cloud_eq6_7": "n_c = n0 R_c^-alpha exp(-beta g^gamma), zeta = |Z_c / R_c|, g = zeta^2 / (2 mu) for zeta < mu, g = zeta - mu / 2 otherwise; (X', Y', Z') = (X - X0, Y - Y0, Z - Z0), R_c = |(X', Y', Z')|",
+  "dust_band_eq8": "n_B = (3 n3_B / R) exp[-(zeta_B / dzeta_B)^6] [v_B + (zeta_B / dzeta_B)^p_B] {1 - exp[-(R / dR_B)^20]}, zeta_B = |z_B / R_c|",
+  "ring_blob_eq9": "n_R = n_SR exp[-(R - R_SR)^2 / (2 sigma_r_SR^2) - |Z_R| / sigma_z_SR] + n_TB exp[-(R - R_TB)^2 / (2 sigma_r_TB^2) - |Z_R| / sigma_z_TB - (theta - theta_TB)^2 / (2 sigma_theta_TB^2)], theta = heliocentric ecliptic longitude relative to the Earth's mean longitude",
+  "line_of_sight": "integrated from the observer to 5.2 AU from the Sun (Sect. 4.2)"
+ },
+ "smooth_cloud": {
+  "n0_per_AU": {"value": 1.13e-7, "unc": 6.4e-10},
+  "alpha": {"value": 1.34, "unc": 0.022},
+  "beta": {"value": 4.14, "unc": 0.067},
+  "gamma": {"value": 0.942, "unc": 0.025},
+  "mu": {"value": 0.189, "unc": 0.014},
+  "i_deg": {"value": 2.03, "unc": 0.017},
+  "Omega_deg": {"value": 77.7, "unc": 0.6},
+  "X0_AU": {"value": 0.0119, "unc": 0.0011},
+  "Y0_AU": {"value": 0.00548, "unc": 0.00077},
+  "Z0_AU": {"value": -0.00215, "unc": 0.00043}
+ },
+ "dust_bands": [
+  {"name": "band1", "n3_per_AU": {"value": 5.59e-10, "unc": 7.20e-11}, "dzeta_deg": {"value": 8.78, "unc": null},
+   "v": {"value": 0.10, "unc": null}, "p": {"value": 4, "unc": null}, "i_deg": {"value": 0.56, "unc": null},
+   "Omega_deg": {"value": 80.0, "unc": null}, "dR_AU": {"value": 1.5, "unc": null}},
+  {"name": "band2", "n3_per_AU": {"value": 1.99e-9, "unc": 1.28e-10}, "dzeta_deg": {"value": 1.99, "unc": null},
+   "v": {"value": 0.90, "unc": null}, "p": {"value": 4, "unc": null}, "i_deg": {"value": 1.2, "unc": null},
+   "Omega_deg": {"value": 30.3, "unc": null}, "dR_AU": {"value": 0.94, "unc": 0.025}},
+  {"name": "band3", "n3_per_AU": {"value": 1.44e-10, "unc": 2.34e-11}, "dzeta_deg": {"value": 15.0, "unc": null},
+   "v": {"value": 0.05, "unc": null}, "p": {"value": 4, "unc": null}, "i_deg": {"value": 0.8, "unc": null},
+   "Omega_deg": {"value": 80.0, "unc": null}, "dR_AU": {"value": 1.5, "unc": null}}
+ ],
+ "ring": {
+  "n_SR_per_AU": {"value": 1.83e-8, "unc": 1.27e-9},
+  "R_SR_AU": {"value": 1.03, "unc": 0.00016},
+  "sigma_r_SR_AU": {"value": 0.025, "unc": null},
+  "sigma_z_SR_AU": {"value": 0.054, "unc": 0.0066},
+  "i_deg": {"value": 0.49, "unc": 0.063},
+  "Omega_deg": {"value": 22.3, "unc": 0.0014}
+ },
+ "trailing_blob": {
+  "n_TB_per_AU": {"value": 1.9e-8, "unc": 1.42e-9},
+  "R_TB_AU": {"value": 1.06, "unc": 0.011},
+  "sigma_r_TB_AU": {"value": 0.10, "unc": 0.0097},
+  "sigma_z_TB_AU": {"value": 0.091, "unc": 0.013},
+  "theta_TB_deg": {"value": -10.0, "unc": null},
+  "sigma_theta_TB_deg": {"value": 12.1, "unc": 3.4},
+  "_note": "same symmetry plane as the ring (i, Omega of 'ring')"
+ },
+ "scattering_near_ir": {
+  "_note": "Table 2: fitted to DIRBE 1.25-3.5 um; the phase-function parameters were held fixed in the final fit. Kelsall et al. state (Sect. 4.1) that this form was chosen because it can reproduce the shape of Hong's (1985) visible phase function. The pipeline refits C0, C1, C2 and the albedo to visible data (Leinert 1998 Table 16).",
+  "1.25um": {"C0_per_sr": -0.942, "C1_per_rad_sr": 0.121, "C2_per_rad": -0.165, "albedo": 0.204},
+  "2.2um": {"C0_per_sr": -0.527, "C1_per_rad_sr": 0.187, "C2_per_rad": -0.598, "albedo": 0.255},
+  "3.5um": {"C0_per_sr": -0.431, "C1_per_rad_sr": 0.172, "C2_per_rad": -0.633, "albedo": 0.210}
+ }
+}

@@ -370,9 +370,9 @@ Saturn, median τ⊥ by region (region limits are round numbers for this summary
 | region | radii (km) | median τ⊥ | max τ⊥ | bins at/above max detectable |
 |---|---|---|---|---|
 | C ring | 74500-92000 | 0.077 | 3.22 | 0 |
-| B ring | 92000-117500 | 2.763 | 9.75 | 2 |
-| Cassini Division | 117600-122000 | 0.087 | 1.90 | 0 |
-| A ring | 122100-136770 | 0.633 | 1.99 | 0 |
+| B ring | 92000-117500 | 2.761 | 9.75 | 2 |
+| Cassini Division | 117600-122000 | 0.084 | 1.90 | 0 |
+| A ring | 122100-136770 | 0.631 | 1.99 | 0 |
 | Encke Gap | 133450-133750 | 0.001 | 0.06 | 0 |
 
 Transmission of a ray crossing the ring plane at elevation B is exp(−τ⊥/|sin B|) to first order; in the A and B rings self-gravity wakes change the slant optical depth with viewing azimuth by tens of percent. Saturn's equinox was in May 2025, so the Sun stays low over the rings throughout the window.
@@ -398,10 +398,10 @@ Unlit face: in the B ring core (100 000-107 000 km, median τ⊥ = 5.44) the Voy
 | β | α = 1° | α = 3° | α = 6° |
 |---|---|---|---|
 | 5° | 1.74 | 2.83 | M&H < 0 |
-| 10° | 1.24 | 1.34 | 1.73 |
+| 10° | 1.25 | 1.34 | 1.74 |
 | 15° | 1.08 | 1.09 | 1.22 |
 | 20° | 0.99 | 0.99 | 1.07 |
-| 26° | 1.00 | 1.00 | 1.05 |
+| 26° | 0.99 | 1.00 | 1.05 |
 
 At β = 15-26° the model agrees with ground photometry within 10 % at α = 1-3° (5-22 % at 6°). At β ≤ 10° it is brighter than the M&H difference, but there the difference is not a clean measure of the rings: M&H's Eq. 10 at β = 0 is +0.04 mag (α = 0°) to +0.17 mag (α = 6°) off their globe-only Eq. 11, comparable to the whole ring term at low β, and the difference turns negative at β = 5°, α = 6° (rings dimming Saturn). The comparison is inconclusive there. The model's own low-β behaviour rests on the HST data down to Beff = 4.5°, below which the particle term is held constant.
 

@@ -15,6 +15,8 @@ export interface LayerRef {
 export interface BodySurfaces {
   albedo?: LayerRef;
   height?: LayerRef;
+  /** Per-texel photometric parameters (layer kind 'photometric-parameters', e.g. the Moon's Hapke maps). */
+  photometry?: LayerRef;
 }
 
 export interface SceneExtras {
@@ -39,6 +41,7 @@ export function surfaceRefs(layers: SurfaceLayer[], dataRoot: string): Map<numbe
     const e = out.get(l.bodyId) ?? {};
     if (l.layer === 'albedo') e.albedo = { ref, label: worstOf([headerLabel(h, 'brightness'), headerLabel(h, 'color')]) };
     else if (l.layer === 'height') e.height = { ref, label: headerLabel(h, 'brightness') };
+    else if (h.kind === 'photometric-parameters') e.photometry = { ref, label: headerLabel(h, 'brightness') };
     else continue;
     out.set(l.bodyId, e);
   }
@@ -90,6 +93,10 @@ export function applyExtras(sb: SceneBody, body: Body, extras: SceneExtras | und
     if (s.height && labelAllowed(s.height.label, level)) {
       surface.height = s.height.ref;
       used.push(s.height.label);
+    }
+    if (s.photometry && surface.albedo && labelAllowed(s.photometry.label, level)) {
+      surface.photometry = s.photometry.ref;
+      used.push(s.photometry.label);
     }
     if (surface.albedo || surface.height) sb.surface = surface;
   }

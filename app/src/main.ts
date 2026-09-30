@@ -6,6 +6,7 @@ import { apparentPosition } from './core/lighttime';
 import { OrientationSet, PreciseOrientation, bodyToIcrf } from './core/rotation';
 import { TimeScale, formatUtc } from './core/time';
 import { Renderer } from './render/renderer';
+import { SmallBodyField } from './gpu/smallbodies';
 
 const offscreen = new URLSearchParams(location.search).get('present') === 'offscreen';
 const canvas = document.getElementById('view') as HTMLCanvasElement;
@@ -19,6 +20,7 @@ startApp(canvas, document.getElementById('ui')!, {
   apparentPosition,
   OrientationSet,
   PreciseOrientation,
+  SmallBodyField,
 }).catch((e) => {
   console.error(e);
   (window as any).__frameError = String(e);
