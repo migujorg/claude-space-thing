@@ -15,9 +15,9 @@
 //   7. composite→ Pattanaik tone reproduction, mesopic colour, CAT02, + points, sRGB, dither → canvas
 //   8. overlays → hatch / provenance tint / markers / orbits in display space
 
-import type { RendererStats, SceneSnapshot, StarCatalog } from './scene';
+import type { RendererStats, SceneBody, SceneSnapshot, StarCatalog } from './scene';
 import {
-  ADAPT_REDUCE_SHADER, ADAPT_SHADER, ADAPT_TILE_PX, ATMOSPHERE_SHELL_SHADER, BODY_OVERLAY_SHADER, BODY_SHADER, CLAMP_ARGS_SHADER, COMPOSITE_SHADER, EARTH_BODY_SHADER,
+  ADAPT_REDUCE_SHADER, ADAPT_SHADER, ADAPT_TILE_PX, ATM_BODY_SHADER, ATMOSPHERE_SHELL_SHADER, BODY_OVERLAY_SHADER, BODY_SHADER, CLAMP_ARGS_SHADER, COMPOSITE_SHADER, EARTH_BODY_SHADER,
   CULL_SHADER, LINE_SHADER, MASK_HATCH_SHADER, OVERFLOW_SHADER, POINT_SHADER, PYRAMID_BLUR_SIGMA, PYRAMID_SHADER,
   RING_SHADER, SUN_SHADER,
 } from './shaders';
@@ -140,6 +140,8 @@ export class Renderer {
   private bodyPipe: GPURenderPipeline;
   /** The body pipeline with Earth's layers (earth.ts); compiled when an Earth-mode body first appears. */
   private earthPipe: GPURenderPipeline | null = null;
+  /** The body pipeline with an atmosphere (bodies drawn from their photometry: Mars, Venus, Pluto). */
+  private atmPipe: GPURenderPipeline | null = null;
   private makeBodyPipe!: (code: string, label: string) => GPURenderPipeline;
   /** Atmospheres (atmosphereGpu.ts) and the shell pipeline for rays that miss the solid body. */
   private atm: AtmosphereGpu | null = null;
@@ -524,7 +526,10 @@ export class Renderer {
     }
     const surf = this.surf;
     surf?.beginFrame();
-    const prep = prepareFrame(snapshot, g, eye, footprintSr, surf ? { surfaces: (b) => surf.binding(b) } : {});
+    const prep = prepareFrame(snapshot, g, eye, footprintSr, {
+      ...(surf ? { surfaces: (b: SceneBody) => surf.binding(b) } : {}),
+      atmospheres: (b, groundAlbedo, dust) => (this.atm ??= new AtmosphereGpu(d)).binding(b.atmosphere!, groundAlbedo, b.name, dust),
+    });
     if (surf) {
       surf.request(prep, g);
       surf.flush();
@@ -533,13 +538,9 @@ export class Renderer {
     // Atmospheres whose tables are ready (computed in a worker the first time a body shows one).
     const atmOf = new Map<number, AtmosphereBinding>();
     prep.resolved.forEach((r, i) => {
-      if (!r.atmosphere) return;
-      const atm = (this.atm ??= new AtmosphereGpu(d));
-      const b = atm.binding(r.atmosphere.data, r.atmosphere.groundAlbedo, r.body.name);
-      if (!b) return;
-      atmOf.set(i, b);
-      const sunE = r.K.map((v) => v) as number[];
-      atm.writeUniform(b, sunE, r.atmosphere.sunAngularRadius, r.atmosphere.shellBeta, r.frame.near, ATM_STEPS);
+      if (!r.atmosphere || !this.atm) return;
+      atmOf.set(i, r.atmosphere.binding);
+      this.atm.writeUniform(r.atmosphere.binding, r.atmosphere.sunE, r.atmosphere.sunAngularRadius, r.atmosphere.shellBeta, r.frame.near, ATM_STEPS);
     });
     this.atmOf = atmOf;
     this.stats.cpuPrepMs = performance.now() - t0;
@@ -620,12 +621,21 @@ export class Renderer {
         // Runs of consecutive bodies (sorted by distance) share a pipeline: the plain one, or the Earth variant
         // for bodies drawn from Earth's layers (earth.ts), one draw each (each binds its own atmosphere).
         let bound: GPURenderPipeline | null = null;
+        const overDisk = (k: number) => atmOf.has(k) && !!prep.resolved[k].atmosphere?.onDisk;
+        const special = (k: number) => (!!prep.resolved[k].earth && !!surf) || overDisk(k);
         for (let i = 0; i < nRes;) {
           const earth = !!prep.resolved[i].earth && !!surf;
+          const withAtm = !earth && overDisk(i);
           let j = i + 1;
-          if (!earth) while (j < nRes && !(prep.resolved[j].earth && surf)) j++;
-          const pipe = earth ? (this.earthPipe ??= this.makeBodyPipe(EARTH_BODY_SHADER, 'bodies (Earth)')) : this.bodyPipe;
-          if (earth) {
+          if (!earth && !withAtm) while (j < nRes && !special(j)) j++;
+          const pipe = earth ? (this.earthPipe ??= this.makeBodyPipe(EARTH_BODY_SHADER, 'bodies (Earth)'))
+            : withAtm ? (this.atmPipe ??= this.makeBodyPipe(ATM_BODY_SHADER, 'bodies (atmosphere)'))
+              : this.bodyPipe;
+          if (withAtm) {
+            pass.setPipeline(pipe);
+            pass.setBindGroup(0, d.createBindGroup({ layout: pipe.getBindGroupLayout(0), entries: [...entries, ...this.atmEntries(atmOf.get(i))] }));
+            bound = null;
+          } else if (earth) {
             pass.setPipeline(pipe);
             pass.setBindGroup(0, d.createBindGroup({
               layout: pipe.getBindGroupLayout(0),
@@ -836,7 +846,7 @@ export class Renderer {
     const lines: number[] = [...prep.overlay];
     orbitVertices(snapshot.orbits, g, lines);
     const ovBodies = prep.resolved.some((r) => r.hatch || r.tint);
-    const ovMask = prep.rings.length > 0 || prep.resolved.some((r) => r.surface?.albedo);
+    const ovMask = prep.rings.length > 0 || prep.resolved.some((r) => r.surface?.albedo || r.atmosphere?.binding.unmeasured);
     if ((ovBodies || ovMask || lines.length) && !skip.has('overlays')) {
       const pass = enc.beginRenderPass({ label: 'overlays', timestampWrites: this.tsw('overlays'), colorAttachments: [{ view: canvasView, loadOp: 'load', storeOp: 'store' }] });
       if (ovMask) {
@@ -1125,7 +1135,8 @@ export class Renderer {
       layer(136, e ? s?.water : undefined, e && s?.wind ? 1 : 0);
       layer(140, e ? s?.night : undefined, 0);
       a.set(e ? [...e.absR, ...e.nightK] : [0, 0, 0, 0, 0, 0, 0, 0], o + 144);
-      a.set([this.atmOf.has(i) ? 1 : 0, ATM_STEPS, 0, 0], o + 152);
+      // x: the atmosphere is drawn (the shell beyond the disk), z: over the disk too.
+      a.set([this.atmOf.has(i) ? 1 : 0, ATM_STEPS, this.atmOf.has(i) && r.atmosphere?.onDisk ? 1 : 0, 0], o + 152);
     });
     const buf = this.ensure('bodiesBuf', a.byteLength);
     this.device.queue.writeBuffer(buf, 0, a);

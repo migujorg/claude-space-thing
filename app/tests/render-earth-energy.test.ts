@@ -99,7 +99,7 @@ describe.skipIf(!builtAtm)('Earth energy check with the atmosphere (real layers 
     const irr = light.sun.irradianceXYZS_1AU.value as XYZS;
     const pMeasured = (phot.geometricAlbedoXYZS.value as XYZS).map((v, k) => v / irr[k]);
     const af = JSON.parse(fs.readFileSync(DATA_DIR + 'atmospheres.json', 'utf8'));
-    const r = atmosphereModelFromData({ wavelengthsNm: af.wavelengthsNm, foldWeights: af.foldWeights.value, body: af.bodies['399'] }, 1.5 * pMeasured[1]);
+    const r = atmosphereModelFromData({ wavelengthsNm: af.wavelengthsNm, foldWeights: af.foldWeights.value, body: af.bodies['399'] }, pMeasured.map((p) => 1.5 * p)); // per channel, as the renderer (frame.ts)
     if ('error' in r) throw new Error(r.error);
     const model = r.model;
     const tab = precomputeAtmosphere(model);

@@ -92,8 +92,9 @@ export interface SceneBody {
   /**
    * atmospheres.json for this body, when admitted at the reality level (its worst label in `worstLabel` and
    * in `atmosphere.worstLabel`). Drawn for Earth with its layers (docs/rendering-earth.md §4): multiple
-   * scattering, limb and terminator colours. A component whose extinction, single-scattering albedo or
-   * phase function is unknown stops the whole atmosphere from being drawn (warning).
+   * scattering, limb and terminator colours; for other bodies over their renormalized disk photometry (§8).
+   * A component whose single-scattering albedo or phase function is unknown: no light is drawn for the
+   * atmosphere, and the air beyond the disk is marked "not measured" (warning).
    */
   atmosphere?: SceneAtmosphere | null;
 }
