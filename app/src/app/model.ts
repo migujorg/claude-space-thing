@@ -127,6 +127,8 @@ export class AppModel {
   private travelResolve: (() => void) | null = null;
   private turn: Turn | null = null;
   selectedId: number | null = null;
+  /** M4 sky (app/sky.ts): one-line state for the Data panel; set by bootstrap when the sky is running. */
+  skyInfo: (() => string) | null = null;
   pose: Pose = { pos: [0, 0, 0], orient: IDENTITY };
   world: World | null = null;
   snapshot: SceneSnapshot | null = null;
