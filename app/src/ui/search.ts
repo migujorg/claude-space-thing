@@ -127,7 +127,10 @@ export class Search {
     const st = m.sb.status;
     if (!m.names) {
       if (st === 'absent' || st === 'off') return [];
-      return [{ kind: 'info', id: -1, name: 'Small bodies: name index not available yet', depth: 0, children: 0, expanded: false }];
+      const namesPath = m.data?.smallBodies?.names;
+      const rep = namesPath ? m.data?.report.products.find((p) => p.path === namesPath) : undefined;
+      const failed = !namesPath || rep?.status === 'missing' || rep?.status === 'error';
+      return [{ kind: 'info', id: -1, name: failed ? 'Small bodies cannot be searched by name (see Data)' : 'Small bodies: name index starting…', depth: 0, children: 0, expanded: false }];
     }
     const ns = m.names.state;
     if (ns === 'error') return [{ kind: 'info', id: -1, name: `Small bodies cannot be searched: ${m.names.error ?? 'the name index failed'}`, depth: 0, children: 0, expanded: false }];
