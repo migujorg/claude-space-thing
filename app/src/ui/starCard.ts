@@ -33,7 +33,7 @@ export class StarCard {
         row('Catalogue', null, f.catalogId, `Record source: ${f.catalog}`),
         row('Brightness', f.labels.flux, `${Y.toExponential(3)} lx · V≈${f.vLike.toFixed(2)}`, 'Photopic illuminance Y at the observer (outside any atmosphere); V-like magnitude from Y (2.54e-6 lx for V = 0)'),
         row('Colour', f.labels.colour, `x ${(X / sum).toFixed(4)}, y ${(Y / sum).toFixed(4)} · S/Y ${(S / Y).toFixed(2)}`, 'CIE 1931 chromaticity and scotopic-to-photopic ratio'),
-        row('Direction', f.labels.position, f.routes.position ? '' : 'route unknown', 'ICRF direction at the catalogue epoch of the build')),
+        row('Direction', f.labels.position, `RA ${f.radecDeg[0].toFixed(4)}°, Dec ${f.radecDeg[1] >= 0 ? '+' : ''}${f.radecDeg[1].toFixed(4)}°`, 'ICRS direction as drawn, at the catalogue epoch of the build')),
       h('h3', null, 'How these values were obtained'),
       h('div', { class: 'st-attr' },
         h('div', { class: 'st-attr-head' }, f.routes.light ? chip(f.routes.light.label) : chip('unknown'), h('span', { class: 'st-attr-name' }, 'Light')),

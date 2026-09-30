@@ -26,15 +26,18 @@ import type { RendererPort, Vec3 } from './ports';
 
 /** Points are loaded down to this many magnitudes below the limiting magnitude. */
 export const MARGIN_MAG = 0.75;
-/** The point cut moves in steps of this size (hysteresis: only when the limit moved by a full step). */
+/** The point cut is quantised to this step and moves only when its target is two steps away (hysteresis). */
 const CUT_STEP_MAG = 0.25;
 const SP = CRUMEY.spRatioBlackwell;
 const BIN_ORDER = 8;
-/** Deep-tier records held in memory before tiles out of view are evicted. */
+/** Deep-tier records held in memory (48 bytes each) before tiles out of view are evicted, least recently seen first. */
 const RECORD_BUDGET = 3_000_000;
 const MAX_INFLIGHT = 4;
 /** Tiles within this angle beyond the view cone are loaded too (turning the view slowly needs no wait). */
 const VIEW_MARGIN_RAD = (5 * Math.PI) / 180;
+/** Tiles farther than this beyond the view cone and out of view for FAR_UNLOAD_MS are unloaded even under budget. */
+const FAR_MARGIN_RAD = (45 * Math.PI) / 180;
+const FAR_UNLOAD_MS = 10_000;
 
 export interface StarPick {
   tier: 'bright' | 'deep';
@@ -52,6 +55,8 @@ export interface StarFacts {
   catalogId: string;
   vLike: number;
   xyzs: [number, number, number, number];
+  /** ICRS right ascension and declination of the drawn direction, degrees. */
+  radecDeg: [number, number];
   labels: { position: Label; flux: Label; colour: Label };
   routes: { position: { label: Label; sources: string[]; method: string } | null; light: { label: Label; sources: string[]; method: string } | null };
   flags: string[];
@@ -72,6 +77,8 @@ export interface SkyStats {
   mapsLoaded: boolean;
   layers: Record<string, boolean>;
   rebuilds: number;
+  /** CPU time of the last rebuild (split, binning, point upload), ms. */
+  rebuildMs: number;
 }
 
 type Allowed = (l: Label) => boolean;
@@ -87,6 +94,7 @@ export class SkyController {
   private inflight = new Set<number>();
   private queue: { pix: number; count: number; prio: number }[] = [];
   private lastUse = new Map<number, number>();
+  private lastSeenMs = new Map<number, number>();
   private frame = 0;
   private waiters: (() => void)[] = [];
   private allowed: Allowed;
@@ -101,7 +109,7 @@ export class SkyController {
   private zodi: ZodiParams | null = null;
   /** Debug: upload only one tier's point stars (background unchanged), to count stars drawn per tier. */
   debugTier: 'all' | 'bright' | 'deep' = 'all';
-  readonly stats: SkyStats = { cutMag: NaN, pointsBright: 0, pointsDeep: 0, binnedBright: 0, binnedDeep: 0, tilesLoaded: 0, tilesInView: 0, deepRecords: 0, deepMiB: 0, pendingTiles: 0, mapsLoaded: false, layers: {}, rebuilds: 0 };
+  readonly stats: SkyStats = { cutMag: NaN, pointsBright: 0, pointsDeep: 0, binnedBright: 0, binnedDeep: 0, tilesLoaded: 0, tilesInView: 0, deepRecords: 0, deepMiB: 0, pendingTiles: 0, mapsLoaded: false, layers: {}, rebuilds: 0, rebuildMs: 0 };
 
   constructor(
     private readonly data: LoadedData,
@@ -213,12 +221,22 @@ export class SkyController {
     const yc = this.yCut();
     const want: { pix: number; count: number; prio: number }[] = [];
     let inView = 0;
+    const now = performance.now();
     h.tiles.forEach((t, pix) => {
       const c = t.center;
       const ang = Math.acos(Math.max(-1, Math.min(1, c[0] * fwd[0] + c[1] * fwd[1] + c[2] * fwd[2])));
-      if (ang > half + (t.radiusDeg * Math.PI) / 180 + VIEW_MARGIN_RAD) return;
+      const edge = half + (t.radiusDeg * Math.PI) / 180;
+      if (ang > edge + VIEW_MARGIN_RAD) {
+        // far out of view for a while: unload (its light returns to deepRemainder slice 0 at the next rebuild)
+        if (ang > edge + FAR_MARGIN_RAD && T.get(pix) && !this.inflight.has(pix) && now - (this.lastSeenMs.get(pix) ?? 0) > FAR_UNLOAD_MS) {
+          T.evict(pix);
+          this.dirty = true;
+        }
+        return;
+      }
       inView++;
       this.lastUse.set(pix, this.frame);
+      this.lastSeenMs.set(pix, now);
       const count = neededCount(t, h.tiling.prefixY, yc);
       const have = T.get(pix)?.count ?? 0;
       if (count > have && !this.inflight.has(pix)) want.push({ pix, count, prio: ang });
@@ -305,7 +323,8 @@ export class SkyController {
 
   private rebuild(): void {
     this.dirty = false;
-    this.lastRebuild = performance.now();
+    const t0 = performance.now();
+    this.lastRebuild = t0;
     this.stats.rebuilds++;
     // Without the GPU background nothing can show binned light: every star stays a point (the M1 behaviour).
     const yc = this.bg ? this.yCut() : 0;
@@ -352,7 +371,7 @@ export class SkyController {
     this.bg?.setDynamic(map, levels);
     this.lastMap = map;
     this.lastLevels = levels;
-    Object.assign(this.stats, { pointsBright: pb, pointsDeep: pd, binnedBright: bb, binnedDeep: bd });
+    Object.assign(this.stats, { pointsBright: pb, pointsDeep: pd, binnedBright: bb, binnedDeep: bd, rebuildMs: performance.now() - t0 });
   }
 
   private updateLayers(): void {
@@ -436,16 +455,20 @@ export class SkyController {
     return out;
   }
 
-  /** Debug: the GPU cube (hardware cube sampling) against the CPU composition (probe, without zodiacal light). */
-  async checkCube(radec: [number, number][]): Promise<{ ra: number; dec: number; gpuY: number; cpuY: number }[]> {
+  /**
+   * Debug: the GPU cube (hardware cube sampling at mip `lod`) against the CPU composition (probe without zodiacal
+   * light, averaged over a cap of `capDeg`; at LOD 0 the footprints differ — a texel's disc vs the cap — so single
+   * binned stars make differences; at a coarse LOD with a matching cap only the large-scale flux is compared).
+   */
+  async checkCube(radec: [number, number][], lod = 0, capDeg = 0.5): Promise<{ ra: number; dec: number; gpuY: number; cpuY: number }[]> {
     if (!this.bg) return [];
     const dirs = radec.map(([ra, dec]) => {
       const r = (ra * Math.PI) / 180, d = (dec * Math.PI) / 180;
       return [Math.cos(d) * Math.cos(r), Math.cos(d) * Math.sin(r), Math.sin(d)] as [number, number, number];
     });
-    const g = await this.bg.sampleCube(dirs);
+    const g = await this.bg.sampleCube(dirs, lod);
     return radec.map(([ra, dec], i) => {
-      const p = this.probe(ra, dec, 0.5);
+      const p = this.probe(ra, dec, capDeg);
       return { ra, dec, gpuY: g[i][1], cpuY: p.background[1] - p.zodiacal[1] };
     });
   }
@@ -497,6 +520,14 @@ export class SkyController {
 
   /** What is known about a picked star, with its provenance (bright or deep header routes). */
   facts(p: StarPick): StarFacts | null {
+    const f = this.factsBase(p);
+    if (!f) return null;
+    const [x, y, z] = p.dir;
+    const ra = (Math.atan2(y, x) * 180) / Math.PI;
+    return { ...f, radecDeg: [ra < 0 ? ra + 360 : ra, (Math.atan2(z, Math.hypot(x, y)) * 180) / Math.PI] };
+  }
+
+  private factsBase(p: StarPick): Omit<StarFacts, 'radecDeg'> | null {
     if (p.tier === 'bright') {
       const st = this.data.stars;
       if (!st) return null;
@@ -508,7 +539,10 @@ export class SkyController {
       const cat = t.has('catId') ? [t.column('catId').get(p.row, 0), t.column('catId').get(p.row, 1)] : [0, 0];
       const hip = t.has('hip') ? t.column('hip').get(p.row) : 0;
       const catalogId = /gaia/.test(src) ? `Gaia DR3 ${gaiaSourceId(cat[0], cat[1])}` : /tycho/.test(src) ? `TYC ${cat[0] >>> 17}-${(cat[0] >>> 3) & 0x3fff}-${cat[0] & 7}` : `HIP ${cat[0]}`;
-      const name = this.data.starNames.find((n) => n.index === p.row && !/^HIP \d+$/.test(n.name))?.name ?? null;
+      // proper name first, then Bayer, then Flamsteed (names.json order is not kept by the name index)
+      const rank = (n: string) => (/^\d+ /.test(n) ? 2 : /^[Ͱ-Ͽ]/.test(n) ? 1 : 0);
+      const names = this.data.starNames.filter((n) => n.index === p.row && !/^HIP \d+$/.test(n.name)).map((n) => n.name).sort((a, b) => rank(a) - rank(b));
+      const name = names.length ? names.join(' · ') : null;
       return this.factsOf('bright', name, src, catalogId + (hip && !/^HIP/.test(catalogId) ? ` · HIP ${hip}` : ''), p.xyzs,
         { position: lab('labelPos'), flux: lab('labelFlux'), colour: lab('labelColor') }, hdr, u8('posRoute'), u8('lightRoute'), u8('flags'));
     }
@@ -522,7 +556,7 @@ export class SkyController {
   }
 
   private factsOf(tier: 'bright' | 'deep', name: string | null, catalog: string, catalogId: string, xyzs: [number, number, number, number],
-    labels: StarFacts['labels'], hdr: { routes?: Record<string, { label: Label; sources: string[]; method: string }[]>; flagBits?: Record<string, string> }, posRoute: number, lightRoute: number, flags: number): StarFacts {
+    labels: StarFacts['labels'], hdr: { routes?: Record<string, { label: Label; sources: string[]; method: string }[]>; flagBits?: Record<string, string> }, posRoute: number, lightRoute: number, flags: number): Omit<StarFacts, 'radecDeg'> {
     const r = hdr.routes ?? {};
     const pos = r.pos?.[posRoute] ?? null;
     const light = r.light?.[lightRoute] ?? null;

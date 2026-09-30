@@ -81,8 +81,18 @@ try {
     };
   }, probes);
   console.log('[sky]', JSON.stringify(info, null, 1));
-  const cc = await page.evaluate(() => window.__app.sky?.checkCube([[266.4, -28.94], [192.859, 27.128], [12.86, -27.13], [83.8, -5.4], [10.7, 41.3], [0, 89], [150, -60]]));
+  const cubeDirs = [[266.4, -28.94], [192.859, 27.128], [12.86, -27.13], [83.8, -5.4], [10.7, 41.3], [0, 89], [150, -60]];
+  const cc = await page.evaluate((d) => window.__app.sky?.checkCube(d), cubeDirs);
   if (cc && cc.length) console.log('[cubeGpuVsCpu]', JSON.stringify(cc));
+  // LOD 4: texels of 16 base texels (5.6° at 256², 2.8° at 512²), against a cap of the same area
+  const cc4 = await page.evaluate(async (d) => {
+    const s = window.__app.sky;
+    if (!s) return null;
+    const size = s.backgroundStats?.cubeSize ?? 512;
+    const texDeg = (90 / size) * 16;
+    return { capDeg: texDeg / Math.sqrt(Math.PI), rows: await s.checkCube(d, 4, texDeg / Math.sqrt(Math.PI)) };
+  }, cubeDirs);
+  if (cc4) console.log('[cubeGpuVsCpuLod4]', JSON.stringify(cc4));
   const zc = await page.evaluate(() => window.__app.sky?.checkZodiacal());
   if (zc && zc.length) console.log('[zodiacalGpuVsCpu]', JSON.stringify(zc));
   // the inspector's facts for the brightest deep-tier point (as a click on it would show), and a bright one
@@ -95,7 +105,9 @@ try {
       s.points.forEach((p, k) => { if (p.tier === tier && (best < 0 || s.pointData[k * 7 + 4] > s.pointData[best * 7 + 4])) best = k; });
       if (best < 0) continue;
       const d = Array.from(s.pointData.subarray(best * 7, best * 7 + 3));
-      const p = s.pickStar(d, 1e-5);
+      const n = Math.hypot(d[0], d[1], d[2]);
+      // 1e-4 rad: well inside a pixel, well above float32 rounding of the stored direction
+      const p = s.pickStar([d[0] / n, d[1] / n, d[2] / n], 1e-4);
       out[tier] = p ? s.facts(p) : null;
     }
     return out;

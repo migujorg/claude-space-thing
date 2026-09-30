@@ -395,10 +395,10 @@ export class SkyBackground implements SkyBackgroundHook {
   }
 
   /**
-   * Debug: sample the composed cube (hardware cube sampling, mip level 0) along ICRF directions, in cd/m²; checks
-   * the face convention of the compose pass against the sampler's.
+   * Debug: sample the composed cube (hardware cube sampling at mip level `lod`) along ICRF directions, in cd/m²;
+   * checks the face convention of the compose pass against the sampler's, and the flux through the mip chain.
    */
-  async sampleCube(dirs: [number, number, number][]): Promise<number[][]> {
+  async sampleCube(dirs: [number, number, number][], lod = 0): Promise<number[][]> {
     const d = this.device;
     const n = dirs.length;
     const code = /* wgsl */ `
@@ -407,11 +407,11 @@ export class SkyBackground implements SkyBackgroundHook {
 @group(0) @binding(2) var<storage, read> dirs: array<vec4f>;
 @group(0) @binding(3) var<storage, read_write> outv: array<vec4f>;
 @compute @workgroup_size(1) fn main(@builtin(global_invocation_id) id: vec3u) {
-  outv[id.x] = textureSampleLevel(cube, samp, dirs[id.x].xyz, 0.0);
+  outv[id.x] = textureSampleLevel(cube, samp, dirs[id.x].xyz, dirs[id.x].w);
 }`;
     const pipe = d.createComputePipeline({ layout: 'auto', compute: { module: d.createShaderModule({ code }), entryPoint: 'main' } });
     const inb = d.createBuffer({ size: n * 16, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
-    d.queue.writeBuffer(inb, 0, new Float32Array(dirs.flatMap((v) => [v[0], v[1], v[2], 0])));
+    d.queue.writeBuffer(inb, 0, new Float32Array(dirs.flatMap((v) => [v[0], v[1], v[2], lod])));
     const outb = d.createBuffer({ size: n * 16, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC });
     const rb = d.createBuffer({ size: n * 16, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ });
     const enc = d.createCommandEncoder();
