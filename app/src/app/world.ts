@@ -42,6 +42,10 @@ export function navRadius(b: Body | undefined): number | null {
   return r ? Math.max(r[0], r[1], r[2]) : null;
 }
 
+export function copy(v: Vec3 | null): Vec3 | null {
+  return v ? [v[0], v[1], v[2]] : null;
+}
+
 export function computeWorld(
   et: number,
   cameraPos: Vec3,
@@ -57,12 +61,14 @@ export function computeWorld(
     let app: ApparentResult | null = null;
     let toSun: Vec3 | null = null;
     if (eph && eph.covers(body.id, et)) {
-      ssb = eph.positionSSB(body.id, et);
-      app = core.apparentPosition(eph, body.id, cameraPos, et);
+      // Copy at the port boundary: implementations may reuse scratch arrays between calls.
+      ssb = copy(eph.positionSSB(body.id, et));
+      const a = core.apparentPosition(eph, body.id, [cameraPos[0], cameraPos[1], cameraPos[2]], et);
+      app = a ? { rel: [a.rel[0], a.rel[1], a.rel[2]], lightTime: a.lightTime, emitEt: a.emitEt } : null;
       if (app) {
         if (body.id === sunId) toSun = [0, 0, 0];
         else if (sunId !== null) {
-          const s = eph.positionSSB(sunId, app.emitEt);
+          const s = copy(eph.positionSSB(sunId, app.emitEt));
           const b = eph.positionSSB(body.id, app.emitEt);
           if (s && b) toSun = sub(s, b);
         }

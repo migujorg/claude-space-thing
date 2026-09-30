@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { buildTrack, orbitParentId, orbitSpan, osculatingPeriod, trackPolyline } from '../src/app/orbits';
 import type { Vec3 } from '../src/app/ports';
-import { body, FakeEphemerisSet, src } from './app-fakes';
+import { body, FakeEphemerisSet, ScratchEphemerisSet, src } from './app-fakes';
 
 // Circular test orbit: radius R around a parent moving linearly; μ chosen so the period is known.
 const R = 1e5, T = 1e6, MU = (4 * Math.PI * Math.PI * R ** 3) / T ** 2;
@@ -52,6 +52,13 @@ describe('orbits', () => {
     expect(n).toBeLessThan(300); // one period ≈ 256 samples, not the whole 10-period window
     const d0 = Math.hypot(pl.points[0] - parentCam[0], pl.points[1] - parentCam[1], pl.points[2] - parentCam[2]);
     expect(d0).toBeCloseTo(R, 3);
+  });
+
+  it('is not fooled by ephemerides that reuse scratch arrays', () => {
+    const scratch = new ScratchEphemerisSet({ 10: () => [0, 0, 0], 1: parentAt, 2: moonAt }, { startEt: 0, endEt: 10 * T });
+    const tr = buildTrack(scratch, moon, parent, scratch.window, 5 * T)!;
+    expect(tr.period! / T).toBeCloseTo(1, 3);
+    expect(Math.hypot(tr.rel[0], tr.rel[1], tr.rel[2])).toBeCloseTo(R, 3);
   });
 
   it('without GM the whole window is drawn', () => {

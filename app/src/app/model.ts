@@ -20,7 +20,7 @@ import { badgeParts, defaultReality, labelAllowed, type RealityState } from './r
 import { buildSnapshot, buildSun, filtered } from './snapshot';
 import { parseIsoUtc, type UrlView } from './url';
 import { DEG, IDENTITY, len, matFromQuat, norm, quatFromMat, slerpQuat, sub } from './vec';
-import { computeWorld, findSunId, isPhysical, navRadius, type World } from './world';
+import { computeWorld, copy, findSunId, isPhysical, navRadius, type World } from './world';
 
 export interface ViewportSize {
   /** CSS pixels */
@@ -254,7 +254,7 @@ export class AppModel {
   }
 
   bodyPos(id: number, et = this.clock.et): Vec3 | null {
-    return this.eph && this.eph.covers(id, et) ? this.eph.positionSSB(id, et) : null;
+    return this.eph && this.eph.covers(id, et) ? copy(this.eph.positionSSB(id, et)) : null;
   }
 
   radiusOf(id: number): number | null {

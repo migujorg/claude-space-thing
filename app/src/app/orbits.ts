@@ -69,7 +69,10 @@ export function buildTrack(
   const gm1 = body.gm?.value, gm2 = parent.gm?.value;
   if (typeof gm1 === 'number' && typeof gm2 === 'number') {
     const t = Math.min(Math.max(etNow, w.startEt), w.endEt);
-    const sb = eph.stateSSB(body.id, t), sp = eph.stateSSB(parent.id, t);
+    // Copy each result before the next call: implementations may reuse scratch arrays.
+    const s1 = eph.stateSSB(body.id, t);
+    const sb = s1 ? { pos: [...s1.pos] as Vec3, vel: [...s1.vel] as Vec3 } : null;
+    const sp = eph.stateSSB(parent.id, t);
     if (sb && sp) period = osculatingPeriod(sub(sb.pos, sp.pos), sub(sb.vel, sp.vel), gm1 + gm2);
   }
   let n = period !== null && period < L ? Math.ceil((L / period) * spp) + 1 : minS;
@@ -78,7 +81,9 @@ export function buildTrack(
   const rel = new Float64Array(3 * n);
   for (let i = 0; i < n; i++) {
     const t = w.startEt + i * dt;
-    const a = eph.positionSSB(body.id, t), b = eph.positionSSB(parent.id, t);
+    const a0 = eph.positionSSB(body.id, t);
+    const a = a0 ? [a0[0], a0[1], a0[2]] : null;
+    const b = eph.positionSSB(parent.id, t);
     if (a && b) { rel[3 * i] = a[0] - b[0]; rel[3 * i + 1] = a[1] - b[1]; rel[3 * i + 2] = a[2] - b[2]; }
     else rel[3 * i] = rel[3 * i + 1] = rel[3 * i + 2] = NaN;
   }

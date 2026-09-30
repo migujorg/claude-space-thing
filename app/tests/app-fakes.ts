@@ -32,6 +32,24 @@ export class FakeEphemerisSet implements EphemerisSetPort {
   }
 }
 
+/** Like FakeEphemerisSet but every call returns the SAME scratch arrays (a legal optimization). */
+export class ScratchEphemerisSet extends FakeEphemerisSet {
+  private scratch: Vec3 = [0, 0, 0];
+  private sv: StateVector = { pos: [0, 0, 0], vel: [0, 0, 0] };
+  positionSSB(id: number, et: number): Vec3 | null {
+    const p = super.positionSSB(id, et);
+    if (!p) return null;
+    this.scratch[0] = p[0]; this.scratch[1] = p[1]; this.scratch[2] = p[2];
+    return this.scratch;
+  }
+  stateSSB(id: number, et: number): StateVector | null {
+    const s = super.stateSSB(id, et);
+    if (!s) return null;
+    for (let k = 0; k < 3; k++) { this.sv.pos[k] = s.pos[k]; this.sv.vel[k] = s.vel[k]; }
+    return this.sv;
+  }
+}
+
 /** Light-time iteration with a test-chosen signal speed (km/s). */
 export function makeApparent(c: number) {
   return (eph: EphemerisSetPort, id: number, obs: Vec3, et: number): ApparentResult | null => {

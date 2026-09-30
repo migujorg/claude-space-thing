@@ -4,7 +4,7 @@ import { computeWorld } from '../src/app/world';
 import { defaultReality } from '../src/app/reality';
 import type { SceneCamera } from '../src/render/scene';
 import type { Vec3 } from '../src/app/ports';
-import { body, FakeEphemerisSet, fakeBodyToIcrf, fakeLight, makeApparent } from './app-fakes';
+import { body, FakeEphemerisSet, fakeBodyToIcrf, fakeLight, makeApparent, ScratchEphemerisSet } from './app-fakes';
 
 const C = 1000; // test signal speed, km/s: makes light-time large and easy to see
 const cam: SceneCamera = { orient: [1, 0, 0, 0, 1, 0, 0, 0, 1], fovY: 1, width: 100, height: 100 };
@@ -97,6 +97,16 @@ describe('buildSnapshot', () => {
     const s = buildSnapshot({ world, camera: cam, reality: defaultReality(), light: fakeLight(), selectedId: null, orbits: [], core });
     expect(s.bodies).toHaveLength(0);
     expect(s.sun).toBeNull();
+  });
+
+  it('is not fooled by ephemerides that reuse scratch arrays', () => {
+    const scratch = new ScratchEphemerisSet({ 10: () => [0, 0, 0], 399: planetAt, 301: (t) => [2e6, t, 0] });
+    const world = computeWorld(1000, [1e6 - 2e5, 0, 0], bodies, scratch, core, 10);
+    const a = world.bodies.get(399)!, b = world.bodies.get(301)!;
+    expect(a.ssb).not.toBe(b.ssb);
+    expect(a.ssb![0]).toBeCloseTo(1e6, 6);
+    expect(b.ssb![0]).toBeCloseTo(2e6, 6);
+    expect(a.toSun![0]).toBeCloseTo(-1e6, 6); // not zero (Sun and body read from the same scratch)
   });
 
   it('withholds the Sun when its irradiance is not admitted', () => {
