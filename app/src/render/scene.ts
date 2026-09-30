@@ -5,7 +5,7 @@
 // anything not allowed at the current `exists` level arrives here as null / flagged, so the renderer
 // never needs to reason about provenance labels except for the provenance-tint overlay.
 
-import type { Label, PhaseFunction } from '../data/schema';
+import type { DiskReflectanceModel, Label, PhaseFunction, RingReflectance, SpatialPhotometricModel, SurfaceLayerHeader } from '../data/schema';
 import type { EyeSettings } from '../eye/settings';
 
 export type { EyeSettings };
@@ -34,6 +34,81 @@ export interface SceneBody {
   /** Worst provenance label among what is drawn, for the provenance-tint overlay. */
   worstLabel: Label;
   selected: boolean;
+
+  // ── M2 additions (all optional; see docs/rendering-m2.md) ─────────────────────────────────────
+  /**
+   * Surface maps (docs/architecture.md §4.4). Used only when `orient` is known (a map needs the
+   * body-fixed frame) and the surface is lit and measured. The renderer fetches the tiles itself.
+   */
+  surface?: { albedo?: SurfaceLayerRef; height?: SurfaceLayerRef };
+  /**
+   * Measured spatially resolved photometric model (photometry.json `spatialModel`), already filtered by
+   * the reality level; absent/null → Lambert. It only redistributes light across the disk: the disk
+   * integral stays albedoXYZS·Φ(α) (§4.3).
+   */
+  spatialModel?: SpatialPhotometricModel | null;
+  /** Ring system centred on this body (ring plane through the body centre). */
+  rings?: SceneRings | null;
+  /**
+   * Reality levels best/complete (NORTH_STAR 3.2/3.7): outside the measured phase-angle range of
+   * `phase`, continue Φ(α) with the spatial law's own phase dependence, scaled to be continuous at the
+   * edge of the range; the result is labelled estimated (tint, warning). false/absent (strict): the
+   * sunlit part is hatched as not measured.
+   */
+  allowPhaseExtrapolation?: boolean;
+  /**
+   * photometry.json `diskReflectanceModel.value` (the Moon: ROLO, kind 'rolo-v1') when admitted at the
+   * reality level. Inside its domain (phase range and observer libration range; it needs `orient` and
+   * the Sun's irradiance) it gives the disk-integrated brightness in place of albedoXYZS·Φ(α)
+   * (architecture §4.3); outside, `phase` applies as usual. Include its label in `worstLabel`.
+   */
+  diskReflectanceModel?: DiskReflectanceModel | null;
+}
+
+/**
+ * One layer of a surface-map pyramid (architecture §4.4): the parsed `surfaces/<naifId>/<layer>.json`
+ * (SurfaceLayerHeader) and where to fetch its tiles. The renderer reads `maxLevel`, `tilePath`,
+ * `missingTiles`, `format` and `channels`; a layer whose format is not the one the renderer decodes
+ * (albedo: float16 X, Y, Z, S; height: float32 metres) is ignored with a warning.
+ */
+export interface SurfaceLayerRef {
+  /**
+   * With a pipeline header (it has `tilePath`, relative to the data root): the data root URL, e.g.
+   * '/data'; tile (L, ty, tx) is `${url}/${tilePath}` with {level}, {ty}, {tx} substituted. Without
+   * `tilePath` (test fixtures): the layer directory, tile = `${url}/${L}/${ty}/${tx}.bin`.
+   */
+  url: string;
+  header: Partial<SurfaceLayerHeader> & {
+    /** Finest pyramid level present (levels 0..maxLevel). */
+    maxLevel: number;
+    /** Fixture form of `missingTiles`: level (as a string key) → [tx, ty] pairs not stored (entirely unknown). */
+    missing?: Record<string, [number, number][]>;
+  };
+}
+
+/**
+ * A planetary ring system as the renderer needs it (docs/rendering-m2.md §5): the planet's entry of
+ * rings.json (`RingSystem`, architecture §6) after the reality filter. The ring plane passes through
+ * the planet centre.
+ */
+export interface SceneRings {
+  /** Unit normal of the ring plane (ICRF): the planet's IAU north pole. */
+  normal: Vec3;
+  /**
+   * rings.json `opticalDepth.value` (RingProfile[]; only `radiusKm` and `normalTau` are read). The rings
+   * extend over the profiles' radii; where profiles overlap, the first with a value at a radius wins.
+   * τ null → not measured there (hatched, no light, no shadow). Sets the extinction: ring shadows on
+   * bodies, bodies seen through the rings.
+   */
+  opticalDepth: { radiusKm: number[]; normalTau: (number | null)[] }[];
+  /**
+   * rings.json `reflectance.value` (kind 'single-scattering-v1', Saturn) when admitted at the reality
+   * level; null when its label is `unknown` (Jupiter, Uranus, Neptune) or it is not admitted: the rings
+   * then only absorb and cast shadows, and their material is hatched as "not measured".
+   */
+  reflectance: RingReflectance | null;
+  /** Worst provenance label among the ring data drawn (e.g. estimated for Saturn's reflectance). */
+  worstLabel: Label;
 }
 
 export interface SceneSun {
@@ -104,4 +179,18 @@ export interface RendererStats {
   limitingMagnitude?: number;
   /** Things the renderer could not draw as requested, e.g. "Sun: limb darkening unknown → drawn as a point". */
   warnings?: string[];
+  /** GPU time per pass, ms (timestamp queries; absent where the adapter lacks 'timestamp-query'). A frame or two old. */
+  gpuPassMs?: Record<string, number>;
+  /** Sum of gpuPassMs, ms. */
+  gpuFrameMs?: number;
+  /** Surface-map tile cache (virtual texturing). */
+  surfaceCache?: {
+    budgetMiB: number;
+    usedMiB: number;
+    residentTiles: number;
+    pendingFetches: number;
+    /** Tiles wanted this frame that the budget could not hold (finer detail is then deferred). */
+    deferredTiles: number;
+    failedFetches: number;
+  };
 }

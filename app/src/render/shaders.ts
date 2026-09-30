@@ -4,6 +4,16 @@
 import { CIE146, HUNT, PATTANAIK, SRGB } from '../eye/constants';
 import { SRGB_TO_XYZ, inv3 } from '../eye/display';
 import { XYZ_TO_HPE } from '../eye/tonemap';
+import { LAW_WGSL, MASK_HATCH_SHADER, RING_COMMON, RING_SHADER as RING_SHADER_OF, SURFACE_WGSL } from './shaders-m2';
+import { FORESHORTEN_MIN_MU } from './surface';
+
+// Relief self-shadowing: horizon search toward the Sun in geometrically growing steps from one texel
+// (a numerical choice, not a physical constant: 40 steps growing by 15% reach ~230 texels, capped at
+// R/4; coarser growth undersamples crater rims and leaves stair-stepped shadow edges).
+const FORESHORTEN = FORESHORTEN_MIN_MU;
+const MARCH_STEPS = 40;
+const MARCH_GROWTH = 1.15;
+export { MASK_HATCH_SHADER };
 
 const HPE_INV_M = inv3([...XYZ_TO_HPE]);
 /** Column-major WGSL constructor arguments for the inverse HPE matrix. */
@@ -207,9 +217,17 @@ struct Body {
   mi0: vec4f, mi1: vec4f, mi2: vec4f,  // rows of M^-1
   o: vec4f,     // NEAR: camera in unit-sphere frame, w = |o|^2 - 1
   sun: vec4f,   // unit direction to the Sun from the body centre, w = distance (km)
-  rad: vec4f,   // radiance prefactor (cd/m2 per unit cos i), XYZS
+  rad: vec4f,   // radiance prefactor (cd/m2 per unit radiance factor of the law), XYZS
   misc: vec4f,  // x = Ricco weight, y = Sun radius (km), z = occluder count, w = 1 lit / 0 dark
   occ: array<vec4f, 4>,  // occluders: centre relative to this body (km), w = radius
+  rot0: vec4f, rot1: vec4f, rot2: vec4f,  // body-fixed → world rows; w = radii a, b, c (km)
+  surfA: vec4f, // albedo map: page-table base (u32 bits), max level, enabled, mean radius (km)
+  surfH: vec4f, // height map: page-table base (u32 bits), max level, enabled, unused
+  law0: vec4f,  // spatial law: kind, p (L, k or w), b, c
+  law1: vec4f,  // B_S0, h_S, B_C0, h_C
+  law2: vec4f,  // θ̄ (rad), K, H function (0: Hapke 2002, 1: 1981), unused
+  ps0: vec4f, psK0: vec4f, ps1: vec4f, psK1: vec4f,  // planetshine: unit direction (w = 1 if present), radiance prefactor
+  ring: vec4f,  // ring system index (−1: none), body centre − ring centre (km)
 };
 
 @group(0) @binding(0) var<uniform> F: Frame;
@@ -275,15 +293,13 @@ fn depthOf(t: f32, dir: vec3f) -> f32 {
 }
 `;
 
-export const BODY_SHADER = COMMON + BODY_COMMON + /* wgsl */ `
-fn circleOverlap(r1: f32, r2: f32, d: f32) -> f32 {
-  if (d >= r1 + r2) { return 0.0; }
-  if (d <= abs(r1 - r2)) { let r = min(r1, r2); return PI * r * r; }
-  let a1 = r1 * r1 * acos(clamp((d * d + r1 * r1 - r2 * r2) / (2.0 * d * r1), -1.0, 1.0));
-  let a2 = r2 * r2 * acos(clamp((d * d + r2 * r2 - r1 * r1) / (2.0 * d * r2), -1.0, 1.0));
-  let k = 0.5 * sqrt(max((-d + r1 + r2) * (d + r1 - r2) * (d - r1 + r2) * (d + r1 + r2), 0.0));
-  return a1 + a2 - k;
-}
+export const BODY_SHADER = COMMON + BODY_COMMON + RING_COMMON + LAW_WGSL + SURFACE_WGSL + /* wgsl */ `
+@group(0) @binding(2) var<storage, read> pageTable: array<u32>;
+@group(0) @binding(3) var albedoPages: texture_2d_array<f32>;
+@group(0) @binding(4) var heightPages: texture_2d_array<f32>;
+@group(0) @binding(5) var<uniform> SI: SurfInfo;
+@group(0) @binding(6) var<storage, read> rings: array<Ring>;
+@group(0) @binding(7) var<storage, read> ringProf: array<vec4f>;
 
 /** Fraction of the solar disk (uniform-disk approximation) visible from body-relative point p. */
 fn sunVisible(b: Body, p: vec3f) -> f32 {
@@ -305,9 +321,43 @@ fn sunVisible(b: Body, p: vec3f) -> f32 {
   return clamp(1.0 - covered / (PI * rs * rs), 0.0, 1.0);
 }
 
+/** Sunlight transmitted through a ring system to body-relative point p (ring shadow, soft by the solar disk). */
+fn ringShadowT(b: Body, p: vec3f) -> f32 {
+  if (b.ring.x < -0.5) { return 1.0; }
+  let R = rings[u32(b.ring.x)];
+  let N = R.N.xyz;
+  let X = p + b.ring.yzw;
+  let s = b.sun.xyz;
+  let sN = dot(s, N);
+  if (abs(sN) < 1e-6) { return 1.0; }
+  let u = -dot(X, N) / sN;
+  if (u <= 0.0) { return 1.0; }
+  let r = length(X + u * s);
+  let delta = u * asin(min(b.misc.y / b.sun.w, 1.0)) / abs(sN);
+  let a = ringAvg(R, r - delta, r + delta);
+  return exp(-a.tau / abs(sN));
+}
+
+/** Light from point p toward the camera transmitted through a ring system in front of it. */
+fn ringViewT(b: Body, p: vec3f, dirN: vec3f, range: f32) -> f32 {
+  if (b.ring.x < -0.5) { return 1.0; }
+  let R = rings[u32(b.ring.x)];
+  let N = R.N.xyz;
+  let X = p + b.ring.yzw;
+  let dN = dot(dirN, N);
+  if (abs(dN) < 1e-6) { return 1.0; }
+  let u = dot(X, N) / dN;
+  if (u <= 0.0 || u >= range) { return 1.0; }
+  let r = length(X - u * dirN);
+  let fw = F.tanHalf.z * (range - u) / abs(dN);
+  let a = ringAvg(R, r - 0.5 * fw, r + 0.5 * fw);
+  return exp(-a.tau / abs(dN));
+}
+
 struct FOut {
   @location(0) ext: vec4f,
   @location(1) w: f32,
+  @location(2) mask: f32,
   @builtin(frag_depth) depth: f32,
 };
 
@@ -317,17 +367,95 @@ struct FOut {
   let cov = clamp(0.5 + hit.disc / max(fwidth(hit.disc), 1e-30), 0.0, 1.0);
   if (cov <= 0.0) { discard; }
   var L = vec4f(0.0);
+  var gap = 0.0;
   if (b.misc.w > 0.5) {
-    let N = normalize(b.m0.xyz * hit.h.x + b.m1.xyz * hit.h.y + b.m2.xyz * hit.h.z);
-    let cosI = max(dot(N, b.sun.xyz), 0.0);
-    if (cosI > 0.0) {
-      let p = vec3f(dot(b.mi0.xyz, hit.h), dot(b.mi1.xyz, hit.h), dot(b.mi2.xyz, hit.h));
-      L = b.rad * (cosI * sunVisible(b, p));
+    let dirN = normalize(hit.dir);
+    let range = hit.t * length(hit.dir);
+    let V = -dirN;
+    let Nell = normalize(b.m0.xyz * hit.h.x + b.m1.xyz * hit.h.y + b.m2.xyz * hit.h.z);
+    let p = vec3f(dot(b.mi0.xyz, hit.h), dot(b.mi1.xyz, hit.h), dot(b.mi2.xyz, hit.h));
+    var N = Nell;
+    var M = vec4f(1.0);
+    var selfShadow = 1.0;
+    if (b.surfA.z > 0.5 || b.surfH.z > 0.5) {
+      // Body-fixed point (km), planetocentric (u, v), and the pixel's surface footprint (surface.ts).
+      let radii = vec3f(b.rot0.w, b.rot1.w, b.rot2.w);
+      let pbf = hit.h * radii;
+      let uv = uvOfBf(pbf);
+      let fp = F.tanHalf.z * range / sqrt(max(dot(Nell, V), ${FORESHORTEN}));
+      if (b.surfA.z > 0.5) {
+        let base = bitcast<u32>(b.surfA.x);
+        let Lr = residentLevel(base, surfLevel(b.surfA.w, fp, b.surfA.y), uv);
+        let s = sampleAlbedo(base, Lr, uv);
+        M = s.m;
+        gap = s.gap;
+      }
+      if (b.surfH.z > 0.5) {
+        let base = bitcast<u32>(b.surfH.x);
+        let Lh = residentLevel(base, surfLevel(b.surfA.w, fp, b.surfH.y), uv);
+        let W = f32(512u << Lh);
+        let H = f32(256u << Lh);
+        let r = length(pbf);
+        let upb = normalize(pbf / (radii * radii));
+        let lat = atan2(pbf.z, length(pbf.xy));
+        let lon = atan2(pbf.y, pbf.x);
+        let east = vec3f(-sin(lon), cos(lon), 0.0);
+        let north = vec3f(-sin(lat) * cos(lon), -sin(lat) * sin(lon), cos(lat));
+        let h0 = sampleHeight(base, Lh, uv);
+        let hE = sampleHeight(base, Lh, uv + vec2f(1.0 / W, 0.0));
+        let hW = sampleHeight(base, Lh, uv - vec2f(1.0 / W, 0.0));
+        let hN = sampleHeight(base, Lh, uv - vec2f(0.0, 1.0 / H));
+        let hS = sampleHeight(base, Lh, uv + vec2f(0.0, 1.0 / H));
+        if (h0.y > 0.99 && hE.y > 0.99 && hW.y > 0.99 && hN.y > 0.99 && hS.y > 0.99) {
+          // Slopes (km/km) from central differences; heights are meters.
+          let sE = (hE.x - hW.x) * 1e-3 / (2.0 / W * 2.0 * PI * r * max(cos(lat), 1e-3));
+          let sN = (hN.x - hS.x) * 1e-3 / (2.0 / H * PI * r);
+          let nb = normalize(upb - sE * east - sN * north);
+          N = normalize(b.rot0.xyz * nb.x + b.rot1.xyz * nb.y + b.rot2.xyz * nb.z);
+          // Self-shadowing: horizon toward the Sun by ray marching the height field (curvature included),
+          // compared with the solar disk (soft terminator of relief).
+          let sbf = b.rot0.xyz * b.sun.x + b.rot1.xyz * b.sun.y + b.rot2.xyz * b.sun.z;
+          let es = asin(clamp(dot(sbf, upb), -1.0, 1.0));
+          let hor = sbf - dot(sbf, upb) * upb;
+          let hl = length(hor);
+          let rs = asin(min(b.misc.y / b.sun.w, 1.0));
+          if (hl > 1e-6 && es < 0.5 * PI - rs) {
+            let hd = hor / hl;
+            let texKm = 2.0 * PI * r / W;
+            var maxAng = -0.5 * PI;
+            var d = texKm;
+            for (var k = 0; k < ${MARCH_STEPS}; k++) {
+              if (d > 0.25 * r) { break; }
+              let q = pbf + hd * d;
+              let hq = sampleHeight(base, Lh, uvOfBf(q));
+              if (hq.y > 0.5) {
+                let rise = (hq.x - h0.x) * 1e-3 - d * d / (2.0 * r);
+                maxAng = max(maxAng, atan2(rise, d));
+              }
+              d *= ${MARCH_GROWTH};
+            }
+            let x = clamp((es - maxAng) / max(rs, 1e-6), -1.0, 1.0);
+            selfShadow = 0.5 + (x * sqrt(1.0 - x * x) + asin(x)) / PI;
+          }
+        }
+      }
     }
+    let S = b.sun.xyz;
+    let mu0 = dot(N, S);
+    let mu = dot(N, V);
+    if (mu0 > 0.0 && mu > 0.0) {
+      let r = lawRadf(mu0, mu, acos(clamp(dot(S, V), -1.0, 1.0)), b.law0, b.law1, b.law2);
+      L = b.rad * M * (r * sunVisible(b, p) * selfShadow * ringShadowT(b, p));
+    }
+    // Planetshine (Lambert, measured albedos of both bodies; planetshine.ts).
+    if (b.ps0.w > 0.5) { L += b.psK0 * M * max(dot(N, b.ps0.xyz), 0.0); }
+    if (b.ps1.w > 0.5) { L += b.psK1 * M * max(dot(N, b.ps1.xyz), 0.0); }
+    L *= ringViewT(b, p, dirN, range);
   }
   var o: FOut;
   o.ext = toStore(F, L * cov);
   o.w = b.misc.x;
+  o.mask = select(0.0, cov, gap > 0.5);
   o.depth = depthOf(hit.t, hit.dir);
   return o;
 }
@@ -832,3 +960,5 @@ struct LV { @builtin(position) pos: vec4f, @location(0) col: vec4f, @location(1)
   return vec4f(in.col.rgb * in.col.a, in.col.a);
 }
 `;
+
+export const RING_SHADER = RING_SHADER_OF(COMMON);
