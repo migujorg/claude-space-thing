@@ -17,6 +17,9 @@
     { "id": "sun-1au", "title": "The Sun from 1 au", "params": { "target": "10", "dist": "149597871" } },
     { "id": "juno-closeup", "title": "3 Juno close-up (small body with a measured diameter and colour)", "params": { "target": "20000003", "smallbodies": "1" } },
     { "id": "mars-map", "title": "Mars surface map, day side", "params": { "target": "499", "dist": "15000", "az": "0", "el": "10" } },
-    { "id": "mercury-map", "title": "Mercury surface map, day side", "params": { "target": "199", "dist": "8000", "az": "0", "el": "10" } }
+    { "id": "mercury-map", "title": "Mercury surface map, day side", "params": { "target": "199", "dist": "8000", "az": "0", "el": "10" } },
+    { "id": "starfield-dark-2min", "title": "Star field 2 min after 10 min of daylight (dark adaptation: cones recovering, rods bleached)", "params": { "target": "999", "dist": "3000000000", "labels": "0", "adaptfrom": "10000,600,120" } },
+    { "id": "starfield-dark-12min", "title": "Star field 12 min after 10 min of daylight (dark adaptation: the cone plateau)", "params": { "target": "999", "dist": "3000000000", "labels": "0", "adaptfrom": "10000,600,720" } },
+    { "id": "starfield-dark-30min", "title": "Star field 30 min after 10 min of daylight (dark adaptation: rods nearly recovered)", "params": { "target": "999", "dist": "3000000000", "labels": "0", "adaptfrom": "10000,600,1800" } }
   ]
 }
