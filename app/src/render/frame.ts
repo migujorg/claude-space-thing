@@ -2,11 +2,12 @@
 // their photometry per docs/architecture.md §4.3, eclipse occluders, the Sun, analytic glare sources
 // and display-space overlays. No GPU calls here; renderer.ts packs the result into buffers.
 
-import type { SceneBody, SceneSnapshot } from './scene';
+import type { SceneAtmosphere, SceneBody, SceneSnapshot } from './scene';
 import { AU_KM } from './constants';
-import { diskIlluminance, diskModelPPhi, evalPhase, extrapolatePhase, lambertPhase, limbDarkenedI0, meanRadius, phaseRangeDeg, type XYZS } from './photometry';
+import { diskIlluminance, diskModelPPhi, evalPhase, extrapolatePhase, LAMBERT_ALBEDO_PER_GEOMETRIC_ALBEDO, lambertPhase, limbDarkenedI0, meanRadius, phaseRangeDeg, type XYZS } from './photometry';
 import { LAMBERT_LAW, LAW, lawDiskIntegral, lawRadf, mapDiskIntegral, NormalizationCache, photometricFrame, resolveLaw, TEXEL_LAW, type ResolvedLaw, type ZonalProfile } from './spatial';
 import { sampleLevel0, type Level0Map } from './surface';
+import { NIGHT_LAMP } from './earth';
 import { texelRadf, type TexelHapke } from './texelLaw';
 import { planetshineSources, type PlanetshineSource } from './planetshine';
 import { prepareRings, type RingPrep } from './rings';
@@ -17,6 +18,8 @@ import { blackwellEquivalent } from '../eye/mesopic';
 import type { EyeFrame } from '../eye/model';
 import { pointObserver } from '../eye/points';
 import { CIE146 } from '../eye/constants';
+import { cie146 } from '../eye/glare';
+import { DARK_LIGHT_CONE } from '../eye/tonemap';
 import { DEG2_PER_SR } from '../eye/pupil';
 
 /** GPU page-table bindings of a body's surface-map layers (renderer supplies them; surface.ts). */
@@ -25,6 +28,12 @@ export interface SurfaceBinding {
   /** Per-texel photometric model (texelLaw.ts) and its GPU texture, once loaded. */
   photometry?: { texel: TexelHapke; view: GPUTextureView };
   height?: { base: number; maxLevel: number };
+  /** Earth's cloud-properties, surface-water and emitted-radiance layers (earth.ts). */
+  clouds?: { base: number; maxLevel: number };
+  water?: { base: number; maxLevel: number };
+  night?: { base: number; maxLevel: number };
+  /** Earth's wind layer, one whole level in its own texture (rgba16float: ascending, daily mean, passes). */
+  wind?: { view: GPUTextureView };
 }
 
 export interface ResolvedBody {
@@ -54,6 +63,41 @@ export interface ResolvedBody {
   occluders: [V3, number][];
   hatch: boolean;
   tint: [number, number, number, number] | null;
+  /** Earth's layers (earth.ts): the albedo map's absoluteDiskMean and the night lights' luminance factors. */
+  earth: EarthBinding | null;
+  /**
+   * The body's atmosphere (drawn with Earth's layers only, for now): the data, the Lambert-equivalent
+   * reflectance below it for the multiple-scattering table (1.5·p_Y from the disk photometry, as
+   * planetshine.ts), the shell quad's half-extent (tan units) and the Sun's angular radius at the body.
+   */
+  atmosphere: { data: SceneAtmosphere; groundAlbedo: number; shellBeta: number; sunAngularRadius: number } | null;
+}
+
+export interface EarthBinding {
+  absR: XYZS;
+  /** cd/m² (XYZS) per unit of the night layer's radiance; zeros when there is no night layer. */
+  nightK: XYZS;
+}
+
+/**
+ * Earth mode (earth.ts): the albedo layer is surface-only absolute reflectance (its header has
+ * `normalization.absoluteDiskMean`) and the cloud layer is bound. Null otherwise; a surface-only map
+ * without clouds gets a warning (the caller then drops the map).
+ */
+export function earthMode(b: SceneBody, surface: SurfaceBinding | null, irr: XYZS | null, warnings: string[]): EarthBinding | null {
+  const abs = b.surface?.albedo?.header.normalization?.absoluteDiskMean;
+  if (!abs || !surface?.albedo || !irr) return null;
+  if (!surface.clouds) {
+    warnings.push(`${b.name}: surface-only reflectance map needs its cloud layer → disk photometry drawn instead`);
+    return null;
+  }
+  let nightK: XYZS = [0, 0, 0, 0];
+  if (surface.night) {
+    const k = (b.surface?.night?.header.constants?.toXYZS as Record<string, unknown> | undefined)?.[NIGHT_LAMP];
+    if (Array.isArray(k) && k.length === 4 && k.every((v) => typeof v === 'number' && v >= 0)) nightK = k as XYZS;
+    else warnings.push(`${b.name}: night-light layer has no ${NIGHT_LAMP} luminance factors → night lights not drawn`);
+  }
+  return { absR: [abs.X, abs.Y, abs.Z, abs.S], nightK };
 }
 
 export interface PointSource {
@@ -101,6 +145,8 @@ export interface PreparedFrame {
    * drives the pupil (Watson & Yellott 2012) together with the frame's own flux.
    */
   offFrameFluxDeg2: number;
+  /** Sun shield (viewing aid) on: the occulting disc's direction and cos(angular radius); null when off. */
+  sunShield: { dir: V3; cosRadius: number } | null;
 }
 
 export function cameraGeom(snap: SceneSnapshot, W: number, H: number, near: number): CameraGeom {
@@ -182,11 +228,26 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
     const p = camToNdc(g, c);
     return Math.abs(p[0]) <= 1 && Math.abs(p[1]) <= 1;
   };
+  /** Whether a sphere of radius r (km) at camera-relative pos overlaps the frame (for per-body warnings). */
+  const inView = (pos: V3, r: number) => {
+    const D = len(pos);
+    if (!(D > 0)) return false;
+    if (r >= D) return true;
+    const ang = Math.asin(r / D);
+    const c = toCam(g, pos);
+    const cosOff = -c[2] / D;
+    if (cosOff < Math.cos(Math.min(Math.PI, Math.PI / 2 + ang))) return false;
+    if (c[2] >= 0) return ang > Math.acos(Math.min(1, Math.max(-1, cosOff))) - Math.PI / 2;
+    const p = camToNdc(g, c);
+    const t = Math.tan(Math.min(ang, 1.5)) / -c[2] * D;
+    return Math.abs(p[0]) <= 1 + t / g.tanX && Math.abs(p[1]) <= 1 + t / g.tanY;
+  };
 
   // Sun first (its radius is needed for eclipse shadows).
   const sunR = snap.sun?.radius ?? 0;
   let sun: SunPrep | null = null;
   let adaptedWhite: V3 | null = null;
+  let sunShield: { dir: V3; cosRadius: number } | null = null;
   if (snap.sun) {
     const s = snap.sun;
     const dist = len(s.pos);
@@ -197,7 +258,11 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
     const rho = Math.asin(Math.min(1, s.radius / dist));
     const diamPx = (2 * rho) / g.pixelAngle;
     let fRes = s.limbDarkening ? smooth(1, 2, diamPx) : 0;
-    if (!s.limbDarkening && diamPx > 1) warnings.push('Sun: limb darkening unknown → drawn as an unresolved point of the correct illuminance (no uniform disk assumed)');
+    // Sun shield (viewing aid, ViewSettings.sunShield): an occulting disc covers the solar disk (its
+    // angular radius plus one pixel). The Sun's light never reaches the eye: no disk, no point, no veil.
+    const shielded = snap.view.sunShield === true;
+    if (shielded) sunShield = { dir: n, cosRadius: Math.cos(Math.min(rho + g.pixelAngle, Math.PI)) };
+    if (!s.limbDarkening && diamPx > 1 && !shielded) warnings.push('Sun: limb darkening unknown → drawn as an unresolved point of the correct illuminance (no uniform disk assumed)');
     const c = toCam(g, s.pos);
     const sunInFrame = inFrame(c);
     // Visible fraction of the disk (bodies in front), for the analytic glare veil.
@@ -210,7 +275,9 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
       covered += diskOverlapFraction(rho, rb, angle(b.pos, s.pos));
     }
     const vis = Math.max(0, 1 - covered);
-    glare.push({ dir: n, minDeg: (rho * 180) / Math.PI, E: E.map((v) => v * vis) as XYZS, inFrame: sunInFrame });
+    if (!shielded) glare.push({ dir: n, minDeg: (rho * 180) / Math.PI, E: E.map((v) => v * vis) as XYZS, inFrame: sunInFrame });
+    // The outline marks the disc; drawn with a radius of at least OCCULTER_OUTLINE_MIN_PX so a tiny disc stays findable.
+    else if (c[2] < 0) occulterOutline(g, n, Math.max(rho + g.pixelAngle, OCCULTER_OUTLINE_MIN_PX * g.pixelAngle), overlay);
     const coeffs: number[][] = [0, 1, 2, 3].map((k) => {
       const src = s.limbDarkening?.[k] ?? [1];
       if (src.length > 6) warnings.push('Sun: limb-darkening polynomial truncated to degree 5');
@@ -218,10 +285,10 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
     });
     const I0 = [0, 1, 2, 3].map((k) => (fRes > 0 ? limbDarkenedI0(E[k], coeffs[k], s.radius, dist) : 0)) as XYZS;
     let point: PointSource | null = null;
-    if (fRes < 1 && c[2] < 0) {
+    if (fRes < 1 && c[2] < 0 && !shielded) {
       point = { ndc: camToNdc(g, c), depth: g.near / -c[2], E: E.map((v) => v * (1 - fRes)) as XYZS };
     }
-    if (c[2] >= 0) fRes = 0;
+    if (c[2] >= 0 || shielded) fRes = 0;
     const [e1, e2] = tangent(n);
     const margin = 3 * g.pixelAngle;
     sun = {
@@ -241,7 +308,7 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
     const rf = prepareRings(b, irr, sunR, g.pixelAngle);
     if (rf.draw) rings.push(rf.draw);
     if (rf.pointE) ringPoint.set(b, rf.pointE);
-    if (rf.draw || inFrame(toCam(g, b.pos))) warnings.push(...rf.warnings);
+    if (inView(b.pos, b.rings ? Math.max(...(b.rings.opticalDepth.flatMap((p) => p.radiusKm)), 0) : 0)) warnings.push(...rf.warnings);
   }
   const ringFor = (b: SceneBody): { index: number; B: V3 } | null => {
     let best: { index: number; B: V3 } | null = null;
@@ -255,13 +322,22 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
   };
 
   for (const b of snap.bodies) {
+    // This body's warnings are kept only if it is in view (drawn in the frame).
+    const w0 = warnings.length;
+    try {
+      prepareOneBody(b);
+    } finally {
+      if (!inView(b.pos, b.radii ? Math.max(...b.radii) : 0)) warnings.length = w0;
+    }
+  }
+  function prepareOneBody(b: SceneBody): void {
     const D = len(b.pos);
-    if (!(D > 0)) continue;
+    if (!(D > 0)) return;
     const c = toCam(g, b.pos);
     if (!b.radii) {
       // Position known, size unknown: no brightness can be computed (R is needed). Nothing is drawn; the
       // shell draws the hollow "position known, brightness not admitted" marker (ui/labels.ts).
-      continue;
+      return;
     }
     const R = meanRadius(b.radii);
     const angR = Math.asin(Math.min(1, R / D));
@@ -281,8 +357,13 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
     if ('error' in lr) warnings.push(`${b.name}: ${lr.error} → Lambert spatial distribution`);
     else law = lr.law;
     // Surface maps need the body-fixed frame.
-    const surface = b.orient && b.surface && opts.surfaces ? opts.surfaces(b) : null;
+    let surface = b.orient && b.surface && opts.surfaces ? opts.surfaces(b) : null;
     if (!b.orient && b.surface && (b.surface.albedo || b.surface.height)) warnings.push(`${b.name}: orientation unknown → surface maps not shown`);
+    // Earth (earth.ts): a map of surface-only absolute reflectance is drawn with its clouds, never scaled
+    // by the disk photometry (which includes clouds and air). Without the cloud layer it is not used.
+    const earth = earthMode(b, surface, irr, warnings);
+    if (!earth && surface?.albedo && b.surface?.albedo?.header.normalization?.absoluteDiskMean) surface = { ...surface, albedo: undefined };
+    if (!earth && surface && (surface.clouds || surface.water || surface.night || surface.wind)) surface = { ...surface, clouds: undefined, water: undefined, night: undefined, wind: undefined };
     // Disk-integrated p·Φ per channel: from the body's disk reflectance model (the Moon: ROLO) inside its
     // domain, else albedoXYZS·Φ(α) (architecture §4.3).
     let pPhi: XYZS | null = b.surfaceUnknown ? null
@@ -353,6 +434,12 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
         lit = true;
       }
     }
+    if (earth && irr) {
+      // Absolute reflectance: L = (E_sun/π)·ρ (earth.ts); the disk photometry (E) still gives the point.
+      K = irr.map((v) => v / (Math.PI * dAU * dAU)) as XYZS;
+      law = LAMBERT_LAW;
+      lit = true;
+    }
     const tint = tintOn ? ([...PROVENANCE_TINT[label], PROVENANCE_TINT_ALPHA] as [number, number, number, number]) : null;
     const hatch = !lit && !(E && E[1] > 0);
     const diamPx = (2 * angR) / g.pixelAngle;
@@ -360,10 +447,12 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
     const At = 2 * Math.PI * (1 - Math.cos(angR));
     const ricco = Math.min(1, Math.max(At, pointFootprintSr) / AR);
 
+    // Behind the Sun shield's occulting disc: hidden (its resolved part is cut out on the GPU).
+    const behindShield = sunShield !== null && dot(normalize(b.pos), sunShield.dir) >= sunShield.cosRadius;
     // Off-frame bright bodies still veil the view (analytic glare).
-    if (E && !inFrame(c)) glare.push({ dir: normalize(b.pos), minDeg: (angR * 180) / Math.PI, E, inFrame: false });
+    if (E && !inFrame(c) && !behindShield) glare.push({ dir: normalize(b.pos), minDeg: (angR * 180) / Math.PI, E, inFrame: false });
 
-    if (behind) continue;
+    if (behind) return;
     if (fRes > 0) {
       let radii = b.radii;
       let orient = b.orient as M3 | null;
@@ -387,8 +476,9 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
         cands.sort((a, b2) => a.d - b2.d);
         for (const k of cands.slice(0, 4)) occluders.push([k.o, k.r]);
       }
+      // Earth: the source's illuminance over π, shaded by the Earth model like sunlight (earth.ts).
       const planetshine = lit
-        ? planetshineSources(b, snap.bodies, irr).map((ps) => ({ ...ps, K: ps.K.map((v) => v * fRes) as XYZS }))
+        ? planetshineSources(b, snap.bodies, irr).map((ps) => ({ ...ps, K: (earth ? ps.E.map((e) => e / Math.PI) : ps.K).map((v) => v * fRes) as XYZS }))
         : [];
       resolved.push({
         body: b, frame, lit,
@@ -398,9 +488,18 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
         planetshine, ring: ringFor(b),
         sunDir, sunDistKm: toSunLen, sunRadiusKm: sunR,
         riccoWeight: ricco, occluders, hatch, tint,
+        earth: orient ? earth : null,
+        atmosphere: orient && earth && b.atmosphere && irr && b.albedoXYZS
+          ? {
+            data: b.atmosphere,
+            groundAlbedo: LAMBERT_ALBEDO_PER_GEOMETRIC_ALBEDO * (b.albedoXYZS[1] / irr[1]),
+            shellBeta: prepareBody(b.pos, [atmTop(b), atmTop(b), atmTop(b)], null, 3 * g.pixelAngle).beta,
+            sunAngularRadius: Math.asin(Math.min(1, sunR / toSunLen)),
+          }
+          : null,
       });
     }
-    if (fRes < 1 && c[2] < 0) {
+    if (fRes < 1 && c[2] < 0 && !behindShield) {
       const ndc = camToNdc(g, c);
       // The unresolved part of the disk plus the unresolved part of its rings' reflected light.
       let Ep: XYZS | null = E && E[1] > 0 ? (E.map((v) => v * (1 - fRes)) as XYZS) : null;
@@ -427,7 +526,63 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
   const inField = glare.filter((gs) => (angle(gs.dir, fwd) * 180) / Math.PI <= CIE146.maxDeg);
   // Illuminance E (lux = cd·sr·m⁻²) of a small source equals its ∫L dΩ; convert sr → deg².
   const offFrameFluxDeg2 = inField.reduce((a, gs) => a + (gs.inFrame ? 0 : gs.E[1] * DEG2_PER_SR), 0);
-  return { resolved, points, sun, glare: inField, overlay, warnings, adaptedWhite, rings, offFrameFluxDeg2 };
+  // The analytic veil is evaluated per pixel for every source, so keep only sources whose veil can reach
+  // 1 % of the dark light somewhere in the frame (a numerical tolerance: fainter veils cannot change what
+  // is seen), strongest first; the renderer binds at most MAX_GLARE_SOURCES of them.
+  const halfDiagDeg = (Math.atan(Math.hypot(g.tanX, g.tanY)) * 180) / Math.PI;
+  const veilMax = (gs: GlareSource) => {
+    const th = gs.inFrame ? gs.minDeg : Math.max((angle(gs.dir, fwd) * 180) / Math.PI - halfDiagDeg, gs.minDeg);
+    return gs.E[1] * cie146(Math.min(Math.max(th, CIE146.minDeg), CIE146.maxDeg), eye.settings.ageYears, eye.settings.pigmentation);
+  };
+  const veiling = inField
+    .map((gs) => ({ gs, v: veilMax(gs) }))
+    .filter((x) => x.gs.inFrame || x.v >= 0.01 * DARK_LIGHT_CONE)
+    .sort((a, b) => b.v - a.v)
+    .map((x) => x.gs);
+  return { resolved, points, sun, glare: veiling, overlay, warnings, adaptedWhite, rings, offFrameFluxDeg2, sunShield };
+}
+
+/**
+ * Outline of the Sun shield's occulting disc (a display overlay marking the viewing aid): the rim of the
+ * cone of angular radius `r` around `n`, projected, as a thin band of triangles in `out`.
+ */
+function occulterOutline(g: CameraGeom, n: V3, r: number, out: number[]): void {
+  const [e1, e2] = tangent(n);
+  const seg = 64;
+  const half = 0.75; // px: a 1.5 px line
+  const rim: ([number, number] | null)[] = [];
+  for (let i = 0; i <= seg; i++) {
+    const a = (i / seg) * 2 * Math.PI;
+    const d: V3 = [0, 1, 2].map((k) => Math.cos(r) * n[k] + Math.sin(r) * (Math.cos(a) * e1[k] + Math.sin(a) * e2[k])) as V3;
+    const c = toCam(g, d);
+    rim.push(c[2] < 0 ? camToNdc(g, c) : null);
+  }
+  const col = OCCULTER_OUTLINE_RGBA;
+  for (let i = 0; i < seg; i++) {
+    const p = rim[i];
+    const q = rim[i + 1];
+    if (!p || !q) continue;
+    // Offset perpendicular to the segment, in pixels.
+    const dx = ((q[0] - p[0]) * g.W) / 2;
+    const dy = ((q[1] - p[1]) * g.H) / 2;
+    const l = Math.hypot(dx, dy) || 1;
+    const ox = ((-dy / l) * half * 2) / g.W;
+    const oy = ((dx / l) * half * 2) / g.H;
+    const v = (x: number, y: number) => out.push(x, y, 0, col[0], col[1], col[2], col[3]);
+    v(p[0] - ox, p[1] - oy); v(q[0] - ox, q[1] - oy); v(p[0] + ox, p[1] + oy);
+    v(p[0] + ox, p[1] + oy); v(q[0] - ox, q[1] - oy); v(q[0] + ox, q[1] + oy);
+  }
+}
+
+/** Smallest radius (px) at which the occulting disc's outline is drawn (a UI marking). */
+const OCCULTER_OUTLINE_MIN_PX = 5;
+/** Display colour of the occulting disc's outline (a UI marking, not scene light): neutral grey. */
+const OCCULTER_OUTLINE_RGBA = [0.45, 0.45, 0.45, 0.9] as const;
+
+/** Radius of the atmosphere shell around a body: its largest radius plus the atmosphere's height. */
+function atmTop(b: SceneBody): number {
+  const a = b.atmosphere!.body;
+  return Math.max(...b.radii!) + (a.topAltitudeKm ?? 0) - (a.altitudesKm[0] ?? 0);
 }
 
 function tangent(n: V3): [V3, V3] {

@@ -3,6 +3,7 @@
 //   /render-test.html?scene=sphere|sun|stars|unknown|neptune|eclipse|far&mode=eye|enhanced&boost=4&tint=1&orbits=1&hud=0
 //   more: stars=N (fixture stars, 0 = none), dist=km, dau=AU (neptune/far), phase=deg, fov=deg, limb=0 (sun),
 //   hdr=f16 (fallback path), present=canvas (WebGPU canvas instead of offscreen), debug=1, skip=pass,...
+//   shield=1 (Sun shield viewing aid: an occulting disc over the Sun),
 //   M2: scene=vt|lowsun|hapke|rings|earthshine, cache=MiB (surface tile budget, default 96), side=lit|unlit (rings),
 //   nomodel=1 (rings without a reflectance model); real data (pipeline products under /data):
 //   scene=rings-data|moon-data (see dataScenes.ts)

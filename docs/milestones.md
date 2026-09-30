@@ -16,7 +16,7 @@ What landed:
 
 Known limitations carried forward: planets are uniform-colored ellipsoids (maps come in M2); Earth's disk spectrum is a model (0.75 mag off Mallama & Hilton — measured DSCOVR EPIC data need an Earthdata login); no Milky Way diffuse light or zodiacal light yet (M4); eye adaptation is instantaneous.
 
-## M2 — True-color worlds up close  *(nearly done)*
+## M2 — True-color worlds up close  *(done)*
 
 Surface maps from mission mosaics, every moon, rings, measured photometric models, shadows, eclipses and planetshine.
 
@@ -27,16 +27,23 @@ Landed:
 - **Surfaces:** 3 GB of relative-reflectance tile pyramids calibrated by disk photometry (architecture §4.4): Moon (LROC WAC 7-band + LOLA relief + Hapke parameters), Mercury (MDIS 8-colour + DEM), Mars (HRSC colour + MOLA), Jupiter/Saturn/Uranus/Neptune (Hubble OPAL, dated 2025), Io/Europa/Ganymede/Callisto, Pluto, Charon (docs/reports/surfaces.md). Titan and Venus deliberately have no visible surface map (the eye sees haze/cloud).
 - **Renderer:** GPU virtual texturing, relief normals, Hapke/Lommel–Seeliger/Minnaert spatial laws normalized to disk photometry, ring rendering with shadows both ways, planetshine, eclipses, phase-curve continuation only at Best estimate (docs/rendering-m2.md).
 
-Remaining: Earth surface, today's clouds and night lights; Saturn's icy-moon maps from documented-brightness sources; local eye adaptation (bright close-ups currently saturate when the view centre is dark).
+- **Earth, now:** measured land/ice reflectance (MODIS NBAR, Sept 2026), ocean water-leaving reflectance, the cloud field of 2026-09-28 (VIIRS optical thickness/phase/top height), sea-surface wind for sun glint (AMSR3/GMI, same day), VIIRS Black Marble night lights, and a multiple-scattering atmosphere from atmospheres.json (US76 + Bodhaine Rayleigh, measured ozone cross-sections, MACv2 aerosol). The rendered disk reflects 0.85–0.88 of the Himawari-measured value (docs/rendering-earth.md).
+- **Eye:** adaptation driven by where the eye looks (fixations weighted by light), not the view centre; point sources judged at their own background (Crumey); optional, badged "Sun shield" viewing aid.
+- **Atmospheres data** for Mars (seasonal dust), Venus, Titan (haze extinction only — its single-scattering properties are unknown pending Tomasko et al. 2008), Pluto.
 
-## M3 — Every known small body  *(in progress)*
+Known gaps: Saturn's icy-moon and Triton maps (public mosaics fail contrast checks), Uranian moon maps (none exist), Titan haze scattering properties, ring reflectance outside Saturn's main rings.
 
-Landed: 1,573,014 asteroids and comets from JPL SBDB at a common epoch with per-attribute provenance (NEOWISE diameters/albedos, LCDB rotation, Gaia DR3 spectra, SsODNet phase functions/spins/taxonomy), a Kepler-drift + planetary-kick propagator verified against Horizons (≤ 7 km for most objects over ±18 months; docs/reports/small-bodies.md), class colours from measured mean spectra, and the app side (search, inspector, selection, close-ups). Remaining: GPU propagation and drawing of all objects as points.
+## M3 — Every known small body  *(done)*
+
+Landed: 1,573,014 asteroids and comets from JPL SBDB at a common epoch with per-attribute provenance (NEOWISE diameters/albedos, LCDB rotation, Gaia DR3 spectra, SsODNet phase functions/spins/taxonomy), a Kepler-drift + planetary-kick propagator verified against Horizons (≤ 7 km for most objects over ±18 months; docs/reports/small-bodies.md), class colours from measured mean spectra, and the app side (search, inspector, selection, close-ups). GPU propagation of all 1.57M objects (double-single WGSL, checkpointed; median 8 m vs the f64 reference), label-aware photometry (H-G1-G2 / H-G / comet laws; Horizons APmag within 0.02 mag), picking and inspection.
 
 
 The full MPC/JPL catalogs of asteroids and comets propagated on the GPU, with measured sizes, colors, rotation and shapes where they exist.
 
-## M4 — The real sky
+## M4 — The real sky  *(in progress)*
+
+Data landed: 16.4M deep stars (G 10–14) in HEALPix tiles, the faint-star + diffuse Milky Way map anchored on Pioneer 10/11 photometry from beyond the zodiacal cloud, a Kelsall/Leinert zodiacal light model, Sternberg spectrophotometry for the brightest stars (docs/reports/sky.md). Rendering in progress.
+
 
 Gaia DR3 stars with spectra-derived colors, the brightest stars from Hipparcos, the Milky Way's diffuse light, zodiacal light.
 

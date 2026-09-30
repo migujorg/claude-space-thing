@@ -20,11 +20,12 @@ import { surfaceRefs, type SceneExtras } from './extras';
 import { buildOrientation } from './orientation';
 import { OrbitManager } from './orbits';
 import { NameService } from './nameService';
-import { angularRadius, pick, pixelRay, pixelsPerRadian, type PickTarget, type Viewport } from './picking';
+import { angularRadius, pick, pixelRay, pixelsPerRadian, project, type PickTarget, type Viewport } from './picking';
 import type { CoreDeps, EphemerisSetPort, OrientationSetPort, OrientationSourcePort, SmallBodyFieldPort, TimeScalePort, Vec3 } from './ports';
 import { badgeParts, defaultReality, labelAllowed, type RealityState } from './reality';
 import { buildSnapshot, buildSun, filtered, sceneBodyOf, type OverlayOnlyBody } from './snapshot';
 import { SmallBodies, sbId, sbRow, type SmallBodyCounts } from './smallbodies';
+import { GridWorkerClient, type GridWorkerPort } from './sbgrid';
 import { parseIsoUtc, type UrlView } from './url';
 import { DEG, IDENTITY, len, matFromQuat, norm, quatFromMat, slerpQuat, sub } from './vec';
 import { computeWorld, copy, findSunId, isPhysical, navRadius, type World } from './world';
@@ -147,6 +148,8 @@ export class AppModel {
   names: NameService | null = null;
   sb: SmallBodyLoad = { status: 'absent', got: 0, total: 0, message: null, ms: null };
   private sbGo: (() => void) | null = null;
+  private propagationWorker: (() => Worker) | null = null;
+  private gridWorker: GridWorkerClient | null = null;
   private sbExcluded = '';
   private pendingSpkid: { spkid: number; dist?: number; az?: number; el?: number } | null = null;
   private spkidWaiters: (() => void)[] = [];
@@ -193,7 +196,9 @@ export class AppModel {
 
   setData(d: LoadedData, dataBaseUrl = 'data/'): void {
     this.data = d;
-    this.extras = { surfaces: surfaceRefs(d.surfaces ?? [], dataBaseUrl), rings: d.rings ?? null };
+    // atmospheres.json (render/scene.ts SceneBody.atmosphere) once the loader provides it as `atmospheres`.
+    const atmospheres = d.atmospheres ?? null;
+    this.extras = { surfaces: surfaceRefs(d.surfaces ?? [], dataBaseUrl), rings: d.rings ?? null, atmospheres };
     this.bodies = d.bodies;
     this.byId = new Map(d.bodies.map((b) => [b.id, b]));
     this.roots.clear();
@@ -250,6 +255,8 @@ export class AppModel {
     this.starCache.clear();
     this.names?.dispose();
     this.names = null;
+    this.gridWorker?.dispose();
+    this.gridWorker = null;
     this.smallBodies = null;
     this.sbExcluded = '';
     this.sb = { status: d.smallBodies ? 'waiting' : 'absent', got: 0, total: d.smallBodies?.tableBytes ?? 0, message: null, ms: null };
@@ -274,9 +281,18 @@ export class AppModel {
    * tables once the moon systems are in (or at once when something asks for a small body). Resolves when the
    * tables are usable or have failed. `enabled: false` (?smallbodies=0) skips it.
    */
-  async initSmallBodies(opts: { loader: SmallBodyLoader; namesUrl(file: string): string; worker?: () => Worker; enabled?: boolean }): Promise<void> {
+  async initSmallBodies(opts: {
+    loader: SmallBodyLoader;
+    namesUrl(file: string): string;
+    /** Name index worker (nameService.ts). */
+    worker?: () => Worker;
+    /** Background propagation worker (sbprop.worker.ts). */
+    propagationWorker?: () => Worker;
+    enabled?: boolean;
+  }): Promise<void> {
     const p = this.data?.smallBodies;
     if (!p) return;
+    this.propagationWorker = opts.propagationWorker ?? null;
     if (opts.enabled === false) {
       this.sb = { ...this.sb, status: 'off', message: 'Disabled by the URL (smallbodies=0).' };
       this.failPendingSpkid('small bodies are disabled by the URL (smallbodies=0)');
@@ -341,10 +357,46 @@ export class AppModel {
     }
     this.sb = { ...this.sb, status: 'ready', got: this.sb.total, ms, message: null };
     this.sbExcluded = '';
+    this.attachGridWorker(t);
     if (this.selectedId !== null && this.selectedId < 0) this.fetchName(sbRow(this.selectedId));
     this.emit('smallbodies');
     this.resumePendingGoTo();
     void this.resolvePendingSpkid();
+  }
+
+  /** Propagate selected small bodies off the main thread (when a worker factory was given). */
+  private attachGridWorker(t: SmallBodyTables): void {
+    const sb = this.smallBodies;
+    this.gridWorker?.dispose();
+    this.gridWorker = null;
+    if (!sb || !this.propagationWorker) return;
+    try {
+      const h = t.core.header;
+      this.gridWorker = new GridWorkerClient(this.propagationWorker(), {
+        type: 'init',
+        forceModel: h.forceModel,
+        epochEt: h.epochEt,
+        window: h.window,
+        // The files every body needs, in load order: the perturbers resolve exactly as on this thread.
+        ephem: (this.data?.ephemerides ?? []).map((e) => ({ header: e.header, data: e.data })),
+      });
+    } catch (e) {
+      this.coreErrors.push(`small-body propagation worker: ${(e as Error).message ?? e}`);
+      return;
+    }
+    this.useGridWorker(this.gridWorker);
+  }
+
+  /** Propagate through this background port (the worker client; tests pass a fake). */
+  useGridWorker(port: GridWorkerPort): void {
+    const sb = this.smallBodies;
+    if (!sb) return;
+    sb.cpu.attachWorker(port);
+    sb.cpu.onSeeded = () => {
+      this.emit('loading');
+      this.resumePendingGoTo();
+    };
+    sb.cpu.onWorkerError = (e) => this.message(`Small-body positions are computed on the main thread (worker failed: ${e.message}).`, 'warn');
   }
 
   /** Attach the GPU field (bootstrap, once the renderer's device is known). */
@@ -477,7 +529,8 @@ export class AppModel {
   bodyLoadState(id: number): SystemState {
     if (id < 0) {
       const s = this.sb.status;
-      return s === 'ready' ? 'loaded' : s === 'loading' ? 'loading' : s === 'waiting' ? 'queued' : 'error';
+      if (s === 'ready') return this.smallBodies?.pending(sbRow(id)) ? 'loading' : 'loaded';
+      return s === 'loading' ? 'loading' : s === 'waiting' ? 'queued' : 'error';
     }
     return this.systems ? this.systems.bodyState(id) : 'loaded';
   }
@@ -737,7 +790,8 @@ export class AppModel {
     }
     if (!body || !isPhysical(body)) return `No body with id ${id}.`;
     const tp = this.bodyPos(id);
-    if (!tp && id < 0) {
+    // A small body still being propagated in the background takes the pending path below.
+    if (!tp && id < 0 && this.bodyLoadState(id) === 'loaded') {
       const sb = this.smallBodies!, row = sbRow(id), w = sb.window;
       if (sb.posLabel(row) === 'unknown') return `No position for ${body.name}: its position is unknown (see its flags).`;
       if (this.clock.et < w.startEt || this.clock.et > w.endEt)
@@ -751,7 +805,7 @@ export class AppModel {
         const pend = this.requestBody(id);
         this.select(id);
         this.pendingGoTo?.resolve();
-        this.message(`Loading ${pend.map((s) => s.title).join(', ') || 'ephemeris'} for ${body.name}…`);
+        this.message(id < 0 ? `Propagating ${body.name}…` : `Loading ${pend.map((s) => s.title).join(', ') || 'ephemeris'} for ${body.name}…`);
         return new Promise<void>((resolve, reject) => {
           this.pendingGoTo = { id, dist, opts, resolve, reject };
         });
@@ -1123,6 +1177,7 @@ export class AppModel {
     if (v.labels !== undefined) patch.overlays!.labels = v.labels;
     if (v.orbits !== undefined) patch.overlays!.orbits = v.orbits;
     if (v.tint !== undefined) patch.overlays!.provenanceTint = v.tint;
+    if (v.shield !== undefined) patch.sunShield = v.shield;
     this.setReality(patch);
     if (v.ui === false) this.uiHidden = true;
 
@@ -1175,6 +1230,7 @@ export class AppModel {
     if (r.overlays.labels !== d.overlays.labels) v.labels = r.overlays.labels;
     if (r.overlays.orbits !== d.overlays.orbits) v.orbits = r.overlays.orbits;
     if (r.overlays.provenanceTint !== d.overlays.provenanceTint) v.tint = r.overlays.provenanceTint;
+    if (!!r.sunShield !== !!d.sunShield) v.shield = !!r.sunShield;
     return v;
   }
 
@@ -1211,6 +1267,7 @@ export class AppModel {
         sunReason: sunRes?.reason ?? null,
         bodies: this.snapshot?.bodies.map((b) => ({ id: b.id, name: b.name, worstLabel: b.worstLabel, surfaceUnknown: b.surfaceUnknown, resolved: !!b.radii })) ?? [],
         orbits: this.snapshot?.orbits.length ?? 0,
+        inView: this.bodiesInView(),
       },
       noPosition: [...(this.world?.bodies.values() ?? [])].filter((g) => !g.app).map((g) => g.id),
       loading: this.systems
@@ -1229,6 +1286,30 @@ export class AppModel {
       },
       messages: this.messages.map((m) => m.text),
     };
+  }
+
+  /**
+   * What is in the frame this frame: bodies sent to the renderer, overlay-only markers and the Sun, whose
+   * projected disk overlaps the viewport, with their apparent diameter (CSS px; 0 for points and markers).
+   * The regression suite (scripts/e2e.mjs) compares these per scene.
+   */
+  bodiesInView(): { id: number; name: string; worstLabel: Label | null; px: number; surfaceUnknown: boolean; marker: boolean }[] {
+    const s = this.snapshot;
+    if (!s) return [];
+    const vp = this.cssViewport();
+    const ppr = pixelsPerRadian(vp);
+    const out: ReturnType<AppModel['bodiesInView']> = [];
+    const add = (id: number, name: string, pos: Vec3, r: number | null, worstLabel: Label | null, surfaceUnknown: boolean, marker: boolean) => {
+      const p = project(vp, pos);
+      if (!p) return;
+      const px = r ? 2 * Math.tan(angularRadius(r, p.dist)) * ppr : 0;
+      if (p.x + px / 2 < 0 || p.y + px / 2 < 0 || p.x - px / 2 > vp.width || p.y - px / 2 > vp.height) return;
+      out.push({ id, name, worstLabel, px: Math.round(px * 100) / 100, surfaceUnknown, marker });
+    };
+    for (const b of s.bodies) add(b.id, b.name, b.pos, b.radii ? Math.max(b.radii[0], b.radii[1], b.radii[2]) : null, b.worstLabel, b.surfaceUnknown, false);
+    for (const b of this.overlayOnly) add(b.id, b.name, b.pos, null, b.worstLabel, false, true);
+    if (s.sun && this.sunId !== null) add(this.sunId, this.bodyName(this.sunId), s.sun.pos, s.sun.radius, null, false, false);
+    return out.sort((a, b) => a.id - b.id);
   }
 
   private smallBodyDebug() {

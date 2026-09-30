@@ -153,7 +153,11 @@ export interface OrientationHeader {
   notes?: string;
 }
 
-export type BodyKind = 'star' | 'planet' | 'dwarf-planet' | 'moon' | 'barycenter';
+/**
+ * 'small-body': asteroids and comets of the smallbodies/* products. bodies.json never contains it; the app makes
+ * a Body of this kind for a selected catalogue object (app/src/app/smallbodies.ts).
+ */
+export type BodyKind = 'star' | 'planet' | 'dwarf-planet' | 'moon' | 'barycenter' | 'small-body';
 
 export interface Body {
   id: number;
@@ -304,6 +308,91 @@ export interface SmallBodyClassEntry {
 }
 
 export interface PVStats { median: number; p16: number; p84: number; n: number }
+
+/** atmospheres.json (light stage): per body, optical properties for physically based sky/limb rendering
+ *  (multiple scattering). Wavelengths are standard-air nm (as the CIE tables); spectral arrays have one entry per
+ *  `wavelengthsNm`. See docs/architecture.md §6 and docs/reports/atmospheres.md. */
+export interface AtmosphereFile {
+  definition: string;
+  /** Spectral samples, 360–830 nm every 10 nm. */
+  wavelengthsNm: number[];
+  channels: ['X', 'Y', 'Z', 'S'];
+  /** W[c][k]: fold a spectral ratio f_k sampled at wavelengthsNm into channel c as Σ_k W[c][k] f_k (sunlight ×
+   *  observer weights with the piecewise-linear basis; rows sum to 1), then × the Sun's XYZS from light.json. */
+  foldWeights: Sourced<number[][]>;
+  /** NAIF id (string) → body. */
+  bodies: Record<string, BodyAtmosphere>;
+}
+
+export interface BodyAtmosphere {
+  name: string;
+  naifId: number;
+  /** Radius of altitude 0 (km): pck00011 volumetric mean radius. */
+  referenceRadiusKm: number;
+  altitudeReference: string;
+  /** Altitude grid (km above the reference sphere) of every component's profile; empty when none. */
+  altitudesKm: number[];
+  /** Top of the tabulated atmosphere (km), and referenceRadiusKm + topAltitudeKm; null when no profile. */
+  topAltitudeKm: number | null;
+  topRadiusKm: number | null;
+  scaleHeightKm: Sourced<number>;
+  surfacePressurePa?: Sourced<number>;
+  /** kg/kmol */
+  meanMolecularWeight?: Sourced<number>;
+  components: AtmosphereComponent[];
+  /** Known contributors that are not included. */
+  omitted?: string;
+  /** Mars: seasonal column dust and L_s over the build window (scale the 'dust' component by
+   *  opticalDepth610Pa(L_s, latitude) / annualGlobalMean610Pa). */
+  dustColumn?: Sourced<{ lsDeg: number[]; latitudeDeg: number[]; opticalDepth610Pa: number[][];
+                         globalMean610Pa: number[]; annualGlobalMean610Pa: number; referencePressurePa: number;
+                         wavelengthNm: number }>;
+  solarLongitude?: Sourced<{ et: number[]; lsDeg: number[] }>;
+  /** Venus: altitude of optical depth 1 (km). */
+  cloudTopAltitudeKm?: Sourced<number>;
+  /** Pluto: measured haze I/F versus phase angle. */
+  hazeMeasurements?: Sourced<{ phaseDeg: number[]; peakIoverF: number[]; IoverFat45km: number[];
+                               wavelengthNm: number }>;
+  /** Giant planets: near the 1 bar level. */
+  temperatureAt1barK?: Sourced<number>;
+  densityAt1barKgM3?: Sourced<number>;
+  limbHaze?: Sourced<never>;
+}
+
+export interface AtmosphereComponent {
+  /** 'rayleigh' | 'ozone' | 'aerosol' | 'dust' | 'haze' | 'cloud' */
+  id: string;
+  description: string;
+  /** β_ext (km⁻¹) [altitude index][wavelength index], linear in altitude between levels. */
+  extinctionPerKm: Sourced<number[][]>;
+  /** ω per wavelength (scattering coefficient = ω β); 0 for a pure absorber; `unknown` must not be rendered as
+   *  known. */
+  singleScatteringAlbedo: Sourced<number[]>;
+  phaseFunction: Sourced<AtmospherePhaseFunction>;
+  /** X, Y, Z, S equivalents: extinction per altitude, and column-weighted SSA and asymmetry (optically thin). */
+  channelEquivalents: Sourced<{ extinctionPerKm: [number, number, number, number][];
+                                singleScatteringAlbedo: [number, number, number, number] | null;
+                                asymmetry: [number, number, number, number] | null }>;
+  /** Vertical optical depth from altitude 0 to the top, per wavelength (a convenience). */
+  columnOpticalDepth: number[];
+  /** Molecular components: extinctionPerKm = 1e3 × numberDensityPerM3[altitude] × crossSectionM2[wavelength]. */
+  separable?: Sourced<{ numberDensityPerM3: number[]; crossSectionM2: number[] }>;
+  /** Asymmetry parameter per wavelength, for reference where the phase function is tabulated or fixed. */
+  asymmetry?: Sourced<number[]>;
+}
+
+/** All normalized to a mean of 1 over the sphere (∫P dΩ = 4π); Θ is the scattering angle. */
+export type AtmospherePhaseFunction =
+  /** P = 3[(1+ρ) + (1−ρ)cos²Θ]/(4+2ρ), ρ per wavelength. */
+  | { kind: 'rayleigh'; depolarization: number[] }
+  /** P = (1−g²)/(1+g²−2g cosΘ)^{3/2}, g per wavelength. */
+  | { kind: 'henyey-greenstein'; g: number[] }
+  /** α·HG(g1) + (1−α)·HG(g2), per wavelength. */
+  | { kind: 'double-henyey-greenstein'; g1: number[]; g2: number[]; alpha: number[] }
+  /** values[wavelength][angle] at anglesDeg (interpolate linearly in angle). */
+  | { kind: 'tabulated'; anglesDeg: number[]; values: number[][] }
+  /** Pure absorber. */
+  | { kind: 'none' };
 
 /** rings.json: planet NAIF id (as string) → ring system. Produced by the `light` stage. See docs/architecture.md §6. */
 export type RingsFile = Record<string, RingSystem>;
@@ -507,7 +596,9 @@ export interface SurfaceLevelInfo {
  * Earth only (all dated, float16 with NaN = unknown per channel):
  * 'cloud-properties': [cloudFraction, opticalThickness, cloudTopHeightM, iceFraction] of one day's daytime overpass;
  * 'emitted-radiance': [dnbRadiance (nW cm⁻² sr⁻¹), censoredFraction]; `constants.toXYZS` converts to luminance;
- * 'surface-water': [waterFraction, seaIceFraction] (where the renderer adds Fresnel reflection and glint).
+ * 'surface-water': [waterFraction, seaIceFraction] (where the renderer adds Fresnel reflection and glint);
+ * 'surface-wind': [windSpeed10mAscending, windSpeed10mDailyMean, passes] in m/s at 10 m (for the Cox & Munk glint
+ * slope variance; `constants.coxMunk` states the formula and the 12.5 m vs 10 m height note).
  */
 export type SurfaceLayerKind =
   | 'relative-reflectance'
@@ -515,7 +606,8 @@ export type SurfaceLayerKind =
   | 'photometric-parameters'
   | 'cloud-properties'
   | 'emitted-radiance'
-  | 'surface-water';
+  | 'surface-water'
+  | 'surface-wind';
 
 export interface SurfaceLayerHeader {
   body: number;

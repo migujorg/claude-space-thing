@@ -18,6 +18,11 @@ export interface RealityState {
   /** Extra exposure in stops; only applied in 'enhanced'. */
   exposureBoostStops: number;
   overlays: Overlays;
+  /**
+   * Viewing aid, not a change to reality: an occulting disc held over the Sun, so its light and glare never
+   * reach the eye (render/scene.ts ViewSettings.sunShield). Both view modes; off by default; always badged.
+   */
+  sunShield?: boolean;
 }
 
 export const EXISTS_LEVELS: readonly ExistsLevel[] = ['strict', 'best', 'complete'];
@@ -59,6 +64,7 @@ export function defaultReality(opts: { syntheticLayerAvailable?: boolean } = {})
     view: 'eye',
     exposureBoostStops: 0,
     overlays: { labels: true, orbits: false, provenanceTint: false },
+    sunShield: false,
   };
 }
 
@@ -194,6 +200,8 @@ export function badgeParts(s: RealityState, defaults: RealityState, opts: { synt
     parts.push(b ? `ENHANCED ${b > 0 ? '+' : ''}${fmtStops(b)} stops` : 'ENHANCED');
   }
   if (s.overlays.provenanceTint) parts.push('PROVENANCE TINT');
+  // Always shown when on, whatever the defaults: it hides the Sun and its glare.
+  if (s.sunShield) parts.push('SUN SHIELDED: occulting disc (viewing aid)');
   return parts;
 }
 
