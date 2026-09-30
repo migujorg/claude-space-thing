@@ -552,16 +552,18 @@ export class AppModel {
     }
     this.emit('time');
 
-    let target = v.target;
-    if (target === undefined || !this.byId.has(target)) {
-      if (target !== undefined) this.message(`Unknown target ${target}.`, 'warn');
-      target = this.byId.has(DEFAULT_TARGET)
-        ? DEFAULT_TARGET
-        : this.bodies.find((b) => b.kind === 'planet')?.id ?? this.sunId ?? undefined;
-    }
-    if (target !== undefined) {
-      const r = this.goTo(target, v.dist, { azDeg: v.az, elDeg: v.el, instant: true });
-      if (typeof r === 'string') this.message(r, 'warn');
+    // Requested target first; if it cannot be shown now, fall back (and say so).
+    const fallbacks = [DEFAULT_TARGET, ...this.bodies.filter((b) => b.kind === 'planet').map((b) => b.id), this.sunId];
+    const candidates = [v.target, ...fallbacks].filter((id, i, a): id is number => id !== undefined && id !== null && a.indexOf(id) === i);
+    for (const id of candidates) {
+      if (!this.byId.has(id)) {
+        if (id === v.target) this.message(`Unknown target ${id}.`, 'warn');
+        continue;
+      }
+      const requested = id === v.target;
+      const r = this.goTo(id, requested ? v.dist : undefined, requested ? { azDeg: v.az, elDeg: v.el, instant: true } : { instant: true });
+      if (typeof r !== 'string') return;
+      this.message(r, 'warn');
     }
   }
 

@@ -60,6 +60,12 @@ describe('label layout', () => {
     expect(planet.x + planet.w).toBeLessThan(300); // flipped left: the moon at x=360 stays clickable
     expect(placed.map((p) => p.id).sort()).toEqual([1, 2]);
   });
+  it('keeps labels out from under UI panels', () => {
+    const blocked = [{ x: 320, y: 280, w: 300, h: 60 }];
+    const [p] = layoutLabels([{ id: 1, x: 300, y: 300, r: 10, text: 'Jupiter 3.000 million km', priority: 1 }], { ...o, blocked });
+    expect(p.x + p.w).toBeLessThan(300);
+    expect(layoutLabels([{ id: 1, x: 300, y: 300, r: 10, text: 'X', priority: 1 }], { ...o, blocked: [{ x: 0, y: 0, w: 800, h: 600 }] })).toEqual([]);
+  });
   it('flips to the left near the right edge and skips labels that cannot fit', () => {
     const [p] = layoutLabels([{ id: 1, x: 790, y: 300, r: 0, text: 'Edge', priority: 1 }], o);
     expect(p.x + p.w).toBeLessThan(790);

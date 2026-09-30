@@ -30,6 +30,8 @@ export interface LayoutOptions {
   lineHeight?: number;
   gap?: number;
   margin?: number;
+  /** Screen areas covered by UI panels; labels are not placed under them. */
+  blocked?: { x: number; y: number; w: number; h: number }[];
 }
 
 export function layoutLabels(items: LabelItem[], o: LayoutOptions): PlacedLabel[] {
@@ -53,7 +55,8 @@ export function layoutLabels(items: LabelItem[], o: LayoutOptions): PlacedLabel[
     const boxes = tries
       .map((p) => ({ id: it.id, x: p.x, y: p.y, w, h: lh }))
       .filter((b) => b.x >= margin && b.y >= margin && b.x + w <= o.width - margin && b.y + lh <= o.height - margin)
-      .filter((b) => !placed.some((q) => overlaps(q, b, 2)));
+      .filter((b) => !placed.some((q) => overlaps(q, b, 2)))
+      .filter((b) => !(o.blocked ?? []).some((q) => overlaps({ id: -1, ...q }, b, 2)));
     const box = boxes.find((b) => !items.some((a) => a.id !== it.id && inside(a.x, a.y, b, 3))) ?? boxes[0];
     if (box) {
       placed.push(box);

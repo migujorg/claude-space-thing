@@ -18,7 +18,12 @@ function setup(now = FAKE_J2000_MS + T0 * 1000) {
     sources: new Map(),
     time: { source: 'x', leapSeconds: [], deltaTA: 0, k: 0, eb: 0, m0: 0, m1: 0 },
     ephemerides: [{ name: 'fake', path: 'ephem/fake.json', header: { bin: 'fake.bin', segments: [] }, data: new Float64Array(0) }],
-    bodies: [body(10, 'Sun', 'star', { r: 7e5 }), body(399, 'Earth', 'planet', { r: 6400, albedo: 'derived', phase: 'measured' }), body(301, 'Moon', 'moon', { parent: 399, r: 1700 })],
+    bodies: [
+      body(10, 'Sun', 'star', { r: 7e5 }),
+      body(399, 'Earth', 'planet', { r: 6400, albedo: 'derived', phase: 'measured' }),
+      body(301, 'Moon', 'moon', { parent: 399, r: 1700 }),
+      body(999, 'NoEphem', 'dwarf-planet', { r: 1000 }), // no ephemeris coverage in this fake
+    ],
     light: fakeLight(),
     stars: null,
     starNames: [],
@@ -105,6 +110,15 @@ describe('AppModel', () => {
     const { model } = setup();
     model.applyUrl({ tMs: FAKE_J2000_MS + T0 * 1000 });
     expect(model.goTo(12345)).toMatch(/No body/);
+    expect(model.goTo(999)).toMatch(/No position for NoEphem/);
+  });
+
+  it('a URL target without a position falls back to a default view and says why', () => {
+    const { model } = setup();
+    model.applyUrl({ tMs: FAKE_J2000_MS + T0 * 1000, target: 999, dist: 5000 });
+    model.frame(0);
+    expect(model.debugState().camera.target).toBe(399);
+    expect(model.messages.map((m) => m.text).join(' ')).toMatch(/No position for NoEphem/);
   });
 
   it('picking at the screen center selects the orbited body', () => {

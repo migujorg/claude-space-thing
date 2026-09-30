@@ -54,7 +54,7 @@
   padding: 3px 8px;
   outline: none;
 }
-.st-ui button { cursor: pointer; }
+.st-ui button { cursor: pointer; white-space: nowrap; }
 .st-ui button:hover { background: rgba(255, 255, 255, 0.12); color: var(--hi); }
 .st-ui button:focus-visible, .st-ui input:focus-visible { border-color: var(--accent); }
 .st-ui button.st-on { background: rgba(127, 178, 255, 0.22); border-color: rgba(127, 178, 255, 0.55); color: var(--hi); }
@@ -161,7 +161,8 @@
 .st-status-unused { color: var(--dim); }
 
 /* ---- HUD (bottom) ---- */
-.st-hud { position: absolute; left: 10px; right: 10px; bottom: 10px; display: flex; gap: 10px; align-items: stretch; }
+.st-hud { position: absolute; left: 10px; right: 10px; bottom: 10px; display: flex; flex-wrap: wrap-reverse; gap: 8px 10px; align-items: stretch; }
+.st-hud > .st-panel:first-child { flex: 0 1 auto; flex-wrap: wrap; }
 .st-hud > .st-panel { position: static; padding: 6px 10px; display: flex; align-items: center; gap: 8px; }
 .st-time { font: 600 14px ui-monospace, 'SF Mono', Menlo, monospace; color: var(--hi); cursor: text; padding: 1px 4px; border-radius: 4px; white-space: nowrap; }
 .st-time:hover { background: rgba(255, 255, 255, 0.07); }
@@ -171,7 +172,7 @@
 .st-scrub { flex: 1; min-width: 160px; flex-direction: column; align-items: stretch !important; gap: 0 !important; justify-content: center; }
 .st-scrub input { width: 100%; }
 .st-scrub .st-ends { display: flex; justify-content: space-between; font-size: 10px; color: var(--dim); }
-.st-stats { font: 11px ui-monospace, monospace; color: var(--dim); white-space: nowrap; flex-direction: column; align-items: flex-end !important; gap: 0 !important; justify-content: center; }
+.st-stats { flex: 0 0 auto; font: 11px ui-monospace, monospace; color: var(--dim); white-space: nowrap; flex-direction: column; align-items: flex-end !important; gap: 0 !important; justify-content: center; }
 .st-stats b { color: var(--fg); font-weight: 500; }
 
 /* ---- labels overlay ---- */

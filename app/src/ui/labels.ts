@@ -19,7 +19,7 @@ export class Labels {
   private markers = new Map<number, HTMLElement>();
   private ring = h('div', { class: 'st-selring' });
 
-  constructor(private model: AppModel) {
+  constructor(private model: AppModel, private blockers: () => Element[] = () => []) {
     this.el.appendChild(this.ring);
   }
 
@@ -81,7 +81,13 @@ export class Labels {
           priority: (t.id === m.selectedId ? 1000 : 0) + (KIND_PRIORITY[body.kind] ?? 10) + Math.min(rpx, 500) / 10,
         });
       }
-      const placed = layoutLabels(items, { width: vp.width, height: vp.height, measure: (tx) => estimateWidth(tx) });
+      // Read panel rects before any DOM writes below (avoids layout thrash).
+      const origin = this.el.getBoundingClientRect();
+      const blocked = this.blockers()
+        .map((e) => e.getBoundingClientRect())
+        .filter((r) => r.width > 0 && r.height > 0)
+        .map((r) => ({ x: r.left - origin.left, y: r.top - origin.top, w: r.width, h: r.height }));
+      const placed = layoutLabels(items, { width: vp.width, height: vp.height, measure: (tx) => estimateWidth(tx), blocked });
       for (const pl of placed) {
         const it = items.find((i) => i.id === pl.id)!;
         const body = m.byId.get(pl.id)!;

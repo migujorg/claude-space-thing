@@ -47,7 +47,8 @@ export function mountUi(container: HTMLElement, model: AppModel, opts: { banner?
   const inspector = new Inspector(model, { openSources });
   const search = new Search(model);
   const hud = new Hud(model);
-  const labels = new Labels(model);
+  // Labels avoid the areas covered by panels (evaluated per frame, after everything is mounted).
+  const labels = new Labels(model, () => [search.el, dials.el, inspector.el, ...Array.from(hud.el.children), ...Array.from(top.el.children)]);
   const top = new TopBar(model, opts.banner);
   const toasts = new Toasts(model);
   const statusEl = h('div', { class: 'st-panel st-fatal', style: 'display:none' });
