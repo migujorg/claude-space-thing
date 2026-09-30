@@ -13,22 +13,23 @@ A law is **measured** only if all three of these hold:
 No entry meets all three:
 
 - the schema has one law for X, Y, Z and S together;
-- OPAL's Minnaert exponents come from images at small phase angles but are applied at every phase angle (Saturn's k(α) from Pioneer 11 comes closest: disk-resolved and within its phase range, but one law for all channels, a Minnaert approximation of the published Barkstrom law, and a different epoch);
+- OPAL's Minnaert exponents come from images at small phase angles but are applied at every phase angle (Saturn's Barkstrom B(α) from Pioneer 11 comes closest: disk-resolved and used within its phase range, but one law for all channels and a different epoch);
 - the Hapke sets come from disk-integrated phase curves, so their spatial distribution is the model's rather than an observed one.
 
 Every entry is therefore **estimated**, and its `method` states the assumptions. `validPhaseDeg` is not set: the law applies at every phase angle rather than falling back to Lambert. The phase coverage of each source's data is given in its method text.
 
-**Phase dependence.** The schema's `PhaseDependent` parameters already take a table (`{alphaDeg, values}`, interpolated linearly), so a measured k(α) needed no schema change. It is used where a source measures it (Saturn).
+**Phase dependence.** The schema's `PhaseDependent` parameters already take a table (`{alphaDeg, values}`, interpolated linearly), so a measured parameter table needs no schema change. It is used where a source measures it (Saturn's B(α)).
 
 ## Sources
 
 | Bodies | Law | Source | Data behind the fit |
 |---|---|---|---|
-| Jupiter, Saturn, Uranus, Neptune | Minnaert, one k (Saturn: k(α), below) | Hubble OPAL cycle README: the Minnaert k per WFC3/UVIS filter with which the OPAL team removed the limb darkening of the maps the app shows (MAST HLSP doi:10.17909/T9G593; Simon et al. 2015). Same epoch as `surf_giants.py`: Jupiter 2025b, Saturn 2025b, Uranus 2025b, Neptune 2025c. | Disk-resolved HST images, phase ≤ 11° (Jupiter) and less for the others |
+| Jupiter, Saturn, Uranus, Neptune | Minnaert, one k (Saturn: Barkstrom B(α), below) | Hubble OPAL cycle README: the Minnaert k per WFC3/UVIS filter with which the OPAL team removed the limb darkening of the maps the app shows (MAST HLSP doi:10.17909/T9G593; Simon et al. 2015). Same epoch as `surf_giants.py`: Jupiter 2025b, Saturn 2025b, Uranus 2025b, Neptune 2025c. | Disk-resolved HST images, phase ≤ 11° (Jupiter) and less for the others |
 | Europa, Ganymede, Callisto | Hapke (1993) | Domingue & Verbiscer (1997), Icarus 128, 49 (DOI:10.1006/icar.1997.5730), 550 nm, mean of the leading and trailing hemispheres. Transcribed from the open-access reproduction in Belgacem (2019), PhD thesis, HAL tel-02421378, Tables 2.5–2.7. | Disk-integrated Voyager and telescopic phase curves |
 | Pluto, Charon, Triton | Hapke (2012) | Verbiscer et al. (2022), PSJ 3, 95, Table 14 | Disk-integrated Earth-based, HST, Voyager 2 (Triton) and New Horizons LORRI/MVIC phase curves |
-| Saturn, 30–150° | Minnaert k(α) | Barkstrom law A(α), B(α) of Dones et al. (1993), Icarus 105, 184, Table V, as reproduced in Dyudina et al. (2016), ApJ (arXiv:1511.04415v3), Table 3 | Disk-resolved Pioneer 11 IPP reflectances, red 0.64 µm and blue 0.44 µm, belts and zones (Tomasko & Doose 1984) |
+| Saturn, 30–150° | Barkstrom B(α) | Barkstrom law A(α), B(α) of Dones et al. (1993), Icarus 105, 184, Table V, as reproduced in Dyudina et al. (2016), ApJ (arXiv:1511.04415v3), Table 3 | Disk-resolved Pioneer 11 IPP reflectances, red 0.64 µm and blue 0.44 µm, belts and zones (Tomasko & Doose 1984) |
 | Io | Hapke (1981/1984) | Simonelli & Veverka (1986), Icarus 68, quoted in Simonelli & Veverka (1987), NASA Reports of Planetary Geology and Geophysics Program 1986 (NTRS 19870014003), Fig. 1 | Disk-integrated Voyager violet-filter (~0.42 µm) phase curve |
+| Mimas, Enceladus, Tethys, Dione, Rhea | Akimov (parameter-free) | Filacchione et al. (2022), Icarus 375, 114803 (arXiv:2111.15541), Sec. 4 Eqs. 4–6, after Shkuratov et al. (1999) | Cassini VIMS disk-resolved spectra, i, e ≤ 70°, 10° ≤ g ≤ 120° (the form is assumed there, not fitted) |
 | Mars | Hapke (1993) | Vincendon (2013), PSS 76, 87 (arXiv:1208.4518v3): the mean BRDF of typical Martian terrains | OMEGA and CRISM, aerosols removed |
 
 ### Giant planets
@@ -39,13 +40,36 @@ Every entry is therefore **estimated**, and its `method` states the assumptions.
 - **Jupiter at larger phase:** Dyudina et al. (2016, Sec. 2.1.1) found that I/F ∝ μ0 (k = 1 at every phase) fits the Pioneer 10 and 11 red-filter reflectances of belts and zones reasonably well up to 150°, although their Cassini near-infrared images show limb brightening at slanted geometry that this form misses. This supports a phase-independent k near 1; OPAL's 0.972 is kept and the paper is cited in the method. No quantitative phase-dependent law was found.
 - **Uranus and Neptune:** no disk-resolved photometry at large phase angles was found, so k stays phase-independent.
 
-### Saturn: phase-dependent k from Pioneer 11
+### Saturn: Barkstrom B(α) from Pioneer 11
 
 - **Transcription** (`photometry/tables/dones_1993_saturn_barkstrom.csv`): Table 3 of Dyudina et al. (2016), which reproduces Dones et al. (1993) Table V and matches Dyudina et al. (2005, arXiv:astro-ph/0406390) Table 2. The 180° column is Dyudina et al.'s linear extrapolation (Pioneer 11 did not look beyond 150°) and is marked `measured = 0` and not used.
-- **Law:** Barkstrom, I/F = (A/μ)(μμ0/(μ+μ0))^B. The renderer has no Barkstrom kind, so B is converted to the closest Minnaert k at each tabulated phase angle: a flux-weighted least-squares fit of ln(rμ) = c + k ln(μ0μ) over the lit, visible disk. At 0° the two laws coincide (k = B/2). Elsewhere the rms residual is 0.05–0.18 in ln I/F, largest at high phase. A is only the brightness scale, which the renderer takes from the disk-integrated albedo and phase curve.
+- **Law:** the renderer's native Barkstrom kind, I/F ∝ (1/μ)(μμ0/(μ+μ0))^B, with B tabulated against phase angle. A is only the brightness scale, which the renderer takes from the disk-integrated albedo and phase curve. (An earlier version converted B to the closest Minnaert k per phase angle, with an rms of 0.05–0.18 in ln I/F.)
 - **Wavelength:** B is interpolated linearly between the blue (440 nm) and red (640 nm) passbands to the Y-channel mean wavelength (562 nm).
-- **Table used** (`k.alphaDeg` / `k.values`): 0° OPAL 0.719 (the Earth-based images the map comes from); 30° 0.738; 60° 0.805; 90° 0.839; 120° 0.845; 150° 0.900; 180° held at 0.900 (no data). Pioneer's own 0° value (k = B/2 = 0.667) is not used, because at small phase the OPAL law is the one divided out of the map the app shows.
+- **Table used** (`B.alphaDeg` / `B.values`):
+
+  | Phase angle | B |
+  |---|---|
+  | 0° | 1.439 |
+  | 30° | 1.335 |
+  | 60° | 1.339 |
+  | 90° | 1.326 |
+  | 120° | 1.297 |
+  | 150° | 1.367 |
+  | 180° | 1.367 (held, no data) |
+
+- **The 0° value:** it is 2 × OPAL's k = 0.719. At zero phase μ0 = μ, and the Barkstrom law equals Minnaert's with B = 2k. OPAL is used there because at small phase its law is the one divided out of the map the app shows. Pioneer's own 0° value, 1.335, lies outside Pioneer's observed phase range.
 - **Independence:** Pioneer 11 (1979), fitted in 1984/1993; none of the validation frames is involved.
+- **Validation** (Cassini WAC, 2016, 54.6°; docs/reports/validation.md): the exact law gives centre / limb / terminator 0.882 / 1.091 / 0.705 of observed. The terminator fails (−2.6σ): the law darkens toward it more steeply than this frame shows. The earlier Minnaert approximation gave 0.900 / 0.912 / 1.111. The exact law is kept because it is the published one; nothing is fitted to the frame.
+
+### Saturn's mid-sized moons: Akimov
+
+- **Law:** the Akimov disk function of Shkuratov et al. (1999), which has no free parameters:
+  - D = cos(g/2) · cos[π/(π−g) · (γ − g/2)] · (cos β)^(g/(π−g)) / cos γ;
+  - photometric longitude γ = arctan[(cos i − cos e cos g)/(cos e sin g)];
+  - photometric latitude β = arccos(cos e / cos γ);
+  - D = 1 at g = 0.
+- **Source:** Filacchione et al. (2022) reduce all Cassini VIMS pixels of Mimas, Enceladus, Tethys, Dione and Rhea with i, e ≤ 70° and 10° ≤ g ≤ 120° to equigonal albedo with this D. Only their phase function is fitted.
+- **Use:** `{kind: "akimov"}`, label estimated, used at all phase angles (no `validPhaseDeg`), like the other laws. The disk-integrated brightness still comes from the moons' albedo and phase curve (photometry.json, from the same paper).
 
 ### Io
 
@@ -79,7 +103,6 @@ Vincendon's c = 0.6 is the backward fraction (1 + c_Hapke)/2 of Johnson et al. (
 ## Not covered (Lambert, with the reason)
 
 - **Mercury:** the MESSENGER MDIS fits (Domingue et al. 2016, Hapke and Kaasalainen–Shkuratov) are behind a publisher bot check and were not found on arXiv (searched by author and title). The MDIS SIS (`MSGRMDS_2001/DOCUMENT/MDIS_CDR_RDRSIS`) names the models but gives no parameter values, and NASA NTRS has no copy.
-- **Saturn's mid-sized moons (Mimas, Enceladus, Tethys, Dione, Rhea):** Filacchione et al. (2022, Icarus; arXiv:2111.15541, Sec. 4, Eqs. 4–6) photometrically correct Cassini VIMS disk-resolved spectra with the Akimov disk function of Shkuratov et al. (1999), which has no free parameters: D = cos(g/2) · cos[π/(π−g) · (γ − g/2)] · (cos β)^(g/(π−g)) / cos γ, with photometric longitude γ = arctan[(cos i − cos e cos g)/(cos e sin g)] and latitude β = arccos(cos e / cos γ), and D = 1 at g = 0. The data cover i, e ≤ 70° and 10° ≤ g ≤ 120°. The renderer has no Akimov kind yet (requested); these moons stay Lambert until it does.
-- **Uranian moons, Phobos, Deimos and the rest:** no disk-resolved law was used.
+- **Titan, Iapetus, the Uranian moons, Phobos, Deimos and the rest:** no disk-resolved law was used.
 - **Earth** is drawn from its layers (render/earth.ts).
 - **The Moon** has its per-texel Hapke maps (surfaces/301/hapke).

@@ -64,7 +64,7 @@ def test_y_effective_wavelength_grey():
 
 
 def test_no_law_without_a_source():
-    for n in (199, 301, 399, 601, 701):
+    for n in (199, 301, 399, 606, 701):
         assert spatial.spatial_model_for(n, None) is None
 
 
@@ -92,25 +92,13 @@ def test_barkstrom_transcription():
     assert len(used["red"]) == len(used["blue"]) == 6
 
 
-def test_minnaert_equivalent_of_barkstrom():
-    """At zero phase μ0 = μ, so the Barkstrom law (μ/2)^B/μ is exactly Minnaert with k = B/2; at larger phase the
-    closest k grows (the limb darkens less than the terminator)."""
-    k, rms = spatial.minnaert_equivalent_k(1.48, 0.0)
-    assert k == pytest.approx(0.74, abs=1e-9) and rms < 1e-9
-    k30, e30 = spatial.minnaert_equivalent_k(1.34, 30.0)
-    k90, e90 = spatial.minnaert_equivalent_k(1.34, 90.0)
-    assert 0.67 < k30 < k90 < 1.0 and 0 < e30 < e90 < 0.25
-
-
-def test_saturn_phase_dependent_k():
-    """Saturn's k(α): Pioneer B interpolated to the wavelength; the table spans 0-150° and interpolates B linearly."""
-    alphas, Bs, ks, rms = spatial.saturn_k_table(540.0)
+def test_saturn_b_table():
+    """Pioneer B interpolated linearly in wavelength between the blue and red passbands (held outside), 0-150°."""
+    alphas, Bs = spatial.saturn_b_table(540.0)
     assert alphas == [0, 30, 60, 90, 120, 150]
-    assert Bs[0] == pytest.approx((1.11 + 1.48) / 2) and ks[0] == pytest.approx(Bs[0] / 2)
-    assert all(a < b for a, b in zip(ks[1:], ks[2:])) and max(rms) < 0.2
-    # clamped outside the two passbands
-    assert spatial.saturn_k_table(700.0)[1][0] == pytest.approx(1.48)
-    assert spatial.saturn_k_table(400.0)[1][0] == pytest.approx(1.11)
+    assert Bs[0] == pytest.approx((1.11 + 1.48) / 2) and Bs[-1] == pytest.approx((1.41 + 1.34) / 2)
+    assert spatial.saturn_b_table(700.0)[1] == pytest.approx([1.48, 1.48, 1.46, 1.42, 1.36, 1.34])
+    assert spatial.saturn_b_table(400.0)[1] == pytest.approx([1.11, 1.11, 1.15, 1.18, 1.20, 1.41])
 
 
 def test_io_simonelli_veverka():
@@ -123,15 +111,27 @@ def test_io_simonelli_veverka():
 
 
 def test_saturn_entry_layout(monkeypatch):
-    """OPAL k at 0°, Pioneer-derived k at 30-150°, held at 180°; two sources; still 'estimated'."""
+    """Barkstrom B(α): B = 2k_OPAL at 0° (exact equivalence there), Pioneer B at 30-150°, held at 180° (the paper's 180°
+    column is an extrapolation and is not used); two sources; still 'estimated'."""
     monkeypatch.setattr(spatial, "opal_k", lambda naif, lam, ctx=None: (0.72, {"F547M": 0.72}, "opal-readme-x"))
     grey = np.ones_like(spatial.cie.WAVELENGTHS, dtype=float)
     m = spatial.giant_minnaert(699, grey)
-    k = m["value"]["k"]
-    assert k["alphaDeg"] == [0, 30, 60, 90, 120, 150, 180] and k["values"][0] == 0.72
-    assert k["values"][-1] == k["values"][-2] and all(0.7 < x < 1 for x in k["values"])
+    v = m["value"]
+    assert v["kind"] == "barkstrom" and set(v) == {"kind", "B"}
+    B = v["B"]
+    assert B["alphaDeg"] == [0, 30, 60, 90, 120, 150, 180] and B["values"][0] == pytest.approx(1.44)
+    lam = spatial.y_effective_wavelength(grey)
+    assert B["values"][1:6] == pytest.approx(spatial.saturn_b_table(lam)[1][1:], abs=1e-4)
+    assert B["values"][-1] == B["values"][-2]
     assert m["label"] == "estimated" and m["sources"] == ["opal-readme-x", "dyudina-2016"]
     j = spatial.giant_minnaert(599, grey)
     assert j["value"]["k"] == 0.72 and j["sources"] == ["opal-readme-x", "dyudina-2016"]
     u = spatial.giant_minnaert(799, grey)
     assert u["value"]["k"] == 0.72 and u["sources"] == ["opal-readme-x"]
+
+
+def test_akimov_for_saturns_midsized_moons():
+    for n in (601, 602, 603, 604, 605):
+        m = spatial.spatial_model_for(n, None)
+        assert m["value"] == {"kind": "akimov"} and m["label"] == "estimated" and m["sources"] == ["filacchione-2022"]
+    assert spatial.spatial_model_for(606, None) is None and spatial.spatial_model_for(608, None) is None
