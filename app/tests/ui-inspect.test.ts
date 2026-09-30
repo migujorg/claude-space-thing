@@ -4,7 +4,7 @@ import type { LoadedEphemeris } from '../src/data/load';
 import type { EphemSegment } from '../src/data/schema';
 import { body, fakeLight } from './app-fakes';
 
-const seg = (target: number, center: number, sources: string[]): EphemSegment => ({ target, center, frame: 'J2000', type: 2, initEt: 0, intLen: 1, rsize: 5, n: 1, offset: 0, sources });
+const seg = (target: number, center: number, sources: string[]): EphemSegment => ({ target, center, frame: 'J2000', type: 2, initEt: 0, intLen: 1, rsize: 5, n: 1, offset: 0, sources, label: 'measured' });
 const ephs: LoadedEphemeris[] = [
   { name: 'a', path: 'ephem/a.json', header: { bin: 'a.bin', segments: [seg(399, 3, ['s1']), seg(3, 0, ['s1'])] }, data: new Float64Array() },
   { name: 'b', path: 'ephem/b.json', header: { bin: 'b.bin', segments: [seg(301, 3, ['s2'])] }, data: new Float64Array() },
