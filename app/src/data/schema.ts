@@ -274,7 +274,10 @@ export interface SurfaceLayerHeader {
     diskWeightFraction: number;
     regions: SurfaceRegion[];
   };
-  /** Provenance of the spatial brightness pattern (worst over regions). */
+  /**
+   * Provenance of the layer's values, worst over regions: for albedo layers the spatial brightness pattern, for
+   * height and parameter layers the heights / parameters themselves.
+   */
   brightness: SurfaceProvenance;
   /** Provenance of the per-texel colour variation (albedo layers only). */
   color?: SurfaceProvenance;
