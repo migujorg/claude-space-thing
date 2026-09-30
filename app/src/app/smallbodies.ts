@@ -15,6 +15,7 @@
 import { coreState, readCore, readNonGrav, type SmallBodyCatalog } from '../core/smallbodyCatalog';
 import { SB_OK, SmallBodyPropagator, type NonGrav } from '../core/smallbody';
 import type { EphemerisSet } from '../core/ephemeris';
+import { AU_KM } from '../core/constants';
 import type { Body, BodyKind, Label, PhaseFunction, Sourced } from '../data/schema';
 import { flagNames, orbitClassOf, physicalRow, type SmallBodyTable, type SmallBodyTables } from '../data/smallbodies';
 import type { TimeWindow } from './clock';
@@ -272,6 +273,13 @@ export class CpuSmallBodyStates {
     return { pos: [st[0], st[1], st[2]], vel: [st[3], st[4], st[5]] };
   }
 
+  /** The catalogue state at the epoch and the non-gravitational parameters (for propagation elsewhere). */
+  initial(row: number): { state: Float64Array; ng: NonGrav | null } | null {
+    if (row < 0 || row >= this.cat.count) return null;
+    const st = coreState(this.cat, row);
+    return st ? { state: st, ng: this.ng.get(row) ?? null } : null;
+  }
+
   /** Heliocentric positions at every grid epoch in [t0, t1] (xyz per sample; NaN where unreachable); null if pending. */
   gridPositions(row: number, t0: number, t1: number): { times: Float64Array; pos: Float64Array } | null {
     const s = this.store(row);
@@ -333,6 +341,30 @@ export class SmallBodies {
 
   has(row: number): boolean {
     return Number.isInteger(row) && row >= 0 && row < this.count;
+  }
+
+  /**
+   * The objects flagged `closeApproachInWindow` (JPL CNEOS lists a planetary approach inside the window) with what
+   * the event finder needs to integrate them, and the distance the flag was chosen with (from the catalogue header);
+   * null if the catalogue has no such flag or does not state the distance.
+   */
+  closeApproachCandidates(): { maxKm: number; candidates: { row: number; state: number[]; ng: NonGrav | null; H: number | null }[] } | null {
+    const h = this.tables.core.header;
+    const bit = Number(Object.entries(h.flagBits ?? {}).find(([, n]) => n === 'closeApproachInWindow')?.[0]);
+    const stats = h.statistics as { propagation?: { closeApproachesInWindow?: { maxDistanceAu?: number } } } | undefined;
+    const au = stats?.propagation?.closeApproachesInWindow?.maxDistanceAu;
+    if (!Number.isFinite(bit) || typeof au !== 'number' || !(au > 0)) return null;
+    const t = this.tables.core.table;
+    if (!t.has('flags')) return null;
+    const out: { row: number; state: number[]; ng: NonGrav | null; H: number | null }[] = [];
+    for (let row = 0; row < this.count; row++) {
+      if ((t.get('flags', row) & bit) === 0) continue;
+      const init = this.cpu.initial(row);
+      if (!init) continue;
+      const H = numOf(this.tables.core, 'H', row);
+      out.push({ row, state: Array.from(init.state), ng: init.ng, H: Number.isFinite(H) && labelOf(this.tables.core, 'hLabel', row) !== 'unknown' ? H : null });
+    }
+    return { maxKm: au * AU_KM, candidates: out };
   }
 
   /** The object's position is being propagated in the background (no position yet). */

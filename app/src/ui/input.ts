@@ -14,12 +14,14 @@ export interface InputActions {
   toggleInspector(): void;
   toggleData(): void;
   toggleHelp(): void;
+  toggleEvents(): void;
   copyLink(): void;
   /** Close the topmost panel; returns false if nothing was open. */
   closeTop(): boolean;
 }
 
-const FLY_KEYS = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'KeyZ', 'KeyC', 'ShiftLeft', 'ShiftRight', 'AltLeft', 'AltRight', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
+// Up/down (orbit up-down, fly up-down): the arrow keys and Page Up/Down; E opens the Moments panel.
+const FLY_KEYS = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyZ', 'KeyC', 'ShiftLeft', 'ShiftRight', 'AltLeft', 'AltRight', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'PageUp', 'PageDown']);
 
 export class Input {
   private held = new Set<string>();
@@ -149,6 +151,7 @@ export class Input {
       case 'i': case 'I': this.actions.toggleInspector(); return true;
       case 'm': case 'M': this.actions.toggleData(); return true;
       case 'u': case 'U': this.actions.copyLink(); return true;
+      case 'e': case 'E': this.actions.toggleEvents(); return true;
     }
     if (/^[1-6]$/.test(e.key)) {
       c.setRateMagnitude(RATE_PRESETS[Number(e.key) - 1].rate);
@@ -162,8 +165,8 @@ export class Input {
   flyInput(dt: number): FlyInput | null {
     const k = (c: string) => (this.held.has(c) ? 1 : 0);
     const x = k('KeyD') - k('KeyA') + k('ArrowRight') - k('ArrowLeft');
-    const y = k('KeyE') - k('KeyQ');
-    const z = k('KeyS') - k('KeyW') + k('ArrowDown') - k('ArrowUp');
+    const y = k('ArrowUp') - k('ArrowDown') + k('PageUp') - k('PageDown');
+    const z = k('KeyS') - k('KeyW');
     const roll = k('KeyC') - k('KeyZ');
     const mod = this.held.has('ShiftLeft') || this.held.has('ShiftRight') ? 'fast' : this.held.has('AltLeft') || this.held.has('AltRight') ? 'slow' : 'normal';
     if (this.model.cam.mode === 'orbit') {

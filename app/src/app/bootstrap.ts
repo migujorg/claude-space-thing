@@ -12,6 +12,9 @@ import { mountUi, type Ui } from '../ui/index';
 import { AppModel } from './model';
 import type { AppDeps, RendererPort } from './ports';
 import { sbId } from './smallbodies';
+import type { Category } from './events/engine';
+import type { SkyEvent } from './events/finder';
+import { storageCache } from './events/service';
 import { formatUrlParams, parseUrlParams, type UrlView } from './url';
 
 export interface AppHandle {
@@ -41,6 +44,11 @@ export interface DebugApi {
     search(query: string, limit?: number): Promise<{ row: number; id: number; name: string }[]>;
     goTo(spkid: number, dist?: number, instant?: boolean): Promise<void>;
   };
+  /** Event finder: a category's events once computed (starts the finder), and "go there" (instant). */
+  events: {
+    find(category: Category): Promise<SkyEvent[]>;
+    goTo(id: string, view?: number): Promise<void>;
+  };
   model: AppModel;
 }
 
@@ -48,6 +56,15 @@ export interface DebugApi {
 const defaultNameWorker = (): Worker => new Worker(new URL('./names.worker.ts', import.meta.url), { type: 'module' });
 /** Selected small bodies are propagated in a module worker. */
 const defaultPropagationWorker = (): Worker => new Worker(new URL('./sbprop.worker.ts', import.meta.url), { type: 'module' });
+/** The event finder runs in a module worker. */
+const defaultEventWorker = (): Worker => new Worker(new URL('./events/events.worker.ts', import.meta.url), { type: 'module' });
+const defaultStorage = (): Storage | null => {
+  try {
+    return window.localStorage;
+  } catch {
+    return null;
+  }
+};
 
 declare global {
   interface Window {
@@ -78,7 +95,11 @@ export function eagerEphemeris(view: UrlView): (path: string, bodies: Body[]) =>
 
 export async function startApp(canvas: HTMLCanvasElement, uiRoot: HTMLElement, deps: AppDeps): Promise<AppHandle> {
   window.__frameReady = false;
-  const model = new AppModel(deps, { now: deps.now });
+  const model = new AppModel(deps, {
+    now: deps.now,
+    eventWorker: deps.eventWorker === null ? undefined : deps.eventWorker ?? defaultEventWorker,
+    eventCache: deps.eventStorage === null ? null : storageCache(deps.eventStorage ?? defaultStorage),
+  });
   const ui = mountUi(uiRoot, model, { banner: deps.banner });
   let renderer: RendererPort | null = null;
   let running = true;
@@ -116,6 +137,16 @@ export async function startApp(canvas: HTMLCanvasElement, uiRoot: HTMLElement, d
         await r;
       },
     },
+    events: {
+      find: (c) => (model.events ? model.events.whenReady(c) : Promise.reject(new Error('no data'))),
+      goTo: async (id, view = 0) => {
+        const ev = model.events?.byId(id);
+        if (!ev) throw new Error(`no event ${id} (compute its category first)`);
+        const r = model.goToEvent(ev, view, { instant: true });
+        if (typeof r === 'string') throw new Error(r);
+        await r;
+      },
+    },
     model,
   };
 
@@ -144,6 +175,7 @@ export async function startApp(canvas: HTMLCanvasElement, uiRoot: HTMLElement, d
     sizeViewport();
     errors.forEach((e) => model.message(e, 'warn'));
     model.applyUrl(view);
+    ui.started();
 
     try {
       renderer = await deps.Renderer.create(canvas);
