@@ -267,6 +267,14 @@ table (log-linear in h), and multiplies the source's XYZS. A ray that meets the 
 background (Milky Way, faint stars, zodiacal light: `sky/background.ts`) is dimmed the same way per pixel,
 the zodiacal light included, since nearly all of it comes from beyond the planet.
 
+Comet comae and tails (`comets/`) are at a finite distance, so they use `limbTransmittanceTo(u, D)`: a limb
+counts only when the source lies beyond the ray's closest approach to that body. A comet in front of a planet
+is not dimmed. Test page: `scene=earth-data&comet=behind|front&cometd=<km>&cometin=<deg>` places the TEST
+FIXTURE comet with its tail across the Earth's limb; `hdrgrid=N` logs the HDR luminance for comparison.
+With the nucleus 45 000 km beyond the Earth, the tail light between the surface and 75 km is 0.93 of that
+without the limb term (2-px bins, 43 km each). Above 75 km it is unchanged, and so is every pixel of the
+comet placed in front.
+
 This applies to the nearest four measured atmospheres that are drawn, with the camera above their top. Stars
 seen from inside an atmosphere are not dimmed (extinction by airmass is not modelled). The test page's
 `stars=N&skip=limb` compares with and without. From 8 000 km with 500 000 TEST FIXTURE stars, a star just

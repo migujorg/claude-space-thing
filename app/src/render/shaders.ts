@@ -984,12 +984,21 @@ struct Limbs { count: vec4f, l: array<Limb, ${LIMB_MAX}> };
 
 /** Transmittance (XYZS) of the atmospheres' limbs along the unit direction u from the camera; 0 behind a solid body. */
 fn limbTransmittance(u: vec3f) -> vec4f {
+  return limbTransmittanceTo(u, 3.0e38);
+}
+
+/**
+ * The same for a source at distance D (km) along u: a limb counts only when the source lies beyond the ray's
+ * closest approach to that body. A source inside a shell (it would need part of the chord) does not occur for the
+ * sources drawn this way (comets).
+ */
+fn limbTransmittanceTo(u: vec3f, D: f32) -> vec4f {
   var T = vec4f(1.0);
   for (var i = 0; i < i32(LB.count.x); i++) {
     let qu = vec3f(dot(LB.l[i].m0.xyz, u), dot(LB.l[i].m1.xyz, u), dot(LB.l[i].m2.xyz, u));
     // Closest approach to the centre in the unit-sphere frame (the lowest point of the ray, for a sphere).
     let s = -dot(LB.l[i].o.xyz, qu) / dot(qu, qu);
-    if (s <= 0.0) { continue; }
+    if (s <= 0.0 || s >= D) { continue; }
     let q = LB.l[i].o.xyz + s * qu;
     let p = s * u - LB.l[i].c.xyz;
     let h = length(p) * (1.0 - 1.0 / length(q));

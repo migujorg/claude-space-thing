@@ -845,7 +845,7 @@ export class Renderer {
     // 1b. Comets drawn extended: tails and comae into EXT behind the bodies; comae smaller than the Ricco area join
     //     the point sources (prep.points, drawn in step 3).
     if (this.comets && snapshot.comets?.length && !skip.has('comets')) {
-      this.comets.encode(enc, t, this.frameUB, snapshot.et, snapshot.comets, g, eye.riccoAreaSr, prep.points, { timestampWrites: () => this.tsw('comets') });
+      this.comets.encode(enc, t, this.frameUB, snapshot.et, snapshot.comets, g, eye.riccoAreaSr, prep.points, { timestampWrites: () => this.tsw('comets'), limbs: this.limbsUB });
       this.stats.comets = { comae: this.comets.stats.comae, packets: this.comets.stats.packets };
     } else if (this.stats.comets) this.stats.comets = { comae: 0, packets: 0 };
 

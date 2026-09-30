@@ -176,10 +176,37 @@ export async function buildDataScene(p: URLSearchParams): Promise<TestScene> {
     const fwd = mul(toObs, -1);
     const cam = { orient: lookAlong(fwd, [0, 0, 1]), fovY: rad(Number(p.get('fovdeg') ?? 18)), width: 0, height: 0 };
     const snapshot: SceneSnapshot = { et: 0, camera: cam, sun: sunOf(pr.light, add(pos, toSun)), bodies: [body], view, orbits: [] };
+    // comet=behind|front: the TEST FIXTURE comet (tests/fixtures/comet_reference.json: Lemmon's model and heliocentric
+    // state, not this scene's geometry), its nucleus cometin° inside Earth's limb (default 1.5) on the side its tail
+    // points to on the sky, beyond the Earth (behind: the nucleus hidden, the tail emerging through the atmosphere's
+    // limb) or at half the Earth's distance (front); cometd=<km> sets the camera distance instead.
+    const cometWhere = p.get('comet');
+    let cometModel: TestScene['cometModel'];
+    if (cometWhere === 'behind' || cometWhere === 'front') {
+      const fx = await (await fetch('/tests/fixtures/comet_reference.json')).json();
+      const { activityOf } = await import('../render/comets/model');
+      cometModel = fx.model;
+      const o = fx.ours[1];
+      const th = Math.asin(6378.137 / dist) - rad(Number(p.get('cometin') ?? 1.5));
+      const n = mul(fwd, 1);
+      // The tail points away from the Sun: its direction on the sky is the heliocentric direction projected.
+      const hl = Math.hypot(...(o.helioKm as Vec3));
+      const h: Vec3 = [o.helioKm[0] / hl, o.helioKm[1] / hl, o.helioKm[2] / hl];
+      const hn = h[0] * n[0] + h[1] * n[1] + h[2] * n[2];
+      const ep: Vec3 = [h[0] - hn * n[0], h[1] - hn * n[1], h[2] - hn * n[2]];
+      const el = Math.hypot(...ep);
+      const e: Vec3 = [ep[0] / el, ep[1] / el, ep[2] / el];
+      const u: Vec3 = add(mul(n, Math.cos(th)), mul(e, Math.sin(th)));
+      const D = Number(p.get('cometd') ?? (cometWhere === 'behind' ? 0.64 * AU_KM : 0.5 * dist));
+      snapshot.comets = [{
+        id: -1, name: `${fx.comet.name} (TEST FIXTURE placement)`, rel: mul(u, D), helioPos: o.helioKm, helioVel: o.helioVelKmS,
+        M1: fx.comet.M1, K1: fx.comet.K1, totalLabel: 'estimated', activity: activityOf(fx.model, fx.measured), dust: 'longPeriod',
+      }];
+    }
     const phase = Math.acos(Math.max(-1, Math.min(1, toObs[0] * bf(sLat, sLon)[0] + toObs[1] * bf(sLat, sLon)[1] + toObs[2] * bf(sLat, sLon)[2]))) * 180 / Math.PI;
     return {
-      title: `Earth (REAL DATA: surface, clouds, water, night layers) · sub-solar ${sLat}°, ${sLon}° · sub-observer ${oLat}°, ${oLon}° · phase ${phase.toFixed(1)}° · ${dist} km`,
-      stars: null, snapshot, realData: true,
+      title: `Earth (REAL DATA: surface, clouds, water, night layers) · sub-solar ${sLat}°, ${sLon}° · sub-observer ${oLat}°, ${oLon}° · phase ${phase.toFixed(1)}° · ${dist} km${cometModel ? ` · TEST FIXTURE comet ${cometWhere} the limb` : ''}`,
+      stars: null, snapshot, realData: true, cometModel,
     };
   }
   if (name === 'atm-data') {
