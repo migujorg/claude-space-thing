@@ -155,6 +155,11 @@ async function renderScene(scene) {
       timings: debug.timings, orbitStats: debug.orbitStats, smallBodies: debug.smallBodies && { ...debug.smallBodies },
       data: { missing: debug.data?.missing ?? [], errors: debug.data?.errors ?? [] }, messages: debug.messages,
     };
+    // A product the manifest lists that the page could not load (a file or link absent from this checkout's
+    // public/data) changes what is drawn with no code change: shape models, comets and the synthetic field simply
+    // drop out. Such a render is no evidence either way and must not become the baseline.
+    const gone = [...(debug?.data?.missing ?? []), ...(debug?.data?.errors ?? [])];
+    if (gone.length && !r.error) r.error = `data missing or unusable (see the manifest; is public/data complete?): ${gone.join('; ').slice(0, 600)}`;
     const cells = await page.evaluate(pageCells, { tw: THUMB_W, th: THUMB_H });
     if (cells) {
       const thumb = thumbFromLinear(cells.lin);
