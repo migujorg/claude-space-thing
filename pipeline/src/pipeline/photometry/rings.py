@@ -79,7 +79,7 @@ VG_NEPTUNE = _pair("vg2801-pn1-system", _VG2801 + "KM005/", "PN1P01",
 
 
 def _label(dl: Download) -> dict[str, str]:
-    text = dl.fetch().read_text(errors="replace")
+    text = dl.fetch().read_text(errors="replace", encoding="utf-8")
     return {m.group(1): m.group(2).strip().strip('"') for m in re.finditer(r"^\s*([A-Z_]+)\s*=\s*(.+?)\s*$", text,
                                                                            flags=re.M)}
 

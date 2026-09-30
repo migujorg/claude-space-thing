@@ -32,7 +32,7 @@ def sbdb(query: str) -> dict:
     p = fetch("https://ssd-api.jpl.nasa.gov/sbdb.api", "shapes/sbdb", f"{safe}.json",
               params={"sstr": query, "phys-par": "1"},
               validate=lambda q: q.read_bytes()[:1] == b"{")
-    return json.loads(p.read_text()), p
+    return json.loads(p.read_text(encoding="utf-8")), p
 
 
 def load_mesh(src: ShapeSource) -> tuple[sm.Mesh, dict, list[Path]]:
@@ -45,7 +45,7 @@ def load_mesh(src: ShapeSource) -> tuple[sm.Mesh, dict, list[Path]]:
     elif src.fmt in ("obj", "tab-obj"):
         mesh = sm.read_obj(path)
     elif src.fmt in ("grid-latlon", "grid-lonlat"):
-        rows = np.array([[float(x) for x in ln.split()[:3]] for ln in path.read_text().splitlines() if ln.strip()])
+        rows = np.array([[float(x) for x in ln.split()[:3]] for ln in path.read_text(encoding="utf-8").splitlines() if ln.strip()])
         lat, lon = (rows[:, 0], rows[:, 1]) if src.fmt == "grid-latlon" else (rows[:, 1], rows[:, 0])
         if src.lon_west:
             lon = -lon                       # to east longitude
@@ -59,12 +59,12 @@ def parse_spin(csv_path: Path, xml_path: Path) -> list[dict]:
     """Radar spin-state CSV (no header row) zipped with the field names, units and descriptions of its PDS4
     label."""
     import re
-    lab = xml_path.read_text()
+    lab = xml_path.read_text(encoding="utf-8")
     fields = []
     for blk in re.findall(r"<Field_Delimited>(.*?)</Field_Delimited>", lab, re.S):
         g = lambda t: (re.search(rf"<{t}>([^<]*)</{t}>", blk) or [None, None])[1]  # noqa: E731
         fields.append({"name": g("name"), "unit": g("unit"), "description": g("description")})
-    rows = [ln for ln in csv_path.read_text().splitlines() if ln.strip()]
+    rows = [ln for ln in csv_path.read_text(encoding="utf-8").splitlines() if ln.strip()]
     vals = [v.strip() for v in rows[0].split(",")]
     if len(vals) != len(fields):
         raise ValueError(f"{csv_path.name}: {len(vals)} values but {len(fields)} label fields")

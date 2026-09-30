@@ -120,7 +120,7 @@ class EpoxiImage:
 @lru_cache(maxsize=1)
 def epoxi_index() -> list[EpoxiImage]:
     out = []
-    for line in EPOXI_INDEX.fetch().read_text().splitlines():
+    for line in EPOXI_INDEX.fetch().read_text(encoding="utf-8").splitlines():
         f = line.split()
         if not f or not f[0][:2] == "20":
             continue

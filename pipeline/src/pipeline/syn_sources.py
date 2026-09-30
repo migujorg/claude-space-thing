@@ -114,7 +114,7 @@ def register(ctx: BuildContext) -> dict[str, str]:
 
 
 def tables() -> dict:
-    return json.loads((TABLES / "populations.json").read_text())
+    return json.loads((TABLES / "populations.json").read_text(encoding="utf-8"))
 
 
 def read_granvik() -> np.ndarray:

@@ -42,7 +42,7 @@ def test_fits_validation(tmp_path):
     cut.write_bytes(p.read_bytes()[:-3000])
     assert not sg._fits_table_ok(cut)
     bad = tmp_path / "err.fits"
-    bad.write_text("<?xml version='1.0'?><VOTABLE><INFO name='QUERY_STATUS' value='ERROR'/></VOTABLE>")
+    bad.write_text("<?xml version='1.0'?><VOTABLE><INFO name='QUERY_STATUS' value='ERROR'/></VOTABLE>", encoding="utf-8", newline="\n")
     assert not sg._fits_table_ok(bad)
 
 
@@ -62,8 +62,8 @@ def test_xp_operator_shape():
 
 
 def test_sternberg_parser_aldebaran():
-    blue = sc.parse_sternberg_fluxes((FIX / "sternberg_iii208_aldebaran.txt").read_text().splitlines(), 89)[0]
-    red = sc.parse_sternberg_fluxes((FIX / "sternberg_iii207_aldebaran.txt").read_text().splitlines(), 98)[0]
+    blue = sc.parse_sternberg_fluxes((FIX / "sternberg_iii208_aldebaran.txt").read_text(encoding="utf-8").splitlines(), 89)[0]
+    red = sc.parse_sternberg_fluxes((FIX / "sternberg_iii207_aldebaran.txt").read_text(encoding="utf-8").splitlines(), 98)[0]
     # III/208: the first two (322.5, 327.5 nm) and last two (757.5, 762.5 nm) samples are written with exponent
     # E-12 = no flux
     assert np.isnan(blue[:2]).all() and np.isnan(blue[-2:]).all() and np.isfinite(blue[2:-2]).all()

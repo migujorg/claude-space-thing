@@ -112,7 +112,7 @@ def fetch(cat: Catalog, row: int, t0: float, t1: float, step_days: float) -> tup
     params["OBJ_DATA"] = "'YES'"
     name = re.sub(r"[^A-Za-z0-9]+", "_", str(cat.s["pdes"][row])) + f"_{int(cat.spkid[row])}.txt"
     path, table = hz.fetch_vectors(params, SUBDIR, name)
-    text = path.read_text()
+    text = path.read_text(encoding="utf-8")
     m = re.search(r"soln ref\.=\s*(\S+?),", text) or re.search(r"\{source:\s*([^}]+)\}", table.target_line)
     return table, (m.group(1).strip() if m else ""), record(path)["url"]
 

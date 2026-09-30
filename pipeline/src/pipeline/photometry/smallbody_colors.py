@@ -84,7 +84,7 @@ def fixed_width(tab_text: str, columns: dict[str, tuple[int, int]]) -> list[dict
 
 @lru_cache(maxsize=1)
 def mean_spectra() -> tuple[np.ndarray, dict[str, np.ndarray]]:
-    names = re.findall(r'NAME\s*=\s*"([A-Z]+)_(?:MEAN|VAL)"', DEMEO_MEAN_LBL.fetch().read_text())
+    names = re.findall(r'NAME\s*=\s*"([A-Z]+)_(?:MEAN|VAL)"', DEMEO_MEAN_LBL.fetch().read_text(encoding="utf-8"))
     d = np.loadtxt(DEMEO_MEAN.fetch())
     wl = d[:, 0] * 1000.0
     out = {}
@@ -101,10 +101,10 @@ def memberships() -> dict[int, set[str]]:
     """Asteroid number -> Bus-DeMeo classes from the spectral taxonomies (DeMeo 2009; the Neese compilation's
     BUS_DEMEO_CLASS, and its BUS_CLASS where the Bus name is also a Bus-DeMeo class)."""
     m: dict[int, set[str]] = defaultdict(set)
-    for r in fixed_width(DEMEO_TAX.fetch().read_text(), {"num": (1, 7), "cls": (38, 3)}):
+    for r in fixed_width(DEMEO_TAX.fetch().read_text(encoding="utf-8"), {"num": (1, 7), "cls": (38, 3)}):
         if r["num"].isdigit() and r["cls"] in DEMEO_CLASSES:
             m[int(r["num"])].add(r["cls"])
-    for r in fixed_width(NEESE.fetch().read_text(), {"num": (1, 7), "bus": (81, 3), "bd": (97, 3)}):
+    for r in fixed_width(NEESE.fetch().read_text(encoding="utf-8"), {"num": (1, 7), "bus": (81, 3), "bd": (97, 3)}):
         if not r["num"].isdigit():
             continue
         for c in (r["bd"], r["bus"]):
@@ -116,7 +116,7 @@ def memberships() -> dict[int, set[str]]:
 
 @lru_cache(maxsize=1)
 def sdss_rows() -> list[dict[str, str]]:
-    return fixed_width(SDSS.fetch().read_text(), {"num": (1, 6), "cls": (36, 4)})
+    return fixed_width(SDSS.fetch().read_text(encoding="utf-8"), {"num": (1, 6), "cls": (36, 4)})
 
 
 @lru_cache(maxsize=1)
@@ -145,7 +145,7 @@ def sdss_frequencies() -> tuple[dict[str, float], int]:
 def ecas_ratios() -> dict[int, tuple[float, float]]:
     """Asteroid number -> (R_u/R_v, R_b/R_v) from the ECAS mean colours u-v and b-v (magnitudes, solar = 0)."""
     out = {}
-    for r in fixed_width(ECAS_MEAN.fetch().read_text(), {"num": (1, 5), "uv": (18, 6), "bv": (29, 6)}):
+    for r in fixed_width(ECAS_MEAN.fetch().read_text(encoding="utf-8"), {"num": (1, 5), "uv": (18, 6), "bv": (29, 6)}):
         try:
             num, uv, bv = int(r["num"]), float(r["uv"]), float(r["bv"])
         except ValueError:
@@ -158,7 +158,7 @@ def ecas_ratios() -> dict[int, tuple[float, float]]:
 def ecas_wavelengths() -> tuple[float, float, float]:
     """Solar-weighted effective wavelengths (nm) of ECAS u, b, v from the filter × dichroic curves and TSIS-1."""
     cols = {"wl": (1, 5), "dr": (9, 5), "u": (21, 5), "b": (27, 5), "dt": (35, 5), "v": (41, 5)}
-    rows = fixed_width(ECAS_FILTERS.fetch().read_text(), cols)
+    rows = fixed_width(ECAS_FILTERS.fetch().read_text(encoding="utf-8"), cols)
     val = lambda r, k: float(r[k]) if r[k] else 0.0      # noqa: E731  blank = no response
     wl = np.array([val(r, "wl") for r in rows]) * 1000.0
     s = solar.spectrum()

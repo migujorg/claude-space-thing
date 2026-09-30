@@ -390,7 +390,7 @@ URANIAN = {701: "Ariel", 702: "Umbriel", 703: "Titania", 704: "Oberon"}
 @lru_cache(maxsize=None)
 def _decolibus_members() -> dict[str, bytes]:
     path = DECOLIBUS_DATA.fetch()
-    meta = json.loads(fetch(DECOLIBUS_RECORD, "decolibus2026", "zenodo-record-18745327.json").read_text())
+    meta = json.loads(fetch(DECOLIBUS_RECORD, "decolibus2026", "zenodo-record-18745327.json").read_text(encoding="utf-8"))
     want = {f["key"]: f["checksum"] for f in meta["files"]}[DECOLIBUS_DATA.name]
     got = "md5:" + hashlib.md5(path.read_bytes()).hexdigest()
     if got != want:
