@@ -146,18 +146,16 @@ def _sph(lat, lon, r):
 
 
 def weld(m: Mesh, tol_km: float = 0.0) -> Mesh:
-    """Merge coincident vertices (exactly equal, or within tol_km on a grid), drop degenerate and duplicate faces
-    and unused vertices. DSK ICQ models repeat the vertices along cube-face seams."""
+    """Merge coincident vertices (exactly equal, or within tol_km on a grid), drop degenerate faces, zero-volume
+    back-to-back face pairs (`cancel_fins`), repeated faces and unused vertices. DSK ICQ models repeat the vertices
+    along cube-face seams."""
     v = m.v
     key = np.round(v / tol_km).astype(np.int64) if tol_km > 0 else v
     _, first, inv = np.unique(key, axis=0, return_index=True, return_inverse=True)
     inv = inv.reshape(-1)
     f = inv[m.f]
     ok = (f[:, 0] != f[:, 1]) & (f[:, 1] != f[:, 2]) & (f[:, 0] != f[:, 2])
-    f = f[ok]
-    # duplicate faces (same vertex set)
-    _, keep = np.unique(np.sort(f, axis=1), axis=0, return_index=True)
-    f = f[np.sort(keep)]
+    f = cancel_fins(f[ok])          # faces repeating a vertex set: back-to-back pairs cancel, repeats keep one
     used = np.unique(f)
     remap = np.full(first.size, -1, np.int64)
     remap[used] = np.arange(used.size)
@@ -191,9 +189,19 @@ def edge_report(m: Mesh) -> dict:
     i1 = order[start[two] + 1]
     inconsistent = int((e[i0, 0] == e[i1, 0]).sum())   # same direction twice
     euler = m.nv - uniq.size + m.nf
-    return {"boundaryEdges": boundary, "nonManifoldEdges": nonmanifold, "inconsistentEdges": inconsistent,
-            "eulerCharacteristic": int(euler),
-            "watertight": boundary == 0 and nonmanifold == 0 and inconsistent == 0}
+    # connected components (faces joined through shared edges)
+    from scipy.sparse import coo_matrix
+    from scipy.sparse.csgraph import connected_components
+    fid = np.tile(np.arange(m.nf), 3)
+    same = ks[1:] == ks[:-1]
+    g = coo_matrix((np.ones(int(same.sum())), (fid[order][:-1][same], fid[order][1:][same])), shape=(m.nf, m.nf))
+    ncomp = int(connected_components(g, directed=False)[0])
+    watertight = boundary == 0 and nonmanifold == 0 and inconsistent == 0
+    out = {"boundaryEdges": boundary, "nonManifoldEdges": nonmanifold, "inconsistentEdges": inconsistent,
+           "eulerCharacteristic": int(euler), "components": ncomp, "watertight": watertight}
+    if watertight:
+        out["genus"] = (2 * ncomp - int(euler)) // 2      # handles (tunnels) summed over components
+    return out
 
 
 def area(m: Mesh) -> float:
@@ -206,6 +214,24 @@ def centroid(m: Mesh) -> np.ndarray:
     a, b, c = m.v[m.f[:, 0]], m.v[m.f[:, 1]], m.v[m.f[:, 2]]
     vol = np.einsum("ij,ij->i", a, np.cross(b, c)) / 6.0
     return ((a + b + c) / 4.0 * vol[:, None]).sum(axis=0) / vol.sum()
+
+
+def principal_axes(m: Mesh) -> tuple[np.ndarray, np.ndarray]:
+    """Second moments of the enclosed volume about its centroid (uniform density): eigenvalues (km⁵, largest
+    first) and unit eigenvectors as columns. Column 0 is the long axis, column 2 the short axis (for a principal-
+    axis rotator, the spin axis)."""
+    a, b, c = m.v[m.f[:, 0]], m.v[m.f[:, 1]], m.v[m.f[:, 2]]
+    vol = np.einsum("ij,ij->i", a, np.cross(b, c)) / 6.0
+    s = a + b + c
+    # ∫ r rᵀ dV over the tetrahedron (0, a, b, c) = V/20 · (a aᵀ + b bᵀ + c cᵀ + s sᵀ)
+    mom = np.einsum("i,ij,ik->jk", vol, a, a) + np.einsum("i,ij,ik->jk", vol, b, b) \
+        + np.einsum("i,ij,ik->jk", vol, c, c) + np.einsum("i,ij,ik->jk", vol, s, s)
+    mom /= 20.0
+    V = vol.sum()
+    g = (s / 4.0 * vol[:, None]).sum(axis=0) / V
+    mom -= V * np.outer(g, g)
+    w, vec = np.linalg.eigh(mom)
+    return w[::-1], vec[:, ::-1]
 
 
 def equivalent_radius(volume_km3: float) -> float:
