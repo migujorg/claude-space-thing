@@ -133,9 +133,79 @@ its own background; see "Fixations" above.)
 (one frame of latency). `Renderer.settled()` drives frames until the adaptation used to render a
 frame agrees with the one measured from it (|Δ ln A| < 10⁻³ and a stable corneal flux) twice in a row.
 
-**Time.** v0 adapts instantly. `AdaptationState` already has Pattanaik's structure: neural
-adaptation as first-order exponential filters (t₀ = 80 ms cones, 150 ms rods) and pigment kinetics
-(τ = 110 s cones, 400 s rods). Switching `timeDependent` on is M5 work.
+**Time (M5).** `ViewSettings.adaptation.mode = 'realtime'` (the shell's default, from the north star:
+what one would really see) makes the eye adapt over real elapsed time. `'instant'` keeps it always fully
+adapted (the shell's "instant adaptation" option, badged). There are two processes.
+
+*Neural adaptation* (light adaptation, seconds). The adaptation luminances follow the goal through
+Pattanaik et al.'s (2000, §4.1.2) first-order filters, t₀ = 80 ms (cones) and 150 ms (rods). They fitted
+these to the early dark-adaptation data of their ref. [3] "after discounting regeneration effects".
+
+*Photopigment bleaching and regeneration* (dark adaptation, minutes; `eye/bleaching.ts`). Each class of
+photoreceptor has a bleached pigment fraction B, with first-order kinetics:
+
+dB/dt = I·(1 − B)/Q − B/τ,  so in steady light B∞ = I/(I + I₀), I₀ = Q/τ.
+
+This is the Rushton model (Hood & Finkelstein 1986, eqs. 10–17), the "published consensus" Pattanaik
+et al. use. I is the retinal illuminance of the adaptation goal through the Watson–Yellott pupil,
+photopic trolands for cones and scotopic trolands for rods. The Stiles–Crawford effect is not included.
+
+| | τ | I₀ / Q | source |
+|---|---|---|---|
+| cones | 110 s | I₀ = 10^4.3 td | τ: Hood & Finkelstein via Pattanaik; I₀: Rushton & Henry (1968), the model Hollins & Alpern (1973) fit; Mahroo & Lamb (2004) give σ⁻¹ = 710 cd·m⁻²·min with dilated pupils, Q ≈ 1.6–2.1·10⁶ td·s, against I₀τ = 2.2·10⁶ |
+| rods | 400 s | Q = 10^7.0 scot td·s | τ: as above; Q: log Q = 6.8–7.0 (Rushton & Powell 1972; Alpern & Pugh 1974), 7.0 as in Thomas & Lamb (1999) |
+
+What the bleach does to vision. Only the bleach in excess of the steady state for the current light
+counts: the steady state is already part of the measured thresholds and of Hunt's response model.
+
+- **Rods: the Dowling–Rushton relation.** log₁₀(threshold/absolute threshold) = a·ΔB with a = 12:
+  "the log threshold is raised 1·2 units for each 10 % of rhodopsin in the bleached state" (Alpern,
+  Rushton & Torii 1970). Reviews give 12–20 for man. This is turned into an *equivalent background*
+  (Crawford 1947): with Weber's law above the dark light L₀, the eye adapted to A with threshold raised
+  E-fold behaves as one adapted to E·(A + L₀) − L₀. The rod response (tone model, §4) and the
+  point-source observer use that rod adaptation, so after daylight a dark scene looks darker and
+  faint stars are invisible.
+- **Cones: loss of photon catch only**, (1 − B)/(1 − B∞). The psychophysical cone threshold after a
+  bleach rises more than that (Hollins & Alpern 1973 fit the Dowling–Rushton relation to cones), but
+  their constant could not be verified here, so it is not used (§10).
+- **Detection by the more sensitive system.** A point-source threshold is raised by
+  max(1, min(T_rod·E, T_cone/catch)/min(T_rod, T_cone)). T_rod and T_cone are Crumey's (2014) scotopic
+  and photopic branches (Eqs. 32/33) at the local background. The rod branch is taken as Weber beyond
+  its range; the cone branch is not taken below its range (0.0708 cd/m², where the two branches meet).
+  When adapted, the factor is exactly 1 and Crumey's full-range threshold is unchanged.
+
+The dark-adaptation curve this gives after 10 min of a 10⁴ cd/m² daylight field, for a point source on a
+dark background (`eye-bleaching.test.ts`):
+
+| minutes in the dark | 0 | 1 | 2 | 5 | 10 | 15 | 18 | 20 | 25 | 30 | 40 | adapted |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| limiting V | 3.7 | 4.5 | 4.7 | 5.0 | 5.0 | 5.0 | 5.9 | 6.4 | 7.0 | 7.3 | 7.5 | 7.6 |
+
+The classic features come out without fitting:
+
+- a **cone plateau** reached in ~5 min, 1.0 log unit (2.6 mag) above the rods' absolute threshold for a
+  point source;
+- the **rod–cone break**, here at ~16 min for a 75 % rod bleach, and ~9 min after a full bleach for
+  large test fields, where the plateau is ~3 log units up;
+- an **S2 slope** of 0.27 log units/min from 3 to 1 log unit above absolute after a full bleach (Lamb
+  1981: 0.24; Patryas et al. 2013 young observers: 0.23 ± 0.03), flattening into an S3-like tail;
+- **full dark adaptation** (within 0.1 log unit) after 32 min, within the classic 30–40 min.
+
+The rate-limited regeneration of Lamb & Pugh (2004) and Mahroo & Lamb (2004) (dB/dt = −v·B/(K_m + B))
+describes the pigment time course better. The Dowling–Rushton constants were measured against
+exponential kinetics, so that is the pair used; the alternative is noted.
+
+*Real time and tests.* The renderer integrates the kinetics exactly over each frame's real elapsed time,
+at most 2 s per step, since a longer gap is a hidden tab and not a stare. A bleach from a very bright
+exposure (the Sun's veil, a sunlit planet filling the view) therefore delays dark adaptation for tens of
+minutes. `Renderer.settled()` (screenshots, tests) holds the pigments in steady state unless the view
+gives `adaptation.history` = {luminance, exposure, elapsed}: a uniform field seen for `exposure` s, then
+`elapsed` s of the current view. The history is re-applied until the adaptation to the view settles. URL:
+`adapt=instant|realtime`, `adaptfrom=<cd/m²>,<s>,<s>`.
+
+*HUD.* `stats.darkAdaptation` gives the share of the excess rhodopsin bleach regenerated, the minutes
+until the rod threshold is within 0.1 log unit of adapted (if the light stays), and a line such as
+"dark adaptation 43 % — 29 min to full". The 0.1 log unit criterion is a reporting choice.
 
 **Pupil.** Watson & Yellott (2012) unified formula: D = D_SD(F) + (y − y₀)(0.021323 − 0.0095623·D_SD),
 D_SD(F) = 7.75 − 5.75·(F/846)^0.41/((F/846)^0.41 + 2), y₀ = 28.58, F = L·a·M(e) with M = 1 binocular
@@ -271,8 +341,9 @@ equations; σ_rod of the display is unused.
 1. *Cone bleaching off* (`coneBleaching: false`). Hunt's steady-state B_cone only departs from 1
    above ~10⁵ cd/m², i.e. when fixating the solar disk (B_cone ≈ 10⁻³ there). Pattanaik's appearance
    rules then map the tiny bleached response to near black: the Sun would render darker than a dim
-   room, contradicting the universal report of a blinding white Sun. We keep B_cone = 1 until the
-   time-dependent model (M5) can represent bleaching as a transient, with afterimages. Rod saturation
+   room, contradicting the universal report of a blinding white Sun. We keep B_cone = 1. Since M5,
+   bleaching is represented as a transient by the pigment kinetics (§2 "Time"), in trolands, rather
+   than by Hunt's steady-state term. Rod saturation
    (Hunt's B_S) is kept, since without it rods would respond in daylight.
 2. *Dark-light pedestal.* The Naka–Rushton response gives any luminance, however small, a response
    that the appearance model shows as grey. Vision cannot distinguish luminances below its intrinsic
@@ -299,10 +370,18 @@ equations; σ_rod of the display is unused.
 - **CIE 191:2010** mesopic photometry (m = 0.767 + 0.3334·log10 L_mes, iterated from m = 0.5,
   V′(λ0) = 683/1699) sets how photopic and scotopic quantities combine for *visual performance*, i.e.
   the visibility thresholds (§6).
-- **Not in v0:** the rod-induced hue shift toward blue at mesopic levels (Cao, Pokorny, Smith &
-  Zele 2008; used for tone mapping by Kirk & O'Brien 2011). Kirk & O'Brien's formulation needs rod and
-  cone signals on an absolute scale that the paper leaves as a user exposure parameter. Implementing
-  it properly needs Cao et al.'s troland-based gains, and is the next step for colour at low light.
+- **Not implemented (reviewed again in M5):** the rod-induced hue shift toward blue at mesopic levels
+  (Cao, Pokorny, Smith & Zele 2008; used for tone mapping by Kirk & O'Brien 2011). Kirk & O'Brien add a
+  rod term to each opponent channel (their Eqs. 5.3–5.6, in the thesis version, UCB/EECS-2011-91):
+  - sensitivity regulation g = 1/(1 + 0.33(q + κ·q_rod))^0.5, with κ₁ = 0.25 and κ₂ = 0.4 for full
+    scotopic adaptation (from Cao et al.);
+  - opponent weights ρ and α fitted to Cao et al.'s data.
+
+  Two things in it are not measurements. The receptor signals q are normalised to the image, with
+  exposure left to the user ("too sensitive to exposure"), so the 0.33 has no absolute scale here. The
+  channel gains x = y = 15 and z = 5 are the values the authors chose for their figures. Using it would
+  mean inventing the scale of q in cd/m² or trolands. A principled version needs Cao et al.'s gains on
+  an absolute (troland) scale. This is the next step for colour at low light.
 
 ## 6. Visibility of point sources
 
@@ -345,12 +424,18 @@ against black sky". That holds for one fixation, but it is not how a scene is lo
 **Test of the whole chain.** Under a dark sky of 21.5–22 mag/arcsec² (sky S/P 1.38, Crumey §1.3), the
 model gives naked-eye limits between V ≈ 6.0 and 7.0 for star colours B−V = 0 … 1.5 (S/P from
 Crumey Eq. 13), and 6.18 for a 2850 K-coloured star at 21.83 (tests). In space with no sky
-background (v0 has no zodiacal light or diffuse Galactic light yet), the zero-background cut-off gives
-V ≈ 7.6 with F = 2.
+background, the zero-background cut-off gives V ≈ 7.6 with F = 2. With the M4 sky (zodiacal light,
+Galactic light, unresolved stars) the regression suite's star field beyond Pluto has a background of
+6·10⁻⁵ cd/m² and a limit of V ≈ 6.5.
 
 **Culling.** On the GPU, each star whose Blackwell-equivalent illuminance is below F·ΔI(B) (÷ the
 enhanced boost) at its own background is not drawn. Unresolved bodies are tested in the point shader.
-The CPU only drops those invisible even against a zero background.
+The renderer also reports `pointLimitingMagnitude`: the limit for the eye looking at the darkest
+background in the frame (the minimum retinal luminance, reduced on the GPU with the adaptation
+measurement), with the current pigment state. It bounds which catalogue stars can be drawn at all, and
+the app's sky (app/sky.ts) cuts points from background light there (M5). Cutting at the global limit
+hid every star as soon as a bright planet was in view: Jupiter's frame adapts to 650 cd/m² (limit
+V ≈ −1.9), while the dark sky around it shows stars to V ≈ 6.5 (regression suite).
 
 ### 6.3 How point sources are shown (`eye/points.ts`)
 
@@ -389,6 +474,32 @@ V = −1.5. Crumey (2014, §1.2) reports, after Schaefer (1996), that stars more
 above threshold are seen with cone participation in telescopic viewing; our onset is consistent with
 that. Rigel/Vega stay near white, Antares and Betelgeuse show a warm tint.
 
+## 5b. Low-light acuity
+
+Spatial resolution falls with luminance. We use Ward Larson, Rushmeier & Piatko's (1997, Eq. 15) fit to
+Shlaer's (1937) foveal grating acuity:
+
+R(L_a) = 17.25·arctan(1.4·log₁₀ L_a + 0.35) + 25.72  cycles/degree.
+
+The paper's text gives about 45 c/deg at 25 cd/m², about 9 at 0.05 cd/m², about 50 in daylight and
+about 2 near the limit of vision; all are tested. L_a is floored at the dark light (10⁻⁵ cd/m², R = 1.2).
+It is applied the way Ward Larson et al. do, as a variable-resolution filter.
+
+- L_a is the luminance of the ~1° foveal field around each pixel, plus the veil (theirs is the foveal
+  adaptation with the veil). Taking the fovea's local luminance matters: bright regions stay sharp and
+  dark ones blur. A global blur (Ferwerda et al. 1996) would blur both.
+- The extended image is read from the level of an image pyramid (mip chain of EXT) whose texel is half
+  a cycle at R: level log₂(1/(2·R·pixel angle)), linear between levels.
+- Point sources are not blurred: their image is the eye's point spread (§3), and their visibility has
+  its own model (§6).
+- On in eye mode only: enhanced mode lifts eye limits.
+
+At a 50° field on 1080 lines (0.046°/px, Nyquist 10.8 c/deg) the blur starts below ~0.08 cd/m² (the
+moonlit range) and reaches ~5 px at the dark light. With a narrower field it starts earlier. The
+alternative is the Barten (1999) CSF model with the ratio of scene and display sensitivities per
+frequency. It is photopic, while Shlaer's data reach scotopic levels, so it was not used. The temporal
+flicker of low-light acuity that Jacobs et al. (2015) observed is not modelled.
+
 ## 7. Display encoding
 
 1. **Chromatic adaptation.** CAT02 (CIE 159:2004, CIECAM02) from the adapted white, sunlight (the
@@ -396,14 +507,37 @@ that. Rigel/Vega stay near white, Antares and Betelgeuse show a warm tint.
    D = F[1 − (1/3.6)e^((−L_A−42)/92)], with F = 1 (average surround) and L_A = the adaptation
    luminance. A spectrally flat surface in sunlight shows as display white, as for an observer
    adapted to sunlight.
-2. **XYZ → linear sRGB** with the IEC 61966-2-1 matrix, relative to the display peak.
+2. **XYZ → linear RGB of the output colour space**, relative to display white. The colour space is
+   sRGB (IEC 61966-2-1 matrix), or Display P3 when the screen covers it (`(color-gamut: p3)`). The P3
+   matrix is built from its primaries (SMPTE EG 432-1) and D65; it matches CSS Color 4's to 10⁻³, and
+   the sRGB matrix built the same way matches the IEC matrix (tests).
 3. **Gamut mapping.** Out-of-gamut colours (negative components) and colours too bright for the
-   display in their hue (a component > 1) move toward the achromatic colour of the same luminance
-   (g·(1,1,1)) just far enough to fit, which preserves luminance and dominant hue. Luminance above
-   the display peak becomes display white.
-4. **sRGB transfer function** (IEC 61966-2-1).
-5. **Dither.** Triangular-PDF noise of ±1 LSB before 8-bit quantisation, against banding in dark
-   gradients such as glare falloff.
+   display in their hue (a component above the ceiling) move toward the achromatic colour of the same
+   luminance (g·(1,1,1)) just far enough to fit, which preserves luminance and dominant hue. Luminance
+   above the ceiling becomes the brightest white. The ceiling is 1 on SDR, and HDR peak / white on HDR.
+4. **Transfer function**: the sRGB curve (both colour spaces use it), extended above 1 on HDR.
+5. **Dither** (SDR only). Triangular-PDF noise of ±1 LSB before 8-bit quantisation, against banding in
+   dark gradients such as glare falloff.
+
+**HDR output (M5).** When the screen reports `(dynamic-range: high)` and the browser accepts an
+rgba16float canvas with `toneMapping: { mode: 'extended' }` (WebGPU §21.5; read back with
+`getConfiguration()`), the composite writes extended-range values: 1.0 is the display's SDR white and
+larger values are brighter. WebGPU canvases take *encoded* values (the colour space's transfer function,
+extended). The spec's own example, (2.5, −0.15, −0.15) on an 'srgb' canvas shown as (2.3, 0.545, 0.386)
+in Display P3, is reproduced in the tests. The eye model then reaches up to the display's peak:
+
+- The display observer (Pattanaik's inverse model, §4) is unchanged. It is adapted to white/5 with
+  reference white at display white (`displayPeakCdM2`, default 200 cd/m², near ITU-R BT.2408's
+  203 cd/m² HDR reference white).
+- Responses above reference white are shown up to the HDR peak (`hdrPeakCdM2`, default 1000 cd/m², the
+  common HDR10 mastering and VESA DisplayHDR 1000 peak) instead of being cut at white. Highlights (the
+  sunlit limb, bright stars, the Sun's glare core) are brighter on the screen, not compressed.
+- The painted glare (§3) takes only what exceeds the HDR peak. Point sources can hold up to the peak.
+- Browsers do not report the display's peak luminance or the absolute SDR white, so both are settings.
+  A display that cannot reach the peak clips.
+
+On SDR displays nothing changes. `Renderer.create({ display: 'auto' | 'sdr' | 'hdr', colorSpace })`
+chooses; `renderer.displayInfo` reports the result.
 
 ## 8. Enhanced mode
 
@@ -449,7 +583,7 @@ checks that the Sun's light on the bodies is unaffected.
 | Crumey 2014 | r₁…r₄, a₁…a₅, k₁…k₄, b₁…b₅, split points, 10⁻⁵ cd/m², ρ₂₈₅₀, F = 2, Z_V | verified against arXiv:1405.4209v1 |
 | Pattanaik et al. 2000 | n, cone σ/B formulas, ref. white/black, Eq. 3 colour exponent, time constants | verified against the paper (rod Eq. 4 no longer used, see §4) |
 | Hunt (2004) via Fairchild (2013) | F_LS (3800, 0.2, 10⁻⁵, 2.26, exponent 4), B_S (0.3, 0.3, 5), f_n half-point 2, HPE matrix | cross-checked against colour-science `colour.appearance.hunt` (which writes the F_LS exponent as 0.4; we follow Fairchild's 4) and against Pattanaik's cone path (tested equal) |
-| Kirk & O'Brien 2011 | (not used in v0) | read |
+| Kirk & O'Brien 2011 | (not used: §5) | read (thesis version UCB/EECS-2011-91, Eqs. 5.3–5.9) |
 | Watson & Yellott 2012 | 7.75, 5.75, 846, 0.41, 2, 28.58, 0.021323, 0.0095623, 0.1 | verified against the reference MATLAB implementation (Wheatley & Spitschan) |
 | CIE 146:2002 | 10, 5, 0.1, 62.5, exponent 4, 0.0025, 0.1°–100° | **secondary-verified**: every constant matches the equation as reprinted in ch. 2 ("Introduction to straylight") of an Erasmus MC Rotterdam thesis (hdl.handle.net/1765/102424). The CIE report itself was not obtainable. |
 | Watson 2013 | 21.95, −5.512, 0.3922, −0.62, 555 nm, √D | **secondary-verified** against an independent open implementation of Eqs. 4–5 (ISETBio/isetvalidate); the journal page was not retrievable. v1 fixed the missing square root. Fitted for 2–6 mm pupils. |
@@ -457,10 +591,16 @@ checks that the Sun's light on the bodies is unaffected.
 | IEC 61966-2-1 | XYZ→sRGB matrix, transfer function | standard values; round-trip tested |
 | CIE 159:2004 | CAT02 matrix, D formula | standard values |
 | IAU 2012 B2 | 1 au = 149 597 870.7 km | exact (in `render/constants.ts`; move to core/constants.ts when it exists) |
+| Pigment kinetics (§2 "Time") | τ_cone 110 s, τ_rod 400 s | verified against Pattanaik et al. 2000 §4.1.2 (their consensus source: Hood & Finkelstein 1986, not read) |
+| | cone I₀ = 10^4.3 td | **transcribed** (Rushton & Henry 1968 via secondary sources); consistent with Mahroo & Lamb 2004's σ⁻¹ = 710 cd·m⁻²·min (read in their paper) |
+| | rod Q = 10^7.0 scot td·s | read in Thomas & Lamb 1999 (log 6.8–7.0 from Rushton & Powell 1972, Alpern & Pugh 1974; 7.0 adopted) |
+| Alpern, Rushton & Torii 1970 | Dowling–Rushton a = 12 (1.2 log units per 10 % bleached) | read in the paper's summary (PMC1348717) |
+| Ward Larson et al. 1997 | acuity fit 17.25, 1.4, 0.35, 25.72 | verified against the paper (Eq. 15 and the values in its text) |
+| CSS Color 4 / SMPTE EG 432-1 | Display P3 primaries | matrix derived and checked against CSS Color 4's (tests) |
 
 ## 10. Known limitations and next steps
 
-- **Instant adaptation.** No dark adaptation over minutes, bleaching or afterimages (M5).
+- **Time-dependent adaptation (M5)** is global: no afterimages of bleached regions (§2 "Time").
 - **Foveal fixation is the view centre.** No eye tracking. Glare is evaluated as if each pixel were
   fixated, the standard approximation (the CIE equations are foveal).
 - **Veil from off-screen sources** is included for the Sun and for every body whose centre is outside
@@ -468,14 +608,19 @@ checks that the Sun's light on the bodies is unaffected.
   shows the Sun's veil from just outside the frame). Starlight outside the frame does not scatter
   into it, so the veil darkens slightly within the pyramid's reach of the frame edges (visible only in
   dense star fields with enhanced mode). A guard band would fix it.
-- **No sky background yet** (zodiacal light, diffuse Galactic light, Milky Way; M4). In space this
-  makes the dark-adapted limit V ≈ 7.6 instead of ~7.
 - **Rod hue shift** (Cao et al. 2008 / Kirk & O'Brien 2011) not implemented; mesopic scenes lose colour
   toward white rather than shifting toward blue.
+- **Cone desensitisation after a bleach** is only the loss of photon catch (§2 "Time"). The cone
+  Dowling–Rushton constant (Hollins & Alpern 1973) was not accessible, so cones recover faster and
+  higher than real in the first minutes after a strong bleach.
+- **Pupil dynamics**: the pupil follows the scene instantly. Real pupils constrict in ~1 s and dilate
+  over seconds to minutes.
+- **Afterimages** of bleached regions are not drawn: the pigment state is global, not per retinal
+  location.
 - **Watson (2013)** is extrapolated beyond its 6 mm fit range for dark-adapted pupils (≈7.9 mm); the
   resulting core (~0.8′) is sub-pixel at normal fields of view.
-- **Acuity loss at low luminance** (Ferwerda et al. 1996; Shaler 1937) is not modelled; spatial detail
-  is not blurred in the dark.
+- **Acuity loss at low luminance** (§5b) uses the physical local luminance. A rod bleach does not
+  lower acuity further.
 - **Ricco summation for supra-threshold brightness** is our extension of a threshold result. It is
   exact at threshold by construction; above threshold it assumes brightness pools like detection.
 - **Cone bleaching** is off (see §4).
@@ -507,6 +652,40 @@ checks that the Sun's light on the bodies is unaffected.
   reproduced: the colour exponent is capped at 1.
 
 ## References
+
+- Alpern, M., Pugh, E. N. (1974). The density and photosensitivity of human rhodopsin in the living
+  retina. J. Physiol.
+- Alpern, M., Rushton, W. A. H., Torii, S. (1970). The attenuation of rod signals by bleachings.
+  J. Physiol. 207(2).
+- Crawford, B. H. (1947). Visual adaptation in relation to brief conditioning stimuli. Proc. R. Soc. B
+  134, 283–302. (Equivalent background.)
+- Hollins, M., Alpern, M. (1973). Dark adaptation and visual pigment regeneration in human cones.
+  J. Gen. Physiol. 62, 430–447.
+- Hood, D. C., Finkelstein, M. A. (1986). Sensitivity to light. In Handbook of Perception and Human
+  Performance, vol. 1, ch. 5. Wiley.
+- Jacobs, D. E., Gallo, O., Cooper, E. A., Pulli, K., Levoy, M. (2015). Simulating the visual experience
+  of very bright and very dark scenes. ACM TOG 34(3).
+- Lamb, T. D. (1981). The involvement of rod photoreceptors in dark adaptation. Vision Res. 21,
+  1773–1782.
+- Lamb, T. D., Pugh, E. N. (2004). Dark adaptation and the retinoid cycle of vision. Prog. Retin. Eye
+  Res. 23, 307–380.
+- Mahroo, O. A. R., Lamb, T. D. (2004). Recovery of the human photopic electroretinogram after bleaching
+  exposures: estimation of pigment regeneration kinetics. J. Physiol. 554.
+- Patryas, L., Parry, N. R. A., Carden, D., Baker, D. H., Kelly, J. M. F., Aslam, T., Murray, I. J.
+  (2013). Assessment of age changes and repeatability for computer-based rod dark adaptation.
+  PMC3682089.
+- Rushton, W. A. H., Henry, G. H. (1968). Bleaching and regeneration of cone pigments in man. Vision
+  Res. 8.
+- Rushton, W. A. H., Powell, D. S. (1972). The rhodopsin content and the visual threshold of human
+  rods. Vision Res. 12.
+- Shlaer, S. (1937). The relation between visual acuity and illumination. J. Gen. Physiol. 21, 165–188.
+- Thomas, M. M., Lamb, T. D. (1999). Light adaptation and dark adaptation of human rod photoreceptors
+  measured from the a-wave of the electroretinogram. J. Physiol. 518, 479.
+- ITU-R BT.2408. Guidance for operational practices in HDR television production (203 cd/m² reference
+  white).
+- SMPTE EG 432-1:2010. Digital source processing: color processing for D-Cinema (P3 primaries).
+- W3C, CSS Color Module Level 4 ('display-p3'); W3C, WebGPU (§21.4 canvas colour space, §21.5
+  GPUCanvasToneMappingMode).
 
 - Ashikhmin, M. (2002). A tone mapping algorithm for high contrast images. Proc. 13th Eurographics
   Workshop on Rendering, 145–156.

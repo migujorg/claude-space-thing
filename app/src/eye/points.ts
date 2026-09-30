@@ -62,7 +62,7 @@ export function intendedDisplayLd(o: { scene: ObserverState; map: AppearanceMap;
 
 /** The eye looking at a point: adapted to the point's physical local background (Y, S), cd/m². */
 export function pointObserver(eye: EyeFrame, bg: { Y: number; S: number }): LocalObserver {
-  return localObserver(eye.settings, eye.display, bg.Y, bg.S, eye.exposure);
+  return localObserver(eye.settings, eye.display, bg.Y, bg.S, eye.exposure, eye.dark);
 }
 
 /**
@@ -82,8 +82,8 @@ export function pointAppearance(eye: EyeFrame, E: { Y: number; S: number }, bg: 
   const Lb = intendedDisplayLd(obs, bY, bS);
   const deltaLd = visible ? Math.max(0, intendedDisplayLd(obs, bY + eY, bS + eS) - Lb) : 0;
   const wantedFlux = deltaLd * eye.displayRiccoSr;
-  const Ldb = Math.min(Lb, eye.display.peak);
-  const capacity = Math.max(0, eye.display.peak - Ldb) * splatAreaSr;
+  const Ldb = Math.min(Lb, eye.display.maxLd);
+  const capacity = Math.max(0, eye.display.maxLd - Ldb) * splatAreaSr;
   const drawnFlux = Math.min(wantedFlux, capacity);
   const peakLd = Ldb + drawnFlux / splatAreaSr;
   const Lc = bY + (E.Y * unscattered * x) / o.coneSummationSr;

@@ -97,7 +97,7 @@ describe('atmosphere over a photometry-drawn body (fixture)', () => {
         skyIrradianceK(m, tab, 0, mu0, es);
         const rho = mu0 > 0 ? lawRadf(LAMBERT_LAW, mu0, mu, a) : 0;
         let T2 = 0, Sky = 0, Lp = 0;
-        for (let k = 0; k < Kb; k++) { T2 += m.weights[1][k] * ts[k] * path.T[k]; Sky += m.weights[1][k] * es[k] * path.T[k]; Lp += m.weights[1][k] * path.L[k]; }
+        for (let k = 0; k < Kb; k++) { T2 += m.weights[1][k] * ts[k] * path.Td[k]; Sky += m.weights[1][k] * es[k] * path.Td[k]; Lp += m.weights[1][k] * path.L[k]; }
         sum += ((r.K[1] * (rho * T2 + Sky) + Math.PI * sunE[1] * Lp) / sunE[1]) * ((2 / n) * (2 / n)) / Math.PI;
       }
       // Beyond the disk: the shell shader's chords (atmosphereDiskFactors' reference of it).

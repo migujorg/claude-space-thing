@@ -87,7 +87,8 @@ describe('buildSnapshot', () => {
     const eye = snap(0, [5e5, 0, 0], r, 301).s;
     expect(eye.bodies.find((b) => b.id === 301)!.selected).toBe(true);
     expect(eye.bodies.find((b) => b.id === 399)!.selected).toBe(false);
-    expect(eye.view).toEqual({ mode: 'eye', exposureBoostStops: 0, overlays: { provenanceTint: false } });
+    expect(eye.view).toEqual({ mode: 'eye', exposureBoostStops: 0, overlays: { provenanceTint: false }, adaptation: { mode: 'realtime' } });
+    expect(snap(0, [5e5, 0, 0], { ...r, instantAdaptation: true }).s.view.adaptation).toEqual({ mode: 'instant' });
     const enh = snap(0, [5e5, 0, 0], { ...r, view: 'enhanced' }).s;
     expect(enh.view.exposureBoostStops).toBe(3);
   });

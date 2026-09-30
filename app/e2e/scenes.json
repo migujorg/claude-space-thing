@@ -1,26 +1,227 @@
 {
-  "description": "Canonical views for the scene regression suite (app/e2e/README.md). Each scene is a URL query of the real app (app/src/app/url.ts) rendered headless by scripts/e2e.mjs. `defaults` are merged under each scene's params; a scene's `tolerance` overrides the suite defaults in scripts/e2e-lib.mjs.",
-  "viewport": { "width": 1280, "height": 720 },
-  "defaults": { "t": "2026-10-15T00:00:00Z", "smallbodies": "0" },
-  "scenes": [
-    { "id": "earth-day", "title": "Earth, day side (camera on the Sun side)", "params": { "target": "399", "dist": "20000", "az": "0", "el": "0" } },
-    { "id": "earth-day-strict", "title": "Earth, day side, Strict (measured + derived only)", "params": { "target": "399", "dist": "20000", "az": "0", "el": "0", "exists": "strict" } },
-    { "id": "earth-night", "title": "Earth, night side (Sun behind the Earth)", "params": { "target": "399", "dist": "20000", "az": "180", "el": "0" } },
-    { "id": "moon-quarter", "title": "Moon at quarter phase, close up", "params": { "target": "301", "dist": "6000", "az": "90", "el": "0" } },
-    { "id": "jupiter-galileans", "title": "Jupiter and the Galilean moons", "params": { "target": "599", "dist": "4000000" } },
-    { "id": "saturn-rings", "title": "Saturn and its rings from 400,000 km", "params": { "target": "699", "dist": "400000", "el": "25" } },
-    { "id": "uranus", "title": "Uranus", "params": { "target": "799", "dist": "150000" } },
-    { "id": "neptune", "title": "Neptune", "params": { "target": "899", "dist": "150000" } },
-    { "id": "pluto-charon", "title": "Pluto and Charon", "params": { "target": "999", "dist": "60000" } },
-    { "id": "starfield", "title": "Empty star field (looking outward past Pluto, labels off)", "params": { "target": "999", "dist": "3000000000", "labels": "0" } },
-    { "id": "starfield-enhanced", "title": "The same star field, Enhanced +6 stops", "params": { "target": "999", "dist": "3000000000", "labels": "0", "view": "enhanced", "boost": "6" } },
-    { "id": "sun-1au", "title": "The Sun from 1 au", "params": { "target": "10", "dist": "149597871" } },
-    { "id": "juno-closeup", "title": "3 Juno close-up (small body with a measured diameter and colour)", "params": { "target": "20000003", "smallbodies": "1" } },
-    { "id": "comet-lemmon", "title": "C/2025 A6 (Lemmon) at its predicted peak (m1 7.6 from Earth, 2025-10-27): coma and dust tail seen from the side at 0.27 au, naked eye (Sun shielded; catalogue points off, so SwiftShader need not integrate every small body 338 days back)", "params": { "t": "2025-10-27T00:00:00Z", "target": "1004054", "smallbodies": "1", "sbfield": "0", "dist": "40000000", "az": "90", "el": "20", "shield": "1" } },
-    { "id": "mars-map", "title": "Mars surface map, day side", "params": { "target": "499", "dist": "15000", "az": "0", "el": "10" } },
-    { "id": "mercury-map", "title": "Mercury surface map, day side", "params": { "target": "199", "dist": "8000", "az": "0", "el": "10" } },
-    { "id": "phobos-stickney", "title": "Phobos shape model from 45 km, looking down on Stickney (lat −1°, 49°W) in sunlight", "params": { "t": "2026-10-15T05:20:00Z", "target": "401", "dist": "45", "az": "-21", "el": "5" } },
-    { "id": "hyperion-fallback", "title": "Hyperion: shape model known, orientation unknown (chaotic rotation) → ellipsoid, and the inspector says why", "params": { "target": "607", "dist": "900", "az": "30", "el": "10" } },
-    { "id": "bennu-closeup", "title": "101955 Bennu close-up: OSIRIS-REx OLA shape model placed with its own rotation (small body)", "params": { "target": "20101955", "dist": "1.5", "az": "40", "el": "10", "smallbodies": "1" } }
-  ]
+ "description": "Canonical views for the scene regression suite (app/e2e/README.md). Each scene is a URL query of the real app (app/src/app/url.ts) rendered headless by scripts/e2e.mjs. `defaults` are merged under each scene's params; a scene's `tolerance` overrides the suite defaults in scripts/e2e-lib.mjs.",
+ "viewport": {
+  "width": 1280,
+  "height": 720
+ },
+ "defaults": {
+  "t": "2026-10-15T00:00:00Z",
+  "smallbodies": "0"
+ },
+ "scenes": [
+  {
+   "id": "earth-day",
+   "title": "Earth, day side (camera on the Sun side)",
+   "params": {
+    "target": "399",
+    "dist": "20000",
+    "az": "0",
+    "el": "0"
+   }
+  },
+  {
+   "id": "earth-day-strict",
+   "title": "Earth, day side, Strict (measured + derived only)",
+   "params": {
+    "target": "399",
+    "dist": "20000",
+    "az": "0",
+    "el": "0",
+    "exists": "strict"
+   }
+  },
+  {
+   "id": "earth-night",
+   "title": "Earth, night side (Sun behind the Earth)",
+   "params": {
+    "target": "399",
+    "dist": "20000",
+    "az": "180",
+    "el": "0"
+   }
+  },
+  {
+   "id": "moon-quarter",
+   "title": "Moon at quarter phase, close up",
+   "params": {
+    "target": "301",
+    "dist": "6000",
+    "az": "90",
+    "el": "0"
+   }
+  },
+  {
+   "id": "jupiter-galileans",
+   "title": "Jupiter and the Galilean moons",
+   "params": {
+    "target": "599",
+    "dist": "4000000"
+   }
+  },
+  {
+   "id": "saturn-rings",
+   "title": "Saturn and its rings from 400,000 km",
+   "params": {
+    "target": "699",
+    "dist": "400000",
+    "el": "25"
+   }
+  },
+  {
+   "id": "uranus",
+   "title": "Uranus",
+   "params": {
+    "target": "799",
+    "dist": "150000"
+   }
+  },
+  {
+   "id": "neptune",
+   "title": "Neptune",
+   "params": {
+    "target": "899",
+    "dist": "150000"
+   }
+  },
+  {
+   "id": "pluto-charon",
+   "title": "Pluto and Charon",
+   "params": {
+    "target": "999",
+    "dist": "60000"
+   }
+  },
+  {
+   "id": "starfield",
+   "title": "Empty star field (looking outward past Pluto, labels off)",
+   "params": {
+    "target": "999",
+    "dist": "3000000000",
+    "labels": "0"
+   }
+  },
+  {
+   "id": "starfield-enhanced",
+   "title": "The same star field, Enhanced +6 stops",
+   "params": {
+    "target": "999",
+    "dist": "3000000000",
+    "labels": "0",
+    "view": "enhanced",
+    "boost": "6"
+   }
+  },
+  {
+   "id": "sun-1au",
+   "title": "The Sun from 1 au",
+   "params": {
+    "target": "10",
+    "dist": "149597871"
+   }
+  },
+  {
+   "id": "juno-closeup",
+   "title": "3 Juno close-up (small body with a measured diameter and colour)",
+   "params": {
+    "target": "20000003",
+    "smallbodies": "1"
+   }
+  },
+  {
+   "id": "comet-lemmon",
+   "title": "C/2025 A6 (Lemmon) at its predicted peak (m1 7.6 from Earth, 2025-10-27): coma and dust tail seen from the side at 0.27 au, naked eye (Sun shielded; catalogue points off, so SwiftShader need not integrate every small body 338 days back)",
+   "params": {
+    "t": "2025-10-27T00:00:00Z",
+    "target": "1004054",
+    "smallbodies": "1",
+    "sbfield": "0",
+    "dist": "40000000",
+    "az": "90",
+    "el": "20",
+    "shield": "1"
+   }
+  },
+  {
+   "id": "mars-map",
+   "title": "Mars surface map, day side",
+   "params": {
+    "target": "499",
+    "dist": "15000",
+    "az": "0",
+    "el": "10"
+   }
+  },
+  {
+   "id": "mercury-map",
+   "title": "Mercury surface map, day side",
+   "params": {
+    "target": "199",
+    "dist": "8000",
+    "az": "0",
+    "el": "10"
+   }
+  },
+  {
+   "id": "starfield-dark-2min",
+   "title": "Star field 2 min after 10 min of daylight (dark adaptation: cones recovering, rods bleached)",
+   "params": {
+    "target": "999",
+    "dist": "3000000000",
+    "labels": "0",
+    "adaptfrom": "10000,600,120"
+   }
+  },
+  {
+   "id": "starfield-dark-12min",
+   "title": "Star field 12 min after 10 min of daylight (dark adaptation: the cone plateau)",
+   "params": {
+    "target": "999",
+    "dist": "3000000000",
+    "labels": "0",
+    "adaptfrom": "10000,600,720"
+   }
+  },
+  {
+   "id": "starfield-dark-30min",
+   "title": "Star field 30 min after 10 min of daylight (dark adaptation: rods nearly recovered)",
+   "params": {
+    "target": "999",
+    "dist": "3000000000",
+    "labels": "0",
+    "adaptfrom": "10000,600,1800"
+   }
+  },
+  {
+   "id": "phobos-stickney",
+   "title": "Phobos shape model from 45 km, looking down on Stickney (lat \u22121\u00b0, 49\u00b0W) in sunlight",
+   "params": {
+    "t": "2026-10-15T05:20:00Z",
+    "target": "401",
+    "dist": "45",
+    "az": "-21",
+    "el": "5"
+   }
+  },
+  {
+   "id": "hyperion-fallback",
+   "title": "Hyperion: shape model known, orientation unknown (chaotic rotation) \u2192 ellipsoid, and the inspector says why",
+   "params": {
+    "target": "607",
+    "dist": "900",
+    "az": "30",
+    "el": "10"
+   }
+  },
+  {
+   "id": "bennu-closeup",
+   "title": "101955 Bennu close-up: OSIRIS-REx OLA shape model placed with its own rotation (small body)",
+   "params": {
+    "target": "20101955",
+    "dist": "1.5",
+    "az": "40",
+    "el": "10",
+    "smallbodies": "1"
+   }
+  }
+ ]
 }

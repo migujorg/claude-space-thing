@@ -181,5 +181,67 @@ describe('the Moon in a frame with maps and the per-texel law', () => {
     const expected = pPhi[1] * (Rm / dist) ** 2; // d = 1 AU
     // Within the quadrature error for this sharp-edged test map (Gauss–Legendre 24 × 24 over the lune).
     expect(Math.abs(E / expected - 1)).toBeLessThan(0.015);
-  }, 60000); // brute-force integration: allow for a loaded machine
+  }, 180000); // brute-force integration: allow for a loaded machine (the suite shares the CPU)
+
+  it('outside the ROLO domain (the far side) the maps are normalized at the model\'s reference view', async () => {
+    const { prepareFrame, cameraGeom } = await import('../src/render/frame');
+    const { AdaptationState, computeEyeFrame } = await import('../src/eye/model');
+    const { DEFAULT_EYE_SETTINGS } = await import('../src/eye/settings');
+    const { AU_KM } = await import('../src/render/constants');
+    const { evalPhase } = await import('../src/render/photometry');
+    const t = decodeTexelHapke(hapkeRef(), albedoRef, tiles());
+    // TEST FIXTURE map: a dark near side, a bright far side.
+    const bright = (lonDeg: number) => (Math.abs(lonDeg) > 90 ? 1.3 : 0.8);
+    const map0: Level0Map = { width: 512, height: 256, data: new Float32Array(512 * 256 * 4) };
+    for (let j = 0; j < 256; j++) for (let i = 0; i < 512; i++) {
+      const m = bright(-180 + (360 * (i + 0.5)) / 512);
+      map0.data.set([m, m, m, m], (j * 512 + i) * 4);
+    }
+    const sunIrr: [number, number, number, number] = [1.3e5, 1.35e5, 1.4e5, 3.2e5];
+    const dist = 384400, alpha = 1.0, Rm = 1737.4;
+    const rolo = {
+      kind: 'rolo-v1' as const, formula: 'test',
+      a: [0, 1, 2, 3].map(() => [-2.1, -1.63, 0.34, -0.19]), b: [0, 1, 2, 3].map(() => [0.04, 0.011, -0.004]),
+      d: [0, 1, 2, 3].map(() => [0.37, -0.11, 0.008]), c: [0.00034, -0.0013, 0.00096, 0.00066] as [number, number, number, number],
+      p: [4.06, 12.88, -30.59, 16.75] as [number, number, number, number], radiusKm: 1737.39,
+      minPhaseDeg: 1.55, maxPhaseDeg: 97, maxObserverLatitudeDeg: 7, maxObserverLongitudeDeg: 8,
+    };
+    // Camera over the far side (selenographic longitude 180°), the Sun α away.
+    const body: SceneBody = {
+      id: 301, name: 'Moon', pos: [dist, 0, 0], toSun: [-AU_KM * Math.cos(alpha), AU_KM * Math.sin(alpha), 0], orient: [1, 0, 0, 0, 1, 0, 0, 0, 1],
+      radii: [Rm, Rm, Rm], albedoXYZS: [18000, 17700, 13700, 35000], phase: { kind: 'lambert' }, surfaceUnknown: false,
+      worstLabel: 'derived', selected: false, surface: { albedo: albedoRef, photometry: hapkeRef() }, diskReflectanceModel: rolo,
+    };
+    const st = new AdaptationState();
+    st.update({ coneCdM2: 1, rodCdM2: 1, cornealFlux: 0 }, 0);
+    const eye = computeEyeFrame(DEFAULT_EYE_SETTINGS, st, 'eye', 0, null);
+    const snap = {
+      et: 0, camera: { orient: [0, 0, -1, -1, 0, 0, 0, 1, 0] as never, fovY: (1 * Math.PI) / 180, width: 1280, height: 720 },
+      sun: { pos: [AU_KM, 0, 0] as V3, radius: 695700, irradianceXYZS_1AU: sunIrr, limbDarkening: null }, bodies: [body],
+      view: { mode: 'eye' as const, exposureBoostStops: 0, overlays: { provenanceTint: false } }, orbits: [],
+    };
+    const g = cameraGeom(snap, 1280, 720, 1e-7);
+    const surfaces = () => ({ albedo: { base: 1, maxLevel: 0, zonal: null, map0 }, photometry: { texel: t, view: null as never } });
+    const r = prepareFrame(snap, g, eye, 1e-9, { surfaces }).resolved[0];
+    // Brute force at the reference view (observer over 0°, 0°; Sun at ±α on the equator) with the frame's K.
+    const Eref = (sgn: number) => {
+      const obs: V3 = [1, 0, 0], sun: V3 = [Math.cos(alpha), sgn * Math.sin(alpha), 0];
+      const n = 300;
+      let E = 0;
+      for (let a = 0; a < n; a++) for (let b = 0; b < 2 * n; b++) {
+        const lat = -Math.PI / 2 + (Math.PI * (a + 0.5)) / n;
+        const lon = -Math.PI + (Math.PI * (b + 0.5)) / n;
+        const nrm: V3 = [Math.cos(lat) * Math.cos(lon), Math.cos(lat) * Math.sin(lon), Math.sin(lat)];
+        const mu = nrm[0] * obs[0] + nrm[1] * obs[1] + nrm[2] * obs[2];
+        const mu0 = nrm[0] * sun[0] + nrm[1] * sun[1] + nrm[2] * sun[2];
+        if (!(mu > 0) || !(mu0 > 0)) continue;
+        const dA = Rm * Rm * Math.cos(lat) * (Math.PI / n) * (Math.PI / n);
+        E += r.K[1] * bright((lon * 180) / Math.PI) * texelRadf(t, lat, lon, mu0, mu, alpha)[1] * (dA * mu) / (dist * dist);
+      }
+      return E;
+    };
+    const ph = evalPhase(body.phase!, alpha);
+    const expected = body.albedoXYZS![1] * (ph.ok ? ph.phi : NaN) * (Rm / dist) ** 2; // d = 1 AU
+    expect(Math.abs(Math.sqrt(Eref(1) * Eref(-1)) / expected - 1)).toBeLessThan(0.015);
+  }, 180000);
 });

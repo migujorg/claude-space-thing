@@ -85,3 +85,53 @@ export function srgbDecode(v: number): number {
   if (v <= SRGB.encodeThreshold * SRGB.linearSlope) return v / SRGB.linearSlope;
   return Math.pow((v + SRGB.gammaOffset) / SRGB.gammaScale, SRGB.gamma);
 }
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+// Output colour spaces and HDR (docs/eye-model.md §7). WebGPU canvases take values *encoded* with the
+// colour space's transfer function (the sRGB curve for both 'srgb' and 'display-p3'), extended beyond
+// [0, 1] with toneMapping 'extended', where 1.0 is the display's SDR white (WebGPU §21.4–21.5).
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+
+/** RGB → XYZ (Y = 1 at white) from primary and white chromaticities (the standard construction, SMPTE RP 177). */
+export function rgbToXyzFromPrimaries(r: [number, number], g: [number, number], b: [number, number], w: [number, number]): M3 {
+  const col = (c: [number, number]): V3 => [c[0] / c[1], 1, (1 - c[0] - c[1]) / c[1]];
+  const cr = col(r), cg = col(g), cb = col(b);
+  // Rows of XYZ; columns are the primaries.
+  const P: M3 = [cr[0], cg[0], cb[0], cr[1], cg[1], cb[1], cr[2], cg[2], cb[2]];
+  const S = mul(inv3(P), col(w));
+  return [P[0] * S[0], P[1] * S[1], P[2] * S[2], P[3] * S[0], P[4] * S[1], P[5] * S[2], P[6] * S[0], P[7] * S[1], P[8] * S[2]];
+}
+
+/**
+ * Display P3 (CSS Color 4 'display-p3'): DCI-P3 primaries (SMPTE EG 432-1: R 0.680, 0.320; G 0.265, 0.690;
+ * B 0.150, 0.060) with the D65 white and the sRGB transfer function.
+ */
+export const DISPLAY_P3 = { r: [0.68, 0.32] as [number, number], g: [0.265, 0.69] as [number, number], b: [0.15, 0.06] as [number, number] };
+export const P3_TO_XYZ: M3 = rgbToXyzFromPrimaries(DISPLAY_P3.r, DISPLAY_P3.g, DISPLAY_P3.b, [SRGB.whiteX, SRGB.whiteY]);
+export const XYZ_TO_P3: M3 = inv3(P3_TO_XYZ);
+
+/** sRGB transfer function extended to all reals (odd symmetry, the same curve above 1). */
+export function srgbEncodeExtended(c: number): number {
+  const a = Math.abs(c);
+  const e = a <= SRGB.encodeThreshold ? SRGB.linearSlope * a : SRGB.gammaScale * Math.pow(a, 1 / SRGB.gamma) - SRGB.gammaOffset;
+  return c < 0 ? -e : e;
+}
+
+/**
+ * gamutMap with a ceiling: linear RGB relative to display white, components kept in [0, max] (max = HDR
+ * peak / white; 1 on SDR) by moving toward the achromatic colour of the same Y, which is itself capped at
+ * max. `yRow` is the Y row of the colour space's RGB → XYZ matrix.
+ */
+export function gamutMapTo(rgb: V3, max: number, yRow: readonly number[]): V3 {
+  const Y = yRow[0] * rgb[0] + yRow[1] * rgb[1] + yRow[2] * rgb[2];
+  const g = Y / (yRow[0] + yRow[1] + yRow[2]);
+  if (g >= max) return [max, max, max];
+  if (g <= 0) return [0, 0, 0];
+  let t = 1;
+  for (let k = 0; k < 3; k++) {
+    const c = rgb[k];
+    if (c < 0) t = Math.min(t, g / (g - c));
+    if (c > max) t = Math.min(t, (max - g) / (c - g));
+  }
+  return [g + t * (rgb[0] - g), g + t * (rgb[1] - g), g + t * (rgb[2] - g)];
+}

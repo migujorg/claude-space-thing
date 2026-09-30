@@ -26,6 +26,10 @@ struct Atm {
   quad: vec4f,    // shell quad half-extent (tan units), 1 = full-screen (camera near or inside), steps, 1 = scattering not measured
   w: array<vec4f, 16>,     // fold weights: channel c, bins 4j..4j+3 at w[4c + j]
   depol: array<vec4f, 4>,  // Rayleigh depolarisation ratio per bin
+  delta: array<vec4f, 4>,  // δ-M forward-peak fraction of the particle scattering per bin (atmosphere.ts particleDeltaFraction)
+  ap: vec4f,               // aerial-perspective columns (AP_COLUMNS_SHADER): column size (px), columns x, columns y, altitude slices
+  apB: vec4f,              // body index, 1 = columns written this frame, unused, unused
+  apH: array<vec4f, 3>,    // slice altitudes (km), ascending, slice 0 = 0 (the whole path)
 };
 
 const ATM_TW: f32 = ${f(ATM_TEX_W)};
@@ -75,6 +79,18 @@ fn atmRayleighPhase(nu: f32, depol: vec4f) -> vec4f {
   let gamma = depol / (2.0 - depol);
   return (3.0 / (16.0 * PI)) * ((1.0 + 3.0 * gamma) + (1.0 - gamma) * nu * nu) / (1.0 + 2.0 * gamma);
 }
+/**
+ * What a surface pixel needs of its view path: path radiance folded to XYZS (whole path and the part above
+ * the cloud tops) and the δ-scaled transmittances per bin.
+ */
+struct AtmView {
+  Lf: vec4f,
+  Lcf: vec4f,
+  Td: array<vec4f, 4>,
+  Tcd: array<vec4f, 4>,
+};
+fn atmSliceH(k: i32) -> f32 { return A.apH[k >> 2][k & 3]; }
+
 /** Σ_k w[c][k]·x_k for the four channels. */
 fn atmFold(x: array<vec4f, 4>) -> vec4f {
   var o = vec4f(0.0);
@@ -89,6 +105,8 @@ struct AtmPath {
   T: array<vec4f, 4>,   // transmittance of the whole segment
   Lc: array<vec4f, 4>,  // the same over the part above altitude hSplit (the cloud tops)
   Tc: array<vec4f, 4>,
+  Td: array<vec4f, 4>,  // δ-scaled transmittances, for a surface's radiance (its forward-scattered part stays in its image)
+  Tcd: array<vec4f, 4>,
 };
 
 /**
@@ -107,6 +125,8 @@ fn atmMarch(p0: vec3f, d: vec3f, sNear: f32, sFar: f32, n: i32, S: vec3f, m0: ve
   for (var j = 0; j < K4; j++) {
     o.T[j] = vec4f(1.0);
     o.Tc[j] = vec4f(1.0);
+    o.Td[j] = vec4f(1.0);
+    o.Tcd[j] = vec4f(1.0);
     phR[j] = atmRayleighPhase(nu, A.depol[j]);
     phA[j] = atmParticlePhase(nu, j);
   }
@@ -129,12 +149,68 @@ fn atmMarch(p0: vec3f, d: vec3f, sNear: f32, sFar: f32, n: i32, S: vec3f, m0: ve
       let seg = src * select(vec4f(ds), (1.0 - tr) / max(ext, vec4f(1e-12)), ext > vec4f(1e-9));
       o.L[j] += o.T[j] * seg;
       o.T[j] *= tr;
+      let trD = exp(-(ext - A.delta[j] * sA) * ds);
+      o.Td[j] *= trD;
       if (h > hSplit) {
         o.Lc[j] += o.Tc[j] * seg;
         o.Tc[j] *= tr;
+        o.Tcd[j] *= trD;
       }
     }
   }
+  return o;
+}
+`;
+
+/**
+ * Aerial-perspective columns, read side (bodies that draw an atmosphere over their disk): the view path of
+ * a pixel from the columns around it (AP_COLUMNS_SHADER in shaders.ts), bilinear between columns and linear
+ * between altitude slices. ok = false when a neighbouring column missed the body or the columns are off:
+ * the caller then marches the pixel itself. Needs binding apTex (texture_3d, rgba16float).
+ */
+export const AP_READ_WGSL = /* wgsl */ `
+fn apView(fp: vec2f, hc: f32, ok: ptr<function, bool>) -> AtmView {
+  var o: AtmView;
+  *ok = false;
+  if (A.apB.y < 0.5) { return o; }
+  let K4 = atmK4();
+  let nq = 1 + K4;
+  let dims = vec2i(i32(A.ap.y), i32(A.ap.z));
+  let ns = i32(A.ap.w);
+  let c = fp / A.ap.x - 0.5;
+  let i0 = vec2i(floor(c));
+  let fr = c - vec2f(i0);
+  // The slice pair around the cloud tops.
+  var k0 = 0;
+  var ks = 0.0;
+  if (hc > 0.0 && ns > 1) {
+    k0 = ns - 2;
+    for (var k = 0; k < ns - 1; k++) { if (hc < atmSliceH(k + 1)) { k0 = k; break; } }
+    ks = clamp((hc - atmSliceH(k0)) / max(atmSliceH(k0 + 1) - atmSliceH(k0), 1e-6), 0.0, 1.0);
+  }
+  let k1 = min(k0 + 1, ns - 1);
+  for (var n = 0; n < 4; n++) {
+    let q = clamp(i0 + vec2i(n & 1, n >> 1), vec2i(0), dims - 1);
+    let w = select(1.0 - fr.x, fr.x, (n & 1) == 1) * select(1.0 - fr.y, fr.y, (n >> 1) == 1);
+    let l0 = textureLoad(apTex, vec3i(q, 0), 0);
+    if (l0.x < 0.0) { return o; }
+    o.Lf += w * l0;
+    o.Lcf += w * mix(textureLoad(apTex, vec3i(q, k0 * nq), 0), textureLoad(apTex, vec3i(q, k1 * nq), 0), ks);
+    for (var j = 0; j < K4; j++) {
+      o.Td[j] += w * textureLoad(apTex, vec3i(q, 1 + j), 0);
+      o.Tcd[j] += w * mix(textureLoad(apTex, vec3i(q, k0 * nq + 1 + j), 0), textureLoad(apTex, vec3i(q, k1 * nq + 1 + j), 0), ks);
+    }
+  }
+  *ok = true;
+  return o;
+}
+/** The same from a marched path (the fallback). */
+fn atmViewOf(p: AtmPath) -> AtmView {
+  var o: AtmView;
+  o.Lf = atmFold(p.L);
+  o.Lcf = atmFold(p.Lc);
+  o.Td = p.Td;
+  o.Tcd = p.Tcd;
   return o;
 }
 `;

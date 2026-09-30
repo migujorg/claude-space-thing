@@ -13,11 +13,14 @@ Code:
 - `atmosphere.worker.ts`: computes the tables off the main thread.
 - `atmosphereGpu.ts`: packs the tables into a texture.
 - `shaders-atmosphere.ts`: the per-pixel march.
-- `shaders.ts`: the Earth body variant `EARTH_BODY_SHADER` and `ATMOSPHERE_SHELL_SHADER`.
+- `shaders.ts`: the Earth body variant `EARTH_BODY_SHADER`, `ATMOSPHERE_SHELL_SHADER`, the aerial-perspective
+  columns `AP_COLUMNS_SHADER` and the limb transmittance of light from beyond (`LIMB_WGSL`, used by the star
+  cull and the sky background).
 
 Tests: `app/tests/render-earth.test.ts`, `render-atmosphere.test.ts` (TEST FIXTURE atmosphere) and
 `render-earth-energy.test.ts` (real products, §6). Test page: `render-test.html?scene=earth-data&sun=lat,lon&obs=lat,lon&dist=km`.
-Any of `map|clouds|water|night|wind|atm=0` switches a part off.
+Any of `map|clouds|water|night|wind|atm=0` switches a part off; `skip=ap` marches every pixel instead of the
+columns, `skip=limb` leaves stars undimmed, `stars=N` adds N TEST FIXTURE stars, `bench=N` reports median pass times.
 
 ## 0. Inputs
 
@@ -98,6 +101,27 @@ cloud base, and is seen through the direct view path plus the diffuse part (1 �
 - The marks count only where the pixel is lit. At night only the cloud state matters, and only where
   there are lights to hide.
 
+**What the layer cannot say (validation, M5).** In the validation case `earth-himawari9-2026` (Himawari-9,
+the cloud layer's own overpass), the disk centre renders 2.1× the measured radiance and three points
+near it 1.2–1.25×. The limb passes. The centre texel is 81 % cloudy with an in-cloud mean τ = 7.8 (low
+cumulus, tops near 1 km), and its neighbours range from clear to τ = 20. Across the swath from 125° E to
+160° E the render is about 1.4× the image. The model reproduces what the layer says there (checked on the
+CPU with earth.ts): the excess is in what the layer means.
+
+- Its cloud fraction counts the samples with a retrieved cloud top. These include partly cloudy samples,
+  for which the retrieval gives no optical thickness.
+- Its τ is the mean over the samples that have one.
+- The renderer gives that τ to the whole cloud fraction. Where no sample has a τ (49 % of the cloudy texels
+  in the swath) the share is drawn as unknown. Where only some lack one, nothing in the layer tells, and
+  broken cumulus comes out too bright.
+- R(τ̄) ≥ the mean of R(τ) adds to it (the plane-parallel bias, Cahalan et al. 1994, J. Atmos. Sci. 51,
+  2434).
+
+A fix needs two things from the pipeline: the share of samples with an optical-thickness retrieval (the rest
+of the cloudy share is then unknown), and preferably the mean of ln τ (Cahalan et al.'s effective
+thickness). The renderer change is then small. The 8-px blocks in the rendered case are the glint: the wind
+layer's resolution and swath gaps (§3; clear water where the wind is unknown gets no glint).
+
 **Not modelled.** Cloud parallax and cloud shadows on the ground. The cloud-top height is used only to
 place the cloud's reflection inside the atmosphere (§4). Also not modelled: 3D cloud effects, the glory,
 and cloud-bow phase features (the two-stream albedo has no phase function).
@@ -123,7 +147,11 @@ Choices and references for the glint:
   adaptation 6·10⁷ cd/m².
 - **erfc** comes from Abramowitz & Stegun 7.1.26.
 - **Wind.** The wind layer gives U10: the AMSR3 ascending pass (~13:30 local, like the clouds), else the
-  daily mean. It is taken as U(12.5 m) = 1.02·U10 (the layer header's neutral log profile).
+  daily mean. The choice is made per texel, then the texels are interpolated (M5). Choosing per pixel after
+  interpolation switched sources in steps where the ascending swath ended: blocks of different glint in the
+  validation case `earth-himawari9-2026`. It is taken as U(12.5 m) = 1.02·U10 (the layer header's neutral
+  log profile). The layer is level 2 (0.18°, ~20 km); the passive-microwave winds behind it are coarser
+  still, so the glint varies in blocks of a few tens of km.
 - **Direction.** Wind direction is not in the layer, so the up/cross-wind anisotropy and the Gram–Charlier
   terms are left out.
 - **Thin clouds.** The glint is seen through them in the unscattered beam both ways.
@@ -194,20 +222,68 @@ The pixel is then composed, per bin, folded into XYZS with the fold weights:
 ρ_dir and ρ_dif are the Earth model's radiance factors for direct sunlight and for diffuse skylight. Each
 part is taken as spectrally flat within an XYZS channel (exact for grey clouds).
 
+**δ-scaled view transmittance (M5).** A particle's forward-scattering peak sends a surface's light on
+along (almost) its own path. For aerosol and dust (g ≈ 0.7) the peak is a few degrees wide, a fraction of
+a km on the ground from the scattering altitude, so the light stays in the pixel. T_view for the surface
+and cloud radiance therefore uses the δ-M extinction σ_ext − f·σ_s,particle (Wiscombe 1977, M = 2: f = χ₂,
+the second Legendre moment of the particle phase function, = g² for Henyey–Greenstein; `atmosphere.ts
+particleDeltaFraction`). The path radiance, sunlight and skylight keep the full phase functions.
+Mars dust has f ≈ 0.5, so T_view at 0° phase rises from 0.53 to 0.69 of the airless disk. Images under
+dust keep more contrast, and the disk renormalisation keeps the total.
+
+**Aerial-perspective columns (M5).** Marching every pixel is most of the cost (§7). Following Hillaire's
+(2020) aerial-perspective volume, a compute pass (`AP_COLUMNS_SHADER`) marches the view path once per
+column of c × c pixels, c = ⌈frame height / 270⌉ (at least 2), and the pixels interpolate. Hillaire slices the
+camera frustum by distance, for views from inside the air. Seen from outside, what changes along a column's
+path toward the surface is the altitude, so the slices here are by altitude. For each slice altitude h_k the
+texture (rgba16float, 3D) holds the path radiance folded to XYZS and the δ-scaled transmittance per bin of
+the part of the path above h_k:
+
+- h_0 = 0 is the whole path (the clear part and the night lights);
+- Earth adds 1, 2, 3, 4, 6, 8, 10, 13 and 16 km, the range of its cloud tops. A pixel reads the two slices
+  around its cloud-top height and interpolates linearly. Other bodies use only h_0.
+
+A pixel interpolates its four surrounding columns bilinearly. If any of them missed the body (at the limb), it
+marches itself. The slice altitudes and the column size are sampling choices. Against the per-pixel march at
+640 × 360, the 8-bit output differs by at most 15/255 on Earth (mean 0.2; cloud edges, where the cloud-top
+height varies within a column) and 3/255 on Mars.
+
 **Limb.** Rays that miss the solid Earth go through `ATMOSPHERE_SHELL_SHADER`. It marches the chord through
 the top sphere from its closest point to the centre, computed without cancellation at large distance.
 Pixels partly covered by the Earth get the uncovered share. The shell is additive and depth-tested, with no
 depth write.
+
+**Stars behind the limb (M5).** A star seen through the shell is dimmed by the transmittance of its chord.
+The optical depth of the chord through the shell, for a ray whose closest approach is at impact altitude h, is
+
+  τ_k(h) = 2 ∫₀^L σ_ext,k(√(r_h² + s²) − R) ds, with r_h = R + h and L = √(r_top² − r_h²).
+
+`atmosphere.ts limbChordTable` tabulates it at 64 altitudes from the bottom to the top. It uses full
+extinction, not δ-scaled: the forward peak is degrees wide and spreads a star's light far beyond its image.
+The table is folded to XYZS as the effective optical depth −ln Σ_k w_ck·e^{−τ_k}. The fold weights make this
+exact for a spectrum like the Sun's; for other stars it is an approximation. The star cull (`CULL_SHADER
+limbTransmittance`) finds each point source's closest approach in the body's unit-sphere frame, reads the
+table (log-linear in h), and multiplies the source's XYZS. A ray that meets the solid body gives 0. The sky
+background (Milky Way, faint stars, zodiacal light: `sky/background.ts`) is dimmed the same way per pixel,
+the zodiacal light included, since nearly all of it comes from beyond the planet.
+
+This applies to the nearest four measured atmospheres that are drawn, with the camera above their top. Stars
+seen from inside an atmosphere are not dimmed (extinction by airmass is not modelled). The test page's
+`stars=N&skip=limb` compares with and without. From 8 000 km with 500 000 TEST FIXTURE stars, a star just
+outside the solid limb is no longer drawn, and the stars behind the disk are dropped at the cull instead of
+by the depth test (57 871 → 19 944 drawn). The test checks the table against the Chapman grazing
+approximation τ ≈ σ(h)·√(2π r_h H_s) for an exponential TEST FIXTURE atmosphere, within 2 % in transmittance.
 
 **Titan.** See §8.
 
 **Not modelled.**
 
 - Refraction: the eclipse ring comes out blue from high-altitude Rayleigh scattering, not red from light
-  refracted into the shadow.
+  refracted into the shadow. Stars behind the limb are dimmed but not displaced or flattened, although a
+  ray grazing the surface is bent by about twice the refraction at the horizon (≈ 35′), over a degree.
+  atmospheres.json gives extinction and scattering, not refractivity.
 - O₂ and H₂O bands (omitted in the data).
 - Multiple bounces between the surface and the air, beyond the ground term of Ψ_ms.
-- Stars seen through the limb are not dimmed.
 - Clouds affect only their own pixel, not the air around them.
 
 ## 5. Night lights
@@ -229,11 +305,11 @@ claim, so it is not marked: marking it would hatch most of the night side.
 | Model | A (X, Y, Z, S) | Ratio to measured |
 |---|---|---|
 | Surface + clouds, no atmosphere (level 1) | 0.179 0.178 0.182 0.180 | 0.74 0.75 0.59 0.67 |
-| + atmosphere, glint, sky reflection (level 0) | 0.212 0.211 0.268 0.240 | 0.88 0.89 0.87 0.89 |
+| + atmosphere, glint, sky reflection (level 0) | 0.215 0.214 0.271 0.243 | 0.89 0.90 0.88 0.91 |
 | Measured p·Φ(2.42°) | 0.241 0.238 0.308 0.269 | 1 |
 
-With the atmosphere the colour matches: all four channels come out 0.87–0.89 of the measurement. The
-remaining 11–13 % is within the photometry's stated variability: the disk reflectance changes by 10–20 %
+With the atmosphere the colour matches: all four channels come out 0.88–0.91 of the measurement (with the
+δ-scaled view transmittance). The remaining 9–12 % is within the photometry's stated variability: the disk reflectance changes by 10–20 %
 with clouds and the hemisphere in view, and the clouds here are from a different day, 2026-09-28. Model
 approximations also contribute:
 
@@ -248,10 +324,25 @@ The unknown share of the disk is 1 %.
 Per Earth pixel: 32 steps × (profile 3, transmittance 1, multiple scattering 1) texture samples per 4 bins,
 i.e. 480 filtered samples, plus the cloud and surface lookups.
 
-On SwiftShader at 960 × 540 with the Earth covering about 40 % of the frame, bodies+rings takes 13 s, against
-1.3 s without the atmosphere. On a desktop GPU this is estimated at ≈ 2–4 ms at 1080p and 8–15 ms for a 4K
-frame filled by Earth. Hillaire's aerial-perspective volume (a 32³ froxel table per frame) would cut it to a
-few samples per pixel; it is the next optimisation.
+On SwiftShader at 960 × 540 with the Earth covering about 40 % of the frame, the per-pixel march made
+bodies+rings take 13 s, against 1.3 s without the atmosphere. On a desktop GPU this is estimated at
+≈ 2–4 ms at 1080p and 8–15 ms for a 4K frame filled by Earth.
+
+**Aerial-perspective columns (M5, §4).** The march now runs once per column: 1/c² of the pixels (c = 3 at
+720p, 4 at 1080p, 8 at 4K), plus the pixels at the limb. Each pixel then makes 4 × 3·(1 + K/4) texel
+loads (four columns; the two slices around the cloud tops and the whole path), 48 for K = 12 bins, instead of
+32 steps × 5 filtered samples × K/4. Measured on SwiftShader at 1280 × 720, with frames alternating between
+columns and per-pixel march under the same load (`bench=4&benchab=ap`, median):
+
+| View | Per-pixel march: bodies+rings | Columns: aerial perspective + bodies+rings |
+|---|---|---|
+| Earth, 45 000 km (§6 geometry) | 27.3 s | 1.8 + 17.2 s (−30 %) |
+| Mars, 8 radii | 15.7 s | 1.0 + 10.7 s (−26 %) |
+
+Mars without its atmosphere takes 2.9 s. On SwiftShader most of the remaining cost is not the march:
+removing the per-pixel fallback from the shader changed the Mars time by less than the run-to-run noise
+(±30 %). A real GPU, where the march dominates, should gain close to c². This has not been measured in this
+container, which has no GPU.
 
 ## 8. Other atmospheres
 
@@ -301,7 +392,7 @@ extrapolated disk could not contain.
 
 | Body | Components | Outcome in the test views |
 |---|---|---|
-| Mars | CO₂ Rayleigh; dust, double HG, ω 0.71–0.98 | Over the disk to α ≈ 65°: haze softens the terminator and lowers contrast. At α = 36° the surface scale is ×0.82 / 0.74 / 0.22 / 0.52 (X, Y, Z, S): the blue of the disk is mostly dust light. Not drawn beyond (3.). |
+| Mars | CO₂ Rayleigh; dust, double HG, ω 0.71–0.98 | Over the disk to α ≈ 65°: haze softens the terminator and lowers contrast. At α = 36° the surface scale is ×0.62 / 0.57 / 0.18 / 0.41 (X, Y, Z, S; with the δ-scaled view transmittance): the blue of the disk is mostly dust light. Not drawn beyond (3.). |
 | Venus | the cloud and upper haze above 60 km | Beyond the disk only. Near inferior conjunction (α = 172°) the haze alone outshines the measured p·Φ: not drawn. |
 | Pluto | haze (tabulated Mie phase, ω 0.944) | Over the disk; the haze is 1–2 % of the disk at low phase and forms a ring at high phase. |
 | Titan | N₂ Rayleigh; haze with ω and phase unknown | See below. |
@@ -330,8 +421,8 @@ withhold it: the renderer handles that as above.
 
 **Not done.**
 
-- δ-scaling of forward-peaked phase functions (Wiscombe 1977) for the view transmittance of surface
-  light. Mars's surface contrast under the dust is therefore somewhat low. The disk total is kept by the
-  renormalisation.
+- δ-scaling of the sunlight's path and of the multiple-scattering table. Only the view transmittance
+  of surface light is δ-scaled (§4). The skylight table already holds the forward-scattered sunlight, so
+  scaling the sun path too would count it twice.
 - Refraction and the Venus aureole.
 - Latitude-dependent dust and seasonal hazes.

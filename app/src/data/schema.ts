@@ -269,6 +269,9 @@ export type PhaseDependent = number | { alphaDeg: number[]; values: number[] };
  *  - lommel-seeliger:  r ∝ μ0/(μ0 + μ)
  *  - lunar-lambert:    r ∝ 2L·μ0/(μ0 + μ) + (1 − L)·μ0   (McEwen 1991)
  *  - minnaert:         r ∝ μ0^k·μ^(k−1)                  (Minnaert 1941)
+ *  - akimov:           the parameter-free Akimov disk function D(i, e, g) (Shkuratov et al. 1999; the form of
+ *                      Filacchione et al. 2022, arXiv:2111.15541, §4 Eqs. 4–6), D = 1 at g = 0
+ *  - barkstrom:        r ∝ (1/μ)·(μ0μ/(μ0 + μ))^B          (Barkstrom 1973; B = 1 is Lommel–Seeliger)
  *  - hapke:            Hapke (2012) isotropic multiple-scattering approximation with the shadow-hiding
  *                      (SHOE) and coherent-backscatter (CBOE) opposition effects, a double Henyey–Greenstein
  *                      particle phase function p(g) = (1+c)/2·HG(b, backward) + (1−c)/2·HG(b, forward),
@@ -281,6 +284,8 @@ export type SpatialPhotometricModel =
   | { kind: 'lommel-seeliger'; validPhaseDeg?: [number, number] }
   | { kind: 'lunar-lambert'; L: PhaseDependent; validPhaseDeg?: [number, number] }
   | { kind: 'minnaert'; k: PhaseDependent; validPhaseDeg?: [number, number] }
+  | { kind: 'akimov'; validPhaseDeg?: [number, number] }
+  | { kind: 'barkstrom'; B: PhaseDependent; validPhaseDeg?: [number, number] }
   | {
       kind: 'hapke';
       /** Single-scattering albedo. */

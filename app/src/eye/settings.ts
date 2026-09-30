@@ -31,8 +31,18 @@ export interface EyeSettings {
    * `adaptationFieldDeg` field (v1). Point sources are always judged at their own fixation.
    */
   fixation: 'brightness' | 'centre';
-  /** Display peak luminance, cd/m² (sRGB display assumed). */
+  /**
+   * Display white, cd/m²: the SDR display's peak, or an HDR display's SDR white (canvas value 1.0). Default
+   * 200, close to ITU-R BT.2408's 203 cd/m² HDR reference white.
+   */
   displayPeakCdM2: number;
+  /**
+   * An HDR display's peak luminance, cd/m², used only when the output is HDR (renderer displayInfo): the
+   * eye model's intended display luminance is shown up to it instead of being cut at white. Browsers do not
+   * report it; default 1000 cd/m², the common HDR10 mastering and VESA DisplayHDR 1000 peak. The display
+   * clips what it cannot reach.
+   */
+  hdrPeakCdM2: number;
   /** Display black level, cd/m² (0 = ideal emissive display). */
   displayBlackCdM2: number;
   /**
@@ -50,6 +60,7 @@ export const DEFAULT_EYE_SETTINGS: EyeSettings = {
   adaptationFieldDeg: 1,
   fixation: 'brightness',
   displayPeakCdM2: 200,
+  hdrPeakCdM2: 1000,
   displayBlackCdM2: 0,
   coneBleaching: false,
 };

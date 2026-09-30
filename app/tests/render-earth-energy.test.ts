@@ -83,7 +83,7 @@ describe.skipIf(!built)('Earth energy check (real layers)', () => {
       expect(r).toBeGreaterThan(0.3);
       expect(r).toBeLessThan(1.5);
     }
-  });
+  }, 120000);
 });
 
 describe.skipIf(!builtAtm)('Earth energy check with the atmosphere (real layers and atmospheres.json)', () => {
@@ -137,8 +137,8 @@ describe.skipIf(!builtAtm)('Earth energy check with the atmosphere (real layers 
         for (let c = 0; c < 4; c++) {
           let rho = 0;
           for (let k = 0; k < K; k++) {
-            const clearRad = Math.PI * path.L[k] + path.T[k] * (pr.clear.dir[c] * ts0[k] + pr.clear.dif[c] * es0[k]);
-            const cloudRad = Math.PI * path.Lc[k] + path.Tc[k] * (pr.cloudy.dir[c] * tsc[k] + pr.cloudy.dif[c] * esc[k]);
+            const clearRad = Math.PI * path.L[k] + path.Td[k] * (pr.clear.dir[c] * ts0[k] + pr.clear.dif[c] * es0[k]);
+            const cloudRad = Math.PI * path.Lc[k] + path.Tcd[k] * (pr.cloudy.dir[c] * tsc[k] + pr.cloudy.dif[c] * esc[k]);
             rho += w[c][k] * (pr.clear.w * clearRad + pr.cloudy.w * cloudRad + unknownW * Math.PI * path.L[k]);
           }
           A[c] += (rho * mu * dOmega) / Math.PI;

@@ -4,7 +4,9 @@
 // The split is by brightness: a catalogue star (bright tier, loaded deep-tier records) is a point when its
 // visibility proxy v = max(Y, S / 1.408) — photopic illuminance, or the scotopic one referred to the 2850 K
 // point the eye model's limiting magnitude is defined for — reaches the point cut Y_cut = E(V_lim + MARGIN_MAG),
-// where V_lim is the renderer's limiting magnitude (stats.limitingMagnitude). Every star below the cut is
+// where V_lim is the faintest point the renderer could show anywhere in the frame (stats.pointLimitingMagnitude:
+// the eye looking at the frame's darkest background; stats.limitingMagnitude, the global adaptation's limit,
+// when absent). Every star below the cut is
 // binned into an order-8 HEALPix map and drawn as extended light: its light is not lost (thousands of such
 // stars are the Milky Way the eye sees), and no star is counted twice. The deep tiles in view are loaded only
 // to the prefix that holds every record that can reach the cut (Y ≥ Y_cut / 3, colour margin for v); the
@@ -176,7 +178,9 @@ export class SkyController {
   beforeFrame(s: SceneSnapshot, rs: RendererStats | null): void {
     this.frame++;
     this.lastSnap = s;
-    const lim = rs?.limitingMagnitude;
+    // Stars are culled against their own background (docs/eye-model.md §2 "Fixations"), so the cut follows the
+    // darkest background in the frame, not the global adaptation (a bright planet in view would hide them all).
+    const lim = rs?.pointLimitingMagnitude ?? rs?.limitingMagnitude;
     const target = Math.round(((Number.isFinite(lim) ? lim! : 6.5) + MARGIN_MAG) / CUT_STEP_MAG) * CUT_STEP_MAG;
     if (!Number.isFinite(this.cutMag) || Math.abs(target - this.cutMag) >= CUT_STEP_MAG * 2 - 1e-9) {
       this.cutMag = target;

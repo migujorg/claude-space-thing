@@ -14,7 +14,7 @@
 // is integrated per frame (when the observer or the view changed) on a coarse screen-aligned grid (one ray per
 // ZODI_STEP pixels) and interpolated bilinearly.
 
-import { COMMON } from '../shaders';
+import { COMMON, LIMB_WGSL } from '../shaders';
 import { HEALPIX_WGSL, npix } from './healpix';
 import { zodiacalWgsl, OBLIQUITY_J2000_RAD, type ZodiParams } from './zodiacal';
 import type { SceneSnapshot } from '../scene';
@@ -39,6 +39,8 @@ export interface BackgroundTargets {
   ext: GPUTexture;
   depth: GPUTexture;
   frameUB: GPUBuffer;
+  /** The atmospheres' limbs (shaders.ts LIMB_WGSL): the sky behind them is dimmed by the chord's transmittance. */
+  limbs: GPUBuffer;
   W: number;
   H: number;
   snapshot: SceneSnapshot;
@@ -149,6 +151,7 @@ struct BU { scaleInv: f32, texelAngle: f32, zodiStep: f32, flags: u32, zodiSize:
 @group(0) @binding(2) var samp: sampler;
 @group(0) @binding(3) var zodiTex: texture_2d<f32>;
 @group(0) @binding(4) var<uniform> B: BU;
+${LIMB_WGSL(5)}
 
 @vertex fn vs(@builtin(vertex_index) i: u32) -> @builtin(position) vec4f {
   let p = vec2f(f32((i << 1u) & 2u), f32(i & 2u)) * 2.0 - 1.0;
@@ -175,6 +178,8 @@ fn zodiAt(p: vec2f) -> vec4f {
     L = L + textureSampleLevel(cube, samp, d, lod) * B.scaleInv;
   }
   if ((B.flags & 2u) != 0u) { L = L + zodiAt(pos.xy); }
+  // Seen through an atmosphere's limb (the zodiacal light too: nearly all of it comes from beyond the planet).
+  L = L * limbTransmittance(d);
   return toStore(F, max(L, vec4f(0.0)));
 }
 `;
@@ -300,6 +305,7 @@ export class SkyBackground implements SkyBackgroundHook {
         { binding: 2, resource: this.sampler },
         { binding: 3, resource: this.zodiTex.createView() },
         { binding: 4, resource: { buffer: this.bgUB } },
+        { binding: 5, resource: { buffer: t.limbs } },
       ],
     }));
     pass.draw(3);

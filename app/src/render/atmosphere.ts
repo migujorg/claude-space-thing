@@ -223,6 +223,89 @@ export function particleTable(m: AtmosphereModel): number[][] | null {
   });
 }
 
+/**
+ * δ-M forward-peak fraction per bin (Wiscombe 1977, J. Atmos. Sci. 34, 1408, with M = 2, i.e. δ-Eddington
+ * generalised beyond Henyey–Greenstein): f = χ₂, the second Legendre moment of the particle phase function,
+ * χ₂ = 2π∫p(cos θ)·P₂(cos θ)·sin θ dθ with ∫p dΩ = 1 (for HG, χ₂ = g²). The scattering into the forward
+ * peak leaves an image's radiance on (almost) its own path, so for the transmittance of a surface's
+ * radiance to the eye the particle scattering counts as (1 − f)·σ_s. 0 without particles.
+ */
+const deltaCache = new WeakMap<AtmosphereModel, number[]>();
+export function particleDeltaFraction(m: AtmosphereModel): number[] {
+  let f = deltaCache.get(m);
+  if (!f) { f = computeDeltaFraction(m); deltaCache.set(m, f); }
+  return f;
+}
+function computeDeltaFraction(m: AtmosphereModel): number[] {
+  const table = particleTable(m);
+  const K = m.wavelengthsNm.length;
+  if (!table) return new Array(K).fill(0);
+  return table.map((row) => {
+    let chi2 = 0;
+    for (let i = 0; i < PHASE_N - 1; i++) {
+      // Trapezoid in θ over 1° cells.
+      const t0 = (phaseAngleDeg(i) * Math.PI) / 180, t1 = (phaseAngleDeg(i + 1) * Math.PI) / 180;
+      const g = (t: number, p: number) => { const c = Math.cos(t); return p * 0.5 * (3 * c * c - 1) * Math.sin(t); };
+      chi2 += 0.5 * (g(t0, row[i]) + g(t1, row[i + 1])) * (t1 - t0);
+    }
+    return Math.min(Math.max(2 * Math.PI * chi2, 0), 1);
+  });
+}
+
+/** Impact-altitude samples of the limb table (uniform from the bottom to the top). A sampling choice. */
+export const LIMB_N = 64;
+
+/**
+ * Point sources seen through the limb (docs/rendering-earth.md §4 "Stars behind the limb"): the optical depth
+ * of the chord through the shell of a ray whose closest approach to the centre is at impact altitude h,
+ * τ_k(h) = 2∫₀^L σ_ext,k(√(r_h² + s²) − R) ds with r_h = R + h and L = √(r_top² − r_h²), for
+ * h_i = H·i/(n − 1). Full extinction, not δ-scaled: the forward peak (degrees wide) spreads a star's light
+ * far beyond its image. Folded to the XYZS channels as an effective optical depth −ln Σ_k w_ck·e^{−τ_k}
+ * (the model's fold weights: exact for a spectrum like the Sun's). Returns ln τ_c (clamped at 1e-12),
+ * n × 4 values, for log-linear interpolation (τ falls nearly exponentially with h).
+ */
+const limbCache = new WeakMap<AtmosphereModel, Float32Array>();
+export function limbChordTable(m: AtmosphereModel, G?: ProfileGrid, n = LIMB_N, steps = 512): Float32Array {
+  if (n === LIMB_N && limbCache.has(m)) return limbCache.get(m)!;
+  const grid = G ?? new ProfileGrid(m, 512);
+  const K = m.wavelengthsNm.length;
+  const H = m.topKm - m.bottomKm;
+  const buf = new Float64Array(5 * K);
+  const tau = new Float64Array(K);
+  const out = new Float32Array(n * 4);
+  for (let i = 0; i < n; i++) {
+    const rh = m.bottomKm + (H * i) / (n - 1);
+    const L = Math.sqrt(Math.max(m.topKm * m.topKm - rh * rh, 0));
+    tau.fill(0);
+    // Midpoint rule in u with s = L·u² (dense near the closest approach, where the altitude changes slowest).
+    for (let j = 0; j < steps; j++) {
+      const uu = (j + 0.5) / steps;
+      const s = L * uu * uu;
+      const ds = (2 * L * uu) / steps;
+      grid.at(Math.sqrt(rh * rh + s * s) - m.bottomKm, buf);
+      for (let k = 0; k < K; k++) tau[k] += 2 * buf[k * 5] * ds;
+    }
+    for (let c = 0; c < 4; c++) {
+      let T = 0;
+      for (let k = 0; k < K; k++) T += m.weights[c][k] * Math.exp(-tau[k]);
+      out[i * 4 + c] = Math.log(Math.max(-Math.log(Math.max(T, 1e-300)), 1e-12));
+    }
+  }
+  if (n === LIMB_N) limbCache.set(m, out);
+  return out;
+}
+
+/** Channel transmittance of a chord at impact altitude h from limbChordTable (log-linear interpolation). */
+export function limbTransmittance(table: Float32Array, H: number, h: number, c: number): number {
+  const n = table.length / 4;
+  if (h >= H) return 1;
+  if (h < 0) return 0;
+  const x = (h / H) * (n - 1);
+  const i = Math.min(Math.floor(x), n - 2);
+  const f = x - i;
+  return Math.exp(-Math.exp(table[i * 4 + c] * (1 - f) + table[(i + 1) * 4 + c] * f));
+}
+
 /** Precompute all tables (CPU). */
 export function precomputeAtmosphere(m: AtmosphereModel): AtmosphereTables {
   const K = m.wavelengthsNm.length;
@@ -504,6 +587,9 @@ export interface ViewPath {
   T: Float64Array;
   Lc: Float64Array;
   Tc: Float64Array;
+  /** The same transmittances δ-scaled (particleDeltaFraction): for a surface's radiance, whose forward-scattered part stays in its image. */
+  Td: Float64Array;
+  Tcd: Float64Array;
 }
 
 /**
@@ -515,7 +601,8 @@ export interface ViewPath {
  */
 export function viewPath(m: AtmosphereModel, tab: AtmosphereTables, G: ProfileGrid, p: V3, e: V3, sunV: V3, hSplit: number, n: number, sLen?: number): ViewPath {
   const K = tab.K;
-  const out: ViewPath = { L: new Float64Array(K), T: new Float64Array(K).fill(1), Lc: new Float64Array(K), Tc: new Float64Array(K).fill(1) };
+  const out: ViewPath = { L: new Float64Array(K), T: new Float64Array(K).fill(1), Lc: new Float64Array(K), Tc: new Float64Array(K).fill(1), Td: new Float64Array(K).fill(1), Tcd: new Float64Array(K).fill(1) };
+  const fD = particleDeltaFraction(m);
   const r0 = Math.hypot(p[0], p[1], p[2]);
   const pe = p[0] * e[0] + p[1] * e[1] + p[2] * e[2];
   const Hk = m.topKm - m.bottomKm;
@@ -542,7 +629,9 @@ export function viewPath(m: AtmosphereModel, tab: AtmosphereTables, G: ProfileGr
       const seg = ext > 1e-9 ? (src * (1 - tr)) / ext : src * ds;
       out.L[k] += out.T[k] * seg;
       out.T[k] *= tr;
-      if (h > hSplit) { out.Lc[k] += out.Tc[k] * seg; out.Tc[k] *= tr; }
+      const trD = Math.exp(-(ext - fD[k] * sA) * ds);
+      out.Td[k] *= trD;
+      if (h > hSplit) { out.Lc[k] += out.Tc[k] * seg; out.Tc[k] *= tr; out.Tcd[k] *= trD; }
     }
   }
   return out;
@@ -621,7 +710,7 @@ export function atmosphereDiskFactors(
     for (let c = 0; c < 4; c++) {
       let under = 0, air = 0;
       for (let k = 0; k < K; k++) {
-        under += m.weights[c][k] * (sf.rho[c] * ts[k] + sf.albedo[c] * es[k]) * path.T[k];
+        under += m.weights[c][k] * (sf.rho[c] * ts[k] + sf.albedo[c] * es[k]) * path.Td[k];
         air += m.weights[c][k] * Math.PI * path.L[k];
       }
       I0[c] += sf.rho[c] * dA;
