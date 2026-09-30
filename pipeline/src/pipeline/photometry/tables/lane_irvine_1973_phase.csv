@@ -1,0 +1,20 @@
+# Transcribed from: Lane, A. P. & Irvine, W. M. (1973), "Monochromatic phase curves and albedos for the lunar disk",
+#   Astronomical Journal 78, 267-277. DOI:10.1086/111414.
+# Table V, p. 271: "Phase curves for the lunar disk (in mag.)". 1965 data (mostly before full Moon), 6 <= i <= 120 deg
+#   observed; a linear fit for i <= 40 deg and a cubic fit at larger i; the extrapolation to zero phase excludes the
+#   opposition effect (Sec. II). Columns are passbands labelled by effective wavelength in Angstrom (Table I) plus U, B, V.
+# Transcribed by hand from the ADS scan (https://articles.adsabs.harvard.edu/pdf/1973AJ.....78..267L).
+phase_deg,3590,3926,4155,4573,5012,6264,7297,8595,10635,U,B,V
+0,0,0,0,0,0,0,0,0,0,0,0,0
+10,0.29,0.27,0.29,0.28,0.27,0.27,0.26,0.25,0.24,0.30,0.27,0.27
+20,0.58,0.55,0.57,0.56,0.55,0.53,0.52,0.50,0.48,0.60,0.55,0.53
+30,0.86,0.82,0.86,0.83,0.82,0.80,0.77,0.74,0.72,0.89,0.82,0.80
+40,1.15,1.09,1.15,1.11,1.10,1.06,1.03,0.99,0.96,1.19,1.09,1.07
+50,1.41,1.34,1.41,1.37,1.36,1.32,1.28,1.23,1.20,1.45,1.35,1.31
+60,1.66,1.60,1.67,1.62,1.62,1.58,1.54,1.49,1.44,1.72,1.61,1.57
+70,1.93,1.88,1.95,1.90,1.89,1.86,1.82,1.77,1.70,2.00,1.90,1.84
+80,2.23,2.19,2.26,2.20,2.20,2.17,2.13,2.08,1.99,2.31,2.21,2.14
+90,2.59,2.56,2.61,2.55,2.54,2.52,2.48,2.43,2.33,2.66,2.58,2.48
+100,3.01,2.99,3.02,2.95,2.94,2.93,2.87,2.82,2.72,3.08,2.99,2.87
+110,3.51,3.50,3.50,3.42,3.40,3.41,3.32,3.27,3.18,3.56,3.47,3.32
+120,4.11,4.10,4.06,3.98,3.94,3.97,3.83,3.78,3.72,4.14,4.02,3.84

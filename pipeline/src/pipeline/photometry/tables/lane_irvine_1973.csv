@@ -1,0 +1,25 @@
+# Transcribed from: Lane, A. P. & Irvine, W. M. (1973), "Monochromatic phase curves and albedos for the lunar disk",
+#   Astronomical Journal 78, 267-277. DOI:10.1086/111414. ADS 1973AJ.....78..267L.
+# Columns (one row per passband):
+#   band, lambda_eff_A, halfwidth_A  <- Table I, p. 268 ("Effective wavelengths of passbands")
+#   m10, m10_err                    <- Table VII, p. 272 ("Magnitudes at full Moon", linear extrapolation of the 1965
+#                                      data to zero phase; excludes the opposition effect; standard errors)
+#   p, q, A                         <- Table VIII, p. 274 ("Geometric albedo p, phase integral q, and Bond albedo A for
+#                                      the lunar disk"; p uses the linear fit to 1965 data, excluding the opposition effect)
+# m(1,0) is at 1 AU from the Sun and the mean Earth-Moon distance (60.2665 Earth radii). The paper's Eq. (2),
+#   log10 p = 0.4 [m_sun - m(1,0)] - 2 log10 sin(sigma), sigma = 0.0045216 rad, m_sun = -26.81 in every band (colors
+#   are relative to the Sun), links Tables VII and VIII; tests check every row against it.
+# Transcribed by hand from the ADS scan (https://articles.adsabs.harvard.edu/pdf/1973AJ.....78..267L).
+band,lambda_eff_A,halfwidth_A,m10,m10_err,p,q,A
+u,3590,120,-12.23,0.04,0.072,0.544,0.039
+s,3926,45,-12.41,0.04,0.085,0.578,0.049
+p,4155,90,-12.45,0.03,0.088,0.551,0.048
+m,4573,85,-12.56,0.03,0.098,0.575,0.056
+l,5012,90,-12.65,0.03,0.106,0.585,0.062
+k,6264,160,-13.11,0.03,0.162,0.603,0.098
+h,7297,200,-13.22,0.02,0.179,0.633,0.113
+g,8595,90,-13.22,0.03,0.179,0.661,0.118
+e,10635,770,-13.35,0.03,0.202,0.676,0.136
+U,3615,580,-11.51,0.05,0.077,0.532,0.041
+B,4400,1020,-11.87,0.03,0.094,0.587,0.055
+V,5480,800,-12.72,0.03,0.113,0.611,0.069
