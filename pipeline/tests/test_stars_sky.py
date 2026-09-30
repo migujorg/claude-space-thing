@@ -89,6 +89,19 @@ def test_two_band_power_law_roundtrip():
         assert abs(alpha[0] - a) < 0.02
 
 
+def test_colour_bin_ratios():
+    from pipeline.stages import sky
+    rng = np.random.default_rng(4)
+    c = rng.uniform(0.0, 0.9999, 5000)
+    ratio = np.stack([1 + c, 2 + 0 * c], 1)
+    bins, med = sky.colour_bin_ratios(c, ratio)
+    assert bins.tolist() == list(range(10))                  # floor(10 BP-RP), 0.1 mag bins
+    assert np.allclose(med[:, 0], 1 + (bins + 0.5) / 10, atol=0.01)
+    assert np.allclose(med[:, 1], 2)
+    few = sky.colour_bin_ratios(np.array([0.05] * 10 + [0.15] * 40), np.ones((50, 1)))[0]
+    assert few.tolist() == [1]                               # bins with < 30 stars are dropped
+
+
 def test_smooth_preserves_constant():
     K = sd.gauss_matrix(3, 2, 20.0)
     v = np.full(hp.npix(3), 5.0)

@@ -37,12 +37,18 @@ from . import stars as st
 DEPENDS = ("stars", "deepstars", "light")
 
 FAINT_ORDER = 8          # Gaia G >= 14 sums (0.23 deg pixels)
+COLOUR_ORDER = 6         # colour mix of those stars (BP-RP bins of 0.1 mag, 0.92 deg pixels)
+MIN_PER_COLOUR_BIN = 30  # calibration stars needed for a BP-RP bin
 DIFFUSE_ORDER = 6        # diffuse remainder (0.92 deg pixels)
 WORK_ORDER = 7           # Pioneer binning / star maps before smoothing (0.46 deg)
 PIONEER_FWHM = 2.0       # deg, native resolution of the IPP maps (Leinert 1998 p. 72; K. Gordon's map page)
 OUT_FWHM = 3.0           # deg, common resolution of the diffuse remainder
 FAINT_G_MIN = 14.0
-TOLLER_BINS = (5.0, 5.5, 6.0, 6.5, 7.0, 7.5, 8.0)   # Hipparcos V bins for the removed-star regression
+TOLLER_BINS = (5.0, 5.5, 6.0, 6.5, 7.0, 7.5, 8.0)   # Hipparcos V bins for the removed-star regression (diagnostic)
+#: Toller removed "individually resolved stars, typically those brighter than 6.5 mag ... on the basis of a custom
+#: made catalog containing 12457 stars" (Leinert 1998 p. 69): the 12457 brightest Hipparcos stars (V < 6.81) are
+#: taken as removed from the Pioneer maps.
+TOLLER_N_STARS = 12457
 HIGHPASS_FWHM = 10.0
 
 SRC_PIONEER = "pioneer-ipp-maps"
@@ -209,43 +215,42 @@ def build_diffuse(ctx: BuildContext, ids: dict, diag: dict) -> None:
     diag["fSunBand"] = fsun
     two = sdf.TwoBand(spec.wl_air, spec.ssi_air, spec.grid, cie.WAVELENGTHS, cie.xyzs, bands)
 
-    # --------------------------------------------------------------- calibration relations from XP stars
+    # --------------------------------------------------------------- calibration: XP stars per BP-RP bin
     cz = np.load(CACHE / "stars" / "deep_calib.npz")
     cols = list(cz["columns"])
     red = cz["red"].astype(np.float64)
-    fg, fbp, frp = (10 ** (-0.4 * cz[c]) for c in ("g", "bp", "rp"))
-    A = np.stack([fg, fbp, frp], 1)
-    lin = {}
-    for j, c in enumerate(cols):
-        w = 1.0 / red[:, j]
-        coef, *_ = np.linalg.lstsq(A * w[:, None], np.ones_like(w), rcond=None)
-        pred = A @ coef
-        resid = pred / red[:, j] - 1
-        bprp = cz["bp"] - cz["rp"]
-        bins = np.arange(-0.5, 4.01, 0.5)
-        lin[c] = {"coef": coef.tolist(), "rms": float(np.sqrt(np.mean(resid ** 2))),
-                  "biasByBpRp": [[float(lo), float(np.mean(resid[(bprp >= lo) & (bprp < lo + 0.5)]))
-                                  if ((bprp >= lo) & (bprp < lo + 0.5)).sum() > 100 else None] for lo in bins]}
-    gonly = {c: float(np.median(red[:, j] / fg)) for j, c in enumerate(cols)}
+    fg = 10 ** (-0.4 * cz["g"])
+    ratio = red / fg[:, None]                      # (XYZS, B, R) per 10^(-0.4 G)
+    kbins, kcal = colour_bin_ratios(cz["bp"] - cz["rp"], ratio)
+    gonly = np.median(ratio, axis=0)
+    # hold-out check: calibrate on G < 13, apply per bin to the Sigma 10^(-0.4 G) of the 13 <= G < 14 stars
+    lo_g = cz["g"] < 13.0
+    kb2, kc2 = colour_bin_ratios(cz["bp"][lo_g] - cz["rp"][lo_g], ratio[lo_g])
+    hi_g = ~lo_g
+    cb_hi = np.floor(10 * (cz["bp"][hi_g] - cz["rp"][hi_g]))
+    pred = fg[hi_g, None] * kc2[np.clip(np.searchsorted(kb2, cb_hi), 0, kb2.size - 1)]
+    hold = (pred.sum(0) / red[hi_g].sum(0) - 1).tolist()
+    diag["colourBinCalibration"] = {"bins": int(kbins.size), "range": [float(kbins[0]) / 10, float(kbins[-1] + 1) / 10],
+                                    "holdOutBias_G13to14": dict(zip(cols, hold)),
+                                    "gOnlyRatio": dict(zip(cols, gonly.tolist()))}
     xyz = red[:, :3]
     br_from_xyz = {}
     for j, c in ((4, "pioneerB"), (5, "pioneerR")):
         w = 1.0 / red[:, j]
         coef, *_ = np.linalg.lstsq(xyz * w[:, None], np.ones_like(w), rcond=None)
         br_from_xyz[c] = {"coef": coef.tolist(), "rms": float(np.sqrt(np.mean(((xyz @ coef) / red[:, j] - 1) ** 2)))}
-    diag["linearBandRelations"] = lin
-    diag["gOnlyRatios"] = gonly
     diag["bandFromXYZ"] = br_from_xyz
 
     # --------------------------------------------------------------- stars we render: dir, Y, B, R, HIP V
     xp_paths, xp_ledger = sdp.stream_deep_xp(log=log)
     xsid, xred = sg.load_xp_reduced(xp_paths)
 
-    def band_fluxes(src_is_gaia, cat, xyzs_):
+    def band_fluxes(xp_lit, cat, xyzs_):
+        """IPP-band fluxes from the star's XP spectrum where its light comes from XP, else from its XYZ."""
         gid = sf.gaia_id(cat)
         out = np.full((cat.shape[0], 2), np.nan)
         k = np.clip(np.searchsorted(xsid, gid), 0, xsid.size - 1)
-        hit = src_is_gaia & (xsid[k] == gid)
+        hit = xp_lit & (xsid[k] == gid)
         out[hit] = xred[k[hit]][:, 4:6]
         bad = ~np.isfinite(out).all(1) | (out <= 0).any(1)
         for j, c in enumerate(("pioneerB", "pioneerR")):
@@ -254,22 +259,26 @@ def build_diffuse(ctx: BuildContext, ids: dict, diag: dict) -> None:
 
     bh, br = sf.read_table(OUT / "stars" / "bright.json")
     b_gaia = br["src"] == bh["sourceTable"].index(st.SRC_GAIA)
+    xp_routes = [i for i, r in enumerate(bh["routes"]["light"]) if "XP externally calibrated" in r["method"]]
     b_xyzs = br["xyzs"].astype(np.float64)
-    b_br, b_hit = band_fluxes(b_gaia, br["catId"], b_xyzs)
+    b_br, b_hit = band_fluxes(b_gaia & np.isin(br["lightRoute"], xp_routes), br["catId"], b_xyzs)
     hm = sc.load_hip_main()
     vmap = dict(zip(hm.hip.astype(int).tolist(), hm.vmag.tolist()))
     b_v = np.array([vmap.get(int(h), np.nan) if h else np.nan for h in br["hip"]])
     dh = json.loads((OUT / "stars" / "deep.json").read_text())
-    d_dir, d_xyzs, d_cat = [], [], []
+    d_dir, d_xyzs, d_cat, d_route = [], [], [], []
     for t in dh["tiles"]:
         raw = np.frombuffer((OUT / "stars" / t["bin"]).read_bytes(), dtype=sf.dtype())
         d_dir.append(raw["dir"])
         d_xyzs.append(raw["xyzs"])
         d_cat.append(raw["catId"])
+        d_route.append(raw["lightRoute"])
     d_dir = np.concatenate(d_dir).astype(np.float64)
     d_xyzs = np.concatenate(d_xyzs).astype(np.float64)
     d_cat = np.concatenate(d_cat)
-    d_br, d_hit = band_fluxes(np.ones(d_cat.shape[0], bool), d_cat, d_xyzs)
+    d_route = np.concatenate(d_route)
+    d_br, d_hit = band_fluxes(d_route == 0, d_cat, d_xyzs)
+    diag["deepYFractionDerived"] = float(np.nansum(d_xyzs[d_route == 0, 1]) / np.nansum(d_xyzs[:, 1]))
     xred = None  # free memory
     diag["bandFluxFromXP"] = {"bright": [int(b_hit.sum()), int(b_hit.size)], "deep": [int(d_hit.sum()), int(d_hit.size)]}
 
@@ -277,13 +286,26 @@ def build_diffuse(ctx: BuildContext, ids: dict, diag: dict) -> None:
     sums = _load_sums(sg.fetch_faint_sums(FAINT_G_MIN, FAINT_ORDER))
     npx8 = hp.npix(FAINT_ORDER)
     om8 = 4 * np.pi / npx8
-    fs = {}
-    for c in cols:
-        co = np.array(lin[c]["coef"])
-        col_part = co[0] * sums["fg_c"] + co[1] * sums["fbp_c"] + co[2] * sums["frp_c"]
-        fs[c] = (col_part + gonly[c] * (sums["fg"] - sums["fg_c"])) / om8     # per sr
+    csum = _load_colour_sums(sg.fetch_faint_colour_sums(FAINT_G_MIN, COLOUR_ORDER))
+    # effective (XYZS, B, R) per 10^(-0.4 G) of the faint stars in each order-6 pixel: colour-bin mix
+    npx6c = hp.npix(COLOUR_ORDER)
+    num = np.zeros((npx6c, len(cols)))
+    den = np.zeros(npx6c)
+    col = np.isfinite(csum["cbin"])
+    kk = kcal[np.clip(np.searchsorted(kbins, csum["cbin"][col]), 0, kbins.size - 1)]
+    outside = (csum["cbin"][col] < kbins[0]) | (csum["cbin"][col] > kbins[-1])
+    np.add.at(num, csum["hpx"][col], kk * csum["fg"][col, None])
+    np.add.at(num, csum["hpx"][~col], gonly[None, :] * csum["fg"][~col, None])
+    np.add.at(den, csum["hpx"], csum["fg"])
+    k_eff = num / np.where(den > 0, den, 1.0)[:, None]
+    parent = np.arange(npx8) >> (2 * (FAINT_ORDER - COLOUR_ORDER))
+    fs = {c: sums["fg"] * k_eff[parent, j] / om8 for j, c in enumerate(cols)}          # per sr
+    fg6 = np.bincount(parent, weights=sums["fg"], minlength=npx6c)
     diag["faintSums"] = {"sources": int(sums["n"].sum()), "withColour": int(sums["n_c"].sum()),
-                         "gFluxFractionNoColour": float((sums["fg"] - sums["fg_c"]).sum() / sums["fg"].sum())}
+                         "gFluxFractionNoColour": float(csum["fg"][~col].sum() / csum["fg"].sum()),
+                         "gFluxFractionColourOutsideCalibration": float(csum["fg"][col][outside].sum() /
+                                                                        csum["fg"].sum()),
+                         "colourSumsVsPixelSums": float(np.max(np.abs(den / np.where(fg6 > 0, fg6, 1) - 1)[fg6 > 0]))}
     faint_xyzs = np.stack([fs[c] for c in ("X", "Y", "Z", "S")], 1)
 
     # --------------------------------------------------------------- Pioneer maps -> order 7 (ICRS)
@@ -336,9 +358,13 @@ def build_diffuse(ctx: BuildContext, ids: dict, diag: dict) -> None:
         err = np.std(parts, axis=0) / np.sqrt(8)
         reg[b] = {"groups": names, "coef": coef.tolist(), "err": err.tolist(),
                   "rms": float(np.sqrt(np.mean((X[ok] @ coef - y[ok]) ** 2))), "pixels": int(ok.sum())}
-        rest_c = coef[-1]
-        incl_w[b] = np.clip(coef[:-1] / rest_c, 0.0, 1.0)
+        incl_w[b] = (coef[:-1] / coef[-1]).tolist()
     diag["pioneerStarRegression"] = reg
+    vs = np.sort(hm.vmag[np.isfinite(hm.vmag)])
+    v_cut = float(vs[TOLLER_N_STARS - 1]) + 1e-6
+    removed = b_v < v_cut
+    diag["tollerCut"] = {"V": v_cut, "hipparcosStarsBrighter": int((vs < v_cut).sum()),
+                         "recordsRemoved": int(removed.sum())}
     log("Pioneer star-inclusion regression: " + "; ".join(
         f"{b}: " + ", ".join(f"{n}={c:.2f}" for n, c in zip(reg[b]["groups"], reg[b]["coef"])) for b in reg))
 
@@ -347,14 +373,17 @@ def build_diffuse(ctx: BuildContext, ids: dict, diag: dict) -> None:
     K_s = sdf.gauss_matrix(WORK_ORDER, DIFFUSE_ORDER, OUT_FWHM)
     ks = K_s @ ones7
     remainder, stars_in = {}, {}
+    sens = {}
     for b, j in (("B", 0), ("R", 1)):
-        groups = [b_v < edges[0]] + [(b_v >= lo) & (b_v < hi) for lo, hi in zip(edges[:-1], edges[1:])]
-        w_b = np.ones(b_v.size)
-        for gi, m in enumerate(groups):
-            w_b[m] = incl_w[b][gi]
-        s = s10_map(pix_b, b_br[:, j], b, w_b) + s10_map(pix_d, d_br[:, j], b) + faint7[b]
+        s = s10_map(pix_b[~removed], b_br[~removed, j], b) + s10_map(pix_d, d_br[:, j], b) + faint7[b]
         stars_in[b] = K_s @ s / ks
         remainder[b] = sdf.smooth(K_p, P[b], cov) - stars_in[b]
+        # sensitivity to the cut: light of the stars between V = 6.5 and the cut, and between the cut and 7.0
+        lo_m = (b_v >= 6.5) & (b_v < v_cut)
+        hi_m = (b_v >= v_cut) & (b_v < 7.0)
+        sens[b] = {"medianS10_6.5_to_cut": float(np.median(K_s @ s10_map(pix_b[lo_m], b_br[lo_m, j], b) / ks)),
+                   "medianS10_cut_to_7.0": float(np.median(K_s @ s10_map(pix_b[hi_m], b_br[hi_m, j], b) / ks))}
+    diag["tollerCut"]["sensitivity"] = sens
     measured = np.isfinite(remainder["B"]) & np.isfinite(remainder["R"]) & (sdf.smooth(K_p, cov) > 0.5)
     # gaps: median remainder of covered pixels in the same galactic-latitude band (2 deg, per hemisphere)
     v6 = hp.pix2vec(DIFFUSE_ORDER, np.arange(hp.npix(DIFFUSE_ORDER)))
@@ -394,9 +423,35 @@ def build_diffuse(ctx: BuildContext, ids: dict, diag: dict) -> None:
         agg[:, c] = np.bincount(p8, weights=np.nan_to_num(d_xyzs[:, c]), minlength=npx8) / om8
 
     _register_sources(ctx)
-    _write_diffuse(ctx, ids, diag, faint_xyzs, xyzs6, label6, agg, filled, reg, incl_w, lin, gonly, br_from_xyz,
+    _write_diffuse(ctx, ids, diag, faint_xyzs, xyzs6, label6, agg, filled, reg, incl_w, br_from_xyz,
                    cie_ids, two)
-    _verification(diag, br, b_v, b_br, b_xyzs, d_dir, d_xyzs, d_br, faint_xyzs, xyzs6, filled, P, cov, rot, fsun)
+    _verification(diag, br, b_v, b_br, b_xyzs, d_dir, d_xyzs, d_br, faint_xyzs, xyzs6, filled, P, cov, rot, fsun, fs)
+
+
+def colour_bin_ratios(bprp: np.ndarray, ratio: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Median of `ratio` rows in BP-RP bins cbin = floor(10 BP-RP) with >= MIN_PER_COLOUR_BIN stars: (bins, medians).
+    Bins outside the populated range take the nearest end bin (the callers count that light)."""
+    cb = np.floor(10 * np.asarray(bprp, float))
+    ok = np.isfinite(cb) & np.isfinite(ratio).all(1)
+    cb, r = cb[ok], ratio[ok]
+    o = np.argsort(cb, kind="stable")
+    cb, r = cb[o], r[o]
+    u, start, cnt = np.unique(cb, return_index=True, return_counts=True)
+    keep = cnt >= MIN_PER_COLOUR_BIN
+    meds = np.array([np.median(r[s0:s0 + n], axis=0) for s0, n in zip(start[keep], cnt[keep])])
+    return u[keep], meds
+
+
+def _load_colour_sums(paths) -> dict[str, np.ndarray]:
+    hpx, cbin, fg, n = [], [], [], []
+    for p in paths:
+        t = st.load_table(p)
+        hpx.append(np.asarray(t["hpx"], np.int64))
+        cbin.append(np.asarray(t["cbin"], float))
+        fg.append(np.nan_to_num(np.asarray(t["fg"], float)))
+        n.append(np.asarray(t["n"], float))
+    return {"hpx": np.concatenate(hpx), "cbin": np.concatenate(cbin), "fg": np.concatenate(fg),
+            "n": np.concatenate(n)}
 
 
 def _load_sums(paths) -> dict[str, np.ndarray]:
@@ -429,17 +484,20 @@ def _register_sources(ctx: BuildContext) -> None:
                "zodiacal light); stars 'typically brighter than 6.5 mag' removed by Toller from a 12457-star catalog "
                "(Leinert 1998 p. 69). Files: " + st._files_note(list(paths.values())))))
     sums = sg.fetch_faint_sums(FAINT_G_MIN, FAINT_ORDER)
+    csums = sg.fetch_faint_colour_sums(FAINT_G_MIN, COLOUR_ORDER)
     ctx.add_source(SourceRecord(
         id=SRC_SUMS, title=f"{sg.REL.label} gaia_source: per-HEALPix sums of G, BP, RP fluxes for G >= {FAINT_G_MIN:g}",
         citation=sg.REL.citation + f", DOI:{sg.REL.doi}; photometry: Riello M. et al. 2021, A&A 649, A3, "
                  "DOI:10.1051/0004-6361/202039587.",
-        url=sg.TAP_URL, retrieved=record(sums[0])["retrieved"], sha256=st._digest(sums), version=sg.REL.label,
-        license="ESA/Gaia/DPAC, CC BY-SA 3.0 IGO",
-        notes=f"{len(sums)} synchronous TAP queries (one per HEALPix level-{sg.SUM_LEVEL} source_id range), first: "
-              + sums[0].with_name(sums[0].name + ".adql").read_text()))
+        url=sg.TAP_URL, retrieved=record(sums[0])["retrieved"], sha256=st._digest(sums + csums),
+        version=sg.REL.label, license="ESA/Gaia/DPAC, CC BY-SA 3.0 IGO",
+        notes=f"2 x {len(sums)} synchronous TAP queries (one per HEALPix level-{sg.SUM_LEVEL} source_id range; "
+              "sha256 over all result files). Per level-8 pixel: "
+              + sums[0].with_name(sums[0].name + ".adql").read_text() + " || per level-6 pixel and BP-RP bin: "
+              + csums[0].with_name(csums[0].name + ".adql").read_text()))
 
 
-def _write_diffuse(ctx, ids, diag, faint_xyzs, xyzs6, label6, agg, filled, reg, incl_w, lin, gonly, br_from_xyz,
+def _write_diffuse(ctx, ids, diag, faint_xyzs, xyzs6, label6, agg, filled, reg, incl_w, br_from_xyz,
                    cie_ids, two) -> None:
     unit = "cd/m^2 (X, Y, Z) and scotopic cd/m^2 (S); radiance of the sky, no atmosphere, no zodiacal light"
     write_bin(ctx, f"sky/faint-stars-o{FAINT_ORDER}.bin", faint_xyzs.astype("<f4"), "sky")
@@ -456,20 +514,26 @@ def _write_diffuse(ctx, ids, diag, faint_xyzs, xyzs6, label6, agg, filled, reg, 
         d.update(extra or {})
         return d
 
-    c_lin = {c: lin[c]["rms"] for c in lin}
+    cal = diag["colourBinCalibration"]
     faint = layer(
         f"faint-stars-o{FAINT_ORDER}.bin", FAINT_ORDER, "estimated", [SRC_SUMS, f"gaia-{sg.REL.key}-deep",
                                                                      f"gaia-{sg.REL.key}-xp-sampled-all", *cie_ids],
-        f"Every {sg.REL.label} source with G >= {FAINT_G_MIN:g} (the stars below the deep tier), summed per pixel by "
-        "the archive: sums of 10^(-0.4 G), 10^(-0.4 BP), 10^(-0.4 RP). Converted with XYZS = a 10^(-0.4 G) + "
-        "b 10^(-0.4 BP) + c 10^(-0.4 RP), linear so it applies to sums, fitted (relative least squares) on 1e6 "
-        "deep-tier stars whose XYZS come from their XP spectra (per-star rms %s); sources without BP/RP use the "
-        "median XYZS / 10^(-0.4 G) of those stars. Divided by the pixel solid angle."
-        % ", ".join(f"{c} {100 * v:.1f} %" for c, v in c_lin.items() if c in "XYZS"),
-        None, "per pixel dominated by the colour relation for unusual populations; sums are exact counts",
+        f"Every {sg.REL.label} source with G >= {FAINT_G_MIN:g} (the stars below the deep tier): the archive's sum of "
+        f"10^(-0.4 G) per order-{FAINT_ORDER} pixel, times the XYZS per 10^(-0.4 G) of the faint stars' colour mix "
+        f"in the parent order-{COLOUR_ORDER} pixel (archive sums of 10^(-0.4 G) per BP-RP bin of 0.1 mag), each bin "
+        "converted with the median XYZS 10^(0.4 G) of the deep-tier stars of that colour whose XYZS comes from their "
+        "XP spectra (%d bins, BP-RP %.1f to %.1f; sources without BP/RP use the median over all colours). "
+        "Divided by the pixel solid angle. A hold-out test (bins from G < 13, applied to the summed light of the "
+        "13 <= G < 14 stars) reproduces their X, Y, Z, S to %s." % (
+            cal["bins"], cal["range"][0], cal["range"][1],
+            ", ".join(f"{100 * cal['holdOutBias_G13to14'][c]:+.1f} %" for c in "XYZS")),
+        None, "colour mix at 0.9 deg; assumes the faint stars of a colour have the spectra of the brighter ones "
+              "(interstellar reddening at a given BP-RP is similar); sums are exact archive counts",
         {"pixelSolidAngleSr": 4 * np.pi / hp.npix(FAINT_ORDER),
          "stats": {"sources": diag["faintSums"]["sources"], "gFluxFractionWithoutColour":
-                   diag["faintSums"]["gFluxFractionNoColour"]}})
+                   diag["faintSums"]["gFluxFractionNoColour"], "gFluxFractionColourOutsideCalibration":
+                   diag["faintSums"]["gFluxFractionColourOutsideCalibration"],
+                   "holdOutBias_G13to14": cal["holdOutBias_G13to14"]}})
     rg = reg
     diffuse = layer(
         f"diffuse-o{DIFFUSE_ORDER}.bin", DIFFUSE_ORDER, "estimated",
@@ -478,15 +542,18 @@ def _write_diffuse(ctx, ids, diag, faint_xyzs, xyzs6, label6, agg, filled, reg, 
         ("Pioneer 10/11 IPP blue and red sky brightness (S10sun, from beyond 3.3 AU) binned to HEALPix order %d and "
          "smoothed from its native ~%g deg to %g deg FWHM, minus every star we render (bright + deep tiers) and the "
          "faintStars layer, each star's IPP-band flux taken from its XP spectrum (top-hat bands %s) or from its "
-         "XYZ, smoothed with a %g deg Gaussian. Bright stars that Toller removed from the Pioneer data (Leinert 1998 "
-         "p. 69: 'typically those brighter than 6.5 mag') are not subtracted: the fraction of each Hipparcos-V bin "
-         "still present in the maps was measured by regressing the high-passed (%g deg) Pioneer maps on the "
-         "high-passed star maps (see stats.starInclusion) and that fraction is subtracted. The remainder in B and R "
+         "XYZ, smoothed with a %g deg Gaussian. Stars Toller removed from the Pioneer data are not subtracted: "
+         "'typically those brighter than 6.5 mag ... a custom made catalog containing 12457 stars' (Leinert 1998 p. "
+         "69), taken as the 12457 brightest Hipparcos stars (V < %.2f; stats.tollerCut gives the light between V = "
+         "6.5 and 7.0 as the uncertainty of this choice). A regression of the high-passed (%g deg) Pioneer maps on "
+         "star maps per V bin (stats.starInclusion) confirms that stars brighter than V = 6.5 are absent (their "
+         "coefficients are 0 or negative). The remainder in B and R "
          "is converted to XYZS with a spectrum = solar spectrum x (lambda / 437 nm)^alpha, alpha fixed by the R/B "
          "ratio (1 S10sun = 6.61e-12 F_sun/sr in each band, F_sun from TSIS-1 HSRS). It contains the diffuse "
          "galactic light, the extragalactic background and stars fainter than Gaia."
          % (WORK_ORDER, PIONEER_FWHM, OUT_FWHM,
-            ", ".join(f"{b} {c:g} +- {w / 2:g} nm" for b, (c, w) in bands.items()), OUT_FWHM, HIGHPASS_FWHM)),
+            ", ".join(f"{b} {c:g} +- {w / 2:g} nm" for b, (c, w) in bands.items()), OUT_FWHM,
+            diag["tollerCut"]["V"], HIGHPASS_FWHM)),
         OUT_FWHM,
         "Pioneer random error 2-3 S10sun (5 in the Milky Way; Leinert 1998 p. 72) plus absolute calibration; the "
         "remainder is a difference of two large numbers in the Milky Way; two-band colour only",
@@ -496,14 +563,17 @@ def _write_diffuse(ctx, ids, diag, faint_xyzs, xyzs6, label6, agg, filled, reg, 
                              "(2 deg bands), then the same conversion",
                         "2": "remainder not positive in B or R: set to 0"},
          "stats": {"starInclusion": {b: {"groups": rg[b]["groups"], "coef": rg[b]["coef"], "err": rg[b]["err"],
-                                         "subtractedFraction": list(map(float, incl_w[b]))} for b in rg},
+                                         "coefRelativeToRest": incl_w[b]} for b in rg},
+                   "tollerCut": diag["tollerCut"],
                    "remainderS10": diag["diffuse"]["remainderS10"], "measuredFraction":
                    diag["diffuseCoverage"]["measuredFraction"], "nonPositivePixels": diag["diffuse"]["nonPositivePixels"]}})
     deep_agg = layer(
-        f"deep-aggregate-o{FAINT_ORDER}.bin", FAINT_ORDER, "derived", [f"gaia-{sg.REL.key}-deep"],
+        f"deep-aggregate-o{FAINT_ORDER}.bin", FAINT_ORDER, "estimated",
+        [f"gaia-{sg.REL.key}-deep", f"gaia-{sg.REL.key}-xp-sampled-all", *cie_ids],
         "The stars/deep tier summed per pixel (XYZS / pixel solid angle): a stand-in for tiles that are not loaded. "
-        "Not additive to the tiers (it is the same light); its label is that of most of its records (see "
-        "stars/deep.json routes).", None, "as the deep-tier records")
+        "Not additive to the tiers (it is the same light). Label = the worst of its records' labels; %.1f %% of its "
+        "Y comes from XP-derived records (stars/deep.json routes)." % (100 * diag["deepYFractionDerived"]),
+        None, "as the deep-tier records", {"stats": {"yFractionDerived": diag["deepYFractionDerived"]}})
     header = {
         "kind": "skyMaps",
         "version": 1,
@@ -515,7 +585,8 @@ def _write_diffuse(ctx, ids, diag, faint_xyzs, xyzs6, label6, agg, filled, reg, 
     write_json(ctx, "sky/diffuse.json", header, "sky")
 
 
-def _verification(diag, br, b_v, b_br, b_xyzs, d_dir, d_xyzs, d_br, faint_xyzs, xyzs6, filled, P, cov, rot, fsun):
+def _verification(diag, br, b_v, b_br, b_xyzs, d_dir, d_xyzs, d_br, faint_xyzs, xyzs6, filled, P, cov, rot, fsun,
+                  fs):
     """Numbers for docs/reports/sky.md: pole brightness vs Leinert Table 34, all-sky totals."""
     lc = zl.leinert_constants()
     poles_gal = {"NGP": (0.0, 90.0), "SGP": (0.0, -90.0)}
@@ -527,6 +598,8 @@ def _verification(diag, br, b_v, b_br, b_xyzs, d_dir, d_xyzs, d_br, faint_xyzs, 
     for k, (lo, la) in poles_gal.items():
         vecs[k] = rot @ hp.ang_to_vec(np.array([lo]), np.array([la]))[0]
     v7 = hp.pix2vec(WORK_ORDER, np.arange(hp.npix(WORK_ORDER)))
+    v8 = hp.pix2vec(FAINT_ORDER, np.arange(hp.npix(FAINT_ORDER)))
+    v6 = hp.pix2vec(DIFFUSE_ORDER, np.arange(hp.npix(DIFFUSE_ORDER)))
     out = {}
     removed = b_v < 6.5
     bdir = br["dir"].astype(np.float64)
@@ -534,13 +607,17 @@ def _verification(diag, br, b_v, b_br, b_xyzs, d_dir, d_xyzs, d_br, faint_xyzs, 
         r = np.radians(5.0)
         cap_px = (v7 @ v) > np.cos(r)
         area = 2 * np.pi * (1 - np.cos(r))
-        row = {"pioneer": {}, "starsVge6.5": {}, "table34": {}}
+        row = {"pioneer": {}, "starsVge6.5": {}, "faintG14": {}, "remainder": {}, "table34": {}}
+        cap8 = (v8 @ v) > np.cos(r)
+        cap6 = (v6 @ v) > np.cos(r)
         for b, j in (("B", 0), ("R", 1)):
+            conv = sdf.S10_PER_SOLAR_FLUX_SR * fsun[b]
             row["pioneer"][b] = float(np.nanmean(P[b][cap_px]))
             sel_b = ((bdir @ v) > np.cos(r)) & ~removed
             sel_d = (d_dir @ v) > np.cos(r)
-            f = (b_br[sel_b, j].sum() + d_br[sel_d, j].sum()) / area / (sdf.S10_PER_SOLAR_FLUX_SR * fsun[b])
-            row["starsVge6.5"][b] = float(f)
+            row["starsVge6.5"][b] = float((b_br[sel_b, j].sum() + d_br[sel_d, j].sum()) / area / conv)
+            row["faintG14"][b] = float(np.mean(fs["pioneer" + b][cap8]) / conv)
+            row["remainder"][b] = float(np.mean(filled[b][cap6]))
         t = lc["pioneer10_poles_table34"]
         row["table34"] = {"B": t["blue_4407A"][name], "R": t["red_6419A"][name]}
         out[name] = row

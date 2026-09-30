@@ -61,7 +61,8 @@ def load_deep(paths) -> dict[str, np.ndarray]:
         with fits.open(p, memmap=False) as h:
             d = h[1].data
             for c in cols:
-                cols[c].append(np.asarray(d[c]))
+                a = np.asarray(d[c])
+                cols[c].append(a.astype(a.dtype.newbyteorder("=")))   # FITS is big-endian
     out = {c: np.concatenate(v) for c, v in cols.items()}
     for c in ("phot_g_mean_mag", "phot_bp_mean_mag", "phot_rp_mean_mag"):
         out[c] = out[c].astype(np.float64)
@@ -82,7 +83,7 @@ def run(ctx: BuildContext) -> None:
     paths = sg.fetch_gaia_deep(st.G_LIMIT, DEEP_G_MAX, log=log)
     g = load_deep(paths)
     n0 = g["source_id"].size
-    log(f"Gaia {sg.REL.label} sources {st.G_LIMIT} <= G < {DEEP_G_MAX}: {n0}")
+    log(f"{sg.REL.label} sources {st.G_LIMIT} <= G < {DEEP_G_MAX}: {n0}")
     diag: dict = {"archiveRows": int(n0)}
 
     # ------------------------------------------------------------------------------------ positions at the epoch
@@ -99,10 +100,12 @@ def run(ctx: BuildContext) -> None:
     o = np.argsort(tsid)
     tsid_s = tsid[o]
     j = np.clip(np.searchsorted(tsid_s, sid), 0, max(tsid_s.size - 1, 0))
-    with_t = (~has_pm) & (tsid_s.size > 0) & (tsid_s[j] == sid)
+    t_pmra = np.asarray(tp["pm_ra"], float)
+    t_pmde = np.asarray(tp["pm_de"], float)
+    with_t = (~has_pm) & (tsid_s[j] == sid)
+    with_t[with_t] = np.isfinite(t_pmra[o[j[with_t]]]) & np.isfinite(t_pmde[o[j[with_t]]])
     tj = o[j[with_t]]
-    u[with_t] = sa.propagate(g["ra"][with_t], g["dec"][with_t], np.asarray(tp["pm_ra"], float)[tj],
-                             np.asarray(tp["pm_de"], float)[tj], st.GAIA_EPOCH, epoch)
+    u[with_t] = sa.propagate(g["ra"][with_t], g["dec"][with_t], t_pmra[tj], t_pmde[tj], st.GAIA_EPOCH, epoch)
     pos_route[with_t] = 1
     rest = pos_route < 0
     u[rest] = sa.radec_to_unit(g["ra"][rest], g["dec"][rest])
@@ -132,14 +135,15 @@ def run(ctx: BuildContext) -> None:
         a_, b_ = pairs[:, 0], pairs[:, 1]
         blended[a_[gm[b_] < gm[a_] + st.XP_BLEND_DMAG]] = True
         blended[b_[gm[a_] < gm[b_] + st.XP_BLEND_DMAG]] = True
-    # bright-tier Gaia neighbours (G < 10) blend deep sources too
+    del tree, u16
+    # bright-tier stars (all brighter than any deep source) within 2" at the epoch blend deep sources too
     bu = bright["dir"].astype(np.float64)
     bY = bright["xyzs"][:, 1].astype(np.float64)
-    near_b = tree.query_ball_point(bu, 2.0 * np.sin(np.radians(st.XP_BLEND_RADIUS / 3600.0) / 2.0))
+    tree_e = cKDTree(u)
+    near_b = tree_e.query_ball_point(bu, 2.0 * np.sin(np.radians(st.XP_BLEND_RADIUS / 3600.0) / 2.0))
     for lst in near_b:
         if lst:
             blended[np.asarray(lst)] = True
-    del tree
     diag["blended"] = int(blended.sum())
 
     # ------------------------------------------------------------------------------------ light
@@ -180,7 +184,6 @@ def run(ctx: BuildContext) -> None:
     keep = ~np.isin(sid, bgid)
     diag["droppedSameSourceId"] = int((~keep).sum())
     nong = bright["src"] != bh["sourceTable"].index(st.SRC_GAIA)
-    tree_e = cKDTree(u)
     r_d = 2.0 * np.sin(np.radians(DEDUP_RADIUS / 3600.0) / 2.0)
     dropped_pos = []
     for bi in np.nonzero(nong)[0]:

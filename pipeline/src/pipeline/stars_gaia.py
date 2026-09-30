@@ -90,7 +90,7 @@ def _sync(query: str, timeout: float = 300.0) -> str:
 
 
 def tap_query(select: str, table: str, where: str, subdir: str, base: str, expect: str,
-              retries: int = 3) -> Path:
+              retries: int = 3, count_query: str | None = None) -> Path:
     """Run `SELECT <select> FROM <table> [WHERE <where>]` on the Gaia archive's synchronous TAP endpoint (CSV).
 
     Downloaded with `download.fetch` as a GET, so the ledger records the full query URL; the ADQL text is also
@@ -100,7 +100,7 @@ def tap_query(select: str, table: str, where: str, subdir: str, base: str, expec
     * errors come back as a VOTable document, sometimes with HTTP 200 (`expect` = first CSV column name);
     * long responses are sometimes cut off cleanly at a line boundary with no error. The row count is therefore
       checked against a COUNT(*) of the same query (stored as `<name>.rows` once verified) and the download
-      repeated on mismatch.
+      repeated on mismatch. (For GROUP BY queries pass `count_query`, which must return the expected row count.)
     """
     cond = f" WHERE {where}" if where else ""
     query = f"SELECT {select} FROM {table}{cond}"
@@ -119,7 +119,7 @@ def tap_query(select: str, table: str, where: str, subdir: str, base: str, expec
         with path.open("rb") as f:
             n = sum(1 for _ in f) - 1
         if not rows_file.exists():
-            expected = int(_sync(f"SELECT COUNT(*) AS n FROM {table}{cond}").splitlines()[1])
+            expected = int(_sync(count_query or f"SELECT COUNT(*) AS n FROM {table}{cond}").splitlines()[1])
             if n == expected:
                 rows_file.write_text(str(expected))
         else:
@@ -603,9 +603,29 @@ def fetch_faint_sums(g_min: float, level: int) -> list[Path]:
     out = []
     for pix in range(12 * 4 ** SUM_LEVEL):
         lo, hi = healpix_source_id_range(SUM_LEVEL, pix)
-        where = f"source_id >= {lo} AND source_id < {hi} AND phot_g_mean_mag >= {g_min} GROUP BY hpx"
-        out.append(tap_query(select, f"{REL.schema}.gaia_source", where, SUBDIR + "_sums",
-                             f"faint_sums_G{g_min}_L{level}_p{pix:02d}", "hpx"))
+        cut = f"source_id >= {lo} AND source_id < {hi} AND phot_g_mean_mag >= {g_min}"
+        count = (f"SELECT COUNT(*) AS n FROM (SELECT GAIA_HEALPIX_INDEX({level}, source_id) AS hpx FROM "
+                 f"{REL.schema}.gaia_source WHERE {cut} GROUP BY hpx) AS t")
+        out.append(tap_query(select, f"{REL.schema}.gaia_source", cut + " GROUP BY hpx", SUBDIR + "_sums",
+                             f"faint_sums_G{g_min}_L{level}_p{pix:02d}", "hpx", count_query=count))
+    return out
+
+
+def fetch_faint_colour_sums(g_min: float, level: int) -> list[Path]:
+    """Per HEALPix pixel (`level`) and BP-RP bin of 0.1 mag (cbin = FLOOR(10 (BP - RP)); NULL = no colour), for all
+    sources with G >= g_min: count and sum of 10^(-0.4 G). Gives the colour mix of the faint stars."""
+    select = (f"GAIA_HEALPIX_INDEX({level}, source_id) AS hpx, "
+              "FLOOR(10 * (phot_bp_mean_mag - phot_rp_mean_mag)) AS cbin, COUNT(*) AS n, "
+              "SUM(POWER(10, -0.4 * phot_g_mean_mag)) AS fg")
+    out = []
+    for pix in range(12 * 4 ** SUM_LEVEL):
+        lo, hi = healpix_source_id_range(SUM_LEVEL, pix)
+        cut = f"source_id >= {lo} AND source_id < {hi} AND phot_g_mean_mag >= {g_min}"
+        count = (f"SELECT COUNT(*) AS n FROM (SELECT GAIA_HEALPIX_INDEX({level}, source_id) AS hpx, "
+                 f"FLOOR(10 * (phot_bp_mean_mag - phot_rp_mean_mag)) AS cbin FROM {REL.schema}.gaia_source "
+                 f"WHERE {cut} GROUP BY hpx, cbin) AS t")
+        out.append(tap_query(select, f"{REL.schema}.gaia_source", cut + " GROUP BY hpx, cbin", SUBDIR + "_sums",
+                             f"faint_colour_sums_G{g_min}_L{level}_p{pix:02d}", "hpx", count_query=count))
     return out
 
 
@@ -617,7 +637,9 @@ def fetch_count_grid(level: int) -> list[Path]:
     out = []
     for pix in range(12 * 4 ** SUM_LEVEL):
         lo, hi = healpix_source_id_range(SUM_LEVEL, pix)
-        where = f"source_id >= {lo} AND source_id < {hi} GROUP BY hpx, gbin"
-        out.append(tap_query(select, f"{REL.schema}.gaia_source", where, SUBDIR + "_sums",
-                             f"count_grid_L{level}_p{pix:02d}", "hpx"))
+        cut = f"source_id >= {lo} AND source_id < {hi}"
+        count = (f"SELECT COUNT(*) AS n FROM (SELECT GAIA_HEALPIX_INDEX({level}, source_id) AS hpx, "
+                 f"FLOOR(phot_g_mean_mag) AS gbin FROM {REL.schema}.gaia_source WHERE {cut} GROUP BY hpx, gbin) AS t")
+        out.append(tap_query(select, f"{REL.schema}.gaia_source", cut + " GROUP BY hpx, gbin", SUBDIR + "_sums",
+                             f"count_grid_L{level}_p{pix:02d}", "hpx", count_query=count))
     return out

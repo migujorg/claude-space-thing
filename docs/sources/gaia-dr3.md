@@ -62,3 +62,44 @@ every star with G < 10. SourceRecord ids: `gaia-dr3`, `gaia-dr3-xp-sampled`, `ga
   2-parameter solution (3 879 rows); 2 133 catalogue stars are propagated with them.
 - Stars that still have no Gaia source within 2″ (J2016.0) and no Hipparcos entry, with
   V = VT − 0.090 (BT − VT) < 10 (ESA 1997, Vol. 1, §1.3 App. 4), become Tycho-only catalogue records.
+
+## Release parameter
+
+`stars_gaia.RELEASES` holds everything release-specific (archive schema `gaiadr3`, CDN directory `gdr3`, citation,
+XP sampling grid); the environment variable `PIPELINE_GAIA_RELEASE` selects one (default `dr3`). Raw
+sub-directories and SourceRecord ids carry the key (`stars/gaia_dr3*`, `gaia-dr3-*`), so a DR4 build does not mix
+with DR3 files. Gaia DR4 (scheduled 2 December 2026) is deliberately **not** pre-filled: its entry must be written
+from the released data model (table and column names, bulk layout, XP grid), not assumed. With `dr3` every query
+string is unchanged, so cached downloads keep their names and digests.
+
+## Deep tier sources — `gaia-dr3-deep`
+
+- **What:** `gaiadr3.gaia_source` rows with 10 ≤ G < 14: `source_id, ra, dec, pmra, pmdec, parallax,
+  phot_g_mean_mag, phot_bp_mean_mag, phot_rp_mean_mag, astrometric_params_solved, has_xp_sampled`.
+- **Retrieval:** 192 synchronous TAP queries, one per HEALPix level-2 `source_id` range
+  (`source_id >> 35` is the level-12 NESTED pixel; a level-2 pixel spans 4¹⁰ · 2³⁵ ids), in **FITS** (63 bytes per
+  row against ~180 for CSV; 1.1 GB in all), stored as `data/raw/stars/gaia_dr3_deep/*.fits` with `.adql`
+  sidecars. A FITS table declares its row count before the data, so a cut-off response is caught by checking the
+  file size against NAXIS1 × NAXIS2 (`stars_gaia._fits_table_ok`, run as `fetch`'s validator) instead of a second
+  COUNT(*) query. 27 minutes, sequential (the download ledger is one JSON file).
+- The Tycho-2 proper-motion query for 2-parameter sources is re-run for G < 14 (`gaia-dr3-tycho2-pm`).
+
+## All XP spectra, reduced — `gaia-dr3-xp-sampled-all`
+
+- All 3386 bulk files (≈ 114 GB) are streamed again and every one of the ≈ 34.5 M spectra is reduced on the fly
+  to six linear functionals (`stars_deep.xp_operator`): CIE X, Y, Z, S (the same resample ∘ xyzs operator as the
+  bright tier) and the mean flux in the Pioneer IPP B (395.7–478.3 nm) and R (595.7–692.5 nm) bands. A spectrum
+  with any missing sample in 360–830 nm gets NaN. Only the reductions are kept (float32, ≈ 1.7 GB in
+  `data/cache/stars/xp_reduced/xyzs_pioneerBR_v1/`, keyed by a hash of the operator), so this is a cache, not raw
+  data: the per-file url, MD5 check, sha256 and size are in its `_streamed.json`, and the SourceRecord's sha256 is
+  a digest over the per-file sha256s.
+
+## Faint-star sums — `gaia-dr3-faint-sums`
+
+- 48 synchronous TAP queries (one per HEALPix level-1 `source_id` range) returning, per level-8 pixel
+  (`GAIA_HEALPIX_INDEX(8, source_id)`) and for all sources with G ≥ 14: the count, Σ 10^(−0.4 G), and for the
+  sources with both BP and RP their count and Σ 10^(−0.4 G), Σ 10^(−0.4 BP), Σ 10^(−0.4 RP) (the
+  `+ 0 * phot_bp_mean_mag` terms make a row without BP or RP drop out of those sums). The row count of each
+  response is checked against `SELECT COUNT(*) FROM (… GROUP BY hpx) AS t`.
+- A second set (`count_grid_L4_*`) gives the archive's star count and Σ 10^(−0.4 G) per level-4 pixel and integer
+  G bin for all sources: the reference for the tier counts in docs/reports/sky.md.
