@@ -189,7 +189,9 @@ export class AppModel {
 
   setData(d: LoadedData, dataBaseUrl = 'data/'): void {
     this.data = d;
-    this.extras = { surfaces: surfaceRefs(d.surfaces ?? [], dataBaseUrl), rings: d.rings ?? null };
+    // atmospheres.json (render/scene.ts SceneBody.atmosphere) once the loader provides it as `atmospheres`.
+    const atmospheres = (d as LoadedData & { atmospheres?: SceneExtras['atmospheres'] }).atmospheres ?? null;
+    this.extras = { surfaces: surfaceRefs(d.surfaces ?? [], dataBaseUrl), rings: d.rings ?? null, atmospheres };
     this.bodies = d.bodies;
     this.byId = new Map(d.bodies.map((b) => [b.id, b]));
     this.roots.clear();

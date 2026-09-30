@@ -6,6 +6,8 @@ import { SRGB_TO_XYZ, inv3 } from '../eye/display';
 import { XYZ_TO_HPE } from '../eye/tonemap';
 import { LAW_WGSL, MASK_HATCH_SHADER, RING_COMMON, RING_SHADER as RING_SHADER_OF, SURFACE_WGSL } from './shaders-m2';
 import { FORESHORTEN_MIN_MU } from './surface';
+import { EARTH_WGSL } from './shaders-earth';
+import { ATMOSPHERE_WGSL } from './shaders-atmosphere';
 
 // Relief self-shadowing: horizon search toward the Sun in geometrically growing steps from one texel
 // (a numerical choice, not a physical constant: 40 steps growing by 15% reach ~230 texels, capped at
@@ -321,6 +323,12 @@ struct Body {
   law2: vec4f,  // θ̄ (rad), K, H function (0: Hapke 2002, 1: 1981), unused
   ps0: vec4f, psK0: vec4f, ps1: vec4f, psK1: vec4f,  // planetshine: unit direction (w = 1 if present), radiance prefactor
   ring: vec4f,  // ring system index (−1: none), body centre − ring centre (km)
+  earthC: vec4f, // Earth (earth.ts): cloud layer page-table base (u32 bits), max level, enabled, 1 = Earth mode
+  earthW: vec4f, // surface-water layer: base, max level, enabled; w = 1: wind layer bound (windTex)
+  earthN: vec4f, // emitted-radiance (night) layer: base, max level, enabled, unused
+  absR: vec4f,   // the albedo map's absoluteDiskMean (XYZS): texel × absR = absolute reflectance
+  nightK: vec4f, // night lights: luminance (cd/m², XYZS) per unit of the layer's radiance
+  atm: vec4f,    // atmosphere (shaders-atmosphere.ts): 1 = drawn, march steps, unused, unused
 };
 
 @group(0) @binding(0) var<uniform> F: Frame;
@@ -386,7 +394,7 @@ fn depthOf(t: f32, dir: vec3f) -> f32 {
 }
 `;
 
-export const BODY_SHADER = COMMON + BODY_COMMON + RING_COMMON + LAW_WGSL + SURFACE_WGSL + /* wgsl */ `
+const bodyShader = (earth: boolean) => COMMON + BODY_COMMON + RING_COMMON + LAW_WGSL + SURFACE_WGSL + (earth ? EARTH_WGSL + ATMOSPHERE_WGSL : '') + /* wgsl */ `
 @group(0) @binding(2) var<storage, read> pageTable: array<u32>;
 @group(0) @binding(3) var albedoPages: texture_2d_array<f32>;
 @group(0) @binding(4) var heightPages: texture_2d_array<f32>;
@@ -395,6 +403,32 @@ export const BODY_SHADER = COMMON + BODY_COMMON + RING_COMMON + LAW_WGSL + SURFA
 @group(0) @binding(7) var<storage, read> ringProf: array<vec4f>;
 @group(0) @binding(8) var texelLaw: texture_2d_array<f32>;   // per-texel Hapke (texelLaw.ts): w, b, c, B_S0, h_S of 4 bands, denominator XYZS
 @group(0) @binding(9) var<uniform> TL: TexelLawInfo;
+${earth ? `@group(0) @binding(10) var cloudPages: texture_2d_array<f32>;
+@group(0) @binding(11) var rg16Pages: texture_2d_array<f32>;
+@group(0) @binding(12) var<uniform> A: Atm;
+@group(0) @binding(13) var atmTex: texture_2d_array<f32>;
+@group(0) @binding(14) var atmSamp: sampler;
+@group(0) @binding(15) var windTex: texture_2d<f32>;
+
+/** Wind layer (one whole level, NaN = unknown): bilinear over known texels per channel. */
+fn sampleWind(uv: vec2f) -> LayerSample {
+  let d = vec2i(textureDimensions(windTex));
+  let c = uv * vec2f(d) - 0.5;
+  let i0 = vec2i(floor(c));
+  let fr = c - vec2f(i0);
+  var acc = vec4f(0.0);
+  var wk = vec4f(0.0);
+  for (var k = 0; k < 4; k++) {
+    let dx = k & 1;
+    let dy = k >> 1;
+    let w = select(1.0 - fr.x, fr.x, dx == 1) * select(1.0 - fr.y, fr.y, dy == 1);
+    let t = textureLoad(windTex, vec2i((i0.x + dx + d.x) % d.x, clamp(i0.y + dy, 0, d.y - 1)), 0);
+    let ok = vec4<bool>(isFiniteF(t.x), isFiniteF(t.y), isFiniteF(t.z), isFiniteF(t.w));
+    acc += select(vec4f(0.0), w * t, ok);
+    wk += select(vec4f(0.0), vec4f(w), ok);
+  }
+  return LayerSample(select(vec4f(0.0), acc / max(wk, vec4f(1e-30)), wk > vec4f(0.0)), wk);
+}` : ''}
 
 struct TexelLawInfo {
   cw: array<vec4f, 4>,  // channel X, Y, Z, S: weights W[c][b]/⟨A_b⟩ over the 4 bands
@@ -530,12 +564,13 @@ struct FOut {
     var N = Nell;
     var M = vec4f(1.0);
     var selfShadow = 1.0;
-    if (b.surfA.z > 0.5 || b.surfH.z > 0.5) {
-      // Body-fixed point (km), planetocentric (u, v), and the pixel's surface footprint (surface.ts).
-      let radii = vec3f(b.rot0.w, b.rot1.w, b.rot2.w);
-      let pbf = hit.h * radii;
-      let uv = uvOfBf(pbf);
-      let fp = F.tanHalf.z * range / sqrt(max(dot(Nell, V), ${FORESHORTEN}));
+    // Body-fixed point (km), planetocentric (u, v), and the pixel's surface footprint (surface.ts).
+    let radii = vec3f(b.rot0.w, b.rot1.w, b.rot2.w);
+    let pbf = hit.h * radii;
+    let uv = uvOfBf(pbf);
+    let fp = F.tanHalf.z * range / sqrt(max(dot(Nell, V), ${FORESHORTEN}));
+    ${earth ? EARTH_SAMPLE : ''}
+    if (${earth ? 'b.earthC.w < 0.5 && ' : ''}(b.surfA.z > 0.5 || b.surfH.z > 0.5)) {
       if (b.surfA.z > 0.5) {
         let base = bitcast<u32>(b.surfA.x);
         let Lr = residentLevel(base, surfLevel(b.surfA.w, fp, b.surfA.y), uv);
@@ -596,6 +631,21 @@ struct FOut {
     let S = b.sun.xyz;
     let mu0 = dot(N, S);
     let mu = dot(N, V);
+    ${earth ? `if (b.earthC.w > 0.5) {
+      // Earth (earth.ts): sunlight, then moonshine (planetshine sources), then night lights.
+      if (mu > 0.0 && b.atm.x > 0.5) {
+        ${EARTH_WITH_ATMOSPHERE}
+      } else if (mu > 0.0) {
+        // ρ carries max(μ0, 0): zero on the night side, where the emission and moonshine remain.
+        let hv = normalize(S + V);
+        let es = earthShade(ein, mu0, mu, dot(hv, N), dot(hv, S));
+        if (mu0 > 0.0) { L = b.rad * es.rho * (sunVisible(b, p) * ringShadowT(b, p)); }
+        if (b.ps0.w > 0.5) { L += b.psK0 * earthShade(ein, dot(N, b.ps0.xyz), mu, 0.0, 0.0).rho; }
+        if (b.ps1.w > 0.5) { L += b.psK1 * earthShade(ein, dot(N, b.ps1.xyz), mu, 0.0, 0.0).rho; }
+        L += nightL * es.emitT;
+        gap = earthGap(es.gap, es.gapEmit, mu0 > 0.0, nightL);
+      }
+    } else {` : ''}
     if (mu0 > 0.0 && mu > 0.0) {
       let gph = acos(clamp(dot(S, V), -1.0, 1.0));
       var r4: vec4f;
@@ -610,6 +660,7 @@ struct FOut {
     // Planetshine (Lambert, measured albedos of both bodies; planetshine.ts).
     if (b.ps0.w > 0.5) { L += b.psK0 * M * max(dot(N, b.ps0.xyz), 0.0); }
     if (b.ps1.w > 0.5) { L += b.psK1 * M * max(dot(N, b.ps1.xyz), 0.0); }
+    ${earth ? '}' : ''}
     L *= ringViewT(b, p, dirN, range);
   }
   var o: FOut;
@@ -620,6 +671,168 @@ struct FOut {
   return o;
 }
 `;
+
+/**
+ * Earth under its atmosphere (docs/rendering-earth.md §4): the view segment from the surface point back to the
+ * top of the atmosphere (or the camera) is marched once; the clear part of the pixel is lit through the whole
+ * column, the cloudy part at its cloud tops (the column above them). Sunlight reaches both attenuated
+ * (transmittance tables) and as skylight (sky-irradiance table); both are folded into XYZS per bin.
+ */
+const EARTH_WITH_ATMOSPHERE = /* wgsl */ `
+        let e = -dirN;
+        let pe = dot(p, e);
+        let Hk = A.geo.y - A.geo.x;
+        let rS = length(p);
+        let sTop = min(-pe + sqrt(max(pe * pe + 2.0 * rS * Hk + Hk * Hk, 0.0)), range);
+        let path = atmMarch(p, dirN, sTop, 0.0, i32(b.atm.y), S, b.m0.xyz, b.m1.xyz, b.m2.xyz, ein.cthKm);
+        let muSg = dot(p, S) / rS;
+        let hv = normalize(S + V);
+        let pr = earthParts(ein, mu0, mu, dot(hv, N), dot(hv, S));
+        let unknownW = max(1.0 - pr.clear.w - pr.cloudy.w, 0.0);
+        var Lsun = vec4f(0.0);
+        var Temit = vec4f(0.0);
+        for (var j = 0; j < atmK4(); j++) {
+          let ts0 = atmTsun(A.geo.x, muSg, j);
+          let es0 = atmIrr(0.0, muSg, j);
+          let tsc = atmTsun(A.geo.x + ein.cthKm, muSg, j);
+          let esc = atmIrr(ein.cthKm, muSg, j);
+          for (var c = 0; c < 4; c++) {
+            let clearRad = PI * path.L[j] + path.T[j] * (pr.clear.dir[c] * ts0 + pr.clear.dif[c] * es0);
+            let cloudRad = PI * path.Lc[j] + path.Tc[j] * (pr.cloudy.dir[c] * tsc + pr.cloudy.dif[c] * esc);
+            Lsun[c] += dot(A.w[4 * c + j], pr.clear.w * clearRad + pr.cloudy.w * cloudRad + unknownW * PI * path.L[j]);
+            Temit[c] += dot(A.w[4 * c + j], path.T[j]);
+          }
+        }
+        L = A.sunE * Lsun * sunVisible(b, p);
+        // Moonshine (planetshine sources) and night lights, dimmed by the view path.
+        if (b.ps0.w > 0.5) { L += b.psK0 * earthShade(ein, dot(N, b.ps0.xyz), mu, 0.0, 0.0).rho * Temit; }
+        if (b.ps1.w > 0.5) { L += b.psK1 * earthShade(ein, dot(N, b.ps1.xyz), mu, 0.0, 0.0).rho * Temit; }
+        L += nightL * (pr.clear.w * pr.clear.emit + pr.cloudy.w * pr.cloudy.emit) * Temit;
+        // An unknown wind marks the water where a possible glint (through both paths) outshines the known light.
+        var glintT = 0.0;
+        for (var j = 0; j < atmK4(); j++) { glintT += dot(A.w[4 + j], atmTsun(A.geo.x, muSg, j) * path.T[j]); }
+        let glintGap = earthGlintGap(pr.glintShare, pr.glintMax * glintT, Lsun.y);
+        // Reflected light matters while the sky above is lit (to ~6° below the horizon, sin 6° ≈ 0.1).
+        gap = earthGap(max(pr.gap, glintGap), pr.gapEmit, muSg > -0.1, nightL);
+`;
+
+/** Samples of Earth's layers at (uv, fp) for earthShade (earth.ts), and the night lights' radiance. */
+const EARTH_SAMPLE = /* wgsl */ `
+    var ein: EarthIn;
+    var nightL = vec4f(0.0);
+    if (b.earthC.w > 0.5) {
+      let baseA = bitcast<u32>(b.surfA.x);
+      let sA = sampleLayer(albedoPages, SI.albedoPerRow, baseA, residentLevel(baseA, surfLevel(b.surfA.w, fp, b.surfA.y), uv), uv, true);
+      ein.Rs = sA.v * b.absR;
+      ein.surfKnown = select(0.0, 1.0, sA.known.x >= 0.5);
+      let baseC = bitcast<u32>(b.earthC.x);
+      let sC = sampleLayer(cloudPages, SI.cloudsPerRow, baseC, residentLevel(baseC, surfLevel(b.surfA.w, fp, b.earthC.y), uv), uv, false);
+      ein.C = sC.v.x;
+      ein.cKnown = select(0.0, 1.0, sC.known.x >= 0.5);
+      ein.tau = sC.v.y;
+      ein.tauKnown = select(0.0, 1.0, sC.known.y > 0.0);
+      ein.fice = sC.v.w;
+      ein.cthKm = select(0.0, max(sC.v.z, 0.0) * 1e-3, sC.known.z > 0.0);
+      if (b.earthW.z > 0.5) {
+        let baseW = bitcast<u32>(b.earthW.x);
+        let sW = sampleLayer(rg16Pages, SI.rg16PerRow, baseW, residentLevel(baseW, surfLevel(b.surfA.w, fp, b.earthW.y), uv), uv, false);
+        ein.fw = sW.v.x;
+        ein.fi = sW.v.y;
+      }
+      if (b.earthW.w > 0.5) {
+        // Wind (a whole level in its own texture): the ascending pass, else the daily mean.
+        let wv = sampleWind(uv);
+        ein.glint = 1.0;
+        if (wv.known.x > 0.0) { ein.u10 = wv.v.x; ein.windKnown = 1.0; }
+        else if (wv.known.y > 0.0) { ein.u10 = wv.v.y; ein.windKnown = 1.0; }
+      }
+      if (b.earthN.z > 0.5) {
+        let baseN = bitcast<u32>(b.earthN.x);
+        let sN = sampleLayer(rg16Pages, SI.rg16PerRow, baseN, residentLevel(baseN, surfLevel(b.surfA.w, fp, b.earthN.y), uv), uv, false);
+        nightL = max(sN.v.x, 0.0) * b.nightK;
+      }
+    }
+`;
+
+export const BODY_SHADER = bodyShader(false);
+
+/**
+ * The atmosphere around a body, for rays that miss the solid body (limb, twilight arcs): the chord through
+ * the top sphere is marched (shaders-atmosphere.ts). Pixels partly covered by the body get the uncovered
+ * share. Additive, depth-tested against bodies in front, no depth write.
+ */
+export const ATMOSPHERE_SHELL_SHADER = COMMON + BODY_COMMON + ATMOSPHERE_WGSL + /* wgsl */ `
+@group(0) @binding(12) var<uniform> A: Atm;
+@group(0) @binding(13) var atmTex: texture_2d_array<f32>;
+@group(0) @binding(14) var atmSamp: sampler;
+
+@vertex fn vsShell(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> VOut {
+  var corners = array<vec2f, 6>(vec2f(-1.0, -1.0), vec2f(1.0, -1.0), vec2f(-1.0, 1.0), vec2f(-1.0, 1.0), vec2f(1.0, -1.0), vec2f(1.0, 1.0));
+  let b = bodies[ii];
+  let c = corners[vi];
+  var o: VOut;
+  o.id = ii;
+  if (b.e2.w > 0.5) {
+    o.pos = vec4f(c, 0.0, 1.0);
+    o.xy = c;
+  } else {
+    let xy = c * A.quad.x;
+    let d = b.n.xyz + xy.x * b.e1.xyz + xy.y * b.e2.xyz;
+    let cc = toCam(F, d);
+    o.pos = vec4f(cc.x * F.proj.x, cc.y * F.proj.y, 0.0, -cc.z);
+    o.xy = xy;
+  }
+  return o;
+}
+
+struct SOut {
+  @location(0) ext: vec4f,
+  @location(1) w: f32,
+  @location(2) mask: f32,
+  @builtin(frag_depth) depth: f32,
+};
+
+@fragment fn fsShell(in: VOut) -> SOut {
+  let b = bodies[in.id];
+  if (b.atm.x < 0.5) { discard; }
+  let hit = castBody(b, in.xy);
+  let cov = select(0.0, clamp(0.5 + hit.disc / max(fwidth(hit.disc), 1e-30), 0.0, 1.0), hit.t > 0.0);
+  if (cov >= 1.0 || occulted(F, hit.dir)) { discard; }
+  // Closest approach q of the ray to the body centre (relative to it), without cancellation at large D.
+  var dirN: vec3f;
+  var q: vec3f;
+  var tCam: f32;
+  if (b.e2.w > 0.5) {
+    dirN = normalize(worldDirNdc(F, in.xy));
+    let cRel = -b.n.xyz * b.n.w;
+    tCam = -dot(cRel, dirN);
+    q = cRel + dirN * tCam;
+  } else {
+    let a = in.xy.x * b.e1.xyz + in.xy.y * b.e2.xyz;
+    let a2 = dot(a, a);
+    let L2 = 1.0 + a2;
+    dirN = (b.n.xyz + a) / sqrt(L2);
+    q = b.n.w * (a - b.n.xyz * a2) / L2;
+    tCam = b.n.w / sqrt(L2);
+  }
+  let Rt = A.geo.y + (max(b.rot0.w, max(b.rot1.w, b.rot2.w)) - A.geo.x);
+  let rq2 = dot(q, q);
+  if (rq2 >= Rt * Rt) { discard; }
+  let chord = sqrt(Rt * Rt - rq2);
+  let sNearQ = max(-chord, -tCam);
+  if (chord <= sNearQ) { discard; }
+  let pFar = q + dirN * chord;
+  let path = atmMarch(pFar, dirN, chord - sNearQ, 0.0, i32(b.atm.y), b.sun.xyz, b.m0.xyz, b.m1.xyz, b.m2.xyz, -1.0);
+  var o: SOut;
+  o.ext = toStore(F, A.sunE * PI * atmFold(path.L) * (1.0 - cov));
+  o.w = 1.0;
+  o.mask = 0.0;
+  o.depth = depthOf(max(tCam + sNearQ, 0.0) + 1e-3, dirN);
+  return o;
+}
+`;
+/** The body shader with Earth's layers (clouds, water, night lights; earth.ts). */
+export const EARTH_BODY_SHADER = bodyShader(true);
 
 /** Display-space overlay for resolved bodies: "not measured" hatch and provenance tint. */
 export const BODY_OVERLAY_SHADER = COMMON + BODY_COMMON + /* wgsl */ `

@@ -5,7 +5,7 @@
 // anything not allowed at the current `exists` level arrives here as null / flagged, so the renderer
 // never needs to reason about provenance labels except for the provenance-tint overlay.
 
-import type { DiskReflectanceModel, Label, PhaseFunction, RingReflectance, SpatialPhotometricModel, SurfaceLayerHeader } from '../data/schema';
+import type { BodyAtmosphere, DiskReflectanceModel, Label, PhaseFunction, RingReflectance, SpatialPhotometricModel, SurfaceLayerHeader } from '../data/schema';
 import type { EyeSettings } from '../eye/settings';
 
 export type { EyeSettings };
@@ -49,6 +49,23 @@ export interface SceneBody {
      * supplies the band → XYZS weights; the disk integral still equals the disk photometry.
      */
     photometry?: SurfaceLayerRef;
+    /**
+     * Earth (docs/rendering-earth.md). A layer of kind 'cloud-properties' (cloudFraction,
+     * opticalThickness, cloudTopHeightM, iceFraction). With an albedo layer of surface-only reflectance
+     * (its header has `normalization.absoluteDiskMean`), the renderer draws the surface from the map's
+     * absolute reflectance and the clouds from this layer, instead of scaling the map by disk photometry.
+     * A surface-only map without this layer is not used.
+     */
+    clouds?: SurfaceLayerRef;
+    /** Earth: a layer of kind 'surface-water' (waterFraction, seaIceFraction): sea ice, and later glint. */
+    water?: SurfaceLayerRef;
+    /** Earth: a layer of kind 'emitted-radiance' (dnbRadiance, censoredFraction; night lights). */
+    night?: SurfaceLayerRef;
+    /**
+     * Earth: a layer of kind 'surface-wind' (windSpeed10mAscending, windSpeed10mDailyMean, passes) for the
+     * sun glint (Cox & Munk). Loaded whole at its finest level (≤ 2). Without it no glint is drawn.
+     */
+    wind?: SurfaceLayerRef;
   };
   /**
    * Measured spatially resolved photometric model (photometry.json `spatialModel`), already filtered by
@@ -72,6 +89,23 @@ export interface SceneBody {
    * (architecture §4.3); outside, `phase` applies as usual. Include its label in `worstLabel`.
    */
   diskReflectanceModel?: DiskReflectanceModel | null;
+  /**
+   * atmospheres.json for this body, when admitted at the reality level (its worst label in `worstLabel` and
+   * in `atmosphere.worstLabel`). Drawn for Earth with its layers (docs/rendering-earth.md §4): multiple
+   * scattering, limb and terminator colours. A component whose extinction, single-scattering albedo or
+   * phase function is unknown stops the whole atmosphere from being drawn (warning).
+   */
+  atmosphere?: SceneAtmosphere | null;
+}
+
+/** One body's atmosphere from atmospheres.json (AtmosphereFile), with the file's spectral grid. */
+export interface SceneAtmosphere {
+  wavelengthsNm: number[];
+  /** AtmosphereFile.foldWeights.value (4 × wavelengths). */
+  foldWeights: number[][];
+  /** AtmosphereFile.bodies[id]. The renderer caches its tables by this object's identity: keep it stable. */
+  body: BodyAtmosphere;
+  worstLabel: Label;
 }
 
 /**

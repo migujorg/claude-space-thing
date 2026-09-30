@@ -87,7 +87,7 @@ fn lawRadf(mu0: f32, mu: f32, g: f32, l0: vec4f, l1: vec4f, l2: vec4f) -> f32 {
  * pageTable, albedoPages, heightPages and the SI uniform.
  */
 export const SURFACE_WGSL = /* wgsl */ `
-struct SurfInfo { albedoPerRow: u32, heightPerRow: u32, ringCount: u32, pad: u32 };
+struct SurfInfo { albedoPerRow: u32, heightPerRow: u32, ringCount: u32, pad: u32, cloudsPerRow: u32, rg16PerRow: u32, pad1: u32, pad2: u32 };
 
 fn levelOffset(L: u32) -> u32 { return (((1u << (2u * L)) - 1u) / 3u) * 2u; }
 

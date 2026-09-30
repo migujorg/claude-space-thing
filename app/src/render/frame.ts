@@ -2,11 +2,12 @@
 // their photometry per docs/architecture.md §4.3, eclipse occluders, the Sun, analytic glare sources
 // and display-space overlays. No GPU calls here; renderer.ts packs the result into buffers.
 
-import type { SceneBody, SceneSnapshot } from './scene';
+import type { SceneAtmosphere, SceneBody, SceneSnapshot } from './scene';
 import { AU_KM } from './constants';
-import { diskIlluminance, diskModelPPhi, evalPhase, extrapolatePhase, lambertPhase, limbDarkenedI0, meanRadius, phaseRangeDeg, type XYZS } from './photometry';
+import { diskIlluminance, diskModelPPhi, evalPhase, extrapolatePhase, LAMBERT_ALBEDO_PER_GEOMETRIC_ALBEDO, lambertPhase, limbDarkenedI0, meanRadius, phaseRangeDeg, type XYZS } from './photometry';
 import { LAMBERT_LAW, LAW, lawDiskIntegral, lawRadf, mapDiskIntegral, NormalizationCache, photometricFrame, resolveLaw, TEXEL_LAW, type ResolvedLaw, type ZonalProfile } from './spatial';
 import { sampleLevel0, type Level0Map } from './surface';
+import { NIGHT_LAMP } from './earth';
 import { texelRadf, type TexelHapke } from './texelLaw';
 import { planetshineSources, type PlanetshineSource } from './planetshine';
 import { prepareRings, type RingPrep } from './rings';
@@ -27,6 +28,12 @@ export interface SurfaceBinding {
   /** Per-texel photometric model (texelLaw.ts) and its GPU texture, once loaded. */
   photometry?: { texel: TexelHapke; view: GPUTextureView };
   height?: { base: number; maxLevel: number };
+  /** Earth's cloud-properties, surface-water and emitted-radiance layers (earth.ts). */
+  clouds?: { base: number; maxLevel: number };
+  water?: { base: number; maxLevel: number };
+  night?: { base: number; maxLevel: number };
+  /** Earth's wind layer, one whole level in its own texture (rgba16float: ascending, daily mean, passes). */
+  wind?: { view: GPUTextureView };
 }
 
 export interface ResolvedBody {
@@ -56,6 +63,41 @@ export interface ResolvedBody {
   occluders: [V3, number][];
   hatch: boolean;
   tint: [number, number, number, number] | null;
+  /** Earth's layers (earth.ts): the albedo map's absoluteDiskMean and the night lights' luminance factors. */
+  earth: EarthBinding | null;
+  /**
+   * The body's atmosphere (drawn with Earth's layers only, for now): the data, the Lambert-equivalent
+   * reflectance below it for the multiple-scattering table (1.5·p_Y from the disk photometry, as
+   * planetshine.ts), the shell quad's half-extent (tan units) and the Sun's angular radius at the body.
+   */
+  atmosphere: { data: SceneAtmosphere; groundAlbedo: number; shellBeta: number; sunAngularRadius: number } | null;
+}
+
+export interface EarthBinding {
+  absR: XYZS;
+  /** cd/m² (XYZS) per unit of the night layer's radiance; zeros when there is no night layer. */
+  nightK: XYZS;
+}
+
+/**
+ * Earth mode (earth.ts): the albedo layer is surface-only absolute reflectance (its header has
+ * `normalization.absoluteDiskMean`) and the cloud layer is bound. Null otherwise; a surface-only map
+ * without clouds gets a warning (the caller then drops the map).
+ */
+export function earthMode(b: SceneBody, surface: SurfaceBinding | null, irr: XYZS | null, warnings: string[]): EarthBinding | null {
+  const abs = b.surface?.albedo?.header.normalization?.absoluteDiskMean;
+  if (!abs || !surface?.albedo || !irr) return null;
+  if (!surface.clouds) {
+    warnings.push(`${b.name}: surface-only reflectance map needs its cloud layer → disk photometry drawn instead`);
+    return null;
+  }
+  let nightK: XYZS = [0, 0, 0, 0];
+  if (surface.night) {
+    const k = (b.surface?.night?.header.constants?.toXYZS as Record<string, unknown> | undefined)?.[NIGHT_LAMP];
+    if (Array.isArray(k) && k.length === 4 && k.every((v) => typeof v === 'number' && v >= 0)) nightK = k as XYZS;
+    else warnings.push(`${b.name}: night-light layer has no ${NIGHT_LAMP} luminance factors → night lights not drawn`);
+  }
+  return { absR: [abs.X, abs.Y, abs.Z, abs.S], nightK };
 }
 
 export interface PointSource {
@@ -292,8 +334,13 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
     if ('error' in lr) warnings.push(`${b.name}: ${lr.error} → Lambert spatial distribution`);
     else law = lr.law;
     // Surface maps need the body-fixed frame.
-    const surface = b.orient && b.surface && opts.surfaces ? opts.surfaces(b) : null;
+    let surface = b.orient && b.surface && opts.surfaces ? opts.surfaces(b) : null;
     if (!b.orient && b.surface && (b.surface.albedo || b.surface.height)) warnings.push(`${b.name}: orientation unknown → surface maps not shown`);
+    // Earth (earth.ts): a map of surface-only absolute reflectance is drawn with its clouds, never scaled
+    // by the disk photometry (which includes clouds and air). Without the cloud layer it is not used.
+    const earth = earthMode(b, surface, irr, warnings);
+    if (!earth && surface?.albedo && b.surface?.albedo?.header.normalization?.absoluteDiskMean) surface = { ...surface, albedo: undefined };
+    if (!earth && surface && (surface.clouds || surface.water || surface.night || surface.wind)) surface = { ...surface, clouds: undefined, water: undefined, night: undefined, wind: undefined };
     // Disk-integrated p·Φ per channel: from the body's disk reflectance model (the Moon: ROLO) inside its
     // domain, else albedoXYZS·Φ(α) (architecture §4.3).
     let pPhi: XYZS | null = b.surfaceUnknown ? null
@@ -364,6 +411,12 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
         lit = true;
       }
     }
+    if (earth && irr) {
+      // Absolute reflectance: L = (E_sun/π)·ρ (earth.ts); the disk photometry (E) still gives the point.
+      K = irr.map((v) => v / (Math.PI * dAU * dAU)) as XYZS;
+      law = LAMBERT_LAW;
+      lit = true;
+    }
     const tint = tintOn ? ([...PROVENANCE_TINT[label], PROVENANCE_TINT_ALPHA] as [number, number, number, number]) : null;
     const hatch = !lit && !(E && E[1] > 0);
     const diamPx = (2 * angR) / g.pixelAngle;
@@ -400,8 +453,9 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
         cands.sort((a, b2) => a.d - b2.d);
         for (const k of cands.slice(0, 4)) occluders.push([k.o, k.r]);
       }
+      // Earth: the source's illuminance over π, shaded by the Earth model like sunlight (earth.ts).
       const planetshine = lit
-        ? planetshineSources(b, snap.bodies, irr).map((ps) => ({ ...ps, K: ps.K.map((v) => v * fRes) as XYZS }))
+        ? planetshineSources(b, snap.bodies, irr).map((ps) => ({ ...ps, K: (earth ? ps.E.map((e) => e / Math.PI) : ps.K).map((v) => v * fRes) as XYZS }))
         : [];
       resolved.push({
         body: b, frame, lit,
@@ -411,6 +465,15 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
         planetshine, ring: ringFor(b),
         sunDir, sunDistKm: toSunLen, sunRadiusKm: sunR,
         riccoWeight: ricco, occluders, hatch, tint,
+        earth: orient ? earth : null,
+        atmosphere: orient && earth && b.atmosphere && irr && b.albedoXYZS
+          ? {
+            data: b.atmosphere,
+            groundAlbedo: LAMBERT_ALBEDO_PER_GEOMETRIC_ALBEDO * (b.albedoXYZS[1] / irr[1]),
+            shellBeta: prepareBody(b.pos, [atmTop(b), atmTop(b), atmTop(b)], null, 3 * g.pixelAngle).beta,
+            sunAngularRadius: Math.asin(Math.min(1, sunR / toSunLen)),
+          }
+          : null,
       });
     }
     if (fRes < 1 && c[2] < 0 && !behindShield) {
@@ -492,6 +555,12 @@ function occulterOutline(g: CameraGeom, n: V3, r: number, out: number[]): void {
 const OCCULTER_OUTLINE_MIN_PX = 5;
 /** Display colour of the occulting disc's outline (a UI marking, not scene light): neutral grey. */
 const OCCULTER_OUTLINE_RGBA = [0.45, 0.45, 0.45, 0.9] as const;
+
+/** Radius of the atmosphere shell around a body: its largest radius plus the atmosphere's height. */
+function atmTop(b: SceneBody): number {
+  const a = b.atmosphere!.body;
+  return Math.max(...b.radii!) + (a.topAltitudeKm ?? 0) - (a.altitudesKm[0] ?? 0);
+}
 
 function tangent(n: V3): [V3, V3] {
   const h: V3 = Math.abs(n[0]) < 0.6 ? [1, 0, 0] : Math.abs(n[1]) < 0.6 ? [0, 1, 0] : [0, 0, 1];
