@@ -31,6 +31,13 @@
   "blue_4407A": {"NCP": 56, "NEP": 66, "NGP": 29, "SCP": 74, "SEP": 128, "SGP": 33},
   "red_6419A": {"NCP": 77, "NEP": 82, "NGP": 31, "SCP": 94, "SEP": 125, "SGP": null}
  },
+ "star_counts_poles_table34": {
+  "_source": "Table 34, p. 75, the 'Star counts' columns (integrated light of catalogued stars fainter than m_V = 6.5, S10sun); blank cells null.",
+  "roach_megill_1961_pg_4250A": {"NCP": 48, "NEP": 52, "NGP": 24, "SCP": 56, "SEP": 50, "SGP": 79},
+  "sharov_lipaeva_1973_B_4400A": {"NCP": 37, "NEP": 50, "NGP": 21, "SCP": 41, "SEP": 39, "SGP": 36},
+  "tanabe_1973_palomar_blue_4150A": {"NCP": 48, "NEP": 66, "NGP": 26, "SCP": null, "SEP": null, "SGP": null},
+  "tanabe_1973_palomar_red_6440A": {"NCP": 76, "NEP": 76, "NGP": 41, "SCP": null, "SEP": null, "SGP": null}
+ },
  "pioneer_ipp_star_removal": {
   "_source": "Sect. 10.4, p. 69: 'Individually resolved stars, typically those brighter than 6.5 mag, were removed from the measured brightnesses on the basis of a custom made catalog containing 12457 stars. The absolute calibration was based on the instrument's response to Vega.' Random error 2-3 S10sun, perhaps 5 in the Milky Way and Magellanic clouds (p. 72); spatial resolution ~2 deg.",
   "removed_brighter_than_mag": 6.5,
