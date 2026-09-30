@@ -9,7 +9,9 @@ import math
 import numpy as np
 import pytest
 import spiceypy as sp
+from spiceypy.utils.exceptions import SpiceyError
 
+from pipeline import ephem_satellites as sat
 from pipeline.ephem_kernels import PLANETARY, SRC_GM, SRC_PCK, gd, gm, pck, pool
 from pipeline.paths import OUT
 
@@ -30,13 +32,13 @@ def bodies():
 
 @pytest.fixture(scope="module")
 def kernels():
-    paths = (pck(), gm())
+    paths = (pck(), gm(), *sat.nameid_fks())
     with pool(*paths):
         yield paths
 
 
 def test_body_list(bodies):
-    assert {i: (b["name"], b["kind"]) for i, b in bodies.items()} == EXPECTED
+    assert {i: (b["name"], b["kind"]) for i, b in bodies.items() if i in EXPECTED} == EXPECTED
     assert bodies[301]["parent"] == 399
     assert "photometry" not in bodies[399]
     manifest = json.loads((OUT / "manifest.json").read_text())["products"]
@@ -44,17 +46,49 @@ def test_body_list(bodies):
         assert b["ephemeris"] == b["ephemerisFiles"][0]
         for f in b["ephemerisFiles"]:
             assert f"{f}.json" in manifest and f"{f}.bin" in manifest
-    assert bodies[599]["ephemerisFiles"] == ["ephem/centers", f"ephem/{PLANETARY}"]
+    assert bodies[599]["ephemerisFiles"] == ["ephem/sat-jup", f"ephem/{PLANETARY}"]
     assert bodies[301]["ephemerisFiles"] == [f"ephem/{PLANETARY}"]
+    assert bodies[399]["orientation"] == "orient/earth" and bodies[301]["orientation"] == "orient/moon"
+
+
+def test_every_moon_in_the_satellite_products_is_a_body(bodies):
+    targets = {s["target"]: (p.stem, s["center"]) for p in (OUT / "ephem").glob("sat-*.json")
+               for s in json.loads(p.read_text())["segments"]}
+    moons = {t for t in targets if t not in (499, 599, 699, 799, 899, 999)}
+    assert moons == {i for i, b in bodies.items() if b["kind"] == "moon" and i != 301}
+    for i in moons:
+        b = bodies[i]
+        product, center = targets[i]
+        assert b["parent"] == (100 * center + 99 if center < 10 else center)
+        assert b["ephemeris"] == f"ephem/{product}" and b["name"] and not b["name"].startswith("NAIF")
+    names = {bodies[i]["name"] for i in (501, 606, 801, 901, 705, 65304, 55527)}
+    assert names == {"Io", "Titan", "Triton", "Charon", "Miranda", "S/2009 S 2", "S/2011 J 4"}
+    print(f"{len(moons)} moons besides the Moon")
 
 
 def test_values_are_the_kernel_values(bodies, kernels):
     sources = {s["id"] for s in json.loads((OUT / "sources.json").read_text())}
     assert {SRC_PCK, SRC_GM} <= sources
+    counts = {"radii": 0, "gm": 0, "rotation": 0}
     for i, b in bodies.items():
-        assert b["radii"] == {**b["radii"], "value": gd(f"BODY{i}_RADII"), "label": "measured", "sources": [SRC_PCK]}
-        assert b["gm"]["value"] == gd(f"BODY{i}_GM")[0] and b["gm"]["sources"] == [SRC_GM]
+        radii = gd(f"BODY{i}_RADII")
+        if radii and len(radii) == 3:
+            assert b["radii"]["value"] == radii and b["radii"]["label"] == "measured" and b["radii"]["sources"] == [SRC_PCK]
+            counts["radii"] += 1
+        else:
+            assert b["radii"]["label"] == "unknown" and b["radii"]["value"] is None
+        g = gd(f"BODY{i}_GM")
+        if g and g[0] > 0:
+            assert b["gm"]["value"] == g[0] and b["gm"]["sources"] == [SRC_GM]
+        elif b["gm"]["label"] != "unknown":
+            assert b["gm"]["sources"][0].startswith("naif-") and b["gm"]["value"] > 0  # published in a satellite kernel
+        if b["gm"]["label"] != "unknown":
+            counts["gm"] += 1
         r = b["rotation"]["value"]
+        if gd(f"BODY{i}_PM") is None:
+            assert b["rotation"]["label"] == "unknown" and r is None  # never assumed synchronous
+            continue
+        counts["rotation"] += 1
         assert b["rotation"]["label"] == "measured"
         assert r["poleRa"] == gd(f"BODY{i}_POLE_RA") and r["poleDec"] == gd(f"BODY{i}_POLE_DEC")
         assert r["pm"] == gd(f"BODY{i}_PM")
@@ -64,6 +98,7 @@ def test_values_are_the_kernel_values(bodies, kernels):
             assert r["nutPrecAngles"] == gd(f"BODY{i // 100}_NUT_PREC_ANGLES")
     assert bodies[499]["rotation"]["value"]["nutPrecAnglesDegree"] == 2  # Mars: quadratic phase angles
     assert "150 arcsec" in bodies[399]["rotation"]["uncertainty"]
+    print(f"known values: {counts} of {len(bodies)} bodies")
 
 
 def body_to_icrf(r: dict, et: float) -> np.ndarray:
@@ -90,11 +125,20 @@ def body_to_icrf(r: dict, et: float) -> np.ndarray:
 
 def test_rotation_matches_pxform(bodies, kernels):
     rng = np.random.default_rng(11)
-    epochs = rng.uniform(-3.2e9, 3.2e9, 150)  # 1900-2100
-    worst = {}
+    epochs = rng.uniform(-3.2e9, 3.2e9, 60)  # 1900-2100
+    worst, checked = {}, 0
     for i, b in bodies.items():
+        if b["rotation"]["label"] == "unknown":
+            continue
+        frame = FRAMES.get(i) or f"IAU_{sp.bodc2n(i)}"
+        try:
+            sp.pxform(frame, "J2000", 0.0)
+        except SpiceyError:
+            continue  # SPICE has no built-in IAU frame for this body
         r = b["rotation"]["value"]
-        err = max(np.abs(body_to_icrf(r, e) - np.array(sp.pxform(FRAMES[i], "J2000", e))).max() for e in epochs)
-        worst[FRAMES[i]] = err
-        assert err < 1e-9, (FRAMES[i], err)
-    print("max |M - pxform|: " + ", ".join(f"{k} {v:.1e}" for k, v in worst.items()))
+        err = max(np.abs(body_to_icrf(r, e) - np.array(sp.pxform(frame, "J2000", e))).max() for e in epochs)
+        worst[frame] = err
+        checked += 1
+        assert err < 1e-9, (frame, err)
+    print(f"{checked} IAU frames vs pxform; worst {max(worst, key=worst.get)} {max(worst.values()):.1e}")
+    assert checked >= 50

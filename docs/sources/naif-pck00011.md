@@ -33,9 +33,15 @@ Measured against NAIF's high-precision Earth PCK (`earth_latest_high_prec.bpc`, 
 | 2025-06 | 301″ (0.084°) |
 | 2026-09 | 311″ (0.086°) |
 
-Almost all of it is in the prime meridian; the pole is off by about 9″. At the surface, 0.086° is about 10 km along the equator. A follow-up should switch Earth to a binary Earth PCK (ITRF93) for the current epoch. The Moon model is also only a trigonometric approximation of the Mean Earth/Polar Axis frame, not the DE440 libration solution.
+Almost all of it is in the prime meridian; the pole is off by about 9″. At the surface, 0.086° is about 10 km along the equator.
+
+Since M2, Earth's precise orientation comes from `orient/earth` (ITRF93 from NAIF's binary Earth PCKs; naif-earth-pck-high-prec.md). The Moon's comes from `orient/moon` (DE440, Mean Earth frame; naif-moon-pa-de440.md). `OrientationSet.orientation()` in `app/src/core/rotation.ts` prefers those products and falls back to these IAU models outside their coverage. The IAU Moon model is only a trigonometric approximation of the Mean Earth/Polar Axis frame, not the DE440 libration solution.
 
 ## Verification
 
-- **pipeline/tests/test_bodies.py:** every stored number equals the kernel pool. A Python statement of the model matches `spiceypy.pxform('IAU_<BODY>', 'J2000')` to within 6.6e-11 for all 11 bodies at 150 epochs from 1900 to 2100.
-- **app/tests/core-rotation.test.ts:** `bodyToIcrf` (TS) matches `pxform` to within 4e-11 for all 11 bodies at 8 epochs from 1950 to 2100. The requirement was 1e-9.
+- **pipeline/tests/test_bodies.py:** every stored number equals the kernel pool. A Python statement of the model matches `spiceypy.pxform('IAU_<BODY>', 'J2000')` to within 2.4e-10 for all 61 bodies with a model that SPICE has a built-in IAU frame for, at 60 epochs from 1900 to 2100. The worst is Phobos, whose quadratic Mars phase angles grow fastest.
+- **app/tests/core-rotation.test.ts:** `bodyToIcrf` (TS) matches `pxform` to within 5.3e-11 at 8 epochs from 1950 to 2100. That covers the Sun, the planets, the Moon, Pluto, Phobos, Deimos, Io, Europa, Enceladus, Titan, Janus, Miranda, Triton and Charon. The requirement was 1e-9.
+
+## Moons
+
+`pck00011` has rotation models for 61 of the 470 bodies and triaxial radii for 76. Every other moon has `rotation` and `radii` = `unknown`: no shape and no synchronous rotation is assumed.
