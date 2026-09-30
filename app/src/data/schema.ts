@@ -715,6 +715,152 @@ export interface SurfaceIndex {
   notes?: string;
 }
 
+// ---------------------------------------------------------------------------------------------- shape models
+// Products of the `shapes` stage (app/public/data/shapes/): triangle meshes of irregular bodies.
+
+/** One part (positions, normals or indices) of a mesh LOD, relative to the LOD's `offset` in the .bin. */
+export interface ShapeBinaryPart {
+  offset: number;
+  bytes: number;
+  /** f32 positions (km), i16 snorm normals (÷ 32767), u16 or u32 triangle indices. */
+  type: 'f32' | 'i16' | 'u16' | 'u32';
+  /** 3 per element (xyz, or the three vertex indices of a triangle). */
+  components: 3;
+  /** Number of elements (vertices or triangles). */
+  count: number;
+  encoding?: string;
+}
+
+export interface ShapeLod {
+  /** 0 = finest; each further level has fewer triangles (about 1/4). */
+  level: number;
+  triangles: number;
+  vertices: number;
+  /** Byte offset of this LOD in the .bin; each part padded to 4 bytes. */
+  offset: number;
+  bytes: number;
+  positions: ShapeBinaryPart;
+  normals: ShapeBinaryPart;
+  /** Counter-clockwise seen from outside. */
+  indices: ShapeBinaryPart;
+  /** Every edge shared by exactly two triangles with consistent orientation. */
+  watertight: boolean;
+  /** Present only when `watertight` is false (a decimated level of a closed source that could not be kept closed). */
+  defectEdges?: { boundaryEdges: number; nonManifoldEdges: number; inconsistentEdges: number };
+  /** Volume of this level ÷ volume of the welded source mesh. */
+  volumeRatioToSource: number;
+  /** 'source' (the welded source mesh itself) or 'quadric' (quadric-error decimation of the previous level). */
+  method: 'source' | 'quadric';
+  decimationAttempts: number;
+}
+
+/** shapes/<id>.json next to shapes/<id>.bin (id = NAIF id for planetary satellites, SBDB SPK-ID otherwise). */
+export interface ShapeModelHeader {
+  id: number;
+  name: string;
+  /** SPICE body id where one exists (e.g. 2000433 for Eros; asteroids' SBDB SPK-IDs are 20000000 + number). */
+  naifId: number | null;
+  sbdb: { spkid: number; fullname: string } | null;
+  /** How the shape was obtained: spacecraft imaging/altimetry, radar delay-Doppler, lightcurve inversion. */
+  kind: 'spacecraft' | 'radar' | 'lightcurve';
+  bin: string;
+  units: 'km';
+  /** The body-fixed frame the vertices are given in (the source's own). */
+  frame: { name: string; origin: string; axes: string };
+  /**
+   * Orientation provenance: `frame`, the SPICE kernels that define it for the source, the rotation constants
+   * behind it (`sourceRotation`: POLE_RA/POLE_DEC [deg, deg/century, deg/century²], PM [deg, deg/day, deg/day²]),
+   * the app's frame for the body (`appFrame`, pck00011) and its constants, the angle between the two frames at
+   * given epochs (`differenceDeg`, `poleDifferenceDeg`), and for radar models the published spin state.
+   */
+  orientation: {
+    frame: string;
+    label: Label;
+    kernels?: string[];
+    appFrame?: string;
+    sourceRotation?: Record<string, unknown>;
+    appRotation?: Record<string, unknown>;
+    differenceDeg?: Record<string, number>;
+    poleDifferenceDeg?: Record<string, number>;
+    labelRotation?: Record<string, unknown>;
+    spinState?: { file: string; fields: { name: string; unit?: string; description?: string; value: number | string }[] };
+    note?: string;
+    comparison?: string;
+    [k: string]: unknown;
+  };
+  provenance: { label: Label; sources: string[]; method: string; uncertainty?: string };
+  source: {
+    file: string;
+    nativeVertices: number;
+    nativeTriangles: number;
+    weldedVertices: number;
+    /** After dropping degenerate, repeated and zero-volume back-to-back plates (noted in `notes` when any). */
+    weldedTriangles: number;
+    /**
+     * Of the welded source: `components` = separate surfaces (Arrokoth's two lobes are 2); `genus` (only when
+     * watertight) = handles, i.e. tunnels through the mesh (0 for a sphere-like surface).
+     */
+    integrity: {
+      boundaryEdges: number;
+      nonManifoldEdges: number;
+      inconsistentEdges: number;
+      eulerCharacteristic: number;
+      components: number;
+      genus?: number;
+      watertight: boolean;
+    };
+  };
+  stats: {
+    volumeKm3: number;
+    areaKm2: number;
+    volumeEquivalentRadiusKm: number;
+    centroidKm: number[];
+    boundsKm: number[][];
+  };
+  /** Volume-equivalent radius against a measured mean radius (pck00011 radii or SBDB diameter). */
+  scaleCheck: {
+    referenceMeanRadiusKm: number;
+    reference: string;
+    volumeEquivalentRadiusKm: number;
+    ratio: number;
+  } | null;
+  lods: ShapeLod[];
+  layout: string;
+  notes: string[];
+}
+
+/**
+ * shapes/damit-index.json: a BinaryTableHeader with one row per DAMIT model; mesh data in `meshBin` (per model at
+ * `dataOffset`: int16 xyz × vertexCount scaled by `scale`/32767, padded to 4 bytes, then uint16 indices).
+ */
+export interface DamitIndexHeader extends BinaryTableHeader {
+  kind: 'damit-models';
+  meshBin: string;
+  provenance: { label: Label; sources: string[]; method: string; uncertainty: string };
+  rotation: string;
+  references: { author: string; year: string; title: string; journal: string; bibcode: string; url: string }[];
+  stats: Record<string, number>;
+}
+
+/** shapes/index.json */
+export interface ShapeIndex {
+  bodies: Record<string, {
+    name: string;
+    file: string;
+    kind: ShapeModelHeader['kind'];
+    label: Label;
+    trianglesFinest: number;
+    lods: number;
+    bytes: number;
+    volumeEquivalentRadiusKm: number;
+    scaleRatio: number | null;
+    orientationLabel: Label;
+  }>;
+  damit?: { file: string; models: number; asteroids: number; bytes: number; label: Label; [k: string]: unknown };
+  buildSeconds?: Record<string, number>;
+  notes?: string;
+}
+
 // ---------------------------------------------------------------------------------------------- small bodies
 // Products of the `smallbodies` stage (app/public/data/smallbodies/). Each table is a BinaryTableHeader plus
 // per-column documentation; the core header also carries the force model the propagator must use

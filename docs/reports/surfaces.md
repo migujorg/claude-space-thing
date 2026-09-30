@@ -1,6 +1,6 @@
 # Surface maps: review report
 
-Generated 2026-09-30 (commit bb4dd77) by `cd pipeline && uv run python -m pipeline.surf_report`, from the layer headers and tiles in `app/public/data/surfaces/`. Numbers are computed; prose is hand-written in `pipeline/src/pipeline/surf_report.py`. Contract: docs/architecture.md §4.4; header type `SurfaceLayerHeader` in app/src/data/schema.ts.
+Generated 2026-09-30 (commit 4d81820) by `cd pipeline && uv run python -m pipeline.surf_report`, from the layer headers and tiles in `app/public/data/surfaces/`. Numbers are computed; prose is hand-written in `pipeline/src/pipeline/surf_report.py`. Contract: docs/architecture.md §4.4; header type `SurfaceLayerHeader` in app/src/data/schema.ts.
 
 ## What the tiles contain
 
@@ -23,6 +23,7 @@ Generated 2026-09-30 (commit bb4dd77) by `cd pipeline && uv run python -m pipeli
 | Earth (399) | clouds | viirs-noaa20-cldprop, nasa-gibs | 0–4 (8192×4096, 4.89 km) | 0.986 / 0.998 | measured | – | 2026-09-28 → 2026-09-28 | 341.0 |
 | Earth (399) | night | viirs-noaa20-vj146a2, nasa-gibs… | 0–4 (8192×4096, 4.89 km) | 0.962 / 0.990 | measured | estimated | 2026-09-28 → 2026-09-28 | 162.5 |
 | Earth (399) | water | modis-mod44w-v6-water-mask, noaa-etopo-2022… | 0–4 (8192×4096, 4.89 km) | 1.000 / 1.000 | measured | – | 2026-09-29 → 2026-09-29 | 170.5 |
+| Earth (399) | wind | rss-amsr3-l3-daily, rss-gmi-bmaps-daily | 0–2 (2048×1024, 19.57 km) | 0.590 / 0.626 | measured | – | 2026-09-28 → 2026-09-28 | 15.8 |
 | Mars (499) | albedo | hrsc-global-colour-mosaic, mallama-2017… | 0–4 (8192×4096, 2.60 km) | 1.000 / 1.000 | measured | estimated | Mars Express high-altitude campaign (2004 onwards; images selected for low dust) | 341.0 |
 | Mars (499) | height | mola-megdr-32ppd, naif-pck00011 | 0–4 (8192×4096, 2.60 km) | 1.000 / 1.000 | measured | – | 1997-09/2001-06 (MGS mapping) | 170.5 |
 | Io (501) | albedo | usgs-io-galileo-voyager-1km | 0–3 (4096×2048, 2.81 km) | 1.000 / 1.000 | estimated | estimated | Voyager 1979; Galileo 1996-2001 | 85.0 |
@@ -36,7 +37,7 @@ Generated 2026-09-30 (commit bb4dd77) by `cd pipeline && uv run python -m pipeli
 | Charon (901) | albedo | nh-mvic-global-color-maps, buie-2010a… | 0–2 (2048×1024, 1.86 km) | 0.600 / 0.623 | measured | estimated | 2015-07-12 → 2015-07-14 | 16.5 |
 | Pluto (999) | albedo | nh-mvic-global-color-maps, buie-2010a… | 0–3 (4096×2048, 1.82 km) | 0.721 / 0.771 | measured | estimated | 2015-07-12 → 2015-07-14 | 65.0 |
 
-**Product size:** 3965 MiB of tiles (4.16 GB) + 1.0 MiB of headers and tile listings. **Raw downloads kept** in data/raw/surfaces: 3.01 GB (the LROC mosaics — 8.2 GB Hapke + 4.9 GB polar — and the 4.3 GB of Mercury band ranges are reduced and deleted right after download; their sha256 stays in the ledger). **Stage time** per module (last full run: moon 512 s, giants 14 s, mars 46 s, mercury 34 s, pan 45 s, earth 728 s, nh 42 s; the Moon and Mercury from their cached reductions). A cold build downloads ~20 GB and took 1096 s for the Moon (13 GB of LROC mosaics), 431 s for Mercury (4.3 GB of band ranges + the DEM), 106 s for Mars and 35 s for the giant planets on this machine (~20-40 MB/s). Earth, all four layers, cold: 1509 s for 1.8 GB (GIBS renders the 8192 × 4096 WMS blocks slowly; 1890 MODIS byte ranges, 766 MB; OC-CCI 324 MB; ETOPO 156 MB); only the ETOPO subset, the colour maps and the STAC responses are kept. Pluto and Charon: 42 s for 1.27 GB of band ranges, deleted after use.
+**Product size:** 3981 MiB of tiles (4.17 GB) + 1.0 MiB of headers and tile listings. **Raw downloads kept** in data/raw/surfaces: 3.04 GB (the LROC mosaics — 8.2 GB Hapke + 4.9 GB polar — and the 4.3 GB of Mercury band ranges are reduced and deleted right after download; their sha256 stays in the ledger). **Stage time** per module (last full run: moon 512 s, giants 14 s, mars 46 s, mercury 34 s, pan 45 s, earth 728 s, nh 42 s; the Moon and Mercury from their cached reductions). A cold build downloads ~20 GB and took 1096 s for the Moon (13 GB of LROC mosaics), 431 s for Mercury (4.3 GB of band ranges + the DEM), 106 s for Mars and 35 s for the giant planets on this machine (~20-40 MB/s). Earth, all four layers, cold: 1509 s for 1.8 GB (GIBS renders the 8192 × 4096 WMS blocks slowly; 1890 MODIS byte ranges, 766 MB; OC-CCI 324 MB; ETOPO 156 MB); only the ETOPO subset, the colour maps and the STAC responses are kept. Pluto and Charon: 42 s for 1.27 GB of band ranges, deleted after use.
 
 ## Colour: when is it `derived`?
 
@@ -202,6 +203,7 @@ Previews: display renderings of relative reflectance × the body's disk colour, 
 - **Uranus:** data from -1° to 90° (planetocentric): the north pole faces Earth in 2025, as expected (test).
 - **Neptune:** data from -90° to 52° (planetocentric): the south pole faces Earth in 2025, as expected (test).
 - **Earth albedo (level 4, absolute Y):** median land 0.068, open water 0.0062; Sahara (20–28°N, 0–20°E) 0.245, Amazon forest (0–10°S, 55–70°W) 0.044 (tests: land > 2.5× water, Sahara > 1.5× land median). Water covers 71.4 % of the area (ocean ≈ 70.8 % + inland water); MOD44W land samples that have a MUR sea-ice value (coastline mismatch) 0.076 %.
+- **Earth wind (level 2, U10 daily mean, 2026-09-28):** known on 59 % of the sphere's area, area-weighted mean 7.4 m/s; trade-wind belt (10–25°N) median 5.4 m/s, Southern Ocean (45–60°S) median 11.0 m/s.
 - **Earth night lights (level 4):** peak radiance near Paris 38.2, New York 38.2, Cairo 38.2, central Sahara 0.06 nW cm⁻² sr⁻¹ (texel means; samples ≥ 38.2 are lower bounds).
 - **Io, Loki Patera** (13.01°, 51.21°E; IAU Gazetteer of Planetary Nomenclature (planetarynames.wr.usgs.gov)): contrast to its surroundings 0.72 vs 0.98 at the mirrored longitude (expected dark).
 - **Europa, Pwyll (bright ray crater)** (-25.20°, 88.60°E; IAU Gazetteer of Planetary Nomenclature (planetarynames.wr.usgs.gov)): contrast to its surroundings 1.09 vs 0.99 at the mirrored longitude (expected bright).

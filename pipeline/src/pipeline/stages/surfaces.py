@@ -94,7 +94,8 @@ def run(ctx: BuildContext) -> None:
             b["layers"][h["layer"]] = f"surfaces/{h['body']}/{h['layer']}.json"
             built.add((h["body"], h["layer"]))
         print(f"[surfaces] {modname}: {time.time() - t:.0f} s")
-        index.setdefault("buildSeconds", {})[modname] = round(time.time() - t, 1)
+        if not (modname == "surf_earth" and os.environ.get("SURFACES_EARTH_LAYERS", "").strip()):
+            index.setdefault("buildSeconds", {})[modname] = round(time.time() - t, 1)   # whole-module runs only
     if only:
         _carry_over(ctx, built)
     index["excluded"] = {str(k): v for k, v in EXCLUDED.items()}
