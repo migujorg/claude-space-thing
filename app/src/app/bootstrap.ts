@@ -343,6 +343,12 @@ export async function startApp(canvas: HTMLCanvasElement, uiRoot: HTMLElement, d
       await model.shapesSettled();
       await nextFrame();
     }
+    // The sky's point cut follows the eye's limit with hysteresis while the view changes; the settled frame is cut
+    // afresh at the settled limit, so it does not depend on the limits the loading frames passed through.
+    for (let i = 0; i < 3 && sky?.settleCut(renderer?.stats ?? null); i++) {
+      await sky.idle();
+      await nextFrame();
+    }
     if (!window.__frameError) window.__frameReady = true;
   })().catch((e) => {
     console.error(e);
