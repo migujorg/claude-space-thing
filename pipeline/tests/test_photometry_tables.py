@@ -65,3 +65,41 @@ def test_buie_pluto_numbers():
     # B - V at 1 deg from the two a0 terms agrees with the published weighted mean colour (0.9540 +- 0.0010)
     # within the light-curve fit uncertainties.
     assert t["B_a0_1deg"] - t["V_a0_1deg"] == pytest.approx(t["B_minus_V_weighted_mean"], abs=0.005)
+
+
+def test_wang_saturn_digitization():
+    """Wang et al. (2024) Fig. 7: the digitized curves are smooth four-order polynomials (as fitted in the paper),
+    pass the ESO points at 5.7 deg, fall monotonically to 150 deg, and the three filters agree within a few percent."""
+    rows = read_table_csv("wang_2024_saturn_fig7.csv")
+    assert {r["filter"] for r in rows} == {"RED", "GRN", "BL1"}
+    eso = {"RED": 0.562, "GRN": 0.509, "BL1": 0.373}          # the digitized ESO dots
+    for f in ("RED", "GRN", "BL1"):
+        a = np.array([float(r["alpha_deg"]) for r in rows if r["filter"] == f])
+        y = np.array([float(r["reflectance"]) for r in rows if r["filter"] == f])
+        assert a.min() < 3 and a.max() > 175 and len(a) > 300
+        c = phase.wang_saturn_poly(f)
+        assert np.sqrt(np.mean((np.polyval(c, a) - y) ** 2)) < 0.0015, f
+        assert np.polyval(c, 5.7) == pytest.approx(eso[f], rel=0.03), f     # the fit need not pass the dot
+        r = [phase.saturn_iss_ratio(f, x) for x in np.arange(5.7, 150.1, 1.0)]
+        assert r[0] == pytest.approx(1.0) and all(q < p for p, q in zip(r, r[1:])), f
+    for x in (20.0, 54.6, 90.0):
+        g = phase.saturn_iss_ratio("GRN", x)
+        assert phase.saturn_iss_ratio("RED", x) == pytest.approx(g, rel=0.07)
+        assert phase.saturn_iss_ratio("BL1", x) == pytest.approx(g, rel=0.08)
+    assert phase.saturn_iss_ratio("GRN", 54.6) == pytest.approx(0.424, abs=0.01)
+
+
+def test_saturn_phase_joins_eq11_at_the_eso_angle():
+    p = phase.phase_for(699)
+    a = np.array(p.function["alphaDeg"])
+    m = np.array(p.function["deltaMag"])
+    z = phase.MH["bodies"]["699"]["V10_zero_phase"]
+    a0 = phase.SATURN_ESO_PHASE_DEG
+    assert a0 in a and a.max() == phase.SATURN_ISS_MAX_DEG
+    for x in a[a <= a0]:
+        assert np.interp(x, a, m) == pytest.approx(phase.mh_reduced_mag(699, x) - z, abs=1e-5)
+    # continuous at the join (Eq. 11 is flat there, the ISS curve falls ~0.02 mag/deg)
+    assert abs(np.interp(a0 + 0.3, a, m) - np.interp(a0, a, m)) < 0.01
+    assert p.label == "estimated" and p.sources == ["mallama-hilton-2018", "wang-2024"]
+    # the ISS curve is fainter than Eq. 12 (the Pioneer red model) at intermediate phase
+    assert 10 ** (-0.4 * np.interp(54.6, a, m)) < 0.8 * 10 ** (-0.4 * (phase.mh_reduced_mag(699, 54.6) - z))

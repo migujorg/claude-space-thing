@@ -604,7 +604,7 @@ These offsets are the missions' attitude-knowledge errors plus ours; the fits th
 
 ## 7. The renderer against the cases
 
-Run of 2026-09-30 20:51 UTC (git 5947926, data built 2026-09-30 20:47), reality level best, 1 × 1 samples per pixel: `cd app && npm run validate` (the full table, with X, Z, S, is in `app/shots/validation/report.md`). Y in cd/m²; the verdict covers X, Y, Z and S (failing channels named).
+Run of 2026-09-30 21:22 UTC (git 5979450, data built 2026-09-30 21:19), reality level best, 1 × 1 samples per pixel: `cd app && npm run validate` (the full table, with X, Z, S, is in `app/shots/validation/report.md`). Y in cd/m²; the verdict covers X, Y, Z and S (failing channels named).
 
 | case | ROI | expected Y ± 2σ | rendered Y | rendered / expected | σ | verdict |
 |---|---|---|---|---|---|---|
@@ -664,9 +664,9 @@ Run of 2026-09-30 20:51 UTC (git 5947926, data built 2026-09-30 20:47), reality 
 | `pluto-nh-lorri-2015` | disk-integrated | 11.47 ± 3.9 | 11.45 | 0.998 | -0.0 | pass |
 | `pluto-nh-lorri-2015` | sky-near | ≤ 0.231 | 0.01232 | — | — | pass |
 | `pluto-nh-lorri-2015` | sky-far | ≤ 0.01838 | 0 | — | — | pass |
-| `saturn-cassini-wac-2016` | disk-centre | 118.3 ± 24 | 144.7 | 1.223 | +2.2 | **fail** (XYZS) |
-| `saturn-cassini-wac-2016` | limb | 99.82 ± 20 | 123.6 | 1.239 | +2.3 | **fail** (XYZS) |
-| `saturn-cassini-wac-2016` | terminator | 20.61 ± 4.6 | 31.11 | 1.509 | +4.5 | **fail** (XYZS) |
+| `saturn-cassini-wac-2016` | disk-centre | 118.3 ± 24 | 106.5 | 0.900 | -1.0 | pass |
+| `saturn-cassini-wac-2016` | limb | 99.82 ± 20 | 91.01 | 0.912 | -0.9 | pass |
+| `saturn-cassini-wac-2016` | terminator | 20.61 ± 4.6 | 22.9 | 1.111 | +1.0 | pass |
 | `saturn-cassini-wac-2016` | ring-c | 8.478 ± 1.8 | 0 | 0.000 | -9.5 | **fail** (XYZS) |
 | `saturn-cassini-wac-2016` | ring-b | 84.36 ± 17 | 0 | 0.000 | -9.9 | **fail** (XYZS) |
 | `saturn-cassini-wac-2016` | ring-a | 40.33 ± 8.1 | 0 | 0.000 | -9.9 | **fail** (XYZS) |
@@ -679,7 +679,7 @@ Run of 2026-09-30 20:51 UTC (git 5947926, data built 2026-09-30 20:47), reality 
 | `uranus-voyager2-1986` | sky-near | — | 0 | — | — | not compared |
 | `uranus-voyager2-1986` | sky-far | — | 0 | — | — | not compared |
 
-**36 pass, 28 fail, 5 not compared.** How each body was drawn:
+**39 pass, 25 fail, 5 not compared.** How each body was drawn:
 
 * `callisto-nh-lorri-2007`: Callisto: disk photometry, disk model rotation-slices-v1, spatial model, map albedo.
 * `earth-himawari9-2026`: Earth: disk photometry, map albedo, map clouds, map water, map night, map wind, atmosphere.
@@ -712,18 +712,27 @@ change no ROI by more than 0.3 %, and the rgba16float fallback targets give the 
    - **closer, already within tolerance:** Neptune centre 1.157 → 1.002, limb 0.824 → 0.958, terminator
      0.567 → 0.837; Jupiter terminator 0.931 → 0.978. Jupiter's centre stays too bright (1.235 → 1.212); its
      2025 OPAL map shows other belt features than the 2007 planet.
-   - **Saturn (54.6°), still out of tolerance but with the right shape at the limb.** Rendered / observed for
-     centre, limb and terminator: Lambert 1.311 / 1.032 / 1.034; OPAL's k = 0.72 at all phases 1.187 / 1.316 /
-     1.719; now, with k(α) from Pioneer 11 (Dones et al. 1993 Barkstrom law, k(54.6°) = 0.79),
-     1.223 / 1.239 / 1.509. Relative to the centre, the limb goes from 1.109 to 1.013 and the terminator from
-     1.448 to 1.234. OPAL's k comes from Earth-based images (phase ≤ 6°) and does not hold at 54.6°; the Pioneer
-     law, measured on Saturn's disk at 30–150° and independent of this frame, removes most of the error. The
-     terminator is still 23 % too bright relative to the centre: the image's own centre-to-limb ratios need
-     k ≈ 0.8–0.9, and the Minnaert form approximates the Barkstrom law with an rms of 0.10 in ln I/F at 60°. The
-     common factor of about 1.22 over the whole disk points to the disk-integrated brightness at 54.6°, to which
-     the renderer scales every law (Mallama & Hilton's Eq. 12, a fit to the red-light Pioneer scattering model of
-     Dyudina et al. 2005; ring shadows and ringshine not included). The frame has no disk-integrated ROI,
-     so this is not tested directly. Nothing is tuned to this frame.
+   - **Saturn (54.6°): now within tolerance.** Rendered / observed for centre, limb and terminator:
+
+     | Stage | Centre | Limb | Terminator |
+     |---|---|---|---|
+     | Lambert | 1.311 | 1.032 | 1.034 |
+     | OPAL's k = 0.72 at all phases | 1.187 | 1.316 | 1.719 |
+     | k(α) from Pioneer 11 (Dones et al. 1993 Barkstrom law, k(54.6°) = 0.79) | 1.223 | 1.239 | 1.509 |
+     | Now, with the Cassini ISS disk-integrated phase curve | 0.900 | 0.912 | 1.111 |
+
+     The Pioneer law fixed the shape (limb / centre 1.109 → 1.013, terminator / centre 1.448 → 1.234). The
+     remaining common factor was the disk-integrated brightness at 54.6°. Mallama & Hilton's Eq. 12 is a fit to
+     the red-light Pioneer 11 model, and it is 1.36× brighter there than the full-disk reflectance that Wang et
+     al. (2024) measured with Cassini ISS in GRN, 2004–2017. Their dataset keeps only images within 3° of the
+     ring plane, so it excludes this frame (28.7° above it). Beyond 5.7°, the app now uses that curve, digitized
+     from the paper's Fig. 7 (docs/sources/wang-2024.md). All three disk ROIs pass (−1.0σ, −0.9σ, +1.0σ in Y).
+     Two limits remain:
+     - the terminator is still 23 % too bright relative to the centre (the Minnaert approximation of the
+       Barkstrom law);
+     - both sides are CISSCAL-calibrated, so a common ISS calibration error would not show.
+
+     Nothing is tuned to this frame.
    - **Galilean moons:** measured against the disk-integrated value (which carries the common offset of item 2),
      the laws flatten the disks as observed. Europa's centre / limb / terminator go from 1.20 / 0.95 / 0.60 to
      1.02 / 1.01 / 0.85 of the disk-integrated ratio, and Ganymede's from 1.08 / 0.87 / 0.42 to 0.91 / 0.98 / 0.66.
@@ -736,10 +745,19 @@ change no ROI by more than 0.3 %, and the rgba16float fallback targets give the 
      now fails (1.000 → 0.848, −3.8σ) with the common offset of item 2, as Europa's and Ganymede's do.
 2. **Galilean moons, disk-integrated:** with the rotational variation (§6.10) Io, Europa and Ganymede render at
    0.885, 0.888 and 0.893 of LORRI (−3 to −5σ), the same to 1 %; Callisto at 0.812 (46.5° phase, in Mayorga et al.'s
-   30–60° data gap). The common factor lies between the Cassini-based photometry (CISSCAL 3.9, Mayorga et al.
-   2020) and LORRI (Weaver et al. 2020 in-flight RSOLAR), which agrees with Karkoschka's Jupiter to 3–7 %
-   (Jupiter's disk-integrated ROI: 0.935). It is not resolved. The candidates are the Cassini absolute calibration
-   and the phase polynomials beyond their 25° data edge.
+   30–60° data gap). **Bounded, not corrected** (docs/sources/mayorga-2020.md, "The ~11 % offset"):
+   - **Cassini side:** Mayorga et al.'s tight apertures and close sky annuli, applied to the ISS WAC extended PSF
+     from the calibration volume, recover only 87–95 % of a moon's light. CISSCAL's absolute factors refer to
+     the total flux.
+   - **LORRI side:** the in-flight RSOLAR (Weaver et al. 2020) reads 7 ± 5 % above the ground scale, judged by
+     Jupiter in the same 2007 set (0.936 against Karkoschka). The archive's pre-flight value would give 1.061.
+   - **Together:** the two predict 0.78–0.93, which contains the observed ratios.
+   - **Ruled out:** the LORRI colour term (Y/LORRI 0.97–1.02 by moon) and the phase curves. Io, Europa and
+     Ganymede share the offset at different phase angles.
+   - **Callisto's extra 8 %** is probably the polynomial inside the data gap.
+
+   The aperture loss depends on per-image moon sizes that the paper does not give, and the LORRI evidence rests
+   on a validation frame, so nothing is changed.
 3. **Saturn's rings are not drawn at 54.6° phase:** `rings.json`'s reflectance model covers 0.25–47°, so the
    renderer hatches the rings as not measured and draws no ring light (ROIs C, B, A render 0; they still cast
    shadows and absorb). Observed: B ring I/F ~0.11 in the green. No published, machine-usable ring photometry

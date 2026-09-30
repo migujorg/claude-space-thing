@@ -13,7 +13,7 @@
 | Earth | poly-mag 0–170° | estimated | Eq. 5 is a fit to a radiative-transfer model (Tinetti et al. 2006) |
 | Mars | tabulated 0–120° | estimated | Eq. 6 measured to 50°; Eq. 7 beyond is an average of Mercury and Earth (assumption); L(λe), L(Ls) not represented |
 | Jupiter | tabulated 0–130° | measured | Eq. 8 ground + Eq. 9 Cassini ISS |
-| Saturn (globe) | tabulated 0–150° | estimated | Eq. 11 borrows Jupiter's polynomial; Eq. 12 fits a Pioneer-based model |
+| Saturn (globe) | tabulated 0–160° | estimated | Eq. 11 (borrows Jupiter's polynomial) to 5.7° only; beyond, the Cassini ISS curve of Wang et al. 2024 (docs/sources/wang-2024.md) replaces Eq. 12, which fits a Pioneer-based model and is 1.23–1.36× brighter at 30–90° |
 | Uranus | poly-mag 0–154° | measured | Eq. 15 phase term (Voyager); applied at all α (Horizons applies it only above 3.1°) |
 | Neptune | poly-mag 0–133.14° | measured | Eq. 17 phase term (Voyager); applied at all α (Horizons: only above 1.9°) |
 
