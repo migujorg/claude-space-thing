@@ -1,0 +1,29 @@
+# Hapke parameters of the icy Galilean satellites from their disk-integrated solar phase curves (Voyager and
+#   telescopic photometry): Domingue, D. & Verbiscer, A. (1997), "Re-analysis of the solar phase curves of the icy
+#   Galilean satellites", Icarus 128, 49-74, DOI:10.1006/icar.1997.5730.
+# Transcribed from the open-access reproduction in Belgacem, I. (2019), "Etude photometrique des lunes glacees de
+#   Jupiter", PhD thesis, Universite Paris-Saclay, HAL tel-02421378, Tables 2.5 (Europa), 2.6 (Ganymede) and 2.7
+#   (Callisto), checked line by line against the PDF text. The primary paper is not available to scripted clients.
+# Model: Hapke (1993) with a two-term Henyey-Greenstein particle phase function (b, c) and the shadow-hiding
+#   opposition effect B(g) = B0/(1 + tan(g/2)/h); roughness theta in degrees. c follows Hapke's (1993, Eq. 6.18a)
+#   convention: backward-lobe weight (1+c)/2, so c > 0 is backscattering. This is the reading consistent with the
+#   thesis' own summary of the paper (Sec. 2.7.5.b: both Ganymede hemispheres backscattering at 550 nm, which needs
+#   (1+c)/2 > 0.5 for Ganymede leading, c = 0.427; Sec. 2.7.6.b: Callisto's leading hemisphere at 470 nm close to
+#   isotropic, i.e. asymmetry -b c ~ 0 for b = 0.729, c = 0.024).
+# The thesis prints the two Europa TRAILING rows with h and B0 in each other's columns (h 0.45/0.50, B0 0.0016); they
+#   are stored here as h = 0.0016, B0 = 0.45/0.50, as for the leading hemisphere and as the thesis states in its text
+#   (Sec. 2.7.4.a: no significant hemispherical difference in the opposition effect, B0 close to 0.5). swapped=1 marks
+#   those rows. Error bars as printed: w 0.01, b 0.005, c 0.005, theta 2 deg, h 0.001, B0 0.01.
+moon,naif,hemisphere,wavelength_nm,w,b,c,theta_deg,h,B0,rmsd,swapped
+Europa,502,leading,470,0.9222,0.431,0.921,10,0.0016,0.50,0.029,0
+Europa,502,leading,550,0.964,0.429,0.887,10,0.0016,0.50,0.029,0
+Europa,502,trailing,470,0.897,0.43,0.713,10,0.0016,0.45,0.039,1
+Europa,502,trailing,550,0.940,0.443,0.609,10,0.0016,0.50,0.033,1
+Ganymede,503,leading,470,0.830,0.282,0.960,28,0.003,0.62,0.067,0
+Ganymede,503,leading,550,0.945,0.380,0.427,29,0.004,0.86,0.036,0
+Ganymede,503,trailing,470,0.870,0.039,0.989,35,0.074,1.0,0.097,0
+Ganymede,503,trailing,550,0.81,0.307,0.962,35,0.0744,0.23,0.047,0
+Callisto,504,leading,470,0.740,0.729,0.024,42,0.031,1.00,0.093,0
+Callisto,504,leading,550,0.540,0.132,0.949,42,0.031,1.00,0.062,0
+Callisto,504,trailing,470,0.470,0.432,0.542,42,0.0277,0.27,0.213,0
+Callisto,504,trailing,550,0.550,0.206,0.958,42,0.0277,0.73,0.066,0
