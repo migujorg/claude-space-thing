@@ -39,7 +39,7 @@ Provenance is tracked for each attribute, not each object. A typical catalogued 
 |---|---|---|
 | **Measured** | Taken directly from an observational dataset | An asteroid's orbital elements; Mars's reflectance spectrum |
 | **Derived** | Computed from measured values by established physics, with no assumed inputs | That asteroid's position today, from its orbit; Mars's color, from its spectrum and the Sun's |
-| **Estimated** | Computed from measured values plus an input taken from population statistics | An asteroid's diameter, from its brightness plus the typical albedo for its region |
+| **Estimated** | Computed from measured values plus an assumed input: a population statistic or a modeling assumption | An asteroid's diameter, from its brightness plus the typical albedo for its region |
 | **Synthetic** | A whole object that isn't individually known, sampled from a measured population model | A 200 m main-belt asteroid that statistically must exist but hasn't been discovered |
 | **Unknown** | No data, and we don't pretend otherwise | The shape of most small asteroids |
 

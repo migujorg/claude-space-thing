@@ -1,0 +1,25 @@
+[project]
+name = "pipeline"
+version = "0.1.0"
+description = "Builds the simulator's data products from raw, citable downloads (see docs/architecture.md)."
+requires-python = ">=3.11"
+dependencies = [
+  "numpy>=2.0",
+  "spiceypy>=6.0",
+  "colour-science>=0.4.6",
+  "astropy>=6.0",
+  "requests>=2.31",
+]
+
+[dependency-groups]
+dev = ["pytest>=8"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/pipeline"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
