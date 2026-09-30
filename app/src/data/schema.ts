@@ -951,6 +951,63 @@ export interface SmallBodyPhysicalHeader extends SmallBodyTableHeader {
   taxonomySsodnet?: string[];
 }
 
+/** A population of the synthetic layer (synthetic/objects.json `populations`; pipeline stage synthetic). */
+export interface SyntheticPopulation {
+  /** neo, hungaria, mainbelt, hilda, trojan, tno */
+  name: string;
+  /** objects.pop / cells.pop value. */
+  code: number;
+  /** The model (source id, or 'catalogue+<completeness source>+<slope source>'). */
+  modelId: string;
+  sources: string[];
+  /** Seed string prefix of the population's cell streams ('<algorithm>|<seed>|<modelId>'). */
+  prefix: string;
+  grid: { aEdgesAu: number[]; eWidth: number; iWidthDeg: number; nE: number; nI: number; hWidthMag: number; hAlignment: string };
+  hFloor: number;
+  /** How the completeness limit was found (fit of Hendler & Malhotra 2020, or comparison with the model). */
+  limit: Record<string, unknown>;
+  model: Record<string, unknown>;
+  firstCell: number;
+  cells: number;
+  firstObject: number;
+  objects: number;
+  knownInGrid: number;
+  totals: { model: number; knownInGroups: number; rawDeficit: number; deficit: number; shown: number; groups: number };
+}
+
+/** synthetic/objects.json: objects standing in for the undiscovered members of each (a, e, i, H) cell. */
+export interface SyntheticObjectsHeader extends SmallBodyTableHeader {
+  algorithm: string;
+  seed: number;
+  /** Epoch of the elements (= smallbodies core epochEt), TDB s past J2000. */
+  epochEt: number;
+  epochTdb?: string;
+  catalogue: { product: string; snapshot: string; coreSha256: string; physicalSha256: string; sources: string[] };
+  populations: SyntheticPopulation[];
+  labels: string;
+  seedRule: string;
+  yieldRule: string;
+  frame: string;
+  gmSun: number;
+  obliquityArcsec: number;
+  auKm: number;
+  cells: string;
+  counts: { synthetic: number; cells: number };
+  floors: Record<string, number>;
+  /** Slope parameter of the H-G magnitude law used for every synthetic object. */
+  slopeParameterG?: { value: number; source: string; method: string };
+  attributePools?: Record<string, unknown>;
+}
+
+/** synthetic/cells.json: one record per (population, a, e, i, H) cell. */
+export interface SyntheticCellsHeader extends SmallBodyTableHeader {
+  algorithm: string;
+  seed: number;
+  seedRule: string;
+  yieldRule: string;
+  populations: { name: string; code: number; modelId: string; firstCell: number; cells: number }[];
+}
+
 /** smallbodies/names.json: line i of `file` describes core record i. */
 export interface SmallBodyNamesHeader {
   file: string;

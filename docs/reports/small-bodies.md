@@ -506,3 +506,7 @@ All 1,573,014 objects on SwiftShader (headless Chromium, 4 vCPUs shared with oth
    - Comets are drawn as points with the Sun's colour.
    - Non-V-band H-G1-G2 fits are unused.
    - The checkpoint budget (default 1 GiB) should be tuned per device.
+
+## 12. The synthetic layer (M6)
+
+The field also draws the synthetic objects of `synthetic/objects` (pipeline stage `synthetic`), at the Complete level only. Their records follow the catalogue's in the same buffer (index = catalogue count + j). They move on fixed Kepler ellipses: mean anomaly in double-single, the rest float32, with accurate sin/cos. They agree with float64 two-body positions to 1e-7 of the distance (p50). Algorithm, verification and screenshots: docs/reports/synthetic-populations.md.

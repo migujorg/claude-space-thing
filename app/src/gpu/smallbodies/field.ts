@@ -21,14 +21,15 @@
 //    share workgroups instead of stalling the main belt ones.
 
 import type {
-  SmallBodyCoreHeader, SmallBodyForceModel, SmallBodyPhotometry, SmallBodyPhysicalHeader, SmallBodyTableHeader,
+  SmallBodyCoreHeader, SmallBodyForceModel, SmallBodyPhotometry, SmallBodyPhysicalHeader, SmallBodyTableHeader, SyntheticObjectsHeader,
 } from '../../data/schema';
 import type { Vec3 } from '../../core/vec';
 import { AU_KM, C_KM_S } from '../../core/constants';
 import { SB_OK, SmallBodyPropagator, type NonGrav, type PlanetPositions } from '../../core/smallbody';
 import { coreState, readCore, readNonGrav, type SmallBodyCatalog } from '../../core/smallbodyCatalog';
+import { readSynthetic, syntheticState, type SyntheticCatalog } from '../../core/smallbodySynthetic';
 import { LEVEL_CODE, SmallBodyLight, type ExistsLevel } from '../../core/smallbodyPhotometry';
-import { PICK_SHADER, SELFTEST_SHADER, WG, shadeShader, stepShader, type KernelConfig } from './kernels';
+import { PICK_SHADER, SELFTEST_SHADER, WG, shadeShader, stepShader, syntheticShader, type KernelConfig } from './kernels';
 import { PlanetTable, SAMPLES } from './planetTable';
 import { split64 } from './wgslConst';
 
@@ -45,6 +46,8 @@ export interface SmallBodyTables {
   nongravHeader?: SmallBodyTableHeader;
   /** smallbodies/photometry.json. Without it no brightness is known: every record has zero illuminance. */
   photometry?: SmallBodyPhotometry;
+  /** synthetic/objects (the COMPLETE level): drawn after the catalogue, at `complete` only. */
+  synthetic?: { objects: ArrayBuffer; header: SyntheticObjectsHeader };
 }
 
 export interface SmallBodyFieldOptions {
@@ -60,6 +63,13 @@ export interface SmallBodyFieldOptions {
   debug?: boolean;
   /** Override the self-test's choice of fma() for exact products (tests). */
   useFma?: boolean;
+  /** Draw the synthetic objects of tables.synthetic at `complete` (default true). */
+  synthetic?: boolean;
+  /**
+   * DIAGNOSTIC ONLY (test page): draw every synthetic object in this false colour (X, Y, Z, S relative to sunlight)
+   * instead of its class colour, to tell synthetic from catalogued points in a picture.
+   */
+  syntheticDiagnosticColour?: [number, number, number, number];
 }
 
 export interface PointSourceBuffer {
@@ -77,6 +87,8 @@ export interface SmallBodyFieldInfo {
    * app draws it as a planetary-ephemeris body). */
   invalid: number;
   photometry: boolean;
+  /** The synthetic layer: objects in the table, whether they are drawn (at `complete`) and why not. */
+  synthetic: { objects: number; enabled: boolean; reason: string | null; gpuBytes: number };
   checkpointSpacingSteps: number;
   checkpointSlots: number;
   checkpoints: number;
@@ -103,6 +115,11 @@ const FRAME_BYTES = 96;
 const PLUTO_IDS = [999, 9];
 const INVALID = 0x80000000;
 const EXCLUDED = 0x20000000;
+/** Synthetic objects: 8 float32 of elements each (kernels.ts syntheticShader); uniform slot per dispatch chunk. */
+const SYN_FLOATS = 8;
+const SYN_SLOT = 256;
+const SYN_U_BYTES = 80;
+const DEG = Math.PI / 180;
 
 type Op =
   | { kind: 'copy'; from: GPUBuffer; to: 'W' | 'B' }
@@ -131,7 +148,11 @@ function readStates(cat: SmallBodyCatalog): Float64Array {
 
 export class SmallBodyField {
   readonly pointSources: PointSourceBuffer;
+  /** Catalogue objects (core rows); synthetic objects follow them: index count + j is synthetic object j. */
   readonly count: number;
+  /** Synthetic objects drawn at `complete` (0 without the layer or when it does not fit the device). */
+  readonly syntheticCount: number;
+  readonly synthetic: SyntheticCatalog | null;
   readonly epochEt: number;
   readonly window: { startEt: number; endEt: number };
   readonly info: SmallBodyFieldInfo;
@@ -148,11 +169,18 @@ export class SmallBodyField {
   private excluded = new Set<number>();
   private readonly counters: GPUBuffer;
   private readonly statsRead: { buf: GPUBuffer; state: 'free' | 'copied' | 'mapping' }[];
-  private lastStats: { drawn: number; withheld: number } | undefined;
+  private lastStats: { drawn: number; withheld: number; synthetic?: { drawn: number; withheld: number } } | undefined;
+  private synEl: GPUBuffer | null = null;
+  private synUB: GPUBuffer | null = null;
+  private synUBSlots = 0;
+  private synPipe: GPUComputePipeline | null = null;
+  private synBG: GPUBindGroup | null = null;
+  /** Whether the synthetic records hold points (they are cleared when the layer is not shown). */
+  private synLive = false;
   private readonly nongrav: Map<number, NonGrav>;
   private readonly table: PlanetTable;
   private readonly H: number;
-  private readonly opts: Required<Omit<SmallBodyFieldOptions, 'useFma'>>;
+  private readonly opts: Required<Omit<SmallBodyFieldOptions, 'useFma' | 'synthetic' | 'syntheticDiagnosticColour'>>;
   private readonly spacing: number;
   private readonly slots: number;
 
@@ -300,6 +328,23 @@ export class SmallBodyField {
       return a;
     })();
 
+    // --- synthetic layer (drawn at `complete`): does it fit the device's buffers?
+    const syn = options.synthetic !== false && tables.synthetic ? readSynthetic(tables.synthetic.header, tables.synthetic.objects) : null;
+    let synReason: string | null = tables.synthetic ? null : 'no synthetic layer in this build';
+    if (options.synthetic === false && tables.synthetic) synReason = 'disabled';
+    let S = syn?.count ?? 0;
+    const maxBytes = Math.min(device.limits.maxStorageBufferBindingSize, device.limits.maxBufferSize);
+    if (S && ((n + S) * RECORD_FLOATS * 4 > maxBytes || S * SYN_FLOATS * 4 > maxBytes)) {
+      synReason = `${S} synthetic objects need ${Math.round(((n + S) * RECORD_FLOATS * 4) / 2 ** 20)} MiB of point records; this device binds at most ${Math.round(maxBytes / 2 ** 20)} MiB`;
+      S = 0;
+    }
+    if (S && !syn!.header.slopeParameterG) {
+      synReason = 'synthetic/objects.json gives no slope parameter G';
+      S = 0;
+    }
+    this.synthetic = S ? syn : null;
+    this.syntheticCount = S;
+
     // --- planet table, checkpoints
     this.table = new PlanetTable(this.model, planets, this.epochEt, this.window);
     const totalSteps = this.table.count;
@@ -325,7 +370,7 @@ export class SmallBodyField {
     d.queue.writeBuffer(this.ngBuf, 0, ng);
     this.photBuf = buf(phot.byteLength, SU.STORAGE | SU.COPY_DST, 'sb photometry');
     d.queue.writeBuffer(this.photBuf, 0, phot.buffer as ArrayBuffer, phot.byteOffset, phot.byteLength);
-    this.records = buf(n * RECORD_FLOATS * 4, SU.STORAGE | SU.COPY_SRC | SU.COPY_DST, 'sb point sources');
+    this.records = buf((n + S) * RECORD_FLOATS * 4, SU.STORAGE | SU.COPY_SRC | SU.COPY_DST, 'sb point sources');
     this.debugBuf = buf(this.opts.debug ? n * 64 : 64, SU.STORAGE | SU.COPY_SRC, 'sb debug states');
     const stateUsage = SU.STORAGE | SU.COPY_SRC | SU.COPY_DST;
     this.epochBuf = buf(perState, stateUsage, 'sb epoch states');
@@ -333,7 +378,7 @@ export class SmallBodyField {
     this.W = buf(perState, stateUsage, 'sb working states');
     d.queue.writeBuffer(this.W, 0, init);
     this.checkpoints.set(0, this.epochBuf);
-    this.pointSources = { buffer: this.records, count: n, strideFloats: RECORD_FLOATS };
+    this.pointSources = { buffer: this.records, count: n + S, strideFloats: RECORD_FLOATS };
 
     const cfg: KernelConfig = { model: this.model, samples: SAMPLES, cKmS: C_KM_S, auKm: AU_KM, photometry: tables.photometry ?? null };
     const ro = { type: 'read-only-storage' as const };
@@ -374,6 +419,47 @@ export class SmallBodyField {
     this.pickPipe = d.createComputePipeline({
       label: 'sb pick', layout: 'auto', compute: { module: d.createShaderModule({ label: 'sb pick', code: PICK_SHADER }), entryPoint: 'main' },
     });
+    if (S) {
+      const el = new Float32Array(S * SYN_FLOATS);
+      const eu = new Uint32Array(el.buffer);
+      const t = syn!.table;
+      const cols = ['a', 'e', 'i', 'node', 'peri', 'M', 'H'].map((c) => t.column(c));
+      const cc = t.has('colorClass') ? t.column('colorClass') : null;
+      for (let j = 0; j < S; j++) {
+        const o = j * SYN_FLOATS;
+        el[o] = cols[0].get(j);
+        el[o + 1] = cols[1].get(j);
+        el[o + 2] = cols[2].get(j) * DEG;
+        el[o + 3] = cols[3].get(j) * DEG;
+        el[o + 4] = cols[4].get(j) * DEG;
+        el[o + 5] = cols[5].get(j) * DEG;
+        el[o + 6] = cols[6].get(j);
+        eu[o + 7] = cc ? cc.get(j) : 255;
+      }
+      this.synEl = buf(el.byteLength, SU.STORAGE | SU.COPY_DST, 'sb synthetic elements');
+      d.queue.writeBuffer(this.synEl, 0, el);
+      const sun = tables.photometry?.sunIrradianceXYZS1AU.value ?? null;
+      const diag = options.syntheticDiagnosticColour;
+      const classColours = (hdr.colorClasses?.classes ?? []).map((c) =>
+        diag ?? (sun && c.xyzsPerUnitPV.every(Number.isFinite) ? (c.xyzsPerUnitPV.map((v, k) => v / sun[k]) as [number, number, number, number]) : null));
+      if (diag) classColours.push(...Array.from({ length: 256 - classColours.length }, () => diag));
+      const code = syntheticShader({
+        gmSun: syn!.mu, auKm: syn!.auKm, cKmS: C_KM_S, obliquityRad: syn!.obliquity, slopeG: syn!.header.slopeParameterG!.value,
+        classColours, photometry: tables.photometry ?? null,
+      });
+      const synLayout = d.createBindGroupLayout({
+        label: 'sb synthetic', entries: [
+          { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform', hasDynamicOffset: true, minBindingSize: SYN_U_BYTES } },
+          { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },
+          { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
+          { binding: 3, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
+        ],
+      });
+      this.synPipe = d.createComputePipeline({
+        label: 'sb synthetic', layout: d.createPipelineLayout({ bindGroupLayouts: [synLayout] }),
+        compute: { module: d.createShaderModule({ label: 'sb synthetic', code }), entryPoint: 'main', constants: { USE_FMA: useFma ? 1 : 0 } },
+      });
+    }
     this.pickU = [buf(32, SU.UNIFORM | SU.COPY_DST, 'sb pick 0'), buf(32, SU.UNIFORM | SU.COPY_DST, 'sb pick 1')];
     this.pickOut = buf(16, SU.STORAGE | SU.COPY_SRC | SU.COPY_DST, 'sb pick out');
     this.pickRead = buf(16, SU.MAP_READ | SU.COPY_DST, 'sb pick readback');
@@ -383,10 +469,16 @@ export class SmallBodyField {
     const precision = st.fmaExact && useFma ? 'df64-fma' : st.dekkerExact && !useFma ? 'df64-dekker' : 'degraded';
     this.info = {
       precision, selfTest: st, objects: n, invalid, photometry: !!this.light,
+      synthetic: { objects: syn?.count ?? 0, enabled: S > 0, reason: synReason, gpuBytes: S * (SYN_FLOATS + RECORD_FLOATS) * 4 },
       checkpointSpacingSteps: this.spacing, checkpointSlots: this.slots, checkpoints: 1,
       last: { et: NaN, targetStep: 0, steps: 0, backgroundSteps: 0, restoredFrom: null, tableIntervalsBuilt: 0, displayStepS: 0, cpuMs: 0, hidden: null },
     };
     if (precision === 'degraded') console.warn('[SmallBodyField] double-single arithmetic is not exact on this device: positions may be off by tens to hundreds of km');
+  }
+
+  /** Why a synthetic layer that was given is not drawn, or null. */
+  get syntheticNote(): string | null {
+    return this.info.synthetic.objects && !this.syntheticCount ? this.info.synthetic.reason : null;
   }
 
   /** GPU slot of core record `index` (objects are stored in perihelion-distance order). */
@@ -527,7 +619,49 @@ export class SmallBodyField {
       pass.setBindGroup(0, sg, [ch * FRAME_SLOT]);
       pass.dispatchWorkgroups(...dispatchSize(Math.ceil(cnt / WG)));
     }
+    // Synthetic objects: only at `complete` (their every attribute is synthetic); their records are zero otherwise.
+    const synOn = this.syntheticCount > 0 && !hide && allowed.brightness === 'complete';
+    if (synOn) {
+      const S = this.syntheticCount;
+      const synChunks = Math.ceil(S / this.opts.chunkObjects);
+      this.ensureSynSlots(synChunks);
+      const u = new ArrayBuffer(synChunks * SYN_SLOT);
+      const f = new Float32Array(u);
+      const w = new Uint32Array(u);
+      const sunP = sun ?? [0, 0, 0];
+      const sa = this.planets.positionSSB(sunId, et - 1), sb = this.planets.positionSSB(sunId, et + 1);
+      const sunV = sa && sb ? [(sb[0] - sa[0]) / 2, (sb[1] - sa[1]) / 2, (sb[2] - sa[2]) / 2] : [0, 0, 0];
+      const cam = [0, 1, 2].map((k) => split64(cameraSSB[k] - sunP[k]));
+      const [dth, dtl] = split64(et - this.synthetic!.epochEt);
+      for (let ch = 0; ch < synChunks; ch++) {
+        const o = (ch * SYN_SLOT) / 4;
+        const first = ch * this.opts.chunkObjects;
+        const cnt = Math.min(this.opts.chunkObjects, S - first);
+        const [gx] = dispatchSize(Math.ceil(cnt / WG));
+        f.set([cam[0][0], cam[1][0], cam[2][0], 0, cam[0][1], cam[1][1], cam[2][1], 0, sunV[0], sunV[1], sunV[2], 0, dth, dtl], o);
+        w[o + 14] = LEVEL_CODE[allowed.brightness] ?? 1;
+        w[o + 15] = 0;
+        w[o + 16] = first;
+        w[o + 17] = cnt;
+        w[o + 18] = gx;
+        w[o + 19] = this.count;
+      }
+      this.device.queue.writeBuffer(this.synUB!, 0, u);
+      pass.setPipeline(this.synPipe!);
+      const bg = this.synBindGroup();
+      for (let ch = 0; ch < synChunks; ch++) {
+        const first = ch * this.opts.chunkObjects;
+        const cnt = Math.min(this.opts.chunkObjects, S - first);
+        pass.setBindGroup(0, bg, [ch * SYN_SLOT]);
+        pass.dispatchWorkgroups(...dispatchSize(Math.ceil(cnt / WG)));
+      }
+    }
     pass.end();
+    if (synOn) this.synLive = true;
+    else if (this.synLive) {
+      encoder.clearBuffer(this.records, this.count * RECORD_FLOATS * 4, this.syntheticCount * RECORD_FLOATS * 4);
+      this.synLive = false;
+    }
     const rb = this.statsRead.find((r) => r.state === 'free');
     if (rb) {
       encoder.copyBufferToBuffer(this.counters, 0, rb.buf, 0, 16);
@@ -544,8 +678,11 @@ export class SmallBodyField {
     last.cpuMs = performance.now() - t0;
   }
 
-  /** Counts at a recent update: objects with a position whose brightness is admitted (drawn) or not (withheld). */
-  get stats(): { drawn: number; withheld: number } | undefined {
+  /**
+   * Counts at a recent update: catalogue objects with a position whose brightness is admitted (drawn) or not
+   * (withheld); with a synthetic layer also its drawn / withheld counts (all 0 below `complete`).
+   */
+  get stats(): { drawn: number; withheld: number; synthetic?: { drawn: number; withheld: number } } | undefined {
     return this.lastStats;
   }
 
@@ -557,7 +694,7 @@ export class SmallBodyField {
       r.buf.mapAsync(GPUMapMode.READ).then(() => {
         const a = new Uint32Array(r.buf.getMappedRange().slice(0));
         r.buf.unmap();
-        this.lastStats = { drawn: a[0], withheld: a[1] };
+        this.lastStats = { drawn: a[0], withheld: a[1], ...(this.syntheticCount ? { synthetic: { drawn: a[2], withheld: a[3] } } : {}) };
         r.state = 'free';
       }, () => { r.state = 'free'; });
     }
@@ -665,6 +802,27 @@ export class SmallBodyField {
     this.stepBG = null;
   }
 
+  private ensureSynSlots(k: number): void {
+    if (this.synUB && k <= this.synUBSlots) return;
+    this.synUB?.destroy();
+    this.synUB = this.device.createBuffer({ size: Math.max(1, k) * SYN_SLOT, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST, label: 'sb synthetic uniforms' });
+    this.synUBSlots = Math.max(1, k);
+    this.synBG = null;
+  }
+
+  private synBindGroup(): GPUBindGroup {
+    if (this.synBG) return this.synBG;
+    this.synBG = this.device.createBindGroup({
+      layout: this.synPipe!.getBindGroupLayout(0), entries: [
+        { binding: 0, resource: { buffer: this.synUB!, size: SYN_U_BYTES } },
+        { binding: 1, resource: { buffer: this.synEl! } },
+        { binding: 2, resource: { buffer: this.records } },
+        { binding: 3, resource: { buffer: this.counters } },
+      ],
+    });
+    return this.synBG;
+  }
+
   private ensureFrameSlots(k: number): void {
     if (k <= this.frameSlots) return;
     this.frameUB.destroy();
@@ -717,12 +875,13 @@ export class SmallBodyField {
     const run = async (): Promise<number | null> => {
       const d = this.device;
       const l = Math.hypot(dirICRF[0], dirICRF[1], dirICRF[2]);
-      const groups = Math.ceil(this.count / 256);
+      const total = this.count + this.syntheticCount;
+      const groups = Math.ceil(total / 256);
       const [gx, gy] = dispatchSize(groups);
       for (let p = 0; p < 2; p++) {
         const u = new ArrayBuffer(32);
         new Float32Array(u, 0, 4).set([dirICRF[0] / l, dirICRF[1] / l, dirICRF[2] / l, (2 * Math.sin(Math.min(toleranceRad, Math.PI) / 2)) ** 2]);
-        new Uint32Array(u, 16, 4).set([this.count, gx, p, 0]);
+        new Uint32Array(u, 16, 4).set([total, gx, p, 0]);
         d.queue.writeBuffer(this.pickU[p], 0, u);
       }
       d.queue.writeBuffer(this.pickOut, 0, new Uint32Array([0, 0xffffffff, 0xffffffff, 0xffffffff]));
@@ -760,6 +919,7 @@ export class SmallBodyField {
    * planetary ephemeris (999, else the system barycentre 9) minus the Sun.
    */
   stateOf(index: number, et: number): { pos: Vec3; vel: Vec3 } | null {
+    if (this.synthetic && index >= this.count && index < this.count + this.syntheticCount) return syntheticState(this.synthetic, index - this.count, et);
     if (!(index >= 0 && index < this.count)) return null;
     const sunId = this.model.sun.naifId;
     if (this.extFlag[index]) {
@@ -809,9 +969,9 @@ export class SmallBodyField {
     return out;
   }
 
-  /** Test hook: the point-source records (count * 8 floats), in GPU slot order. */
+  /** Test hook: the point-source records ((count + syntheticCount) * 8 floats): catalogue in GPU slot order, then synthetic. */
   async readRecords(): Promise<Float32Array> {
-    return new Float32Array(await this.readBuffer(this.records, this.count * RECORD_FLOATS * 4));
+    return new Float32Array(await this.readBuffer(this.records, (this.count + this.syntheticCount) * RECORD_FLOATS * 4));
   }
 
   private async readBuffer(src: GPUBuffer, bytes: number): Promise<ArrayBuffer> {
@@ -827,7 +987,7 @@ export class SmallBodyField {
 
   destroy(): void {
     for (const b of this.checkpoints.values()) b.destroy();
-    for (const b of [this.W, this.B, this.records, this.debugBuf, this.tableBuf, this.infoBuf, this.ngBuf, this.photBuf, this.stepUB, this.frameUB, this.fieldUB, this.pickOut, this.pickRead, this.counters, ...this.pickU, ...this.statsRead.map((r) => r.buf)]) b?.destroy();
+    for (const b of [this.W, this.B, this.records, this.debugBuf, this.tableBuf, this.infoBuf, this.ngBuf, this.photBuf, this.stepUB, this.frameUB, this.fieldUB, this.pickOut, this.pickRead, this.counters, this.synEl, this.synUB, ...this.pickU, ...this.statsRead.map((r) => r.buf)]) b?.destroy();
     this.checkpoints.clear();
   }
 }

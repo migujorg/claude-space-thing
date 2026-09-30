@@ -757,6 +757,135 @@ struct PickU { dir: vec4f, count: u32, groupsX: u32, pass_: u32, pad: u32 };
 }
 `;
 
+/** Constants of the synthetic-object kernel (from synthetic/objects.json and smallbodies/core.json). */
+export interface SyntheticKernelConfig {
+  gmSun: number;
+  auKm: number;
+  cKmS: number;
+  obliquityRad: number;
+  /** Slope parameter of the H-G law given to every synthetic object. */
+  slopeG: number;
+  /** Colour relative to sunlight (X, Y, Z, S) per core colorClass index; null entries draw grey (1, 1, 1, 1). */
+  classColours: ([number, number, number, number] | null)[];
+  photometry: SmallBodyPhotometry | null;
+}
+
+/** Brightness code of a synthetic object for `light`: H-G law (model 1), every label synthetic (3). */
+export const SYNTHETIC_CODE = (1 | (3 << 4) | (3 << 7) | (3 << 10) | (3 << 14)) >>> 0;
+
+/**
+ * Synthetic objects (the COMPLETE level): two-body motion of their elements (fixed Kepler ellipses about the Sun;
+ * mean motion and mean anomaly in df64, the rest float32, ~1e-7 relative), light time, direction and illuminance,
+ * written as star-layout records after the catalogue's (index = base + object). Elements per object:
+ * vec4(a au, e, i rad, node rad), vec4(peri rad, M0 rad at epochEt, H, bitcast(colour class)).
+ */
+export function syntheticShader(cfg: SyntheticKernelConfig): string {
+  const cls = cfg.classColours.length ? cfg.classColours : [null];
+  const clsLit = cls.map((c) => (c && c.every(Number.isFinite) ? `vec4f(${c.map(f32).join(', ')})` : 'vec4f(1.0)')).join(', ');
+  return /* wgsl */ `
+${DF64_WGSL}
+${photometryWgsl(cfg.photometry, cfg.auKm)}
+const C_KM_S: f32 = ${f32(cfg.cKmS)};
+const MU_DD = ${df(cfg.gmSun)};
+const AU_DD = ${df(cfg.auKm)};
+const TWO_PI_DD = ${df(2 * Math.PI)};
+const INV_TWO_PI: f32 = ${f32(1 / (2 * Math.PI))};
+const PI_F: f32 = ${f32(Math.PI)};
+const COS_OBL: f32 = ${f32(Math.cos(cfg.obliquityRad))};
+const SIN_OBL: f32 = ${f32(Math.sin(cfg.obliquityRad))};
+const SLOPE_G: f32 = ${f32(cfg.slopeG)};
+const NCLS: u32 = ${cls.length}u;
+const CLS = array<vec4f, ${cls.length}>(${clsLit});
+struct SynU {
+  camH: vec4f, camL: vec4f, sunV: vec4f,
+  dt: vec2f, mode: u32, zeroBits: u32,
+  first: u32, n: u32, groupsX: u32, base: u32,
+};
+@group(0) @binding(0) var<uniform> U: SynU;
+@group(0) @binding(1) var<storage, read> EL: array<vec4f>;
+@group(0) @binding(2) var<storage, read_write> R: array<vec4u>;
+// [catalogue drawn, catalogue withheld, synthetic drawn, synthetic withheld]
+@group(0) @binding(3) var<storage, read_write> CNT: array<atomic<u32>, 4>;
+
+fn ecl_to_icrf(v: vec3f) -> vec3f { return vec3f(v.x, COS_OBL * v.y - SIN_OBL * v.z, SIN_OBL * v.y + COS_OBL * v.z); }
+
+// (sin x, cos x) to ~1 ulp for |x| < 1e5: WGSL's sin/cos are only required to be accurate to 2^-11 absolute (and
+// software devices are that coarse), which would move a synthetic object by ~1e-4 of its distance. Cody-Waite
+// reduction by pi/2 (three-part constant) and the minimax polynomials of the Cephes sinf/cosf on [-pi/4, pi/4].
+fn sincos_acc(x: f32) -> vec2f {
+  let q = round(x * 0.63661977236758134);
+  var r = x - q * 1.5703125;
+  r = r - q * 4.837512969970703125e-4;
+  r = r - q * 7.549789954891882e-8;
+  let z = r * r;
+  let sn = r + r * z * (-1.6666654611e-1 + z * (8.3321608736e-3 + z * -1.9515295891e-4));
+  let cs = 1.0 - 0.5 * z + z * z * (4.166664568298827e-2 + z * (-1.388731625493765e-3 + z * 2.443315711809948e-5));
+  let k = i32(q) & 3;
+  if (k == 0) { return vec2f(sn, cs); }
+  if (k == 1) { return vec2f(cs, -sn); }
+  if (k == 2) { return vec2f(-sn, -cs); }
+  return vec2f(-cs, sn);
+}
+
+@compute @workgroup_size(${WG}) fn main(@builtin(global_invocation_id) gid: vec3u) {
+  ZB = U.zeroBits;
+  let j = gid.x + gid.y * U.groupsX * ${WG}u;
+  if (j >= U.n) { return; }
+  let i = U.first + j;
+  let e0 = EL[2u * i];
+  let e1 = EL[2u * i + 1u];
+  let idx = U.base + i;
+  let ecc = e0.y;
+  // Mean anomaly M0 + n dt in df64, reduced to [0, 2 pi).
+  let a_dd = dd_mul_f(AU_DD, e0.x);
+  let nn = dd_sqrt(dd_div(MU_DD, dd_mul(dd_mul(a_dd, a_dd), a_dd)));
+  var M = dd_add_f(dd_mul(nn, U.dt), e1.y);
+  let k = floor(M.x * INV_TWO_PI);
+  M = dd_add(M, dd_mul_f(TWO_PI_DD, -k));
+  var m = M.x + M.y;
+  m = m - 2.0 * PI_F * floor(m * INV_TWO_PI);
+  var E = select(PI_F, m + ecc * sincos_acc(m).x, ecc < 0.8);
+  for (var it = 0; it < 20; it = it + 1) {
+    let t = sincos_acc(E);
+    let d = (E - ecc * t.x - m) / (1.0 - ecc * t.y);
+    E = E - d;
+    if (abs(d) < 2e-7) { break; }
+  }
+  let a = a_dd.x;
+  let b = a * sqrt(max(0.0, 1.0 - ecc * ecc));
+  let tE = sincos_acc(E);
+  let cE = tE.y;
+  let sE = tE.x;
+  let edot = (nn.x + nn.y) / (1.0 - ecc * cE);
+  let ti = sincos_acc(e0.z); let ci = ti.y; let si = ti.x;
+  let tO = sincos_acc(e0.w); let cO = tO.y; let sO = tO.x;
+  let tw = sincos_acc(e1.x); let cw = tw.y; let sw = tw.x;
+  let P = vec3f(cO * cw - sO * sw * ci, sO * cw + cO * sw * ci, sw * si);
+  let Q = vec3f(-cO * sw - sO * cw * ci, -sO * sw + cO * cw * ci, cw * si);
+  let pos = ecl_to_icrf((a * (cE - ecc)) * P + (b * sE) * Q);
+  let vel = ecl_to_icrf((-a * sE * edot) * P + (b * cE * edot) * Q);
+  // Camera-relative position, back-dated by the light time (first order, SSB velocity).
+  var rel = (pos - U.camH.xyz) - U.camL.xyz;
+  let tau = length(rel) / C_KM_S;
+  rel = rel - tau * (vel + U.sunV.xyz);
+  let xo = pos - tau * vel;
+  let dist = length(rel);
+  let dir = rel / dist;
+  let r = length(xo);
+  let alpha = atan2(length(cross(xo, rel)), dot(xo, rel));
+  let cc = bitcast<u32>(e1.w);
+  let c = select(vec4f(1.0), CLS[min(cc, NCLS - 1u)], cc < NCLS);
+  let pp0 = vec4u(bitcast<u32>(e1.z), pack2x16float(vec2f(SLOPE_G, 0.0)), pack2x16float(c.xy), pack2x16float(c.zw));
+  let pp1 = vec4u(pack2x16float(vec2f(0.0, 180.0)), ${SYNTHETIC_CODE}u, idx, 0u);
+  var e = vec4f(0.0);
+  if (HAVE_PHOT && !bad(dist)) { e = light(pp0, pp1, r / AU_KM, dist / AU_KM, alpha, U.mode); }
+  if (e.y > 0.0) { atomicAdd(&CNT[2], 1u); } else { atomicAdd(&CNT[3], 1u); }
+  R[2u * idx] = bitcast<vec4u>(vec4f(dir, e.x));
+  R[2u * idx + 1u] = vec4u(bitcast<vec3u>(e.yzw), idx);
+}
+`;
+}
+
 /** Device self-test of the double-single primitives (compared with float64 on the CPU in ./field.ts). */
 export const SELFTEST_SHADER = /* wgsl */ `
 ${DF64_WGSL}

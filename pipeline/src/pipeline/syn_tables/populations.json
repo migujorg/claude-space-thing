@@ -1,0 +1,53 @@
+{
+ "_about": "Numbers transcribed by hand from the cited papers (PDFs downloaded with sha256 by pipeline.syn_sources; ids in 'source'). Used by the synthetic stage (pipeline/src/pipeline/stages/synthetic.py) to extend the catalogue below its completeness limit and to convert the Kuiper-belt model's g-band magnitudes to V. Everything else the synthetic stage uses comes from downloaded datasets (the SBDB snapshot, the NEO and Kuiper-belt model realizations, the smallbodies products).",
+ "completeness": {
+  "source": "hendler-malhotra-2020",
+  "model": "H_lim(a) = -5 log10(a (a - 1 au)) + C (Eq. 5; a in au), C a free parameter per region",
+  "method": "H_lim at each semimajor-axis bin = centre of the most populated H bin (Sec. 3.1: 'binning objects in both a and H and then identifying the H bin with the greatest number of objects'); H bin width 0.25 mag (Sec. 3.1); a-bin width 0.002 au for the fit, results unchanged for 0.01 and 0.05 au (Sec. 3.2); uncertainty of a bin's H_lim (Hmax - Hmin)/sqrt(n) (Sec. 3.2).",
+  "hBinMag": 0.25,
+  "regionsTable1": [
+   {"region": "Hungarias", "innerAu": 1.780, "outerAu": 2.000, "n": 23527, "C": 19.57, "CSigma": 0.14},
+   {"region": "main belt", "innerAu": 2.120, "outerAu": 3.250, "n": 783022, "C": 20.28, "CSigma": 0.032},
+   {"region": "Hildas", "innerAu": 3.920, "outerAu": 4.004, "n": 3656, "C": 21.04, "CSigma": 0.24},
+   {"region": "Trojans", "innerAu": 5.095, "outerAu": 5.319, "n": 6784, "C": 20.58, "CSigma": 0.13}
+  ],
+  "regionsTable1Note": "Table 1 (MPCORB of 2019-09-29). Not used as numbers: C is refitted to the current catalogue on every build with the same method (the limit deepens as surveys go deeper, Sec. 4); the table is kept to compare."
+ },
+ "sfd": {
+  "mainBelt": {
+   "source": "maeda-2021-hsc",
+   "table": "Table 3, row 'All' (1814 main-belt asteroids, Subaru/HSC r band, debiased with per-CCD detection efficiencies)",
+   "form": "Sigma(H) = dN/dH: 10^(alpha1 (H - H0)) for H < Hbreak, 10^(alpha2 H + (alpha1 - alpha2) Hbreak - alpha1 H0) for H >= Hbreak (Eq. 15)",
+   "alpha1": 0.55, "alpha1PlusSigma": 0.04, "alpha1MinusSigma": 0.01,
+   "alpha2": 0.23, "alpha2PlusSigma": 0.01, "alpha2MinusSigma": 0.01,
+   "H0r": 12.58, "HbreakR": 16.69, "HbreakRPlusSigma": 0.04, "HbreakRMinusSigma": 0.13,
+   "sampleMaxHr": 20.3, "sampleNote": "Unbiased sample: heliocentric distance R <= 3.0 au and H_r <= 20.3 (Sec. 3.1).",
+   "vMinusR": 0.25, "vMinusRNote": "Average m_V - m_r of main-belt asteroids from SDSS MOC4 used by the authors to convert to V (Sec. 4.3).",
+   "corroboration": {
+    "source": "heinze-2019-decam",
+    "text": "Differential apparent-magnitude slope alpha = 0.218 +/- 0.026 for R = 20 to 23.5 mag, steepening to 0.340 +/- 0.025 for R = 23.5 to 25.6; constant fit 0.28 +/- 0.02 (abstract). Apparent-magnitude slopes equal absolute-magnitude slopes only for a single power law (Sec. 9.2); not used as a number, quoted as an independent check of alpha2."
+   }
+  },
+  "jupiterTrojans": {
+   "source": "yoshida-terai-2017-hsc",
+   "alpha": 0.37, "alphaSigma": 0.01,
+   "validHr": [13.0, 17.4],
+   "text": "Cumulative slope alpha = 0.37 +/- 0.01 (N(H) proportional to 10^(alpha H)), single power law for 13.0 <~ H_r <~ 17.4 (abstract; Sec. 4, 'L4 JTs have a single-slope power-low size distribution in the range of 13.0 < Hr < 17.0'); for a single power law the differential slope is the same.",
+   "vMinusR": 0.25, "vMinusRNote": "V - r = 0.25 mag used by the authors (Szabo et al. 2007) to combine with the MPC catalogue (Sec. 4)."
+  },
+  "hildas": {
+   "source": "terai-yoshida-2018-hsc",
+   "alpha": 0.38, "alphaSigma": 0.02,
+   "maxHr": 18.0,
+   "text": "Differential slope alpha = 0.38 +/- 0.02 (abstract; Sec. 3.2, Eq. 3), single power law over ~1-10 km; unbiased sample r < 4.9 au and H < 18.0 (Fig. 3 caption).",
+   "vMinusR": 0.25, "vMinusRNote": "m_V - m_r = 0.25 from the SDSS MOC4 Hildas (Sec. 3.2)."
+  }
+ },
+ "kuiperBeltColour": {
+  "gMinusR": 0.70,
+  "gMinusRSource": "petit-2011-cfeps",
+  "gMinusRText": "'a color of (g - r) = 0.70, corresponding to the mean (g - r) color of our full CFEPS sample' (Sec. 2, arXiv v1 p. 4, lines 72-73).",
+  "transformation": {"source": "jester-2005-sdss", "text": "Table 1, all stars with R-I < 1.15: V = g - 0.59 (g - r) - 0.01 (rms 0.01).", "k": 0.59, "c": -0.01},
+  "note": "V - g = -(0.59 (g - r) + 0.01) = -0.423 for the mean CFEPS colour. The CFEPS g is MegaCam g'; the star-based SDSS transformation is applied to it as is (a difference of order 0.1 mag, below the model's own H precision)."
+ }
+}

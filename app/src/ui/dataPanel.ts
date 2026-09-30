@@ -139,6 +139,9 @@ export class DataPanel {
       { class: 'st-small' },
       h('div', null, `${n(sb.count)} objects${s.ms !== null ? `, usable ${sig(s.ms / 1000, 2)} s after the download began` : ''}; ${drawnBy}.`),
       c ? h('div', null, `At ${m.reality.exists}: ${n(c.drawn)} ${sb.field ? 'drawn' : 'admitted'}, ${n(c.withheld)} withheld, ${n(c.noPosition)} without a position (${c.from === 'field' ? 'counted by the field' : 'by catalogue labels'}).`) : null,
+      sb.syntheticCount
+        ? h('div', null, `Synthetic layer: ${n(sb.syntheticCount)} objects standing in for undiscovered ones (${sb.synthetic!.header.populations.map((p) => `${p.name} ${n(p.objects)}`).join(', ')}); drawn at Complete only${c?.synthetic ? ` — ${n(c.synthetic.drawn)} drawn now` : ''}${sb.field && !sb.field.syntheticCount ? ' — not drawn: it does not fit this device (see Problems)' : ''}.`)
+        : null,
       h('div', null, `Positions propagated within ${m.formatTime(w.startEt)} → ${m.formatTime(w.endEt)}; ${names}.`),
     );
   }
