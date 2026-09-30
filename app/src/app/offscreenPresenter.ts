@@ -5,6 +5,7 @@
 import type { PointSourceBuffer, RendererPort } from './ports';
 import type { RendererStats, SceneSnapshot, StarCatalog } from '../render/scene';
 import { Renderer } from '../render/renderer';
+import type { SkyBackgroundHook } from '../render/sky/background';
 
 export class OffscreenPresenter implements RendererPort {
   private blitting: Promise<void> | null = null;
@@ -34,6 +35,10 @@ export class OffscreenPresenter implements RendererPort {
 
   setStars(c: StarCatalog): void {
     this.r.setStars(c);
+  }
+
+  setBackground(b: SkyBackgroundHook | null): void {
+    this.r.setBackground(b);
   }
 
   resize(w: number, h: number, dpr: number): void {

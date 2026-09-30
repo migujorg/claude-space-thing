@@ -23,6 +23,7 @@ import {
 } from './shaders';
 import { SurfaceGpu } from './surfaceGpu';
 import type { RingPrep } from './rings';
+import type { BackgroundTargets } from './sky/background';
 import { cameraGeom, prepareFrame, type PreparedFrame } from './frame';
 import { orbitVertices } from './overlays';
 import { AdaptationState, computeEyeFrame, type EyeFrame } from '../eye/model';
@@ -109,8 +110,10 @@ export class Renderer {
   private glareCache = { key: '', weights: [] as number[], unscattered: 1 };
   private lastMeasurementTime = 0;
   private persistentWarnings: string[] = [];
-  /** Debug: names of passes to skip ('bodies', 'cull', 'points', 'pyramid', 'sun', 'adapt', 'composite', 'overlays'). */
+  /** Debug: names of passes to skip ('bodies', 'background', 'cull', 'points', 'pyramid', 'sun', 'adapt', 'composite', 'overlays'). */
   debugSkip = new Set<string>();
+  /** Extended sky light behind the bodies (render/sky/background.ts), drawn into EXT after the bodies pass. */
+  private background: { encode(enc: GPUCommandEncoder, t: BackgroundTargets): void } | null = null;
   /** Optional debug hook, called with each adaptation measurement. */
   onMeasurement?: (info: { goal: { coneCdM2: number; rodCdM2: number; cornealFlux: number }; used: { cone: number; rod: number }; converged: boolean; starsDrawn: number }) => void;
 
@@ -303,6 +306,16 @@ export class Renderer {
     if (options.surfaceCacheMiB !== undefined) r.surfaceCacheMiB = options.surfaceCacheMiB;
     r.resize(canvas.clientWidth || canvas.width || 1, canvas.clientHeight || canvas.height || 1, 1);
     return r;
+  }
+
+  /** Sky background hook (render/sky); null removes it. */
+  setBackground(b: { encode(enc: GPUCommandEncoder, t: BackgroundTargets): void } | null): void {
+    this.background = b;
+  }
+
+  /** The renderer's GPUDevice, for passes that share its targets (render/sky). */
+  get gpuDevice(): GPUDevice {
+    return this.device;
   }
 
   /** Upload the star catalog once (static). Large catalogs are split into storage-binding-sized chunks. */
@@ -559,6 +572,9 @@ export class Renderer {
       }
       pass.end();
     }
+
+    // 1b. Sky background (render/sky): extended sky light into EXT wherever no body is in front.
+    if (this.background && !skip.has('background')) this.background.encode(enc, { ext: t.ext, depth: t.depth, frameUB: this.frameUB, W: t.W, H: t.H, snapshot });
 
     // 2. Star visibility culling (reads last frame's veil for the local background).
     const veilView = t.levels[0].acc.createView();

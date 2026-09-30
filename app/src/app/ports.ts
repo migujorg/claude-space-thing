@@ -9,6 +9,7 @@ import type {
   EphemHeader, IauRotation, Label, OrientationHeader, SmallBodyCoreHeader, SmallBodyPhysicalHeader, SmallBodyTableHeader, Sourced, TimeData,
 } from '../data/schema';
 import type { Mat3, RendererStats, SceneSnapshot, StarCatalog, Vec3 } from '../render/scene';
+import type { SkyBackgroundHook } from '../render/sky/background';
 
 export type { Mat3, Vec3 };
 
@@ -174,6 +175,8 @@ export interface RendererPort {
   readonly gpuDevice?: GPUDevice;
   /** Optional (M3): extra point sources (small bodies) drawn with the stars; null removes them. */
   setExtraPointSources?(src: PointSourceBuffer | null): void;
+  /** Optional (M4): sky background (Milky Way, faint stars, zodiacal light) drawn behind the bodies. */
+  setBackground?(b: SkyBackgroundHook | null): void;
 }
 export interface RendererFactory {
   create(canvas: HTMLCanvasElement): Promise<RendererPort>;
