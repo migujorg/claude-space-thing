@@ -31,7 +31,7 @@ def test_mh_reimplementation_reproduces_horizons(comparisons):
 EXPECTED = {
     "Mercury": (0.00, 0.05),    # p_V 0.137 vs 0.142 (Mallama et al. 2017)
     "Venus": (-0.02, 0.02),
-    "Earth": (0.70, 0.80),      # DSCOVR-validated spectrum vs Mallama's EPOXI + model-phase-curve V1(0) = -3.99
+    "Earth": (0.58, 0.70),      # Himawari-9 measured albedo (p_V 0.24) vs Mallama's EPOXI + model-phase-curve V1(0) = -3.99
     "Moon": (0.0, 0.12),        # ROLO level (to 97°, Lane & Irvine shape beyond) vs Horizons' lunar law
     "Mars": (0.0, 0.10),        # Horizons adds L(λe), L(Ls)
     "Jupiter": (-0.04, 0.0),

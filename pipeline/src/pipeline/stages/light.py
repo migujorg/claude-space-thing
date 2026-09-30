@@ -5,6 +5,8 @@ Writes
                    darkening from Neckel & Labs (1994); the CIE constants used.
   photometry.json  PhotometryFile: NAIF id -> BodyPhotometry for Mercury..Pluto, the Moon and the major moons.
   rings.json       RingsFile: planet NAIF id -> RingSystem (radial optical-depth profiles from occultations).
+  smallbody-class-colors.json  SmallBodyClassColorsFile: per Bus-DeMeo class, the colour per unit p_V and p_V
+                   statistics, for small bodies without a measured spectrum (photometry/smallbody_colors.py).
 
 All inputs are fetched through pipeline.download.fetch (sha256-recorded) or transcribed published tables under
 pipeline/src/pipeline/photometry/tables/ (see docs/sources/). Diagnostics are printed and summarized in
@@ -16,7 +18,7 @@ from __future__ import annotations
 import numpy as np
 
 from ..output import write_json
-from ..photometry import bodies, phase, rings, solar
+from ..photometry import bodies, phase, rings, smallbody_colors, solar
 from ..schema import BuildContext
 
 DEPENDS: tuple[str, ...] = ()
@@ -57,3 +59,9 @@ def run(ctx: BuildContext) -> None:
         tau = prof.tau[np.isfinite(prof.tau)]
         print(f"[light] rings {n}: {prof.radius[0]:.0f}-{prof.radius[-1]:.0f} km, {prof.radius.size} bins, "
               f"max normal tau {tau.max():.2f}")
+
+    sbc = smallbody_colors.build(ctx)
+    write_json(ctx, "smallbody-class-colors.json", sbc, "light")
+    pop = sbc["population"]["pV"]["value"]
+    print(f"[light] small-body class colours: {len(sbc['classes'])} Bus-DeMeo classes, population p_V median "
+          f"{pop['median']} (n = {pop['n']})")

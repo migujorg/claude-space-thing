@@ -1,7 +1,9 @@
 // WebGPU renderer: light in absolute photometric units → human-eye model → display.
 //
 // Frame outline (docs/eye-model.md has the physics; this file the plumbing):
-//   1. bodies   → EXT (XYZS luminance, additive), W (Ricco weight, min), depth (reversed-Z, ∞ far)
+//   1. bodies   → EXT (XYZS luminance, additive), W (Ricco weight, min), MASK (not-measured map gaps and
+//                 ring regions), depth (reversed-Z, ∞ far); surface maps are virtual-textured (surfaceGpu.ts);
+//                 then rings (ray–plane, lit/unlit faces, planet shadow), depth-tested, not depth-writing
 //   2. cull     → stars above the Crumey threshold → compact list + indirect draw args (compute)
 //   3. points   → PT (stars, unresolved bodies): physical energy-conserving splats, depth-tested vs
 //                 bodies, and PTEX: the part of their light the display cannot convey (eye/points.ts)
@@ -16,8 +18,11 @@
 import type { RendererStats, SceneSnapshot, StarCatalog } from './scene';
 import {
   ADAPT_REDUCE_SHADER, ADAPT_SHADER, BODY_OVERLAY_SHADER, BODY_SHADER, CLAMP_ARGS_SHADER, COMPOSITE_SHADER,
-  CULL_SHADER, LINE_SHADER, OVERFLOW_SHADER, POINT_SHADER, PYRAMID_BLUR_SIGMA, PYRAMID_SHADER, SUN_SHADER,
+  CULL_SHADER, LINE_SHADER, MASK_HATCH_SHADER, OVERFLOW_SHADER, POINT_SHADER, PYRAMID_BLUR_SIGMA, PYRAMID_SHADER,
+  RING_SHADER, SUN_SHADER,
 } from './shaders';
+import { SurfaceGpu } from './surfaceGpu';
+import type { RingPrep } from './rings';
 import { cameraGeom, prepareFrame, type PreparedFrame } from './frame';
 import { orbitVertices } from './overlays';
 import { AdaptationState, computeEyeFrame, type EyeFrame } from '../eye/model';
@@ -59,6 +64,8 @@ interface Targets {
   W: number;
   H: number;
   ext: GPUTexture;
+  /** "Not measured" regions of resolved surfaces (map gaps) and rings, for the display hatch. */
+  mask: GPUTexture;
   pt: GPUTexture;
   /** Excess part of point light (painted glare input). */
   ptEx: GPUTexture;
@@ -130,6 +137,17 @@ export class Renderer {
   private clampPipe: GPUComputePipeline;
   private pointPipe: GPURenderPipeline;
   private pointDispPipe: GPURenderPipeline;
+  private ringPipe: GPURenderPipeline;
+  private maskHatchPipe: GPURenderPipeline;
+  private surf: SurfaceGpu | null = null;
+  private surfUB: GPUBuffer;
+  private ringsBuf: GPUBuffer | null = null;
+  private ringProfBuf: GPUBuffer | null = null;
+  private ringProfKey: unknown[] = [];
+  private ringProfOffsets: number[] = [];
+  private dummyStorage: GPUBuffer;
+  /** Surface-map page cache budget (MiB), albedo 2/3 and height 1/3. */
+  surfaceCacheMiB = 1024;
   private overflowPipe: GPUComputePipeline;
   private sunPipe: GPURenderPipeline;
   private pyr: Record<'combine' | 'down' | 'blurH' | 'blurV' | 'accum', GPUComputePipeline>;
@@ -160,18 +178,36 @@ export class Renderer {
     this.readback = d.createBuffer({ size: 32, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
     this.sunPointBuf = d.createBuffer({ size: 32, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
     this.visible = d.createBuffer({ size: 32, usage: GPUBufferUsage.STORAGE });
+    this.surfUB = ub(16);
+    this.dummyStorage = d.createBuffer({ size: 256, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
 
     const mod = (code: string, label: string) => d.createShaderModule({ code, label });
     const bodyMod = mod(BODY_SHADER, 'bodies');
     const add: GPUBlendState = { color: { operation: 'add', srcFactor: 'one', dstFactor: 'one' }, alpha: { operation: 'add', srcFactor: 'one', dstFactor: 'one' } };
     const min: GPUBlendState = { color: { operation: 'min', srcFactor: 'one', dstFactor: 'one' }, alpha: { operation: 'min', srcFactor: 'one', dstFactor: 'one' } };
+    const max: GPUBlendState = { color: { operation: 'max', srcFactor: 'one', dstFactor: 'one' }, alpha: { operation: 'max', srcFactor: 'one', dstFactor: 'one' } };
     const over: GPUBlendState = { color: { operation: 'add', srcFactor: 'one', dstFactor: 'one-minus-src-alpha' }, alpha: { operation: 'add', srcFactor: 'one', dstFactor: 'one-minus-src-alpha' } };
     this.bodyPipe = d.createRenderPipeline({
       label: 'bodies', layout: 'auto',
       vertex: { module: bodyMod, entryPoint: 'vs' },
-      fragment: { module: bodyMod, entryPoint: 'fs', targets: [{ format: hdrFormat, blend: add }, { format: weightFormat, blend: min }] },
+      fragment: { module: bodyMod, entryPoint: 'fs', targets: [{ format: hdrFormat, blend: add }, { format: weightFormat, blend: min }, { format: 'r8unorm', blend: max }] },
       primitive: { topology: 'triangle-list' },
       depthStencil: { format: 'depth32float', depthWriteEnabled: true, depthCompare: 'greater' },
+    });
+    const ringMod = mod(RING_SHADER, 'rings');
+    this.ringPipe = d.createRenderPipeline({
+      label: 'rings', layout: 'auto',
+      vertex: { module: ringMod, entryPoint: 'vs' },
+      fragment: { module: ringMod, entryPoint: 'fs', targets: [{ format: hdrFormat, blend: add }, { format: weightFormat, blend: min }, { format: 'r8unorm', blend: max }] },
+      primitive: { topology: 'triangle-list' },
+      depthStencil: { format: 'depth32float', depthWriteEnabled: false, depthCompare: 'greater' },
+    });
+    const hatchMod = mod(MASK_HATCH_SHADER, 'mask hatch');
+    this.maskHatchPipe = d.createRenderPipeline({
+      label: 'mask hatch', layout: 'auto',
+      vertex: { module: hatchMod, entryPoint: 'vs' },
+      fragment: { module: hatchMod, entryPoint: 'fs', targets: [{ format, blend: over }] },
+      primitive: { topology: 'triangle-list' },
     });
     const ovMod = mod(BODY_OVERLAY_SHADER, 'body overlay');
     this.bodyOverlayPipe = d.createRenderPipeline({
@@ -235,7 +271,10 @@ export class Renderer {
    *   'offscreen' renders the display image into an internal texture that readPixels() returns (used by
    *   the headless test page, where WebGPU canvas presentation does not complete).
    */
-  static async create(canvas: HTMLCanvasElement, options: { presentation?: 'canvas' | 'offscreen'; hdr?: 'auto' | 'f16' } = {}): Promise<Renderer> {
+  /**
+   * @param options.surfaceCacheMiB GPU memory budget for surface-map tiles (default 1024 MiB); never exceeded.
+   */
+  static async create(canvas: HTMLCanvasElement, options: { presentation?: 'canvas' | 'offscreen'; hdr?: 'auto' | 'f16'; surfaceCacheMiB?: number } = {}): Promise<Renderer> {
     if (!navigator.gpu) throw new Error('WebGPU is not available in this browser');
     const adapter = await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' });
     if (!adapter) throw new Error('No WebGPU adapter');
@@ -243,7 +282,7 @@ export class Renderer {
     // testing) the targets are rgba16float with pre-exposure 1/A_cone and clamping at the fp16 maximum.
     const blend32 = adapter.features.has('float32-blendable') && options.hdr !== 'f16';
     const device = await adapter.requestDevice({
-      requiredFeatures: blend32 ? ['float32-blendable'] : [],
+      requiredFeatures: [...(blend32 ? ['float32-blendable' as const] : []), ...(adapter.features.has('timestamp-query') ? ['timestamp-query' as const] : [])],
       requiredLimits: {
         maxStorageBufferBindingSize: adapter.limits.maxStorageBufferBindingSize,
         maxBufferSize: adapter.limits.maxBufferSize,
@@ -261,6 +300,7 @@ export class Renderer {
     const err = await device.popErrorScope();
     if (err) throw new Error(`Renderer pipeline creation failed: ${err.message}`);
     if (!blend32) r.persistentWarnings.push('HDR buffers are rgba16float with pre-exposure (float32-blendable unavailable or disabled)');
+    if (options.surfaceCacheMiB !== undefined) r.surfaceCacheMiB = options.surfaceCacheMiB;
     r.resize(canvas.clientWidth || canvas.width || 1, canvas.clientHeight || canvas.height || 1, 1);
     return r;
   }
@@ -322,6 +362,7 @@ export class Renderer {
       ptEx: tex(W, H, this.hdrFormat, RT, 'PTEX'),
       ptDisp: tex(W, H, 'rgba16float', RT, 'PTDISP'),
       w: tex(W, H, this.weightFormat, RT, 'W'),
+      mask: tex(W, H, 'r8unorm', RT, 'MASK'),
       depth: tex(W, H, 'depth32float', RT, 'depth'),
       levels,
       zero: tex(1, 1, 'rgba32float', ST, 'zero'),
@@ -365,14 +406,28 @@ export class Renderer {
   private destroyTargets(): void {
     const t = this.targets;
     if (!t) return;
-    for (const x of [t.ext, t.pt, t.ptEx, t.ptDisp, t.w, t.depth, t.zero, t.zero2]) x.destroy();
+    for (const x of [t.ext, t.pt, t.ptEx, t.ptDisp, t.w, t.mask, t.depth, t.zero, t.zero2]) x.destroy();
     for (const l of t.levels) { l.lvl.destroy(); l.tmp.destroy(); l.blur.destroy(); l.acc.destroy(); l.accR.destroy(); l.ub.destroy(); l.ubR.destroy(); }
     t.partials.destroy();
     this.targets = null;
   }
 
-  /** Resolves once the eye's adaptation has converged for the current view (drives frames itself). */
+  /**
+   * Resolves once the eye's adaptation has converged for the current view and every surface-map tile the
+   * view needs is loaded (drives frames itself; tile loading gives up after ~90 s).
+   */
   async settled(): Promise<void> {
+    const t0 = performance.now();
+    // Load tiles first (one frame per batch of requests), then let the adaptation converge.
+    for (let round = 0; round < 256 && this.lastSnapshot && performance.now() - t0 < 90000; round++) {
+      this.render(this.lastSnapshot);
+      if (!this.surf || this.surf.idle()) break;
+      await this.surf.whenIdle(10000);
+    }
+    await this.settleAdaptation();
+  }
+
+  private async settleAdaptation(): Promise<void> {
     let stable = 0;
     for (let i = 0; i < 40; i++) {
       if (!this.lastSnapshot) return;
@@ -383,6 +438,13 @@ export class Renderer {
       if (stable >= 2) return;
     }
     console.warn('Renderer.settled(): adaptation did not converge in 40 frames');
+  }
+
+  /** Change the surface-map memory budget (drops all resident tiles). */
+  setSurfaceCacheBudget(mib: number): void {
+    this.surfaceCacheMiB = mib;
+    this.surf?.destroy();
+    this.surf = null;
   }
 
   render(snapshot: SceneSnapshot): void {
@@ -403,7 +465,17 @@ export class Renderer {
     const omegaCentre = ((2 * g.tanX) / t.W) * ((2 * g.tanY) / t.H);
     const footprintSr = 2 * Math.PI * sigmaPx * sigmaPx * omegaCentre;
     const wPt = Math.min(1, footprintSr / eye.riccoAreaSr);
-    const prep = prepareFrame(snapshot, g, eye, footprintSr);
+    if (!this.surf && snapshot.bodies.some((b) => b.surface && (b.surface.albedo || b.surface.height))) {
+      this.surf = new SurfaceGpu(d, this.surfaceCacheMiB);
+    }
+    const surf = this.surf;
+    surf?.beginFrame();
+    const prep = prepareFrame(snapshot, g, eye, footprintSr, surf ? { surfaces: (b) => surf.binding(b) } : {});
+    if (surf) {
+      surf.request(prep, g);
+      surf.flush();
+      this.stats.surfaceCache = surf.stats();
+    }
 
     // Scatter kernel (CIE 146) fitted to this pyramid and field of view.
     const key = `${t.W}x${t.H}:${snapshot.camera.fovY}:${this.settings.ageYears}:${this.settings.pigmentation}`;
@@ -434,25 +506,56 @@ export class Renderer {
     this.writeUniforms(snapshot, eye, g, prep, sigmaPx, extentPx, wPt);
 
     const enc = d.createCommandEncoder({ label: 'frame' });
+    this.tsLabels = [];
     d.queue.writeBuffer(this.args, 0, new Uint32Array([6, 0, 0, 0]));
 
-    // 1. Resolved bodies.
+    // 1. Resolved bodies, then rings.
     const nRes = prep.resolved.length;
     if (nRes) this.writeBodies(prep);
+    const nRings = this.writeRings(prep.rings);
+    d.queue.writeBuffer(this.surfUB, 0, new Uint32Array([surf?.perRow('albedo') ?? 1, surf?.perRow('height') ?? 1, nRings, 0]));
     const skip = this.debugSkip;
     {
       const pass = enc.beginRenderPass({
         label: 'bodies',
+        timestampWrites: this.tsw('bodies+rings'),
         colorAttachments: [
           { view: t.ext.createView(), loadOp: 'clear', storeOp: 'store', clearValue: [0, 0, 0, 0] },
           { view: t.w.createView(), loadOp: 'clear', storeOp: 'store', clearValue: [1, 1, 1, 1] },
+          { view: t.mask.createView(), loadOp: 'clear', storeOp: 'store', clearValue: [0, 0, 0, 0] },
         ],
         depthStencilAttachment: { view: t.depth.createView(), depthClearValue: 0, depthLoadOp: 'clear', depthStoreOp: 'store' },
       });
+      const ringsRes = this.ringsBuf && nRings ? this.ringsBuf : this.dummyStorage;
+      const profRes = this.ringProfBuf && nRings ? this.ringProfBuf : this.dummyStorage;
       if (nRes && this.bodiesBuf && !skip.has('bodies')) {
         pass.setPipeline(this.bodyPipe);
-        pass.setBindGroup(0, d.createBindGroup({ layout: this.bodyPipe.getBindGroupLayout(0), entries: [{ binding: 0, resource: { buffer: this.frameUB } }, { binding: 1, resource: { buffer: this.bodiesBuf } }] }));
+        pass.setBindGroup(0, d.createBindGroup({
+          layout: this.bodyPipe.getBindGroupLayout(0),
+          entries: [
+            { binding: 0, resource: { buffer: this.frameUB } },
+            { binding: 1, resource: { buffer: this.bodiesBuf } },
+            { binding: 2, resource: { buffer: surf ? surf.pageTable : this.dummyStorage } },
+            { binding: 3, resource: surf ? surf.view('albedo') : this.dummyAtlas('albedo') },
+            { binding: 4, resource: surf ? surf.view('height') : this.dummyAtlas('height') },
+            { binding: 5, resource: { buffer: this.surfUB } },
+            { binding: 6, resource: { buffer: ringsRes } },
+            { binding: 7, resource: { buffer: profRes } },
+          ],
+        }));
         pass.draw(6, nRes);
+      }
+      if (nRings && !skip.has('rings')) {
+        pass.setPipeline(this.ringPipe);
+        pass.setBindGroup(0, d.createBindGroup({
+          layout: this.ringPipe.getBindGroupLayout(0),
+          entries: [
+            { binding: 0, resource: { buffer: this.frameUB } },
+            { binding: 1, resource: { buffer: ringsRes } },
+            { binding: 2, resource: { buffer: profRes } },
+          ],
+        }));
+        pass.draw(6, nRings);
       }
       pass.end();
     }
@@ -462,7 +565,7 @@ export class Renderer {
     const paintView = t.levels[0].accR.createView();
     const bgView = this.bgView!;
     if (this.starCount > 0 && !skip.has('cull')) {
-      const pass = enc.beginComputePass({ label: 'star cull' });
+      const pass = enc.beginComputePass({ label: 'star cull', timestampWrites: this.tsw('star cull') });
       pass.setPipeline(this.cullPipe);
       for (const c of this.stars) {
         const groups = Math.ceil(c.count / 256);
@@ -495,6 +598,7 @@ export class Renderer {
     const pointPass = (pipe: GPURenderPipeline, targets: GPUTexture[], load: boolean, draw: (pass: GPURenderPassEncoder) => void) => {
       const pass = enc.beginRenderPass({
         label: pipe.label,
+        timestampWrites: this.tsw(pipe.label),
         colorAttachments: targets.map((tx) => ({ view: tx.createView(), loadOp: load ? ('load' as const) : ('clear' as const), storeOp: 'store' as const, clearValue: [0, 0, 0, 0] })),
         depthStencilAttachment: { view: t.depth.createView(), depthReadOnly: true },
       });
@@ -553,7 +657,7 @@ export class Renderer {
 
     // 6. Adaptation measurement.
     if (!skip.has('adapt')) {
-      const pass = enc.beginComputePass({ label: 'adaptation' });
+      const pass = enc.beginComputePass({ label: 'adaptation', timestampWrites: this.tsw('adaptation') });
       pass.setPipeline(this.adaptPipe);
       pass.setBindGroup(0, d.createBindGroup({
         layout: this.adaptPipe.getBindGroupLayout(0),
@@ -596,7 +700,7 @@ export class Renderer {
     // 7. Composite (eye model) into the canvas.
     const canvasView = this.ctx ? this.ctx.getCurrentTexture().createView() : this.displayTexture().createView();
     {
-      const pass = enc.beginRenderPass({ label: 'composite', colorAttachments: [{ view: canvasView, loadOp: 'clear', storeOp: 'store', clearValue: [0, 0, 0, 1] }] });
+      const pass = enc.beginRenderPass({ label: 'composite', timestampWrites: this.tsw('composite'), colorAttachments: [{ view: canvasView, loadOp: 'clear', storeOp: 'store', clearValue: [0, 0, 0, 1] }] });
       if (!skip.has('composite')) {
       pass.setPipeline(this.compositePipe);
       pass.setBindGroup(0, d.createBindGroup({
@@ -620,8 +724,14 @@ export class Renderer {
     const lines: number[] = [...prep.overlay];
     orbitVertices(snapshot.orbits, g, lines);
     const ovBodies = prep.resolved.some((r) => r.hatch || r.tint);
-    if ((ovBodies || lines.length) && !skip.has('overlays')) {
-      const pass = enc.beginRenderPass({ label: 'overlays', colorAttachments: [{ view: canvasView, loadOp: 'load', storeOp: 'store' }] });
+    const ovMask = prep.rings.length > 0 || prep.resolved.some((r) => r.surface?.albedo);
+    if ((ovBodies || ovMask || lines.length) && !skip.has('overlays')) {
+      const pass = enc.beginRenderPass({ label: 'overlays', timestampWrites: this.tsw('overlays'), colorAttachments: [{ view: canvasView, loadOp: 'load', storeOp: 'store' }] });
+      if (ovMask) {
+        pass.setPipeline(this.maskHatchPipe);
+        pass.setBindGroup(0, d.createBindGroup({ layout: this.maskHatchPipe.getBindGroupLayout(0), entries: [{ binding: 0, resource: t.mask.createView() }] }));
+        pass.draw(3);
+      }
       const depthView = t.depth.createView();
       if (ovBodies && this.bodiesBuf) {
         const ov = new Float32Array(nRes * 8);
@@ -657,14 +767,16 @@ export class Renderer {
 
     const doReadback = !this.readbackBusy;
     if (doReadback) enc.copyBufferToBuffer(this.result, 0, this.readback, 0, 32);
+    this.resolveTimestamps(enc);
     d.queue.submit([enc.finish()]);
+    this.readTimestamps();
 
     this.stats.adaptationLuminance = eye.Acone;
     this.stats.scotopicAdaptationLuminance = eye.Arod;
     this.stats.pupilDiameterMm = eye.pupilMm;
     this.stats.mesopicM = eye.mesopic.m;
     this.stats.limitingMagnitude = eye.limitingMagnitude;
-    this.stats.warnings = [...this.persistentWarnings, ...prep.warnings];
+    this.stats.warnings = [...this.persistentWarnings, ...prep.warnings, ...(surf?.problems ?? [])];
     d.queue.onSubmittedWorkDone().then(() => { this.stats.frameMs = performance.now() - t0; });
 
     if (doReadback) {
@@ -707,6 +819,58 @@ export class Renderer {
   }
 
   private bgView: GPUTextureView | null = null;
+
+  // GPU timing (timestamp queries), when the adapter supports them: one begin/end pair per pass.
+  private static readonly MAX_TS_PASSES = 32;
+  private tsQuery: GPUQuerySet | null = null;
+  private tsResolve: GPUBuffer | null = null;
+  private tsReadback: GPUBuffer | null = null;
+  private tsBusy = false;
+  private tsLabels: string[] = [];
+
+  private tsw(label: string): GPURenderPassTimestampWrites | undefined {
+    if (!this.device.features.has('timestamp-query')) return undefined;
+    if (!this.tsQuery) {
+      const n = 2 * Renderer.MAX_TS_PASSES;
+      this.tsQuery = this.device.createQuerySet({ type: 'timestamp', count: n });
+      this.tsResolve = this.device.createBuffer({ size: n * 8, usage: GPUBufferUsage.QUERY_RESOLVE | GPUBufferUsage.COPY_SRC });
+      this.tsReadback = this.device.createBuffer({ size: n * 8, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
+    }
+    const i = this.tsLabels.length;
+    if (i >= Renderer.MAX_TS_PASSES) return undefined;
+    this.tsLabels.push(label);
+    return { querySet: this.tsQuery, beginningOfPassWriteIndex: 2 * i, endOfPassWriteIndex: 2 * i + 1 };
+  }
+
+  private resolveTimestamps(enc: GPUCommandEncoder): void {
+    if (!this.tsQuery || !this.tsLabels.length || this.tsBusy) return;
+    const n = 2 * this.tsLabels.length;
+    enc.resolveQuerySet(this.tsQuery, 0, n, this.tsResolve!, 0);
+    enc.copyBufferToBuffer(this.tsResolve!, 0, this.tsReadback!, 0, n * 8);
+    this.tsPending = [...this.tsLabels];
+  }
+  private tsPending: string[] | null = null;
+
+  private readTimestamps(): void {
+    const labels = this.tsPending;
+    if (!labels || this.tsBusy || !this.tsReadback) return;
+    this.tsPending = null;
+    this.tsBusy = true;
+    const rb = this.tsReadback;
+    rb.mapAsync(GPUMapMode.READ).then(() => {
+      const t = new BigUint64Array(rb.getMappedRange().slice(0));
+      rb.unmap();
+      this.tsBusy = false;
+      const ms: Record<string, number> = {};
+      let total = 0;
+      labels.forEach((l, i) => {
+        const dt = Number(t[2 * i + 1] - t[2 * i]) / 1e6;
+        if (Number.isFinite(dt) && dt >= 0) { ms[l] = (ms[l] ?? 0) + dt; total += dt; }
+      });
+      this.stats.gpuPassMs = ms;
+      this.stats.gpuFrameMs = total;
+    }, () => { this.tsBusy = false; });
+  }
   private selfVeilPx = 0;
 
   private pointBindGroup(pipe: GPURenderPipeline, buf: GPUBuffer, bg: GPUTextureView): GPUBindGroup {
@@ -778,26 +942,98 @@ export class Renderer {
     void snap;
   }
 
+  /** Body records: 33 vec4 each (struct Body in shaders.ts). */
   private writeBodies(prep: PreparedFrame): void {
     const n = prep.resolved.length;
-    const a = new Float32Array(n * 80);
+    const STRIDE = 132;
+    const a = new Float32Array(n * STRIDE);
+    const u = new Uint32Array(a.buffer);
     prep.resolved.forEach((r, i) => {
       const f = r.frame;
-      const o = i * 80;
+      const o = i * STRIDE;
       const M = f.M, Mi = f.Mi;
       a.set([...f.n, f.D, ...f.e1, f.beta, ...f.e2, f.near ? 1 : 0, ...f.ns, 0, ...f.E1, 0, ...f.E2, 0], o);
       a.set([M[0], M[1], M[2], 0, M[3], M[4], M[5], 0, M[6], M[7], M[8], 0], o + 24);
       a.set([Mi[0], Mi[1], Mi[2], 0, Mi[3], Mi[4], Mi[5], 0, Mi[6], Mi[7], Mi[8], 0], o + 36);
       a.set([...f.o, f.c, ...r.sunDir, r.sunDistKm, ...r.K, r.riccoWeight, r.sunRadiusKm, r.occluders.length, r.lit ? 1 : 0], o + 48);
       r.occluders.forEach(([p, rad], k) => a.set([...p, rad], o + 64 + k * 4));
+      const R = r.bodyToWorld, rr = r.radiiKm;
+      a.set([R[0], R[1], R[2], rr[0], R[3], R[4], R[5], rr[1], R[6], R[7], R[8], rr[2]], o + 80);
+      const meanR = Math.cbrt(rr[0] * rr[1] * rr[2]);
+      const sa = r.surface?.albedo, sh = r.surface?.height;
+      a.set([0, sa ? sa.maxLevel : 0, sa ? 1 : 0, meanR], o + 92);
+      if (sa) u[o + 92] = sa.base;
+      a.set([0, sh ? sh.maxLevel : 0, sh ? 1 : 0, 0], o + 96);
+      if (sh) u[o + 96] = sh.base;
+      const l = r.law;
+      a.set([l.kind, l.p, l.b, l.c, l.bs0, l.hs, l.bc0, l.hc, l.thetaBar, l.K, l.hFn, 0], o + 100);
+      r.planetshine.slice(0, 2).forEach((ps, k) => a.set([...ps.dir, 1, ...ps.K], o + 112 + 8 * k));
+      a.set(r.ring ? [r.ring.index, ...r.ring.B] : [-1, 0, 0, 0], o + 128);
     });
     const buf = this.ensure('bodiesBuf', a.byteLength);
     this.device.queue.writeBuffer(buf, 0, a);
   }
 
+  private dummyAtlasTex: Partial<Record<'albedo' | 'height', GPUTexture>> = {};
+  private dummyAtlas(fmt: 'albedo' | 'height'): GPUTextureView {
+    let t = this.dummyAtlasTex[fmt];
+    if (!t) {
+      t = this.device.createTexture({ size: [1, 1, 1], format: fmt === 'albedo' ? 'rgba16float' : 'r32float', usage: GPUTextureUsage.TEXTURE_BINDING });
+      this.dummyAtlasTex[fmt] = t;
+    }
+    return t.createView({ dimension: '2d-array' });
+  }
+
+  /** Ring records (14 vec4 each, struct Ring) and their cumulative radial profiles. Returns the ring count. */
+  private writeRings(rings: RingPrep[]): number {
+    const d = this.device;
+    if (!rings.length) return 0;
+    // Profiles: re-upload only when the set of ring systems changes.
+    const key = rings.map((r) => r.profile);
+    if (key.length !== this.ringProfKey.length || key.some((k, i) => k !== this.ringProfKey[i])) {
+      // Per ring system: cumulative profile (stride vec4 per bin edge), then the reflectance tables.
+      const offsets: number[] = [];
+      let total = 0;
+      for (const r of rings) {
+        offsets.push(total);
+        total += r.profile.cumulative.length / 4 + (r.profile.tables ? r.profile.tables.length / 4 : 0);
+      }
+      const data = new Float32Array(Math.max(total * 4, 64));
+      rings.forEach((r, i) => {
+        data.set(r.profile.cumulative, offsets[i] * 4);
+        if (r.profile.tables) data.set(r.profile.tables, offsets[i] * 4 + r.profile.cumulative.length);
+      });
+      this.ringProfBuf?.destroy();
+      this.ringProfBuf = d.createBuffer({ size: data.byteLength, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST, label: 'ring profiles' });
+      d.queue.writeBuffer(this.ringProfBuf, 0, data);
+      this.ringProfKey = key;
+      this.ringProfOffsets = offsets;
+    }
+    const STRIDE = 56;
+    const a = new Float32Array(rings.length * STRIDE);
+    rings.forEach((r, i) => {
+      const o = i * STRIDE;
+      const p = r.profile;
+      const base = this.ringProfOffsets[i];
+      const tabBase = p.tables ? base + p.cumulative.length / 4 : -1;
+      a.set([...r.n, r.D, ...r.e1, r.beta, ...r.e2, r.near ? 1 : 0, ...r.E1, 0, ...r.E2, 0, ...r.o, 0], o);
+      a.set([...r.normal, p.rMin, p.rMax, p.bins, base, p.stride], o + 24);
+      a.set([...r.sunDir, r.sunDistKm, ...r.esun, tabBase, r.sunRadiusKm, 0, 0], o + 32);
+      const M = r.M;
+      a.set([M[0], M[1], M[2], 0, M[3], M[4], M[5], 0, M[6], M[7], M[8], 0], o + 44);
+    });
+    if (!this.ringsBuf || this.ringsBuf.size < a.byteLength) {
+      this.ringsBuf?.destroy();
+      this.ringsBuf = d.createBuffer({ size: Math.max(256, a.byteLength), usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST, label: 'rings' });
+    }
+    d.queue.writeBuffer(this.ringsBuf, 0, a);
+    return rings.length;
+  }
+
   private encodePyramid(enc: GPUCommandEncoder, t: Targets, out: 'acc' | 'accR'): void {
     const d = this.device;
-    const pass = enc.beginComputePass({ label: out === 'acc' ? 'glare pyramid (retina)' : 'glare pyramid (painted)' });
+    const label = out === 'acc' ? 'glare pyramid (retina)' : 'glare pyramid (painted)';
+    const pass = enc.beginComputePass({ label, timestampWrites: this.tsw(label) });
     const run = (pipe: GPUComputePipeline, w: number, h: number, entries: GPUBindGroupEntry[]) => {
       pass.setPipeline(pipe);
       pass.setBindGroup(0, d.createBindGroup({ layout: pipe.getBindGroupLayout(0), entries }));

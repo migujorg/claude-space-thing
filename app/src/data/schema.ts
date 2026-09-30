@@ -185,6 +185,12 @@ export interface BodyPhotometry {
   geometricAlbedoV: Sourced<number>;
   /** Disk-integrated phase function. */
   phaseFunction: Sourced<PhaseFunction>;
+  /**
+   * Optional measured spatially resolved photometric model (docs/architecture.md §4.4 "Photometric
+   * model"; docs/rendering-m2.md). It sets only how light is distributed across the disk: the renderer
+   * rescales it so the disk integral still equals geometricAlbedoXYZS·Φ(α). Absent → Lambert.
+   */
+  spatialModel?: Sourced<SpatialPhotometricModel>;
   /** Optional refinement with more geometry than the phase angle (the Moon: ROLO, with libration and the
    *  waxing/waning asymmetry). Inside its domain it gives the disk-integrated illuminance directly, in place of
    *  geometricAlbedoXYZS · Φ(α); see docs/architecture.md §4.3. */
@@ -215,6 +221,50 @@ export interface DiskReflectanceModel {
   maxObserverLongitudeDeg: number;
 }
 
+/** A parameter that is either constant or tabulated against phase angle (linear interpolation, no extrapolation). */
+export type PhaseDependent = number | { alphaDeg: number[]; values: number[] };
+
+/**
+ * Spatially resolved photometric (bidirectional reflectance) models. Angles: incidence i, emission e,
+ * phase g; μ0 = cos i, μ = cos e. Each is a published model with its fitted parameters:
+ *  - lambert:          r ∝ μ0
+ *  - lommel-seeliger:  r ∝ μ0/(μ0 + μ)
+ *  - lunar-lambert:    r ∝ 2L·μ0/(μ0 + μ) + (1 − L)·μ0   (McEwen 1991)
+ *  - minnaert:         r ∝ μ0^k·μ^(k−1)                  (Minnaert 1941)
+ *  - hapke:            Hapke (2012) isotropic multiple-scattering approximation with the shadow-hiding
+ *                      (SHOE) and coherent-backscatter (CBOE) opposition effects, a double Henyey–Greenstein
+ *                      particle phase function p(g) = (1+c)/2·HG(b, backward) + (1−c)/2·HG(b, forward),
+ *                      porosity factor K and Hapke's (1984) macroscopic roughness θ̄.
+ * `validPhaseDeg` (optional) is the phase-angle range the fit covers; outside it the renderer falls back to
+ * Lambert for the spatial distribution and warns.
+ */
+export type SpatialPhotometricModel =
+  | { kind: 'lambert'; validPhaseDeg?: [number, number] }
+  | { kind: 'lommel-seeliger'; validPhaseDeg?: [number, number] }
+  | { kind: 'lunar-lambert'; L: PhaseDependent; validPhaseDeg?: [number, number] }
+  | { kind: 'minnaert'; k: PhaseDependent; validPhaseDeg?: [number, number] }
+  | {
+      kind: 'hapke';
+      /** Single-scattering albedo. */
+      w: number;
+      /** Double Henyey–Greenstein asymmetry b (0..1) and backward/forward partition c (−1..1). */
+      b: number;
+      c: number;
+      /** SHOE amplitude B_S0 and angular width h_S. */
+      bs0: number;
+      hs: number;
+      /** CBOE amplitude B_C0 and width h_C (default 0: no CBOE). */
+      bc0?: number;
+      hc?: number;
+      /** Mean slope angle θ̄ of the macroscopic roughness, degrees (0 = smooth). */
+      thetaBarDeg: number;
+      /** Porosity factor K (default 1). */
+      K?: number;
+      /** Approximation of Chandrasekhar's H function used by the fit: Hapke (2002) (default) or Hapke (1981). */
+      hFunction?: 'hapke2002' | 'hapke1981';
+      validPhaseDeg?: [number, number];
+    };
+
 export type PhaseFunction =
   | { kind: 'lambert' }
   /** Tabulated magnitude correction vs phase angle, from a published phase curve. Valid for alphaDeg[0] ≤ α ≤
@@ -223,6 +273,37 @@ export type PhaseFunction =
   | { kind: 'tabulated'; alphaDeg: number[]; deltaMag: number[] }
   /** Polynomial in phase angle (degrees) giving magnitude correction, e.g. Mallama & Hilton (2018). Valid in [minDeg, maxDeg]. */
   | { kind: 'poly-mag'; coeffs: number[]; minDeg: number; maxDeg: number };
+
+/** smallbody-class-colors.json (light stage): estimated colours and albedo statistics for small bodies without a
+ *  measured spectrum. An object's geometricAlbedoXYZS = p_V × xyzsPerUnitPV (lux at 1 AU, §4.3); using these makes
+ *  the object's attribute `estimated`. See docs/sources/smallbody-class-colors.md. */
+export interface SmallBodyClassColorsFile {
+  definition: string;
+  /** Bus-DeMeo classes (DeMeo et al. 2009). */
+  classes: Record<string, SmallBodyClassEntry>;
+  /** Coarse SDSS colour classes (Carvano et al. 2010): frequency and p_V statistics. */
+  sdssClasses: Record<string, { meanSpectrumClass: string; frequency: number; numberedSingleLetter: number;
+                                pV: PVStats | null }>;
+  /** For objects of unknown class. */
+  population: { colour: Sourced<{ xyzsPerUnitPV: [number, number, number, number] }>; pV: Sourced<PVStats> };
+  /** Other schemes' class labels → the Bus-DeMeo class whose colour to use (assumed correspondences; `rule`). */
+  aliases: { rule: string; bus: Record<string, string>; tholen: Record<string, string>; mahlke: Record<string, string> };
+}
+
+export interface SmallBodyClassEntry {
+  colour: Sourced<{
+    xyzsPerUnitPV: [number, number, number, number];
+    /** The class reflectance spectrum used (normalized to 1 at 550 nm), to 900 nm. */
+    spectrum: { wavelengthNm: number[]; reflectance: number[] };
+    ultravioletFrom: string;
+    ecasN: number;
+    ecasWavelengthsNm: [number, number];
+  }>;
+  /** NEOWISE-fitted p_V of the class's classified asteroids; unknown when fewer than 3. */
+  pV: Sourced<PVStats>;
+}
+
+export interface PVStats { median: number; p16: number; p84: number; n: number }
 
 /** rings.json: planet NAIF id (as string) → ring system. Produced by the `light` stage. See docs/architecture.md §6. */
 export type RingsFile = Record<string, RingSystem>;

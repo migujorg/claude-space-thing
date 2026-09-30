@@ -54,7 +54,7 @@ export class DataPanel {
         h('div', null, 'Orientation'),
         h('div', null, d.orientations.length ? d.orientations.map((o) => `${o.path} (${Object.values(o.header.bodies).map((b) => b.frame).join(', ')})`).join(', ') : 'IAU rotation models only'),
         h('div', null, 'Surface maps'),
-        h('div', null, d.surfaces.length ? d.surfaces.map((s) => `${m.byId.get(s.bodyId)?.name ?? s.bodyId} ${s.layer} (${s.label}, ${s.tiles.count} tiles)`).join(', ') + ' — not drawn by this renderer version yet' : 'none'),
+        h('div', null, d.surfaces.length ? d.surfaces.map((s) => `${m.byId.get(s.bodyId)?.name ?? s.bodyId} ${s.layer} (${s.label}, ${s.tiles.count} tiles)`).join(', ') : 'none'),
         h('div', null, 'Stars'),
         h('div', null, this.starsLine()),
         h('div', null, 'Small bodies'),

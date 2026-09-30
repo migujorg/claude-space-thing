@@ -194,6 +194,7 @@ When an attribute needed for drawing is below the current `exists` level or `unk
 | `photometry.json` | `light` | NAIF id → `BodyPhotometry` (albedo spectra integrated per §4.3, phase functions); merged into bodies by the app loader |
 | `light.json` | `light` | Sun spectrum-derived quantities, CIE constants actually used |
 | `rings.json` | `light` | planet NAIF id → `RingSystem`: measured radial profiles of normal optical depth (occultations); Saturn: ring I/F model (lit and unlit faces, per channel) and the measured I/F data it is built on; see below |
+| `smallbody-class-colors.json` | `light` | `SmallBodyClassColorsFile`: per Bus-DeMeo class, the colour per unit V-band albedo (`xyzsPerUnitPV`) and NEOWISE p_V statistics, SDSS class frequencies, a population entry and alias tables; for small bodies without a measured spectrum (docs/sources/smallbody-class-colors.md) |
 | `stars/<name>.json` + `.bin` | `stars` | header + interleaved per-star data |
 | `surfaces/<naifId>/<layer>.json` + tiles | `surfaces` | tiled map pyramids per §4.4 |
 

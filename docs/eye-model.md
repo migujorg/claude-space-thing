@@ -379,6 +379,12 @@ shows the badge.
   instead of 10⁻⁵), which lowers the limiting magnitude of the whole frame by ~1.5 mag. Real
   faint-star vision uses parafoveal rods (the central ~1.25° is rod-free; Curcio et al. 1990) adapted to
   the dark sky. A rod adaptation measured over a rod-weighted parafoveal field is the fix; not done.
+  The opposite case shows the same limit. With a bright body filling half of a dark frame (the Moon at a
+  0.8° field of view, real data), the log-average of the retinal image is ~53 cd/m², pulled down by the
+  dark half. The Moon is ~3 000 cd/m², so its lit surface saturates to white, though the terminator
+  relief stays visible. The retina adapts locally, within ~1° (the receptors imaging the Moon adapt to
+  the Moon). A spatially varying adaptation (e.g. Ledda et al. 2004; Pattanaik et al. 2000 applied per
+  region) is the fix; not done.
 - **Adapted brightness across the range (v1).** A fully adapted surface (S/P 2.3), 200 cd/m² display:
 
   | adaptation (cd/m²) | 10⁻⁵ | 10⁻⁴ | 10⁻³ | 10⁻² | 0.1 | 1 | 10 | 10² | 10³ | 10⁴ | 10⁵ |
@@ -418,6 +424,8 @@ shows the badge.
 - Hecht, S. (1947). Visual thresholds of steady point sources in the eye. JOSA 37, 59.
 - Hunt, R. W. G. (1995). The Reproduction of Colour, 5th ed. Fountain Press.
 - Hunt, R. W. G. (2004). The Reproduction of Colour, 6th ed. Wiley.
+- Ledda, P., Santos, L. P., Chalmers, A. (2004). A local model of eye adaptation for high dynamic
+  range images. AFRIGRAPH 2004, 151–160.
 - Maksimainen, M., Kurkela, M., Bhusal, P., Hyyppä, H. (2019). Calculation of mesopic luminance using
   per pixel S/P ratios measured with digital imaging. LEUKOS 15(4), 309–317.
   doi:10.1080/15502724.2018.1557526.

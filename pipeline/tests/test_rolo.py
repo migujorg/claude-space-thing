@@ -68,8 +68,22 @@ def test_disk_radius_matches_eq8():
     assert rolo.RADIUS_KM == pytest.approx(1737.4, abs=0.05)
 
 
+def test_reference_albedo_is_rolo_at_min_phase():
+    """The Moon's albedo spectrum is ROLO at 1.55°: its Y channel equals the channel model there, and the phase
+    table is 1 at that angle."""
+    from pipeline.photometry import albedo
+    spec = albedo.spectrum_for(301)
+    assert spec.label == "derived" and spec.wl[0] == 350.0 and spec.wl.size == 32
+    assert rolo.reference_py() == pytest.approx(float(rolo.mean_phase_y(rolo.MIN_PHASE)), rel=2e-4)
+    # Lane & Irvine (the cross-check) is redder: its red/blue albedo ratio exceeds ROLO's
+    li = albedo.moon_lane_irvine()
+    r_li = np.interp(700, li.wl, li.p) / np.interp(450, li.wl, li.p)
+    r_rolo = np.interp(700, spec.wl, spec.p) / np.interp(450, spec.wl, spec.p)
+    assert r_li > r_rolo > 1.0
+
+
 def test_phase_table():
-    p_y = rolo.lane_irvine_py()
+    p_y = rolo.reference_py()
     li_a, li_dm = phase._lane_irvine_phase()
     t = rolo.phase_table(p_y, li_a, li_dm)
     pf = t["function"]

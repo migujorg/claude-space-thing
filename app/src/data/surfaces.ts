@@ -19,13 +19,13 @@ export interface SurfaceLayer {
   /** Provenance of the layer's values (brightness pattern / heights / parameters). */
   label: Label;
   /** Provenance of the per-texel colour (albedo layers), if stated. */
-  colorLabel: Label | null;
+  colorLabel?: Label | null;
   sources: string[];
   epoch: string | null;
   method: string | null;
   notes: string | null;
   /** Fraction of the sphere covered by data, if stated. */
-  coverage: number | null;
+  coverage?: number | null;
   tiles: { count: number; bytes: number };
   /** The header exactly as written by the pipeline. */
   header: Record<string, unknown>;
