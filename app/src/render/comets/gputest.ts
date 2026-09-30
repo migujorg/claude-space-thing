@@ -36,7 +36,7 @@ export async function cometGpuFlux(): Promise<unknown> {
   const hdr: GPUTextureFormat = f32 ? 'rgba32float' : 'rgba16float';
   const fx = (await (await fetch('/tests/fixtures/comet_reference.json')).json()) as Fixture;
   const model = fx.model;
-  const layer = new CometLayer(dev, model, hdr, f32 ? 'r32float' : 'r16float');
+  const layer = new CometLayer(dev, model, hdr);
   const o = fx.ours[1];
   const activity = activityOf(model, fx.measured);
   const rel: V3 = [o.helioKm[0] - o.earthHelioKm[0], o.helioKm[1] - o.earthHelioKm[1], o.helioKm[2] - o.earthHelioKm[2]];
@@ -66,18 +66,15 @@ export async function cometGpuFlux(): Promise<unknown> {
     dev.queue.writeBuffer(ub, 0, frame);
     const tex = (format: GPUTextureFormat, usage: number) => dev.createTexture({ size: [W, H], format, usage });
     const ext = tex(hdr, GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC);
-    const w = tex(f32 ? 'r32float' : 'r16float', GPUTextureUsage.RENDER_ATTACHMENT);
     const depth = tex('depth32float', GPUTextureUsage.RENDER_ATTACHMENT);
     const enc = dev.createCommandEncoder();
     const clear = enc.beginRenderPass({
-      colorAttachments: [
-        { view: ext.createView(), loadOp: 'clear', storeOp: 'store', clearValue: [0, 0, 0, 0] },
-        { view: w.createView(), loadOp: 'clear', storeOp: 'store', clearValue: [1, 1, 1, 1] },
-      ],
+      colorAttachments: [{ view: ext.createView(), loadOp: 'clear', storeOp: 'store', clearValue: [0, 0, 0, 0] }],
       depthStencilAttachment: { view: depth.createView(), depthClearValue: 0, depthLoadOp: 'clear', depthStoreOp: 'store' },
     });
     clear.end();
-    layer.encode(enc, { ext, w, depth }, ub, 0, [sc], { pixelAngle: pix, right: cam.right, up: cam.up }, 1, { tails: false });
+    const geom = { right: cam.right, up: cam.up, back: cam.back, tanX, tanY, W, H, near: 1e-7, pixelAngle: pix };
+    layer.encode(enc, { ext, depth }, ub, 0, [sc], geom, 1, [], { tails: false, comaAsPoint: false });
     const bpp = f32 ? 16 : 8;
     const bpr = Math.ceil((W * bpp) / 256) * 256;
     const rb = dev.createBuffer({ size: bpr * H, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ });
@@ -106,7 +103,7 @@ export async function cometGpuFlux(): Promise<unknown> {
       }
     }
     rb.unmap();
-    for (const t of [ext, w, depth]) t.destroy();
+    for (const t of [ext, depth]) t.destroy();
     ub.destroy();
     rb.destroy();
     // light the frame can hold: between the discs inscribed in it and circumscribing it (the nucleus is within a

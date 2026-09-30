@@ -5,8 +5,9 @@ Datasets (parsed):
     per observation log Q(OH), Q(CN), Q(C2), Q(C3) and log A(theta)f rho in the blue continuum -> per-comet and
     population gas-to-gas and dust-to-gas ratios.
   * mcdonald-faint-comet-survey: Cochran et al. (1992) McDonald spectrophotometry (PDS SBN): flux-calibrated band
-    fluxes of CN, C3, CH, C2 (Delta v = +1 and 0) and NH2 (0,10,0) at identical aperture offsets -> measured band
-    strengths relative to C2 (Delta v = 0); the dataset description lists the bands' wavelength windows.
+    fluxes of CN, C3, CH, C2 (Delta v = +1 and 0) and NH2 (0,10,0) at the same place in the coma -> measured band
+    strengths of C2 (Delta v = +1) and CH relative to C2 (Delta v = 0); the dataset description lists the bands'
+    wavelength windows. (The NH2 column holds positive logarithms, inconsistent with its unit: not used.)
   * lowell-comet-tools: fluorescence efficiencies (L/N) and Haser scale lengths served by Lowell Observatory's comet
     tools (A'Hearn et al. 1995 values; CN after Schleicher 2010; NH after Meier et al. 1998).
   * schleicher-2010-dust-phase: Schleicher's composite dust phase function (Lowell Observatory table).

@@ -1085,7 +1085,10 @@ export class AppModel {
     if (sb.comets) {
       const pixelAngle = (2 * Math.tan(cam.fovY / 2)) / cam.height;
       const inView = this.smallBodyIdsInView().map(sbRow);
-      const got = sb.comets.frame(inView, world.cameraPos, world.et, this.core, level, pixelAngle);
+      const o = cam.orient;
+      const aspect = cam.width / Math.max(1, cam.height);
+      const view = { dir: [-o[2], -o[5], -o[8]] as Vec3, halfDiagonalRad: Math.atan(Math.tan(cam.fovY / 2) * Math.hypot(1, aspect)) };
+      const got = sb.comets.frame(inView, world.cameraPos, world.et, this.core, level, pixelAngle, undefined, view);
       if (got.comets.length) snap.comets = got.comets;
       if (sb.field) for (const row of got.rows) if (!excluded.includes(row)) excluded.push(row);
     }

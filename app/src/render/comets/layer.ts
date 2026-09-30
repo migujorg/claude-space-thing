@@ -1,10 +1,15 @@
 // CometLayer: the GPU side of comets (./model.ts has the physics, ./shaders.ts the WGSL). The renderer calls encode()
 // once per frame after the bodies pass, with the frame's comets (SceneSnapshot.comets: those the app shell decided to
-// draw extended — the rest stay points of the small-body field). Everything is drawn additively into EXT (absolute
-// luminance) and depth-tested against the bodies; the coma also writes its Ricco weight into W.
+// draw extended — the rest stay points of the small-body field). Tails are drawn additively into EXT (absolute
+// luminance), depth-tested against the bodies. A coma is drawn there too when its half-light disc exceeds the eye's
+// Ricco area; a smaller one is seen as a point (its flux summed over the Ricco area, as for the field's points), so it
+// joins the renderer's point sources with its total light instead: the same eye path as before, now with the coma's
+// colour. (A W weight would dim everything behind a transparent coma.)
 
 import type { CometModelProduct } from '../../data/schema';
 import type { SceneComet } from '../scene';
+import type { PointSource } from '../frame';
+import { camToNdc, toCam, type CameraGeom } from '../overlays';
 import {
   coma, comaExtentKm, comaLut, dustTailGeometry, dustTailLight, halfLightRadiusKm, ionTail, LUT_SIZE,
   type Coma, type CometInput, type DustPacketGeometry, type TailPacket, type V3,
@@ -13,7 +18,6 @@ import { COMA_SHADER, PACKET_SHADER } from './shaders';
 
 export interface CometTargets {
   ext: GPUTexture;
-  w: GPUTexture;
   depth: GPUTexture;
 }
 
@@ -21,7 +25,7 @@ export interface CometFrameStats {
   comae: number;
   packets: number;
   /** Per comet: what was drawn (for the inspector and tests). */
-  drawn: { id: number; m1: number; radiusKm: number; gasFractionV: number; packets: number }[];
+  drawn: { id: number; m1: number; radiusKm: number; gasFractionV: number; packets: number; comaAsPoint: boolean }[];
 }
 
 /** The coma and tails of one comet as seen from the camera (physics only; used by encode and by the app shell). */
@@ -44,15 +48,14 @@ export class CometLayer {
   private geoCache = new Map<number, { et: number; pos: V3; geo: DustPacketGeometry[] }>();
   stats: CometFrameStats = { comae: 0, packets: 0, drawn: [] };
 
-  constructor(private readonly device: GPUDevice, readonly model: CometModelProduct, hdrFormat: GPUTextureFormat, weightFormat: GPUTextureFormat) {
+  constructor(private readonly device: GPUDevice, readonly model: CometModelProduct, hdrFormat: GPUTextureFormat) {
     const add: GPUBlendState = { color: { operation: 'add', srcFactor: 'one', dstFactor: 'one' }, alpha: { operation: 'add', srcFactor: 'one', dstFactor: 'one' } };
-    const min: GPUBlendState = { color: { operation: 'min', srcFactor: 'one', dstFactor: 'one' }, alpha: { operation: 'min', srcFactor: 'one', dstFactor: 'one' } };
     const pipe = (code: string, label: string) => {
       const m = device.createShaderModule({ code, label });
       return device.createRenderPipeline({
         label, layout: 'auto',
         vertex: { module: m, entryPoint: 'vs' },
-        fragment: { module: m, entryPoint: 'fs', targets: [{ format: hdrFormat, blend: add }, { format: weightFormat, blend: min }] },
+        fragment: { module: m, entryPoint: 'fs', targets: [{ format: hdrFormat, blend: add }] },
         primitive: { topology: 'triangle-list' },
         depthStencil: { format: 'depth32float', depthWriteEnabled: false, depthCompare: 'greater-equal' },
       });
@@ -79,7 +82,12 @@ export class CometLayer {
     return geo;
   }
 
-  encode(enc: GPUCommandEncoder, t: CometTargets, frameUB: GPUBuffer, et: number, comets: SceneComet[], cam: { pixelAngle: number; right: V3; up: V3 }, riccoAreaSr: number, opts: { tails?: boolean } = {}): void {
+  /**
+   * Draw this frame's comets. `points` receives the comae smaller than the Ricco area (drawn by the renderer's point
+   * pass); opts.comaAsPoint false forces every coma into EXT (tests).
+   */
+  encode(enc: GPUCommandEncoder, t: CometTargets, frameUB: GPUBuffer, et: number, comets: SceneComet[], cam: CameraGeom, riccoAreaSr: number,
+    points: PointSource[], opts: { tails?: boolean; comaAsPoint?: boolean; timestampWrites?: () => GPURenderPassTimestampWrites | undefined } = {}): void {
     const pixelAngle = cam.pixelAngle;
     const m = this.model;
     const comaData = new Float32Array(comets.length * 16);
@@ -87,23 +95,30 @@ export class CometLayer {
     const packets: number[] = [];
     const drawn: CometFrameStats['drawn'] = [];
     const seen = new Set<number>();
-    comets.forEach((sc, i) => {
+    let nComae = 0;
+    comets.forEach((sc) => {
       seen.add(sc.id);
       const input = cometInput(sc);
       const c = coma(m, input);
-      const extKm = comaExtentKm(m, c);
-      const lut = comaLut(m, c, extKm);
-      luts.set(lut.values, i * LUT_SIZE * 4);
       const d = Math.hypot(sc.rel[0], sc.rel[1], sc.rel[2]);
-      const n: V3 = [sc.rel[0] / d, sc.rel[1] / d, sc.rel[2] / d];
-      // tangent-plane axes along the pixel grid (camera right and up, projected), for the shader's sub-pixel cells
-      const rn = cam.right[0] * n[0] + cam.right[1] * n[1] + cam.right[2] * n[2];
-      const e1 = normalize([cam.right[0] - rn * n[0], cam.right[1] - rn * n[1], cam.right[2] - rn * n[2]]);
-      const e2 = cross(n, e1);
-      const half = Math.tan(Math.min(extKm / d, 1.2)) + 2 * pixelAngle;
       const halfLight = halfLightRadiusKm(m, c) / d;
-      const ricco = Math.min(1, Math.max(Math.PI * halfLight * halfLight, pixelAngle * pixelAngle) / riccoAreaSr);
-      comaData.set([...n, d, ...e1, half, ...e2, ricco, lut.theta0, Math.log(lut.theta1 / lut.theta0), i * LUT_SIZE, 0], i * 16);
+      const asPoint = opts.comaAsPoint !== false && Math.PI * halfLight * halfLight < riccoAreaSr;
+      if (asPoint) {
+        const cc = toCam(cam, sc.rel);
+        if (cc[2] < 0) points.push({ ndc: camToNdc(cam, cc), depth: cam.near / -cc[2], E: [...c.total] as [number, number, number, number] });
+      } else {
+        const i = nComae++;
+        const extKm = comaExtentKm(m, c);
+        const lut = comaLut(m, c, extKm);
+        luts.set(lut.values, i * LUT_SIZE * 4);
+        const n: V3 = [sc.rel[0] / d, sc.rel[1] / d, sc.rel[2] / d];
+        // tangent-plane axes along the pixel grid (camera right and up, projected), for the shader's exact near cells
+        const rn = cam.right[0] * n[0] + cam.right[1] * n[1] + cam.right[2] * n[2];
+        const e1 = normalize([cam.right[0] - rn * n[0], cam.right[1] - rn * n[1], cam.right[2] - rn * n[2]]);
+        const e2 = cross(n, e1);
+        const half = Math.tan(Math.min(extKm / d, 1.2)) + 2 * pixelAngle;
+        comaData.set([...n, d, ...e1, half, ...e2, 0, lut.theta0, Math.log(lut.theta1 / lut.theta0), i * LUT_SIZE, 0], i * 16);
+      }
       const tail: TailPacket[] = opts.tails === false ? [] : [
         ...dustTailLight(m, this.dustGeometry(sc, et, c), input, c),
         ...ionTail(m, input, c),
@@ -112,12 +127,12 @@ export class CometLayer {
         if (!(p.xyzs[1] > 0 || p.xyzs[3] > 0)) continue;
         packets.push(sc.rel[0] + p.pos[0] - sc.helioPos[0], sc.rel[1] + p.pos[1] - sc.helioPos[1], sc.rel[2] + p.pos[2] - sc.helioPos[2], p.sigmaKm, ...p.xyzs);
       }
-      drawn.push({ id: sc.id, m1: c.m1, radiusKm: c.radiusKm, gasFractionV: c.gasFractionV, packets: tail.length });
+      drawn.push({ id: sc.id, m1: c.m1, radiusKm: c.radiusKm, gasFractionV: c.gasFractionV, packets: tail.length, comaAsPoint: asPoint });
     });
     for (const id of this.geoCache.keys()) if (!seen.has(id)) this.geoCache.delete(id);
     const nPackets = packets.length / 8;
-    this.stats = { comae: comets.length, packets: nPackets, drawn };
-    if (!comets.length) return;
+    this.stats = { comae: nComae, packets: nPackets, drawn };
+    if (!nComae && !nPackets) return;
     const d = this.device;
     const comaBuf = this.buffer('comaBuf', comaData.byteLength);
     d.queue.writeBuffer(comaBuf, 0, comaData);
@@ -125,10 +140,8 @@ export class CometLayer {
     d.queue.writeBuffer(lutBuf, 0, luts);
     const pass = enc.beginRenderPass({
       label: 'comets',
-      colorAttachments: [
-        { view: t.ext.createView(), loadOp: 'load', storeOp: 'store' },
-        { view: t.w.createView(), loadOp: 'load', storeOp: 'store' },
-      ],
+      timestampWrites: opts.timestampWrites?.(),
+      colorAttachments: [{ view: t.ext.createView(), loadOp: 'load', storeOp: 'store' }],
       depthStencilAttachment: { view: t.depth.createView(), depthReadOnly: true },
     });
     if (nPackets) {
@@ -139,12 +152,14 @@ export class CometLayer {
       pass.setBindGroup(0, d.createBindGroup({ layout: this.packetPipe.getBindGroupLayout(0), entries: [{ binding: 0, resource: { buffer: frameUB } }, { binding: 1, resource: { buffer: packetBuf } }] }));
       pass.draw(6, nPackets);
     }
-    pass.setPipeline(this.comaPipe);
-    pass.setBindGroup(0, d.createBindGroup({
-      layout: this.comaPipe.getBindGroupLayout(0),
-      entries: [{ binding: 0, resource: { buffer: frameUB } }, { binding: 1, resource: { buffer: comaBuf } }, { binding: 2, resource: { buffer: lutBuf } }],
-    }));
-    pass.draw(6, comets.length);
+    if (nComae) {
+      pass.setPipeline(this.comaPipe);
+      pass.setBindGroup(0, d.createBindGroup({
+        layout: this.comaPipe.getBindGroupLayout(0),
+        entries: [{ binding: 0, resource: { buffer: frameUB } }, { binding: 1, resource: { buffer: comaBuf } }, { binding: 2, resource: { buffer: lutBuf } }],
+      }));
+      pass.draw(6, nComae);
+    }
     pass.end();
   }
 

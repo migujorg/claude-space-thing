@@ -93,7 +93,8 @@ export class CometShell {
    * This frame's extended comets: candidates resolved from the camera (pixelAngle rad at the centre; limitingMag of
    * the eye if known). Returns the scene entries and their rows (to take out of the field's points).
    */
-  frame(inView: number[], cameraSSB: Vec3, et: number, core: Pick<CoreFunctions, 'apparentPosition'>, level: ExistsLevel, pixelAngle: number, limitingMag?: number): { comets: SceneComet[]; rows: number[] } {
+  frame(inView: number[], cameraSSB: Vec3, et: number, core: Pick<CoreFunctions, 'apparentPosition'>, level: ExistsLevel, pixelAngle: number, limitingMag?: number,
+    view?: { dir: Vec3; halfDiagonalRad: number }): { comets: SceneComet[]; rows: number[] } {
     const rows = [...new Set([...this.notableRows, ...inView])];
     const comets: SceneComet[] = [];
     const out: number[] = [];
@@ -101,7 +102,15 @@ export class CometShell {
       if (!inView.includes(row) && !this.maybeExtended(row, cameraSSB, et, level, pixelAngle, limitingMag)) continue;
       const got = this.input(row, cameraSSB, et, core, level);
       if (!got) continue;
-      if (!cometLod(this.model, got.input, pixelAngle, limitingMag).extended) continue;
+      const lod = cometLod(this.model, got.input, pixelAngle, limitingMag);
+      if (!lod.extended) continue;
+      if (view) {
+        // outside the frame, together with the longest its tail could be: nothing to draw
+        const d = Math.hypot(...got.sc.rel);
+        const c = (got.sc.rel[0] * view.dir[0] + got.sc.rel[1] * view.dir[1] + got.sc.rel[2] * view.dir[2]) / d;
+        const off = Math.acos(Math.max(-1, Math.min(1, c)));
+        if (off > view.halfDiagonalRad + Math.max(lod.tailPx, lod.comaPx) * pixelAngle + 0.01) continue;
+      }
       comets.push(got.sc);
       out.push(row);
     }

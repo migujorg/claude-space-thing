@@ -4,8 +4,8 @@
 //   1. bodies   → EXT (XYZS luminance, additive), W (Ricco weight, min), MASK (not-measured map gaps and
 //                 ring regions), depth (reversed-Z, ∞ far); surface maps are virtual-textured (surfaceGpu.ts);
 //                 then rings (ray–plane, lit/unlit faces, planet shadow), depth-tested, not depth-writing
-//   1b. comets  → EXT (+ W): comae (enclosed-light tables) and dust/ion-tail packets of the comets the shell
-//                 draws extended (SceneSnapshot.comets; physics in ./comets/model.ts), depth-tested
+//   1b. comets  → EXT: comae (enclosed-light tables; below the Ricco area → body points) and dust/ion-tail
+//                 packets of the comets the shell draws extended (SceneSnapshot.comets; ./comets/model.ts)
 //   2. cull     → stars above the Crumey threshold → compact list + indirect draw args (compute)
 //   3. points   → PT (stars, unresolved bodies): physical energy-conserving splats, depth-tested vs
 //                 bodies, and PTEX: the part of their light the display cannot convey (eye/points.ts)
@@ -380,7 +380,7 @@ export class Renderer {
   /** The physical model of comets (comets/model.json); null removes it. See ./comets. */
   setCometModel(model: CometModelProduct | null): void {
     this.comets?.destroy();
-    this.comets = model ? new CometLayer(this.device, model, this.hdrFormat, this.weightFormat) : null;
+    this.comets = model ? new CometLayer(this.device, model, this.hdrFormat) : null;
   }
 
   resize(width: number, height: number, devicePixelRatio: number): void {
@@ -683,9 +683,10 @@ export class Renderer {
       pass.end();
     }
 
-    // 1b. Comets drawn extended: comae and tails into EXT (and the comae's Ricco weight into W), behind the bodies.
+    // 1b. Comets drawn extended: tails and comae into EXT behind the bodies; comae smaller than the Ricco area join
+    //     the point sources (prep.points, drawn in step 3).
     if (this.comets && snapshot.comets?.length && !skip.has('comets')) {
-      this.comets.encode(enc, t, this.frameUB, snapshot.et, snapshot.comets, g, eye.riccoAreaSr);
+      this.comets.encode(enc, t, this.frameUB, snapshot.et, snapshot.comets, g, eye.riccoAreaSr, prep.points, { timestampWrites: () => this.tsw('comets') });
       this.stats.comets = { comae: this.comets.stats.comae, packets: this.comets.stats.packets };
     } else if (this.stats.comets) this.stats.comets = { comae: 0, packets: 0 };
 

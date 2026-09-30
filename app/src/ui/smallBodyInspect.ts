@@ -297,8 +297,8 @@ export function brightnessAdmitted(inputs: { what: string; label: Label }[], lev
 export function smallBodyWhy(o: {
   level: ExistsLevel;
   positionLabel: Label;
-  /** How it is drawn this frame. */
-  drawn: 'closeup' | 'point' | 'none';
+  /** How it is drawn this frame ('comet': with its coma and tails, render/comets). */
+  drawn: 'closeup' | 'point' | 'none' | 'comet';
   field: boolean;
   inputs: { what: string; label: Label }[];
   filtered: FilteredBody | null;
@@ -312,6 +312,8 @@ export function smallBodyWhy(o: {
   if (o.drawn === 'closeup' && o.filtered)
     return `${whyLine(o.filtered, o.level)} Resolved close-up: a sphere of the measured diameter — the spherical shape is an assumption.`;
   const bright = brightnessAdmitted(o.inputs, o.level);
+  if (o.drawn === 'comet')
+    return `Drawn with its coma, dust tail and ion tail: the total light is ${inputs}; its split into gas bands and dust, the coma's size and the tails come from the comet model (estimated; docs/reports/comets.md). Too small to resolve, it is a point again.`;
   const size = !o.hasDiameter
     ? ' No measured diameter: it is never drawn resolved.'
     : labelAllowed('estimated', o.level)

@@ -37,7 +37,7 @@
     "sizeIndexErr": 0.2,
     "radiusMinM": 1e-6,
     "massMaxKg": 1e-3,
-    "note": "beta is computed from the solar luminosity, GM_sun and c (Agarwal Eq. 9); Moreno & Jehin's C_pr is the same constant (checked by the stage). Grains below 1 um (Q_pr < 1, beta saturating) are left out."
+    "note": "beta is computed from the solar luminosity, GM_sun and c (Agarwal Eq. 9); Moreno & Jehin's C_pr is the same physics with an older solar luminosity (4 %; pipeline/tests/test_comets.py). Grains below 1 um (Q_pr < 1, beta saturating) are left out."
   },
   "dustEjection": {
     "source": "moreno-jehin-2025",

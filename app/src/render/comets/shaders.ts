@@ -7,7 +7,7 @@
 // fraction of its area inside the square (closed-form disc ∩ rectangle area). Farther out the ring between θ − h and
 // θ + h (h = half the pixel size) shared in proportion to the pixel's solid angle is enough. The pixels sum to the
 // coma's total whatever its size, to 0.2 % (model.ts pixelIlluminance is the same function on the CPU, tested).
-// Also writes the coma's Ricco weight into W (min-blended).
+// (Comae smaller than the eye's Ricco area are not drawn here: layer.ts sends them to the point path.)
 //
 // PACKETS: Gaussian splats (dust-tail grain packets, ion-tail segments) of given illuminance and width (km), at
 // their own distance; widths below 0.6 px are widened to 0.6 px so the splat still integrates to its illuminance.
@@ -21,7 +21,7 @@ export const COMA_SHADER = COMMON + /* wgsl */ `
 struct Coma {
   n: vec4f,    // unit direction of the nucleus (camera-relative ICRF), w = distance (km)
   e1: vec4f,   // tangent-plane basis, w = quad half-extent (tan units)
-  e2: vec4f,   // w = Ricco weight (W target)
+  e2: vec4f,   // w unused
   lut: vec4f,  // x = theta0 (rad), y = ln(theta1 / theta0), z = first LUT entry, w unused
 };
 @group(0) @binding(0) var<uniform> F: Frame;
@@ -80,7 +80,7 @@ fn cellLight(C: Coma, theta: f32, a: f32) -> vec4f {
   return (enclosedAt(C, theta + h) - enclosedAt(C, theta - h)) * (a * a / (4.0 * PI * theta * h));
 }
 
-struct FO { @location(0) ext: vec4f, @location(1) w: vec4f, @builtin(frag_depth) depth: f32 };
+struct FO { @location(0) ext: vec4f, @builtin(frag_depth) depth: f32 };
 
 @fragment fn fs(in: VO) -> FO {
   let C = comae[in.inst];
@@ -120,7 +120,6 @@ struct FO { @location(0) ext: vec4f, @location(1) w: vec4f, @builtin(frag_depth)
   if (e.y <= 0.0 && e.w <= 0.0) { discard; }
   var o: FO;
   o.ext = toStore(F, e / omega);
-  o.w = vec4f(C.e2.w);
   o.depth = F.proj.z / max(C.n.w * dot(dir, -F.back.xyz), F.proj.z);
   return o;
 }
@@ -166,7 +165,7 @@ const CUT: f32 = 3.0;
   return o;
 }
 
-struct FO { @location(0) ext: vec4f, @location(1) w: vec4f, @builtin(frag_depth) depth: f32 };
+struct FO { @location(0) ext: vec4f, @builtin(frag_depth) depth: f32 };
 
 @fragment fn fs(in: VO) -> FO {
   let r2 = dot(in.xy, in.xy) / (in.s.x * in.s.x);
@@ -175,7 +174,6 @@ struct FO { @location(0) ext: vec4f, @location(1) w: vec4f, @builtin(frag_depth)
   if (occulted(F, normalize(worldDirNdc(F, ndc)))) { discard; }
   var o: FO;
   o.ext = toStore(F, in.e * exp(-0.5 * r2));
-  o.w = vec4f(1.0);
   o.depth = in.s.y;
   return o;
 }

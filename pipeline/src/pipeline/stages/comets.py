@@ -130,7 +130,7 @@ def horizons_fixture(best: dict, cat: dict, cur: dict) -> dict:
 
 def magnitude_svg(cat: dict, cur: dict, notable: list[dict]) -> str:
     """m1(t) from Earth for the notable comets over the window (lower = brighter)."""
-    W, H, L, R, T, B = 980, 520, 60, 250, 20, 50
+    W, H, L, R, T, B = 1160, 520, 60, 410, 20, 50
     et = cur["et"]
     t0, t1 = float(et[0]), float(et[-1])
     lo, hi = -2.0, 16.0
