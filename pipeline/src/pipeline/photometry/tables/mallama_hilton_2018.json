@@ -1,0 +1,102 @@
+{
+ "_citation": "Mallama, A. & Hilton, J. L. (2018), 'Computing apparent planetary magnitudes for The Astronomical Almanac', Astronomy and Computing 25, 10-24. DOI:10.1016/j.ascom.2018.08.002 (preprint arXiv:1808.01973, revised 2018 June 21).",
+ "_transcription": "Equations 2-17 of the paper (Sec. 3), transcribed by hand. The authors' reference implementation Ap_Mag_V3.f90 (https://sourceforge.net/projects/planetary-magnitudes/, folder Ap_Mag_Current_Version) is downloaded by the light stage and every coefficient below is checked to appear verbatim in it (tests/test_photometry_phase.py).",
+ "_form": "V(alpha) = 5 log10(r d) + const + sum_i coeffs[i] * alpha^i ('poly', alpha in degrees), or const - 2.5 log10(sum_i coeffs[i] * (alpha/180)^i) ('logpoly180'). Pieces apply on (min_deg, max_deg].",
+ "bodies": {
+  "199": {
+   "name": "Mercury",
+   "V10_zero_phase": -0.694,
+   "V10_zero_phase_note": "Sec. 3.1: the polynomial's zeroth-order term (-0.613) is ~8% fainter than the geophysical (opposition-surge) model value -0.694 of Mallama et al. (2002, 2017); the polynomial is fit to 2 < alpha < 170 deg.",
+   "observed_range_deg": [2.0, 170.0],
+   "pieces": [
+    {"eq": "2", "kind": "poly", "const": -0.613, "min_deg": 0.0, "max_deg": 170.0,
+     "coeffs": [0.0, 6.3280e-02, -1.6336e-03, 3.3644e-05, -3.4265e-07, 1.6893e-09, -3.0334e-12]}
+   ]
+  },
+  "299": {
+   "name": "Venus",
+   "V10_zero_phase": -4.384,
+   "observed_range_deg": [2.0, 179.0],
+   "pieces": [
+    {"eq": "3", "kind": "poly", "const": -4.384, "min_deg": 0.0, "max_deg": 163.7,
+     "coeffs": [0.0, -1.044e-03, 3.687e-04, -2.814e-06, 8.938e-09]},
+    {"eq": "4", "kind": "poly", "const": 236.05828, "min_deg": 163.7, "max_deg": 179.0,
+     "coeffs": [0.0, -2.81914, 8.39034e-03]}
+   ]
+  },
+  "399": {
+   "name": "Earth",
+   "V10_zero_phase": -3.99,
+   "V10_zero_phase_note": "Sec. 3.3: V1(0) from Mallama et al. (2017), synthetic photometry of EPOXI spectrophotometry (Livengood et al. 2011); phase curve is a spline fit to the 'realistic clouds' model of Tinetti et al. (2006), i.e. a model, not an observation.",
+   "observed_range_deg": null,
+   "model_based": true,
+   "pieces": [
+    {"eq": "5", "kind": "poly", "const": -3.99, "min_deg": 0.0, "max_deg": 170.0,
+     "coeffs": [0.0, -1.060e-03, 2.054e-04]}
+   ]
+  },
+  "499": {
+   "name": "Mars",
+   "V10_zero_phase": -1.601,
+   "V10_zero_phase_note": "Sec. 3.4: plus L(lambda_e) (sub-longitude, rms 0.035 mag) and L(Ls) (season) corrections from Mallama (2007), not represented here.",
+   "observed_range_deg": [0.0, 50.0],
+   "pieces": [
+    {"eq": "6", "kind": "poly", "const": -1.601, "min_deg": 0.0, "max_deg": 50.0,
+     "coeffs": [0.0, 2.267e-02, -1.302e-04]},
+    {"eq": "7", "kind": "poly", "const": -0.367, "min_deg": 50.0, "max_deg": 120.0, "assumption": true,
+     "note": "Beyond 50 deg no observations exist; the authors approximate Mars by averaging the Mercury and Earth curves.",
+     "coeffs": [0.0, -0.02573, 0.0003445]}
+   ]
+  },
+  "599": {
+   "name": "Jupiter",
+   "V10_zero_phase": -9.395,
+   "observed_range_deg": [0.0, 130.0],
+   "pieces": [
+    {"eq": "8", "kind": "poly", "const": -9.395, "min_deg": 0.0, "max_deg": 12.0,
+     "coeffs": [0.0, -3.7e-04, 6.16e-04]},
+    {"eq": "9", "kind": "logpoly180", "const": -9.428, "min_deg": 12.0, "max_deg": 130.0,
+     "note": "Cassini ISS green-filter phase curve of Mayorga et al. (2016); constant adjusted for continuity at 12 deg.",
+     "coeffs": [1.0, -1.507, -0.363, -0.062, 2.809, -1.876]}
+   ]
+  },
+  "699": {
+   "name": "Saturn (globe without rings)",
+   "V10_zero_phase": -8.95,
+   "V10_zero_phase_note": "Sec. 3.6: globe-alone V1(0) from synthetic photometry of Karkoschka (1998) at the 1995 ring-plane crossing (Mallama & Pavlov 2017).",
+   "observed_range_deg": [0.0, 6.5],
+   "pieces": [
+    {"eq": "11", "kind": "poly", "const": -8.95, "min_deg": 0.0, "max_deg": 6.5, "assumption": true,
+     "note": "The globe's curve at alpha < 6.5 deg adopts Jupiter's second-order polynomial (Eq. 8) combined with Saturn's synthetic V1(0).",
+     "coeffs": [0.0, -3.7e-04, 6.16e-04]},
+    {"eq": "12", "kind": "poly", "const": -8.94, "min_deg": 6.5, "max_deg": 150.0, "assumption": true,
+     "note": "Fourth-order fit to the red-light phase function digitized from the Pioneer-based model of Dyudina et al. (2005, Fig. 7). The paper prints -1.505E-6 for the cubic term; Ap_Mag_V3.f90 uses -1.506e-6 (<= 0.004 mag difference at 150 deg). The paper's value is used.",
+     "coeffs": [0.0, 2.446e-04, 2.672e-04, -1.505e-06, 4.767e-09]}
+   ],
+   "rings_eq10": {"eq": "10", "const": -8.914, "sin_beta": -1.825, "alpha": 0.026, "sin_beta_exp": -0.378, "exp_rate": -2.25,
+                   "max_alpha_deg": 6.5, "max_beta_deg": 27.0,
+                   "note": "Globe + rings, used only to compare with JPL Horizons (which includes the rings for alpha < 6.5 deg and effective inclination < 27 deg)."}
+  },
+  "799": {
+   "name": "Uranus",
+   "V10_zero_phase": -7.110,
+   "latitude_coeff_per_deg": -8.4e-04,
+   "V10_zero_phase_note": "Eq. 14/15: V1(0) = -7.110 - 8.4e-4 phi', phi' = mean of |planetographic sub-Earth latitude| and |sub-solar latitude| (deg). In Ap_Mag_V3.f90 the phase term is applied only above the geocentric limit alpha = 3.1 deg.",
+   "observed_range_deg": [0.0, 154.0],
+   "pieces": [
+    {"eq": "15", "kind": "poly", "const": -7.110, "min_deg": 0.0, "max_deg": 154.0,
+     "coeffs": [0.0, 6.587e-03, 1.045e-04]}
+   ]
+  },
+  "899": {
+   "name": "Neptune",
+   "V10_zero_phase": -7.00,
+   "V10_zero_phase_note": "Eq. 16 for t > 2000.0. In Ap_Mag_V3.f90 the phase term (Eq. 17) is applied only above the geocentric limit alpha = 1.9 deg.",
+   "observed_range_deg": [0.0, 133.14],
+   "pieces": [
+    {"eq": "17", "kind": "poly", "const": -7.00, "min_deg": 0.0, "max_deg": 133.14,
+     "coeffs": [0.0, 7.944e-03, 9.617e-05]}
+   ]
+  }
+ }
+}

@@ -1,0 +1,22 @@
+{
+ "_citation": "Buie, M. W., Grundy, W. M., Young, E. F., Young, L. A. & Stern, S. A. (2010), 'Pluto and Charon with the Hubble Space Telescope. I. Monitoring global change and improved surface properties from light curves', Astronomical Journal 139, 1117-1127. DOI:10.1088/0004-6256/139/3/1117.",
+ "_transcription": "Transcribed by hand from the published PDF. HST ACS/HRC photometry 2002 June - 2003 June, Pluto and Charon resolved, transformed to Johnson B and V (F435W, F555W; Sec. 3.3). Magnitudes are 'corrected to mean opposition distance (r = 39.5 AU and Delta = 38.5 AU)' (Sec. 3.3, p. 1120).",
+ "mean_opposition_r_au": 39.5,
+ "mean_opposition_delta_au": 38.5,
+ "pluto": {
+  "V_a0_1deg": 15.3298, "V_a0_1deg_source": "Table 8 (p. 1122), n=0 Fourier term: mean V light curve at 1 deg phase",
+  "V_to_zero_phase": -0.0398, "V_to_zero_phase_source": "Fig. 2 caption (p. 1122): 'Subtract 0.0398 mag to correct the new data to 0 deg phase angle' (Hapke fit, Table 9)",
+  "B_a0_1deg": 16.2832, "B_a0_1deg_source": "Table 7 (p. 1122), n=0 Fourier term",
+  "B_to_zero_phase": -0.0434, "B_to_zero_phase_source": "Fig. 1 caption (p. 1122)",
+  "beta_V_mag_per_deg": 0.0355, "beta_V_err": 0.0045,
+  "beta_B_mag_per_deg": 0.0392, "beta_B_err": 0.0064,
+  "beta_source": "Abstract and Sec. 5.2 (p. 1122): linear phase coefficients from the F555W and F435W data",
+  "phase_range_deg": [0.36, 1.74], "phase_range_source": "Abstract: solar phase angle 0.36-1.74 deg",
+  "B_minus_V_weighted_mean": 0.9540, "B_minus_V_err": 0.0010,
+  "radius_used_km": 1153
+ },
+ "charon": {
+  "V_a0_1deg": 17.0978, "V_a0_1deg_source": "Table 12 (p. 1126), n=0 Fourier term",
+  "V_to_zero_phase": -0.2549, "V_to_zero_phase_source": "Fig. 8 caption (p. 1126)"
+ }
+}

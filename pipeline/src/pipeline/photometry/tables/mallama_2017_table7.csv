@@ -1,0 +1,16 @@
+# Transcribed from: Mallama, A., Krobusek, B. & Pavlov, H. (2017), "Comprehensive wide-band magnitudes and albedos for
+#   the planets, with applications to exo-planets and Planet Nine", Icarus 282, 19-33. DOI:10.1016/j.icarus.2016.09.023
+#   (arXiv:1609.05048v1), Table 7 "Geometric albedos", Johnson-Cousins and Sloan systems.
+# Used ONLY as an independent comparison in docs/reports/planet-colors.md and tests, never as an input to photometry.json.
+# Caution (Table 3/5 of the paper): several of these albedos are 'synthetic' (computed by the authors from published
+#   spectrophotometry) rather than photometric: Mercury U B R I Rc Ic (only V and the Sloan bands are photometric),
+#   Venus U, Earth (all bands), Saturn Rc Ic, Uranus/Neptune I.
+planet,U,B,V,R,I,Rc,Ic,u,g,r,i,z
+199,0.087,0.105,0.142,0.172,0.208,0.158,0.180,0.095,0.130,0.169,0.200,0.237
+299,0.348,0.658,0.689,0.708,0.584,0.658,0.640,0.326,0.664,0.712,0.708,0.630
+399,0.688,0.512,0.434,0.418,0.430,0.392,0.396,0.722,0.497,0.388,0.393,0.412
+499,0.060,0.088,0.170,0.288,0.330,0.250,0.285,0.061,0.111,0.245,0.298,0.325
+599,0.358,0.443,0.538,0.495,0.321,0.513,0.389,0.377,0.509,0.575,0.456,0.348
+699,0.203,0.339,0.499,0.568,0.423,0.646,0.543,0.209,0.436,0.618,0.601,0.450
+799,0.502,0.561,0.488,0.202,0.079,0.264,0.089,0.541,0.559,0.355,0.120,0.056
+899,0.578,0.562,0.442,0.181,0.067,0.226,0.072,0.564,0.533,0.307,0.101,0.048

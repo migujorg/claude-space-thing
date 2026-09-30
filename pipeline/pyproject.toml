@@ -10,6 +10,7 @@ dependencies = [
   "astropy>=6.0",
   "requests>=2.31",
   "scipy>=1.17.1",
+  "h5py>=3.16.0",
 ]
 
 [dependency-groups]

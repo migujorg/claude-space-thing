@@ -1,0 +1,6 @@
+{
+ "_citation": "Willmer, C. N. A. (2018), 'The Absolute Magnitude of the Sun in Several Filters', Astrophysical Journal Supplement Series 236, 47. DOI:10.3847/1538-4365/aabfdf (arXiv:1804.07788).",
+ "_transcription": "Table 3 of arXiv:1804.07788v1: apparent magnitude of the Sun at 1 AU (Vega system) for the Johnson filters, computed by the author from a composite solar spectrum. Transcribed by hand.",
+ "apparent_mag_vega": {"U": -25.97, "B": -26.13, "V": -26.76},
+ "note": "Used only to convert between geometric albedo and V(1,0) / B(1,0) magnitudes (cross-checks with Mallama & Hilton 2018 and JPL Horizons) and to turn Pluto's measured B and V magnitudes into albedos."
+}
