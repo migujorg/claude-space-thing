@@ -5,7 +5,7 @@
 // parameters bivariantly, so e.g. the real `apparentPosition(eph: EphemerisSet, ...)` is accepted
 // where this port says `eph: EphemerisSetPort`, even if the concrete class has extra/private members.
 
-import type { EphemHeader, IauRotation, TimeData } from '../data/schema';
+import type { EphemHeader, IauRotation, Label, OrientationHeader, Sourced, TimeData } from '../data/schema';
 import type { Mat3, RendererStats, SceneSnapshot, StarCatalog, Vec3 } from '../render/scene';
 
 export type { Mat3, Vec3 };
@@ -46,6 +46,8 @@ export interface EphemerisSetPort {
   stateSSB(id: number, et: number): StateVector | null;
   covers(id: number, et: number): boolean;
   readonly window: { startEt: number; endEt: number };
+  /** Optional (M2): where a chained position comes from (worst segment label, sources). */
+  provenance?(id: number, et: number): { label: Label; sources: string[] } | null;
 }
 export interface EphemerisSetCtor {
   new (): EphemerisSetPort;
@@ -71,11 +73,46 @@ export interface CoreFunctions {
   formatUtc(unixMs: number): string;
 }
 
+// ---- core/rotation.ts: precise orientation (M2) --------------------------------------------------
+
+/** `class PreciseOrientation { constructor(header: OrientationHeader, data: Float64Array); readonly bodies; covers(body, et) }` */
+export interface PreciseOrientationPort {
+  readonly bodies: number[];
+  covers(body: number, et: number): boolean;
+}
+export interface PreciseOrientationCtor {
+  new (header: OrientationHeader, data: Float64Array): PreciseOrientationPort;
+}
+
+/** Where an orientation came from (core/rotation.ts OrientationSource). */
+export interface OrientationSourcePort {
+  kind: 'precise' | 'iau';
+  label: Label;
+  sources: string[];
+  frame: string;
+  method?: string;
+  uncertainty?: string;
+}
+
+/** `class OrientationSet { constructor(bodies); add(p); orientation(id, et); provenance(id, et) }` */
+export interface OrientationSetPort {
+  add(p: PreciseOrientationPort): void;
+  /** Body-fixed → ICRF (row-major): precise product where it covers, else the IAU model, else null. */
+  orientation(bodyId: number, et: number): Mat3 | null;
+  provenance(bodyId: number, et: number): OrientationSourcePort | null;
+}
+export interface OrientationSetCtor {
+  new (bodies: Iterable<{ id: number; rotation?: Sourced<IauRotation> | null }>): OrientationSetPort;
+}
+
 /** Everything the app model needs from core/ (constructors + functions). */
 export interface CoreDeps extends CoreFunctions {
   TimeScale: TimeScaleCtor;
   Ephemeris: EphemerisCtor;
   EphemerisSet: EphemerisSetCtor;
+  /** Optional (M2): without them orientation comes from bodyToIcrf + the IAU model only. */
+  OrientationSet?: OrientationSetCtor;
+  PreciseOrientation?: PreciseOrientationCtor;
 }
 
 // ---- render/renderer.ts --------------------------------------------------------------------------
@@ -107,7 +144,8 @@ export type FetchFn = (url: string) => Promise<Response>;
  *   import { Ephemeris, EphemerisSet } from './core/ephemeris';
  *   import { bodyToIcrf } from './core/rotation';
  *   import { apparentPosition } from './core/lighttime';
- *   startApp(canvas, uiRoot, { Renderer, TimeScale, formatUtc, Ephemeris, EphemerisSet, bodyToIcrf, apparentPosition });
+ *   startApp(canvas, uiRoot, { Renderer, TimeScale, formatUtc, Ephemeris, EphemerisSet, bodyToIcrf, apparentPosition,
+ *                              OrientationSet, PreciseOrientation });
  */
 export interface AppDeps extends CoreDeps {
   Renderer: RendererFactory;

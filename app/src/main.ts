@@ -3,7 +3,7 @@ import { startApp } from './app/bootstrap';
 import { OffscreenPresenter } from './app/offscreenPresenter';
 import { Ephemeris, EphemerisSet } from './core/ephemeris';
 import { apparentPosition } from './core/lighttime';
-import { bodyToIcrf } from './core/rotation';
+import { OrientationSet, PreciseOrientation, bodyToIcrf } from './core/rotation';
 import { TimeScale, formatUtc } from './core/time';
 import { Renderer } from './render/renderer';
 
@@ -17,6 +17,8 @@ startApp(canvas, document.getElementById('ui')!, {
   EphemerisSet,
   bodyToIcrf,
   apparentPosition,
+  OrientationSet,
+  PreciseOrientation,
 }).catch((e) => {
   console.error(e);
   (window as any).__frameError = String(e);
