@@ -51,13 +51,8 @@ Gaia DR3 stars with spectra-derived colors, the brightest stars from Hipparcos, 
 
 Time-dependent adaptation, HDR output, acuity limits, refinement against published vision data.
 
-## M6 — The complete solar system  *(first layer landed)*
+## M6 — The complete solar system  *(first layer done)*
 
-The synthetic layer (NORTH_STAR 3.3): small bodies below survey completeness, drawn from debiased population models, yielding to discoveries.
+The synthetic layer (NORTH_STAR 3.3) for small bodies: 2,948,454 synthetic objects — NEOs (Granvik et al. 2018), Hungarias, main belt and Hildas (catalogue + measured SFD slopes: Maeda et al. 2021, Terai & Yoshida 2018), Jupiter Trojans (Yoshida & Terai 2017), TNOs (CFEPS L7) — filling only each (a, e, i, H) cell's deficit below the survey completeness limit refitted to the current catalogue (Hendler & Malhotra 2020 form). Deterministic per-cell streams make it yield to discoveries: removing N catalogued objects adds ~N synthetic ones and keeps the rest. Every synthetic value is labelled `synthetic`; the inspector explains which model/cell/deficit an object stands in for. `Complete` is now the default level. From inside the main belt it still looks empty to the naked eye — the brightest synthetic object is V 14.1 (docs/reports/synthetic-populations.md).
 
-Landed: 2.95 M synthetic small bodies. They fill only the catalogue's deficit in each (a, e, i, H) cell, and none is brighter than the local survey limit:
-- NEOs from the Granvik et al. (2018) model;
-- main belt, Hungarias, Hildas and Jupiter Trojans from the catalogue, complete to its Hendler & Malhotra (2020) limit (refitted each build) and continued with debiased slopes;
-- TNOs from the CFEPS L7 model.
-
-Seeded per-cell streams make the layer deterministic and let it yield to new discoveries by truncation. Attributes are drawn from measured samples, all labelled synthetic. The GPU field draws the layer at Complete only, and Complete is now the default level. The inspector says what each object stands for: model, cell, deficit, seed. Details: docs/reports/synthetic-populations.md. Not yet modelled: Centaurs, irregular moons, comets.
+Next populations: irregular moons, Centaurs, comets' reservoirs, interplanetary dust (already modelled optically as zodiacal light).
