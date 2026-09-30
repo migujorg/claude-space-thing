@@ -76,7 +76,7 @@ Every dataset the pipeline touches gets a `SourceRecord` in `sources.json`. Ever
 - Canonical time is **TDB seconds past J2000** (`et`, SPICE convention: J2000 = 2000-01-01T12:00:00 TDB).
 - The UI shows **UTC**. UTC ↔ TAI uses the leap-second table from the NAIF LSK (`naif0012.tls`), exported to `time.json`. TT = TAI + 32.184 s. TDB − TT uses the LSK's periodic formula (constants `DELTA_T_A, K, EB, M0, M1` from the same file).
 - Every time-dependent dataset declares a validity window in `manifest.json`. The app clamps time to the intersection of loaded windows and shows the window in the UI. Scrubbing outside a window must show "no data", never extrapolate silently.
-- v1 window: pipeline build time ± ~18 months (configurable). The architecture must not assume the window is short.
+- v1 window: pipeline build time ± ~18 months (configurable). It is fixed by the first build (`data/cache/window.json`) so partial rebuilds stay consistent; `build --new-window` recenters it. The architecture must not assume the window is short.
 
 ### 3.3 Precision
 

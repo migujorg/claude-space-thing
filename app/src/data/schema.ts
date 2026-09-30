@@ -43,7 +43,11 @@ export interface Manifest {
 }
 
 export interface LeapSecond {
-  /** UTC instant (as seconds past J2000 on the UTC-count-without-leaps scale, i.e. Unix-like) at which ΔAT takes this value. */
+  /**
+   * UTC instant at which ΔAT takes this value, as seconds past 2000-01-01T12:00:00 counted with 86400 s per UTC
+   * day and no leap seconds: exactly (Unix seconds of that instant) − 946728000. Same number SPICE stores for the
+   * LSK's DELTET/DELTA_AT @dates.
+   */
   utcJ2000: number;
   /** TAI − UTC in seconds from that instant. */
   deltaAT: number;
@@ -51,6 +55,8 @@ export interface LeapSecond {
 
 export interface TimeData {
   source: string;
+  /** Human-readable statement of the conventions above (written by the `time` stage). */
+  notes?: string;
   leapSeconds: LeapSecond[];
   /** TDB − TT periodic formula constants from the LSK. */
   deltaTA: number; // 32.184
@@ -76,12 +82,24 @@ export interface EphemSegment {
   n: number;
   /** Offset into the .bin Float64Array, in doubles. */
   offset: number;
+  /**
+   * Coverage declared by the source segment, TDB s past J2000; may be narrower than the records' span
+   * [initEt, initEt + n·intLen]. Absent → the records' span. Never evaluate outside it.
+   */
+  startEt?: number;
+  endEt?: number;
   sources: string[];
+  /** Provenance of the positions this segment produces (absent → treat as the worst of its sources, i.e. unknown). */
+  label?: Label;
+  method?: string;
+  uncertainty?: string;
 }
 
 export interface EphemHeader {
+  /** Path of the binary relative to the data root (app/public/data), e.g. "ephem/de442s.bin". */
   bin: string;
   segments: EphemSegment[];
+  notes?: string;
 }
 
 /** IAU WGCCRE style rotation model, angles in degrees and time in days/centuries as the PCK defines them. */
@@ -93,8 +111,10 @@ export interface IauRotation {
   nutPrecRa?: number[];
   nutPrecDec?: number[];
   nutPrecPm?: number[];
-  /** System angle polynomials [theta0, theta1 (per century)] pairs, degrees. */
+  /** System angle polynomials [theta0, theta1 (per century), ...] per angle, degrees; flattened, (nutPrecAnglesDegree + 1) numbers per angle. */
   nutPrecAngles?: number[];
+  /** Polynomial degree of each nutPrecAngles entry (PCK BODY#_MAX_PHASE_DEGREE); absent → 1 (pairs). Mars uses 2. */
+  nutPrecAnglesDegree?: number;
 }
 
 export type BodyKind = 'star' | 'planet' | 'dwarf-planet' | 'moon' | 'barycenter';
@@ -105,8 +125,10 @@ export interface Body {
   kind: BodyKind;
   /** Body this one is grouped under in the UI (e.g. Moon -> Earth). */
   parent?: number;
-  /** Which ephemeris file serves this body; the loader chains segments to reach the SSB. */
+  /** Which ephemeris file serves this body (holds its own segment), e.g. "ephem/centers"; the loader chains segments to reach the SSB. */
   ephemeris: string;
+  /** Every ephemeris file needed to chain this body to the SSB (includes `ephemeris`). Load them all into one EphemerisSet. */
+  ephemerisFiles?: string[];
   /** Triaxial radii a, b, c in km. */
   radii: Sourced<[number, number, number]>;
   gm: Sourced<number>;
