@@ -162,12 +162,13 @@ async function renderScene(scene) {
       r.grid = gridFromThumb(thumb);
       r.thumb = thumb;
     } else r.imageNote = 'no 2D canvas to read (not offscreen presentation?)';
-    await page.screenshot({ path: resolve(OUT, `${scene.id}.png`) });
+    // A screenshot waits for a new frame, and a SwiftShader frame can take tens of seconds on a busy machine.
+    await page.screenshot({ path: resolve(OUT, `${scene.id}.png`), timeout: Math.min(timeoutMs, 300_000) });
   } catch (e) {
     r.readyMs = Date.now() - t0;
     r.error = String(e?.message ?? e).slice(0, 1000);
     try {
-      await page.screenshot({ path: resolve(OUT, `${scene.id}.png`) });
+      await page.screenshot({ path: resolve(OUT, `${scene.id}.png`), timeout: 60_000 });
     } catch {
       /* page gone */
     }

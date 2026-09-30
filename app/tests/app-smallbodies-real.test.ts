@@ -101,6 +101,18 @@ describe.skipIf(!built || !eph)('small bodies on the real products', () => {
     console.log(`small-body counts (by labels, ${ms.toFixed(0)} ms): best ${best.drawn} drawn / ${best.withheld} withheld; strict ${strict.drawn} / ${strict.withheld}; ${best.noPosition} without position`);
   });
 
+  it('close-approach candidates for the event finder: every flagged object, with the header threshold', () => {
+    const sb = new SmallBodies(tables, eph!);
+    const c = sb.closeApproachCandidates()!;
+    const st = (tables.core.header as SmallBodyCoreHeader).statistics.propagation as { closeApproachesInWindow: { objects: number; maxDistanceAu: number } };
+    expect(c.candidates.length).toBe(st.closeApproachesInWindow.objects);
+    expect(c.maxKm / 149597870.7).toBeCloseTo(st.closeApproachesInWindow.maxDistanceAu, 12);
+    for (const x of c.candidates.slice(0, 20)) {
+      expect(sb.hasFlag(x.row, 'closeApproachInWindow')).toBe(true);
+      expect(x.state).toHaveLength(6);
+    }
+  });
+
   it('shows every attribute of Ceres with labels and sources, and a sphere of its measured diameter', () => {
     const sb = new SmallBodies(tables, eph!);
     const row = fx.objects.find((o) => o.label === '1 Ceres')!.coreRow;

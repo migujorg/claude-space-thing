@@ -359,6 +359,9 @@ approximation τ ≈ σ(h)·√(2π r_h H_s) for an exponential TEST FIXTURE atm
 - O₂ and H₂O bands (omitted in the data).
 - Multiple bounces between the surface and the air, beyond the ground term of Ψ_ms.
 - Clouds affect only their own pixel, not the air around them.
+- Eclipse shadows on the air: the march has no occluders, so during a solar eclipse the ground in the Moon's
+  umbra is dark but the sky above it keeps its daylight path radiance. The Moments eclipse view is therefore
+  placed just above the atmosphere (src/app/events/finder.ts).
 
 ## 5. Night lights
 

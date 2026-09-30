@@ -8,6 +8,8 @@ import { TopBar } from './badge';
 import { DataPanel } from './dataPanel';
 import { Dials } from './dials';
 import { h, toggleClass } from './dom';
+import { EventsPanel } from './events';
+import { FirstRunHint } from './hint';
 import { Help } from './help';
 import { Hud } from './hud';
 import { Input } from './input';
@@ -26,7 +28,9 @@ export interface Ui {
   fatal(msg: string): void;
   status(msg: string | null): void;
   /** Open a panel programmatically (dev page, scripted screenshots). */
-  openPanel(name: 'data' | 'help' | 'sources' | 'dials' | 'search', arg?: string[]): void;
+  openPanel(name: 'data' | 'help' | 'sources' | 'dials' | 'search' | 'events', arg?: string[]): void;
+  /** After the first view is set up: the first-run hint, if this is one. */
+  started(): void;
 }
 
 export function mountUi(container: HTMLElement, model: AppModel, opts: { banner?: string } = {}): Ui {
@@ -35,6 +39,8 @@ export function mountUi(container: HTMLElement, model: AppModel, opts: { banner?
   const openSources = (ids: string[], title: string) => sources.show(ids, title);
   const data = new DataPanel(model, { openSources });
   const help = new Help();
+  const events = new EventsPanel(model, { openSources });
+  const hint = new FirstRunHint(model);
   const copyLink = () => {
     const q = formatUrlParams(model.currentUrlView());
     const url = `${location.origin}${location.pathname}?${q}`;
@@ -51,11 +57,14 @@ export function mountUi(container: HTMLElement, model: AppModel, opts: { banner?
   // Labels avoid the areas covered by panels (evaluated per frame, after everything is mounted).
   const labels = new Labels(model, () => [search.el, dials.el, inspector.el, loading.el, ...Array.from(hud.el.children), ...Array.from(top.el.children)]);
   const top = new TopBar(model, opts.banner);
+  top.el.append(hint.el);
   const toasts = new Toasts(model);
   const loading = new LoadingPill(model, () => data.toggle(true));
   const statusEl = h('div', { class: 'st-panel st-fatal', style: 'display:none' });
   const right = h('div', { class: 'st-right' }, dials.el, inspector.el);
-  root.append(labels.el, search.el, right, hud.el, loading.el, sources.el, data.el, help.el, toasts.el, statusEl, top.el);
+  root.append(labels.el, search.el, right, hud.el, loading.el, sources.el, data.el, help.el, events.el, toasts.el, statusEl, top.el);
+  const toggleHelp = (on?: boolean) => { help.toggle(on); if (help.open && hint.shown) hint.dismiss(); };
+  const toggleEvents = (on?: boolean) => { events.toggle(on); if (events.open && hint.shown) hint.dismiss(); };
   container.appendChild(root);
 
   const applyHidden = () => toggleClass(root, 'st-hidden', model.uiHidden);
@@ -70,12 +79,15 @@ export function mountUi(container: HTMLElement, model: AppModel, opts: { banner?
         editTime: () => hud.editTime(),
         toggleInspector: () => inspector.toggle(),
         toggleData: () => data.toggle(),
-        toggleHelp: () => help.toggle(),
+        toggleHelp: () => toggleHelp(),
+        toggleEvents: () => toggleEvents(),
         copyLink,
         closeTop: () => {
           if (sources.open) { sources.close(); return true; }
           if (data.open) { data.toggle(false); return true; }
           if (help.open) { help.toggle(false); return true; }
+          if (events.open) { events.toggle(false); return true; }
+          if (hint.shown) { hint.dismiss(); return true; }
           return false;
         },
       });
@@ -102,10 +114,14 @@ export function mountUi(container: HTMLElement, model: AppModel, opts: { banner?
     },
     openPanel(name, arg) {
       if (name === 'data') data.toggle(true);
-      else if (name === 'help') help.toggle(true);
+      else if (name === 'help') toggleHelp(true);
+      else if (name === 'events') toggleEvents(true);
       else if (name === 'dials') dials.el.classList.remove('st-collapsed');
       else if (name === 'search') search.focus();
       else if (name === 'sources') sources.show(arg ?? [...(model.data?.sources.keys() ?? [])], 'Sources');
+    },
+    started() {
+      hint.maybeShow();
     },
   };
 }

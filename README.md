@@ -13,7 +13,7 @@ powershell -ExecutionPolicy Bypass -File .\run.ps1        # Windows
 
 The script checks the machine (`pipeline doctor`), builds the data with the **standard** profile, installs the app's packages and opens the app at http://localhost:5173. Pass `minimal` or `full` to choose another profile, e.g. `./run.sh full`. Nothing is committed but code: the first build downloads everything from the data archives and takes hours (table below). It can be interrupted at any time. Run the same command again and it resumes: finished stages are kept and interrupted downloads continue where they stopped. If a stage fails (a host is down, say), the others still build, the app starts with what exists, and the next run retries only what is missing. When everything is up to date, a later run starts the app within a minute.
 
-In the app press `?` for keys. Click anything to see its provenance; `X` cycles the reality level (Strict / Best estimate / Complete), `V` toggles naked-eye vs enhanced view, `/` searches.
+In the app press `?` for keys. Click anything to see its provenance; `X` cycles the reality level (Strict / Best estimate / Complete), `V` toggles naked-eye vs enhanced view, `/` searches. `E` opens Moments: eclipses, Galilean-moon phenomena, Saturn's ring-plane crossings, oppositions and elongations, and near-Earth-object approaches inside the data window, computed by the app from the loaded ephemerides, each with a "go there" camera and its provenance.
 
 ## Build profiles
 

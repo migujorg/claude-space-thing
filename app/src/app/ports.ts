@@ -10,6 +10,7 @@ import type {
 } from '../data/schema';
 import type { Mat3, RendererStats, SceneSnapshot, StarCatalog, Vec3 } from '../render/scene';
 import type { SkyBackgroundHook } from '../render/sky/background';
+import type { EventCache } from './events/service';
 
 export type { Mat3, Vec3 };
 
@@ -224,6 +225,10 @@ export interface AppDeps extends CoreDeps {
   nameWorker?: () => Worker;
   /** Optional: worker factory for background small-body propagation (default: a module worker; null: main thread). */
   propagationWorker?: (() => Worker) | null;
+  /** Optional: worker factory for the event finder (default: a module worker; null: main thread). */
+  eventWorker?: (() => Worker) | null;
+  /** Optional: where event-finder results are kept per data build (default: IndexedDB; null: not kept). */
+  eventCache?: EventCache | null;
   /** Defaults to window.fetch. */
   fetch?: FetchFn;
   /** Base URL of the data products. Defaults to `${import.meta.env.BASE_URL}data/`. */

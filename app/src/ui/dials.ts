@@ -18,6 +18,7 @@ export class Dials {
   private fov: HTMLInputElement;
   private fovVal = h('span', { class: 'st-mono' });
   private checks: Record<'labels' | 'orbits' | 'provenanceTint', HTMLInputElement>;
+  private shield: HTMLInputElement;
   private summary = h('span', { class: 'st-summary' });
 
   constructor(private model: AppModel, actions: { openData(): void; copyLink(): void }) {
@@ -37,6 +38,8 @@ export class Dials {
       return c;
     };
     this.checks = { labels: check('labels'), orbits: check('orbits'), provenanceTint: check('provenanceTint') };
+    this.shield = h('input', { type: 'checkbox' });
+    this.shield.addEventListener('change', () => model.setReality({ sunShield: this.shield.checked }));
 
     const header = h('header', { title: 'Reality settings (click to expand/collapse)' }, h('h2', null, 'Reality'), this.summary);
     header.addEventListener('click', () => this.el.classList.toggle('st-collapsed'));
@@ -61,6 +64,7 @@ export class Dials {
           h('label', { title: 'Names and distances (L)' }, this.checks.labels, 'Labels'),
           h('label', { title: 'Orbit lines relative to the parent body (O)' }, this.checks.orbits, 'Orbits'),
           h('label', { title: 'Tint every object by its worst provenance label (P)' }, this.checks.provenanceTint, 'Provenance tint'),
+          h('label', { title: 'Sun shield: an occulting disc over the Sun, so faint things near it can be seen (a viewing aid; badged while on) (K)' }, this.shield, 'Sun shield'),
         ),
         h('h3', null, 'Camera'),
         h('div', { class: 'st-row' }, h('span', { class: 'st-muted' }, 'FOV'), this.fov, this.fovVal),
@@ -87,6 +91,7 @@ export class Dials {
     if (Number(this.boost.value) !== r.exposureBoostStops) this.boost.value = String(r.exposureBoostStops);
     setText(this.boostVal, `${r.exposureBoostStops > 0 ? '+' : ''}${r.exposureBoostStops} st`);
     for (const k of ['labels', 'orbits', 'provenanceTint'] as const) this.checks[k].checked = r.overlays[k];
+    this.shield.checked = !!r.sunShield;
     const fov = Math.round(this.model.fovY / DEG);
     if (Number(this.fov.value) !== fov) this.fov.value = String(fov);
     setText(this.fovVal, `${fov}°`);
