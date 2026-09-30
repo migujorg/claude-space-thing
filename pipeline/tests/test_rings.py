@@ -53,6 +53,22 @@ def test_saturn_structure(built):
     assert np.nanmax(_tau(d, "699", 145000, 151000)) < 0.1             # beyond the F ring
 
 
+def test_saturn_bins_consistent_with_zero_are_zero():
+    """UVIS β Cen 2008-231: inside the C ring and beyond the F ring the archived τ⊥ is noise plus (outside) a smooth
+    instrumental ramp; those bins become 0 while the F ring and its strands are kept; nothing is negative."""
+    js, _, prof = rings.saturn_profile(None)
+    r = np.array(js["radiusKm"])
+    tau = np.array([np.nan if v is None else v for v in js["normalTau"]])
+    assert np.all(tau[np.isfinite(tau)] >= 0)
+    assert np.all(tau[r < 74400] == 0) and np.all(tau[r > 141000] == 0)
+    f = (r > 139800) & (r < 140600)
+    assert np.nanmax(tau[f]) > 0.2                                     # F ring core kept
+    c = prof.cleaning
+    assert 74400 < c["main_rings_km"][0] < 74600 and 136700 < c["main_rings_km"][1] < 136800
+    assert c["outer_baseline_max"] > 0.05 and c["outer_residual_rms_sigma"] < 1.5 and c["inner_residual_rms_sigma"] < 1.5
+    assert 0.0005 < c["outer_sigma_median"] < 0.002
+
+
 def test_uranus_and_neptune(built):
     _, _, d = built
     assert np.max(_tau(d, "799", 51400, 51700)) > 0.5                  # the ε ring (near apoapse in this cut)
