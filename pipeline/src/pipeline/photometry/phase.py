@@ -190,6 +190,9 @@ def phase_for(naif: int, ctx: BuildContext | None = None) -> Phase:
                      "(2 < α < 179°), including the glory near 0° and the forward-scattering excess near 170°. "
                      "Tabulated every 0.5° (interpolation error < 0.002 mag).", zero_phase_V10=z)
     if naif == 399:
+        from . import earth
+        return earth.earth_phase(ctx)
+    if naif == -399:          # Mallama & Hilton's own normalization (kept for comparisons)
         b = MH["bodies"]["399"]
         p = b["pieces"][0]
         return Phase({"kind": "poly-mag", "coeffs": list(p["coeffs"]), "minDeg": 0.0, "maxDeg": 170.0}, "estimated",

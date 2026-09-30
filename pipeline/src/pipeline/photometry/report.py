@@ -28,14 +28,12 @@ NOTES = {
          "synthetic B agrees with it. Venus's hue (how yellow) is therefore uncertain; its brightness is not. (Older disk-integrated data, Irvine 1968 "
          "and Barker 1975, lie between the two in Payne et al.'s compilation, their Fig. 3.) Phase curve: SOHO + "
          "ground (measured).",
-    399: "Spectral shape and level: a radiative-transfer MODEL (PSG with MERRA-2 clouds for 2022 June 21) validated "
-         "against DSCOVR/EPIC; no machine-readable measured whole-disk zero-phase visible spectrum was reachable (the "
-         "EPIC L1B granules are in NASA Earthdata Cloud behind Earthdata Login; see 'Fix-ups' below). Its p_V = 0.22 "
-         "is half of "
-         "Mallama et al.'s 0.434 (used by Mallama & Hilton and Horizons). A simple check favours the low value: for a "
-         "disk of mean reflectance factor ⟨R⟩ seen at zero phase p ≈ ⅔⟨R⟩, and Earth's ⟨R⟩ ≈ Bond albedo ≈ 0.3 "
-         "gives p ≈ 0.2. The high value comes from EPOXI photometry at 58-77° phase extrapolated to 0° with a model "
-         "phase curve. Real Earth varies by tens of percent with clouds. Phase curve: model (estimated).",
+    399: "Albedo (M3 follow-up): MEASURED — the whole sunlit Earth from Himawari-9 at its local noon one day "
+         "before the 2025 March equinox (α ≈ 2.4°), disk-integrated in four bands (0.47-0.86 µm); the spectrum is "
+         "piecewise-linear through them, with the EPIC-validated PSG model's shape below 0.47 µm (estimated). "
+         "p_V = 0.24, confirming the low value of the PSG model (0.22) against Mallama et al.'s 0.434. One "
+         "hemisphere, one instant: real Earth varies by ~10-20 % with clouds. Phase curve: model shape (Tinetti et "
+         "al. via Mallama & Hilton), checked against EPOXI at 58-86° (M3 follow-up below).",
     301: "Albedo (M3): the ROLO model (Kieffer & Stone 2005) whole-disk reflectance in 32 bands at α = 1.55°, the "
          "model's smallest phase angle (a reference albedo, not a zero-phase one: below 1.55° unknown). Phase curve: "
          "ROLO for 1.55-97° (Φ(1.55°) = 1), with the opposition surge; Lane & Irvine's shape joined to it for "
@@ -203,8 +201,8 @@ def generate() -> str:
     w("## Bodies\n")
     w("| body | x | y | p_V | p_Y | display, no adaptation | display, sun-adapted | hue swatch | albedo label | "
       "phase label | spectrum from |\n|---|---|---|---|---|---|---|---|---|---|---|")
-    src_short = {199: "Payne+2026 (MASCS)", 299: "Payne+2026 (VIRS)", 399: "Payne+2026 (PSG model)",
-                 301: "Lane & Irvine 1973", 499: "Mallama+2017 UBVRI", 599: "Karkoschka 1998",
+    src_short = {199: "Payne+2026 (MASCS)", 299: "Payne+2026 (VIRS)", 399: "Himawari-9 AHI (4 bands)",
+                 301: "ROLO (Kieffer & Stone 2005)", 499: "Mallama+2017 UBVRI", 599: "Karkoschka 1998",
                  699: "Karkoschka 1998", 799: "Karkoschka 1998", 899: "Karkoschka 1998",
                  999: "Buie+2010 B, V"}
     for n, r in res.items():
@@ -276,8 +274,10 @@ def generate() -> str:
       "level of the absolute calibrations (±3-4 %) and of the source epochs (Karkoschka 1995 vs 2000s).\n"
       "- **Mars +0.01…+0.08**: Horizons includes the rotational and seasonal terms L(λe), L(Ls) (±0.06); our "
       "photometry is the rotation/season mean.\n"
-      "- **Earth +0.75**: our Earth is half as bright as Mallama & Hilton's (see the Earth note above). This is the "
-      "largest open discrepancy; we believe the DSCOVR-validated value, but neither is a clean measurement.\n"
+      "- **Earth +0.64**: our Earth (Himawari-9 measurement, p_V = 0.24) is 0.55× as bright as Mallama & Hilton's "
+      "V(1,0) = −3.99 (p_V = 0.434, from EPOXI at 58-77° extrapolated to 0° with a model phase curve). EPOXI's own "
+      "images, integrated here, agree with our albedo × the same model curve within 4-16 % at 58-77° (M3 follow-up "
+      "below), so the factor of ~1.8 is in the extrapolation or its normalization, not in the data.\n"
       "- **Saturn +0.13…+0.30**: Horizons includes the rings for α < 6.5° (Eq. 10); our entry is the globe alone. "
       "Against the globe-only Eq. 11 we are +0.05 (see the consistency table).\n"
       "- **Moon +0.09 (α = 43°), +0.06 (α = 100°), n/a at 130°**: Horizons uses V(1,α) = 0.23 + 0.026α + "
@@ -294,7 +294,8 @@ def generate() -> str:
     _fixups_section(w)
     _m3_section(w)
     w("## Weak data, in order of concern\n")
-    w("1. **Earth**: model spectrum; factor-2 disagreement with the magnitude used by Horizons.\n"
+    w("1. **Earth**: one measured snapshot (one hemisphere, one day) sets the albedo; the phase curve is a model "
+      "(EPOXI agrees within 4-16 % at 58-77°, 34 % at 86°); 0.64 mag fainter than the magnitude Horizons uses.\n"
       "2. **Pluto**: colour from two broadband points; phase curve only to 1.74°.\n"
       "3. **Venus blue end**: ±20 % between datasets below 480 nm, which sets how yellow Venus looks.\n"
       "4. **Moon below 1.55° and beyond 120°**: unknown; the albedo is ROLO's at 1.55° (a reference, not zero "
@@ -532,9 +533,8 @@ def _fixups_section(w) -> None:
       "each) and the OPeNDAP service both answer 302 → `urs.earthdata.nasa.gov/oauth/authorize`: **Earthdata Login "
       "is required**. (Separately, TLS handshakes to asdc.larc.nasa.gov through this environment's proxy are reset "
       "about one time in three.) Only the browse PNGs, and the colour images of epic.gsfc.nasa.gov, are public; "
-      "neither is calibrated. Earth's spectrum therefore remains the "
-      "EPIC-validated model; with an Earthdata account (a token in the environment) the pipeline could fetch a few "
-      "granules and integrate the 10 calibrated EPIC bands over the disk.\n"
+      "neither is calibrated. (Resolved in the M3 follow-up with Himawari-9 and EPOXI instead; with an Earthdata "
+      "account the pipeline could also integrate the 10 calibrated EPIC bands over the disk.)\n"
       "- **Moon beyond 120°**: no accessible measured whole-disk phase curve beyond 120° was found (Lane & Irvine "
       "stop at 120°). Still unknown.\n"
       "- **Opposition surge, Moon and Mercury**: the Moon now uses the ROLO model (M3 below). Mercury's M&H curve "
@@ -594,6 +594,7 @@ def _m3_section(w) -> None:
       "shifted to join it for 97-120° (label estimated because of the join); diskReflectanceModel carries the full "
       "ROLO geometry per channel (derived).\n")
     _m3_surges(w)
+    _m3_earth(w)
 
 
 def _m3_surges(w) -> None:
@@ -641,6 +642,55 @@ def _m3_surges(w) -> None:
       "lightcurves (Millis 1977; Squyres et al. 1984; Buratti & Mosher 1995) and the Cassini-era ones are not openly "
       "accessible. Deau et al. (2009) give only morphological fit parameters of a trailing-side opposition curve "
       "(Franklin & Cook 1974), which fixes neither the albedo nor the longitude dependence.\n")
+
+
+def _m3_earth(w) -> None:
+    from . import albedo as alb, earth
+    w("## M3 follow-up: the Earth from Himawari-9 and EPOXI\n")
+    hd = earth.himawari_disk()
+    w("**Himawari-9 (JMA; NOAA Open Data on AWS).** One full-disk AHI scan, 2025-03-20 02:30-02:39 UTC: the "
+      "satellite's local noon at 140.7°E one day before the equinox, so the Sun is almost behind the satellite "
+      f"(α = {hd['alpha_deg']:.2f}° from the Earth's centre; {hd['phase_min']:.1f}-{hd['phase_max']:.1f}° per pixel "
+      "because the satellite is only 6.6 Earth radii away). 92.6 million 1 km pixels per band (band 3 averaged from "
+      "0.5 km); I/F from the calibrated radiance and the TSIS-1 solar spectrum over each band's response; "
+      "integrated over the disk as seen from far away. The satellite does not see the outer 2.3 % of the "
+      "projected disk; that annulus takes the mean I/F of the 70-80° view-zenith ring (≤ 2.3 % of A).\n")
+    w("| band | λ_eff (nm) | disk reflectance A = p·Φ(2.4°) | annulus share | E_band (W m⁻² µm⁻¹) | JMA π/c′ |"
+      "\n|---|---|---|---|---|---|")
+    import math as _m
+    for b in (1, 2, 3, 4):
+        d = hd["bands"][str(b)]
+        w(f"| B{b:02d} | {filters.effective_wavelength(f'ahi9.B{b:02d}'):.1f} | {d['A']:.4f} | "
+          f"{100 * d['annulus_fraction_of_A']:.1f} % | {d['E_band']:.0f} | {_m.pi / d['c_prime']:.0f} |")
+    r = bodies.build_body(399)
+    psg = alb.payne(399, None)
+    e = solar.spectrum()
+    from .. import cie as _cie
+    pc = _cie.xyzs(bin_average(psg.wl, psg.p) * e.grid)
+    sun = solar.irradiance_xyzs()
+    w(f"\nProduct: p_V = {r.p_v:.3f} (V(1,0) = {r.v10:+.3f} at R = {r.radius_km:.1f} km), x, y = "
+      f"{r.xyzs[0] / r.xyzs[:3].sum():.4f}, {r.xyzs[1] / r.xyzs[:3].sum():.4f} (the pale blue dot). For comparison: "
+      f"the PSG model used until now (Payne et al. 2026, EPIC-validated) p_V = "
+      f"{filters.band_average('V', psg.wl, psg.p):.3f}, x, y = {pc[0] / pc[:3].sum():.4f}, "
+      f"{pc[1] / pc[:3].sum():.4f}; Mallama et al. (2017) / Mallama & Hilton (2018) p_V = 0.434 (V(1,0) = −3.99). "
+      "The measurement confirms the low value.\n")
+    w("**EPOXI (Deep Impact HRIV, PDS SBN).** 84 calibrated images (7 filters × 4 times × 3 days) of the whole "
+      "Earth from 0.11-0.34 AU, aperture photometry with the archive's own I/F conversion, 24-hour means. They are "
+      "an independent check (different instrument, years and phase angles). Measured A against the product's "
+      "p(λ)·Φ(α), green filter:\n")
+    w("| day | α | measured A (24-h mean; range) | product p·Φ | ratio |\n|---|---|---|---|---|")
+    for c in earth.epoxi_check():
+        note = "" if c["aperture_inside_frame"] else " (the Earth nearly fills the frame: aperture clipped)"
+        w(f"| {c['epoch']} | {c['phase']:.1f}° | {c['measured']:.4f} ({c['day_range'][0]:.4f}-"
+          f"{c['day_range'][1]:.4f}){note} | {c['predicted']:.4f} | {c['ratio']:.2f} |")
+    ep = earth.epoxi_disk()
+    vg = ep["2008-03|VIOLET"]["A_mean"] / ep["2008-03|GREEN"]["A_mean"]
+    ours = (filters.band_average("hriv.Violet", r.spectrum.wl, r.spectrum.p) /
+            filters.band_average("hriv.Green", r.spectrum.wl, r.spectrum.p))
+    w(f"\nColour check: EPOXI violet/green (350/550 nm filters) = {vg:.2f} at 57.7°, the product's (whose "
+      f"spectrum below 0.47 µm follows the PSG model's shape) {ours:.2f}. Mallama & Hilton's p = 0.434 × the same "
+      "model curve would predict about twice the EPOXI brightness at 58-77°. The phase curve stays the model shape "
+      "(estimated): the three EPOXI days scatter ±20-30 % about it, as much as the Earth varies between days.\n")
 
 
 if __name__ == "__main__":

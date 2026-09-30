@@ -343,24 +343,31 @@ MALLAMA_2017 = Download(
 )
 
 
-def broadband_reconstruction(bands: dict[str, float], wl_min: float = 300.0) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+def broadband_reconstruction(bands: dict[str, float], wl_min: float = 300.0,
+                             blue_shape=None) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Piecewise-linear p(λ) with one node at each band's solar-weighted effective wavelength (constant beyond the
     end nodes), solved exactly so that every band average ∫pET/∫ET equals the given albedo. Returns
-    (λ grid, p, node wavelengths)."""
+    (λ grid, p, node wavelengths). `blue_shape(λ)`, if given, replaces the constant extension below the first node
+    by that relative shape (p(λ) = p(λ₀)·shape(λ)/shape(λ₀))."""
     keys = list(bands)
     nodes = np.array([filters.effective_wavelength(k) for k in keys])
     order = np.argsort(nodes)
     keys, nodes = [keys[i] for i in order], nodes[order]
     wl = np.arange(wl_min, 1200.01, 0.5)
 
+    blue = np.ones_like(wl)
+    if blue_shape is not None:
+        below = wl < nodes[0]
+        blue[below] = blue_shape(wl[below]) / float(blue_shape(np.array([nodes[0]]))[0])
+
     def hat(k):
         y = np.zeros_like(nodes)
         y[k] = 1.0
-        return np.interp(wl, nodes, y)  # constant extension beyond end nodes
+        return np.interp(wl, nodes, y) * (blue if k == 0 else 1.0)  # constant (or shaped) beyond end nodes
 
     m = np.array([[filters.band_average(b, wl, hat(k)) for k in range(nodes.size)] for b in keys])
     x = np.linalg.solve(m, np.array([bands[b] for b in keys]))
-    return wl, np.interp(wl, nodes, x), nodes
+    return wl, sum(x[k] * hat(k) for k in range(nodes.size)), nodes
 
 
 def mars(ctx: BuildContext | None = None) -> AlbedoSpectrum:
@@ -391,6 +398,9 @@ def spectrum_for(naif: int, ctx: BuildContext | None = None) -> AlbedoSpectrum:
         return karkoschka(naif, ctx)
     if naif == 499:
         return mars(ctx)
+    if naif == 399:
+        from . import earth
+        return earth.earth_spectrum(ctx)
     if naif in PAYNE:
         return payne(naif, ctx)
     if naif == 301:
