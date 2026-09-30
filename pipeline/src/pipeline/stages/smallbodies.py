@@ -24,7 +24,6 @@ from __future__ import annotations
 import datetime as _dt
 import json
 import math
-import os
 import time
 from collections import Counter
 
@@ -110,7 +109,7 @@ def run(ctx: BuildContext) -> None:
 
     cat = sb_catalog.load_orbits(snap.orbit_pages)
     sb_catalog.attach_nongrav(cat, snap.nongrav)
-    limit = int(os.environ.get("SB_LIMIT", "0") or 0)
+    limit = int(ctx.param("smallbodies.limit") or 0)
     if limit:
         # Development builds: every limit-th object plus the verification set (products marked as partial).
         keep = set(range(0, cat.n, max(1, cat.n // limit)))
@@ -488,7 +487,7 @@ def run(ctx: BuildContext) -> None:
                  str(cat.s["prefix"][i] or ""), alt]
         lines.append("\t".join(p.replace("\t", " ").replace("\n", " ") for p in parts))
     path = OUT / DIR / "names.txt"
-    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
     from ..output import _register
     _register(ctx, f"{DIR}/names.txt", path, STAGE)
     write_json(ctx, f"{DIR}/names.json", {
@@ -519,7 +518,7 @@ def run(ctx: BuildContext) -> None:
     report = {"generated": _dt.datetime.now(_dt.timezone.utc).isoformat(timespec="seconds"), "epochEt": common,
               "timing": timing, "statistics": stats, "verification": ver,
               "products": {k: v for k, v in ctx.products.items() if v["stage"] == STAGE}}
-    (CACHE / "smallbodies_report.json").write_text(json.dumps(report, indent=1, default=float))
+    (CACHE / "smallbodies_report.json").write_text(json.dumps(report, indent=1, default=float), encoding="utf-8", newline="\n")
     print(f"[{STAGE}] {n} objects; positions: {stats['labels']['position']}; total {timing['total']} s")
     if fails:
         raise ValueError("small-body verification failed: " + "; ".join(fails))
@@ -585,7 +584,7 @@ def _close_approaches(ctx: BuildContext, cat: sb_catalog.Catalog) -> tuple[list[
     params = {"date-min": lo, "date-max": hi, "dist-max": str(CLOSE_APPROACH_AU), "body": "ALL"}
     path = fetch(CAD_URL, "cneos", f"cad_{lo}_{hi}_{CLOSE_APPROACH_AU}au_all.json", params=params,
                  headers={"User-Agent": sb_sbdb.user_agent()})
-    d = json.loads(path.read_text())
+    d = json.loads(path.read_text(encoding="utf-8"))
     rec = record(path)
     ctx.add_source(SourceRecord(
         id="jpl-cneos-cad", title=f"JPL CNEOS close-approach data: approaches to any planet within "

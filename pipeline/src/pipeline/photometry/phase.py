@@ -116,7 +116,7 @@ PAPER_VS_CODE = {("699", "12", 3): -1.506e-06}
 
 def verify_against_code() -> list[str]:
     """Every coefficient in the transcription must appear in the downloaded Ap_Mag_V3.f90 (returns problems)."""
-    text = APMAG_CODE.fetch().read_text(errors="replace")
+    text = APMAG_CODE.fetch().read_text(errors="replace", encoding="utf-8")
     nums = {float(m.group().lower().replace("d", "e"))
             for m in re.finditer(r"(?<![\w.])[-+]?\d+\.\d*(?:[eEdD][-+]?\d+)?", text)}
     nums |= {-x for x in nums}

@@ -21,7 +21,7 @@ def _header(naif, layer):
     p = OUT / "surfaces" / str(naif) / f"{layer}.json"
     if not p.exists():
         pytest.skip(f"surfaces/{naif}/{layer} not built")
-    return json.loads(p.read_text())
+    return json.loads(p.read_text(encoding="utf-8"))
 
 
 def _level(h, level):
@@ -32,8 +32,8 @@ def _level(h, level):
 @pytest.mark.skipif(not HEADERS, reason="surfaces not built")
 @pytest.mark.parametrize("path", HEADERS, ids=[f"{p.parent.name}/{p.stem}" for p in HEADERS])
 def test_layer_integrity(path):
-    h = json.loads(path.read_text())
-    listing = (OUT / h["tileListing"]).read_text().splitlines()
+    h = json.loads(path.read_text(encoding="utf-8"))
+    listing = (OUT / h["tileListing"]).read_text(encoding="utf-8").splitlines()
     assert len(listing) == h["stats"]["tiles"]
     size = st.TILE * st.TILE * h["bytesPerTexel"]
     stored = {}
@@ -62,10 +62,10 @@ def test_layer_integrity(path):
 
 
 @pytest.mark.skipif(not HEADERS, reason="surfaces not built")
-@pytest.mark.parametrize("path", [p for p in HEADERS if json.loads(p.read_text())["kind"] == "relative-reflectance"],
+@pytest.mark.parametrize("path", [p for p in HEADERS if json.loads(p.read_text(encoding="utf-8"))["kind"] == "relative-reflectance"],
                          ids=lambda p: p.parent.name)
 def test_albedo_texels_valid_and_normalized(path):
-    h = json.loads(path.read_text())
+    h = json.loads(path.read_text(encoding="utf-8"))
     for L in range(h["minLevel"], h["maxLevel"] + 1):
         a = _level(h, L)
         assert np.isfinite(a).all(), f"level {L}: non-finite texels"
@@ -144,7 +144,7 @@ def test_ice_giant_coverage_follows_the_seasons():
 
 @pytest.mark.skipif(not HEADERS, reason="surfaces not built")
 def test_panchromatic_maps_pass_their_feature_checks():
-    pans = [json.loads(p.read_text()) for p in HEADERS]
+    pans = [json.loads(p.read_text(encoding="utf-8")) for p in HEADERS]
     pans = [h for h in pans if h.get("diagnostics", {}).get("georeferencing")]
     if not pans:
         pytest.skip("no panchromatic maps built")

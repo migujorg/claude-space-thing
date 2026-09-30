@@ -25,7 +25,7 @@ R_OUT_AU = 5.2                     # Kelsall 1998 Sect. 4.2: outer cutoff of the
 
 
 def _read_csv(name: str) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    lines = [ln for ln in (TABLES / name).read_text().splitlines() if ln and not ln.startswith("#")]
+    lines = [ln for ln in (TABLES / name).read_text(encoding="utf-8").splitlines() if ln and not ln.startswith("#")]
     head = lines[0].split(",")
     beta = np.array([float(h.split("_")[1]) for h in head[1:]])
     lam, rows = [], []
@@ -42,11 +42,11 @@ def leinert_table(number: int = 16) -> tuple[np.ndarray, np.ndarray, np.ndarray]
 
 
 def leinert_constants() -> dict:
-    return json.loads((TABLES / "leinert_1998.json").read_text())
+    return json.loads((TABLES / "leinert_1998.json").read_text(encoding="utf-8"))
 
 
 def kelsall_params() -> dict:
-    return json.loads((TABLES / "kelsall_1998.json").read_text())
+    return json.loads((TABLES / "kelsall_1998.json").read_text(encoding="utf-8"))
 
 
 def fco(wl_nm: np.ndarray, elong_deg: float) -> np.ndarray:

@@ -40,6 +40,15 @@ export interface Manifest {
   /** Validity window of time-dependent products, TDB seconds past J2000. */
   window: { startEt: number; endEt: number };
   products: Record<string, ProductEntry>;
+  /** Pipeline bookkeeping for resumable builds (pipeline/build.py): stage name → last run (built / failed). */
+  stages?: Record<string, { status: 'built' | 'failed'; finishedAt?: string; error?: string; profile?: string | null }>;
+  /** The last build: its profile and, per stage, what happened and why (e.g. "not in profile minimal"). */
+  build?: {
+    profile: string | null;
+    startedAt: string;
+    finishedAt: string;
+    stages: Record<string, { status: string; reason: string }>;
+  };
 }
 
 export interface LeapSecond {
@@ -622,8 +631,14 @@ export interface SurfaceLayerHeader {
   bytesPerTexel: number;
   tileSize: 256;
   minLevel: number;
+  /** Highest level stored (the source's own maximum unless a build level cap applied, see levelCap). */
   maxLevel: number;
   levels: SurfaceLevelInfo[];
+  /**
+   * Present only when a build profile capped the pyramid (pipeline parameter surfaces.maxLevel): the source supports
+   * levels up to sourceMaxLevel, but only minLevel..maxLevel were written (identical to an uncapped build's).
+   */
+  levelCap?: { sourceMaxLevel: number; note: string };
   /** Template relative to the data root, placeholders {level}, {ty}, {tx}. */
   tilePath: string;
   /** Path of the "sha256  path" listing of every stored tile. */
@@ -1109,6 +1124,8 @@ export interface HealpixMapLayer {
   labelBin?: string;
   labelCodes?: Record<string, string>;
   pixelSolidAngleSr?: number;
+  /** Several maps in one file (deepRemainder): slice k covers value[(k * npix + pix) * channels + c]. */
+  slices?: { count: number; yBelow: (number | null)[]; layout: string; tileOrder: number };
   stats?: Record<string, unknown>;
 }
 
@@ -1152,4 +1169,116 @@ export interface ZodiacalLightModel {
     perSolarFluxPerSr: { eps30: number[]; eps90: number[] };
   }>;
   notes: string;
+}
+
+// ── Validation cases (validation/cases/<id>/case.json; docs/reports/validation.md) ───────────────────────────
+// Ground-truth comparisons for the renderer: a view it can reproduce exactly and regions of interest with the
+// radiance its HDR buffer (absolute XYZS, before the eye model) must hold there. Not loaded by the app itself;
+// the render-test harness reads them.
+
+/** validation/index.json */
+export interface ValidationIndex {
+  schema: 'validation-index-v1';
+  cases: { id: string; title: string; epochUtc: string; target: { naifId: number; name: string };
+    instrument: string; rois: string[]; path: string }[];
+  doc: string;
+}
+
+/** A body as the harness must place it: maps 1:1 onto SceneBody's geometric fields. */
+export interface ValidationBody {
+  naifId: number;
+  name: string;
+  /** Camera-relative position of the body centre, km, ICRF, light-time corrected (SceneBody.pos). */
+  pos: [number, number, number];
+  /** Body centre → Sun, km, ICRF (SceneBody.toSun). */
+  toSun: [number, number, number];
+  /** Body-fixed → ICRF, row-major (SceneBody.orient). */
+  orient: [number, number, number, number, number, number, number, number, number];
+  radii: [number, number, number];
+  rangeKm: number;
+  sunDistanceAu: number;
+  phaseDeg: number;
+  subObserver: { latDeg: number; eastLonDeg: number };
+  subSolar: { latDeg: number; eastLonDeg: number };
+  /** Draw the body's ring system (rings.json) as in the app. */
+  rings: boolean;
+}
+
+export interface ValidationView {
+  epochUtc: string;
+  /** TDB seconds past J2000 of the observation (the view is explicit: the harness must not recompute it from the
+   *  app's ephemeris, which only covers the app's time window). */
+  et: number;
+  /** SceneCamera: camera → ICRF (columns right, up, back; row-major), fovY (rad), width × height pixels. */
+  camera: { orient: [number, number, number, number, number, number, number, number, number]; fovY: number;
+    width: number; height: number; pixelPitchRad: number; convention: string };
+  bodies: ValidationBody[];
+  sun: { pos: [number, number, number] };
+}
+
+export type ValidationRoiKind =
+  | 'disk-centre' | 'limb' | 'terminator' | 'point' | 'ring' | 'disk-integrated' | 'sky-near' | 'sky-far';
+
+export interface ValidationRoi {
+  id: string;
+  kind: ValidationRoiKind;
+  note: string | null;
+  /** NAIF id of the body the ROI is on. */
+  target: number;
+  /** [x0, y0, x1, y1): pixel rectangle in the view (x right, y down), exclusive upper bounds. */
+  rect: [number, number, number, number];
+  pixels: number;
+  /** Mean / range of incidence, emission, phase, latitude, east longitude or ring radius over the ROI. */
+  geometry: Record<string, unknown>;
+  /** Per instrument band: measured I/F statistics, 1σ relative budget, band radiance. */
+  bands: {
+    filter: string;
+    product: string;
+    /** Disk-integrated ROIs: `mean` has the local sky level (`background.level`, the camera's scattered light and
+     *  zero level in a 5-pixel frame around the rectangle) subtracted; `rawMean` is the plain rectangle mean. */
+    iof: { mean: number; std: number; n: number; nInRect: number;
+      background?: { level: number; levelSigma: number; robustPixelSpread: number; sideMedians: number[];
+        pixels: number; rawMean: number } };
+    sigmaRel: { calibration: number; noise: number; registration: number };
+    bandRadiance: { value: number; sigma: number | null; unit: 'W m-2 sr-1 nm-1'; bandSolarIrradiance1AU: number };
+  }[];
+  expected:
+    | { type: 'value'; XYZS: [number, number, number, number]; sigma: [number, number, number, number];
+        tolerance: [number, number, number, number]; comparison: string; label: Label; method: string;
+        budget: Record<string, unknown>; bandCentersNm: number[]; rho: number[]; colorCriterion: string }
+    | { type: 'upper-limit'; upperLimitXYZS: [number, number, number, number]; comparison: string; label: Label;
+        method: string }
+    | { type: 'none'; label: 'unknown'; method: string };
+  /** Case-specific extras, e.g. Himawari's cloudTimeOffsetH. */
+  [extra: string]: unknown;
+}
+
+export interface ValidationRatio {
+  numerator: string;
+  denominator: string;
+  ratioXYZS: [number, number, number, number];
+  sigma: [number, number, number, number];
+  tolerance: [number, number, number, number];
+  bands: { filter: string; ratio: number; sigma: number }[];
+  comparison: string;
+  method: string;
+}
+
+export interface ValidationCase {
+  schema: 'validation-case-v1';
+  id: string;
+  title: string;
+  summary: string;
+  generated: string;
+  observation: Record<string, unknown>;
+  view: ValidationView;
+  /** reference.bin: float32 LE I/F, shape [bands, height, width], NaN = no data, same pixel grid as the view. */
+  reference: { file: string; dtype: 'float32-le'; shape: [number, number, number]; bands: string[];
+    quantity: string; note: string };
+  comparison: { renderOutput: string; roiStatistic: string; tolerance: string };
+  rois: ValidationRoi[];
+  ratios: ValidationRatio[];
+  appProducts: Record<string, unknown>;
+  notes: string[];
+  sources: SourceRecord[];
 }

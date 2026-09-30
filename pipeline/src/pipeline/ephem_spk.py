@@ -251,7 +251,7 @@ def write_product(ctx: BuildContext, name: str, segments: list[Segment], stage: 
 def load_product(header_path: Path) -> list[Segment]:
     """Read a product written by write_product back into Segments (used by tests and the bodies stage)."""
     import json
-    header = json.loads(header_path.read_text())
+    header = json.loads(header_path.read_text(encoding="utf-8"))
     data = np.fromfile(header_path.parent.parent / header["bin"], dtype="<f8")
     out = []
     for d in header["segments"]:

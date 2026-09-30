@@ -53,7 +53,7 @@ def co2_check() -> dict:
 def co2_refractivity_check() -> dict:
     """Owens' CO2 refractivity (Bodhaine Eq. 27, 15 °C) scaled to 0 °C by density (273.15 -> 288.15 K) vs
     Bideau-Mehu et al. (1973) at 0 °C (refractiveindex.info formula 6)."""
-    txt = src.BIDEAU_MEHU_CO2.fetch().read_text()
+    txt = src.BIDEAU_MEHU_CO2.fetch().read_text(encoding="utf-8")
     c = [float(v) for v in re.search(r"coefficients:\s*([^\n]+)", txt).group(1).split()]
     lam = np.array([400.0, 550.0, 700.0, 830.0])
     s2 = (lam / 1e3) ** -2

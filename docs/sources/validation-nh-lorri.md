@@ -1,0 +1,15 @@
+# New Horizons LORRI calibrated images for the validation set (`pluto-nh-lorri-2015-*`, `*-nh-lorri-2007-*`, `nh-soc-inst-icd-2017`, `weaver-2020-lorri`, `spencer-weaver-2020-lorri-exposure`)
+
+**Data:** LORRI Level-2 ("sci") FITS images (1024 × 1024 float32 calibrated DN, plus error and quality-flag extensions; 10.5 MB each) from the PDS Ring-Moon Systems Node copies of the New Horizons archive (`https://opus.pds-rings.seti.org/holdings/volumes/NHxxLO_xxxx/<volume>/data/<folder>/<image>_sci.fit`):
+- Pluto, 2015-07-13 14:36:31 UTC: lor_0299104109 (NHPELO_2001, data set NH-P-LORRI-3-PLUTO-V3.0), 0.15 s, 1.05 million km, 5.2 km/pixel.
+- Jupiter, 2007-01-22: lor_0031736039; Io lor_0034844219, Europa lor_0034849319 (2007-02-27); Ganymede lor_0034784234 (2007-02-26); Callisto lor_0034858514 (2007-02-27); volume NHJULO_2001. Exposures 3–16 ms.
+- Pixels flagged in the quality extension are masked. Mid-exposure time = header `SPCUTCAL` (the SPICE geometry epoch, start + half the exposure).
+- Instrument: Cheng, A. F. et al. (2008), *Space Science Reviews* 140, 189–215, DOI [10.1007/s11214-007-9271-6](https://doi.org/10.1007/s11214-007-9271-6); passband SVO `NewHorizons/LORRI.Pan` (photon counter; pivot 607.6 nm).
+
+**I/F:** *New Horizons SOC to Instrument Pipeline ICD* (SwRI 05310-SOCINST-01, September 2017, in the PDS data set's `document/soc_inst_icd.pdf`) §9.3.9 and Weaver et al. (2020) Eqs. 8–10: radiance at the pivot wavelength I = C / t_exp / RSOLAR for a solar-type spectrum, and I/F = π I r² / F☉ with F☉ = 176 erg cm⁻² s⁻¹ Å⁻¹ at 1 AU. With RSOLAR, I/F is the solar-weighted LORRI band average of the reflectance; colour enters only through our synthetic photometry.
+- **RSOLAR** = 2.349 × 10⁵ (1×1) from the 2016 in-flight calibration (Weaver et al. 2020, Table 2), for all epochs. The Pluto product's header carries the same value; the 2007 Jupiter archive carries the pre-flight 2.664 × 10⁵ (ICD Table 9-5), 13 % higher. Weaver et al. found "no detectable changes (at the ~1% level)" in LORRI's sensitivity over the mission, so the in-flight value applies to 2007 too.
+- **Exposure:** true exposure = header `EXPTIME` + 0.6 ms (Spencer, J. & Weaver, H. 2020, *Determination of the True Exposure Time of New Horizons LORRI Images*, `.../documents/NHxxLO_xxxx/LORRI-True-Exposure-Times.pdf`; δt = 0.58–0.59 ms from 2007 Io image pairs), added for products archived before 2020 (header `ARCHDATE`). For a 3 ms exposure it adds 20 %.
+
+**Accuracy:** Weaver, H. A. et al. (2020), *In-Flight Performance and Calibration of the LOng Range Reconnaissance Imager (LORRI) for the New Horizons Mission*, accepted in PASP (arXiv:2001.03524v1): absolute sensitivity "accurate to ∼2% (1σ) for targets with solar-type SEDs", ≤ 10 % otherwise unless synthetic photometry is used; the validation takes 2 % (1σ) and carries the colour through its spectral-model term.
+
+**Pointing check:** the headers' WCS (`CRVAL`, `CD`, SIP terms from the reconstructed C-kernel; `SPCBRRA/DEC`, `SPCQ*`) gives the pixel of the target's apparent direction; the fitted target centre is compared with it (`pointingChecks`).

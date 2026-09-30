@@ -11,7 +11,7 @@ from pipeline import stars_astrometry as sa
 from pipeline import stars_format as sf
 from pipeline.paths import OUT
 
-FIX = json.loads((Path(__file__).parent / "fixtures" / "simbad_stars.json").read_text())
+FIX = json.loads((Path(__file__).parent / "fixtures" / "simbad_stars.json").read_text(encoding="utf-8"))
 
 
 def _astropy_propagate(ra, dec, pmra, pmdec, plx, rv, ep0, ep1):

@@ -32,7 +32,7 @@ def nssdc(body: str) -> Download:
 @lru_cache(maxsize=None)
 def nssdc_text(body: str) -> str:
     """The fact sheet as plain text (tags removed, entities decoded, whitespace collapsed per line)."""
-    raw = nssdc(body).fetch().read_text(errors="replace")
+    raw = nssdc(body).fetch().read_text(errors="replace", encoding="utf-8")
     raw = re.sub(r"<sup>(.*?)</sup>", r"\1", raw)
     t = html.unescape(re.sub(r"<[^>]+>", " ", raw))
     return "\n".join(" ".join(line.split()) for line in t.splitlines() if line.strip())
@@ -40,7 +40,7 @@ def nssdc_text(body: str) -> str:
 
 def nssdc_table_value(body: str, label: str) -> float:
     """First numeric cell of the bulk-parameter table row whose header starts with `label`."""
-    raw = nssdc(body).fetch().read_text(errors="replace")
+    raw = nssdc(body).fetch().read_text(errors="replace", encoding="utf-8")
     m = re.search(r"<th[^>]*>\s*" + re.escape(label) + r".*?</th>\s*<td[^>]*>\s*([-0-9.]+)", raw, re.S)
     if not m:
         raise KeyError(f"{body}: row {label!r} not found")

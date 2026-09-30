@@ -250,7 +250,7 @@ def photometry_fixture(core: np.ndarray, spkid_rows: dict[int, int], label_enc: 
         path = horizons_observer(spk)
         time.sleep(1.0)  # sequential and polite
         rec = record(path)
-        p = parse_observer(path.read_text())
+        p = parse_observer(path.read_text(encoding="utf-8"))
         row = spkid_rows[spk]
         objs.append({"spkid": spk, "coreRow": row, "H": float(core["H"][row]), "G": float(core["G"][row]),
                      "gLabel": label_enc[int(core["gLabel"][row])], "horizonsUrl": rec["url"],
@@ -278,7 +278,7 @@ def _spkid_rows(names_path: Path, wanted: tuple[int, ...]) -> dict[int, int]:
 def run(ctx: BuildContext) -> None:
     core_h, core = read_table(OUT / DIR / "core.json")
     phys_h, phys = read_table(OUT / DIR / "physical.json")
-    light = json.loads((OUT / "light.json").read_text())
+    light = json.loads((OUT / "light.json").read_text(encoding="utf-8"))
 
     src = sbpy_iau_source()
     basis = hg1g2_nodes(src)
@@ -351,6 +351,11 @@ def run(ctx: BuildContext) -> None:
         },
     }
     write_json(ctx, f"{DIR}/photometry.json", product, STAGE)
+    print(f"[{STAGE}] photometry.json: {colour['shapeDerived']} derived colour shapes; c_Y p1..p99 = "
+          f"{colour['yOverV']['p1']:.4f}..{colour['yOverV']['p99']:.4f}")
+    if not ctx.param("build.writeRepoFiles"):
+        print(f"[{STAGE}] test fixture {FIXTURE.name} not refreshed (build.writeRepoFiles is off)")
+        return
 
     names = OUT / DIR / "names.txt"
     rows = _spkid_rows(names, TEST_SPKIDS)
@@ -365,8 +370,7 @@ def run(ctx: BuildContext) -> None:
                          for a in (0.0, 0.2, 1.0, 5.0, 7.5, 10.0, 25.0, 45.0, 90.0, 140.0, 160.0)
                          for g1, g2 in ((0.62, 0.14), (0.25, 0.4), (0.9, 0.05))]
     _write_fixture_if_changed(fx)
-    print(f"[{STAGE}] photometry.json: {colour['shapeDerived']} derived colour shapes; c_Y p1..p99 = "
-          f"{colour['yOverV']['p1']:.4f}..{colour['yOverV']['p99']:.4f}; fixture {FIXTURE.name}")
+    print(f"[{STAGE}] fixture {FIXTURE.name} checked")
 
 
 def _stable(obj):
@@ -382,8 +386,8 @@ def _write_fixture_if_changed(fx: dict) -> None:
     """Rewrite the committed test fixture only when its values change, so rebuilds don't churn the repository."""
     if FIXTURE.exists():
         try:
-            if _stable(json.loads(FIXTURE.read_text())) == _stable(fx):
+            if _stable(json.loads(FIXTURE.read_text(encoding="utf-8"))) == _stable(fx):
                 return
         except ValueError:
             pass
-    FIXTURE.write_text(json.dumps(fx, indent=1))
+    FIXTURE.write_text(json.dumps(fx, indent=1), encoding="utf-8", newline="\n")

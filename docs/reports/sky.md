@@ -1,4 +1,4 @@
-# M4 "the real sky", data side — report
+# M4 "the real sky" — report (data side §1–4, rendering §5)
 
 Stages `deepstars` and `sky` (pipeline/src/pipeline/stages/), after `stars`. Products in app/public/data:
 
@@ -8,11 +8,12 @@ Stages `deepstars` and `sky` (pipeline/src/pipeline/stages/), after `stars`. Pro
 | `sky/faint-stars-o8.bin` | radiance XYZS of all 1.79 × 10⁹ Gaia sources with G ≥ 14, HEALPix order 8 | 12.6 MB | estimated |
 | `sky/diffuse-o6.bin` (+ `-label.bin`) | Pioneer 10/11 sky minus all stars: diffuse galactic light + EBL + stars below Gaia, order 6, 3° resolution | 0.8 MB | estimated |
 | `sky/deep-aggregate-o8.bin` | the deep tier summed per pixel (level of detail, not additive) | 12.6 MB | estimated (92.4 % of its Y from XP-derived records) |
+| `sky/deep-remainder-o7.bin` | the deep-tier light not held as points when each order-3 tile is read to prefix k: 4 slices (k = 0: all; 1–3: records below `prefixY[k−1]`), HEALPix order 7 | 12.6 MB | estimated (as deep-aggregate) |
 | `sky/diffuse.json` | `SkyMapsFile` header: projection, units, methods, sources, stats | 8 kB | |
 | `sky/zodiacal.json` | Leinert 1998 zodiacal light at 1 AU + Kelsall 1998 cloud with a fitted visible phase function | 10 kB | at 1 AU measured; colour derived; elsewhere estimated |
 | `stars/bright.*` (rebuilt) | 50 more bright stars lit by measured spectrophotometry (Sternberg), incl. Aldebaran, Spica, Polaris | 23.9 MB | derived 437 677, estimated 44 781 |
 
-Products total 0.84 GB (budget 1.5 GB). Raw downloads: `data/raw/stars` 2.6 GB (of which the new deep-tier FITS
+Products total 0.85 GB (budget 1.5 GB). Raw downloads: `data/raw/stars` 2.6 GB (of which the new deep-tier FITS
 1.1 GB and archive sums 0.1 GB) + `data/raw/sky` 12 MB, under the 3 GB budget; the all-sky XP reductions (1.1 GB)
 are a cache (`data/cache/stars/xp_reduced/`). New schema types (additive, `app/src/data/schema.ts`):
 `TiledBinaryTableHeader`, `StarTile`, `HealpixMapLayer`, `SkyMapsFile`, `ZodiacalLightModel`; rows added to
@@ -255,10 +256,11 @@ table's errors) to all 182 cells of Table 16, the model averaged over the Earth'
 | β 20–30° | 0.98 (0.90–1.08) |
 | β 45°, 60°, 75° | 0.83, 0.81, 0.83 (0.75–1.04) |
 | Gegenschein, λ − λ⊙ ≥ 150°, abs(β) ≤ 10° | 0.96 (0.89–1.01) |
-| ecliptic pole (60 ± 3) | 57.8 S10⊙ |
+| ecliptic pole (60 ± 3) | 53.1 S10⊙ averaged over the year (57.8 with the Earth at heliocentric longitude 180°, 47.7 at 0°: the cloud's symmetry plane is tilted) |
 
-The ~17 % deficit at high latitudes is the Kelsall vertical profile, which the fit does not change; at the Earth
-the renderer should use the table (measured), the model is for other positions.
+The ~17 % deficit at high latitudes is the Kelsall vertical profile, which the fit does not change. The renderer
+uses the model for every observer, the Earth included (§5.3): one continuous model rather than a switch to the
+measured table at 1 AU, at the cost of these residuals.
 
 **Checks against measurements the fit did not use** (heliocentric dependence, Leinert Eqs. 15 and 17): seen from R
 in the ecliptic at 90° elongation, the model falls as R^−2.23 between 0.3 and 1 AU (Helios: R^−2.3±0.1) and
@@ -266,7 +268,144 @@ R^−2.62 between 1 and 3.3 AU (Pioneer 10: R^−2.5±0.2); at the ecliptic pole
 it gives 67 S10⊙ at 90° elongation (198 at 1 AU) and 21 at the pole (58); at 3.3 AU 8.7 and 3.3; zero beyond 5.2 AU
 (Kelsall's integration limit; Pioneer 10 no longer detected zodiacal light beyond ~3.3 AU).
 
-## 5. Open issues
+## 5. Rendering (app)
+
+### 5.1 What draws what
+
+| module | role |
+|---|---|
+| `app/src/data/sky.ts` | lists the products (`load.ts` → `loadSkyHeaders`: deep tiles `on-demand`, maps deferred), loads the three maps with size checks; `DeepTiles` reads the brightest-first prefix of a tile that a view needs by HTTP Range |
+| `app/src/app/sky.ts` | `SkyController`, once per frame before `renderer.render`: sets the point/sky cut from the renderer's limiting magnitude, plans and streams deep tiles for the view, rebuilds the point list and the binned-star map, switches layers by reality level; CPU twins for verification (`probe`, `checkCube`, `checkZodiacal`); star picking and the inspector's facts |
+| `app/src/render/sky/background.ts` | `SkyBackground`: GPU composition of the maps into a cube map with mips, the zodiacal grid (compute), the background pass into EXT |
+| `app/src/render/sky/zodiacal.ts` | the Kelsall cloud with the fitted visible scattering: CPU line-of-sight integral and its generated WGSL twin |
+| `app/src/render/sky/healpix.ts` | HEALPix NESTED `vec2pix` / `pix2vec` in TypeScript and WGSL |
+| `app/src/ui/starCard.ts` | inspector card for a clicked star, bright or deep tier |
+
+The renderer hook is `setBackground(hook)`: the renderer calls `hook.encode(encoder, { ext, depth, frameUB, W, H,
+snapshot })` right after the bodies pass (an import, a field, a setter and the call in renderer.ts;
+`debugSkip=background` turns it off). Without a GPU device no controller is made and the bright catalogue goes to
+`setStars` as before.
+
+### 5.2 Points or sky light
+
+A star is a point when v = max(Y, S/1.408) (the renderer's visibility proxy) reaches E(V_cut), with V_cut = V_lim +
+0.75 mag rounded to 0.25 mag and V_lim the renderer's limiting magnitude of the last frame. The cut moves only when
+its target is 0.5 mag or more away, so adaptation drift does not rebuild every frame. Every other catalogue star —
+bright tier or loaded deep record — is summed into an order-8 HEALPix radiance map (0.23° pixels) that the background
+draws. The deep tier is read per order-3 tile only to the first prefix k with prefixY[k] ≤ E(V_cut)/3 (no later
+record can reach the cut: v ≤ 3 Y for the bluest stars), and the `deepRemainder` slice k supplies the light of the
+records not read (slice 0 for a tile not read, nothing for a complete one). Each star's light is therefore in
+exactly one place: a point, the binned map, a remainder slice, or `faintStars` (G ≥ 14).
+
+Tiles are wanted when their centre is within the view's half-diagonal + tile radius + 5°, nearest first, four
+requests at a time, each finished read starting the next. Above 3 × 10⁶ records in memory (144 MB) tiles out of
+view are evicted, least recently seen first, and tiles more than 45° outside the view for 10 s are unloaded
+regardless (their light returns to remainder slice 0). A rebuild (point upload + cube recomposition) waits until
+the view's tiles are in, or runs every 3 s while they stream.
+
+### 5.3 Background pass
+
+The maps are composed on the GPU into a cube map (512² per face, 256² on software adapters; rgba16float in µcd/m²):
+each texel is the mean of 12 samples on a Vogel disc of about one source pixel (radius 0.16° for faintStars, 0.32°
+for the binned stars and the remainder, 0.82° for the 3°-resolution diffuse layer), and a mip chain is built. The
+background pass draws a full-screen triangle behind the bodies (depth test) and samples the cube at LOD
+log2(pixel angle / texel angle), so the sky is filtered to the pixel's footprint at any field of view. It adds to
+EXT pre-exposed like every other light, so the sky enters the adaptation measurement, the veil and every point's
+local background. The cube is recomposed only when the binned stars, tile levels or layer switches change.
+
+Zodiacal light is integrated for one ray per 16 × 16 pixels (compute pass, redone when the observer moves or the
+view turns) and interpolated bilinearly. Each ray: 24 midpoint steps over the first 0.3 AU (dust at the observer),
+then 64 steps in t with s = s_ca + h sinh(t), which crowds samples at the closest approach to the Sun, out to
+5.2 AU from the Sun. Heliocentric ecliptic coordinates come from ICRF by the IAU 2006 obliquity, and the
+Earth-trailing blob follows the Earth's mean longitude (Standish). Colour: the `s10ToXYZS` vectors interpolated in
+solar elongation. The model is used for every observer, the Earth included (the table itself is not drawn; the fit
+reproduces it to 12 % rms).
+
+### 5.4 Screenshots and statistics
+
+`app/scripts/sky-shots.mjs` (Vite + headless Chromium, WebGPU on SwiftShader, so the 256² cube; 1280 × 720;
+`smallbodies=0`, because the GPU small-body field makes a SwiftShader frame take minutes). All at
+2026-06-21T00:00Z. The Earth views are from 10⁶ km on the Earth's night side, so the Earth eclipses the Sun.
+
+| view | V_lim | adaptation (cd/m²) | cut V | points, bright + deep | drawn, bright + deep | image |
+|---|---|---|---|---|---|---|
+| eye, galactic centre, 60° field | 5.82 | 3.2 × 10⁻⁴ (scotopic, m = 0) | 6.75 | 23 142 + 0 (459 316 bright binned; no tile needed) | 2 670 + 0 | `img/sky-gc-eye.png` |
+| enhanced +3 stops, same view | 8.09 | 3.1 × 10⁻⁴ | 9.0 | 236 143 + 39; binned 246 315 + 277 318 (286 tiles to prefix 0, 12.7 MiB) | 27 843 + 7 | `img/sky-gc-enhanced3.png` |
+| eye, ecliptic 50° from the Sun | 4.99 | 4.2 × 10⁻³ (m = 0.08) | 5.75 | 7 750 + 0 | 712 | `img/sky-ecliptic-earth.png` |
+| eye, from Neptune (30 AU), ecliptic 50° from the Sun | 6.07 | 1.9 × 10⁻⁴ | 6.75 | 23 142 + 0 | 2 412 | `img/sky-ecliptic-30au.png` |
+| enhanced +6, 20° field in UMa (210°, +55°), from 30 AU | 11.48 | 2.3 × 10⁻⁵ | 12.25 | 480 272 + 212 275; binned 2 186 + 379 297 (102 tiles in memory, 591 572 records, 32 MiB fetched) | 3 880 + 23 154 | `img/sky-deep-uma-enhanced6.png` |
+| enhanced +6, 20° field at the galactic centre | 10.19 | 4.9 × 10⁻⁴ | 11.0 | 472 147 + 159 783; binned 10 311 + 1 000 196 (102 tiles, 1.16 M records; 125 MiB fetched while turning) | 13 618 + 32 345 | not kept (the core saturates at +6) |
+
+* **Eye mode:** the Milky Way is a faint band with its dark lanes, below the brightest stars, as a dark-adapted
+  eye sees it. The galactic centre pixel holds 666 S10⊙ = 5.9 × 10⁻⁴ cd/m²: diffuse 383, deepRemainder 93,
+  faintStars 42 and the zodiacal light near the gegenschein 148 S10⊙.
+* **Enhanced +3:** V_lim rises by 2.27 mag, i.e. 2.5 log₁₀ 8. The cut crosses the top of the deep tier, the view's
+  tiles stream to prefix 0 (G ≤ 11.2), and the first deep points appear.
+* **Ecliptic from the Earth:** the zodiacal cone brightens toward the eclipsed Sun. At the view centre
+  (ε = 50.3°, β = 0) it is 559 S10⊙; Table 16, interpolated, gives 577 (−3 %). At ε = 20.2° it is 4 960 against
+  5 000 (−1 %). At the galactic poles (β ±29.8°, λ − λ⊙ ±90°) it is 97 and 102 against 103. The dark dot right of
+  centre is the Moon, nearly new as seen from behind the Earth: bodies hide the sky behind them.
+* **From 30 AU:** no zodiacal light in the view (0 at the centre; the brightest grid ray, toward the inner system,
+  2 S10⊙). The glow at the upper right is the Sun, about 4° outside the frame.
+* **Deep tier:** at +6 stops the 20° field shows 23 154 deep-tier stars as points. At this exposure the 3°
+  diffuse layer's structure is visible, including zero-clamped pixels (label code 2, §3.3) as dark 3° patches
+  around a few bright stars.
+* **Inspector:**
+  * A click on a deep star (`sky.pickStar` + `facts`, as the card shows it) gives "Gaia DR3 791001554222619136,
+    V ≈ 9.59, RA 177.8594°, Dec +50.5386°". Its position, flux and colour are `derived`, with the position route
+    (2-parameter solution + Tycho-2 proper motion), the light route (XP sampled spectrum), its flag (2-parameter
+    solution) and five sources.
+  * A bright star gives "Sirius · α CMa · 9 CMa, HIP 32349, RA 101.2829°, Dec −16.7252°", with light from CALSPEC.
+
+**Galactic poles against Leinert Table 34** (5° caps, S10⊙ from Y with 8.90 × 10⁻⁷ cd/m² per S10⊙; Table 34
+excludes stars brighter than V = 6.5, and so do these sums):
+
+| pole | faintStars | diffuse | deepRemainder | binned stars | points V ≥ 6.5 | sky, no zodiacal light | Table 34 Pioneer 10 B / R | of which stars | Table 34 star counts |
+|---|---|---|---|---|---|---|---|---|---|
+| NGP, eye (cut 6.75, no tiles) | 2.0 | 13.0 | 8.2 | 10.4 | 2.5 | **36.2** | 29 / 31 | 23.2 | 24, 21, 26, 41 |
+| NGP, enhanced +3 (cut 9, tiles to prefix 0) | 2.0 | 13.0 | 5.3 | 4.8 | 11.1 | **36.2** | | 23.2 | |
+| SGP, eye | 2.2 | 10.0 | 9.1 | 11.0 | 2.8 | **35.2** | 33 / – | 25.2 | 79, 36, –, – |
+| SGP, enhanced +3 | 2.2 | 10.0 | 9.1 | 2.3 | 11.7 | **35.3** | | 25.3 | |
+
+The sum does not depend on where the split falls: light moves between points, binned stars and remainder slices
+but is neither lost nor counted twice. Against Table 34 the rendered sky is 17–25 % brighter at the NGP (Y lies
+between the B and R channels, and our Pioneer map is itself 30 % above Table 34 in R there, §3.3) and 7 % brighter
+at the SGP. The starlight alone is 23.2 S10⊙ at the NGP (blue star counts 21–26) and 25.2 at the SGP (Sharov &
+Lipaeva 36). Seen from the Earth the
+zodiacal light (97–102 S10⊙) triples it: 1.2 × 10⁻⁴ cd/m² = 22.5 V mag/arcsec² at the poles. From 30 AU,
+3.0 × 10⁻⁵ cd/m² = 24.0.
+
+**GPU against the CPU twins** (every run):
+* **Zodiacal grid:** it equals `losBrightness` + `zodiXYZS` at five grid points per view to ≤ 3 × 10⁻⁵
+  (float32).
+* **Cube, coarse mip:** at mip 4 (5.6° texels) against a CPU cap of the same area, seven directions agree to
+  −9…+10 % (galactic centre +0.03 %, poles +7 %). The flux survives the composition and the mip chain, and the face
+  convention is right; a wrong face or axis would be off by factors.
+* **Cube, mip 0:** against a 0.5° cap it differs by −3…+18 % in eye mode and −1…+10 % at cuts ≥ 9. At the
+  ecliptic run's cut 5.75 it reaches −12…+57 % (Orion): single binned stars of V ≈ 6 are spread over a 0.32° disc
+  on the GPU, and the CPU cap samples pixel centres.
+* **Zodiacal model:** the CPU twin reproduces the pipeline's Python model (`sky_zodi.brightness_s10`) to
+  10⁻⁴ at the test cells. The annual means from 1 AU against Table 16:
+
+| λ − λ⊙, β | 20°, 0 | 30°, 0 | 45°, 0 | 60°, 0 | 90°, 0 | 120°, 0 | 150°, 0 | 180°, 0 | 30°, 30° | 90°, 30° | 180°, 30° | 90°, 60° | 180°, 45° | pole |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| model / table | 1.11 | 1.06 | 1.07 | 1.00 | 0.97 | 1.00 | 1.01 | 0.89 | 0.96 | 0.94 | 0.93 | 0.91 | 0.94 | 0.89 (53.1 / 60) |
+
+(`app/tests/sky-zodiacal.test.ts` checks these cells to |ln| < 0.3 and rms < 0.15, together with the pole, the
+radial exponents (R^−2.2 inside 1 AU, R^−2.6 to 3.3 AU), zero at 30 AU, 60 S10⊙ = 5.5 × 10⁻⁵ cd/m² and quadrature
+convergence to 2 %.)
+
+### 5.5 Cost
+
+* **Memory:** a deep-tier record is 48 bytes, capped at 3 × 10⁶ in memory. The two +6 fields held 0.6 and 1.2
+  million records.
+* **Rebuild** (split, binning, point upload): CPU, on the main thread. It took 0.8 s for 0.6 M deep records and
+  1.2 s for 1.2 M on the loaded test machine, and runs only when the cut moves by 0.5 mag or tiles arrive.
+* **Cube recomposition and the zodiacal grid:** on the GPU, only on those events (composition) or on a view or
+  observer change (grid). In the runs: 4–15 compositions and 13 grid updates per load.
+* **SwiftShader:** frames took 22–34 s on 4 shared CPUs. No hardware-GPU timing was taken.
+
+## 6. Open issues
 
 * **Pioneer red channel:** the remainder at the galactic poles is ~2× larger in R than in B (§3.3) and the
   high-pass regression finds star structure at 0.74 (B) / 0.82 (R) of our prediction; beam shape, ERE and the
@@ -276,10 +415,22 @@ it gives 67 S10⊙ at 90° elongation (198 at 1 AU) and 21 at the pole (58); at 
 * **Sub-degree DGL structure:** the diffuse layer has 3° resolution. Shaping it with a dust map (Planck) at a
   DGL/100 µm ratio would add structure but is an extra assumption; not done.
 * **Pioneer gaps** (9.7 %) are filled by latitude medians (label code 1).
-* **Zodiacal model at high ecliptic latitude** runs ~17 % below Leinert; the phase function and albedo are single
-  values for all dust components.
+* **Zodiacal model at high ecliptic latitude** runs below Leinert: 4–12 % in the annual means at the test cells
+  (§5.4; ecliptic pole 53.1 against 60) and up to ~17 % in the medians of §4.2. The phase function and albedo are
+  single values for all dust components. The renderer draws the model at the Earth too, not the measured table.
 * **XP wavelengths** are used as vacuum without the Edlén conversion the light stage applies (< 0.1 % in Y); the
   Pioneer bands are top-hats.
 * **Deep-tier flags** 1 (variable) and 2 (multiple) are not evaluated (0), as the header says.
 * **Gaia DR4** (2 Dec 2026): add its `RELEASES` entry from the released data model, then rebuild `stars`,
   `deepstars`, `sky`.
+* **Points the renderer culls** (V_lim < V < V_cut, a 0.25–1.25 mag band) are in neither the point list nor the
+  sky map, so their light is lost while they are invisible. At the NGP in eye mode the points fainter than V 6.5
+  carry 2.5 of 36 S10⊙. The renderer's cull could hand them to the background, or the controller could bin by the
+  renderer's per-star verdict.
+* **Rebuilds run on the main thread:** 0.8–1.2 s for 0.6–1.2 M deep records, once per cut change or batch of tiles.
+  A worker would remove the stall.
+* **Deep tiles are read by HTTP range and not sha256-verified** (the manifest hash covers whole files). Sizes are
+  checked, and the Data panel says so.
+* **The 3° diffuse layer at high exposure:** its per-pixel noise (Pioneer's 2–3 S10⊙) and zero-clamped pixels show
+  as blotches and dark 3° patches at +6 stops.
+* **SwiftShader:** screenshots use a 256² cube and `smallbodies=0`. No frame timing on a hardware GPU yet.

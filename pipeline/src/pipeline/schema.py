@@ -50,12 +50,20 @@ class SourceRecord:
 
 @dataclass
 class BuildContext:
-    """Shared state passed through stages: registered sources, products written, validity window."""
+    """Shared state passed through stages: registered sources, products written, validity window, the build's
+    parameters (pipeline/config.py) and the stages this build runs."""
     start_et: float
     end_et: float
     sources: dict[str, SourceRecord] = field(default_factory=dict)
     products: dict[str, dict] = field(default_factory=dict)
+    params: dict[str, Any] = field(default_factory=dict)
+    plan: tuple[str, ...] = ()
 
     def add_source(self, rec: SourceRecord) -> str:
         self.sources[rec.id] = rec
         return rec.id
+
+    def param(self, key: str) -> Any:
+        """A build parameter (config.PARAMS); without a resolved config: its environment variable, else default."""
+        from .config import value
+        return value(self.params, key)

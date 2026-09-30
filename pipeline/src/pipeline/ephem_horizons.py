@@ -126,7 +126,7 @@ def fetch_vectors(params: dict[str, str], subdir: str, name: str) -> tuple[Path,
     path = download.fetch(API_URL, subdir, name, params=params)
     if live:
         time.sleep(POLITE_PAUSE_S)
-    text = path.read_text()
+    text = path.read_text(encoding="utf-8")
     try:
         table = parse_vectors(text)
     except ValueError:
@@ -137,7 +137,5 @@ def fetch_vectors(params: dict[str, str], subdir: str, name: str) -> tuple[Path,
 
 def _forget(path: Path) -> None:
     """Drop a bad download so the next build retries it (uses the ledger helpers of download.py)."""
-    ledger = download._load_ledger()
-    ledger.pop(str(path.relative_to(RAW)), None)
-    download._save_ledger(ledger)
+    download.update_ledger(download.ledger_key(path), None)
     path.unlink(missing_ok=True)

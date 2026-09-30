@@ -23,7 +23,7 @@ PLUTO = read_table_json("pluto_haze.json")
 # ---------------------------------------------------------------------------------------------- Titan gas
 def _read_hasi(path) -> np.ndarray:
     rows = []
-    for line in path.read_text().splitlines():
+    for line in path.read_text(encoding="utf-8").splitlines():
         parts = [p.strip() for p in line.split(";")]
         if len(parts) < 4 or not parts[1]:
             continue
@@ -58,7 +58,7 @@ def titan_n(z_km: np.ndarray) -> np.ndarray:
 @lru_cache(maxsize=1)
 def peck_khanna() -> tuple[float, float, float, tuple[float, float]]:
     """(C1, C2, C3, range µm) of n - 1 = C1 + C2/(C3 - λ^-2) (refractiveindex.info 'formula 6', 0 °C, 101.325 kPa)."""
-    txt = PECK_KHANNA_N2.fetch().read_text()
+    txt = PECK_KHANNA_N2.fetch().read_text(encoding="utf-8")
     m = re.search(r"type:\s*formula 6.*?wavelength_range:\s*([0-9.]+)\s+([0-9.]+).*?coefficients:\s*([^\n]+)", txt,
                   re.S)
     c = [float(v) for v in m.group(3).split()]

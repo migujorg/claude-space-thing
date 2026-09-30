@@ -26,7 +26,6 @@ from __future__ import annotations
 import concurrent.futures as cf
 import datetime as _dt
 import json
-import os
 import threading
 import time
 import urllib.parse
@@ -34,9 +33,9 @@ import zipfile
 from pathlib import Path
 
 import numpy as np
-import requests
 
 from . import cie
+from . import download
 from . import surf_cog
 from . import surf_gibs as gb
 from . import surf_layers as sl
@@ -259,7 +258,7 @@ def cie_lamp(file: str, meta_suffix: str, column: str) -> tuple[np.ndarray, Path
     the column is found by the metadata's column titles (the CSV has no header row)."""
     path = fetch(CIE_BASE + file, "cie")
     meta_path = fetch(CIE_BASE + file + meta_suffix, "cie")
-    meta = json.loads(meta_path.read_text())
+    meta = json.loads(meta_path.read_text(encoding="utf-8"))
     data = np.loadtxt(path, delimiter=",")
     cie._validate(path, meta_path, data)
     titles = [c["title"] for c in meta["datatableInfo"]["columnHeaders"]]
@@ -565,9 +564,7 @@ class _Sas:
     def params(self) -> dict:
         with self.lock:
             if self.token is None or time.time() > self.expiry - 600:
-                r = requests.get(PC_SAS, timeout=60)
-                r.raise_for_status()
-                j = r.json()
+                j = download.request("GET", PC_SAS, timeout=60).json()
                 self.token = j["token"]
                 exp = j.get("msft:expiry", "")
                 self.expiry = (_dt.datetime.fromisoformat(exp.replace("Z", "+00:00")).timestamp() if exp
@@ -580,7 +577,7 @@ def mcd43_items() -> tuple[str, list[dict], list[Path]]:
     today = _dt.datetime.now(_dt.timezone.utc).date().isoformat()
     latest = fetch(PC_STAC, f"{SUBDIR}/mcd43a4", f"stac-latest-{today}.json",
                    params={"collections": MCD_COLLECTION, "limit": "1", "sortby": "-datetime"})
-    dt = json.loads(latest.read_text())["features"][0]["properties"]["datetime"]
+    dt = json.loads(latest.read_text(encoding="utf-8"))["features"][0]["properties"]["datetime"]
     day = dt[:10]
     doy = f"A{day[:4]}{_dt.date.fromisoformat(day).timetuple().tm_yday:03d}"
     items, paths, k = [], [latest], 0
@@ -588,7 +585,7 @@ def mcd43_items() -> tuple[str, list[dict], list[Path]]:
     while url:
         pth = fetch(url, f"{SUBDIR}/mcd43a4", f"stac-{doy}-{k}.json", params=params)
         paths.append(pth)
-        page = json.loads(pth.read_text())
+        page = json.loads(pth.read_text(encoding="utf-8"))
         items += [f for f in page["features"] if f"{doy}." in f["id"]]
         nxt = [ln for ln in page.get("links", []) if ln.get("rel") == "next"]
         url, params, k = (nxt[0]["href"], None, k + 1) if nxt else (None, None, k)
@@ -992,7 +989,7 @@ def build_wind(ctx: BuildContext) -> dict:
 
 
 def build(ctx: BuildContext, work: Path) -> list[dict]:
-    only = {s.strip() for s in os.environ.get("SURFACES_EARTH_LAYERS", "").split(",") if s.strip()}
+    only = set(ctx.param("surfaces.earthLayers"))
     out = []
     if not only or "clouds" in only:
         out.append(build_clouds(ctx))

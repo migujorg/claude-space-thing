@@ -289,7 +289,7 @@ def load_calspec(v_max: float) -> tuple[list[CalspecStar], Path]:
     """CALSPEC stars brighter than v_max with an observed (STIS) spectrum, resolved to HIP / Gaia DR3 ids."""
     from astropy.io import fits
     page = fetch(CALSPEC_PAGE, f"{SUB}/calspec", "calspec.html")
-    t = page.read_text(errors="replace")
+    t = page.read_text(errors="replace", encoding="utf-8")
     out = []
     for row in re.findall(r"<tr[^>]*>(.*?)</tr>", t, re.S):
         cells = [html.unescape(re.sub(r"<[^>]+>", "", c)).strip() for c in re.findall(r"<t[dh][^>]*>(.*?)</t[dh]>", row, re.S)]
@@ -335,7 +335,7 @@ def _sesame_ids(name: str, prefix: str) -> tuple[int, int, Path]:
         safe = re.sub(r"[^A-Za-z0-9]+", "_", q.replace("* ", "star ")).strip("_")
         p = fetch("https://cds.unistra.fr/cgi-bin/nph-sesame/-oI/S?" + urllib.parse.quote(q), f"{SUB}/sesame",
                   f"{safe}.txt")
-        txt = p.read_text(errors="replace")
+        txt = p.read_text(errors="replace", encoding="utf-8")
         hip = re.search(r"^%I HIP (\d+)", txt, re.M)
         gaia = re.search(r"^%I Gaia DR3 (\d+)", txt, re.M)
         if hip or gaia:

@@ -84,7 +84,7 @@ def wac_band(band: int, work: Path) -> tuple[np.ndarray, dict]:
     shape = st.level_shape(ALBEDO_LEVEL)
     arr_p, meta_p = work / f"wac60_{band}.f32", work / f"wac60_{band}.json"
     if arr_p.exists() and meta_p.exists():
-        return _memmap(arr_p, shape), json.loads(meta_p.read_text())
+        return _memmap(arr_p, shape), json.loads(meta_p.read_text(encoding="utf-8"))
     num = _memmap(work / "num.tmp", shape, "w+")
     den = _memmap(work / "den.tmp", shape, "w+")
     files, counts = {}, {"valid": 0, "total": 0}
@@ -104,10 +104,10 @@ def wac_band(band: int, work: Path) -> tuple[np.ndarray, dict]:
     sg.finish(num, den, 0.5, out)
     out.flush()
     del num, den
-    (work / "num.tmp").unlink()
-    (work / "den.tmp").unlink()
+    discard(work / "num.tmp")   # tolerant of Windows, where a file still memory-mapped cannot be deleted
+    discard(work / "den.tmp")
     meta = {"files": files, "counts": counts}
-    meta_p.write_text(json.dumps(meta))
+    meta_p.write_text(json.dumps(meta), encoding="utf-8", newline="\n")
     return _memmap(arr_p, shape), meta
 
 
@@ -162,7 +162,7 @@ def emp_cap(band: int, pole: str, work: Path) -> tuple[np.ndarray, slice, dict]:
     nrows = rows.stop - rows.start
     arr_p, meta_p = work / f"emp_{band}_{pole}.f32", work / f"emp_{band}_{pole}.json"
     if arr_p.exists() and meta_p.exists():
-        return _memmap(arr_p, (nrows, wdt)), rows, json.loads(meta_p.read_text())
+        return _memmap(arr_p, (nrows, wdt)), rows, json.loads(meta_p.read_text(encoding="utf-8"))
     path, rec = fetch_transient(emp_url(band, pole), SUBDIR)
     lab = pds.read_attached_label(path)
     data = np.asarray(pds.read_band(path, lab), np.float32)
@@ -182,7 +182,7 @@ def emp_cap(band: int, pole: str, work: Path) -> tuple[np.ndarray, slice, dict]:
         out[j0:j0 + 128] = np.where(wgt >= 0.5, v, 0)
     out.flush()
     meta = {"files": {path.name: rec}, "validFraction": float((np.asarray(out) > 0).mean())}
-    meta_p.write_text(json.dumps(meta))
+    meta_p.write_text(json.dumps(meta), encoding="utf-8", newline="\n")
     print(f"[surfaces] Moon EMP {band} nm {pole}: {meta['validFraction']:.4f} of cap texels known")
     return _memmap(arr_p, (nrows, wdt)), rows, meta
 

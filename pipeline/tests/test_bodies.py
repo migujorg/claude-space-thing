@@ -27,7 +27,7 @@ FRAMES = {10: "IAU_SUN", 199: "IAU_MERCURY", 299: "IAU_VENUS", 399: "IAU_EARTH",
 
 @pytest.fixture(scope="module")
 def bodies():
-    return {b["id"]: b for b in json.loads(BODIES.read_text())}
+    return {b["id"]: b for b in json.loads(BODIES.read_text(encoding="utf-8"))}
 
 
 @pytest.fixture(scope="module")
@@ -41,7 +41,7 @@ def test_body_list(bodies):
     assert {i: (b["name"], b["kind"]) for i, b in bodies.items() if i in EXPECTED} == EXPECTED
     assert bodies[301]["parent"] == 399
     assert "photometry" not in bodies[399]
-    manifest = json.loads((OUT / "manifest.json").read_text())["products"]
+    manifest = json.loads((OUT / "manifest.json").read_text(encoding="utf-8"))["products"]
     for b in bodies.values():
         assert b["ephemeris"] == b["ephemerisFiles"][0]
         for f in b["ephemerisFiles"]:
@@ -56,7 +56,7 @@ def test_body_list(bodies):
 
 def test_every_moon_in_the_satellite_products_is_a_body(bodies):
     targets = {s["target"]: (p.stem, s["center"]) for p in (OUT / "ephem").glob("sat-*.json")
-               for s in json.loads(p.read_text())["segments"]}
+               for s in json.loads(p.read_text(encoding="utf-8"))["segments"]}
     moons = {t for t in targets if t not in (499, 599, 699, 799, 899, 999)}
     assert moons == {i for i, b in bodies.items() if b["kind"] == "moon" and i != 301}
     for i in moons:
@@ -70,7 +70,7 @@ def test_every_moon_in_the_satellite_products_is_a_body(bodies):
 
 
 def test_values_are_the_kernel_values(bodies, kernels):
-    sources = {s["id"] for s in json.loads((OUT / "sources.json").read_text())}
+    sources = {s["id"] for s in json.loads((OUT / "sources.json").read_text(encoding="utf-8"))}
     assert {SRC_PCK, SRC_GM} <= sources
     counts = {"radii": 0, "gm": 0, "rotation": 0}
     for i, b in bodies.items():
