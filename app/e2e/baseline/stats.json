@@ -1,9 +1,9 @@
 {
- "acceptedAt": "2026-09-30T23:38:22.410Z",
- "git": "e257f3a",
+ "acceptedAt": "2026-10-01T00:37:20.084Z",
+ "git": "21e2e74",
  "data": {
   "manifestGeneratedAt": "2026-09-30T22:06:28+00:00",
-  "manifestSha256": "ccf1acc42a238c8f05ec7d1916728ee068d8d9f3246ea866187821a1f668b768"
+  "manifestSha256": "17984e36c1446ed2e8a064226164536833ced4cae8ae627bdf6cb293b8abfdc1"
  },
  "viewport": {
   "width": 1280,
@@ -13,11 +13,11 @@
   "earth-day": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=instant&target=399&dist=20000&az=0&el=0",
    "stats": {
-    "adaptationLuminance": 8955.38790208877,
-    "scotopicAdaptationLuminance": 25427.995638403994,
-    "pupilDiameterMm": 2.253413464728947,
+    "adaptationLuminance": 9316.684626918593,
+    "scotopicAdaptationLuminance": 25920.1489580195,
+    "pupilDiameterMm": 2.2462233474053352,
     "mesopicM": 1,
-    "limitingMagnitude": -4.415662678638248,
+    "limitingMagnitude": -4.454462949100179,
     "starsDrawn": 0,
     "bodiesDrawn": 310,
     "bodies": [
@@ -349,7 +349,7 @@
     ]
    },
    "consoleErrors": [],
-   "readyMs": 52667
+   "readyMs": 92480
   },
   "earth-day-strict": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=instant&target=399&dist=20000&az=0&el=0&exists=strict",
@@ -694,17 +694,17 @@
     ]
    },
    "consoleErrors": [],
-   "readyMs": 56016
+   "readyMs": 92033
   },
   "earth-night": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=instant&target=399&dist=20000&az=180&el=0",
    "stats": {
-    "adaptationLuminance": 0.0015174944246798261,
-    "scotopicAdaptationLuminance": 0.002978366080996226,
-    "pupilDiameterMm": 7.404247372294521,
+    "adaptationLuminance": 0.0015468697415527187,
+    "scotopicAdaptationLuminance": 0.0029331499994365595,
+    "pupilDiameterMm": 7.402990430561276,
     "mesopicM": 0,
-    "limitingMagnitude": 5.283026113900239,
-    "starsDrawn": 527,
+    "limitingMagnitude": 5.287867120868653,
+    "starsDrawn": 526,
     "bodiesDrawn": 4,
     "bodies": [
      {
@@ -734,7 +734,7 @@
     ]
    },
    "consoleErrors": [],
-   "readyMs": 60999
+   "readyMs": 106400
   },
   "moon-quarter": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=instant&target=301&dist=6000&az=90&el=0",
@@ -1736,11 +1736,11 @@
   "earth-moon-first-run": {
    "query": "t=2026-09-30T17:00:00Z&smallbodies=0&adapt=instant&target=399&dist=45828.8&az=32.84&el=-17.26",
    "stats": {
-    "adaptationLuminance": 8331.298132803497,
-    "scotopicAdaptationLuminance": 22698.570806215863,
-    "pupilDiameterMm": 2.5198496696956436,
+    "adaptationLuminance": 8775.785378169508,
+    "scotopicAdaptationLuminance": 23442.62964953524,
+    "pupilDiameterMm": 2.5044940675378977,
     "mesopicM": 1,
-    "limitingMagnitude": -4.344884559445397,
+    "limitingMagnitude": -4.395801244642815,
     "starsDrawn": 7,
     "bodiesDrawn": 341,
     "bodies": [
@@ -2109,16 +2109,16 @@
     ]
    },
    "consoleErrors": [],
-   "readyMs": 186296
+   "readyMs": 76577
   },
   "eclipse-2027-above": {
    "query": "t=2027-08-02T10:06:41.000Z&smallbodies=0&adapt=instant&target=399&dist=28715.92&az=0.65&el=1.69",
    "stats": {
-    "adaptationLuminance": 7674.450087009542,
-    "scotopicAdaptationLuminance": 20855.708647118943,
-    "pupilDiameterMm": 2.354474225876767,
+    "adaptationLuminance": 8102.488120190335,
+    "scotopicAdaptationLuminance": 21467.01303262547,
+    "pupilDiameterMm": 2.3445570823113364,
     "mesopicM": 1,
-    "limitingMagnitude": -4.264555668495394,
+    "limitingMagnitude": -4.317628404913305,
     "starsDrawn": 2,
     "bodiesDrawn": 7,
     "bodies": [
@@ -2145,7 +2145,7 @@
     ]
    },
    "consoleErrors": [],
-   "readyMs": 129571
+   "readyMs": 79197
   },
   "eclipse-2027-totality": {
    "query": "t=2027-08-02T10:06:41.000Z&smallbodies=0&adapt=instant&target=301&dist=350939.1&az=179.99&el=0&fov=6",
@@ -2184,7 +2184,7 @@
     ]
    },
    "consoleErrors": [],
-   "readyMs": 58765
+   "readyMs": 41293
   },
   "jupiter-double-shadow": {
    "query": "t=2027-01-30T15:12:07.461Z&smallbodies=0&adapt=instant&target=599&dist=300266.4&az=2.32&el=0.58",
