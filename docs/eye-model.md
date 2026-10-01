@@ -70,7 +70,9 @@ looks around the frame, and fixations are not uniform over the frame:
   full weight. What it removes is light buried in a far brighter veil. With the M4 sky, the zodiacal light
   a degree from the Sun (10⁻⁴ of the veil there) drew every fixation next to the Sun: the sun-1au scene
   adapted to 1.8·10⁵ cd/m² and showed only the solar core. An observer cannot look at what cannot be
-  seen there.
+  seen there. The solar corona (docs/reports/sky.md §5) is the same case. Beside the bare Sun it is about
+  10⁻⁴ of the veil and draws nothing: sun-1au adapts to 2266 cd/m² with or without it. In totality
+  nothing veils it, so it sets the adaptation (203 cd/m² in eclipse-2027-totality).
 - **What it adapts to there.** At each fixation the eye adapts to the retinal image: the object plus the
   veil falling there (Moon & Spencer 1945; "Statistic" below).
 

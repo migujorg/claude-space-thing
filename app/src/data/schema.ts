@@ -1269,6 +1269,48 @@ export interface SkyMapsFile {
 }
 
 /** sky/zodiacal.json: measured zodiacal light at 1 AU plus a 3-D dust model for other observer positions. */
+/**
+ * sky/corona.json (pipeline sky_corona.py; docs/reports/sky.md §5): the K-corona as an electron-density model the
+ * renderer integrates along each line of sight (Thomson scattering, van de Hulst 1950 laws, solar-cycle phase), and
+ * the F-corona near the Sun (LASCO reference map, Lamy et al. 2022) joined to the zodiacal-light model.
+ */
+export interface CoronaModel {
+  kind: 'coronaModel';
+  version: number;
+  frame: string;
+  /** Mean radiance of the solar disk (van de Hulst's unit B_sun), XYZS cd/m². */
+  bSun: Sourced<{ xyzs: number[] }>;
+  kCorona: Sourced<{
+    electronDensity: {
+      unit: string;
+      radiusUnit: string;
+      /** n(r) = Σ c_k r^-k, {k: c_k} (cm⁻³, r in R_sun). */
+      equatorMin: Record<string, number>;
+      poleMin: Record<string, number>;
+      form: string;
+      latitudeRampDeg: [number, number];
+      maxOverEquatorMin: number;
+      rMaxRsun: number;
+      model: string;
+    };
+    thomson: { K0: number; limbDarkeningU: number; brightness: string };
+    phase: {
+      definition: string;
+      minPrev: { year: number; month: string; smoothedSN: number };
+      max: { year: number; month: string; smoothedSN: number };
+      minNext: { year: number; month: string; predictedSN: number; atEndOfPrediction: boolean };
+    };
+  }>;
+  fCorona: Sourced<{
+    law: { form: string; p: number[]; s: number[]; xRange: [number, number] };
+    rho: string;
+    joinRhoRsun: [number, number];
+    join: string;
+    colourRelativeToSun: number[];
+    symmetryPlane: { iDeg: number; OmegaDeg: number };
+  }>;
+}
+
 export interface ZodiacalLightModel {
   kind: 'zodiacalLightModel';
   version: number;

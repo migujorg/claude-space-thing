@@ -74,6 +74,32 @@ describe('fixations: where the eye looks when adapting to the extended image', (
     // Weighted by the scene light alone (the rule before M5+), the 200 cd/m² next to the Sun would take the eye there.
     expect(a0).toBeLessThan(1e4);
   });
+  it('the solar corona draws no fixations beside the bare Sun, and sets the adaptation in totality', () => {
+    // TEST VALUES shaped like the sky stage's corona at 1 au (docs/reports/sky.md §5.5: K + F ≈ 2600 cd/m² at
+    // 1.1 R⊙, 40 at 2, 2 at 5): annuli out to 25°, under the Sun's veil 10·E/θ² (θ in degrees, E = 1.27e5 lx)
+    // when the disk is bare, under no solar veil in totality (the Moon covers ρ < 1.08).
+    const R = 0.2666;
+    const corona = (rho: number) => 2500 * (rho / 1.1) ** -8 + 90 * (rho / 1.1) ** -2.4;
+    const frameAt = (withCorona: boolean, totality: boolean): RetinalSample[] => {
+      const out: RetinalSample[] = [{ Y: totality ? 0 : 2e9, S: 0, sceneY: totality ? 0 : 2e9, omegaSr: deg2(Math.PI * R * R), onSunDisk: true }];
+      const n = 400, t0 = Math.log(R), t1 = Math.log(25);
+      for (let i = 0; i < n; i++) {
+        const a = Math.exp(t0 + ((t1 - t0) * i) / n), b = Math.exp(t0 + ((t1 - t0) * (i + 1)) / n), th = Math.sqrt(a * b);
+        const rho = th / R;
+        const L = withCorona && !(totality && rho < 1.08) ? corona(rho) : 0;
+        const veil = totality ? 0.05 * L : (10 * 1.27e5) / th ** 2;
+        out.push({ Y: L + veil, S: 2 * (L + veil), sceneY: L, omegaSr: deg2(Math.PI * (b * b - a * a)) });
+      }
+      return out;
+    };
+    // Bare Sun: the corona (≤ 10⁻³ of the veil over it) changes nothing.
+    const bare = fixationAdaptation(frameAt(true, false), 'brightness').coneCdM2;
+    expect(bare / fixationAdaptation(frameAt(false, false), 'brightness').coneCdM2).toBeCloseTo(1, 3);
+    // Totality: nothing veils it, so the eye adapts to the inner corona (hundreds of cd/m²), not to darkness.
+    const tot = fixationAdaptation(frameAt(true, true), 'brightness').coneCdM2;
+    expect(tot).toBeGreaterThan(100);
+    expect(tot).toBeLessThan(2600);
+  });
   it('an empty dark frame adapts to darkness (the dark-light floor)', () => {
     const a = fixationAdaptation(frame([{ Y: 0, areaDeg2: 2500 }]), 'brightness');
     expect(a.coneCdM2).toBeCloseTo(0, 12);

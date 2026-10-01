@@ -44,5 +44,16 @@
   "catalog_stars": 12457,
   "random_error_S10sun": [2, 3],
   "random_error_milky_way_S10sun": 5
+ },
+ "f_corona_table23": {
+  "_source": "Sect. 9, pp. 52-55. Table 23, p. 55: 'Proposed approximations to the F-coronal brightness distribution' (I at 4 R_sun and radial slope); p. 55: 'For comparison: at 500 nm, 1 10^-9 B/B_sun = 2.84 10^-2 W/m2 sr um'; p. 53: '1 B/B_sun = 2.22 10^15 S10sun = 1.47 10^4 F_sun/sr', 'R_sun = 1 AU/214.94 (Allen 1985), 1 deg in elongation corresponds to 3.75 R_sun'; p. 54: Koutchmy & Lamy (1985) describe the visible F-corona (400-600 nm) as r^-2.25 at the equator and r^-2.47 at the poles (a continuation of the zodiacal light); Duerst (1982, 1980 eclipse, 2-10 R_sun) r^-2.44 and r^-2.76; 'We suggest to use for the visual spectral region a radial slope of the brightness as r^-2.5 in the equator and r^-2.8 at the pole'.",
+  "500nm": {"equatorial": {"I_4Rsun_W_m2_sr_um": 2.8e-2, "radial_slope": -2.5}, "polar": {"I_4Rsun_W_m2_sr_um": 1.8e-2, "radial_slope": -2.8}},
+  "2120nm": {"equatorial": {"I_4Rsun_W_m2_sr_um": 5e-3, "radial_slope": -1.9, "approximate": true}, "polar": {"I_4Rsun_W_m2_sr_um": 4e-3, "radial_slope": -2.3, "approximate": true}},
+  "B_sun_1e-9_in_W_m2_sr_um": 2.84e-2,
+  "B_sun_in_S10sun": 2.22e15,
+  "B_sun_in_F_sun_per_sr": 1.47e4,
+  "AU_in_R_sun": 214.94,
+  "koutchmy_lamy_1985_slopes": {"equator": -2.25, "pole": -2.47},
+  "duerst_1982_slopes_2_10Rsun": {"equator": -2.44, "pole": -2.76}
  }
 }

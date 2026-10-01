@@ -22,6 +22,7 @@ import type { RendererStats, SceneSnapshot, StarCatalog } from '../render/scene'
 import { SkyBackground } from '../render/sky/background';
 import { npix, pix2vec, vec2pix } from '../render/sky/healpix';
 import { AU_KM, earthMeanLongitude, icrfToEcliptic, losBrightness, parseZodiacal, zodiXYZS, type ZodiParams } from '../render/sky/zodiacal';
+import { coronaXYZS, cyclePhase, fNear, kBrightness, parseCorona, poleFromRaDec, type CoronaParams } from '../render/sky/corona';
 import { luxFromMagnitude } from '../eye/crumey';
 import { CRUMEY } from '../eye/constants';
 import type { RendererPort, Vec3 } from './ports';
@@ -109,6 +110,7 @@ export class SkyController {
   private lastLevels: Uint32Array | null = null;
   private lastSnap: SceneSnapshot | null = null;
   private zodi: ZodiParams | null = null;
+  private corona: CoronaParams | null = null;
   /** Debug: upload only one tier's point stars (background unchanged), to count stars drawn per tier. */
   debugTier: 'all' | 'bright' | 'deep' = 'all';
   readonly stats: SkyStats = { cutMag: NaN, pointsBright: 0, pointsDeep: 0, binnedBright: 0, binnedDeep: 0, tilesLoaded: 0, tilesInView: 0, deepRecords: 0, deepMiB: 0, pendingTiles: 0, mapsLoaded: false, layers: {}, rebuilds: 0, rebuildMs: 0 };
@@ -166,11 +168,20 @@ export class SkyController {
       console.error(e);
     }
     this.zodi = zodi;
+    // the corona needs the Sun's rotation pole (heliographic latitudes): bodies.json, Sun (IAU, constant for the Sun)
+    let corona: CoronaParams | null = null;
+    try {
+      const rot = this.data.bodies.find((b) => b.id === 10)?.rotation?.value;
+      if (this.data.sky?.corona && rot) corona = parseCorona(this.data.sky.corona, poleFromRaDec(rot.poleRa[0], rot.poleDec[0]));
+    } catch (e) {
+      console.error(e);
+    }
+    this.corona = corona;
     const order = this.data.sky?.deep?.tiling.order ?? 3;
     // A software adapter (SwiftShader, headless tests) composes a 256² cube (0.35° texels) instead of 512² (0.18°).
     const info = (dev as unknown as { adapterInfo?: { vendor?: string; architecture?: string; description?: string } }).adapterInfo;
     const soft = !!info && /swiftshader|llvmpipe|software/i.test(`${info.vendor} ${info.architecture} ${info.description}`);
-    this.bg = new SkyBackground(dev, { faint: this.maps?.faint ?? null, diffuse: this.maps?.diffuse ?? null, remainder: this.maps?.remainder ?? null, tileOrder: order }, zodi, soft ? 256 : 512);
+    this.bg = new SkyBackground(dev, { faint: this.maps?.faint ?? null, diffuse: this.maps?.diffuse ?? null, remainder: this.maps?.remainder ?? null, tileOrder: order }, zodi, soft ? 256 : 512, corona);
     this.renderer.setBackground(this.bg);
   }
 
@@ -400,12 +411,16 @@ export class SkyController {
     const key = String(['faintStars', 'diffuse', 'deepRemainder'].map((k) => this.allowed(maps.layers[k]?.label ?? 'unknown')));
     const zl = this.data.sky?.zodiacal?.scattering.label ?? 'unknown';
     const zOn = this.allowed(zl);
-    if (key + zOn === this.levelKey) return;
-    this.levelKey = key + zOn;
+    const cor = this.data.sky?.corona;
+    const kOn = !!cor && this.allowed(cor.kCorona.label), fOn = !!cor && this.allowed(cor.fCorona.label);
+    if (key + zOn + kOn + fOn === this.levelKey) return;
+    this.levelKey = key + zOn + kOn + fOn;
     const on = key.split(',').map((x) => x === 'true');
     bg.setLayers({ faint: on[0], diffuse: on[1], remainder: on[2] });
     bg.showZodiacal = zOn;
-    this.stats.layers = { faintStars: on[0], diffuse: on[1], deepRemainder: on[2], zodiacal: zOn };
+    bg.showCoronaK = kOn;
+    bg.showCoronaF = fOn;
+    this.stats.layers = { faintStars: on[0], diffuse: on[1], deepRemainder: on[2], zodiacal: zOn, kCorona: kOn, fCorona: fOn };
   }
 
   // ---- probes (CPU twin of the GPU background, for verification) ----------------------------------
@@ -460,15 +475,29 @@ export class SkyController {
       out.pointStarsV65InCap = a65;
     }
     out.zodiacal = [0, 0, 0, 0];
+    out.kCorona = [0, 0, 0, 0];
+    out.fCorona = [0, 0, 0, 0];
     const s = this.lastSnap;
+    // the F-corona law replaces the zodiacal model near the Sun with weight b (render/sky/corona.ts fNear)
+    let fw = 0;
+    if (this.corona && s?.sun) {
+      const c = this.corona;
+      const o: [number, number, number] = [-s.sun.pos[0] / s.sun.radius, -s.sun.pos[1] / s.sun.radius, -s.sun.pos[2] / s.sun.radius];
+      if (on.kCorona) out.kCorona = coronaXYZS(c, kBrightness(c, o, d, cyclePhase(c, s.et)), 0);
+      if (on.fCorona) {
+        const [bF, w] = fNear(c, o, d);
+        fw = w;
+        out.fCorona = coronaXYZS(c, 0, bF).map((x) => x * w);
+      }
+    }
     if (this.zodi && on.zodiacal && s?.sun) {
       const oI = [-s.sun.pos[0] / AU_KM, -s.sun.pos[1] / AU_KM, -s.sun.pos[2] / AU_KM];
       const I = losBrightness(this.zodi, icrfToEcliptic(oI), icrfToEcliptic(d), earthMeanLongitude(s.et));
       const n = Math.hypot(oI[0], oI[1], oI[2]);
       const eps = Math.acos(Math.max(-1, Math.min(1, -(oI[0] * d[0] + oI[1] * d[1] + oI[2] * d[2]) / n)));
-      out.zodiacal = zodiXYZS(this.zodi, I, eps);
+      out.zodiacal = zodiXYZS(this.zodi, I, eps).map((x) => x * (1 - fw));
     }
-    out.background = [0, 1, 2, 3].map((k) => ['faintStars', 'diffuse', 'deepRemainder', 'binnedStars', 'zodiacal'].reduce((a, n) => a + out[n][k], 0));
+    out.background = [0, 1, 2, 3].map((k) => ['faintStars', 'diffuse', 'deepRemainder', 'binnedStars', 'zodiacal', 'kCorona', 'fCorona'].reduce((a, n) => a + out[n][k], 0));
     out.level = [lvl];
     out.pixels = [dirs.length];
     return out;
@@ -519,6 +548,43 @@ export class SkyController {
       out.push({ px, py, gpuY: g.data[(j * g.w + i) * 4 + 1], cpuY: zodiXYZS(this.zodi, I, eps)[1] });
     }
     return out;
+  }
+
+  /**
+   * Debug: the GPU K-corona texture against the CPU twin (render/sky/corona.ts) at pixels rho solar radii from the
+   * Sun's centre along the screen's +x axis: [{ rho, px, py, gpuY, cpuY }] (cd/m²). Empty when the Sun is off screen.
+   */
+  async checkCorona(): Promise<{ rho: number; px: number; py: number; gpuY: number; cpuY: number }[]> {
+    const s = this.lastSnap;
+    const c = this.corona;
+    if (!s || !s.sun || !c || !this.bg) return [];
+    const W = s.camera.width, H = s.camera.height;
+    const tanY = Math.tan(s.camera.fovY / 2), tanX = (tanY * W) / H;
+    const o = s.camera.orient;
+    const D = Math.hypot(s.sun.pos[0], s.sun.pos[1], s.sun.pos[2]);
+    const n = s.sun.pos.map((x) => x / D);
+    // world -> camera: the transpose of orient (camera -> world, row-major)
+    const cam = [0, 1, 2].map((k) => o[k] * n[0] + o[3 + k] * n[1] + o[6 + k] * n[2]);
+    if (cam[2] >= 0) return [];
+    const sx = ((cam[0] / -cam[2]) / tanX + 1) / 2 * W, sy = (1 - (cam[1] / -cam[2]) / tanY) / 2 * H;
+    const pxPerRad = W / 2 / tanX;
+    const obs: Vec3 = [-s.sun.pos[0] / s.sun.radius, -s.sun.pos[1] / s.sun.radius, -s.sun.pos[2] / s.sun.radius];
+    const P = cyclePhase(c, s.et);
+    const pts: { rho: number; px: number; py: number }[] = [];
+    for (const rho of [1.1, 1.3, 1.6, 2, 3, 5, 10]) {
+      const px = Math.round(sx + Math.asin((rho * s.sun.radius) / D) * pxPerRad), py = Math.round(sy);
+      if (px >= 0 && px < W && py >= 0 && py < H) pts.push({ rho, px, py });
+    }
+    const g = await this.bg.readCoronaK(pts.map((p) => [p.px, p.py]));
+    if (!g) return [];
+    return pts.map((p, i) => {
+      const ndx = ((p.px + 0.5) / W) * 2 - 1, ndy = 1 - ((p.py + 0.5) / H) * 2;
+      const cc = [ndx * tanX, ndy * tanY, -1];
+      const d = [o[0] * cc[0] + o[1] * cc[1] + o[2] * cc[2], o[3] * cc[0] + o[4] * cc[1] + o[5] * cc[2], o[6] * cc[0] + o[7] * cc[1] + o[8] * cc[2]];
+      const dn = Math.hypot(d[0], d[1], d[2]);
+      const u: Vec3 = [d[0] / dn, d[1] / dn, d[2] / dn];
+      return { ...p, gpuY: g[i][1], cpuY: coronaXYZS(c, kBrightness(c, obs, u, P), 0)[1] };
+    });
   }
 
   // ---- picking ------------------------------------------------------------------------------------

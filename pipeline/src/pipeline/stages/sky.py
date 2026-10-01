@@ -19,6 +19,7 @@ import time
 import numpy as np
 
 from .. import cie
+from .. import sky_corona as sco
 from .. import sky_diffuse as sdf
 from .. import sky_healpix as hp
 from .. import sky_zodi as zl
@@ -77,6 +78,48 @@ KELSALL = Download(
     citation="Kelsall, T. et al. (1998), Astrophysical Journal 508, 44-73. DOI:10.1086/306380. arXiv:astro-ph/9806250.",
     notes="Model parameters (Tables 1-2) and equations transcribed in pipeline/src/pipeline/sky_tables/kelsall_1998.json.")
 
+# ---- solar corona (sky/corona.json; docs/sources/solar-corona.md)
+VANDEHULST = Download(
+    id="vandehulst-1950", url="https://articles.adsabs.harvard.edu/pdf/1950BAN....11..135V", subdir="sky/papers",
+    name="vandehulst1950_ban11_135.pdf", title="The electron density of the solar corona",
+    citation="van de Hulst, H. C. (1950), Bulletin of the Astronomical Institutes of the Netherlands 11, 135-150. "
+             "ADS 1950BAN....11..135V.",
+    notes="ADS scan (pages 135-140 delivered). Brightness laws (Eqs. 4-10), Table I, the phase model and the observed "
+          "totals transcribed in pipeline/src/pipeline/sky_tables/vandehulst_1950.json.")
+SAITO77 = Download(
+    id="saito-1977", url="https://articles.adsabs.harvard.edu/pdf/1977SoPh...55..121S", subdir="sky/papers",
+    name="saito1977_soph55_121.pdf", title="A study of the background corona near solar minimum",
+    citation="Saito, K., Poland, A. I. & Munro, R. H. (1977), Solar Physics 55, 121-134. DOI:10.1007/BF00150879.",
+    notes="ADS scan. Tables I-III (Skylab K and F coronae, 2.5-5.5 R_sun, 1973-74) transcribed in "
+          "pipeline/src/pipeline/sky_tables/saito_1977.json; used as an independent check.")
+LAMY22 = Download(
+    id="lamy-2022", url="https://arxiv.org/pdf/2202.11533v2", subdir="sky/papers",
+    name="lamy2022_arXiv2202.11533v2.pdf", title="Observations of the Solar F-corona from Space",
+    citation="Lamy, P. L., Gilardy, H., Llebaria, A., Quemerais, E. & Ernandez, F. (2022), Space Science Reviews 218, "
+             "53. DOI:10.1007/s11214-022-00914-w. arXiv:2202.11533.",
+    notes="Appendix D Table 5 (LASCO reference map of the F-corona) and the profile power laws transcribed in "
+          "pipeline/src/pipeline/sky_tables/lamy_2022_table5.json.")
+INHESTER = Download(
+    id="inhester-2015", url="https://arxiv.org/pdf/1512.00651v1", subdir="sky/papers",
+    name="inhester2015_arXiv1512.00651v1.pdf", title="Thomson scattering in the solar corona",
+    citation="Inhester, B. (2015), 'Thomson scattering in the solar corona', arXiv:1512.00651 (lecture notes); "
+             "closed forms of Minnaert's (1930) coefficients, van de Hulst (1950) normalisation (App. A).",
+    notes="Formulas implemented in pipeline/src/pipeline/sky_corona.py (tested against a direct integration over the "
+          "limb-darkened disk).")
+SILSO = Download(
+    id="silso-sn-ms-v2", url="https://www.sidc.be/SILSO/DATA/SN_ms_tot_V2.0.csv", subdir="sky/solar_cycle",
+    name="SN_ms_tot_V2.0.csv", title="13-month smoothed monthly total sunspot number (version 2.0)",
+    citation="SILSO World Data Center (1749-now), The International Sunspot Number, International Sunspot Number "
+             "Monthly Bulletin and online catalogue, Royal Observatory of Belgium, Brussels.",
+    license="CC BY-NC 4.0",
+    notes="Updated monthly; the copy in data/raw is kept (delete it to refresh).")
+SWPC = Download(
+    id="noaa-swpc-predicted-cycle", url="https://services.swpc.noaa.gov/json/solar-cycle/predicted-solar-cycle.json",
+    subdir="sky/solar_cycle", name="predicted-solar-cycle.json",
+    title="Predicted solar cycle: smoothed sunspot number and F10.7 by month",
+    citation="NOAA Space Weather Prediction Center, Solar Cycle Progression (predicted-solar-cycle.json).",
+    notes="Updated monthly; the copy in data/raw is kept (delete it to refresh).")
+
 
 def log(msg: str) -> None:
     print(f"  [sky] {msg}", flush=True)
@@ -89,6 +132,9 @@ def run(ctx: BuildContext) -> None:
     zod = build_zodiacal(ctx, ids, diag)
     write_json(ctx, "sky/zodiacal.json", zod, "sky")
     log(f"zodiacal model written ({time.time() - t0:.0f} s)")
+    t1 = time.time()
+    write_json(ctx, "sky/corona.json", build_corona(ctx, ids, zod, diag), "sky")
+    log(f"corona model written ({time.time() - t1:.0f} s)")
     build_diffuse(ctx, ids, diag)
     (CACHE / "sky").mkdir(parents=True, exist_ok=True)
     (CACHE / "sky" / "diagnostics.json").write_text(json.dumps(st._jsonable(diag), indent=1), encoding="utf-8", newline="\n")
@@ -202,6 +248,133 @@ def build_zodiacal(ctx: BuildContext, ids: dict, diag: dict) -> dict:
         "notes": "At the Earth use at1AU (measured). Elsewhere integrate cloud x scattering along the line of sight. "
                  "Leinert's tables are annual averages; the model's seasonal effects (cloud offset/tilt, ring, "
                  "trailing blob) are included in `cloud`.",
+    }
+
+
+# ============================================================================================ solar corona
+
+#: The event the corona model is checked for (docs/reports/sky.md §5): the total solar eclipse of 2027-08-02.
+ECLIPSE_2027_YEAR = sco.decimal_year(sco.et_of_iso("2027-08-02T10:07:50"))
+SKYLAB_YEAR = 1973.8   # mean epoch of Saito et al.'s data, May 1973 - Feb 1974 (their p. 122)
+
+
+def build_corona(ctx: BuildContext, ids: dict, zod: dict, diag: dict) -> dict:
+    src_v, src_s, src_l, src_i = (d.register(ctx) for d in (VANDEHULST, SAITO77, LAMY22, INHESTER))
+    src_silso, src_swpc = SILSO.register(ctx), SWPC.register(ctx)
+    src_leinert = LEINERT.register(ctx)
+    cie_ids = ids["cie"]
+    ld = solar.limb_darkening()
+    u = float(3.0 * (1.0 - ld.flux_to_center[1]))       # linear law with the photopic disk-mean/centre ratio
+    model, fit_info = sco.build_model(u)
+    # solar-cycle phase epochs
+    mn, mx = sco.silso_extrema(SILSO.fetch(), after=2015.0)
+    nxt = sco.swpc_next_minimum(SWPC.fetch())
+    epochs = (mn[0], mx[0], nxt[0])
+    ph_ecl = sco.cycle_phase(ECLIPSE_2027_YEAR, *epochs)
+    # mean radiance of the solar disk (van de Hulst's unit B_sun), XYZS
+    e_sun = np.asarray(solar.irradiance_xyzs(), float)
+    omega = np.pi * (sco.R_SUN_KM / sco.AU_KM) ** 2
+    b_sun = e_sun / omega
+    # F-corona: LASCO reference map, joined to the zodiacal model
+    ffit = sco.fit_f_corona()
+    s10 = zod["s10ToXYZS"]["value"]
+    f_colour = (np.asarray(s10["eps30"]) / np.asarray(s10["solarColour"])).tolist()
+    join = [float(sco.AU_RSUN * np.sin(np.radians(e))) for e in (7.5, 15.0)]
+    smooth = zod["cloud"]["value"]["components"]["smoothCloud"]
+    c20_min, c20_max = sco.silso_extrema(SILSO.fetch(), after=1962.0)
+    c21_min, _ = sco.silso_extrema(SILSO.fetch(), after=1973.0)
+    checks = sco.corona_checks(model, ffit, epochs, ph_ecl, SKYLAB_YEAR, (c20_min[0], c20_max[0], c21_min[0]),
+                               sn_2027=sco.swpc_value(SWPC.fetch(), "2027-08"), sn_min=mn[1], sn_max=mx[1])
+    diag["corona"] = {"u": u, "fit": fit_info, "epochs": {"min": mn, "max": mx, "nextMin": nxt},
+                      "phaseEclipse2027": ph_ecl, "bSunXYZS": b_sun.tolist(), "fFit": ffit.__dict__, **checks}
+    log(f"corona: K fit {fit_info['maxRelErrEquator']:.3f} / {fit_info['maxRelErrPole']:.3f} (equator / pole), belt "
+        f"{fit_info['beltLatitudeDeg']:.1f} deg; phase on 2027-08-02 {ph_ecl:.3f}; LASCO F fit {ffit.rms_dex:.4f} dex rms")
+    tot = checks["totals"]
+    return {
+        "kind": "coronaModel",
+        "version": 1,
+        "frame": "Directions ICRF. K-corona: heliographic latitude from the Sun's rotation pole (bodies.json, Sun "
+                 "rotation). F-corona: position angle from the zodiacal cloud's plane of symmetry (sky/zodiacal.json, "
+                 "cloud.components.smoothCloud i_deg, Omega_deg; heliocentric ecliptic J2000). Distances in R_sun "
+                 f"({sco.R_SUN_KM:g} km).",
+        "bSun": sourced(
+            {"xyzs": b_sun.tolist()}, "derived", [ids["hsrs"], *cie_ids],
+            unit="cd/m^2 (X, Y, Z) and scotopic cd/m^2 (S)",
+            method="Mean radiance of the solar disk (van de Hulst's unit B_sun): the solar irradiance at 1 AU (as in "
+                   "light.json) divided by the disk's solid angle pi (R_sun / 1 AU)^2."),
+        "kCorona": sourced(
+            {"electronDensity": {
+                "unit": "cm^-3", "radiusUnit": "R_sun from the Sun's centre",
+                "equatorMin": model.eq, "poleMin": model.pole,
+                "form": "n(r) = sum_k c_k r^-k with {k: c_k}",
+                "latitudeRampDeg": [model.blend.lat0_deg, model.blend.lat1_deg],
+                "maxOverEquatorMin": model.c_max,
+                "rMaxRsun": model.r_max,
+                "model": "n(r, lat, P) = (1 - P) [w(lat) n_eq(r) + (1 - w(lat)) n_pole(r)] + P c n_eq(r), w = 1 below "
+                         "latitudeRampDeg[0], 0 above latitudeRampDeg[1], linear between; 0 outside 1 <= r <= rMaxRsun"},
+             "thomson": {
+                "K0": sco.K0_CM3, "limbDarkeningU": u,
+                "brightness": "B / B_sun = K0 / (1 - u/3) * integral n(r) [2((1-u) C + u D) - sin^2(chi) ((1-u) A + u B)] "
+                              "ds (s in R_sun); Minnaert's A, B, C, D of Omega = asin(1/r); chi = angle between the "
+                              "radius vector and the line of sight (sky_corona.py)"},
+             "phase": {
+                "definition": "van de Hulst's (Mitchell's) phase: 0 at minimum, 1 at maximum, linear in time between; "
+                              "decimal year = 2000 + (TDB days past J2000 + 0.5) / 365.25",
+                "minPrev": {"year": mn[0], "month": mn[2], "smoothedSN": mn[1]},
+                "max": {"year": mx[0], "month": mx[2], "smoothedSN": mx[1]},
+                "minNext": {"year": nxt[0], "month": nxt[2], "predictedSN": nxt[1], "atEndOfPrediction": nxt[3]}}},
+            "estimated", [src_v, src_i, src_silso, src_swpc, ids["nl94"]],
+            method=(f"van de Hulst (1950) K-corona brightness laws (Eqs. 5, 6, 9) for the minimum (equator, pole) and "
+                    f"maximum phases, inverted into electron densities by non-negative least squares on power laws in r "
+                    f"(Thomson scattering of a linearly limb-darkened Sun, u = {u:.3f} from the photopic disk-mean/centre "
+                    f"ratio of the Neckel & Labs law in light.json); reproduces the equatorial law to "
+                    f"{100 * fit_info['maxRelErrEquator']:.1f} % (1.01-6 R_sun) and the polar law to "
+                    f"{100 * fit_info['maxRelErrPole']:.0f} % (1.01-1.5 R_sun). Maximum = {model.c_max} x the equatorial "
+                    f"minimum density, spherical (van de Hulst). The equatorial belt of the minimum corona extends to "
+                    f"{fit_info['beltLatitudeDeg']:.1f} +- {fit_info['rampHalfWidthDeg']:.0f} deg heliographic latitude, "
+                    f"fitted so that the total minimum-phase K brightness equals van de Hulst's Table I "
+                    f"({tot['phase0']['1-30']:.3f}e-6 of the Sun); at maximum the model gives {tot['phase1']['1-30']:.3f}e-6 "
+                    f"(Table I 1.213e-6). Phase: SILSO smoothed minimum {mn[2]}, maximum {mx[2]}, next minimum from the "
+                    f"NOAA SWPC prediction ({nxt[2]}{', the end of the prediction, still falling' if nxt[3] else ''}); "
+                    f"2027-08-02: P = {ph_ecl:.3f}. Colour: the disk-integrated photospheric spectrum (bSun)."),
+            uncertainty=("van de Hulst's absolute scale is based on photoelectric total-corona measures "
+                         "(Figure 1 scatter about 30 %); the corona of a given date differs from this axisymmetric mean "
+                         "by factors of 2-5 locally (streamers, holes; Saito et al. 1977); the phase interpolation and the "
+                         "next-minimum epoch are assumptions (the SSN fraction gives P = "
+                         f"{checks['phaseFromSN2027']:.2f} for 2027-08-02). The polar profile exceeds van de Hulst's "
+                         "K_pole beyond 1.5 R_sun (which he calls very uncertain) and stays below Saito et al.'s Skylab "
+                         "polar values (checks in docs/reports/sky.md)."),
+            unit="electron density cm^-3; brightness in B_sun"),
+        "fCorona": sourced(
+            {"law": {"form": "log10(B / B_sun) = sum_i p_i x^i + sin^2(psi) sum_i s_i x^i, x = log10(rho / R_sun); for x "
+                             "outside xRange continued linearly in x with the slope at the edge (below xRange[0] the "
+                             "sin^2(psi) term is held at its edge value)",
+                     "p": ffit.p, "s": ffit.s, "xRange": [ffit.x_lo, ffit.x_hi]},
+             "rho": "impact parameter of the line of sight (closest distance to the Sun's centre, R_sun); psi = angle "
+                    "of the closest-approach point from the zodiacal cloud's plane of symmetry, seen from the Sun",
+             "joinRhoRsun": join,
+             "join": "radiance = b F_law + (1 - b) zodiacal model, b = 1 for rho <= joinRhoRsun[0], 0 for rho >= "
+                     "joinRhoRsun[1], linear in log rho between (elongations 7.5-15 deg at 1 AU); observers closer than "
+                     "joinRhoRsun[1] to the Sun, or lines of sight whose closest approach is behind the observer, use "
+                     "the zodiacal model alone",
+             "colourRelativeToSun": f_colour,
+             "symmetryPlane": {"iDeg": smooth["i_deg"], "OmegaDeg": smooth["Omega_deg"]}},
+            "estimated", [src_l, src_leinert, zod["cloud"]["sources"][0], ids["hsrs"], *cie_ids],
+            method=(f"Smooth fit ({len(ffit.p) + len(ffit.s)} coefficients) to the {ffit.n} cells of the LASCO reference "
+                    f"map of the F-corona (Lamy et al. 2022 Table 5, observer at 1 AU in the plane of symmetry, 450-600 "
+                    f"nm, 5 % uncertainty; rows and columns as explained in sky_tables/lamy_2022_table5.json): "
+                    f"{100 * (10 ** ffit.rms_dex - 1):.1f} % rms, {100 * (10 ** ffit.max_dex - 1):.0f} % max. Used "
+                    "within 7.5 deg of the Sun (impact parameter <= joinRhoRsun[0]) instead of the zodiacal-light model, "
+                    "whose Kelsall cloud (fitted from 1 AU at elongations >= 15 deg, centre offset about 3 R_sun from "
+                    "the Sun) gives there a polar brightness 4-5 times too low and a seasonal variation of up to 1.8x "
+                    "that the measured F-corona does not have; joined to it between 7.5 and 15 deg, where the "
+                    "extrapolated LASCO law and Leinert's Table 16 agree (docs/reports/sky.md). Parametrised by the "
+                    "impact parameter, which for a power-law dust density makes it nearly independent of the observer's "
+                    "distance while that is much larger. Colour: the zodiacal reddening at elongations <= 30 deg "
+                    "(Leinert 1998 f_co, as sky/zodiacal.json eps30)."),
+            uncertainty="LASCO map 5 %; fit residuals above; F-corona reddening near the Sun stronger than the zodiacal "
+                        "light's (Leinert 1998 Sect. 9.5), not modelled",
+            unit="brightness in B_sun"),
     }
 
 
