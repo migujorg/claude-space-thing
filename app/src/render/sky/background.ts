@@ -21,7 +21,7 @@
 import { COMMON, LIMB_WGSL } from '../shaders';
 import { HEALPIX_WGSL, npix } from './healpix';
 import { zodiacalWgsl, OBLIQUITY_J2000_RAD, type ZodiParams } from './zodiacal';
-import { coronaWgsl, cyclePhase, type CoronaParams } from './corona';
+import { coronaWgsl, cyclePhase, K_FOOTPRINT_MAX_B, K_FOOTPRINT_MAX_N, K_FOOTPRINT_SLOPE, type CoronaParams } from './corona';
 import type { SceneSnapshot } from '../scene';
 
 /** Luminance scale in the rgba16float cube (µcd/m²): keeps sky values (1e-7 … 1e-2 cd/m²) in fp16 range. */
@@ -159,8 +159,32 @@ struct CKU { cor: vec4f, size: vec4u };
 @group(0) @binding(2) var outK: texture_storage_2d<rgba16float, write>;
 @compute @workgroup_size(8, 8) fn coronaKPass(@builtin(global_invocation_id) id: vec3u) {
   if (id.x >= C.size.x || id.y >= C.size.y) { return; }
-  let d = normalize(worldDirNdc(F, ndcFromFrag(F, vec2f(id.xy) + 0.5)));
-  textureStore(outK, vec2i(id.xy), coronaRadiance(coronaK(C.cor.xyz, d, C.cor.w), 0.0));
+  let fc = vec2f(id.xy) + 0.5;
+  let d = normalize(worldDirNdc(F, ndcFromFrag(F, fc)));
+  // The pixel's footprint average (corona.ts K_FOOTPRINT_*): near the limb the corona falls by e over about b/17
+  // solar radii; a pixel spanning more than half of that is averaged over N×N sub-pixels, so a Sun a few pixels
+  // across gets a smooth ring rather than a dotted one. Elsewhere one sample at the pixel centre, as before.
+  // Light behind the Sun shield's occulting disc is not part of the average (the background pass adds this texture
+  // without its own pixel-centre test, so the disc's edge is antialiased as well).
+  let o = C.cor.xyz;
+  let sca = -dot(o, d);
+  let b = length(o + sca * d);
+  let pxR = length(normalize(worldDirNdc(F, ndcFromFrag(F, fc + vec2f(1.0, 0.0)))) - d) * max(sca, 0.0);
+  let n = select(1u, u32(clamp(ceil(2.0 * pxR * ${K_FOOTPRINT_SLOPE.toFixed(1)} / max(b, 1.0)), 1.0, ${K_FOOTPRINT_MAX_N.toFixed(1)})), sca > 0.0 && b < ${K_FOOTPRINT_MAX_B.toFixed(1)});
+  var bK = 0.0;
+  if (n == 1u) {
+    bK = select(coronaK(o, d, C.cor.w), 0.0, occulted(F, d));
+  } else {
+    for (var j = 0u; j < n; j = j + 1u) {
+      for (var i = 0u; i < n; i = i + 1u) {
+        let off = (vec2f(f32(i), f32(j)) + 0.5) / f32(n) - 0.5;
+        let ds = normalize(worldDirNdc(F, ndcFromFrag(F, fc + off)));
+        if (!occulted(F, ds)) { bK = bK + coronaK(o, ds, C.cor.w); }
+      }
+    }
+    bK = bK / f32(n * n);
+  }
+  textureStore(outK, vec2i(id.xy), coronaRadiance(bK, 0.0));
 }
 `;
 
@@ -195,7 +219,12 @@ fn zodiAt(p: vec2f) -> vec4f {
 
 @fragment fn fs(@builtin(position) pos: vec4f) -> @location(0) vec4f {
   let d = normalize(worldDirNdc(F, ndcFromFrag(F, pos.xy)));
-  if (occulted(F, d)) { return vec4f(0.0); }
+  // Behind the Sun shield nothing is drawn, except the K-corona texture's share of a pixel on the disc's edge (its
+  // footprint average leaves out what the disc covers).
+  if (occulted(F, d)) {
+${corona ? `    if ((B.flags & 4u) != 0u) { return toStore(F, max(textureLoad(coronaKTex, vec2i(pos.xy), 0) * limbTransmittance(d), vec4f(0.0))); }` : ''}
+    return vec4f(0.0);
+  }
   var L = vec4f(0.0);
   if ((B.flags & 1u) != 0u) {
     let lod = max(0.0, log2(F.tanHalf.z / B.texelAngle));
@@ -417,7 +446,8 @@ export class SkyBackground implements SkyBackgroundHook {
     const d = this.device;
     const o = [-s.sun.pos[0] / s.sun.radius, -s.sun.pos[1] / s.sun.radius, -s.sun.pos[2] / s.sun.radius];
     const P = cyclePhase(this.corona, s.et);
-    const key = [...o.map((x) => x.toPrecision(7)), P.toFixed(4), ...s.camera.orient.map((x) => x.toFixed(6)), s.camera.fovY.toFixed(6), t.W, t.H].join(',');
+    // The Sun shield's disc is left out of the texture's footprint averages, so its state is part of the key.
+    const key = [...o.map((x) => x.toPrecision(7)), P.toFixed(4), ...s.camera.orient.map((x) => x.toFixed(6)), s.camera.fovY.toFixed(6), t.W, t.H, s.view.sunShield ? 1 : 0].join(',');
     if (key === this.corKey && this.corTex && this.corTex.width === t.W && this.corTex.height === t.H) return true;
     this.corKey = key;
     if (!this.corTex || this.corTex.width !== t.W || this.corTex.height !== t.H) {
