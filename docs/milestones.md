@@ -70,6 +70,10 @@ The synthetic layer (NORTH_STAR 3.3) for small bodies: 2,948,454 synthetic objec
 
 Next populations: irregular moons, Centaurs, comets' reservoirs, interplanetary dust (already modelled optically as zodiacal light).
 
+## Earth's night side: airglow and aurora  *(done)*
+
+The night side of the Earth glows with its own light (docs/reports/nightglow.md). Airglow: PALACE v1.0, ten years of measured X-shooter spectra at Cerro Paranal, as 22 emission classes on nine layers (OH, Na, O₂, FeO and HO₂ in the mesopause, the green line at 97 km, the red lines near 250 km), scaled to the month, local time and the measured 10.7 cm flux of the day. Aurora: OVATION Prime 2010 driven by the measured solar wind (OMNI 2, Newell coupling) in IGRF-14 magnetic coordinates, turned into blue, green and red light with the Fang et al. (2008) ionisation, laboratory cross sections and transport ratios. Both are a source term of the atmosphere, integrated along every view ray (the limb's ~50× path enhancement, occlusion by the ground, spectral attenuation by the lower atmosphere), so a dark-adapted eye sees the green band along the night limb and a daylight-adapted one does not. Both models are estimated: drawn at Best estimate and Complete, never at Strict; without measured solar wind (after 2026-09-03) the aurora is the climatological oval and the inspector says so. Checked: the green limb against SCIAMACHY (model/measured 0.80), aurora peak heights against Whiter et al. (2023). URL `look=<az>,<el>` turns the camera at its place (e.g. an ISS-like view of the limb).
+
 ## Moments — real events in the data window  *(done)*
 
 `E` opens Moments. It lists notable configurations inside the data window, computed in a Web Worker from the loaded ephemerides, radii and orientation models only (light-time corrected; scan, then bisection or golden-section search):

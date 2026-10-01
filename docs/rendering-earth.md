@@ -576,3 +576,16 @@ withhold it: the renderer handles that as above.
   scaling the sun path too would count it twice.
 - Refraction and the Venus aureole.
 - Latitude-dependent dust and seasonal hazes.
+
+## 9. Airglow and aurora
+
+The Earth's own light at night (docs/reports/nightglow.md; `src/render/nightglow.ts`). The emission is computed at half
+resolution over the emission shell (to 600 km) and added after the atmosphere shells, depth-tested at full resolution. Each view ray is split at its closest approach to the
+Earth's centre and ends on the ground where the pixel is on the disk. Airglow layers (Gaussian in altitude above the
+ellipsoid) are integrated on each side with 8 Gauss–Legendre nodes in x = √(r − r_t), which handles the face-on
+column and the limb's path enhancement alike; the night domain (solar zenith angle > 100° below the emission) is
+evaluated per node, the local time and ellipsoid radius at the ends of each layer crossing (linear between). The aurora is marched (48 steps) through the parts of the ray inside the shell and
+the auroral caps; per step the precipitation at the step's magnetic coordinates and the emission's cumulative
+altitude table give exact column integrals for any step size. Light that crosses the lower atmosphere is attenuated
+per 40 nm bin with §4's transmittance table. Not yet: scattering of this light in the lower atmosphere, and the
+ground and clouds lit by it.

@@ -42,6 +42,43 @@
    }
   },
   {
+   "id": "night-limb-iss",
+   "title": "Night limb from 400 km (ISS-like), dark-adapted: the airglow's green band above the limb, the red layer above it (Best estimate)",
+   "params": {
+    "target": "399",
+    "dist": "6771",
+    "az": "180",
+    "el": "0",
+    "look": "0,-15",
+    "fov": "30"
+   }
+  },
+  {
+   "id": "night-limb-iss-daylight-eye",
+   "title": "The same night limb 1 min after 10 min in daylight: the airglow is below the eye's threshold",
+   "params": {
+    "target": "399",
+    "dist": "6771",
+    "az": "180",
+    "el": "0",
+    "look": "0,-15",
+    "fov": "30",
+    "adapt": "realtime",
+    "adaptfrom": "10000,600,60"
+   }
+  },
+  {
+   "id": "aurora-2025-11-12",
+   "title": "Aurora at a measured storm hour (2025-11-12 01 UT, OMNI coupling 19 400): the northern oval from 9600 km above the night side",
+   "params": {
+    "t": "2025-11-12T01:00:00Z",
+    "target": "399",
+    "dist": "16000",
+    "az": "180",
+    "el": "55"
+   }
+  },
+  {
    "id": "moon-quarter",
    "title": "Moon at quarter phase, close up",
    "params": {
