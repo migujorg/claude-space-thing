@@ -29,9 +29,10 @@ Landed:
 
 - **Earth, now:** measured land/ice reflectance (MODIS NBAR, Sept 2026), ocean water-leaving reflectance, the cloud field of 2026-09-28 (VIIRS optical thickness/phase/top height), sea-surface wind for sun glint (AMSR3/GMI, same day), VIIRS Black Marble night lights, and a multiple-scattering atmosphere from atmospheres.json (US76 + Bodhaine Rayleigh, measured ozone cross-sections, MACv2 aerosol). The rendered disk reflects 0.85–0.88 of the Himawari-measured value (docs/rendering-earth.md).
 - **Eye:** adaptation driven by where the eye looks (fixations weighted by light), not the view centre; point sources judged at their own background (Crumey); optional, badged "Sun shield" viewing aid.
-- **Atmospheres data** for Mars (seasonal dust), Venus, Titan (haze extinction only — its single-scattering properties are unknown pending Tomasko et al. 2008), Pluto.
+- **Atmospheres data** for Mars (seasonal dust), Venus, Titan, Pluto.
+- **Titan from its haze:** the Huygens DISR haze (Tomasko et al. 2008 extinction and phase functions, Doose et al. 2016 albedos digitized from Barnes et al. 2018), methane absorption (Karkoschka 1998 × the Huygens GCMS profile) and the surface reflectance under it; Titan's resolved disk is drawn from them alone by orders of scattering in a spherical shell (Hillaire's table fails for a haze of τ ≈ 8), not renormalized to its photometry. Its brightness is the test: Y +1.8 % against Karkoschka at 5.7°, Z +12.6 % (the haze albedo extrapolated below 500 nm); the Cassini ISS phase curves within 2σ from 0° to 160° in five filters, 22–30 % too bright at 160–170° (the model's own forward scattering); the renderer within −18 % to +8 % of a Monte Carlo solution of the same model (docs/rendering-earth.md §8, docs/reports/atmospheres.md).
 
-Known gaps: Saturn's icy-moon and Triton maps (public mosaics fail contrast checks), Uranian moon maps (none exist), Titan haze scattering properties, ring reflectance outside Saturn's main rings.
+Known gaps: Saturn's icy-moon and Triton maps (public mosaics fail contrast checks), Uranian moon maps (none exist), Titan's haze below 500 nm and above 150 km (extrapolated) and its latitude/season variation, ring reflectance outside Saturn's main rings.
 
 ## M3 — Every known small body  *(done)*
 

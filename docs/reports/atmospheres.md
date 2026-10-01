@@ -6,13 +6,13 @@
 
 - Spectral samples 360–830 nm every 10 nm (48, standard-air wavelengths like the CIE tables). `foldWeights` (4 × 48) fold any spectral ratio sampled there into X, Y, Z, S (sunlight × observer, piecewise-linear basis, rows sum to 1; then × the Sun's XYZS from `light.json`).
 - Per body: `referenceRadiusKm` (pck00011 mean radius, altitude 0), `topRadiusKm`, `altitudesKm`, and `components`, each with `extinctionPerKm[altitude][wavelength]`, `singleScatteringAlbedo[wavelength]`, `phaseFunction` (rayleigh with depolarization ρ, henyey-greenstein, double-henyey-greenstein, tabulated, or none for pure absorbers; mean 1 over the sphere), `channelEquivalents` (X, Y, Z, S) and `columnOpticalDepth`. Molecular components also carry `separable` = number density × cross-section.
-- Every quantity is `Sourced` with a label; `unknown` quantities (Titan's haze single-scattering albedo and phase function) must not be rendered as if known.
+- Every quantity is `Sourced` with a label; `unknown` quantities must not be rendered as if known. Titan also carries `surfaceReflectance` (the Lambert surface under its haze) and, on its methane component, the measured mole-fraction profile and the 1 nm absorption coefficient.
 
 | body | components | τ(550 nm) per component (altitude 0 to top) | grid |
 |---|---|---|---|
 | Earth | rayleigh, ozone, aerosol | rayleigh 0.09711, ozone 0.03058, aerosol 0.122 | 0–86 km (87) |
 | Mars | rayleigh, dust | rayleigh 0.002668, dust 0.3836 | 0–80 km (81) |
-| Titan | rayleigh, haze | rayleigh 1.089, haze 8.101 | 0–500 km (146) |
+| Titan | rayleigh, haze-below-80km, haze-above-80km-a, haze-above-80km-b, methane | rayleigh 1.089, haze-below-80km 4.23, haze-above-80km-a 2.081, haze-above-80km-b 1.79, methane 0.02658 | 0–500 km (146) |
 | Venus | cloud | cloud 12.65 | 60–110 km (101) |
 | Pluto | haze | haze 0.02075 | 0–300 km (61) |
 | Jupiter | — (scale height only) | — | — |
@@ -28,7 +28,10 @@ Labels per component (extinction / SSA / phase):
 - Mars rayleigh: estimated / derived / derived
 - Mars dust: estimated / derived / estimated
 - Titan rayleigh: estimated / derived / derived
-- Titan haze: estimated / unknown / unknown
+- Titan haze-below-80km: estimated / estimated / estimated
+- Titan haze-above-80km-a: estimated / estimated / estimated
+- Titan haze-above-80km-b: estimated / estimated / estimated
+- Titan methane: estimated / derived / derived
 - Venus cloud: estimated / estimated / estimated
 - Pluto haze: estimated / estimated / estimated
 
@@ -79,9 +82,70 @@ Direct sunlight reddens with air mass (plane-parallel air mass; near the horizon
 
 ## Titan
 
-- Haze column (DISR model, Tomasko et al. 2008 via Bazzon et al. 2014): τ = 8.63 at 531 nm, 8.11 at 550 nm, 6.04 at 650 nm, 3.25 at 940 nm, 2.61 at 1080 nm; Vincendon & Langevin (2010) quote Tomasko et al.'s total as 2.6 at 1.08 µm.
+Five components over a surface (`surfaceReflectance`), all from the Huygens descent (landing site, 10° S, January 2005) and used for the whole globe; Titan is drawn from them alone (docs/rendering-earth.md §8 "Titan"), so its disk-integrated brightness and colour are a test of these numbers (below).
+
+- **Haze extinction** (DISR model, Tomasko et al. 2008 via Bazzon et al. 2014): τ = 8.63 at 531 nm, 8.11 at 550 nm, 6.04 at 650 nm, 3.25 at 940 nm, 2.61 at 1080 nm; Vincendon & Langevin (2010) quote Tomasko et al.'s total as 2.6 at 1.08 µm. The haze is three components sharing this extinction (below 80 km; above 80 km with weights 1 − w and w, w = (z − 80 km)/120 km), so that its albedo can change with altitude as Doose et al. (2016) prescribe; their columns add to τ(550) = 8.10.
+- **Haze single-scattering albedo** (Doose et al. 2016, paywalled; digitized from the vector drawing of Barnes et al. 2018, Fig. 4, free to read; `tables/titan_doose_2016_ssa.csv`, `titan_digitize.py`): above 200 km 0.844 at 500 nm, 0.917 at 650 nm, 0.936 at 800 nm; below 80 km 0.940, 0.988, 1.000. The two curves obey Doose et al.'s rule ω(< 80 km) = (0.565 + ω(> 200 km))/1.5 (Es-sayeh et al. 2023) to 0.0005. Below 500 nm Doose et al. give nothing ("poorly constrained shortwards of 490 nm", García Muñoz et al. 2017): the above-200-km curve is continued linearly (the line through its 500–600 nm vertices) and the other by the rule, giving 0.791 / 0.904 at 400 nm — an extrapolation, and the model's largest error (below).
+- **Haze phase functions** (Tomasko et al. 2008, Table 1, from the machine-readable copy in Adamkovics et al. 2016's reference data): below and above 80 km; asymmetry g = 0.729–0.783 and 0.729–0.799. Resampled log-linearly in angle through the forward peak, the rows integrate to 1.0010–1.0102 before renormalization.
+- **Methane** (pure absorber): Karkoschka's (1998) cold-temperature absorption coefficients × the Huygens GCMS mole fraction at the DTWG altitudes × the HASI density; column 2.80 km-amagat; vertical τ = 7.13 at the strongest sample (730 nm, 10 nm box average of the extinction).
 - N2 Rayleigh τ(550) = 1.089 (HASI surface 146645 Pa, 93.50 K, n = 1.136e+26 m⁻³).
-- **Unknown**: the haze single-scattering albedo and phase function. They are in Tomasko et al. (2008, Table 2, Fig. 48 and the tabulated phase functions) and Doose et al. (2016), which are not accessible here (Elsevier); no open transcription of the numbers was found. Titan's haze cannot be rendered physically until they are supplied (a hand copy of the paper would do, as for ROLO). The disk-integrated colour remains calibrated by `photometry.json`.
+- **Surface**: Lambert reflectance 0.041–0.150 over 360–830 nm (the values García Muñoz et al. 2017 adopted from Karkoschka & Schröder's 2016 DISR maps); X, Y, Z, S equivalents 0.108, 0.105, 0.072, 0.087.
+- **Labels**: every haze quantity and the surface are `estimated` — DISR retrievals (their authors' radiative-transfer fits to the descent data), read from a figure or a secondary machine-readable copy, and one landing site used for the whole moon. The methane mole fraction is `measured`, its absorption coefficient `estimated` (Karkoschka's own label).
+
+### The model against Titan's measured brightness
+
+The model is solved exactly by a Monte Carlo reference (`titan_rt.py`: 400,000 photons per sample, spherical geometry, every order of scattering with the tabulated phase functions; `docs/reports/titan-mc.json`), so this tests the data, not the renderer. Compared with Karkoschka's (1998) full-disk albedo at 5.7° (1995; ±4 % absolute) — the model at 6.0°, the observation box-averaged over each 10 nm sample:
+
+| λ (nm) | 360 | 400 | 440 | 480 | 520 | 560 | 600 | 640 | 680 | 720 | 760 | 800 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| model | 0.110 | 0.119 | 0.124 | 0.157 | 0.183 | 0.222 | 0.245 | 0.286 | 0.293 | 0.205 | 0.287 | 0.197 |
+| observed | 0.071 | 0.090 | 0.115 | 0.148 | 0.187 | 0.226 | 0.257 | 0.282 | 0.291 | 0.214 | 0.280 | 0.201 |
+| ratio | 1.54 | 1.32 | 1.07 | 1.06 | 0.98 | 0.98 | 0.95 | 1.01 | 1.01 | 0.96 | 1.02 | 0.98 |
+
+- 520–830 nm: model / observed 0.94–1.05; 440–510 nm: 1.05–1.12; below 440 nm 1.10–1.54, where the haze albedo is extrapolated: the model is too bright in the violet.
+- Folded to X, Y, Z, S: model / observed 0.994, 0.990, 1.090, 1.028; chromaticity x, y 0.3846, 0.3738 (model) against 0.3924, 0.3827 (observed).
+
+Cassini ISS disk-integrated phase curves (García Muñoz et al. 2017, Fig. 1, digitized: `tables/titan_garcia_munoz_2017_iss.csv`; NAC images 2004–2015, CISSCAL calibration ~10 %), median of measured / model over the measurements in each phase-angle range, the model band-averaged with the SVO NAC system responses:
+
+| filter | λeff (nm) | n | all | 0–30° | 30–60° | 60–90° | 90–120° | 120–150° | 150–160° | 160–170° |
+|---|---|---|---|---|---|---|---|---|---|---|
+| BL1_CL2 | 456 | 337 | 0.84 | 0.89 | 0.85 | 0.83 | 0.89 | 0.94 | 0.78 | 0.72 |
+| CL1_GRN | 569 | 320 | 0.99 | 1.04 | 1.00 | 0.98 | 1.01 | 0.99 | 0.75 | 0.72 |
+| CL1_CB1 | 619 | 225 | 1.00 | 1.08 | 0.99 | 1.00 | 0.98 | 0.99 | 0.75 | 0.72 |
+| RED_CL2 | 649 | 310 | 0.98 | 1.01 | 0.99 | 0.97 | 0.99 | 1.01 | 0.78 | 0.73 |
+| CL1_CB2 | 750 | 260 | 0.93 | 0.97 | 0.94 | 0.91 | 0.95 | 0.97 | 0.78 | 0.71 |
+| CL1_MT1 * | 619 | 706 | 0.94 | 0.96 | 0.94 | 0.92 | 0.95 | 0.97 | 0.74 | 0.73 |
+| CL1_MT2 * | 727 | 282 | 0.86 | 0.87 | 0.87 | 0.84 | 0.91 | 0.96 | 0.76 | 0.73 |
+
+\* Methane filters (5 nm wide): the model's 10 nm samples (box-averaged extinction) do not resolve them.
+
+- Green to red continuum (GRN, CB1, RED), 0–150°: measured / model 0.97–1.08; CB2 (750 nm) 0.91–0.97; BL1 (455 nm) 0.83–0.94, the model too bright in the blue as against Karkoschka's spectrum.
+- Beyond 150° every filter is measured below the model (0.71–0.78): its forward scattering through the limb is too strong. Its inputs there are the DISR phase functions at small angles and the extinction above 150 km, which DISR did not measure (the 65 km scale height extrapolated to 500 km; Titan's detached haze and season, 2004–2015, not represented).
+
+### The renderer
+
+The renderer's CPU twin (`atmosphere.ts` `diskReflectanceSpectral`, the tables and march of the shaders; `app/tests/render-titan.test.ts`, `docs/reports/titan-renderer.json`) against the same reference, every sample its own bin (range over the 48 samples, and the median):
+
+| α | 6° | 10° | 20° | 30° | 40° | 50° | 60° | 70° | 80° | 90° | 100° | 110° | 120° | 130° | 140° | 150° | 155° | 160° | 163° | 166° | 169° |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| min | 0.99 | 0.99 | 0.97 | 1.00 | 0.98 | 0.98 | 0.97 | 0.95 | 0.94 | 0.94 | 0.90 | 0.91 | 0.90 | 0.88 | 0.86 | 0.82 | 0.83 | 0.83 | 0.86 | 0.89 | 0.91 |
+| median | 1.04 | 1.04 | 1.04 | 1.03 | 1.02 | 1.01 | 1.01 | 1.00 | 1.00 | 0.98 | 0.97 | 0.96 | 0.95 | 0.95 | 0.91 | 0.89 | 0.89 | 0.90 | 0.92 | 0.94 | 0.96 |
+| max | 1.08 | 1.08 | 1.08 | 1.07 | 1.08 | 1.05 | 1.05 | 1.05 | 1.08 | 1.05 | 1.10 | 1.08 | 1.07 | 1.06 | 0.99 | 0.95 | 1.05 | 0.99 | 0.98 | 0.99 | 1.01 |
+
+Against Karkoschka at 5.7° (pass: within 2σ = ±8 % per channel): with the app's 12 bins of 4 samples X, Y, Z, S = 1.017, 1.018, 1.126, 1.057 of observed (1.033, 1.029, 1.120, 1.060 with every sample its own bin); chromaticity 0.3832, 0.3740 against 0.3924, 0.3827. X PASS (+1.7 %), Y PASS (+1.8 %), Z FAIL (+12.6 %), S PASS (+5.7 %).
+
+Against the ISS phase curves (pass: each range's median within 2σ = ±20 %; measured / renderer):
+
+| filter | all | 0–30° | 30–60° | 60–90° | 90–120° | 120–150° | 150–160° | 160–170° | result |
+|---|---|---|---|---|---|---|---|---|---|
+| BL1_CL2 | 0.83 | 0.87 | 0.83 | 0.82 | 0.91 | 0.98 | 0.84 | 0.77 | FAIL (160–170°) |
+| CL1_GRN | 0.99 | 1.00 | 0.98 | 0.98 | 1.03 | 1.06 | 0.84 | 0.78 | FAIL (160–170°) |
+| CL1_CB1 | 1.00 | 1.04 | 0.97 | 1.00 | 1.02 | 1.07 | 0.85 | 0.80 | PASS |
+| RED_CL2 | 0.97 | 0.98 | 0.97 | 0.97 | 1.04 | 1.09 | 0.89 | 0.82 | PASS |
+| CL1_CB2 | 0.92 | 0.94 | 0.91 | 0.91 | 0.97 | 1.06 | 0.88 | 0.82 | PASS |
+| CL1_MT1 | 0.93 | 0.94 | 0.92 | 0.93 | 0.99 | 1.05 | 0.83 | 0.79 | FAIL (160–170°) * |
+| CL1_MT2 | 0.86 | 0.87 | 0.86 | 0.83 | 0.92 | 1.01 | 0.86 | 0.80 | PASS * |
+
 
 ## Venus
 
@@ -110,6 +174,6 @@ Sheet H relative to kT/(μ m_u g): Jupiter +13 %, Saturn +24 %, Uranus +4 %, Nep
 
 - Earth: Not included (unknown here): water-vapour and O2 line absorption (e.g. the O2 A band at 760 nm, H2O bands at 720 and 820 nm), NO2, clouds, polar stratospheric and volcanic aerosol, airglow; the atmosphere above 86 km (about 3.8e-06 of the Rayleigh column: N(86 km) times its scale height).
 - Mars: Not included (unknown here): water-ice clouds (aphelion cloud belt, polar hoods), dust storms beyond the climatology, detached dust layers, the wavelength dependence of the dust phase function, CO2 ice clouds.
-- Titan: Not included: haze single-scattering albedo and phase function (unknown, see the haze component), methane absorption bands (619, 727, 790 nm and stronger in the near infrared; Karkoschka & Tomasko 2010, not accessed), the detached haze layer, latitude/season variation, clouds.
+- Titan: Not included: the detached haze layer near 500 km (seasonal; it vanished in 2012-2016), latitude/season variation of the haze (north-south asymmetry, polar hoods), clouds, methane Rayleigh scattering as its own species (counted as N2), the temperature dependence of methane absorption, gases other than N2 and CH4.
 - Venus: Not included: CO2 Rayleigh scattering above the cloud tops (column above Hansen & Hovenier's 50 mb τ = 1 level ≈ 7.8e+27 m^-2 with the NSSDCA surface gravity, τ ≈ 0.009 at 550 nm), the UV absorber and SO2 (disk colour: photometry.json), the lower clouds, latitude variation (polar collar), mode 1 / mode 3 particles.
 - Pluto: Not included: the ~20 discrete haze layers, the north-south asymmetry, gas Rayleigh scattering (~13 µbar: negligible).

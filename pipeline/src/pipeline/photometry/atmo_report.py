@@ -4,10 +4,14 @@ Run: `uv run python -m pipeline.photometry.atmo_report` (builds atmospheres.json
 
 from __future__ import annotations
 
+import json
+
+import numpy as np
 import spiceypy as sp
 
 from ..paths import REPO
-from . import atmo_checks as C, atmo_mars as am, atmospheres as A
+from . import atmo, atmo_bodies as ab, atmo_checks as C, atmo_mars as am, atmospheres as A, titan_check as TC
+from . import titan_digitize as TD
 
 OUT = REPO / "docs" / "reports" / "atmospheres.md"
 
@@ -55,8 +59,9 @@ def main() -> None:
       "`phaseFunction` (rayleigh with depolarization ρ, henyey-greenstein, double-henyey-greenstein, tabulated, or "
       "none for pure absorbers; mean 1 over the sphere), `channelEquivalents` (X, Y, Z, S) and "
       "`columnOpticalDepth`. Molecular components also carry `separable` = number density × cross-section.")
-    w("- Every quantity is `Sourced` with a label; `unknown` quantities (Titan's haze single-scattering albedo and "
-      "phase function) must not be rendered as if known.")
+    w("- Every quantity is `Sourced` with a label; `unknown` quantities must not be rendered as if known. Titan also "
+      "carries `surfaceReflectance` (the Lambert surface under its haze) and, on its methane component, the measured "
+      "mole-fraction profile and the 1 nm absorption coefficient.")
     w("")
     w("| body | components | τ(550 nm) per component (altitude 0 to top) | grid |")
     w("|---|---|---|---|")
@@ -166,21 +171,183 @@ def main() -> None:
 
     # ---------------------------------------------------------------- Titan
     t = C.titan_checks(diag["606"])
+    d6 = diag["606"]
+    e6 = B["606"]
+    v = TC.results()
+    wl = np.array(out["wavelengthsNm"], float)
+    ssa = d6["ssa"]
+    ssa_top, ssa_low = atmo.sample(ssa["top"]), atmo.sample(ssa["low"])
+    i400, i500, i550, i650, i800 = (int(np.argmin(np.abs(wl - x))) for x in (400, 500, 550, 650, 800))
+    rows = ab._ssa_rows()
+    lt, wt = rows["above_200km"]
+    ll, wl_ = rows["below_80km"]
+    rule_max = float(np.abs(ab.doose_rule(np.interp(ll, lt, wt)) - wl_).max())
+    g_lo = ab.tab_asymmetry(d6["phase_lo"]["anglesDeg"], d6["phase_lo"]["values"])
+    g_hi = ab.tab_asymmetry(d6["phase_hi"]["anglesDeg"], d6["phase_hi"]["values"])
+    sr = e6["surfaceReflectance"]["value"]
+    tau_h = sum(c["columnOpticalDepth"][i550] for c in e6["components"] if c["id"].startswith("haze"))
+    tau_m = next(c for c in e6["components"] if c["id"] == "methane")["columnOpticalDepth"]
     w("## Titan")
     w("")
-    w(f"- Haze column (DISR model, Tomasko et al. 2008 via Bazzon et al. 2014): τ = {t['tau_531']:.2f} at 531 nm, "
-      f"{t['tau_550']:.2f} at 550 nm, {t['tau_650']:.2f} at 650 nm, {t['tau_940']:.2f} at 940 nm, "
+    w("Five components over a surface (`surfaceReflectance`), all from the Huygens descent (landing site, 10° S, "
+      "January 2005) and used for the whole globe; Titan is drawn from them alone (docs/rendering-earth.md §8 "
+      "\"Titan\"), so its disk-integrated brightness and colour are a test of these numbers (below).")
+    w("")
+    w(f"- **Haze extinction** (DISR model, Tomasko et al. 2008 via Bazzon et al. 2014): τ = {t['tau_531']:.2f} at "
+      f"531 nm, {t['tau_550']:.2f} at 550 nm, {t['tau_650']:.2f} at 650 nm, {t['tau_940']:.2f} at 940 nm, "
       f"{t['tau_1080']:.2f} at 1080 nm; Vincendon & Langevin (2010) quote Tomasko et al.'s total as "
-      f"{t['tau_1080_tomasko']} at 1.08 µm.")
+      f"{t['tau_1080_tomasko']} at 1.08 µm. The haze is three components sharing this extinction (below 80 km; above "
+      "80 km with weights 1 − w and w, w = (z − 80 km)/120 km), so that its albedo can change with altitude as Doose "
+      f"et al. (2016) prescribe; their columns add to τ(550) = {tau_h:.2f}.")
+    w(f"- **Haze single-scattering albedo** (Doose et al. 2016, paywalled; digitized from the vector drawing of "
+      f"Barnes et al. 2018, Fig. 4, free to read; `tables/titan_doose_2016_ssa.csv`, `titan_digitize.py`): above "
+      f"200 km {ssa_top[i500]:.3f} at 500 nm, {ssa_top[i650]:.3f} at 650 nm, {ssa_top[i800]:.3f} at 800 nm; below "
+      f"80 km {ssa_low[i500]:.3f}, {ssa_low[i650]:.3f}, {ssa_low[i800]:.3f}. The two curves obey Doose et al.'s "
+      f"rule ω(< 80 km) = (0.565 + ω(> 200 km))/1.5 (Es-sayeh et al. 2023) to {rule_max:.4f}. Below "
+      f"{ssa['first_nm']:.0f} nm Doose et al. give nothing (\"poorly constrained shortwards of 490 nm\", García Muñoz "
+      f"et al. 2017): the above-200-km curve is continued linearly (the line through its 500–600 nm vertices) and "
+      f"the other by the rule, giving {ssa_top[i400]:.3f} / {ssa_low[i400]:.3f} at 400 nm — an extrapolation, and "
+      "the model's largest error (below).")
+    w(f"- **Haze phase functions** (Tomasko et al. 2008, Table 1, from the machine-readable copy in Adamkovics et al. "
+      f"2016's reference data): below and above 80 km; asymmetry g = {g_lo.min():.3f}–{g_lo.max():.3f} and "
+      f"{g_hi.min():.3f}–{g_hi.max():.3f}. Resampled log-linearly in angle through the forward peak, the rows "
+      f"integrate to {np.min(d6['phase_lo']['raw_norm']):.4f}–{np.max(d6['phase_hi']['raw_norm']):.4f} before "
+      "renormalization.")
+    w(f"- **Methane** (pure absorber): Karkoschka's (1998) cold-temperature absorption coefficients × the Huygens "
+      f"GCMS mole fraction at the DTWG altitudes × the HASI density; column {d6['ch4_column_km_am']:.2f} km-amagat; "
+      f"vertical τ = {max(tau_m):.2f} at the strongest sample ({wl[int(np.argmax(tau_m))]:.0f} nm, 10 nm box average "
+      "of the extinction).")
     w(f"- N2 Rayleigh τ(550) = {t['rayleigh550']:.3f} (HASI surface {t['surface_P']:.0f} Pa, {t['surface_T']:.2f} K, "
       f"n = {t['surface_n']:.3e} m⁻³).")
-    w("- **Unknown**: the haze single-scattering albedo and phase function. They are in Tomasko et al. (2008, "
-      "Table 2, Fig. 48 and the tabulated phase functions) and Doose et al. (2016), which are not accessible here "
-      "(Elsevier); no open transcription of the numbers was found. Titan's haze cannot be rendered physically "
-      "until they are supplied (a hand copy of the paper would do, as for ROLO). The disk-integrated colour remains "
-      "calibrated by `photometry.json`.")
+    w(f"- **Surface**: Lambert reflectance {min(sr['reflectance']):.3f}–{max(sr['reflectance']):.3f} over 360–830 nm "
+      f"(the values García Muñoz et al. 2017 adopted from Karkoschka & Schröder's 2016 DISR maps); X, Y, Z, S "
+      f"equivalents {', '.join(f'{x:.3f}' for x in sr['channelEquivalents'])}.")
+    w("- **Labels**: every haze quantity and the surface are `estimated` — DISR retrievals (their authors' radiative-"
+      "transfer fits to the descent data), read from a figure or a secondary machine-readable copy, and one landing "
+      "site used for the whole moon. The methane mole fraction is `measured`, its absorption coefficient `estimated` "
+      "(Karkoschka's own label).")
+    w("")
+    m = v["mc"]
+    s = v["spectrum"]
+    w("### The model against Titan's measured brightness")
+    w("")
+    w(f"The model is solved exactly by a Monte Carlo reference (`titan_rt.py`: {m['photons']:,} photons per sample, "
+      "spherical geometry, every order of scattering with the tabulated phase functions; "
+      "`docs/reports/titan-mc.json`), so this tests the data, not the renderer. Compared with "
+      f"Karkoschka's (1998) full-disk albedo at {s['alpha_obs']}° (1995; ±4 % absolute) — the model at "
+      f"{s['alpha_mod']:.1f}°, the observation box-averaged over each 10 nm sample:")
+    w("")
+    w("| λ (nm) | " + " | ".join(f"{x:.0f}" for x in s["wl"][::4]) + " |")
+    w("|---|" + "---|" * len(s["wl"][::4]))
+    w("| model | " + " | ".join(f"{x:.3f}" for x in s["model"][::4]) + " |")
+    w("| observed | " + " | ".join(f"{x:.3f}" for x in s["observed"][::4]) + " |")
+    w("| ratio | " + " | ".join(f"{x:.2f}" for x in s["ratio"][::4]) + " |")
+    w("")
+    rat = np.array(s["ratio"])
+    w(f"- 520–830 nm: model / observed {rat[wl >= 520].min():.2f}–{rat[wl >= 520].max():.2f}; 440–510 nm: "
+      f"{rat[(wl >= 440) & (wl <= 510)].min():.2f}–{rat[(wl >= 440) & (wl <= 510)].max():.2f}; below 440 nm "
+      f"{rat[wl < 440].min():.2f}–{rat[wl < 440].max():.2f}, where the haze albedo is extrapolated: the model is "
+      "too bright in the violet.")
+    cr = s["xyzs_ratio"]
+    w(f"- Folded to X, Y, Z, S: model / observed {', '.join(f'{x:.3f}' for x in cr)}; chromaticity x, y "
+      f"{s['xy_model'][0]:.4f}, {s['xy_model'][1]:.4f} (model) against {s['xy_observed'][0]:.4f}, "
+      f"{s['xy_observed'][1]:.4f} (observed).")
+    w("")
+    w("Cassini ISS disk-integrated phase curves (García Muñoz et al. 2017, Fig. 1, digitized: "
+      "`tables/titan_garcia_munoz_2017_iss.csv`; NAC images 2004–2015, CISSCAL calibration ~10 %), median of "
+      "measured / model over the measurements in each phase-angle range, the model band-averaged with the SVO NAC "
+      "system responses:")
+    w("")
+    hdr = ["0–30°", "30–60°", "60–90°", "90–120°", "120–150°", "150–160°", "160–170°"]
+    groups = [(0, 30), (30, 60), (60, 90), (90, 120), (120, 150), (150, 160), (160, 170)]
+    w("| filter | λeff (nm) | n | all | " + " | ".join(hdr) + " |")
+    w("|---|---|---|---|" + "---|" * len(hdr))
+    iss = v["iss"]
+
+    def grouped(name: str, ratio_of) -> list[str]:
+        al, val = TD.read_iss()[name]
+        out_ = []
+        for lo, hi in groups:
+            sel = (al >= lo) & (al < hi)
+            out_.append(f"{np.median(ratio_of(al[sel], val[sel])):.2f}" if sel.sum() else "—")
+        return out_
+
+    mcd = TC.mc()
+    cells_of: dict[str, list[float]] = {}
+
+    def ISS_BROAD(n: str) -> bool:  # noqa: N802
+        return TC.ISS[n][1]
+
+    for name, f in iss.items():
+        curve = np.array([TC.filters.band_average(f["filter"], mcd["wl"], mcd["A"][:, j])
+                          for j in range(mcd["alpha"].size)])
+        cells = grouped(name, lambda a, x: x / np.interp(a, mcd["alpha"], curve))
+        cells_of[name] = [float(c) if c != "—" else np.nan for c in cells]
+        w(f"| {name}{'' if f['broad'] else ' *'} | {f['lambda_eff_nm']:.0f} | {f['n']} | {f['median_ratio']:.2f} | "
+          + " | ".join(cells) + " |")
+    w("")
+    w("\\* Methane filters (5 nm wide): the model's 10 nm samples (box-averaged extinction) do not resolve them.")
     w("")
 
+    def span(names, i0, i1):
+        x = np.array([cells_of[n][i0:i1] for n in names], float)
+        return np.nanmin(x), np.nanmax(x)
+
+    lo_c, hi_c = span(["CL1_GRN", "CL1_CB1", "RED_CL2"], 0, 5)
+    lo_2, hi_2 = span(["CL1_CB2"], 0, 5)
+    lo_b, hi_b = span(["BL1_CL2"], 0, 5)
+    lo_h, hi_h = span([n for n in cells_of if ISS_BROAD(n)], 5, 7)
+    w(f"- Green to red continuum (GRN, CB1, RED), 0–150°: measured / model {lo_c:.2f}–{hi_c:.2f}; CB2 (750 nm) "
+      f"{lo_2:.2f}–{hi_2:.2f}; BL1 (455 nm) {lo_b:.2f}–{hi_b:.2f}, the model too bright in the blue as against "
+      "Karkoschka's spectrum.")
+    w(f"- Beyond 150° every filter is measured below the model ({lo_h:.2f}–{hi_h:.2f}): its forward scattering "
+      "through the limb is too strong. Its inputs there are the DISR phase functions at small angles and the "
+      "extinction above 150 km, which DISR did not measure (the 65 km scale height extrapolated to 500 km; Titan's "
+      "detached haze and season, 2004–2015, not represented).")
+    w("")
+    r = v["renderer"]
+    if r:
+        q = np.array(r["ratio_to_mc"])
+        ph = r["phases"]
+        w("### The renderer")
+        w("")
+        w("The renderer's CPU twin (`atmosphere.ts` `diskReflectanceSpectral`, the tables and march of the shaders; "
+          "`app/tests/render-titan.test.ts`, `docs/reports/titan-renderer.json`) against the same reference, every "
+          "sample its own bin (range over the 48 samples, and the median):")
+        w("")
+        w("| α | " + " | ".join(f"{a:.0f}°" for a in ph) + " |")
+        w("|---|" + "---|" * len(ph))
+        w("| min | " + " | ".join(f"{x:.2f}" for x in q.min(axis=1)) + " |")
+        w("| median | " + " | ".join(f"{x:.2f}" for x in np.median(q, axis=1)) + " |")
+        w("| max | " + " | ".join(f"{x:.2f}" for x in q.max(axis=1)) + " |")
+        w("")
+        ca = r["xyzs_ratio_app_bins"]
+        cp = r["xyzs_ratio_per_sample"]
+        w(f"Against Karkoschka at 5.7° (pass: within 2σ = ±8 % per channel): with the app's 12 bins of 4 samples X, Y, "
+          f"Z, S = {', '.join(f'{x:.3f}' for x in ca)} of observed ({', '.join(f'{x:.3f}' for x in cp)} with every "
+          f"sample its own bin); chromaticity {r['xy_app_bins'][0]:.4f}, {r['xy_app_bins'][1]:.4f} against "
+          f"{r['xy_observed'][0]:.4f}, {r['xy_observed'][1]:.4f}. "
+          + ", ".join(f"{c} {'PASS' if abs(x - 1) <= 0.08 else 'FAIL'} ({100 * (x - 1):+.1f} %)"
+                      for c, x in zip("XYZS", ca)) + ".")
+        w("")
+        w("Against the ISS phase curves (pass: each range's median within 2σ = ±20 %; measured / renderer):")
+        w("")
+        w("| filter | all | " + " | ".join(hdr) + " | result |")
+        w("|---|---|" + "---|" * len(hdr) + "---|")
+        per = np.array(json.loads(TC.RENDERER_JSON.read_text())["perSample"]["A"])
+        wl_r = np.array(json.loads(TC.RENDERER_JSON.read_text())["perSample"]["wavelengthsNm"])
+        for name, f in r["iss"].items():
+            key = TC.ISS[name][0]
+            curve = np.array([TC.filters.band_average(key, wl_r, row) for row in per])
+            cells = grouped(name, lambda a, x: x / np.interp(a, ph, curve))
+            ok = all(c == "—" or abs(float(c) - 1) <= 0.2 for c in cells)
+            fails = [h for h, c in zip(hdr, cells) if c != "—" and abs(float(c) - 1) > 0.2]
+            res = "PASS" if ok else "FAIL (" + ", ".join(fails) + ")"
+            if not f["broad"]:
+                res += " *"
+            w(f"| {name} | {f['median_ratio']:.2f} | " + " | ".join(cells) + f" | {res} |")
+        w("")
+    w("")
     # ---------------------------------------------------------------- Venus
     vm = diag["299"]["mie"]
     i550 = 19

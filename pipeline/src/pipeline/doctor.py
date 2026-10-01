@@ -33,7 +33,7 @@ HOSTS: dict[str, tuple[str, ...]] = {
               "iopscience.iop.org", "sourceforge.net", "nssdc.gsfc.nasa.gov", "atmos.nmsu.edu", "web.lmd.jussieu.fr",
               "www-mars.lmd.jussieu.fr", "raw.githubusercontent.com", "www.iup.uni-bremen.de", "ntrs.nasa.gov",
               "b.tellusjournals.se", "sbnarchive.psi.edu", "www.data.jma.go.jp", "pdssbn.astro.umd.edu",
-              "noaa-himawari9.s3.amazonaws.com"),
+              "noaa-himawari9.s3.amazonaws.com", "w.astro.berkeley.edu", "stacks.iop.org", "insu.hal.science"),
     "surfaces": ("asc-pds-services.s3.us-west-2.amazonaws.com", "pds-smallbodies.astro.umd.edu",
                  "ncc.nesdis.noaa.gov", "www.ngdc.noaa.gov", "gibs.earthdata.nasa.gov",
                  "modiseuwest.blob.core.windows.net", "planetarycomputer.microsoft.com", "www.oceancolour.org",
