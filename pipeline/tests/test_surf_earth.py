@@ -367,5 +367,12 @@ def test_earth_cloud_tau_layer():
     assert (m2[pos] / f[pos] - mean_ln ** 2 > -0.05).all()   # variance ≥ 0 up to float16 rounding
     d = h["diagnostics"]["planeAlbedoCheck"]
     assert 0 < d["swath"]["cloudyShareWithoutTau"] < 1
+    # the population statistic for the share without a retrieval (cloud_pcl.py), estimated, with its sources
+    u = h["constants"]["unmeasuredTau"]
+    assert u["label"] == "estimated" and "pincus2023-modis-cosp" in u["sources"] and "pincus2023-modis-cosp" in h["sources"]
+    p = u["statistics"]["floorCellsZero"]["partlyCloudyAllHeights"]
+    assert sum(p["binProbability"]) == pytest.approx(1, abs=1e-3) and len(p["binProbability"]) == len(u["tauBinEdges"]) - 1
+    rows = u["planeAlbedoLiquid"]["rows"]
+    assert all(0 < r["binSum"] < 0.5 for r in rows) and rows[0]["binSum"] > rows[-1]["binSum"]
     for key in ("global", "swath", "global.level0", "swath.level0"):
         assert d[key]["linearMeanTau"]["ratioToIpa"] >= 1  # plane-parallel bias
