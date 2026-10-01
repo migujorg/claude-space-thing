@@ -46,6 +46,8 @@ HOSTS: dict[str, tuple[str, ...]] = {
                     "minplanobs.org", "sbnarchive.psi.edu", "cdn.gea.esac.esa.int"),
     "sbphotometry": ("files.pythonhosted.org", "ssd.jpl.nasa.gov"),
     "synthetic": ("www.mv.helsinki.fi", "www.cfeps.net", "arxiv.org"),
+    "comets": ("ssd.jpl.nasa.gov", "asteroid.lowell.edu", "pdssbn.astro.umd.edu", "omniweb.gsfc.nasa.gov",
+               "spdf.gsfc.nasa.gov", "www.lpi.usra.edu", "arxiv.org"),
     "stars": ("gea.esac.esa.int", "archive.stsci.edu", "www.stsci.edu", "cdsarc.cds.unistra.fr", "cds.unistra.fr",
               "www.pas.rochester.edu"),
     "deepstars": ("gea.esac.esa.int",),
