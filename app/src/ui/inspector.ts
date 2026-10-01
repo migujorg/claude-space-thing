@@ -149,6 +149,7 @@ export class Inspector {
       loading,
       surfaces: m.data?.surfaces.filter((x) => x.bodyId === body.id) ?? [],
       shape: m.shapeStatus(body.id),
+      nightglow: body.id === 399 ? m.nightglowInfo() : null,
     });
     // The Sun is drawn from light.json, not from reflectance data.
     if (isSun) rows = [...rows.filter((r) => !['albedoXYZS', 'albedoV', 'phase'].includes(r.key)), ...sunRows(m.light, level)];
@@ -204,7 +205,10 @@ export class Inspector {
       return `sb|${m.sb.status}|${!!m.smallBodies?.field}|${m.reality.exists}|${m.names?.spkidOf(sbRow(id)) ?? ''}|${m.shapeStatus(id)?.text ?? ''}`;
     }
     const o = this.model.orientationSource(id);
-    return `${this.model.bodyLoadState(id)}|${o ? `${o.kind}:${o.label}:${o.frame}` : '-'}|${this.model.reality.exists}|${this.model.shapeStatus(id)?.text ?? ''}`;
+    // The Earth's airglow and aurora depend on the time (solar flux per day, coupling per hour).
+    const ng = id === 399 ? this.model.nightglowInfo() : null;
+    const ngKey = ng ? `${ng.airglow?.drawn}:${ng.airglow?.srf?.day}:${ng.aurora?.drawn}:${ng.aurora?.coupling.measured}:${Math.round(ng.aurora?.coupling.value ?? 0)}` : '';
+    return `${this.model.bodyLoadState(id)}|${o ? `${o.kind}:${o.label}:${o.frame}` : '-'}|${this.model.reality.exists}|${this.model.shapeStatus(id)?.text ?? ''}|${ngKey}`;
   }
 
   private setWhy(line: string): void {

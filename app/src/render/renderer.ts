@@ -34,6 +34,8 @@ import { ExtraPointSources, type PointSourceBuffer } from './extraPoints';
 import { MeshBodies } from './meshes/meshBodies';
 import { HdrReadback, type HdrImage, type HdrRect, type HdrRegionStats } from './hdrReadback';  // validation hook
 import { CometLayer } from './comets/layer';
+import { NightglowGpu, shellTopKm } from './nightglow';
+import { prepareBody } from './raycast';
 import type { CometModelProduct } from '../data/schema';
 import { orbitVertices } from './overlays';
 import { AdaptationState, computeEyeFrame, localObserver, type EyeFrame } from '../eye/model';
@@ -190,6 +192,8 @@ export class Renderer {
   private shellPipe: GPURenderPipeline | null = null;
   private makeShellPipe!: () => GPURenderPipeline;
   private atmDummy: { uniform: GPUBuffer; texture: GPUTexture; sampler: GPUSampler } | null = null;
+  /** Earth's airglow and aurora (nightglow.ts), created when the Earth first brings them. */
+  private nightglow: NightglowGpu | null = null;
   private bodyOverlayPipe: GPURenderPipeline;
   private cullPipe: GPUComputePipeline;
   private clampPipe: GPUComputePipeline;
@@ -739,6 +743,26 @@ export class Renderer {
       }
       cp.end();
     }
+    // 1b. Earth's airglow and aurora (nightglow.ts): the emission along the view rays at reduced resolution, in a
+    //     pass of its own; it is composited into the bodies pass below.
+    let ngDraw: { entries: GPUBindGroupEntry[]; index: number } | null = null;
+    const ngI = prep.resolved.findIndex((r) => !!r.body.nightglow);
+    if (ngI >= 0 && this.bodiesBuf && !skip.has('nightglow')) {
+      const r = prep.resolved[ngI];
+      const ng = r.body.nightglow!;
+      this.nightglow ??= new NightglowGpu(d, this.hdrFormat, this.weightFormat);
+      const atmB = atmOf.get(ngI);
+      if (!atmB || atmB.unmeasured) prep.warnings.push(`${r.body.name}: airglow and aurora drawn without the lower atmosphere's attenuation (atmosphere not drawn)`);
+      const top = Math.max(...r.radiiKm) + shellTopKm(ng);
+      const own = this.nightglow.prepare({
+        index: ngI, ng, bodyToWorld: r.bodyToWorld, sunDir: r.sunDir, rMaxKm: Math.max(...r.radiiKm),
+        shellBeta: prepareBody(r.frame.pos, [top, top, top], null, 3 * g.pixelAngle).beta,
+        atm: atmB, atmSamplesNm: r.body.atmosphere?.wavelengthsNm ?? null,
+      });
+      const base: GPUBindGroupEntry[] = [{ binding: 0, resource: { buffer: this.frameUB } }, { binding: 1, resource: { buffer: this.bodiesBuf } }];
+      this.nightglow.encodeEmission(enc, [...base, ...this.atmEntries(atmB), ...own], ngI, t.W, t.H, this.tsw('nightglow'));
+      ngDraw = { entries: [...base, ...own], index: ngI };
+    }
     {
       const pass = enc.beginRenderPass({
         label: 'bodies',
@@ -825,6 +849,8 @@ export class Renderer {
           pass.draw(6, 1, 0, i);
         }
       }
+      // Earth's airglow and aurora (nightglow.ts): the emission computed above, depth-tested like the shells.
+      if (ngDraw && this.bodiesBuf) this.nightglow!.drawComposite(pass, ngDraw.entries, ngDraw.index);
       if (nRings && !skip.has('rings')) {
         pass.setPipeline(this.ringPipe);
         pass.setBindGroup(0, d.createBindGroup({

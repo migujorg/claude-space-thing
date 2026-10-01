@@ -28,6 +28,7 @@ import { buildSnapshot, buildSun, filtered, sceneBodyOf, type OverlayOnlyBody } 
 import { SmallBodies, sbId, sbRow, type ShapeSize, type SmallBodyCounts } from './smallbodies';
 import { GridWorkerClient, type GridWorkerPort } from './sbgrid';
 import { parseIsoUtc, type UrlView } from './url';
+import { NightglowSource, type NightglowInfo } from './nightglow';
 import { DEG, IDENTITY, len, matFromQuat, norm, perpComponent, quatFromMat, slerpQuat, sub } from './vec';
 import { computeWorld, copy, findSunId, isPhysical, navRadius, type World } from './world';
 import { EventService, EventWorkerClient, FINDER_VERSION, hashKey, InProcessEvents, type EventCache, type EventComputePort, type Readiness } from './events/service';
@@ -233,7 +234,11 @@ export class AppModel {
           spkidOf: (id) => this.spkidForShapes(id),
         })
       : null;
-    this.extras = { surfaces: surfaceRefs(d.surfaces ?? [], dataBaseUrl), rings: d.rings ?? null, atmospheres, shapes };
+    // Earth's airglow and aurora (app/nightglow.ts), evaluated per frame at the frame's UTC.
+    const ng = d.nightglow && (d.nightglow.airglow || d.nightglow.aurora)
+      ? { source: new NightglowSource(d.nightglow.airglow, d.nightglow.aurora, d.nightglow.bins), etToUtcMs: (et: number) => this.timeScale?.etToUtcMs(et) ?? NaN }
+      : null;
+    this.extras = { surfaces: surfaceRefs(d.surfaces ?? [], dataBaseUrl), rings: d.rings ?? null, atmospheres, shapes, nightglow: ng };
     this.bodies = d.bodies;
     this.byId = new Map(d.bodies.map((b) => [b.id, b]));
     this.roots.clear();
@@ -714,6 +719,14 @@ export class AppModel {
   }
 
   /** Orientation provenance of a body at the light-emission epoch of the current frame (or now). */
+  /** Earth's airglow and aurora at the current time and level (the inspector), or null without the products. */
+  nightglowInfo(): NightglowInfo | null {
+    const ng = this.extras?.nightglow;
+    if (!ng) return null;
+    const ms = ng.etToUtcMs(this.clock.et);
+    return Number.isFinite(ms) ? ng.source.info(this.reality.exists, ms) : null;
+  }
+
   orientationSource(id: number): OrientationSourcePort | null {
     if (id < 0) return null;
     const et = this.world?.bodies.get(id)?.app?.emitEt ?? this.clock.et;
@@ -1477,7 +1490,10 @@ export class AppModel {
       }
       const requested = id === v.target;
       const r = this.goTo(id, requested ? v.dist : undefined, requested ? { azDeg: v.az, elDeg: v.el, instant: true } : { instant: true });
-      if (typeof r !== 'string') return;
+      if (typeof r !== 'string') {
+        if (requested && v.look) this.lookLocal(id, v.look.azDeg, v.look.elDeg);
+        return;
+      }
       this.message(r, 'warn');
     }
   }
@@ -1516,6 +1532,33 @@ export class AppModel {
     return true;
   }
 
+  /** The local frame at the camera's place relative to body `id`: up (from its centre), north and east. */
+  private localFrame(id: number, rel: Vec3): { up: Vec3; north: Vec3; east: Vec3 } {
+    const up = norm(rel);
+    const o = this.orientations.orientation(id, this.clock.et);
+    const pole: Vec3 = o ? [o[2], o[5], o[8]] : [0, 0, 1];
+    let north = perpComponent(pole, up);
+    if (len(north) < 1e-9) north = perpComponent([1, 0, 0], up);
+    north = norm(north);
+    const east: Vec3 = [north[1] * up[2] - north[2] * up[1], north[2] * up[0] - north[0] * up[2], north[0] * up[1] - north[1] * up[0]];
+    return { up, north, east };
+  }
+
+  /** Keep the camera where it is and look along local azimuth/elevation (URL `look`): a free camera anchored at `id`. */
+  lookLocal(id: number, azDeg: number, elDeg: number): void {
+    const tp = this.bodyPos(id);
+    if (!tp) return;
+    const rel = sub(this.pose.pos, tp);
+    const { up, north, east } = this.localFrame(id, rel);
+    const a = azDeg * DEG, e = elDeg * DEG;
+    const fwd = norm([0, 1, 2].map((k) => Math.cos(e) * (Math.cos(a) * north[k] + Math.sin(a) * east[k]) + Math.sin(e) * up[k]) as Vec3);
+    this.finishTravel();
+    this.turn = null;
+    this.cam = { mode: 'free', anchor: id, rel, orient: lookRotation(fwd, up) };
+    this.pose = freePose(this.cam, tp);
+    this.emit('camera');
+  }
+
   currentUrlView(): UrlView {
     const v: UrlView = {};
     const ms = this.utcMs();
@@ -1528,6 +1571,19 @@ export class AppModel {
       const ae = azElFromDir(sunFrame(this.toSunAt(this.cam.target)), this.cam.dir);
       v.az = ae.az / DEG;
       v.el = ae.el / DEG;
+    } else if (this.cam.mode === 'free' && this.cam.anchor !== null && this.cam.anchor >= 0) {
+      // A free camera anchored at a body: its place as target/dist/az/el and its view direction as `look`.
+      const c = this.cam;
+      v.target = c.anchor!;
+      v.dist = len(c.rel);
+      const ae = azElFromDir(sunFrame(this.toSunAt(c.anchor!)), norm(c.rel));
+      v.az = ae.az / DEG;
+      v.el = ae.el / DEG;
+      const { up, north, east } = this.localFrame(c.anchor!, c.rel);
+      const f: Vec3 = [-c.orient[2], -c.orient[5], -c.orient[8]];
+      const el = Math.asin(Math.max(-1, Math.min(1, f[0] * up[0] + f[1] * up[1] + f[2] * up[2])));
+      const az = Math.atan2(f[0] * east[0] + f[1] * east[1] + f[2] * east[2], f[0] * north[0] + f[1] * north[1] + f[2] * north[2]);
+      v.look = { azDeg: az / DEG, elDeg: el / DEG };
     }
     const d = this.realityDefaults, r = this.reality;
     if (r.exists !== d.exists) v.exists = r.exists;

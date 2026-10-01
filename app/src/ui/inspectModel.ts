@@ -6,6 +6,7 @@ import type { OrientationSourcePort } from '../app/ports';
 import { labelAllowed, worstOf, type ExistsLevel } from '../app/reality';
 import { formatValue } from './format';
 import type { ShapeStatus } from '../app/shapes';
+import type { NightglowInfo } from '../app/nightglow';
 
 export interface AttrRow {
   key: string;
@@ -71,6 +72,8 @@ export interface AttributeContext {
   surfaces?: SurfaceLayer[];
   /** Shape model status (app/shapes.ts), when the body has one. */
   shape?: ShapeStatus | null;
+  /** The Earth's airglow and aurora at the current time (app/nightglow.ts NightglowSource.info). */
+  nightglow?: NightglowInfo | null;
 }
 
 export function attributeRows(body: Body, level: ExistsLevel, ephs: { path: string; header: EphemHeader }[], ctx: AttributeContext = {}): AttrRow[] {
@@ -131,6 +134,48 @@ export function attributeRows(body: Body, level: ExistsLevel, ephs: { path: stri
       ...(sl.method ? { method: sl.method } : sl.notes ? { method: sl.notes } : {}),
       sources: sl.sources,
       withheld: label !== 'unknown' && !labelAllowed(label, level),
+    });
+  }
+  if (ctx.nightglow) rows.push(...nightglowRows(ctx.nightglow, level));
+  return rows;
+}
+
+const sig = (x: number, n = 3) => Number(x.toPrecision(n)).toString();
+
+/** The Earth's own light at night: what the airglow and the aurora are based on, and whether they are drawn. */
+export function nightglowRows(info: NightglowInfo, level: ExistsLevel): AttrRow[] {
+  const rows: AttrRow[] = [];
+  const a = info.airglow;
+  if (a) {
+    const srf = a.srf ? `10.7 cm solar flux (27-day mean) ${sig(a.srf.sfu)} sfu on ${a.srf.day} (${a.srf.label}${a.srf.label === 'estimated' ? ': partly predicted' : ': observed'})` : 'no solar flux for this day';
+    rows.push({
+      key: 'airglow',
+      name: 'Airglow (PALACE climatology, measured at Cerro Paranal)',
+      label: a.label,
+      value: a.drawn
+        ? `drawn on the night side (Sun > 100° from the zenith below the emission); zenith luminance near local midnight ${a.zenithY !== null ? sig(a.zenithY) : '?'} cd/m², green O 557.7 nm at 97 km, red O 630 nm near 250 km, OH, Na, O₂ and FeO in the mesopause; ${srf}`
+        : `not drawn — ${a.reason ?? 'unknown'}; ${srf}`,
+      method: a.method,
+      uncertainty: a.uncertainty,
+      sources: a.sources,
+      withheld: !a.drawn && a.label !== 'unknown' && !labelAllowed(a.label, level),
+    });
+  }
+  const u = info.aurora;
+  if (u) {
+    const c = u.coupling;
+    const drive = c.measured
+      ? `solar-wind coupling dΦ/dt ${sig(c.value)} (from OMNI measurements, ${c.label})`
+      : `solar-wind coupling ${sig(c.value)}: climatological median (${c.label}) — no measured solar wind at this time (measured until ${c.measuredUntil.slice(0, 16).replace('T', ' ')} UT)`;
+    rows.push({
+      key: 'aurora',
+      name: 'Aurora (OVATION Prime 2010 + emission model)',
+      label: u.label,
+      value: u.drawn ? `drawn: electron aurora, ${drive}` : `not drawn — ${u.reason ?? 'unknown'}; ${drive}`,
+      method: u.method,
+      uncertainty: 'Precipitation: OP2010 is a statistical model (individual arcs and substorms are not reproduced); brightness ±30–50 %, red line within a factor 2 (docs/reports/nightglow.md).',
+      sources: u.sources,
+      withheld: !u.drawn && u.label !== 'unknown' && !labelAllowed(u.label, level),
     });
   }
   return rows;

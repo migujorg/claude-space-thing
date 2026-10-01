@@ -19,12 +19,15 @@ import type {
   RingsFile,
   ShapeIndex,
   TimeData,
+  AirglowModel,
+  AuroraModel,
 } from './schema';
 import { BinaryTable } from './binaryTable';
 import { parseStarNames, type StarName } from './stars';
 import { discoverSmallBodies, type SmallBodyProducts } from './smallbodies';
 import { discoverSurfaces, parseSurfaceHeader, type SurfaceLayer } from './surfaces';
 import { deepTilePaths, loadSkyHeaders, mapPath, type SkyHeaders } from './sky';
+import { decodeFloat16, type AuroraBins } from './nightglow';
 
 export type FetchFn = (url: string) => Promise<Response>;
 
@@ -110,6 +113,8 @@ export interface LoadedData {
   atmospheres?: AtmosphereFile | null;
   /** shapes/index.json (ShapeIndex); headers, meshes and the DAMIT table are fetched on demand (app/shapes.ts). */
   shapes?: ShapeIndex | null;
+  /** Earth's airglow and aurora (nightglow/*; app/nightglow.ts); null when not built. */
+  nightglow?: { airglow: AirglowModel | null; aurora: AuroraModel | null; bins: AuroraBins | null } | null;
   report: DataReport;
   /** Fetches deferred products later; null when the data came from elsewhere (tests). */
   loader: DataLoader | null;
@@ -140,6 +145,8 @@ const CONSEQUENCE: Record<string, string> = {
   'rings.json': 'No ring data: planetary rings are not drawn.',
   'atmospheres.json': 'No atmosphere data: limbs, haze and Earth\'s sky are not drawn.',
   'shapes/index.json': 'No shape models: irregular bodies are drawn as triaxial ellipsoids.',
+  'nightglow/airglow.json': 'No airglow: the night side of the Earth lacks its own faint glow.',
+  'nightglow/aurora.json': 'No aurora.',
 };
 
 class NotFound extends Error {}
@@ -443,6 +450,30 @@ export async function loadAll(opts: LoadOptions): Promise<LoadedData> {
     else L.setReport(p, { status: 'deferred', bytes, message: 'Loaded in the background after the moon systems.' });
   }
 
+  // Earth's airglow and aurora (app/nightglow.ts): small headers and the aurora tables (about 5 MB), loaded now.
+  let nightglow: LoadedData['nightglow'] = null;
+  if (manifest?.products['nightglow/airglow.json'] || manifest?.products['nightglow/aurora.json']) {
+    const [airglow, aurora] = await Promise.all([
+      manifest.products['nightglow/airglow.json'] ? L.get('nightglow/airglow.json', (b) => validateKind<AirglowModel>(json(b), 'airglowModel'), CONSEQUENCE['nightglow/airglow.json']) : null,
+      manifest.products['nightglow/aurora.json'] ? L.get('nightglow/aurora.json', (b) => validateKind<AuroraModel>(json(b), 'auroraModel'), CONSEQUENCE['nightglow/aurora.json']) : null,
+    ]);
+    let bins: AuroraBins | null = null;
+    if (aurora?.ovation.value && aurora.magneticCoordinates.value && aurora.emission.value) {
+      const cons = 'No aurora.';
+      const f32 = (b: ArrayBuffer) => new Float32Array(b.slice(0, b.byteLength - (b.byteLength % 4)));
+      const ov = aurora.ovation.value;
+      const [o, m, e] = await Promise.all([
+        L.get(ov.file, (b) => (ov.dtype === 'float16' ? decodeFloat16(b) : f32(b)), cons),
+        L.get(aurora.magneticCoordinates.value.file, f32, cons),
+        L.get(aurora.emission.value.file, f32, cons),
+      ]);
+      const need = 4 * 2 * ov.couplingNodes.length * ov.mltHours.length * ov.mlatDeg.length;
+      if (o && o.length !== need) L.setReport(ov.file, { status: 'error', bytes: o.byteLength, message: `has ${o.length} values, the header needs ${need}`, consequence: cons });
+      else if (o && m && e) bins = { ovation: o, magnetic: m, emission: e };
+    }
+    nightglow = { airglow: airglow ?? null, aurora: aurora ?? null, bins };
+  }
+
   // Products the manifest lists that this app version does not read.
   for (const p of productPaths) {
     if (!L.has(p) && !tileFiles.has(p)) L.setReport(p, { status: 'unused', bytes: manifest!.products[p].bytes, message: 'Listed in the manifest; not read by this app version.' });
@@ -462,10 +493,12 @@ export async function loadAll(opts: LoadOptions): Promise<LoadedData> {
     if (sky.maps) for (const l of Object.values(sky.maps.layers)) visit(l.sources);
     if (sky.zodiacal) for (const a of [sky.zodiacal.at1AU, sky.zodiacal.s10ToXYZS, sky.zodiacal.cloud, sky.zodiacal.scattering]) visit(a?.sources);
     for (const r of Object.values(rings ?? {})) for (const a of [r.opticalDepth, r.reflectance]) visit(a?.sources);
+    if (nightglow?.airglow) { visit(nightglow.airglow.sources); visit(nightglow.airglow.solarRadioFlux.sources); }
+    if (nightglow?.aurora) for (const a of [nightglow.aurora.ovation, nightglow.aurora.coupling, nightglow.aurora.magneticCoordinates, nightglow.aurora.emission]) visit(a.sources);
     if (missing.size) notes.push(`Referenced source ids missing from sources.json: ${[...missing].sort().join(', ')}.`);
   }
 
-  return { manifest, sources, time, ephemerides, deferred, orientations, bodies, light, stars, starNames, surfaces, smallBodies, rings: rings ?? null, atmospheres: atmospheres ?? null, shapes: shapes ?? null, sky, report: L.report, loader: L };
+  return { manifest, sources, time, ephemerides, deferred, orientations, bodies, light, stars, starNames, surfaces, smallBodies, rings: rings ?? null, atmospheres: atmospheres ?? null, shapes: shapes ?? null, nightglow, sky, report: L.report, loader: L };
 }
 
 // ---- light validation (structure only; values are the pipeline's) -------------------------------
@@ -497,6 +530,11 @@ function validateTime(x: unknown): TimeData {
 function validateLight(x: unknown): LightData {
   if (!isObj(x) || !isObj(x.sun)) throw new Error('light.json: expected { sun, cie }');
   return x as unknown as LightData;
+}
+
+function validateKind<T>(x: unknown, kind: string): T {
+  if (!isObj(x) || x.kind !== kind) throw new Error(`expected kind "${kind}"`);
+  return x as unknown as T;
 }
 
 function validateEphemHeader(x: unknown): EphemHeader {

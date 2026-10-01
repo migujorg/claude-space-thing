@@ -365,7 +365,7 @@ struct Body {
 };
 `;
 
-const BODY_COMMON = BODY_STRUCT + /* wgsl */ `
+export const BODY_COMMON = BODY_STRUCT + /* wgsl */ `
 @group(0) @binding(0) var<uniform> F: Frame;
 @group(0) @binding(1) var<storage, read> bodies: array<Body>;
 

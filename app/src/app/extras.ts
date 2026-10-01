@@ -7,6 +7,7 @@ import type { Mat3, SceneBody, SceneRings, SurfaceLayerRef } from '../render/sce
 import { unmeasuredTauPopulation } from '../render/earth';
 import { allowedValue, labelAllowed, worstOf, type ExistsLevel } from './reality';
 import type { ShapeLibrary } from './shapes';
+import { EARTH_ID, type NightglowSource } from './nightglow';
 
 export interface LayerRef {
   ref: SurfaceLayerRef;
@@ -35,6 +36,8 @@ export interface SceneExtras {
   atmospheres?: AtmosphereFile | null;
   /** Shape models (render/scene.ts SceneBody.shape), when shapes/index.json is loaded. */
   shapes?: ShapeLibrary | null;
+  /** Earth's airglow and aurora (render/scene.ts SceneBody.nightglow), with the time scale to evaluate them. */
+  nightglow?: { source: NightglowSource; etToUtcMs: (et: number) => number } | null;
 }
 
 const LABELS: readonly string[] = ['measured', 'derived', 'estimated', 'synthetic', 'unknown'];
@@ -105,7 +108,7 @@ function ringsFor(sys: RingSystem, orient: Mat3, level: ExistsLevel): SceneRings
  * Adds the admitted extras to a scene body in place and returns the worst label among what was added.
  * Maps and rings need the body-fixed frame, so they are only added when `sb.orient` is set.
  */
-export function applyExtras(sb: SceneBody, body: Body, extras: SceneExtras | undefined, level: ExistsLevel, lit: boolean): Label[] {
+export function applyExtras(sb: SceneBody, body: Body, extras: SceneExtras | undefined, level: ExistsLevel, lit: boolean, et?: number): Label[] {
   const used: Label[] = [];
   const p = body.photometry;
   const disk = lit ? allowedValue(p?.diskReflectanceModel, level) : null;
@@ -166,6 +169,15 @@ export function applyExtras(sb: SceneBody, body: Body, extras: SceneExtras | und
   if (atm && !sb.atmosphere && lit && !sb.surfaceUnknown) {
     sb.atmosphere = atm;
     used.push(atm.worstLabel);
+  }
+  // Earth's own light at night: needs the body-fixed frame (local time, magnetic coordinates) and the time.
+  if (body.id === EARTH_ID && extras.nightglow && sb.radii && et !== undefined) {
+    const ms = extras.nightglow.etToUtcMs(et);
+    const ng = Number.isFinite(ms) ? extras.nightglow.source.scene(level, ms) : null;
+    if (ng) {
+      sb.nightglow = ng;
+      used.push(ng.worstLabel);
+    }
   }
   const sys = extras.rings?.[String(body.id)];
   if (sys) {
