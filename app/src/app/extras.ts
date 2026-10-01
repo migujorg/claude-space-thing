@@ -4,6 +4,7 @@
 import type { AtmosphereFile, Body, Label, RingsFile, RingSystem } from '../data/schema';
 import type { SurfaceLayer } from '../data/surfaces';
 import type { Mat3, SceneBody, SceneRings, SurfaceLayerRef } from '../render/scene';
+import { unmeasuredTauPopulation } from '../render/earth';
 import { allowedValue, labelAllowed, worstOf, type ExistsLevel } from './reality';
 import type { ShapeLibrary } from './shapes';
 
@@ -139,6 +140,14 @@ export function applyExtras(sb: SceneBody, body: Body, extras: SceneExtras | und
             surface[k] = l.ref;
             used.push(l.label);
           }
+        }
+        // The cloud without a retrieval: the partly-cloudy τ population of cloudTau's header (estimated) where the
+        // level admits it (Best, Complete); at Strict it stays unknown (render/earth.ts unmeasuredTauPopulation).
+        const un = surface.cloudTau ? unmeasuredTauPopulation(surface.cloudTau.header) : null;
+        const unLabel = un && (LABELS.includes(un.label) ? (un.label as Label) : 'unknown');
+        if (un && unLabel && labelAllowed(unLabel, level)) {
+          surface.cloudTauUnmeasured = { taus: un.taus, p: un.p };
+          used.push(unLabel);
         }
       }
     }

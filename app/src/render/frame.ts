@@ -7,7 +7,7 @@ import { AU_KM } from './constants';
 import { diskIlluminance, diskModelPPhi, evalPhase, extrapolatePhase, LAMBERT_ALBEDO_PER_GEOMETRIC_ALBEDO, lambertPhase, limbDarkenedI0, meanRadius, phaseRangeDeg, type XYZS } from './photometry';
 import { LAMBERT_LAW, LAW, lawDiskIntegral, lawRadf, mapDiskIntegral, NormalizationCache, photometricFrame, resolveLaw, TEXEL_LAW, type ResolvedLaw, type ZonalProfile } from './spatial';
 import { sampleLevel0, type Level0Map } from './surface';
-import { NIGHT_LAMP } from './earth';
+import { MAX_POPULATION_NODES, NIGHT_LAMP, type CloudPopulation } from './earth';
 import { atmosphereDiskFactors, marsDustScale } from './atmosphere';
 import type { AtmosphereBinding } from './atmosphereGpu';
 import { texelRadf, type TexelHapke } from './texelLaw';
@@ -88,6 +88,8 @@ export interface EarthBinding {
   absR: XYZS;
   /** cd/m² (XYZS) per unit of the night layer's radiance; zeros when there is no night layer. */
   nightK: XYZS;
+  /** The population for the cloud without a retrieval (with the cloudTau layer bound and admitted), else null. */
+  unmeasuredTau: CloudPopulation | null;
 }
 
 /**
@@ -108,7 +110,8 @@ export function earthMode(b: SceneBody, surface: SurfaceBinding | null, irr: XYZ
     if (Array.isArray(k) && k.length === 4 && k.every((v) => typeof v === 'number' && v >= 0)) nightK = k as XYZS;
     else warnings.push(`${b.name}: night-light layer has no ${NIGHT_LAMP} luminance factors → night lights not drawn`);
   }
-  return { absR: [abs.X, abs.Y, abs.Z, abs.S], nightK };
+  const un = surface.cloudTau ? b.surface?.cloudTauUnmeasured ?? null : null;
+  return { absR: [abs.X, abs.Y, abs.Z, abs.S], nightK, unmeasuredTau: un && un.taus.length <= MAX_POPULATION_NODES ? un : null };
 }
 
 export interface PointSource {

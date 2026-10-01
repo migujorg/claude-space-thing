@@ -66,6 +66,7 @@ function usesOf(sb: SceneBody): string[] {
   if (sb.diskReflectanceModel) u.push(`disk model ${sb.diskReflectanceModel.kind}`);
   if (sb.spatialModel) u.push('spatial model');
   for (const k of ['albedo', 'height', 'photometry', 'clouds', 'cloudTau', 'water', 'night', 'wind'] as const) if (sb.surface?.[k]) u.push(`map ${k}`);
+  if (sb.surface?.cloudTauUnmeasured) u.push('partly-cloudy τ statistic for the cloud without a retrieval (estimated)');
   if (sb.rings) u.push(`rings${sb.rings.reflectance ? '' : ' (absorbing only)'}`);
   if (sb.atmosphere) u.push('atmosphere');
   if (sb.surfaceUnknown) u.push('surface unknown (hatched)');

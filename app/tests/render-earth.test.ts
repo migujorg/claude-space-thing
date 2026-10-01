@@ -1,6 +1,6 @@
 // Earth's layer model (render/earth.ts): cloud optics limits, energy conservation, unknown handling.
 import { describe, expect, it } from 'vitest';
-import { cloudLogNormal, cloudOptics, cloudPlaneAlbedo, earthShade, escape, fresnel, FRESNEL_DIFFUSE, GAUSS4_W, GAUSS4_X, glintRadianceFactor, SEA_ICE_ALBEDO_VIS, type EarthSample } from '../src/render/earth';
+import { CLOUD_G_LIQUID, cloudLogNormal, cloudOptics, cloudPlaneAlbedo, earthShade, escape, fresnel, FRESNEL_DIFFUSE, GAUSS4_W, GAUSS4_X, glintRadianceFactor, populationPlaneAlbedo, SEA_ICE_ALBEDO_VIS, unmeasuredTauPopulation, type EarthSample } from '../src/render/earth';
 
 const sample = (over: Partial<EarthSample> = {}): EarthSample => ({
   surface: [0.1, 0.1, 0.1, 0.1], waterFraction: 0, seaIceFraction: NaN, cloudFraction: 0, opticalThickness: 0, iceFraction: 0, ...over,
@@ -95,6 +95,52 @@ describe('earthShade', () => {
       expect(r.rho[1]).toBeCloseTo(clearOnly + cloudOnly, 12);
       // f_τ above the cloud fraction is capped at it.
       expect(earthShade(sample({ surface: [0, 0, 0, 0], cloudFraction: 0.5, opticalThickness: 5, tauMoments: mom(0.7, 1, 0.2) }), 1, 1).gap).toBe(0);
+    });
+    describe('the cloud without a retrieval from the partly-cloudy statistic (cloudTau constants.unmeasuredTau)', () => {
+      // TEST VALUES: the header's statistic as built (Pincus et al. 2023 Fig. 7; partlyCloudyAllHeights, floor cells
+      // 0), and its own check values planeAlbedoLiquid.binSum at μ0 = 0.2 … 1.0.
+      const header = {
+        constants: {
+          unmeasuredTau: {
+            label: 'estimated',
+            tauBinLnCentre: [-2.905, -0.471, 0.772, 1.761, 2.688, 3.615, 4.552],
+            statistics: { floorCellsZero: { partlyCloudyAllHeights: { binProbability: [0.0421, 0.4675, 0.335, 0.1317, 0.0237, 0, 0] } } },
+          },
+        },
+      };
+      const check: [number, number][] = [[0.2, 0.356], [0.4, 0.237], [0.6, 0.1671], [0.8, 0.1204], [1.0, 0.0867]];
+      const pop = unmeasuredTauPopulation(header)!;
+      it('reads the seven bins (empty ones dropped) and reproduces the header\'s plane albedo R̄ = Σ p_k R(τ_k)', () => {
+        expect(pop.label).toBe('estimated');
+        expect(pop.taus.length).toBe(5);
+        expect(pop.p.reduce((a, b) => a + b, 0)).toBeCloseTo(1, 12);
+        for (const [mu0, R] of check) expect(populationPlaneAlbedo(pop, CLOUD_G_LIQUID, mu0)).toBeCloseTo(R, 3);
+        expect(unmeasuredTauPopulation({ constants: {} })).toBeNull();
+        expect(unmeasuredTauPopulation({ constants: { unmeasuredTau: { tauBinLnCentre: [0, 1], statistics: { floorCellsZero: { partlyCloudyAllHeights: { binProbability: [0.5] } } } } } })).toBeNull();
+      });
+      it('gives the share C − f_τ its own population: no longer unknown, and black-surface cloud light = f·R̄_ret + (C − f)·R̄_pop', () => {
+        const mu0 = 0.8;
+        const base = { surface: [0, 0, 0, 0] as [number, number, number, number], cloudFraction: 0.94, opticalThickness: 7.8, tauMoments: mom(0.06, Math.log(7.8), 0.4) };
+        const without = earthShade(sample(base), mu0, 1);
+        const withPop = earthShade(sample({ ...base, unmeasuredTau: pop }), mu0, 1);
+        expect(without.gap).toBeCloseTo(0.88, 12);
+        expect(withPop.gap).toBe(0);
+        expect(withPop.gapEmit).toBe(0);
+        // Hemispheric albedo over a black surface: the plane albedos of the two populations, by share.
+        const ln = cloudLogNormal(mom(0.06, Math.log(7.8), 0.4), 0.94)!;
+        const gRet = CLOUD_G_LIQUID;
+        const Rret = ln.taus.reduce((a, t, k) => a + [2 / 3, 1 / 6, 1 / 6][k] * cloudPlaneAlbedo(t, gRet, mu0), 0);
+        const a = albedo((mu) => earthShade(sample({ ...base, unmeasuredTau: pop }), mu0, mu).rho[1], mu0);
+        expect(a).toBeCloseTo(0.06 * Rret + 0.88 * populationPlaneAlbedo(pop, CLOUD_G_LIQUID, mu0), 6);
+        // Without the moments (the level or the layer missing) the statistic is not used.
+        expect(earthShade(sample({ ...base, tauMoments: undefined, unmeasuredTau: pop }), mu0, 1).rho[1]).toBeCloseTo(earthShade(sample({ ...base, tauMoments: undefined }), mu0, 1).rho[1], 12);
+      });
+      it('conserves energy over a white surface with both populations', () => {
+        for (const mu0 of [0.3, 0.8]) {
+          const a = albedo((mu) => earthShade(sample({ surface: [1, 1, 1, 1], cloudFraction: 0.9, opticalThickness: 99, tauMoments: mom(0.3, Math.log(5), 1, 0.4), unmeasuredTau: pop }), mu0, mu).rho[1], mu0);
+          expect(a).toBeCloseTo(1, 6);
+        }
+      });
     });
     it('conserves energy over a white surface, and takes the ice share among the retrievals', () => {
       for (const mu0 of [0.3, 0.8]) {
