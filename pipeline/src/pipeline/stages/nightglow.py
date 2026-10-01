@@ -10,9 +10,10 @@ Products
                                   solar-wind coupling (hourly, measured part of the window) or its median
                                   (climatology), the IGRF-14 AACGM-like coordinate grid, and the emission model
                                   (columns per unit energy flux and vertical profiles vs mean energy).
-  nightglow/aurora-ovation.bin    float32 [season 4][quantity 2][coupling node][MLT 96][MLAT 80]
+  nightglow/aurora-ovation.bin    float16 [season 4][quantity 2][coupling node][MLT 96][MLAT 80]
   nightglow/aurora-magnetic.bin   float32 [lat 180][lon 360][3]: AACGM-like latitude (deg), cos and sin of longitude
-  nightglow/aurora-emission.bin   float32 [energy node][altitude][4]: XYZS emission per km per (erg cm^-2 s^-1)
+  nightglow/aurora-emission.bin   float32 [energy node][altitude][4]: volume emission rate of the line groups N2+ 1N
+                                  (427.8 nm), O 557.7 nm, O 630.0+636.4 nm (and 0) in R per km per (erg cm^-2 s^-1)
 """
 
 from __future__ import annotations
@@ -190,6 +191,15 @@ def _xyzs_by_sample_lines(wl_vac_nm: np.ndarray, intensity_r: np.ndarray) -> np.
     return out
 
 
+def _xyzs_by_sample_air(nm_air: list[float], intensity_r: list[float]) -> np.ndarray:
+    out = np.zeros((len(SAMPLE_NM), 4))
+    for wl, i in zip(nm_air, intensity_r):
+        for k, (lo, hi) in enumerate(_sample_bins()):
+            if lo <= wl < hi:
+                out[k] += ag.line_xyzs_air(wl, i)
+    return out
+
+
 def _xyzs_by_sample_cont(lam_um: np.ndarray, flux: np.ndarray) -> np.ndarray:
     out = np.zeros((len(SAMPLE_NM), 4))
     wl_air = vacuum_to_air(lam_um * 1e3)
@@ -246,6 +256,16 @@ def build_airglow(ctx: BuildContext, cie_ids: list[str]) -> tuple[dict, dict]:
     labels = sorted({s["label"] for s in srf["labelSegments"]})
     zen = {c["id"]: c["zenithXYZSReference"][1] for c in classes}
     t = ag.tables()
+    # Solar radio flux of the limb check's month (SCIAMACHY monthly mean): DRAO days in the 27-day windows centred on
+    # the days of that month.
+    lc = dict(t["limbCheck"])
+    m0 = _dt.date(lc["year"], lc["month"], 1)
+    m1 = _dt.date(lc["year"] + (lc["month"] == 12), lc["month"] % 12 + 1, 1) - _dt.timedelta(days=1)
+    xs = [v for dd, v in daily if m0 - _dt.timedelta(days=13) <= dd <= m1 + _dt.timedelta(days=13)]
+    lc["source"] = src["lednytskyy"]
+    lc["srfSfu"] = round(float(np.mean(xs)), 1) if xs else None
+    lc["srfMethod"] = (f"mean of the DRAO daily 10.7 cm flux over {m0.isoformat()} - 13 d to {m1.isoformat()} + 13 d "
+                       f"({len(xs)} days): the 27-day windows centred on the days of the month")
     model = {
         "kind": "airglowModel", "version": 1,
         "description": "Nightglow of the Earth's upper atmosphere from PALACE v1.0 (Cerro Paranal climatology from 10 "
@@ -260,7 +280,7 @@ def build_airglow(ctx: BuildContext, cie_ids: list[str]) -> tuple[dict, dict]:
             "monthCentreDoy": ag.month_centre_doy(p), "ltBinCentresHours": ag.LT_BIN_CENTRES_H,
             "localTime": "local mean solar time at the emission point: UT + east longitude / 15 h (PALACE uses the "
                          "mean solar time at Paranal, 70.4 W)",
-            "nightWeight": ag.night_weights(p), "srf0": ag.SRF0,
+            "nightWeight": ag.night_weights(p), "srf0": ag.SRF0, "nightMinSolarZenithDeg": ag.NIGHT_MIN_SZA_DEG,
             "scaling": "I = referenceR * f0[month][lt] * (1 + 0.01 * sce[month][lt] * (srf - srf0)) (PALACE Eq. 1); "
                        "between bin centres (months by day of year, local-time bins) linear interpolation",
             "domain": f"night: solar zenith angle at the ground point under the emission > {ag.NIGHT_MIN_SZA_DEG:g} deg "
@@ -284,7 +304,7 @@ def build_airglow(ctx: BuildContext, cie_ids: list[str]) -> tuple[dict, dict]:
         "uncertainty": "PALACE residual variability (sigma tables) 20-50 % for mesopause emissions, up to 100 % for "
                        "the red lines; latitude dependence not modelled (the red lines in particular are enhanced near "
                        "Paranal by the equatorial ionisation anomaly); layer thickness +-36 % (Baker & Stair spread).",
-        "limbCheck": t["limbCheck"],
+        "limbCheck": lc,
     }
     diag = {"zenithXYZS": tot.tolist(), "zenithYByClass": zen, "srfLabels": labels,
             "limbRatioMesopause": ag.gaussian_column_limb_ratio(6371.0 + 97.0, layers[0]["sigmaKm"])}
@@ -378,9 +398,15 @@ def build_aurora(ctx: BuildContext, cie_ids: list[str]) -> tuple[dict, dict, dic
         "OI6300": ag.line_xyzs_air(o1d["lines_air_nm"]["630"], 1.0) + ag.line_xyzs_air(o1d["lines_air_nm"]["636"],
                                                                                    o1d["A636_s"] / o1d["A630_s"]),
     }
+    line_by_sample = {
+        "N2p4278": _xyzs_by_sample_lines(np.array([wl for wl, _ in lines["N2p4278"]]), np.array([rel for _, rel in lines["N2p4278"]])),
+        "OI5577": _xyzs_by_sample_air([tabs["oi5577"]["line_air_nm"]], [1.0]),
+        "OI6300": _xyzs_by_sample_air([o1d["lines_air_nm"]["630"], o1d["lines_air_nm"]["636"]], [1.0, o1d["A636_s"] / o1d["A630_s"]]),
+    }
+    # Volume emission rate per line group, R per km (1 R/km = 1e6/1e5 = 10 photons cm^-3 s^-1), per unit energy flux.
     emis = np.zeros((len(ENERGY_NODES_KEV), z.size, 4))
-    for k in ("N2p4278", "OI5577", "OI6300"):
-        emis += (et.column_r_per_erg[k][:, None, None] * et.profile_per_km[k][:, :, None]) * line_xyzs[k][None, None, :]
+    for g, k in enumerate(("N2p4278", "OI5577", "OI6300")):
+        emis[:, :, g] = et.column_r_per_erg[k][:, None] * et.profile_per_km[k]
     whiter = tabs["whiter2023"]["meanPeakKm"]
     diag = {"peaks": {k: v.tolist() for k, v in et.peak_km.items()}, "columns": {k: v.tolist() for k, v in et.column_r_per_erg.items()},
             "whiter": whiter, "coupling": {"median": clim, "hours": int(vals.size), "gaps": gaps}}
@@ -390,7 +416,7 @@ def build_aurora(ctx: BuildContext, cie_ids: list[str]) -> tuple[dict, dict, dic
         "description": "Electron aurora from OVATION Prime 2010 precipitation, placed with IGRF-14 magnetic coordinates "
                        "and turned into light with a Maxwellian energy-deposition model (docs/reports/nightglow.md).",
         "ovation": sourced({
-            "file": f"{DIR}/aurora-ovation.bin", "dtype": "float32", "layout": "[season][quantity][couplingNode][mlt][mlat]",
+            "file": f"{DIR}/aurora-ovation.bin", "dtype": "float16", "layout": "[season][quantity][couplingNode][mlt][mlat]",
             "seasons": list(na.SEASONS), "quantities": ["energyFlux erg cm^-2 s^-1", "numberFlux 1e8 cm^-2 s^-1"],
             "couplingNodes": COUPLING_NODES, "mlatDeg": [float(x) for x in mlat_bins], "mltHours": [float(x) for x in mlt_bins],
             "seasonWeights": "OP2010: doy in [79,171): summer = 1-(171-doy)/92, spring = 1-summer; [171,263): fall = "
@@ -429,14 +455,19 @@ def build_aurora(ctx: BuildContext, cie_ids: list[str]) -> tuple[dict, dict, dic
                    "Spherical Earth of radius 6371.2 km for the start points; the aurora is placed in vertical columns "
                    "above these 110 km points (field-line tilt neglected)."),
         "emission": sourced({
-            "file": f"{DIR}/aurora-emission.bin", "dtype": "float32", "layout": "[energyNode][altitude][X, Y, Z, S]",
-            "unit": "cd/m^2 (X, Y, Z), scotopic cd/m^2 (S) per km of path per (erg cm^-2 s^-1) of energy flux",
+            "file": f"{DIR}/aurora-emission.bin", "dtype": "float32",
+            "layout": "[energyNode][altitude][N2p4278, OI5577, OI6300, 0]",
+            "unit": "volume emission rate in R per km (10 photons cm^-3 s^-1) per (erg cm^-2 s^-1) of energy flux; "
+                    "a line group's luminance along a path is its R (path integral) times lines[group].xyzsPerR",
+            "groups": ["N2p4278", "OI5577", "OI6300"],
+            "samplesNm": SAMPLE_NM,
             "averageEnergyNodesKeV": ENERGY_NODES_KEV, "altitudesKm": AURORA_ALT_KM,
             "lines": {k: {"columnRPerErg": [round(float(x), 3) for x in et.column_r_per_erg[k]],
                           "peakKm": [float(x) for x in et.peak_km[k]],
-                          "xyzsPerR": [float(x) for x in line_xyzs[k]]} for k in line_xyzs},
+                          "xyzsPerR": [float(x) for x in line_xyzs[k]],
+                          "xyzsPerRBySample": [[float(v) for v in row] for row in line_by_sample[k]]} for k in line_xyzs},
             "n2plusBands": [{"nmVac": round(wl, 3), "photonsRelative4278": round(rel, 5)} for wl, rel in lines["N2p4278"]],
-            "checks": {"whiter2023MeanPeakKm": whiter}},
+            "checks": {"whiter2023MeanPeakKm": whiter, "source": src["whiter"]}},
             "estimated", lab_src,
             method="Maxwellian electrons with characteristic energy E0 = <E>/2 and unit energy flux: ionisation rate of "
                    "Fang et al. (2008) in the US Standard Atmosphere 1976 (35 eV per ion pair). N2+ 1N (0,v'') bands: N2 "
@@ -451,7 +482,8 @@ def build_aurora(ctx: BuildContext, cie_ids: list[str]) -> tuple[dict, dict, dic
         "label": "estimated",
         "nowcastCheck": {"source": src["swpcOvation"], "use": "comparison only (report)"},
     }
-    bins = {"ovation": ov, "magnetic": mag, "emission": emis.astype(np.float32)}
+    # float16 halves the download; its 11-bit mantissa (relative error <= 5e-4) is far below the model's uncertainty.
+    bins = {"ovation": ov.astype(np.float16), "magnetic": mag, "emission": emis.astype(np.float32)}
     return model, diag, bins
 
 

@@ -126,17 +126,27 @@ def _observer_at(wl_air_nm: np.ndarray) -> np.ndarray:
 def line_xyzs(wl_vac_nm: np.ndarray, intensity_r: np.ndarray) -> np.ndarray:
     """XYZS (cd/m^2, scotopic cd/m^2) of emission lines given as column intensities in R (zenith radiance of a
     layer seen face-on): sum of K_m cmf(λ) (hc/λ) I 1e10/(4 pi)."""
-    wl = vacuum_to_air(np.asarray(wl_vac_nm, float))
-    e_ph = H_PLANCK * C_M_S / (wl * 1e-9)
+    wl_vac = np.asarray(wl_vac_nm, float)
+    wl = vacuum_to_air(wl_vac)
+    e_ph = H_PLANCK * C_M_S / (wl_vac * 1e-9)                                   # photon energy: vacuum wavelength
     rad_w = np.asarray(intensity_r, float) * PHOTON_RADIANCE_PER_R * e_ph       # W m^-2 sr^-1
     return (rad_w[:, None] * _observer_at(wl)).sum(axis=0)
+
+
+def air_to_vacuum(nm_air):
+    """Vacuum wavelength(s) of standard-air wavelength(s) (inverse of Edlen 1966 by fixed-point iteration)."""
+    a = np.asarray(nm_air, float)
+    v = a.copy()
+    for _ in range(4):
+        v = a * v / vacuum_to_air(v)
+    return float(v) if v.ndim == 0 else v
 
 
 def line_xyzs_air(nm_air: float, intensity_r: float) -> np.ndarray:
     """XYZS of one line given in standard-air wavelength (nm) and column intensity (R)."""
     wl = np.array([float(nm_air)])
-    e_ph = H_PLANCK * C_M_S / (wl * 1e-9)
-    return float(intensity_r) * PHOTON_RADIANCE_PER_R * float(e_ph[0]) * _observer_at(wl)[0]
+    e_ph = H_PLANCK * C_M_S / (air_to_vacuum(nm_air) * 1e-9)
+    return float(intensity_r) * PHOTON_RADIANCE_PER_R * e_ph * _observer_at(wl)[0]
 
 
 def tables() -> dict:
@@ -150,7 +160,7 @@ def continuum_xyzs(lam_vac_um: np.ndarray, flux_r_per_nm: np.ndarray) -> np.ndar
     m = (wl_vac > 340.0) & (wl_vac < 850.0)
     wl_air, per_nm_air = spectral_density_to_air(wl_vac[m], np.asarray(flux_r_per_nm, float)[m])
     grid = bin_average(wl_air, per_nm_air)                         # R per nm (air) on the CIE grid
-    e_ph = H_PLANCK * C_M_S / (cie.WAVELENGTHS * 1e-9)
+    e_ph = H_PLANCK * C_M_S / (air_to_vacuum(cie.WAVELENGTHS) * 1e-9)          # photon energy: vacuum wavelength
     return cie.xyzs(grid * PHOTON_RADIANCE_PER_R * e_ph)
 
 
