@@ -1,6 +1,6 @@
 // Inspector view-model: pure functions from a body + data + level to display rows. No DOM.
 
-import type { Body, EphemHeader, EphemSegment, Label, LightData, Sourced } from '../data/schema';
+import type { AtmosphereFile, Body, EphemHeader, EphemSegment, Label, LightData, Sourced } from '../data/schema';
 import type { SurfaceLayer } from '../data/surfaces';
 import type { OrientationSourcePort } from '../app/ports';
 import { labelAllowed, worstOf, type ExistsLevel } from '../app/reality';
@@ -71,6 +71,8 @@ export interface AttributeContext {
   surfaces?: SurfaceLayer[];
   /** Shape model status (app/shapes.ts), when the body has one. */
   shape?: ShapeStatus | null;
+  /** atmospheres.json, for the body's atmosphere rows (atmosphereRows). */
+  atmospheres?: AtmosphereFile | null;
 }
 
 export function attributeRows(body: Body, level: ExistsLevel, ephs: { path: string; header: EphemHeader }[], ctx: AttributeContext = {}): AttrRow[] {
@@ -119,6 +121,7 @@ export function attributeRows(body: Body, level: ExistsLevel, ephs: { path: stri
   rows.push(row('albedoXYZS', 'Geometric albedo (XYZ + scotopic)', p?.geometricAlbedoXYZS, level, 'xyzs'));
   rows.push(row('albedoV', 'Geometric albedo (V)', p?.geometricAlbedoV, level));
   rows.push(row('phase', 'Phase function', p?.phaseFunction, level, 'phase'));
+  rows.push(...atmosphereRows(ctx.atmospheres ?? null, body.id, level));
   for (const sl of ctx.surfaces ?? []) {
     // An albedo map carries a brightness pattern and a colour; the drawn map is as grounded as the worse (extras.ts).
     const label = sl.layer === 'albedo' && sl.colorLabel ? worstOf([sl.label, sl.colorLabel]) : sl.label;
@@ -131,6 +134,44 @@ export function attributeRows(body: Body, level: ExistsLevel, ephs: { path: stri
       ...(sl.method ? { method: sl.method } : sl.notes ? { method: sl.notes } : {}),
       sources: sl.sources,
       withheld: label !== 'unknown' && !labelAllowed(label, level),
+    });
+  }
+  return rows;
+}
+
+/**
+ * atmospheres.json rows of a body: one per component, labelled with the worst of its extinction, single-scattering
+ * albedo and phase function (what the renderer needs of it), its vertical optical depth and albedo near 550 nm;
+ * and the surface reflectance under the air of a body drawn from its atmosphere model (Titan).
+ */
+export function atmosphereRows(file: AtmosphereFile | null, id: number, level: ExistsLevel): AttrRow[] {
+  const a = file?.bodies[String(id)];
+  if (!file || !a || !a.components.length) return [];
+  const wl = file.wavelengthsNm;
+  let k550 = 0;
+  wl.forEach((w, k) => { if (Math.abs(w - 550) < Math.abs(wl[k550] - 550)) k550 = k; });
+  const rows: AttrRow[] = a.components.map((c) => {
+    const parts = [c.extinctionPerKm, c.singleScatteringAlbedo, c.phaseFunction];
+    const label = worstOf(parts.map((x) => x.label));
+    const tau = c.columnOpticalDepth[k550];
+    const ssa = c.singleScatteringAlbedo.value?.[k550];
+    const ph = c.phaseFunction.value?.kind ?? 'unknown';
+    const value = `${c.description}. Vertical optical depth ${formatValue(tau)} at ${wl[k550]} nm`
+      + (ssa === undefined ? ', single-scattering albedo unknown' : `, single-scattering albedo ${formatValue(ssa)}`)
+      + `, phase function ${ph}`;
+    const method = [['Extinction', c.extinctionPerKm], ['Albedo', c.singleScatteringAlbedo], ['Phase function', c.phaseFunction]]
+      .map(([n, x]) => `${n as string} (${(x as Sourced<unknown>).label}): ${(x as Sourced<unknown>).method ?? '—'}`).join(' ');
+    return {
+      key: `atm:${c.id}`, name: `Atmosphere: ${c.id}`, label, value, method,
+      sources: uniq(parts.flatMap((x) => x.sources ?? [])),
+      withheld: label !== 'unknown' && !labelAllowed(label, level),
+    };
+  });
+  const sr = a.surfaceReflectance;
+  if (sr) {
+    rows.push({
+      ...row('atm:surface', 'Surface under the atmosphere (Lambert reflectance)', sr, level),
+      value: sr.value ? `X, Y, Z, S equivalents ${sr.value.channelEquivalents.map((v) => formatValue(v)).join(', ')}` : 'unknown',
     });
   }
   return rows;

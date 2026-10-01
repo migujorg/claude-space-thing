@@ -157,8 +157,15 @@ def test_product_shape_and_labels(built):
             for q in (c["extinctionPerKm"], ssa, ph, c["channelEquivalents"]):
                 assert q["label"] in ("measured", "derived", "estimated", "unknown")
                 assert q["label"] == "unknown" or q["sources"]
-    titan = out["bodies"]["606"]["components"][1]
-    assert titan["singleScatteringAlbedo"]["label"] == "unknown" and titan["phaseFunction"]["label"] == "unknown"
+    titan = out["bodies"]["606"]
+    assert [c["id"] for c in titan["components"]] == ["rayleigh", "haze-below-80km", "haze-above-80km-a",
+                                                      "haze-above-80km-b", "methane"]
+    for c in titan["components"][1:4]:
+        # DISR model values (retrieved by their authors' radiative-transfer fits; ours digitized) → estimated
+        assert c["singleScatteringAlbedo"]["label"] == "estimated" and c["phaseFunction"]["label"] == "estimated"
+    sr = titan["surfaceReflectance"]
+    assert sr["label"] == "estimated" and len(sr["value"]["reflectance"]) == nw and sr["sources"]
+    assert all(0 < v < 0.2 for v in sr["value"]["reflectance"]) and len(sr["value"]["channelEquivalents"]) == 4
     mars = out["bodies"]["499"]
     d = mars["dustColumn"]["value"]
     assert np.array(d["opticalDepth610Pa"]).shape == (len(d["lsDeg"]), len(d["latitudeDeg"]))
@@ -167,9 +174,36 @@ def test_product_shape_and_labels(built):
 
 def test_tabulated_phase_functions_are_normalized(built):
     out, _ = built
-    for key in ("299", "999"):
-        ph = out["bodies"][key]["components"][0]["phaseFunction"]["value"]
+    for key, i in (("299", 0), ("999", 0), ("606", 1), ("606", 2)):
+        ph = out["bodies"][key]["components"][i]["phaseFunction"]["value"]
         ang = np.radians(ph["anglesDeg"])
         for row in ph["values"][::12]:
             mean = np.trapezoid(np.array(row) * np.sin(ang), ang) / 2
             assert mean == pytest.approx(1.0, rel=0.03), key
+
+
+def test_titan_doose_rule_on_the_digitized_albedos():
+    # Doose et al. (2016): ω(< 80 km) = (0.565 + ω(> 200 km)) / 1.5 (Es-sayeh et al. 2023). The two curves digitized
+    # from Barnes et al.'s (2018) Fig. 4 obey it to the digitization's precision.
+    rows = ab._ssa_rows()
+    lt, wt = rows["above_200km"]
+    ll, wl = rows["below_80km"]
+    assert np.abs(ab.doose_rule(np.interp(ll, lt, wt)) - wl).max() <= 6e-4
+    s = ab.titan_ssa(np.array([500.0, 600.0, 860.0]))
+    assert np.all(s["low"] >= s["top"]) and np.all(s["low"] <= 1.0) and np.all(s["top"] > 0.8)
+
+
+def test_titan_phase_functions_and_methane(built):
+    out, diag = built
+    d = diag["606"]
+    # Tomasko et al.'s Table 1 functions resampled log-linearly in angle keep their normalization to within 1.2 %
+    for key in ("phase_lo", "phase_hi"):
+        assert np.all(np.abs(np.asarray(d[key]["raw_norm"]) - 1) < 0.012), key
+    meth = next(c for c in out["bodies"]["606"]["components"] if c["id"] == "methane")
+    assert meth["singleScatteringAlbedo"]["value"] == [0.0] * 48 and meth["phaseFunction"]["value"]["kind"] == "none"
+    # the extinction encodes the measured column: τ_k = column × k (10 nm box average) at every sample
+    col = d["ch4_column_km_am"]
+    assert 1.0 < col < 5.0
+    k_box = atmo.sample_box(ab.methane_k_fine(atmo.FINE))
+    tau = np.array(meth["columnOpticalDepth"])
+    assert np.allclose(tau, col * k_box, rtol=0.02, atol=1e-5)

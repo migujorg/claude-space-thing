@@ -10,6 +10,7 @@ import { clear, h, setText, toggleClass } from './dom';
 import { formatAngle, formatDistance, formatDuration } from './format';
 import { attributeRows, derivedLabel, shapeRow, sunRows, sunWhy, type AttrRow } from './inspectModel';
 import { buildSun } from '../app/snapshot';
+import { atmosphereFor } from '../app/extras';
 import { sbRow } from '../app/smallbodies';
 import { brightnessInputs, smallBodyFacts, smallBodyLegend, smallBodyWhy } from './smallBodyInspect';
 import { syntheticFacts, syntheticWhy } from './syntheticInspect';
@@ -107,7 +108,12 @@ export class Inspector {
     // The Sun's and small bodies' lines depend on this frame: set in updateLive.
     const shape = m.shapeStatus(body.id);
     const shapeWhy = !shape ? '' : shape.drawn ? ` Drawn from its shape model instead of the ellipsoid: ${shape.text}.` : ` Its shape model is not drawn: ${shape.text}.`;
-    this.setWhy(isSun || sb ? '' : whyLine(f, level) + shapeWhy);
+    // A body drawn from its atmosphere model (extras.ts atmosphereFor → SceneAtmosphere.surface: Titan).
+    const atm = !isSun && !sb ? atmosphereFor(m.data?.atmospheres, body.id, level) : null;
+    const atmWhy = atm?.surface
+      ? ` Its resolved disk is drawn from its atmosphere model (${atm.worstLabel}): the haze and gas of atmospheres.json over the surface reflectance under them, by radiative transfer, not scaled to the disk photometry, which gives its light only as a point.`
+      : '';
+    this.setWhy(isSun || sb ? '' : whyLine(f, level) + shapeWhy + atmWhy);
 
     this.builtKey = this.stateKey(body.id);
     if (sb && sbRowId !== null && synthetic) {
@@ -149,6 +155,7 @@ export class Inspector {
       loading,
       surfaces: m.data?.surfaces.filter((x) => x.bodyId === body.id) ?? [],
       shape: m.shapeStatus(body.id),
+      atmospheres: m.data?.atmospheres ?? null,
     });
     // The Sun is drawn from light.json, not from reflectance data.
     if (isSun) rows = [...rows.filter((r) => !['albedoXYZS', 'albedoV', 'phase'].includes(r.key)), ...sunRows(m.light, level)];

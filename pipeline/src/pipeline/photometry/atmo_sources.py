@@ -183,6 +183,84 @@ BAZZON_2014 = Download(
              "Astronomy & Astrophysics 572, A6. DOI:10.1051/0004-6361/201323139.",
     notes=_ARXIV + " Transcribes Tomasko, M. G., et al. (2008), Planet. Space Sci. 56, 669-707, "
                    "DOI:10.1016/j.pss.2007.11.019, Fig. 47 (not accessible to this pipeline).")
+_TOMASKO_2008 = ("Tomasko, M. G., Doose, L., Engel, S., Dafoe, L. E., West, R., Lemmon, M., Karkoschka, E. & See, C. "
+                 "(2008). A model of Titan's aerosols based on measurements made inside the atmosphere. Planetary and "
+                 "Space Science 56, 669-707. DOI:10.1016/j.pss.2007.11.019")
+_ADAMKOVICS = ("Adamkovics, M., Mitchell, J. L., Hayes, A. G., Rojo, P. M., Corlies, P., Barnes, J. W., Ivanov, V. D., "
+               "Brown, R. H., Baines, K. H., Buratti, B. J., Clark, R. N., Nicholson, P. D. & Sotin, C. (2016). "
+               "Meridional variation in tropospheric methane on Titan observed with AO spectroscopy at Keck and VLT. "
+               "Icarus 270, 376-388. DOI:10.1016/j.icarus.2015.05.023 (arXiv:1509.08835, Section 3.2: 'We fit 32nd "
+               "order Legendre polynomials to the phase functions tabulated at ...'; reference data of the authors' "
+               "open radiative-transfer package https://github.com/adamkovics/atmosphere, atmosphere/refdata.py)")
+
+
+def _tomasko_phase(region: str, alt: str) -> Download:
+    return Download(
+        id=f"tomasko-2008-phase-{region}",
+        url=f"https://w.astro.berkeley.edu/~madamkov/refdata/aerosol/titan/Tomasko2007_phase_{alt}km.TAB",
+        subdir="atmospheres/titan", name=f"Tomasko2007_phase_{alt}km.TAB",
+        title=f"Huygens DISR aerosol scattering phase functions, {alt} km, 355-5166 nm (Tomasko et al. "
+              "2008 Table 1, as tabulated in the reference data of Adamkovics et al. 2016)",
+        citation=f"{_TOMASKO_2008} (Table 1: phase functions of the fractal-aggregate model fitted to the DISR "
+                 f"measurements, above and below 80 km). Machine-readable copy: {_ADAMKOVICS}.",
+        notes="Secondary transcription: Tomasko et al. (2008) is paywalled. Columns are wavelengths in Angstrom "
+              "(3550 ... 51660), rows scattering angles 0-180 deg; normalized to a mean of 1 over the sphere (checked: "
+              "1.001-1.011). Below 600 nm the two altitude regions are identical in the table; from 713 nm the "
+              "below-80-km functions have the stronger backscatter lobe.")
+
+
+TOMASKO_PHASE_LOW = _tomasko_phase("below-80km", "0-80")
+TOMASKO_PHASE_HIGH = _tomasko_phase("above-80km", "80-200")
+BARNES_2018 = Download(
+    id="barnes-2018-titan-twilight", url="http://stacks.iop.org/1538-3881/156/i=5/a=247/pdf", subdir="papers",
+    name="Barnes2018_AJ156_247.pdf",
+    title="Titan's twilight and sunset solar illumination (Fig. 4: the Doose et al. 2016 haze single-scattering "
+          "albedos above 200 km and below 80 km)",
+    citation="Barnes, J. W., MacKenzie, S. M., Lorenz, R. D. & Turtle, E. P. (2018). Titan's twilight and sunset "
+             "solar illumination. Astronomical Journal 156, 247. DOI:10.3847/1538-3881/aae519. Plots the single-"
+             "scattering albedos of Doose, L. R., Karkoschka, E., Tomasko, M. G. & Anderson, C. M. (2016), Vertical "
+             "structure and optical properties of Titan's aerosols from radiance measurements made inside and outside "
+             "the atmosphere, Icarus 270, 355-375, DOI:10.1016/j.icarus.2015.09.039 (paywalled, not accessible to "
+             "this pipeline).",
+    license="Free to read (AAS)", browser_agent=True,
+    sha256="edd61cbefecaf8d32fc1427aa121512368ecb19a8324ea5a1b9a791b1b7147ec", retrieved="2026-10-01",
+    notes="Fig. 4 is vector graphics: the two blue curves are read from the page's drawing paths (Bezier "
+          "segments, axes calibrated on the tick marks) into photometry/tables/titan_doose_2016_ssa.csv "
+          "(docs/sources/titan-haze.md).")
+ES_SAYEH_2023 = Download(
+    id="es-sayeh-2023", url="https://insu.hal.science/insu-04036493v1/file/Es-sayeh_2023_Planet._Sci._J._4_44.pdf",
+    subdir="papers", name="Es-sayeh_2023_PSJ4_44.pdf",
+    title="Updated radiative transfer model for Titan in the near-infrared (Section 2.2: Doose et al.'s altitude rule "
+          "for the haze single-scattering albedo; the DISR aggregate parameters)",
+    citation="Es-sayeh, M., Rodriguez, S., Coutelier, M., Rannou, P., Bezard, B., Maltagliati, L., Cornet, T., "
+             "Grieger, B., Karkoschka, E., Le Mouelic, S., Le Gall, A., Neish, C., MacKenzie, S., Solomonidou, A., "
+             "Sotin, C. & Coustenis, A. (2023). Updated radiative "
+             "transfer model for Titan in the near-infrared wavelength range: validation against Huygens atmospheric "
+             "and surface measurements and application to the Cassini/VIMS observations of the Dragonfly landing "
+             "area. Planetary Science Journal 4, 44. DOI:10.3847/PSJ/acbd37.",
+    license="CC BY 4.0", notes="HAL open archive copy insu-04036493v1.")
+HUYGENS_GCMS_CH4 = Download(
+    id="huygens-gcms-ch4", url="https://atmos.nmsu.edu/PDS/data/hpgcms_0001/DATA/DTWG_MOLE_FRACTION/"
+                               "GCMS_MOLE_FRACTION_STG2.TAB",
+    subdir="atmospheres/titan", name="GCMS_MOLE_FRACTION_STG2.TAB",
+    title="Huygens GCMS methane (and argon) mole fraction during the descent, by UTC (DTWG submission)",
+    citation="Niemann, H. B., Atreya, S. K., Demick, J. E., Gautier, D., Haberman, J. A., Harpold, D. N., Kasprzak, W. "
+             "T., Lunine, J. I., Owen, T. C. & Raulin, F. (2010). Composition of Titan's lower atmosphere and simple "
+             "surface volatiles as measured by the Cassini-Huygens probe gas chromatograph mass spectrometer "
+             "experiment. J. Geophys. Res. 115, E12006. DOI:10.1029/2010JE003659. Data: Huygens GCMS, NASA PDS "
+             "Atmospheres Node hpgcms_0001, product DESCENT_GCMS_MOLE_FRACTION_STG2 (data set "
+             "HP-SSA-GCMS-3-FCO/DESCENT-V1.0, NASA GSFC, 2006).",
+    license="NASA PDS")
+HUYGENS_DTWG_DESCENT = Download(
+    id="huygens-dtwg-descent", url="https://atmos.nmsu.edu/PDS/data/hpdtwg_0001/DATA/HUY_DTWG_DESCENT_POS.TAB",
+    subdir="atmospheres/titan", name="HUY_DTWG_DESCENT_POS.TAB",
+    title="Huygens reconstructed descent trajectory: UTC, pressure, altitude above the 2575 km sphere",
+    citation="Kazeminejad, B., Atkinson, D. H., Perez-Ayucar, M., Lebreton, J.-P. & Sollazzo, C. (2007). Huygens' "
+             "entry and descent through Titan's atmosphere - Methodology and results of the trajectory reconstruction. "
+             "Planet. Space Sci. 55, 1845-1876. DOI:10.1016/j.pss.2007.04.013. Data: Huygens Descent Trajectory "
+             "Working Group, NASA PDS Atmospheres Node hpdtwg_0001, HUY_DTWG_DESCENT_POS (HP-SSA-DTWG-6-TRAJECTORY-"
+             "V1.0).",
+    license="NASA PDS")
 
 # ------------------------------------------------------------------------------------------------ Venus
 HANSEN_HOVENIER = Download(

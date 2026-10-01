@@ -390,6 +390,20 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
     const dAU = toSunLen / AU_KM;
     const sunDir = scale(b.toSun, 1 / toSunLen);
     const alpha = angle(b.toSun, scale(b.pos, -1));
+    // A body drawn from its atmosphere model (SceneAtmosphere.surface: Titan; docs/rendering-earth.md §8 "Titan"):
+    // its resolved disk is the model's own at any phase, never renormalized to the disk photometry, which stays
+    // the unresolved point's light (and the model's test, docs/validation.md).
+    const physical = b.atmosphere?.surface && b.orient && irr && opts.atmospheres ? b.atmosphere.surface : null;
+    // Its tables once ready, for a disk at least a pixel across (a point's light is its disk photometry).
+    const resolvedDisk = (2 * angR) / g.pixelAngle > 1;
+    let physB: AtmosphereBinding | null = null;
+    if (physical && resolvedDisk) {
+      const got = opts.atmospheres!(b, [0, 0, 0, 0], null);
+      if (got && 'error' in got) warnings.push(got.error);
+      else if (got?.tables) physB = got;
+    }
+    // Fully resolved (smooth(1, 2, diameter px) = 1) it has no point part: the photometry is not needed.
+    const modelDiskOnly = physB !== null && (2 * angR) / g.pixelAngle >= 2;
     // Spatial law at this phase angle (Lambert when none is measured or its fit does not cover α).
     let law = LAMBERT_LAW;
     const lr = resolveLaw(b.spatialModel, alpha);
@@ -419,7 +433,7 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
     const atReferenceView = !atThisGeometry && b.diskReflectanceModel?.kind === 'rolo-v1';
     const texel = surface?.photometry?.texel ?? null;
     if (texel) law = TEXEL_LAW;
-    if (!pPhi && !b.surfaceUnknown && b.albedoXYZS && b.phase) {
+    if (!pPhi && !b.surfaceUnknown && b.albedoXYZS && b.phase && !modelDiskOnly) {
       const ph = evalPhase(b.phase, alpha);
       let phi: number | null = ph.ok ? ph.phi : null;
       if (!ph.ok) {
@@ -435,6 +449,8 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
           if (range) phaseEdge = ((alpha * 180) / Math.PI > range[1] ? range[1] : range[0]) * (Math.PI / 180);
           label = worse(label, 'estimated');
           warnings.push(`${b.name}: phase extrapolated beyond measured range (${range?.[0]}–${range?.[1]}°) with the spatial law → estimated`);
+        } else if (physical) {
+          warnings.push(`${b.name}: ${ph.reason} → no light as a point; a resolved disk is drawn from its atmosphere model`);
         } else {
           warnings.push(`${b.name}: ${ph.reason} → sunlit part drawn as not measured (night side black)`);
         }
@@ -508,7 +524,16 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
     let onDisk = false;
     const groundAlbedo = b.albedoXYZS && irr ? [0, 1, 2, 3].map((c) => LAMBERT_ALBEDO_PER_GEOMETRIC_ALBEDO * (b.albedoXYZS![c] / irr[c])) : [0, 0, 0, 0];
     // Only for a resolved disk (smooth(1, 2, diameter px) > 0): a point's light is its disk photometry.
-    if (b.atmosphere && b.orient && irr && lit && opts.atmospheres && (earth || pPhi) && (2 * angR) / g.pixelAngle > 1) {
+    if (physical && physB) {
+      // Absolute: L = (E_sun/π)·ρ_surface·μ0 under the air, plus the air's own light (the shader's
+      // ATM_OVER_PHOTOMETRY with the surface scale b.rad = E_sun/π·ρ). Until the tables are ready, or when the
+      // atmosphere cannot be drawn (warned above), the disk photometry stands in, without the air.
+      atmB = physB;
+      K = irr!.map((v, c) => (v * physical.xyzs[c]) / (Math.PI * dAU * dAU)) as XYZS;
+      law = LAMBERT_LAW;
+      lit = true;
+      onDisk = true;
+    } else if (!physical && b.atmosphere && b.orient && irr && lit && opts.atmospheres && (earth || pPhi) && resolvedDisk) {
       const dust = b.atmosphere.body.dustColumn ? marsDustScale(b.atmosphere.body, snap.et) : null;
       const got = opts.atmospheres(b, groundAlbedo, dust ? { scale: dust.scale, bin: dust.bin } : null);
       if (got && 'error' in got) {
@@ -636,9 +661,11 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
         cands.sort((a, b2) => a.d - b2.d);
         for (const k of cands.slice(0, 4)) occluders.push([k.o, k.r]);
       }
-      // Earth: the source's illuminance over π, shaded by the Earth model like sunlight (earth.ts).
+      // Earth: the source's illuminance over π, shaded by the Earth model like sunlight (earth.ts). A body drawn
+      // from its atmosphere model: on its surface's reflectance (the air itself is not lit by planetshine).
+      const physK = physical && onDisk ? physical.xyzs : null;
       const planetshine = lit
-        ? planetshineSources(b, snap.bodies, irr).map((ps) => ({ ...ps, K: (earth ? ps.E.map((e) => e / Math.PI) : ps.K).map((v) => v * fRes) as XYZS }))
+        ? planetshineSources(b, snap.bodies, irr).map((ps) => ({ ...ps, K: (earth ? ps.E.map((e) => e / Math.PI) : physK ? ps.E.map((e, c) => (e * physK[c]) / Math.PI) : ps.K).map((v) => v * fRes) as XYZS }))
         : [];
       resolved.push({
         body: b, frame, lit,

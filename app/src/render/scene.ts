@@ -174,6 +174,14 @@ export interface SceneAtmosphere {
   /** AtmosphereFile.bodies[id]. The renderer caches its tables by this object's identity: keep it stable. */
   body: BodyAtmosphere;
   worstLabel: Label;
+  /**
+   * A body drawn from its atmosphere model (Titan; docs/rendering-earth.md §8 "Titan"): the Lambert reflectance
+   * of what lies below the air, per sample of `wavelengthsNm` and per channel X, Y, Z, S (BodyAtmosphere
+   * .surfaceReflectance; its label is in `worstLabel`). The resolved disk is then the model's own (sunlight through
+   * the air onto this surface, plus the air's light), not renormalized to the disk photometry. Absent: the body
+   * keeps its disk photometry and the air is drawn over it renormalized (§8).
+   */
+  surface?: { reflectance: number[]; xyzs: [number, number, number, number] };
 }
 
 /**

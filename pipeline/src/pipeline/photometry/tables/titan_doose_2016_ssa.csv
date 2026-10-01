@@ -1,0 +1,60 @@
+# Titan haze single-scattering albedo of Doose, L. R., Karkoschka, E., Tomasko, M. G. & Anderson, C. M. (2016),
+#   "Vertical structure and optical properties of Titan's aerosols from radiance measurements made inside and
+#   outside the atmosphere", Icarus 270, 355-375, DOI:10.1016/j.icarus.2015.09.039 (paywalled), as plotted in Fig. 4 of
+#   Barnes, J. W., MacKenzie, S. M., Lorenz, R. D. & Turtle, E. P. (2018), "Titan's twilight and sunset solar
+#   illumination", Astronomical Journal 156, 247, DOI:10.3847/1538-3881/aae519 (free to read): "we assume values from
+#   Doose et al. (2016) for wavelengths shorter than 0.9 um. As recommended by Doose et al. (2016), we have one
+#   single-scattering albedo for below 80 km, another one for above 200 km, and we interpolate linearly in between."
+# Digitized 2026-10-01 from the figure's vector drawing paths (PDF page 3 converted to SVG with poppler pdftocairo;
+#   pipeline/src/pipeline/photometry/titan_digitize.py): the light-blue ('above 200 km') and dark-blue ('below 80 km')
+#   strokes, cubic Bezier segments sampled every 1/8 segment; x calibrated on the five major ticks 1-5 um (max residual
+#   0.0004 um), y on the six ticks 0.0-1.0 of the left (blue) axis (max residual 0.0001). Both curves start at 499.8 nm;
+#   rows stop at 865 nm (the figure's seam to Hirtzig et al. 2013 values is near 870 nm). Repeated vertices removed.
+#   ssa is as plotted: the below-80-km curve reaches 1.0002 near 780 nm (the rule below exceeds 1 there; the
+#   pipeline caps omega at 1).
+# Check: the curves satisfy Doose et al.'s rule omega(z < 80 km) = (0.565 + omega(z > 200 km)) / 1.5, as transcribed
+#   by Es-sayeh et al. (2023, PSJ 4, 44, Sect. 2.2), to within 0.0006 at every below-80-km vertex (test_atmospheres).
+curve,wavelength_nm,ssa
+above_200km,499.8,0.8437
+above_200km,508.1,0.8501
+above_200km,516.5,0.8562
+above_200km,525.3,0.8622
+above_200km,534.5,0.8682
+above_200km,544.3,0.8741
+above_200km,554.8,0.8800
+above_200km,566.2,0.8858
+above_200km,578.7,0.8917
+above_200km,600.0,0.9012
+above_200km,600.8,0.9012
+above_200km,623.9,0.9096
+above_200km,624.8,0.9098
+above_200km,631.8,0.9122
+above_200km,639.4,0.9145
+above_200km,647.5,0.9167
+above_200km,656.0,0.9188
+above_200km,664.7,0.9209
+above_200km,673.7,0.9230
+above_200km,682.9,0.9250
+above_200km,692.1,0.9270
+above_200km,700.0,0.9285
+above_200km,716.0,0.9306
+above_200km,728.6,0.9320
+above_200km,741.2,0.9332
+above_200km,753.8,0.9342
+above_200km,766.6,0.9349
+above_200km,779.5,0.9354
+above_200km,792.7,0.9356
+above_200km,806.4,0.9355
+above_200km,820.5,0.9352
+above_200km,841.7,0.9342
+above_200km,864.7,0.9325
+below_80km,499.8,0.9396
+below_80km,524.0,0.9512
+below_80km,553.0,0.9627
+below_80km,587.1,0.9737
+below_80km,626.6,0.9836
+below_80km,671.5,0.9917
+below_80km,722.2,0.9975
+below_80km,778.9,1.0002
+below_80km,841.7,0.9994
+below_80km,864.7,0.9988
