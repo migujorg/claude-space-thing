@@ -98,6 +98,8 @@ def moon_grid(spec: dict) -> sm.Grid:
     e bins of 0.1, i bins of 5 deg over 0-180."""
     lo, hi, step = spec["aEdgesAu"]
     return sm.Grid(sm.uniform_edges(lo, hi, step), 0.1, 5.0, 10, 36)
+
+
 # Region over which C of H_lim(a) is fitted (Hendler & Malhotra 2020, Table 1 regions).
 FIT_RANGE = {"hungaria": (1.78, 2.0), "mainbelt": (2.12, 3.25), "hilda": (3.92, 4.004), "trojan": (5.095, 5.319)}
 ANGLES = {"hungaria": "uniform", "mainbelt": "uniform", "hilda": "hilda", "trojan": "trojan"}

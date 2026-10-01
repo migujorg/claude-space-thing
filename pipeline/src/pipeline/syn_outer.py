@@ -52,7 +52,8 @@ def calibrate(moons: list, rows: list[dict]) -> dict:
     return {"offset": round(med, 4), "robustSigma": round(sig, 4),
             "offsetSigma": round(1.2533 * sig / math.sqrt(len(used)), 4) if len(used) > 1 else None,
             "n": len(used), "used": [[n, m, h, round(h - m, 3)] for n, m, h in used],
-            "notInMpcList": [n for n, _, _ in missing], "rule": "H_V = m + offset (median of H_MPC - m over the calibrators)"}
+            "notInMpcList": [n for n, _, _ in missing],
+            "rule": "H_V = m + offset (median of H_MPC - m over the calibrators)"}
 
 
 @dataclass(frozen=True)
@@ -239,11 +240,13 @@ def knee_check(arch: dict[str, np.ndarray], tab: dict, bins: int = 20) -> dict:
     degree of freedom), and the same for the alternative reading (cumulative law continuous at the knee)."""
     law = KneeLaw(tab["hLaw"]["alphaBright"], tab["hLaw"]["alphaFaint"], tab["hLaw"]["hBreak"], tab["hLaw"]["hMax"])
     sel = tab["archive"]["selection"]
+    def cum_continuous(h):        # the other reading: N(<H) itself continuous at the knee
+        h = np.minimum(h, law.h_max)
+        alpha = np.where(h < law.h_break, law.alpha_bright, law.alpha_faint)
+        return 10.0 ** (alpha * (h - law.h_break))
+
     out = {}
-    for name, cum in (("differential knee (used)", law.cum),
-                      ("cumulative knee (alternative)", lambda h: np.where(np.minimum(h, law.h_max) < law.h_break,
-                                                                            10.0 ** (law.alpha_bright * (np.minimum(h, law.h_max) - law.h_break)),
-                                                                            10.0 ** (law.alpha_faint * (np.minimum(h, law.h_max) - law.h_break))))):
+    for name, cum in (("differential knee (used)", law.cum), ("cumulative knee (alternative)", cum_continuous)):
         chi2, dof = 0.0, 0
         for d0 in np.arange(9.0, 16.5, 0.5):
             m = (arch["d"] >= d0) & (arch["d"] < d0 + 0.5)
