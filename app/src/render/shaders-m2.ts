@@ -505,7 +505,12 @@ fn cmpSeg(R: Ring, k: u32, q: u32, ua: f32, ub: f32) -> f32 {
 
 /** G(x) = ∫(1 − e^{−τx}) du over [ua, ub] and dG/dx, from the nodes (ringComponents.ts gAt). */
 fn cmpG(R: Ring, k: u32, ua: f32, ub: f32, x: f32) -> vec2f {
-  if (x <= CMP_GX0) { let g0 = cmpSeg(R, k, 4u, ua, ub); return vec2f(g0 * x / CMP_GX0, g0 / CMP_GX0); }
+  if (x <= CMP_GX0) {
+    let g0 = cmpSeg(R, k, 4u, ua, ub);
+    let T = cmpSeg(R, k, 0u, ua, ub);
+    let q = (g0 - T * CMP_GX0) / (CMP_GX0 * CMP_GX0);
+    return vec2f(T * x + q * x * x, T + 2.0 * q * x);
+  }
   let j = u32(clamp(floor(log2(x / CMP_GX0) / 0.5), 0.0, f32(CMP_GN - 2u)));
   let xa = CMP_GX0 * exp2(f32(j) * 0.5);
   let xb = xa * exp2(0.5);
@@ -515,7 +520,13 @@ fn cmpG(R: Ring, k: u32, ua: f32, ub: f32, x: f32) -> vec2f {
     let ginf = cmpSeg(R, k, 1u, ua, ub);
     return vec2f(ginf - (ginf - Fb) * (xb / x), (ginf - Fb) * xb / (x * x));
   }
-  return ringInterpSeg(Fa, Fb, xa, xb, x);
+  if (Fa > 1e-30 && Fb > 1e-30) {
+    let pw = log2(Fb / Fa) / 0.5;
+    let v = Fa * pow(x / xa, pw);
+    return vec2f(v, pw * v / x);
+  }
+  let f = clamp((x - xa) / (xb - xa), 0.0, 1.0);
+  return vec2f(max(mix(Fa, Fb, f), 0.0), (Fb - Fa) / (xb - xa));
 }
 
 /** A phase table (offset rel within the block) at α (degrees): XYZS, or w < 0 outside its domain. */
@@ -656,9 +667,13 @@ fn cmpVertCdf(R: Ring, k: u32, rho: f32, z: f32) -> f32 {
     if (v.z > 0.0) { h = min(h, v.z); }
     return 0.5 + asin(clamp(z / max(h, 1e-3), -1.0, 1.0)) / PI;
   }
-  // broken power law: ρ ∝ |z|^−a (|z| < zb), zb^(b−a)|z|^−b (zb ≤ |z| ≤ zmax)
-  let zb = v.x;
-  let zm = v.y;
+  // broken power law: ρ ∝ |z|^−a (|z| < zb), zb^(b−a)|z|^−b (zb ≤ |z| ≤ zmax), heights scaled linearly in radius
+  // from 1 at the inner edge to b6.w at the outer edge
+  let rIn = cmpV(R, k * CMP_REC).x;
+  let rOut = cmpV(R, k * CMP_REC + 1u).x;
+  let hs = mix(1.0, b6.w, clamp((rho - rIn) / max(rOut - rIn, 1e-3), 0.0, 1.0));
+  let zb = v.x * hs;
+  let zm = v.y * hs;
   let a = v.z;
   let bb = v.w;
   let i1 = pow(zb, 1.0 - a) / (1.0 - a);
@@ -672,63 +687,81 @@ fn cmpVertCdf(R: Ring, k: u32, rho: f32, z: f32) -> f32 {
 
 struct TorusOut { L: vec4f, tNear: f32 };
 
+/** Half-thickness (km) of torus component k at its outer radius: the slab its material fills. */
+fn cmpTorusHalf(R: Ring, k: u32) -> f32 {
+  let b6 = cmpV(R, k * CMP_REC + 6u);
+  let v = cmpV(R, k * CMP_REC + 7u);
+  if (b6.z < 1.5) {
+    var h = v.y * b6.y / v.x;
+    if (v.z > 0.0) { h = min(h, v.z); }
+    return h;
+  }
+  return v.y;
+}
+
+const CMP_TORUS_STEPS: f32 = 32.0;
+
 /**
  * Light of the torus components (Jupiter's halo and gossamer rings) along the ray o + t·d (planet-centred, unit d),
  * t < tMax: single scattering, I/F per unit path = D(α)·τ⊥(ρ)·(vertical density)/4, the planet's shadow per step.
+ * Each component is integrated over the ray's chord through its own slab and cylinder in up to 32 steps; the vertical
+ * density is integrated exactly over each step (its CDF), the radial profile and the shadow at the step's middle.
  */
 fn cmpTorus(R: Ring, o: vec3f, d: vec3f, tMax: f32, alphaDeg: f32) -> TorusOut {
   var out: TorusOut;
   out.L = vec4f(0.0);
   out.tNear = 1e30;
   let N = R.N.xyz;
-  let zM = R.cmp.w;
   let oz = dot(o, N);
   let dz = dot(d, N);
-  var t0 = 0.0;
-  var t1 = tMax;
-  if (abs(dz) > 1e-9) {
-    let ta = (-zM - oz) / dz;
-    let tb = (zM - oz) / dz;
-    t0 = max(t0, min(ta, tb));
-    t1 = min(t1, max(ta, tb));
-  } else if (abs(oz) > zM) { return out; }
   let op = o - oz * N;
   let dp = d - dz * N;
   let qa = dot(dp, dp);
   let qb = dot(op, dp);
-  let qc = dot(op, op) - R.geo.x * R.geo.x;
-  let disc = qb * qb - qa * qc;
-  if (disc <= 0.0 || qa < 1e-12) { if (qc > 0.0) { return out; } }
-  else {
-    let sq = sqrt(disc);
-    t0 = max(t0, (-qb - sq) / qa);
-    t1 = min(t1, (-qb + sq) / qa);
-  }
-  if (t1 <= t0) { return out; }
-  let n = u32(clamp(ceil((t1 - t0) / 400.0), 24.0, 192.0));
-  let dt = (t1 - t0) / f32(n);
   let K = u32(R.cmp.y);
-  for (var i = 0u; i < n; i++) {
-    let ta = t0 + f32(i) * dt;
-    let tm = ta + 0.5 * dt;
-    let X = o + tm * d;
-    let z = dot(X, N);
-    let rho = length(X - z * N);
-    let za = oz + ta * dz;
-    let zb = za + dt * dz;
-    var shade = -1.0;
-    for (var k = 0u; k < K; k++) {
-      let base = k * CMP_REC;
-      let h3 = cmpV(R, base + 3u);
-      if ((u32(h3.w) & 8u) == 0u) { continue; }
-      let b6 = cmpV(R, base + 6u);
+  for (var k = 0u; k < K; k++) {
+    let base = k * CMP_REC;
+    let h3 = cmpV(R, base + 3u);
+    if ((u32(h3.w) & 8u) == 0u) { continue; }
+    let h4 = cmpV(R, base + 4u);
+    let D = cmpPhase(R, h4.z, alphaDeg);
+    if (D.w < 0.0) { continue; }
+    let b6 = cmpV(R, base + 6u);
+    let zM = cmpTorusHalf(R, k);
+    var t0 = 0.0;
+    var t1 = tMax;
+    if (abs(dz) > 1e-9) {
+      let ta = (-zM - oz) / dz;
+      let tb = (zM - oz) / dz;
+      t0 = max(t0, min(ta, tb));
+      t1 = min(t1, max(ta, tb));
+    } else if (abs(oz) > zM) { continue; }
+    let qc = dot(op, op) - b6.y * b6.y;
+    let disc = qb * qb - qa * qc;
+    if (disc <= 0.0 || qa < 1e-12) { if (qc > 0.0) { continue; } }
+    else {
+      let sq = sqrt(disc);
+      t0 = max(t0, (-qb - sq) / qa);
+      t1 = min(t1, (-qb + sq) / qa);
+    }
+    if (t1 <= t0) { continue; }
+    let n = u32(clamp(ceil((t1 - t0) / 400.0), 4.0, CMP_TORUS_STEPS));
+    let dt = (t1 - t0) / f32(n);
+    let h2 = cmpV(R, base + 2u);
+    let rIn = cmpV(R, base).x;
+    let W = cmpV(R, base + 1u).x - rIn;
+    var acc = 0.0;
+    for (var i = 0u; i < n; i++) {
+      let ta = t0 + f32(i) * dt;
+      let X = o + (ta + 0.5 * dt) * d;
+      let z = dot(X, N);
+      let rho = length(X - z * N);
       if (rho < b6.x || rho > b6.y) { continue; }
-      let h2 = cmpV(R, base + 2u);
-      let rIn = cmpV(R, base).x;
-      let W = cmpV(R, base + 1u).x - rIn;
       let u = (rho - rIn) / W;
       let prof = cmpSeg(R, k, 0u, u - 0.5 * h2.w, u + 0.5 * h2.w) / h2.w;
       if (prof <= 0.0) { continue; }
+      let za = oz + ta * dz;
+      let zb = za + dt * dz;
       var frac: f32;
       if (abs(zb - za) > 1e-3) { frac = abs(cmpVertCdf(R, k, rho, zb) - cmpVertCdf(R, k, rho, za)) / abs(zb - za); }
       else {
@@ -737,13 +770,10 @@ fn cmpTorus(R: Ring, o: vec3f, d: vec3f, tMax: f32, alphaDeg: f32) -> TorusOut {
       }
       let dtau = prof * frac * dt;
       if (dtau <= 0.0) { continue; }
-      let h4 = cmpV(R, base + 4u);
-      let D = cmpPhase(R, h4.z, alphaDeg);
-      if (D.w < 0.0) { continue; }
-      if (shade < 0.0) { shade = planetShadow(R, X); }
-      out.L += h4.w * D * (0.25 * dtau * shade);
+      acc += dtau * planetShadow(R, X);
       out.tNear = min(out.tNear, ta);
     }
+    out.L += h4.w * D * (0.25 * acc);
   }
   return out;
 }

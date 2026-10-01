@@ -313,6 +313,9 @@ def rings_json(ctx: BuildContext | None = None) -> tuple[dict, dict]:
         "reflectance": unknown("No machine-readable measurement of Neptune's ring reflectance was available."),
     }
     diag["899"] = prof
+    from . import rings_neptune
+    comp, diag["899-components"] = rings_neptune.build(ctx, (prof, srcs))
+    out["899"]["components"] = sourced(comp["model"], comp["label"], comp["sources"], method=COMPONENTS_METHOD)
     out["599"] = {
         "planet": 599,
         "opticalDepth": unknown("Jupiter's faint dust rings (normal optical depth of order 1e-6; Throop et al. 2004, "
@@ -320,4 +323,7 @@ def rings_json(ctx: BuildContext | None = None) -> tuple[dict, dict]:
         "reflectance": unknown("Jupiter's rings are seen mainly in forward-scattered light; no machine-readable "
                                "brightness profile was available."),
     }
+    from . import rings_jupiter
+    comp, diag["599-components"] = rings_jupiter.build(ctx)
+    out["599"]["components"] = sourced(comp["model"], comp["label"], comp["sources"], method=COMPONENTS_METHOD)
     return out, diag

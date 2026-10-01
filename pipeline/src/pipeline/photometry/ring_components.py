@@ -130,6 +130,13 @@ def mode_argument(m: dict, lam_rad, t_days):
     return m["m"] * (np.asarray(lam_rad) - ph)
 
 
+def tiled_bins(n: int = 20) -> tuple[float, float, np.ndarray]:
+    """(u_start, u_step, centres) of n profile bins that exactly tile the band 0 <= u <= 1 (profile values are bin
+    averages centred on u_start + j u_step)."""
+    step = 1.0 / n
+    return 0.5 * step, step, (np.arange(n) + 0.5) * step
+
+
 @dataclass
 class Prov:
     """Provenance of one aspect of a component (geometry, optical depth, reflectance)."""

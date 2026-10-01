@@ -515,7 +515,11 @@ export interface RingComponent {
   /** Vertical structure of a torus: density per unit height at radius r (normalized to ∫ dz = 1). */
   vertical?:
     | { law: 'inclined-orbits'; r0Km: number; z0Km: number; zMaxCapKm?: number }
-    | { law: 'broken-power-law'; zBreakKm: number; zMaxKm: number; innerSlope: number; outerSlope: number };
+    | {
+      law: 'broken-power-law'; zBreakKm: number; zMaxKm: number; innerSlope: number; outerSlope: number;
+      /** Heights (zBreak, zMax) at the outer edge relative to the inner edge, linear in radius between (default 1). */
+      outerScale?: number;
+    };
   provenance: { geometry: RingComponentProvenance; opticalDepth: RingComponentProvenance; reflectance: RingComponentProvenance };
 }
 

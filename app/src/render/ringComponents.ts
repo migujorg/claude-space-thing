@@ -12,7 +12,7 @@
 // piecewise constant over bins of width uStep centred on uStart + i·uStep.
 //
 // Light per CIE channel c, μ = |sin B|, μ0 = |sin B′|, footprint [r ± fw/2] mapped to [u0, u1]:
-//   G(x) = ∫ (1 − e^{−profile(u)·x}) du over the footprint (tabulated at x_j = X0·2^{j/2}, log-linear between nodes)
+//   G(x) = ∫ (1 − e^{−profile(u)·x}) du over the footprint (tabulated at x_j = X0·2^{j/2}, power law between nodes)
 //   lit   I/F = L_c(α) · μ0/(4(μ+μ0)) · (W/fw) · G(s(1/μ + 1/μ0))
 //   unlit I/F = L_c(α) · μ0/(4|μ−μ0|) · (W/fw) · |G(s/μ) − G(s/μ0)|
 //   thin  I/F = D_c(α) · s · (W/fw) · T/(4μ),   T = ∫ profile du
@@ -162,12 +162,17 @@ export function tableSegment(t: ComponentTable, k: number, ua: number, ub: numbe
   return (j0 + 1 - x0) * t.du * d0 + (C(j1) - C(j0 + 1)) + (x1 - j1) * t.du * d1;
 }
 
-/** G(x) over [ua, ub] from the nodes (log-linear in x), with its slope dG/dx. */
+/**
+ * G(x) over [ua, ub] from the nodes, with its slope dG/dx: below the first node the quadratic through G(0) = 0 with
+ * G'(0) = T (∫τ du) and the first node; between nodes a power law in x (exact for G ∝ x, the thin limit); beyond the
+ * last node G∞ − (G∞ − G_last)·x_last/x.
+ */
 export function gAt(t: ComponentTable, ua: number, ub: number, x: number): [number, number] {
   const node = (j: number) => tableSegment(t, 4 + j, ua, ub);
   if (x <= G_X0) {
-    const g0 = node(0);
-    return [(g0 * x) / G_X0, g0 / G_X0];
+    const g0 = node(0), T = tableSegment(t, 0, ua, ub);
+    const q = (g0 - T * G_X0) / (G_X0 * G_X0);
+    return [T * x + q * x * x, T + 2 * q * x];
   }
   const j = Math.min(Math.floor(Math.log2(x / G_X0) / G_STEP), G_NODES - 2);
   const xa = gNode(j), xb = gNode(j + 1);
@@ -179,9 +184,9 @@ export function gAt(t: ComponentTable, ua: number, ub: number, x: number): [numb
     return [v, ((ginf - Fb) * xb) / (x * x)];
   }
   if (Fa > 1e-30 && Fb > 1e-30) {
-    const sl = (Math.log(Fb) - Math.log(Fa)) / (xb - xa);
-    const v = Fa * Math.exp(sl * (x - xa));
-    return [v, v * sl];
+    const pw = Math.log(Fb / Fa) / Math.log(xb / xa);
+    const v = Fa * (x / xa) ** pw;
+    return [v, (pw * v) / x];
   }
   const f = (x - xa) / (xb - xa);
   return [Math.max(0, Fa + f * (Fb - Fa)), (Fb - Fa) / (xb - xa)];
@@ -284,7 +289,8 @@ export function componentBounds(c: RingComponent): [number, number] {
 //   3: bins, cumulative-table offset, widthRefKm, flags (1 width scaling, 2 optical depth known, 4 arcs, 8 torus)
 //   4: layer table offset (−1: none), layer scale, thin table offset (−1: none), thin scale
 //   5: arc origin λ0 + n t + φStart [rad], arc step [rad], arc samples, arc table offset
-//   6: radial bounds rLo, rHi (km), vertical law (0 none, 1 inclined orbits, 2 broken power law), 0
+//   6: radial bounds rLo, rHi (km), vertical law (0 none, 1 inclined orbits, 2 broken power law), height scale at
+//      the outer edge (broken power law: heights × mix(1, it, (r − a_in)/(a_out − a_in)))
 //   7: vertical parameters (inclined: r0, z0, cap; broken: zBreak, zMax, inner slope, outer slope)
 //   9…: modes (m, A, (Ω_P t + δ) [rad], 0 inner / 1 outer)
 
@@ -384,7 +390,7 @@ export function packComponentRecords(p: PackedComponents, et: number): Float32Ar
     }
     const [lo, hi] = componentBounds(c);
     const v = c.vertical;
-    out.set([lo, hi, !v ? 0 : v.law === 'inclined-orbits' ? 1 : 2, 0], o + 24);
+    out.set([lo, hi, !v ? 0 : v.law === 'inclined-orbits' ? 1 : 2, v?.law === 'broken-power-law' ? v.outerScale ?? 1 : 1], o + 24);
     if (v?.law === 'inclined-orbits') out.set([v.r0Km, v.z0Km, v.zMaxCapKm ?? 0, 0], o + 28);
     else if (v?.law === 'broken-power-law') out.set([v.zBreakKm, v.zMaxKm, v.innerSlope, v.outerSlope], o + 28);
     modes.forEach(([x, edge], j) => {
