@@ -170,7 +170,8 @@ moments also holds per texel at coarse levels.
   ice share among the retrievals (iceTauFraction/f_τ) sets g.
 - The rest of the cloud, cloudFraction − f_τ, has no measured thickness. It gets no guessed τ: it reflects
   nothing and is marked unknown (hatched where it is over half the pixel). GIBS serves no partly-cloudy
-  thickness, so no measured statistic is available for it.
+  thickness for these samples. A population statistic for them is now in the `cloudTau` header (below), not
+  used by the renderer yet.
 - Without the layer (older data), the clouds layer's mean τ applies to the whole cloud, as before.
 
 Validation (`earth-himawari9-2026`, Himawari-9 over the cloud layer's own overpass):
@@ -187,6 +188,42 @@ the air. For the same reason the EPOXI Earth of 2008 (whole disk at 75° phase, 
 in for 2008) now renders at 0.85 of its measured disk brightness and 0.62 at its centre, against 1.07 and
 1.01 when the clouds layer's mean τ was spread over the whole cloud. That was the overestimate this layer
 removes. What is missing now is the light of the cloud whose thickness is not measured.
+
+**A statistic for the unmeasured share (`cloudTau.json` → `constants.unmeasuredTau`; for Best estimate).**
+Most cloudy samples without a retrieval are pixels that the clear-sky restoral flags as partly cloudy or cloud
+edge. MODIS and VIIRS do retrieve them, but report the result in `_PCL` fields, and for VIIRS NOAA-20 GIBS
+serves none of these. The table is the measured global τ distribution of MODIS partly cloudy pixels: July 2021,
+MODIS C6.1 Level-3 COSP product, read from Fig. 7 of Pincus et al. (2023) (docs/sources/pincus-2023-modis-cosp.md;
+`pipeline/src/pipeline/cloud_pcl.py`).
+
+- **Partly cloudy, all heights** (`statistics.floorCellsZero.partlyCloudyAllHeights`):
+
+  | τ bin | 0–0.3 | 0.3–1.3 | 1.3–3.6 | 3.6–9.4 | 9.4–23 | > 23 |
+  |---|---|---|---|---|---|---|
+  | probability | 0.042 | 0.468 | 0.335 | 0.132 | 0.024 | 0 |
+
+  ln τ has mean 0.21 and σ = 1.17 (τ_g = 1.24). The population is 91.5 % low (pc ≥ 680 hPa) and 3.5 % ice.
+  For comparison, fully cloudy pixels in the same figure have τ_g = 6.9, and our own VIIRS retrievals of the
+  day have τ_g = 8.3.
+- **How to apply it** (`constants.use.unmeasuredShare`): at Best, give the share cloudFraction − f_τ this
+  distribution as a separate population, labelled **estimated**; at Strict it stays unknown.
+  - The plane albedo is R̄ = Σ_k p_k R(τ_k) over the seven bins, with τ_k = exp(`tauBinLnCentre[k]`); this
+    assumes no shape. Alternatively, use a log-normal with these μ and σ through the same 3-point rule as the
+    retrieved part.
+  - Use liquid g. Do not give this share the texel's own retrieved distribution, which is biased to overcast cloud.
+  - `planeAlbedoLiquid` lists R̄ at μ0 = 0.2–1.0 for checking. The bin sum gives 0.356, 0.237, 0.167, 0.120 and
+    0.087 at μ0 = 0.2, 0.4, 0.6, 0.8 and 1.0. The log-normal agrees to 1–3 % up to μ0 = 0.6 and is 6–10 % higher
+    at μ0 = 0.8–1, because the measured distribution has no mass above τ = 23. R(τ_g) is 30–40 % too low there.
+    So the bin sum is the one to use.
+- **Why a partly-cloudy τ fits a whole sample:** a partly cloudy pixel's τ is retrieved as if the pixel were
+  overcast, i.e. it is the plane-parallel τ that gives the pixel's mean reflectance.
+- **Caveats** (reasons for the estimated label):
+  - The histogram holds only successful partly-cloudy retrievals. About 34 % of global over-ocean liquid PCL
+    attempts fail (Platnick et al. 2017), and failed overcast retrievals and pixels restored to clear are also
+    in our share; the same τ is assumed for them.
+  - It is one month, global, MODIS rather than VIIRS, with no regional dependence.
+  - The palest histogram cells cannot be read. `floorCellsAtFloor` bounds that effect: τ_g up to 1.77,
+    σ up to 1.73.
 
 **Not modelled.** Cloud parallax and cloud shadows on the ground. The cloud-top height is used only to
 place the cloud's reflection inside the atmosphere (§4). Also not modelled: 3D cloud effects, the glory,
