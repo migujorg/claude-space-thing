@@ -9,15 +9,18 @@
 // Airglow: Gaussian layers in altitude above the ellipsoid. Each layer is integrated on each side of the ray's
 // closest approach to the Earth's centre (the tangent point) with an 8-node Gauss–Legendre rule in x, r = r_t + x²,
 // which takes the square-root singularity of ds/dr at the tangent out of the integrand (s = x·√(2r_t + x²)): the
-// same nodes give a face-on column and the limb's path enhancement (about 50× for the mesopause layers). The local
-// time (UT + longitude/15) and the night domain (solar zenith angle at the ground point > 100°) are evaluated at
-// every node.
+// same nodes give a face-on column and the limb's path enhancement (about 50× for the mesopause layers). The night
+// domain (solar zenith angle at the ground point > 100°) is evaluated at every node; the local time (UT +
+// longitude/15) and the ellipsoid's radius exactly at the two ends of each layer crossing, linear in between.
 //
 // Aurora: the ray segments inside the shell and inside the auroral caps (dipole latitude ≥ 40°) are marched; per
 // step the precipitation (OVATION Prime 2010 at the step's magnetic latitude and local time) and the emission table
 // of its mean energy give the light of three line groups. Within a step the altitude is taken linear in path length
 // and the emission is integrated exactly in altitude from a cumulative table ((C(h₂) − C(h₁))·Δs/Δh), so layers
 // thinner than a step are neither missed nor aliased.
+//
+// Cost: the emission is computed at 1/NIGHTGLOW_SCALE resolution in a pass of its own and added at full resolution
+// (bilinear), depth-tested at the shell's near entry.
 
 import type { AtmosphereBinding } from './atmosphereGpu';
 import { SAMPLES_PER_BIN } from './atmosphere';
