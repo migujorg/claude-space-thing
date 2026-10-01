@@ -142,8 +142,9 @@ is weighted by the uncovered share of the pixel), and:
   x = √(r − r_t) (s = x·√(2r_t + x²)), which removes the square-root singularity of the limb integral, so the same
   nodes give the face-on column and the limb's path enhancement. The night domain is evaluated at every node; the
   ellipsoid radius and the local time are evaluated exactly at the two ends of the layer crossing and taken linear in
-  between (at most ~1000 km for a mesopause layer at the limb). Seen face-on the layers add their zenith column (×1/cos away from
-  the nadir); at the limb a mesopause layer gives 51 times its zenith column (closed form 51.12, quadrature 51.13).
+  between (at most ~1000 km for a mesopause layer at the limb). Seen face-on the layers add their zenith column
+  (×1/cos away from the nadir); at the limb a mesopause layer gives 51 times its zenith column (closed form 51.12,
+  quadrature 51.13).
 - **Aurora:** the segments of the ray inside the shell (86–600 km) and inside the auroral caps (dipole latitude ≥ 40°,
   a double cone about the dipole axis) are marched in 48 steps. Per step the precipitation at the midpoint's magnetic
   coordinates and MLT gives the energy flux and the mean energy (energy flux / number flux); the altitude is linear in
@@ -151,8 +152,13 @@ is weighted by the uncovered share of the pixel), and:
   (C(h₂) − C(h₁))·Δs/Δh, so a step of 100 km through a 20 km thick layer neither misses nor aliases it.
 - **Lower atmosphere:** light from the far side below the atmosphere's top (86 km), or any light when the camera is
   inside the atmosphere, is attenuated with the atmosphere's transmittance table per 40 nm bin (Bruneton 2017's
-  transmittance between two points) at the emission-weighted point of each layer and side. The airglow and aurora are
-  not drawn into the atmosphere's multiple scattering, and the ground and clouds are not lit by them (§7).
+  transmittance between two points) at the emission-weighted point of each layer and side.
+- **Ground and clouds lit by the airglow:** the layers above a point send down E = ∫ L cos θ dΩ with L = L_z/cos θ
+  (a thin layer, van Rhijn), i.e. 2π L_z without extinction and 2π L_z ∫₀¹ T(μ) dμ through the atmosphere (per bin,
+  4-point Gauss–Legendre in μ). The Earth's surface and cloud model (earth.ts) reflects it as light from the zenith,
+  like moonshine, and the view path dims it. Under a cloud deck of reflectance ~0.7 this is ~1.4× the zenith
+  airglow, so clouds stand out on the night side. Not modelled: the aurora's light on the ground, and the
+  airglow and aurora scattered into the view path by the lower atmosphere (§7).
 - **Eye:** the pass writes the HDR luminance buffer like every other light, so adaptation, the mesopic colour
   response and the thresholds of the eye model (docs/eye-model.md) apply unchanged.
 
@@ -201,9 +207,12 @@ against measurements test the model; nothing was tuned to them.
   the SWPC real-time solar wind would make the last week live.
 - Field-line tilt neglected (vertical columns); the magnetic grid is fixed at the window's mid-epoch (the secular
   variation over 3 years moves the pole by < 0.5°).
-- Light is not scattered: no airglow or aurora in the multiple-scattering of the lower atmosphere, and the ground and
-  clouds are not lit by them (the airglow's illuminance on the ground is about 2π × its zenith radiance; clouds under
-  it reflect ~1.4× the zenith airglow). Light from the far side is attenuated at one representative point per layer.
+- Not scattered in the air: no airglow or aurora path radiance from the lower atmosphere (of order 10 % of the
+  zenith airglow seen from orbit, estimated as half the Rayleigh optical depth times the downward irradiance/π).
+  The aurora does not light the ground. The airglow's light on the ground uses the flat
+  van Rhijn law (the sphere's limit on near-horizon paths, which lowers E by ~10 %, is left out) and the local
+  zenith airglow at the point (not the airglow over the horizon). Light from the far side is attenuated at one
+  representative point per layer.
 - The task brief's rule of thumb of ~1 kR of 427.8 nm per erg cm⁻² s⁻¹ is not reproduced: the model gives 0.19–0.26
   kR per erg for ⟨E⟩ 1.7–30 keV (and 1.7–1.9 kR of 557.7 nm). The model is built from the cross sections and transport
   ratios above and was not adjusted; the difference is left open.

@@ -587,5 +587,6 @@ column and the limb's path enhancement alike; the night domain (solar zenith ang
 evaluated per node, the local time and ellipsoid radius at the ends of each layer crossing (linear between). The aurora is marched (48 steps) through the parts of the ray inside the shell and
 the auroral caps; per step the precipitation at the step's magnetic coordinates and the emission's cumulative
 altitude table give exact column integrals for any step size. Light that crosses the lower atmosphere is attenuated
-per 40 nm bin with §4's transmittance table. Not yet: scattering of this light in the lower atmosphere, and the
-ground and clouds lit by it.
+per 40 nm bin with §4's transmittance table. The airglow also lights the ground and clouds: E = 2π L_z ∫₀¹ T(μ) dμ
+from the layers above the point (van Rhijn), reflected with earthShade as light from the zenith (like moonshine).
+Not yet: the scattering of this light in the lower atmosphere (path radiance), and the aurora's light on the ground.
