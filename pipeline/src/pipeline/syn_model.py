@@ -309,27 +309,35 @@ def extrapolated_cells(grid: Grid, known: Known, hlim_a: np.ndarray, slope: Slop
             if hi <= lo:
                 continue
             rows.append((a_, e_, i_, h_, lo, hi, f * dens0 * slope.integral(lo, hi, h_ref, a_)))
+    cells = cells_from_rows(rows)
+    gobs = count_known(grid, cells, (ia, ie, ii, ih, H))
+    diag = {"referenceCounts": ref_n.tolist(), "completeSample": n_comp.tolist()}
+    return cells, gobs, diag
+
+
+def cells_from_rows(rows: list[tuple]) -> Cells:
+    """Cells from rows (ia, ie, ii, ih, h_lo, h_hi, n_model); n_obs zero."""
     r = np.array(rows, dtype=np.float64).reshape(-1, 7)
-    cells = Cells(ia=r[:, 0].astype(np.int64), ie=r[:, 1].astype(np.int64), ii=r[:, 2].astype(np.int64),
-                  ih=r[:, 3].astype(np.int64), h_lo=r[:, 4], h_hi=r[:, 5], n_model=r[:, 6],
-                  n_obs=np.zeros(r.shape[0]))
-    # known per cell (inside the conditioned H range)
+    return Cells(ia=r[:, 0].astype(np.int64), ie=r[:, 1].astype(np.int64), ii=r[:, 2].astype(np.int64),
+                 ih=r[:, 3].astype(np.int64), h_lo=r[:, 4], h_hi=r[:, 5], n_model=r[:, 6], n_obs=np.zeros(r.shape[0]))
+
+
+def count_known(grid: Grid, cells: Cells, known_idx) -> dict:
+    """Fill cells.n_obs with the known objects (ia, ie, ii, ih, H: in-grid indices) inside each cell's conditioned H
+    range; return the known count per (ia, ih) group in the group's conditioned range (any e, i)."""
+    ia, ie, ii, ih, H = known_idx
     keys = grid.key(cells.ia, cells.ie, cells.ii, cells.ih)
-    order = np.argsort(keys)
-    kk = grid.key(ia, ie, ii, ih)
-    pos = np.searchsorted(keys[order], kk)
-    pos = np.clip(pos, 0, max(0, keys.size - 1))
-    hit = keys.size > 0
-    if hit:
+    if keys.size and ia.size:
+        order = np.argsort(keys)
+        kk = grid.key(ia, ie, ii, ih)
+        pos = np.clip(np.searchsorted(keys[order], kk), 0, keys.size - 1)
         cidx = order[pos]
         m = (keys[cidx] == kk) & (H >= cells.h_lo[cidx]) & (H < cells.h_hi[cidx])
         np.add.at(cells.n_obs, cidx[m], 1.0)
     groups = {}
     for a_, h_, lo, hi in zip(cells.ia.tolist(), cells.ih.tolist(), cells.h_lo.tolist(), cells.h_hi.tolist()):
         groups[(a_, h_)] = (lo, hi)
-    gobs = _group_obs(grid, (ia, ie, ii, ih, H), groups)
-    diag = {"referenceCounts": ref_n.tolist(), "completeSample": n_comp.tolist()}
-    return cells, gobs, diag
+    return _group_obs(grid, (ia, ie, ii, ih, H), groups)
 
 
 def sample_extrapolated(grid: Grid, cells: Cells, slope: SlopeLaw, q_min: float,
