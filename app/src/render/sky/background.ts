@@ -6,6 +6,10 @@
 //   sky = faintStars (Gaia G ≥ 14)  +  diffuse (Pioneer-anchored remainder)  +  deep-tier light not drawn as
 //         points (deepRemainder slice of each tile's load level)  +  catalogue stars fainter than the point
 //         cut (binned on the CPU, sky.ts)  +  zodiacal light (Kelsall cloud, line-of-sight integrated here)
+//         +  solar corona near the Sun (corona.ts: K-corona integrated per pixel, the LASCO F-corona law blended
+//         into the zodiacal light within 15° of the Sun at 1 AU)
+//
+// Inside the Sun shield's occulting disc (a viewing aid) nothing of the background is drawn: the disc is black.
 //
 // The four HEALPix maps are composed into one cube map (rgba16float, luminance × MAP_SCALE) only when their
 // inputs change: each texel averages the maps over a small disc of about one source pixel (a tent-like
@@ -17,6 +21,7 @@
 import { COMMON, LIMB_WGSL } from '../shaders';
 import { HEALPIX_WGSL, npix } from './healpix';
 import { zodiacalWgsl, OBLIQUITY_J2000_RAD, type ZodiParams } from './zodiacal';
+import { coronaWgsl, cyclePhase, type CoronaParams } from './corona';
 import type { SceneSnapshot } from '../scene';
 
 /** Luminance scale in the rgba16float cube (µcd/m²): keeps sky values (1e-7 … 1e-2 cd/m²) in fp16 range. */
@@ -54,6 +59,8 @@ export interface SkyBackgroundHook {
 export interface SkyBackgroundStats {
   composes: number;
   zodiUpdates: number;
+  /** K-corona texture recomputations (observer, view, size or phase changed). */
+  coronaUpdates: number;
   cubeSize: number;
 }
 
@@ -144,14 +151,30 @@ struct ZU { obs: vec4f, sunDir: vec4f, grid: vec4u, eclY: vec4f, eclZ: vec4f };
 }
 `;
 
-const BG_WGSL = COMMON + /* wgsl */ `
-struct BU { scaleInv: f32, texelAngle: f32, zodiStep: f32, flags: u32, zodiSize: vec2u, pad: vec2u };
+/** K-corona at every pixel into a texture (XYZS cd/m²): recomputed only when the observer, the view or the phase change. */
+const CORONA_K_WGSL = (c: CoronaParams) => COMMON + coronaWgsl(c) + /* wgsl */ `
+struct CKU { cor: vec4f, size: vec4u };
+@group(0) @binding(0) var<uniform> F: Frame;
+@group(0) @binding(1) var<uniform> C: CKU;
+@group(0) @binding(2) var outK: texture_storage_2d<rgba16float, write>;
+@compute @workgroup_size(8, 8) fn coronaKPass(@builtin(global_invocation_id) id: vec3u) {
+  if (id.x >= C.size.x || id.y >= C.size.y) { return; }
+  let d = normalize(worldDirNdc(F, ndcFromFrag(F, vec2f(id.xy) + 0.5)));
+  textureStore(outK, vec2i(id.xy), coronaRadiance(coronaK(C.cor.xyz, d, C.cor.w), 0.0));
+}
+`;
+
+const BG_WGSL = (corona: CoronaParams | null) => COMMON + (corona ? coronaWgsl(corona) : '') + /* wgsl */ `
+// flags: 1 maps, 2 zodiacal grid, 4 K-corona, 8 F-corona near the Sun; cor = observer (R_sun from the Sun's
+// centre, ICRF), w = solar-cycle phase
+struct BU { scaleInv: f32, texelAngle: f32, zodiStep: f32, flags: u32, zodiSize: vec2u, pad: vec2u, cor: vec4f };
 @group(0) @binding(0) var<uniform> F: Frame;
 @group(0) @binding(1) var cube: texture_cube<f32>;
 @group(0) @binding(2) var samp: sampler;
 @group(0) @binding(3) var zodiTex: texture_2d<f32>;
 @group(0) @binding(4) var<uniform> B: BU;
 ${LIMB_WGSL(5)}
+${corona ? '@group(0) @binding(6) var coronaKTex: texture_2d<f32>;' : ''}
 
 @vertex fn vs(@builtin(vertex_index) i: u32) -> @builtin(position) vec4f {
   let p = vec2f(f32((i << 1u) & 2u), f32(i & 2u)) * 2.0 - 1.0;
@@ -172,12 +195,20 @@ fn zodiAt(p: vec2f) -> vec4f {
 
 @fragment fn fs(@builtin(position) pos: vec4f) -> @location(0) vec4f {
   let d = normalize(worldDirNdc(F, ndcFromFrag(F, pos.xy)));
+  if (occulted(F, d)) { return vec4f(0.0); }
   var L = vec4f(0.0);
   if ((B.flags & 1u) != 0u) {
     let lod = max(0.0, log2(F.tanHalf.z / B.texelAngle));
     L = L + textureSampleLevel(cube, samp, d, lod) * B.scaleInv;
   }
-  if ((B.flags & 2u) != 0u) { L = L + zodiAt(pos.xy); }
+  var zodiW = 1.0;
+${corona ? `  if ((B.flags & 8u) != 0u) {
+    let f = coronaF(B.cor.xyz, d);
+    L = L + coronaRadiance(0.0, f.x) * f.y;
+    zodiW = 1.0 - f.y;
+  }` : ''}
+  if ((B.flags & 2u) != 0u) { L = L + zodiAt(pos.xy) * zodiW; }
+${corona ? `  if ((B.flags & 4u) != 0u) { L = L + textureLoad(coronaKTex, vec2i(pos.xy), 0); }` : ''}
   // Seen through an atmosphere's limb (the zodiacal light too: nearly all of it comes from beyond the planet).
   L = L * limbTransmittance(d);
   return toStore(F, max(L, vec4f(0.0)));
@@ -185,10 +216,13 @@ fn zodiAt(p: vec2f) -> vec4f {
 `;
 
 export class SkyBackground implements SkyBackgroundHook {
-  readonly stats: SkyBackgroundStats = { composes: 0, zodiUpdates: 0, cubeSize: 0 };
+  readonly stats: SkyBackgroundStats = { composes: 0, zodiUpdates: 0, coronaUpdates: 0, cubeSize: 0 };
   /** Debug switches: which parts to draw. */
   showMaps = true;
   showZodiacal = true;
+  /** The K-corona and the F-corona near the Sun (drawn only with a corona model; gated by label in app/sky.ts). */
+  showCoronaK = true;
+  showCoronaF = true;
 
   private cube: GPUTexture;
   private sampler: GPUSampler;
@@ -211,9 +245,14 @@ export class SkyBackground implements SkyBackgroundHook {
   private zodiTex: GPUTexture | null = null;
   private zodiKey = '';
   private zodiOn = false;
+  private corPipe: GPUComputePipeline | null = null;
+  private corUB: GPUBuffer | null = null;
+  private corTex: GPUTexture | null = null;
+  private corKey = '';
   private readonly levels: number;
 
-  constructor(private readonly device: GPUDevice, maps: SkyMapsGpuInput, zodi: ZodiParams | null, readonly cubeSize = 512) {
+  constructor(private readonly device: GPUDevice, maps: SkyMapsGpuInput, zodi: ZodiParams | null, readonly cubeSize = 512,
+              private readonly corona: CoronaParams | null = null) {
     const d = device;
     this.stats.cubeSize = cubeSize;
     this.levels = Math.log2(cubeSize) + 1;
@@ -224,7 +263,7 @@ export class SkyBackground implements SkyBackgroundHook {
     this.sampler = d.createSampler({ magFilter: 'linear', minFilter: 'linear', mipmapFilter: 'linear' });
     const ub = (size: number) => d.createBuffer({ size, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
     this.composeUB = ub(48);
-    this.bgUB = ub(32);
+    this.bgUB = ub(48);
     this.zodiUB = ub(80);
     const sto = (data: Float32Array | null, fallbackBytes: number) => {
       const size = Math.max(16, data ? data.byteLength : fallbackBytes);
@@ -243,6 +282,10 @@ export class SkyBackground implements SkyBackgroundHook {
     this.composePipe = d.createComputePipeline({ label: 'sky compose', layout: 'auto', compute: { module: mod(COMPOSE_WGSL(maps.tileOrder), 'sky compose'), entryPoint: 'compose' } });
     this.mipPipe = d.createComputePipeline({ label: 'sky mips', layout: 'auto', compute: { module: mod(MIP_WGSL, 'sky mips'), entryPoint: 'down' } });
     if (zodi) this.zodiPipe = d.createComputePipeline({ label: 'zodiacal', layout: 'auto', compute: { module: mod(ZODI_COMPUTE_WGSL(zodi), 'zodiacal'), entryPoint: 'zodi' } });
+    if (corona) {
+      this.corPipe = d.createComputePipeline({ label: 'K-corona', layout: 'auto', compute: { module: mod(CORONA_K_WGSL(corona), 'K-corona'), entryPoint: 'coronaKPass' } });
+      this.corUB = ub(32);
+    }
   }
 
   /** Which map layers to draw (e.g. by the reality level: a layer whose label is not admitted is not drawn). */
@@ -272,10 +315,11 @@ export class SkyBackground implements SkyBackgroundHook {
     const d = this.device;
     if (this.dirty) this.compose(enc);
     const zodiOn = this.showZodiacal && !!this.zodiPipe && this.updateZodi(enc, t);
+    const corKOn = this.showCoronaK && !!this.corPipe && this.updateCoronaK(enc, t);
     const fmt = t.ext.format;
     if (!this.bgPipe || this.bgFormat !== fmt) {
       const add: GPUBlendState = { color: { operation: 'add', srcFactor: 'one', dstFactor: 'one' }, alpha: { operation: 'add', srcFactor: 'one', dstFactor: 'one' } };
-      const m = d.createShaderModule({ code: BG_WGSL, label: 'sky background' });
+      const m = d.createShaderModule({ code: BG_WGSL(this.corona), label: 'sky background' });
       this.bgPipe = d.createRenderPipeline({
         label: 'sky background', layout: 'auto',
         vertex: { module: m, entryPoint: 'vs' },
@@ -287,9 +331,14 @@ export class SkyBackground implements SkyBackgroundHook {
     }
     if (!this.zodiTex) this.zodiTex = d.createTexture({ size: [1, 1], format: 'rgba32float', usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING });
     const texelAngle = Math.PI / 2 / this.cubeSize;
-    const u = new ArrayBuffer(32);
+    const u = new ArrayBuffer(48);
     new Float32Array(u, 0, 3).set([1 / MAP_SCALE, texelAngle, ZODI_STEP]);
-    new Uint32Array(u, 12, 3).set([(this.showMaps ? 1 : 0) | (zodiOn ? 2 : 0), this.zodiTex.width, this.zodiTex.height]);
+    // corona: observer relative to the Sun's centre in solar radii (ICRF) and the cycle phase
+    const s = t.snapshot.sun;
+    const cor = this.corona && s ? this.corona : null;
+    const kOn = corKOn && !!this.corTex, fOn = !!cor && this.showCoronaF;
+    new Uint32Array(u, 12, 3).set([(this.showMaps ? 1 : 0) | (zodiOn ? 2 : 0) | (kOn ? 4 : 0) | (fOn ? 8 : 0), this.zodiTex.width, this.zodiTex.height]);
+    if (cor && s) new Float32Array(u, 32, 4).set([-s.pos[0] / s.radius, -s.pos[1] / s.radius, -s.pos[2] / s.radius, cyclePhase(cor, t.snapshot.et)]);
     d.queue.writeBuffer(this.bgUB, 0, u);
     const pass = enc.beginRenderPass({
       label: 'sky background',
@@ -306,6 +355,7 @@ export class SkyBackground implements SkyBackgroundHook {
         { binding: 3, resource: this.zodiTex.createView() },
         { binding: 4, resource: { buffer: this.bgUB } },
         { binding: 5, resource: { buffer: t.limbs } },
+        ...(this.corPipe ? [{ binding: 6, resource: this.corTexView() }] : []),
       ],
     }));
     pass.draw(3);
@@ -352,6 +402,46 @@ export class SkyBackground implements SkyBackgroundHook {
     pass.end();
     this.dirty = false;
     this.stats.composes++;
+  }
+
+  /** A 1×1 placeholder when the K-corona texture does not exist yet (the binding must be filled). */
+  private corTexView(): GPUTextureView {
+    if (!this.corTex) this.corTex = this.device.createTexture({ label: 'K-corona', size: [1, 1], format: 'rgba16float', usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING });
+    return this.corTex.createView();
+  }
+
+  /** K-corona texture for this view (full resolution); recomputed only when the observer, view, size or phase changed. */
+  private updateCoronaK(enc: GPUCommandEncoder, t: BackgroundTargets): boolean {
+    const s = t.snapshot;
+    if (!s.sun || !this.corona || !this.corPipe || !this.corUB) return false;
+    const d = this.device;
+    const o = [-s.sun.pos[0] / s.sun.radius, -s.sun.pos[1] / s.sun.radius, -s.sun.pos[2] / s.sun.radius];
+    const P = cyclePhase(this.corona, s.et);
+    const key = [...o.map((x) => x.toPrecision(7)), P.toFixed(4), ...s.camera.orient.map((x) => x.toFixed(6)), s.camera.fovY.toFixed(6), t.W, t.H].join(',');
+    if (key === this.corKey && this.corTex && this.corTex.width === t.W && this.corTex.height === t.H) return true;
+    this.corKey = key;
+    if (!this.corTex || this.corTex.width !== t.W || this.corTex.height !== t.H) {
+      this.corTex?.destroy();
+      this.corTex = d.createTexture({ label: 'K-corona', size: [t.W, t.H], format: 'rgba16float', usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_SRC });
+    }
+    const u = new ArrayBuffer(32);
+    new Float32Array(u, 0, 4).set([o[0], o[1], o[2], P]);
+    new Uint32Array(u, 16, 4).set([t.W, t.H, 0, 0]);
+    d.queue.writeBuffer(this.corUB, 0, u);
+    const pass = enc.beginComputePass({ label: 'K-corona' });
+    pass.setPipeline(this.corPipe);
+    pass.setBindGroup(0, d.createBindGroup({
+      layout: this.corPipe.getBindGroupLayout(0),
+      entries: [
+        { binding: 0, resource: { buffer: t.frameUB } },
+        { binding: 1, resource: { buffer: this.corUB } },
+        { binding: 2, resource: this.corTex.createView() },
+      ],
+    }));
+    pass.dispatchWorkgroups(Math.ceil(t.W / 8), Math.ceil(t.H / 8));
+    pass.end();
+    this.stats.coronaUpdates++;
+    return true;
   }
 
   /** Zodiacal grid for this view; recomputed only when the observer, view or size changed. */
@@ -440,6 +530,28 @@ export class SkyBackground implements SkyBackgroundHook {
     return dirs.map((_, i) => [0, 1, 2, 3].map((k) => r[i * 4 + k] / MAP_SCALE));
   }
 
+  /** Debug: the K-corona texture (XYZS cd/m²) at the given pixels, or null before it exists. */
+  async readCoronaK(pixels: [number, number][]): Promise<number[][] | null> {
+    const tex = this.corTex;
+    if (!tex || tex.width < 2) return null;
+    const d = this.device;
+    const bpr = Math.ceil((tex.width * 8) / 256) * 256;
+    const buf = d.createBuffer({ size: bpr * tex.height, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ });
+    const enc = d.createCommandEncoder();
+    enc.copyTextureToBuffer({ texture: tex }, { buffer: buf, bytesPerRow: bpr }, [tex.width, tex.height]);
+    d.queue.submit([enc.finish()]);
+    await buf.mapAsync(GPUMapMode.READ);
+    const h = new Uint16Array(buf.getMappedRange());
+    const half = (x: number) => {
+      const s = x & 0x8000 ? -1 : 1, e = (x >> 10) & 0x1f, m = x & 0x3ff;
+      return e === 0 ? s * m * 2 ** -24 : e === 31 ? (m ? NaN : s * Infinity) : s * (1 + m / 1024) * 2 ** (e - 15);
+    };
+    const out = pixels.map(([x, y]) => [0, 1, 2, 3].map((k) => half(h[(y * bpr) / 2 + x * 4 + k])));
+    buf.unmap();
+    buf.destroy();
+    return out;
+  }
+
   /** Debug: the zodiacal grid as last computed (XYZS per grid point, row-major), or null. */
   async readZodi(): Promise<{ w: number; h: number; data: Float32Array } | null> {
     const tex = this.zodiTex;
@@ -463,5 +575,7 @@ export class SkyBackground implements SkyBackgroundHook {
     for (const b of [this.composeUB, this.bgUB, this.zodiUB, this.faintBuf, this.diffBuf, this.remBuf, this.starBuf, this.tileBuf]) b.destroy();
     this.cube.destroy();
     this.zodiTex?.destroy();
+    this.corUB?.destroy();
+    this.corTex?.destroy();
   }
 }

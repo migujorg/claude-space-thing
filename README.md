@@ -22,8 +22,8 @@ The data is built by `cd pipeline && uv run python -m pipeline build --profile <
 | profile | cold download | kept in data/raw | disk needed | products | cold build | forced rebuild | stages |
 |---|---|---|---|---|---|---|---|
 | minimal | 2.2 GB | 2.1 GB | 2.6 GB | 0.2 GB | 31 min | 2 min | time, ephemeris, light, bodies, stars |
-| standard | 49 GB | 8.1 GB | 20 GB | 3.1 GB | 4.1 h | 75 min | all; surfaces.maxLevel=3, shapes.damit=false |
-| full | 50 GB | 8.1 GB | 23 GB | 6.2 GB | 4.1 h | 77 min | all |
+| standard | 49 GB | 8.2 GB | 20 GB | 3.1 GB | 4.1 h | 81 min | all; surfaces.maxLevel=3, shapes.damit=false |
+| full | 51 GB | 8.2 GB | 23 GB | 6.2 GB | 4.2 h | 83 min | all |
 
 - **minimal**: the Sun, planets, all 459 moons, rings, atmospheres and the naked-eye star field. It has no surface maps, shape models, small bodies, deep stars or diffuse sky.
 - **standard**: everything. Surface maps stop at pyramid level 3 (4096 × 2048 texels; the Moon at 2.7 km per texel), and the DAMIT collection of asteroid lightcurve models is left out.
@@ -50,9 +50,10 @@ Per stage (`python -m pipeline costs` prints this table; the numbers live in `pi
 | smallbodies | 1.6 GB | 1.6 GB | 2.0 GB | 0.2 GB | 18 min | 3 min | JPL SBDB is queried one request at a time, as JPL asks |
 | sbphotometry | 2 MB | 2 MB | 2 MB | < 1 MB | < 1 min | < 1 min |  |
 | synthetic | 30 MB | 30 MB | 0.2 GB | 0.1 GB | 2 min | 1 min |  |
+| comets | 20 MB | 20 MB | 50 MB | 2 MB | 5 min | 5 min | propagates every comet with M1/K1 day by day through the window; a few Horizons queries |
 | stars | 0.9 GB | 0.9 GB | 1.0 GB | 24 MB | 20 min | 1 min | XP spectra of the 440 702 selected sources by source_id (207 queries on ARI's Gaia TAP, 0.6 GB); stars.xpSource=bulk streams all 114 GB of ESA's bulk files instead |
 | deepstars | 22 GB | 1.1 GB | 3.0 GB | 0.8 GB | 85 min | 4 min | 192 Gaia archive queries (1.0 GB) + XP spectra of 15.3 M sources (3158 queries, 21 GB, reduced on the fly, 0.5 GB cache; ~55 min at 4 queries at a time); fetched again if data/cache is deleted |
-| sky | 0.1 GB | 0.1 GB | 0.2 GB | 40 MB | 30 min | 2 min | 96 all-sky aggregation queries on the Gaia archive (10-19 min per 48) |
+| sky | 0.1 GB | 0.1 GB | 0.2 GB | 40 MB | 30 min | 2 min | 96 all-sky aggregation queries on the Gaia archive (10-19 min per 48); 18 MB of corona papers and sunspot-number files |
 
 Useful commands (in `pipeline/`, prefixed with `uv run python -m pipeline`):
 

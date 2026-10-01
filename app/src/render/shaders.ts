@@ -74,7 +74,7 @@ struct Eye {
   misc2: vec4f,    // star quad half-extent px, 1/(1-exp(-extent^2/2 sigma^2)), rod threshold elevation 10^(a·ΔB), cone photon catch (bleaching.ts)
   dark: vec4f,     // dark-light pedestal: L0 cone, L0 rod, R(L0) cone, R(L0) rod
   pts: vec4f,      // points (eye/points.ts): display response at the bleaching luminance, viewer's Ricco area (sr), cone summation area (sr), own veil in the background per lux per pixel solid angle
-  fix: vec4f,      // never fixated: unit direction to the resolved Sun (or the Sun shield's disc), w = cos(angular radius + 1 px) (2: none)
+  fix: vec4f,      // never fixated: unit direction to the resolved Sun (or the Sun shield's disc), w = cos(radius): the Sun's angular radius + max(1 px, half the adaptation field while any of the disk is uncovered) (eye/fixation.ts sunExclusionRad), the shield's own (2: none)
   flags: vec4f,    // display black response, cone bleaching (1/0), fixation mode (1 brightness, 0 centre), 1 = low-light acuity (eye mode)
   hdr: vec4f,      // output: brightest displayable luminance (HDR peak, or white on SDR) cd/m², its display response, 1 = extended (HDR) encoding, 1 = Display P3
 };
@@ -1349,7 +1349,8 @@ fn adaptSample(p: vec2i) -> AdaptSample {
     if (E.flags.z > 0.5) {
       // Fixations over the whole frame, drawn to the objects there in proportion to their light (the
       // unscattered scene, not the glare haze); at each the eye adapts to the retinal image (object plus
-      // veil). The solar disk is never fixated; its veil still counts where the eye looks.
+      // veil). The solar disk (widened by half the adaptation field while uncovered) is never fixated; its veil
+      // still counts where the eye looks.
       let wgt = select((max(ext.y, 0.0) + E.dark.x) * om, 0.0, dot(dir, E.fix.xyz) >= E.fix.w);
       acc = vec4f(lc * wgt, lr * wgt, wgt, 0.0);
     } else if (dot(dir, -F.back.xyz) >= E.misc.y) {

@@ -1,4 +1,4 @@
-# M4 "the real sky" — report (data side §1–4, rendering §5)
+# M4 "the real sky" — report (data side §1–5, rendering §6)
 
 Stages `deepstars` and `sky` (pipeline/src/pipeline/stages/), after `stars`. Products in app/public/data:
 
@@ -11,16 +11,18 @@ Stages `deepstars` and `sky` (pipeline/src/pipeline/stages/), after `stars`. Pro
 | `sky/deep-remainder-o7.bin` | the deep-tier light not held as points when each order-3 tile is read to prefix k: 4 slices (k = 0: all; 1–3: records below `prefixY[k−1]`), HEALPix order 7 | 12.6 MB | estimated (as deep-aggregate) |
 | `sky/diffuse.json` | `SkyMapsFile` header: projection, units, methods, sources, stats | 8 kB | |
 | `sky/zodiacal.json` | Leinert 1998 zodiacal light at 1 AU + Kelsall 1998 cloud with a fitted visible phase function | 10 kB | at 1 AU measured; colour derived; elsewhere estimated |
+| `sky/corona.json` | the solar corona: K-corona electron densities (van de Hulst 1950 laws, solar-cycle phase) and the LASCO F-corona law near the Sun, joined to the zodiacal light (§5) | 7 kB | estimated (mean disk radiance derived) |
 | `stars/bright.*` (rebuilt) | 50 more bright stars lit by measured spectrophotometry (Sternberg), incl. Aldebaran, Spica, Polaris | 23.9 MB | derived 437 677, estimated 44 781 |
 
 Products total 0.85 GB (budget 1.5 GB). Raw downloads: `data/raw/stars` 2.6 GB (of which the new deep-tier FITS
 1.1 GB and archive sums 0.1 GB) + `data/raw/sky` 12 MB, under the 3 GB budget; the all-sky XP reductions (1.1 GB)
 are a cache (`data/cache/stars/xp_reduced/`). New schema types (additive, `app/src/data/schema.ts`):
 `TiledBinaryTableHeader`, `StarTile`, `HealpixMapLayer`, `SkyMapsFile`, `ZodiacalLightModel`; rows added to
-docs/architecture.md §6. Sources: docs/sources/gaia-dr3.md (new sections), pioneer-ipp.md, zodiacal-light.md,
+docs/architecture.md §6. Sources: docs/sources/gaia-dr3.md (new sections), pioneer-ipp.md, zodiacal-light.md, solar-corona.md,
 star-spectrophotometry.md (Sternberg).
 
-Build time with everything cached: `deepstars` 163 s, `sky` 121 s. The first build also runs:
+Build time with everything cached: `deepstars` 163 s, `sky` 121 s, plus about 24 s for the corona model (§5). The
+first build also runs:
 - 192 deep-tier TAP queries (27 min) and 3 × 48 aggregation queries (10–19 min each).
 - The XP spectra, by one of two routes (`docs/reports/stars.md` §8). The routes give bit-identical reductions and
   byte-identical `stars/deep-*` products.
@@ -264,7 +266,7 @@ table's errors) to all 182 cells of Table 16, the model averaged over the Earth'
 | ecliptic pole (60 ± 3) | 53.1 S10⊙ averaged over the year (57.8 with the Earth at heliocentric longitude 180°, 47.7 at 0°: the cloud's symmetry plane is tilted) |
 
 The ~17 % deficit at high latitudes is the Kelsall vertical profile, which the fit does not change. The renderer
-uses the model for every observer, the Earth included (§5.3): one continuous model rather than a switch to the
+uses the model for every observer, the Earth included (§6.3): one continuous model rather than a switch to the
 measured table at 1 AU, at the cost of these residuals.
 
 **Checks against measurements the fit did not use** (heliocentric dependence, Leinert Eqs. 15 and 17): seen from R
@@ -273,9 +275,251 @@ R^−2.62 between 1 and 3.3 AU (Pioneer 10: R^−2.5±0.2); at the ecliptic pole
 it gives 67 S10⊙ at 90° elongation (198 at 1 AU) and 21 at the pole (58); at 3.3 AU 8.7 and 3.3; zero beyond 5.2 AU
 (Kelsall's integration limit; Pioneer 10 no longer detected zodiacal light beyond ~3.3 AU).
 
-## 5. Rendering (app)
+## 5. Solar corona (`sky/corona.json`)
 
-### 5.1 What draws what
+Near the Sun the sky is the solar corona. It has two parts:
+- The **K-corona**: photospheric light Thomson-scattered by coronal electrons. It is polarized, varies with the solar
+  cycle, and dominates inside about 2 R⊙.
+- The **F-corona**: the inner zodiacal light, i.e. sunlight scattered by dust.
+
+Before this product the renderer continued the zodiacal-light model (§4.2) up to the solar limb. That was all the glow
+around the Moon at the 2027-08-02 eclipse: ≈ 7 cd/m² at 0.6°, 2.7 at 1° and 0.08 at 5° from the Sun, with no K-corona
+at all. Code: `pipeline/src/pipeline/sky_corona.py` (model, checks), `stages/sky.py` (`build_corona`) and
+`app/src/render/sky/corona.ts` (CPU twin and WGSL). Sources: docs/sources/solar-corona.md.
+
+### 5.1 The zodiacal model at the Sun, against the measured F-corona
+
+The zodiacal model seen from 1 AU (annual mean of four Earth positions, fine quadrature), against the F-corona
+measurements, in units of the mean solar disk brightness B⊙ (1 B⊙ = 1.98 × 10⁹ cd/m² in Y):
+
+| ρ (R⊙) | zodiacal model / LASCO, equator | zodiacal model / LASCO, pole | Skylab / LASCO eq, pole | van de Hulst F / LASCO eq, pole | Leinert T23 / LASCO eq, pole |
+|---|---|---|---|---|---|
+| 1.5 | 0.70 | 0.15 | | 1.51, 1.38 | 0.65, 0.51 |
+| 2.5 | 1.22 | 0.23 | 1.16, 1.15 | 1.18, 1.30 | 0.71, 0.58 |
+| 4 | 1.63 | 0.31 | 1.06, 1.21 | 1.11, 1.46 | 0.70, 0.59 |
+| 10 | 1.66 | 0.43 | | 0.90, 1.60 | 0.57, 0.49 |
+| 28 (7.5°) | 1.44 | 0.57 | | | |
+| 56 (15°) | 1.32 | 0.70 | | | |
+
+- **Equator:** the continued Kelsall model is 1.2–1.7× the measured F-corona between 2.5 and 28 R⊙.
+- **Poles:** it is 2.3–7× too faint between 1.5 and 10 R⊙. The Kelsall fan keeps its flattening all the way in, while the measured F-corona
+  becomes round inside ~2 R⊙ and has an ellipticity of only ~0.1 at 5 R⊙ (Saito et al.).
+- **Season:** the model's near-Sun brightness changes by up to 1.8× over the year. The cloud's centre is offset about
+  3 R⊙ from the Sun (Kelsall X0, Y0, Z0), so the density singularity sits beside the Sun. Skylab found the F-corona
+  constant to ±10 % over eight months.
+- **Verdict:** the continued model is not usable within a few degrees of the Sun, and it is replaced there by
+  measurements (§5.2). The measurements agree with one another within ~20 %: LASCO, Skylab and van de Hulst's Eq. 7.
+  Leinert's Table 23 recommendation runs 30–50 % lower; Lamy et al. (2022) call it "off the main trend".
+
+### 5.2 F-corona: the LASCO reference map, joined to the zodiacal model (estimated)
+
+**The law.** Lamy et al. (2022, Table 5) tabulate the LASCO-C2/C3 reference map of the F-corona for an observer at
+1 AU in the plane of symmetry: 88 cells from 0.3° to 7.5° (1.6–30 R⊙), uncertainty 5 %. It is fitted by
+log₁₀ B = P(x) + sin²ψ S(x), with x = log₁₀ ρ, P cubic and S quadratic; ψ is the position angle from the plane of
+symmetry.
+- **Axes:** the table's rows and columns are read the other way round from their labels. Read as printed, the map
+  would be brighter and shallower towards the pole, contrary to the paper's text; see solar-corona.md.
+- **Fit:** residuals 3.9 % rms and 11 % max.
+- **Local slopes:** −2.21 (equator) and −2.47 (pole) at 3–7.5°; the paper gives −2.33 and −2.55.
+- **Flattening:** round at 2 R⊙, equator/pole 1.43 at 5 R⊙ and 2.3 at 28 R⊙.
+- **Outside the map:** the law continues as a power law with the edge slope. Inside 1.6 R⊙ the flattening is frozen,
+  because the map is circular there by construction.
+- **Against the independent measurements:** Skylab/LASCO 1.06–1.21 at 2.5–5 R⊙ and van de Hulst/LASCO 0.9–1.6
+  (table above).
+
+**Join.** The law is used alone within 7.5° of the Sun at 1 AU (ρ ≤ 28.0 R⊙). Between 7.5° and 15° (ρ = 55.6) it is
+blended into the zodiacal model with a weight linear in log ρ. Beyond 15° the zodiacal model is used alone; that is
+where Leinert's measured Table 16 begins.
+- At 15° the extrapolated law gives 8,400 S10⊙ at the equator and 3,100 at the pole. Leinert Table 16 has 9,000 and
+  2,450, and Lamy et al. say those polar values are "slightly too low".
+- The zodiacal model there is 1.32× and 0.70× the law, so the join is gentle.
+
+**Other observers.** The law is parametrised by the impact parameter ρ of the line of sight, not by elongation. For a
+power-law dust density that makes it nearly independent of the observer's distance (Leinert: I ∝ R^−2.3 at fixed
+elongation; LASCO: ∝ ε^−2.3).
+- It is applied to observers farther than 55.6 R⊙ (0.26 AU) from the Sun.
+- Closer observers, and lines of sight whose closest approach is behind the observer, get the zodiacal model alone.
+
+**Colour.** The zodiacal reddening at ≤ 30° (Leinert f_co). The stronger reddening of the inner F-corona (Leinert
+Sect. 9.5) is not modelled.
+
+### 5.3 K-corona: van de Hulst's laws as electron densities (estimated)
+
+**Measured laws.** van de Hulst (1950) gives the K-corona brightness in the plane of the sky as sums of power laws in
+ρ:
+- equatorial at minimum, K_min (Eq. 6);
+- polar at minimum, K_pole (Eq. 9);
+- maximum, circular: K_max = 1.78 K_min (Eq. 5).
+
+At minimum the equatorial regions cover 0.7 of the circumference and the polar ones 0.3. His absolute scale comes from
+photoelectric totals. The transcription is checked by his own Table I: Eq. 10 on the laws reproduces every ring total
+to rounding.
+
+**Physics.** Thomson scattering of a linearly limb-darkened Sun with Minnaert's closed forms (as in Inhester 2015):
+dB/ds = (π r_e²/2) I₀ n_e [2((1−u)C + uD) − sin²χ ((1−u)A + uB)], in units of B⊙ = I₀(1 − u/3).
+- u = 0.587 is the linear law with the photopic disk-mean/centre ratio (0.8045) of the Neckel & Labs law used for the
+  solar disk (light.json).
+- The closed forms agree with a direct integration over the limb-darkened disk to 3 × 10⁻⁵ (tests).
+- Colour: the disk-integrated photospheric spectrum. B⊙ = (1.92, 1.98, 2.07) × 10⁹ cd/m² in X, Y, Z and
+  4.71 × 10⁹ scotopic.
+
+**Densities.** Each law is inverted into n_e(r) = Σ c_k r^−k with non-negative c_k (NNLS over 17 exponents from 1.5
+to 20), fitted so that the forward integral reproduces it, as van de Hulst and Saito et al. did. The electron model
+stops at r = 30 R⊙; beyond that, electron-scattered light is part of the measured zodiacal light.
+
+| law | fit range (R⊙) | max error | exponents kept |
+|---|---|---|---|
+| K_min (equator) | 1.01–6 | 2.7 % | 18, 16, 6, 5, 1.5 |
+| K_pole (inside the latitude model) | 1.01–1.5 | 23 % (+15 % at 1.01, −8 % at 1.2) | 18, 16 |
+
+K_max needs no fit: n_max = 1.78 n_eq, spherical.
+
+**3-D latitude structure.** The 0.7 / 0.3 split is one of position angles on the sky. In 3-D, electrons of an
+equatorial belt that reached 63° latitude would lie on every polar line of sight and would exceed the polar law by
+far.
+- The model therefore uses equatorial density up to heliographic latitude λ_b − 7° and polar density beyond λ_b + 7°,
+  linear between. The 7° is the paper's 63° sector boundary to its 70° density minimum.
+- λ_b is fitted so that the total minimum-phase brightness equals Table I (0.569 × 10⁻⁶ of the Sun), giving λ_b = 57.2°.
+- The polar density is refitted for each λ_b. Totals (10⁻⁶ of the Sun's total brightness):
+
+| ring | minimum: model / Table I | maximum: model / Table I |
+|---|---|---|
+| 1.03–6 R⊙ | 0.425 / 0.429 | 0.931 / 0.935 |
+| r ≥ 1 | 0.569 / 0.569 (fitted) | 1.211 / 1.213 |
+| 1.03–6, K + F (van de Hulst F) | 0.592 / 0.596 | 1.098 / 1.102 |
+
+The cost is the polar profile: 0.95× K_pole at 1.1 R⊙, 1.2× at 1.5, 1.7× at 2 and 3.6× at 3. van de Hulst calls
+K_pole beyond 1.5 R⊙ "very uncertain", and the Skylab polar corona (below) is brighter still.
+
+**Against Skylab** (Saito et al. 1977, 2.5–5 R⊙, declining phase of cycle 20, van de Hulst phase 0.33). The model
+gives 0.63–0.69× their equatorial background B_K and 1.4–1.7× their polar B_K. Their densities are about twice the
+model's at 2 R⊙ (Newkirk–Saito 2.9 × 10⁶ cm⁻³, model 1.5 × 10⁶). They put the absolute error at ±50 % near 2.5 R⊙,
+and found day-to-day changes by factors 2–5 as streamers and holes pass the limb.
+
+### 5.4 Solar-cycle phase
+
+van de Hulst's phase is Mitchell's: 0 at minimum, 1 at maximum, linear in time. The renderer evaluates it for the
+date shown.
+- Epochs: SILSO smoothed sunspot number minimum 2019-12 (1.8) and maximum 2024-10 (160.9).
+- Next minimum: the NOAA SWPC prediction, still falling at its last month 2030-12 (8.1), which is taken as the epoch
+  (a lower bound).
+- 2027-08-02: P = 0.547. The SWPC activity fraction for 2027-08 (72.0 of 1.8–160.9) would give 0.44; the K
+  brightness differs by 8 % between the two.
+- Density: n = (1 − P)[w n_eq + (1 − w) n_pole] + P · 1.78 n_eq. van de Hulst's Fig. 1 shows the total rising about
+  linearly with phase.
+- Over the data window (2025.25–2028.25) P runs from 0.93 to 0.44.
+
+### 5.5 Rendering and the 2027-08-02 eclipse
+
+**K-corona.** Integrated per pixel along the line of sight, for the observer where it is:
+- 32 Gauss–Legendre nodes in θ with s = s_ca + ρ tan θ, which turns r^−k into cos^(k−2) θ.
+- An observer inside 30 R⊙ looking away from the Sun gets s = r₀ sinh v instead.
+- Written into a full-resolution texture by a compute pass, redone only when the observer, the view or the phase
+  changes. On SwiftShader a per-frame evaluation did not finish a frame in 10 minutes.
+- Heliographic latitudes use the Sun's IAU pole from bodies.json.
+
+**F-corona.** The law and its weight are evaluated per pixel, and scale the zodiacal grid by (1 − weight).
+
+**Sun shield.** Inside the occulting disc nothing of the background is drawn; the disc is black. Before, the
+zodiacal glow showed on it.
+
+**CPU twin.** `render/sky/corona.ts` reproduces van de Hulst's laws for a distant observer to 4 %. At a given impact
+parameter the brightness is the same from 0.3 AU as from far away. The totals match Table I (tests).
+`SkyController.checkCorona()` compares the GPU texture with it pixel by pixel (below).
+
+**The views.** `app/scripts/corona-shots.mjs` renders a view on SwiftShader (1280 × 720, `smallbodies=0`,
+`adapt=instant`) and probes it. Each view took 26–58 s to be ready.
+
+| view | query | eye adaptation (cd/m²) |
+|---|---|---|
+| totality, 6° (Moments view 2, scene `eclipse-2027-totality`) | `t=2027-08-02T10:06:41Z&target=301&dist=350939.1&az=179.99&el=0&fov=6` | 203 (baseline without the corona: 2.9) |
+| Sun shield from 1 AU, 6° | `target=10&dist=149597870.7&az=0&el=0&fov=6&shield=1` | 474 |
+| Sun shield from 1 AU, 30° | the same with `fov=30` | 63 |
+| bare Sun from 1 AU (scene `sun-1au`) | `target=10&dist=149597871` | 1.5 × 10⁵ (baseline without the corona: 1.8 × 10⁵) |
+
+The GPU texture against the CPU twin (`checkCorona`, same pixels) agrees to 0.13 % at 1.1 R⊙ and ≤ 0.07 % from 1.3 to
+10 R⊙: half-float storage and float32 arithmetic.
+
+**Radiance around the Sun** on 2027-08-02 (P = 0.547), Y in cd/m²:
+
+| ρ (R⊙) | K, equator | K, north | F, equator | F, north |
+|---|---|---|---|---|
+| 1.1 | 2540 | 2120 | 86 | 94 |
+| 1.5 | 177 | 131 | 36 | 40 |
+| 2 | 24 | 18 | 17 | 16 |
+| 3 | 2.0 | 1.6 | 5.8 | 4.9 |
+| 5 | 0.24 | 0.19 | 1.7 | 1.2 |
+| 10 | 0.034 | 0.028 | 0.36 | 0.20 |
+
+- K = F at ≈ 2.3 R⊙ (equator) and ≈ 2.1 R⊙ (north). van de Hulst gives 1.93 at minimum and 2.24 at maximum for the
+  equator, and Leinert: "F-corona dominates … from about 3 R⊙ outward".
+- The inner corona, 2,000–4,400 cd/m² at 1.05–1.1 R⊙, is as bright as the surface of the full Moon: 2.28 × 10⁻⁶ of
+  the Sun's light (van de Hulst) from a disk of nearly the Sun's size, ≈ 4,500 cd/m².
+- The flattening at this phase is modest: equator/north 1.2 at 1.1 R⊙ and 1.3 at 2 R⊙.
+
+**Totals** (10⁻⁶ of the Sun), against van de Hulst (1950):
+
+| quantity | model, P = 0.547 | published |
+|---|---|---|
+| K + F, 1.03–6 R⊙ | 0.81 | photoelectric model (Table I) interpolated to P = 0.547: 0.87 (0.596 at minimum, 1.102 at maximum) |
+| K + F outside the Moon at greatest eclipse (1.079–6 R⊙) | 0.59 | |
+| the same from the rendered view (probe integral, 1.099–6 R⊙: the camera is off the shadow axis) | 0.53 (0.069 lx of the Sun's 130,731) | |
+| whole corona, K + F, r ≥ 1 | 1.07 = 0.47 full moon | visual totals (Dyson & Woolley): 1.07 near minimum to 1.66 near maximum, i.e. 0.47–0.72 full moon (full moon = 2.28 × 10⁻⁶ of the Sun) |
+
+The model sits at the faint end of the visual totals and 7 % below van de Hulst's photoelectric scale at this
+phase. van de Hulst adopted the photoelectric scale and notes that the radiometric and visual observations run higher.
+
+**Appearance.**
+- At the eye model's adaptation to the view (203 cd/m², 6° field centred on the corona), the corona reads as a bright
+  white ring about 0.5 R⊙ wide. It fades out by ≈ 2 R⊙.
+- Beyond that the model's radiance (7 cd/m² at 3 R⊙, 1/30 of the adaptation level) is below what the display shows
+  at this adaptation.
+- An eye history of daylight followed by two minutes of totality (`adaptfrom=10000,600,120`) gives the same
+  adaptation, because light adaptation is fast.
+- How far a real observer traces the corona depends on the adaptation field, which is the eye model's domain, not
+  the corona model's.
+- In the 30° shield view the corona is a thin ring a few pixels wide around the black disc, and stars are visible.
+  At 6° it is the eclipse picture without the Moon; the occulting disc is smaller than the Moon's, so the adaptation
+  is higher.
+
+**The bare Sun.** Beside the uncovered Sun the corona is invisible: at 1.1 R⊙ it is 10⁻⁴ of the Sun's veil there.
+It is still scene light, and the eye model sends fixations to scene light. With only the solar disk excluded from
+fixations, the inner corona drew them onto the limb. In `sun-1au` that raised the adaptation 25-fold (1.8 × 10⁵ →
+4.5 × 10⁶ cd/m²; K alone 4.0 × 10⁶, F alone 7.6 × 10⁵) and shrank the glare halo, a visible change made by light
+nobody can see. While any of the disk is uncovered, the eye model now also excludes the ring within half the adaptation field
+(0.5°) of the limb, since a fixation there has part of the disk in its foveal field (docs/eye-model.md §2,
+`sunExclusionRad`). The adaptation is then 1.5 × 10⁵ cd/m² with the corona and 1.1 × 10⁵ without it, against the
+baseline's 1.8 × 10⁵. In totality (the disk all covered) and behind the Sun shield (which keeps its own disc) only the
+disk is excluded, as before, so the inner corona is looked at.
+
+**e2e suite** (26 scenes, against the baseline accepted at c541fca):
+- `eclipse-2027-totality` changes as intended. The adaptation goes from 2.9 to 204 cd/m² because the corona is now the
+  brightest thing in view, and the limiting magnitude from 2.5 to −0.9.
+- `sun-1au` passes at 1.5 × 10⁵ cd/m² (Δlog₁₀ 0.07).
+- Other scenes with the uncovered Sun in view move by ≤ 0.035 dex: `earth-moon-first-run` 10,260 → 9,456 and
+  `eclipse-2027-above` 9,227 → 9,384. Without `sky/corona.json`, `sun-1au` is 1.1 × 10⁵ and fails its tolerance
+  (Δlog₁₀ 0.21), so this needs the rebuilt product.
+- The remaining failures fail identically without the corona and come from elsewhere:
+  - `earth-night` (stars drawn 526 → 893 and an atmosphere warning; the scene renders the current date);
+  - `saturn-rings` (stars 90 → 95);
+  - `neptune` (Proteus label);
+  - `phobos-stickney`, `hyperion-fallback`, `bennu-closeup` (stars drawn).
+
+### 5.6 Labels and limits
+
+- **Labels.** `kCorona` and `fCorona` are `estimated`, `bSun` is `derived`. In Strict (measured + derived) neither
+  corona is drawn, as the zodiacal light is not.
+- **An average corona.** It is axisymmetric about the Sun's pole and interpolated between van de Hulst's minimum and
+  maximum. The streamers, holes and polar plumes of 2027-08-02 cannot be known, and a real corona differs locally by
+  factors of 2–5.
+- **Not rendered:** polarization (the observed corona reaches ≈ 40 % in bright streamers near 2.2 R⊙, LASCO-C2,
+  Lamy et al. 2020) and emission lines ("about one half per cent of the integrated light", van de Hulst p. 135). The F-corona's extra near-Sun reddening is not modelled.
+- **The Sun's pole is fixed.** The corona's axis is the rotation pole, not the magnetic axis. That axis is close to it
+  at minimum but not in the declining phase.
+
+## 6. Rendering (app)
+
+### 6.1 What draws what
 
 | module | role |
 |---|---|
@@ -291,7 +535,7 @@ snapshot })` right after the bodies pass (an import, a field, a setter and the c
 `debugSkip=background` turns it off). Without a GPU device no controller is made and the bright catalogue goes to
 `setStars` as before.
 
-### 5.2 Points or sky light
+### 6.2 Points or sky light
 
 A star is a point when v = max(Y, S/1.408) (the renderer's visibility proxy) reaches E(V_cut), with V_cut = V_lim +
 0.75 mag rounded to 0.25 mag and V_lim the renderer's limiting magnitude of the last frame. The cut moves only when
@@ -308,7 +552,7 @@ view are evicted, least recently seen first, and tiles more than 45° outside th
 regardless (their light returns to remainder slice 0). A rebuild (point upload + cube recomposition) waits until
 the view's tiles are in, or runs every 3 s while they stream.
 
-### 5.3 Background pass
+### 6.3 Background pass
 
 The maps are composed on the GPU into a cube map (512² per face, 256² on software adapters; rgba16float in µcd/m²):
 each texel is the mean of 12 samples on a Vogel disc of about one source pixel (radius 0.16° for faintStars, 0.32°
@@ -326,7 +570,7 @@ Earth-trailing blob follows the Earth's mean longitude (Standish). Colour: the `
 solar elongation. The model is used for every observer, the Earth included (the table itself is not drawn; the fit
 reproduces it to 12 % rms).
 
-### 5.4 Screenshots and statistics
+### 6.4 Screenshots and statistics
 
 `app/scripts/sky-shots.mjs` (Vite + headless Chromium, WebGPU on SwiftShader, so the 256² cube; 1280 × 720;
 `smallbodies=0`, because the GPU small-body field makes a SwiftShader frame take minutes). All at
@@ -400,7 +644,7 @@ zodiacal light (97–102 S10⊙) triples it: 1.2 × 10⁻⁴ cd/m² = 22.5 V mag
 radial exponents (R^−2.2 inside 1 AU, R^−2.6 to 3.3 AU), zero at 30 AU, 60 S10⊙ = 5.5 × 10⁻⁵ cd/m² and quadrature
 convergence to 2 %.)
 
-### 5.5 Cost
+### 6.5 Cost
 
 * **Memory:** a deep-tier record is 48 bytes, capped at 3 × 10⁶ in memory. The two +6 fields held 0.6 and 1.2
   million records.
@@ -410,7 +654,7 @@ convergence to 2 %.)
   observer change (grid). In the runs: 4–15 compositions and 13 grid updates per load.
 * **SwiftShader:** frames took 22–34 s on 4 shared CPUs. No hardware-GPU timing was taken.
 
-## 6. Open issues
+## 7. Open issues
 
 * **Pioneer red channel:** the remainder at the galactic poles is ~2× larger in R than in B (§3.3) and the
   high-pass regression finds star structure at 0.74 (B) / 0.82 (R) of our prediction; beam shape, ERE and the
@@ -421,7 +665,7 @@ convergence to 2 %.)
   DGL/100 µm ratio would add structure but is an extra assumption; not done.
 * **Pioneer gaps** (9.7 %) are filled by latitude medians (label code 1).
 * **Zodiacal model at high ecliptic latitude** runs below Leinert: 4–12 % in the annual means at the test cells
-  (§5.4; ecliptic pole 53.1 against 60) and up to ~17 % in the medians of §4.2. The phase function and albedo are
+  (§6.4; ecliptic pole 53.1 against 60) and up to ~17 % in the medians of §4.2. The phase function and albedo are
   single values for all dust components. The renderer draws the model at the Earth too, not the measured table.
 * **XP wavelengths** are used as vacuum without the Edlén conversion the light stage applies (< 0.1 % in Y); the
   Pioneer bands are top-hats.
@@ -439,3 +683,16 @@ convergence to 2 %.)
 * **The 3° diffuse layer at high exposure:** its per-pixel noise (Pioneer's 2–3 S10⊙) and zero-clamped pixels show
   as blotches and dark 3° patches at +6 stops.
 * **SwiftShader:** screenshots use a 256² cube and `smallbodies=0`. No frame timing on a hardware GPU yet.
+* **The corona is an average corona** (§5.6). It is axisymmetric about the rotation pole and interpolated between
+  van de Hulst's minimum and maximum, so the real streamers and holes of a date are not there. A date-specific
+  corona would need a 3-D density from rotational tomography of coronagraph data (the LASCO Ne "cubes" announced by
+  Lamy et al. 2020), which do not exist for future dates.
+* **Polar K-corona beyond 1.5 R⊙:** the model exceeds van de Hulst's polar law (×1.7 at 2 R⊙, ×3.6 at 3 R⊙) and
+  stays below Skylab's polar corona (×0.6–0.7). The 3-D latitude structure is one belt boundary fitted to one total
+  (§5.3); a radius-dependent boundary (streamers narrowing outward) would need more data than these laws.
+* **F-corona for observers within 0.26 AU of the Sun** is the zodiacal model alone. Parker Solar Probe/WISPR find the
+  F-corona there depleted by a dust-free zone (Howard et al. 2019; Stenborg et al. 2021); not modelled.
+* **Near-limb aliasing:** the K-corona texture is one sample per pixel. When the Sun is a few pixels across (the 30°
+  shield view), the steep near-limb corona (∝ r^−17) aliases into a slightly dotted ring. A footprint average would
+  fix it.
+* **Not rendered:** the corona's polarization and emission lines (§5.6).

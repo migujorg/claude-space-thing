@@ -125,6 +125,8 @@ export interface SunPrep {
   I0: XYZS;
   coeffs: number[][]; // per channel, μ^0..μ^5
   resolvedFraction: number;
+  /** Fraction of the disk not covered by bodies in front (0 in totality). */
+  visibleFraction: number;
   point: PointSource | null;
 }
 
@@ -328,7 +330,7 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
     sun = {
       n, e1, e2, distKm: dist, radiusKm: s.radius,
       beta: Math.tan(Math.min(rho + margin, 1.4)),
-      I0, coeffs, resolvedFraction: fRes, point,
+      I0, coeffs, resolvedFraction: fRes, visibleFraction: vis, point,
     };
   }
 

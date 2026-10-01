@@ -44,6 +44,7 @@ import { DEG2_PER_SR, pupilDiameterMm } from '../eye/pupil';
 import { adaptationStatus, adaptationStatusText, trolands } from '../eye/bleaching';
 import { DARK_LIGHT_CONE, DARK_LIGHT_ROD, response } from '../eye/tonemap';
 import { CIE191, CRUMEY, PATTANAIK } from '../eye/constants';
+import { sunExclusionRad } from '../eye/fixation';
 
 /** Near plane of the reversed-Z infinite projection, km (0.1 mm). */
 const NEAR_KM = 1e-7;
@@ -1241,13 +1242,14 @@ export class Renderer {
     const nSrc = Math.min(prep.glare.length, MAX_GLARE_SOURCES);
     const norm = 1 / (1 - Math.exp(-(SPLAT_EXTENT_SIGMA * SPLAT_EXTENT_SIGMA) / 2));
     const c = eye.cat;
-    // The resolved solar disk is never a fixation (brightness-weighted fixations, eye-model.md §2).
+    // The resolved solar disk is never a fixation, nor (while any of it is uncovered) the ring within half the
+    // adaptation field of it (brightness-weighted fixations, eye-model.md §2).
     const sp = prep.sun;
     // With the Sun shield on, its occulting disc takes that place (nothing behind it is seen: Frame.occ).
     const sunFix = prep.sunShield
       ? [...prep.sunShield.dir, prep.sunShield.cosRadius]
       : sp && sp.resolvedFraction > 0
-        ? [...sp.n, Math.cos(Math.min(Math.asin(Math.min(1, sp.radiusKm / sp.distKm)) + g.pixelAngle, Math.PI))]
+        ? [...sp.n, Math.cos(sunExclusionRad(Math.asin(Math.min(1, sp.radiusKm / sp.distKm)), sp.visibleFraction > 0 ? s.adaptationFieldDeg : 0, g.pixelAngle))]
         : [0, 0, 1, 2];
     d.queue.writeBuffer(this.eyeUB, 0, new Float32Array([
       eye.scene.sigmaCone, eye.scene.sigmaRod, eye.scene.Bcone, eye.scene.BrodAdapt,

@@ -8,8 +8,11 @@
 // The adaptation is therefore the log-average of the retinal image weighted by the scene luminance.
 // The eye looks at what is lit (a quarter Moon's sunlit half, not its night side), and a small bright
 // body in a dark field sets the adaptation by its light rather than by its tiny area. The solar disk is
-// not fixated (it cannot be looked at); its veil still counts where the eye looks. Point sources are
-// judged at their own fixation (eye/points.ts), so faint stars beside a bright body stay visible.
+// not fixated (it cannot be looked at), nor, while any of it is uncovered, is the ring within half the
+// adaptation field of it (a fixation there has part of the disk in its foveal field); its veil still counts
+// where the eye looks.
+// Point sources are judged at their own fixation (eye/points.ts), so faint stars beside a bright body
+// stay visible.
 //
 // 'centre' keeps the v1 rule: one fixation at the view centre, the log-average over its 1° field
 // (Ward Larson, Rushmeier & Piatko 1997).
@@ -24,10 +27,21 @@ export interface RetinalSample {
   sceneY?: number;
   /** Solid angle, sr. */
   omegaSr: number;
-  /** Inside the resolved solar disk (never fixated). */
+  /** Inside the resolved solar disk or within half the adaptation field of it (never fixated; sunExclusionRad). */
   onSunDisk?: boolean;
   /** Inside the centre field (for 'centre'). */
   inCentreField?: boolean;
+}
+
+/**
+ * Angular radius (rad) around the resolved Sun's centre that is never fixated: the disk widened by half the
+ * adaptation field (a fixation closer than that has part of the disk in its foveal field, so it is looking at
+ * the Sun), and by at least one pixel. Without the widening, light right beside the limb that the veil swamps
+ * (the inner corona, 10⁻⁴ of the veil there) would draw the eye onto the Sun. The renderer passes a field of 0
+ * when the disk is all covered (totality), so the corona around it is looked at.
+ */
+export function sunExclusionRad(sunRadiusRad: number, adaptationFieldDeg: number, pixelRad: number): number {
+  return Math.min(sunRadiusRad + Math.max(pixelRad, ((adaptationFieldDeg / 2) * Math.PI) / 180), Math.PI);
 }
 
 /** Adaptation luminances (cone, rod) the eye settles to over its fixations. */

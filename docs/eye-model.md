@@ -67,7 +67,13 @@ looks around the frame, and fixations are not uniform over the frame:
   veil falling there (Moon & Spencer 1945; "Statistic" below).
 
 So A = exp(Σ L_scene·Ω·ln(L_ret + L₀) / Σ L_scene·Ω) over the frame (`eye/fixation.ts`; GPU:
-`ADAPT_SHADER`). The resolved solar disk is never fixated: it cannot be looked at. Its veil still
+`ADAPT_SHADER`). The resolved solar disk is never fixated: it cannot be looked at. While any of the disk
+is uncovered, neither is the ring within half the adaptation field (0.5°) of its limb (`sunExclusionRad`):
+a fixation there has part of the disk in its foveal field, so it too is looking at the Sun. In totality,
+with the disk all covered, the ring is fixated like any other sky. Without that ring, light the veil swamps right
+beside the limb pulls the eye onto the Sun. The solar corona (docs/reports/sky.md §5) is such light, at
+10⁻⁴ of the veil there: with the disk alone excluded it raised the adaptation of the bare Sun from 1 au
+25-fold (1.8 × 10⁵ → 4.5 × 10⁶ cd/m²); with the ring excluded it is 1.5 × 10⁵ cd/m². The Sun's veil still
 counts wherever the eye looks. Consequences:
 
 - A quarter Moon filling the view is seen adapted to its sunlit half, even when the view centre falls on

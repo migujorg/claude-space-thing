@@ -381,8 +381,8 @@ export function solarEclipses(g: Geometry): SkyEvent[] {
         up: e.up,
         fovDeg: 6,
         note: top !== undefined
-          ? `The camera is ${Math.round(alt)} km above the greatest-eclipse point, above the drawn atmosphere: the renderer does not yet darken the sky in the Moon's shadow, so a view from the ground would show a daylight sky during totality. The solar corona is not drawn; the glow around the Moon is the zodiacal-light model continued towards the Sun.`
-          : 'The camera is 1 km above the greatest-eclipse point. The solar corona is not drawn; the glow around the Moon is the zodiacal-light model continued towards the Sun.',
+          ? `The camera is ${Math.round(alt)} km above the greatest-eclipse point, above the drawn atmosphere: the renderer does not yet darken the sky in the Moon's shadow, so a view from the ground would show a daylight sky during totality. Around the Moon: the solar corona (K-corona from van de Hulst's 1950 photometry at this date's phase of the solar cycle, F-corona from the LASCO map; estimated, an average corona: the streamers of the day are not known).`
+          : "The camera is 1 km above the greatest-eclipse point. Around the Moon: the solar corona (K-corona from van de Hulst's 1950 photometry at this date's phase of the solar cycle, F-corona from the LASCO map; estimated, an average corona: the streamers of the day are not known).",
       },
     ];
     out.push({

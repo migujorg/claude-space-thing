@@ -1,0 +1,38 @@
+{
+ "_citation": "Lamy, P. L., Gilardy, H., Llebaria, A., Quémerais, E. & Ernandez, F. (2022), 'Observations of the Solar F-corona from Space', Space Science Reviews 218, 53. DOI:10.1007/s11214-022-00914-w. arXiv:2202.11533v2.",
+ "_transcription": "Appendix D, Table 5 (arXiv v2 p. 80): 'LASCO reference map of the F-corona: radiance in units of 10^-10 B_sun for an observer at 1 AU in the plane of symmetry of the zodiacal cloud as a function of longitude lambda - lambda_sun and latitude beta both expressed in degree.' Valid for 450-600 nm; 1 S10sun = 4.5e-16 B_sun; uncertainty estimated at 5 % (p. 80). Numbers taken from the PDF text layer and checked against the page image. Two blocks: 'inner' samples lambda - lambda_sun and beta in 0.3-0.9 deg (the extended map, 1-6 R_sun: the Koutchmy-Lamy model inside 1.5 R_sun, LASCO-C2 from 2 R_sun, log-log interpolation between, Sect. 4.2); 'outer' samples 1.0-7.5 deg (the reference map, LASCO-C2 + C3 composite at the node of December 1997, 2-30 R_sun). Blank cells are outside the maps.",
+ "_axes_as_printed": "rows[i] are printed as lambda - lambda_sun = row_deg[i]; columns[j] as beta = col_deg[j]. As printed, the profile along the rows falls with the polar exponent (about -2.5) and the profile along the columns with the equatorial one, and values along the columns are the larger ones at equal elongation (e.g. 0.450 at (1, 5) against 0.218 at (5, 1)), whereas the text makes the map's major axis equatorial ('an orientation such that the major axis of the elliptically shaped F-corona is horizontal', Sect. 4.2), gives exponents -2.33 (equatorial) and -2.55 (polar) and finds the map in agreement with the Koutchmy-Lamy model and Cox (2000), both brighter along the equator. The pipeline therefore uses the table with rows as beta and columns as lambda - lambda_sun (sky_corona.lasco_cells, tested).",
+ "unit_B_sun": 1e-10,
+ "inner": {
+  "row_deg": [0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9],
+  "col_deg": [0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9],
+  "values": [
+   [162.93, 96.24, 62.26, 43.33, 31.65, 23.85, 18.74],
+   [94.88, 65.67, 47.39, 35.04, 26.67, 20.70, 16.60],
+   [59.97, 46.44, 35.94, 28.02, 22.17, 17.72, 14.51],
+   [40.53, 33.43, 27.31, 22.26, 18.24, 15.00, 12.54],
+   [28.55, 24.62, 20.96, 17.71, 14.96, 12.62, 10.77],
+   [20.63, 18.38, 16.16, 14.08, 12.21, 10.54, 9.17],
+   [15.53, 14.17, 12.76, 11.37, 10.07, 8.87, 7.85]
+  ]
+ },
+ "outer": {
+  "row_deg": [1.0, 1.5, 2.5, 4.0, 5.0, 6.5, 7.5],
+  "col_deg": [1.0, 1.5, 2.5, 4.0, 5.0, 6.5, 7.5],
+  "values": [
+   [6.032, 3.454, 1.639, 0.702, 0.450, 0.259, 0.190],
+   [2.830, 2.118, 1.197, 0.577, 0.388, 0.233, 0.174],
+   [1.045, 0.904, 0.642, 0.382, 0.279, 0.183, 0.142],
+   [0.365, 0.344, 0.290, 0.210, 0.169, 0.122, null],
+   [0.218, 0.209, 0.186, 0.147, 0.123, null, null],
+   [0.114, 0.112, 0.104, 0.089, null, null, null],
+   [0.079, 0.077, 0.074, null, null, null, null]
+  ]
+ },
+ "power_laws": {
+  "_source": "Abstract and Sect. 4.4, Table 1 (p. 28): equatorial and polar profiles follow power laws in elongation with exponents -2.33 and -2.55 (LASCO-C3, 3-8 deg; the equatorial one holds to about 50 deg, the polar one to about 35 deg, connecting to the zodiacal-light profiles of Cox 2000 = Leinert et al. 1998 Table 16). Other determinations (Table 1): Koutchmy-Lamy model 2.31 / 2.52 (2-50 deg); Clementine 2.45 / 2.55; SECCHI-HI-1 2.35 / 2.49; WISPR-I 2.31 and 2.30 (13.5-54 deg). The equatorial LASCO profile shows a shoulder: about 17 % less radiance within about 10 R_sun than a constant slope (abstract).",
+  "equatorial": -2.33,
+  "polar": -2.55
+ },
+ "S10_in_B_sun": 4.5e-16
+}

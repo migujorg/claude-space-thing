@@ -1,0 +1,45 @@
+{
+ "_citation": "van de Hulst, H. C. (1950), 'The electron density of the solar corona', Bulletin of the Astronomical Institutes of the Netherlands 11, 135-150 (No. 410). ADS 1950BAN....11..135V.",
+ "_transcription": "Transcribed by hand from the ADS scan recorded in docs/sources/solar-corona.md (pages 135-140; page numbers are the journal's). Checked by the tests: Eq. 10 applied to Eqs. 5-9 reproduces every entry of Table I (rounding), Eq. 8 = Eq. 7 + Eq. 9, K_max / K_min = c for every term, and the points where K = F fall at the r the paper gives (p. 140).",
+ "unit_B_sun": 1e-8,
+ "_unit": "p. 136: 'As a unit we take 10^-8 times the average surface brightness of the sun (BAUMBACH used 10^-6 times the surface brightness at the centre of the solar disk)'. r: distance from the Sun's centre in the plane of the sky, in solar radii.",
+ "laws": {
+  "K_max": {"coeffs": {"17": 355.6, "7": 177.8, "2.5": 0.708}, "_source": "p. 139, Eq. (5): K-corona, maximum phase, circular"},
+  "K_min": {"coeffs": {"17": 200.0, "7": 100.0, "2.5": 0.398}, "_source": "p. 139, Eq. (6): K-corona, minimum phase, equatorial regions"},
+  "F": {"coeffs": {"7": 14.86, "2.5": 4.99}, "_source": "p. 139, Eq. (7): F-corona (assumed constant in time and circular within a few solar radii, p. 137)"},
+  "K_pole_plus_F": {"coeffs": {"17": 191.0, "7": 27.45, "2.5": 4.99}, "_source": "p. 139, Eq. (8): polar regions, minimum phase, fitted to Bergstrand (1914 eclipse) and Lick 1900 photometry"},
+  "K_pole": {"coeffs": {"17": 191.0, "7": 12.59}, "_source": "p. 139, Eq. (9) = Eq. (8) - Eq. (7). 'The values of K_pole for r > 1.5 are very uncertain' (p. 139)."},
+  "baumbach_1937": {"coeffs": {"17": 2.56, "7": 1.43, "2.5": 0.053}, "unit_B_sun": 1e-6, "_source": "p. 139, Eq. (4): Baumbach's expression for the observed (K + F) brightness, in Baumbach's unit (10^-6 x the centre brightness; given for reference, not used)"}
+ },
+ "model": {
+  "c": 1.78,
+  "c_estimate": {"value": 1.66, "unc": 0.35},
+  "min_phase_sector_fractions": {"equatorial": 0.7, "polar": 0.3},
+  "polar_density_minimum_lat_deg": 70.0,
+  "polar_fit_max_rho": 1.5,
+  "fit_max_rho": 6.0,
+  "phase_definition": "0 at minimum and 1 at maximum of solar activity, changing linearly with time between these epochs (Mitchell); no distinction between the ascending and descending branch.",
+  "_source": "p. 138: 'The corona in the minimum phase has the surface brightness K_min(r) in its equatorial regions and K_pole(r) in its polar regions. The equatorial and polar regions are supposed to extend over sectors of 0.7 and 0.3 times the entire circumference of the sun ... Further we assume that the corona at maximum phase has the surface brightness K_max(r) = c K_min(r) and circular symmetry ... Reading from Figure 1 the ratio Q = 1.7 +- 0.3 between maximum and minimum, I found c = 1.66 +- 0.35 ... I have chosen c = 1.78.' p. 137: phases as defined by Mitchell. p. 135 (abstract): 'The polar corona appears to be separated from the equatorial corona by a density minimum near beta = 70 deg.' fit_max_rho and polar_fit_max_rho are this pipeline's choices (sky_corona.build_model), not the paper's: the equatorial density is fitted over the range of Table I's photometric ring (1.03-6) and the polar density over r <= 1.5, beyond which the paper calls K_pole very uncertain (p. 139)."
+ },
+ "table1": {
+  "_source": "p. 138, Table I: 'Total brightness of the model corona.' Unit = 10^-6 x the total brightness of the sun (or of a corresponding sector of the sun). K'_min is the weighted mean of polar and equatorial regions in the minimum phase.",
+  "ranges": [[1.0, 1.03], [1.03, 6.0], [6.0, null], [1.0, null]],
+  "K_max": [0.266, 0.935, 0.012, 1.213],
+  "K_min": [0.151, 0.525, 0.007, 0.683],
+  "K_pole": [0.098, 0.207, 0.000, 0.305],
+  "K_min_weighted": [0.135, 0.429, 0.005, 0.569],
+  "F": [0.011, 0.167, 0.081, 0.259],
+  "K_max_plus_F": [0.277, 1.102, 0.093, 1.472],
+  "K_min_weighted_plus_F": [0.146, 0.596, 0.086, 0.828]
+ },
+ "equal_K_F_radii": {"max": 2.24, "min": 1.93, "pole": 1.28, "_source": "p. 140: 'The point where f = 0.50 is the place where the K- and F-components are equally strong. This point is reached at r = 2.24, 1.93, and 1.28, for max, min, and pole, respectively.'"},
+ "total_brightness_observed": {
+  "_source": "p. 137: 'The visual observations listed by DYSON and WOOLLEY show a similar trend, changing from 0.47 times full moon near minimum to 0.72 times full moon near maximum (this is 1.07 to 1.66 millionth of the sun).' Figure 1 (p. 137): total brightness of the corona between r = 1.03 and r = 6.0 against phase, photoelectric observations (Nikonov's compilation); the adopted model gives 0.596 (minimum) and 1.102 (maximum) x 10^-6 of the sun (Table I). p. 137: 'The moon screens in the former case [deepest eclipse, inner border r = 1.08] 46 per cent of the K-corona at maximum phase, according to our computations.'",
+  "visual_min_full_moons": 0.47,
+  "visual_max_full_moons": 0.72,
+  "visual_min_millionths_of_sun": 1.07,
+  "visual_max_millionths_of_sun": 1.66,
+  "ring_1.03_6_model_min": 0.596,
+  "ring_1.03_6_model_max": 1.102
+ }
+}

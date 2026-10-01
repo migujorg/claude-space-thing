@@ -1,0 +1,36 @@
+{
+ "_citation": "Saito, K., Poland, A. I. & Munro, R. H. (1977), 'A study of the background corona near solar minimum', Solar Physics 55, 121-134. DOI:10.1007/BF00150879. ADS 1977SoPh...55..121S.",
+ "_transcription": "Transcribed by hand from the ADS scan recorded in docs/sources/solar-corona.md (page numbers are the journal's). Values in parentheses in the paper are extrapolations outside the 2.5-5.5 R_sun data range and are flagged here with \"extrapolated\": true. The tests check Table II's N_e against the Table I coefficients (Eq. 4) and B_K+F = B_K + B_F to rounding.",
+ "_about": "Skylab (HAO white-light coronagraph) data, May 1973 - February 1974: the declining phase of cycle 20, about two years before minimum (p. 122). Brightness in units of the mean brightness of the solar disk B_sun; N_e in cm^-3; r in solar radii. B_F = B - B_K (Sect. 3.3). Relative and absolute brightness errors about 20 % and 50 % near 2.5 R_sun, a factor 2 better near 5 R_sun (p. 126).",
+ "table1": {
+  "_source": "p. 130, Table I: coefficients for pB(rho) = a1 rho^-b1 + a2 rho^-b2 (Eq. 2) and N_e(r) = c1 r^-d1 + c2 r^-d2 (Eq. 4), spherically symmetric, derived for 2.5-5.5 R_sun",
+  "background_equator": {"a1": 1.20e-8, "b1": 3.07, "a2": 9.86e-7, "b2": 6.95, "c1": 1.36e6, "d1": 2.14, "c2": 1.68e8, "d2": 6.13},
+  "equatorial_hole": {"a1": 2.33e-9, "b1": 4.29, "a2": 4.43e-8, "b2": 4.29, "c1": 5.27e6, "d1": 3.30, "c2": 3.54e6, "d2": 5.80},
+  "polar_regions_hole": {"a1": 4.36e-9, "b1": 3.60, "a2": 2.32e-8, "b2": 4.67, "c1": 3.15e6, "d1": 4.71, "c2": 1.60e6, "d2": 3.01}
+ },
+ "table2": [
+  {"r": 1.5, "N_e": 1.46e7, "pB": 5.8e-8, "B_K": 1.1e-7, "N_e_newkirk_saito": 1.53e7, "extrapolated": true},
+  {"r": 2.0, "N_e": 2.71e6, "pB": 9.3e-9, "B_K": 1.5e-8, "N_e_newkirk_saito": 2.92e6, "extrapolated": true},
+  {"r": 2.5, "N_e": 8.02e5, "pB": 2.4e-9, "B_K": 3.7e-9, "B_KF": 8.9e-9, "B_F": 5.2e-9, "N_e_newkirk_saito": 9.02e5},
+  {"r": 3.0, "N_e": 3.29e5, "pB": 8.9e-10, "B_K": 1.4e-9, "B_KF": 4.7e-9, "B_F": 3.3e-9, "N_e_newkirk_saito": 3.78e5},
+  {"r": 4.0, "N_e": 1.04e5, "pB": 2.3e-10, "B_K": 3.7e-10, "B_KF": 1.9e-9, "B_F": 1.5e-9, "N_e_newkirk_saito": 1.17e5},
+  {"r": 5.0, "N_e": 5.21e4, "pB": 9.9e-11, "B_K": 1.6e-10, "B_KF": 1.1e-9, "B_F": 9.2e-10, "N_e_newkirk_saito": 5.50e4},
+  {"r": 6.0, "N_e": 3.22e4, "pB": 5.2e-11, "B_K": 8.5e-11, "N_e_newkirk_saito": 3.19e4, "extrapolated": true}
+ ],
+ "_table2_source": "p. 130, Table II: equatorial coronal background model. The last column (N_e of the Newkirk-Saito minimum equatorial model) is not extrapolated.",
+ "table3_spherical": [
+  {"r": 2.0, "N_e": 3.19e5, "pB": 1.3e-9, "B_K": 2.2e-9, "extrapolated": true},
+  {"r": 2.5, "N_e": 1.44e5, "pB": 4.8e-10, "B_K": 7.8e-10, "B_KF": 5.5e-9, "B_F": 4.7e-9},
+  {"r": 3.0, "N_e": 7.64e4, "pB": 2.2e-10, "B_K": 3.5e-10, "B_KF": 3.0e-9, "B_F": 2.6e-9},
+  {"r": 4.0, "N_e": 2.93e4, "pB": 6.5e-11, "B_K": 9.9e-11, "B_KF": 1.4e-9, "B_F": 1.3e-9},
+  {"r": 5.0, "N_e": 1.42e4, "pB": 2.6e-11, "B_K": 3.9e-11, "B_KF": 7.4e-10, "B_F": 7.0e-10, "extrapolated_K": true}
+ ],
+ "table3_axisymmetric": [
+  {"r": 2.0, "N_e": 2.47e5, "pB": 1.3e-9, "B_K": 2.4e-9, "extrapolated": true},
+  {"r": 2.5, "N_e": 1.11e5, "pB": 4.8e-10, "B_K": 8.8e-10, "B_KF": 5.5e-9, "B_F": 4.6e-9},
+  {"r": 3.0, "N_e": 5.91e4, "pB": 2.2e-10, "B_K": 3.9e-10, "B_KF": 3.0e-9, "B_F": 2.6e-9},
+  {"r": 4.0, "N_e": 2.27e4, "pB": 6.5e-11, "B_K": 1.1e-10, "B_KF": 1.4e-9, "B_F": 1.3e-9},
+  {"r": 5.0, "N_e": 1.10e4, "pB": 2.6e-11, "B_K": 4.5e-11, "B_KF": 7.4e-10, "B_F": 7.0e-10, "extrapolated_K": true}
+ ],
+ "_table3_source": "p. 131, Table III: spherically symmetric polar model and axisymmetric polar values. At 5.0 R_sun N_e, pB and B_K are in parentheses (extrapolated); B_K+F and B_F are measured."
+}

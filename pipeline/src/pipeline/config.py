@@ -201,8 +201,9 @@ COSTS: dict[str, Cost] = {
                       "192 Gaia archive queries (1.0 GB) + XP spectra of 15.3 M sources (3158 queries, 21 GB, reduced "
                       "on the fly, 0.5 GB cache; ~55 min at 4 queries at a time); fetched again if data/cache is "
                       "deleted"),
-    "sky": Cost(0.11, 0.11, 0.2, 0.04, 30, 2, "docs/reports/sky.md",
-                "96 all-sky aggregation queries on the Gaia archive (10-19 min per 48)"),
+    "sky": Cost(0.13, 0.13, 0.2, 0.04, 30, 2.5, "docs/reports/sky.md",
+                "96 all-sky aggregation queries on the Gaia archive (10-19 min per 48); 18 MB of corona papers and "
+                "sunspot-number files"),
 }
 
 

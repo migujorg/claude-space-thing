@@ -1,21 +1,24 @@
 // The M4 sky products (docs/architecture.md §6): the deep star tier (stars/deep.json + HEALPix tiles, fetched
 // lazily, only as deep into each brightest-first tile as needed) and the all-sky maps (sky/diffuse.json:
-// faintStars, diffuse, deepRemainder) and the zodiacal-light model (sky/zodiacal.json).
+// faintStars, diffuse, deepRemainder), the zodiacal-light model (sky/zodiacal.json) and the solar corona
+// (sky/corona.json).
 //
 // loadAll() reads the three headers (small); SkyController (app/sky.ts) fetches the maps after the first frame
 // and the tiles as the view needs them, through the same DataLoader (integrity checks, Data-panel report).
 
-import type { HealpixMapLayer, Label, Manifest, SkyMapsFile, TiledBinaryTableHeader, ZodiacalLightModel } from './schema';
+import type { CoronaModel, HealpixMapLayer, Label, Manifest, SkyMapsFile, TiledBinaryTableHeader, ZodiacalLightModel } from './schema';
 import type { DataLoader } from './load';
 
 export const DEEP_HEADER = 'stars/deep.json';
 export const SKY_MAPS_HEADER = 'sky/diffuse.json';
 export const ZODIACAL = 'sky/zodiacal.json';
+export const CORONA = 'sky/corona.json';
 
 export interface SkyHeaders {
   deep: TiledBinaryTableHeader | null;
   maps: SkyMapsFile | null;
   zodiacal: ZodiacalLightModel | null;
+  corona: CoronaModel | null;
 }
 
 export interface SkyMaps {
@@ -48,14 +51,20 @@ function validateZodi(x: unknown): ZodiacalLightModel {
   return x as unknown as ZodiacalLightModel;
 }
 
+function validateCorona(x: unknown): CoronaModel {
+  if (!isObj(x) || x.kind !== 'coronaModel' || !isObj(x.kCorona) || !isObj(x.fCorona) || !isObj(x.bSun)) throw new Error('expected a coronaModel');
+  return x as unknown as CoronaModel;
+}
+
 /** Headers only (loadAll). Tile files are reported as on-demand, map binaries as deferred. */
 export async function loadSkyHeaders(L: DataLoader, manifest: Manifest | null): Promise<SkyHeaders> {
   const json = (b: ArrayBuffer): unknown => JSON.parse(new TextDecoder().decode(b));
   const has = (p: string) => !manifest || !!manifest.products[p];
-  const [deep, maps, zodiacal] = await Promise.all([
+  const [deep, maps, zodiacal, corona] = await Promise.all([
     has(DEEP_HEADER) ? L.get(DEEP_HEADER, (b) => validateDeep(json(b)), 'No deep star tiles: stars fainter than the bright tier are not drawn as points.') : null,
     has(SKY_MAPS_HEADER) ? L.get(SKY_MAPS_HEADER, (b) => validateMaps(json(b)), 'No diffuse sky: the Milky Way glow and the faint stars are not drawn.') : null,
     has(ZODIACAL) ? L.get(ZODIACAL, (b) => validateZodi(json(b)), 'No zodiacal light.') : null,
+    has(CORONA) ? L.get(CORONA, (b) => validateCorona(json(b)), 'No solar corona: near the Sun only the zodiacal-light model is drawn.') : null,
   ]);
   if (deep) {
     const tiles = deepTilePaths(deep);
@@ -68,7 +77,7 @@ export async function loadSkyHeaders(L: DataLoader, manifest: Manifest | null): 
       L.setReport(p, { status: 'deferred', bytes: manifest?.products[p]?.bytes, message: 'Loaded in the background after the first frame.' });
     }
   }
-  return { deep, maps, zodiacal };
+  return { deep, maps, zodiacal, corona };
 }
 
 export const mapPath = (l: HealpixMapLayer): string => (l.bin.startsWith('sky/') ? l.bin : `sky/${l.bin}`);

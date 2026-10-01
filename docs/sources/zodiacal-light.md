@@ -1,5 +1,11 @@
 # Zodiacal light: Leinert et al. 1998 and Kelsall et al. 1998 (sky)
 
+Within 15° of the Sun (as seen from 1 AU) the rendered dust light is not this model alone. The F-corona law
+fitted to the LASCO reference map replaces it inside 7.5° and is blended into it out to 15°. Near the Sun the
+Kelsall cloud gives polar F-corona brightness 2–7 times too low and a seasonal swing the measurements do not show.
+See docs/sources/solar-corona.md and docs/reports/sky.md §5.2. Leinert Sect. 9 / Table 23 (the F-corona) is
+transcribed with the other constants.
+
 Used by the `sky` stage for `sky/zodiacal.json`. SourceRecord ids: `leinert-1998`, `kelsall-1998` (plus
 `tsis1-hsrs-v2`, `edlen-1966` and the CIE records for the colour conversion).
 

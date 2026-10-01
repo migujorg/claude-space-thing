@@ -2,7 +2,7 @@
 // log-average of the retinal image (the eye looks at what is lit, never at the Sun's disk); point
 // sources are judged at their own fixation, adapted to their own background.
 import { describe, expect, it } from 'vitest';
-import { fixationAdaptation, type RetinalSample } from '../src/eye/fixation';
+import { fixationAdaptation, sunExclusionRad, type RetinalSample } from '../src/eye/fixation';
 import { AdaptationState, computeEyeFrame } from '../src/eye/model';
 import { DEFAULT_EYE_SETTINGS } from '../src/eye/settings';
 import { pointAppearance } from '../src/eye/points';
@@ -51,6 +51,34 @@ describe('fixations: where the eye looks when adapting to the extended image', (
     const a = fixationAdaptation(f, 'brightness').coneCdM2;
     expect(a / 1.1e4).toBeGreaterThan(0.9);
     expect(a / 1.1e4).toBeLessThan(1.01);
+  });
+  it('light the veil swamps right beside the limb (the inner corona) does not draw the eye onto the Sun', () => {
+    // The bare Sun from 1 au in a 25° field: annuli of a corona-like scene luminance L(ρ) (ρ in solar radii)
+    // under the Sun's veil 10·E/θ² (θ in degrees, E = 1.27e5 lx); no other light.
+    const R = 0.2666, px = 0.04;
+    const ring = (exclRad: number, inner: boolean): RetinalSample[] => {
+      const out: RetinalSample[] = [];
+      const n = 400, t0 = Math.log(R), t1 = Math.log(25);
+      for (let i = 0; i < n; i++) {
+        const a = Math.exp(t0 + ((t1 - t0) * i) / n), b = Math.exp(t0 + ((t1 - t0) * (i + 1)) / n), th = Math.sqrt(a * b);
+        const rho = th / R;
+        const excluded = (th * Math.PI) / 180 <= exclRad;
+        const L = excluded && !inner ? 0 : 700 * (rho / 1.1) ** -6 + 30 * rho ** -2.3;
+        const veil = (10 * 1.27e5) / th ** 2;
+        out.push({ Y: L + veil, S: 2 * (L + veil), sceneY: L, omegaSr: deg2(Math.PI * (b * b - a * a)), onSunDisk: excluded });
+      }
+      return out;
+    };
+    const rad = (d: number) => (d * Math.PI) / 180;
+    const wide = sunExclusionRad(rad(R), 1, rad(px));
+    expect((wide * 180) / Math.PI).toBeCloseTo(R + 0.5, 9);
+    expect(sunExclusionRad(rad(R), 0.01, rad(px))).toBeCloseTo(rad(R + px), 12);   // at least one pixel
+    // Widened: the light inside the ring changes nothing (it is never fixated).
+    const a = fixationAdaptation(ring(wide, true), 'brightness').coneCdM2;
+    expect(a / fixationAdaptation(ring(wide, false), 'brightness').coneCdM2).toBeCloseTo(1, 9);
+    // The disk alone: that light, 10⁻⁴ of the veil over it, would pull the eye to the limb (adaptation ×10 or more).
+    const disk = rad(R + px);
+    expect(fixationAdaptation(ring(disk, true), 'brightness').coneCdM2 / a).toBeGreaterThan(10);
   });
   it('an empty dark frame adapts to darkness (the dark-light floor)', () => {
     const a = fixationAdaptation(frame([{ Y: 0, areaDeg2: 2500 }]), 'brightness');

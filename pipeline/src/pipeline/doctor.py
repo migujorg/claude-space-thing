@@ -49,7 +49,8 @@ HOSTS: dict[str, tuple[str, ...]] = {
     "stars": ("gea.esac.esa.int", "archive.stsci.edu", "www.stsci.edu", "cdsarc.cds.unistra.fr", "cds.unistra.fr",
               "www.pas.rochester.edu"),
     "deepstars": ("gea.esac.esa.int",),
-    "sky": ("gea.esac.esa.int", "www.stsci.edu", "arxiv.org", "scispace.com"),
+    "sky": ("gea.esac.esa.int", "www.stsci.edu", "arxiv.org", "scispace.com", "articles.adsabs.harvard.edu", "www.sidc.be",
+            "services.swpc.noaa.gov"),
 }
 #: The Gaia XP spectra's host, by stars.xpSource (stars_gaia module docstring), for the stages that read them.
 XP_HOSTS = {"archive": "gaia.ari.uni-heidelberg.de", "bulk": "cdn.gea.esac.esa.int"}
