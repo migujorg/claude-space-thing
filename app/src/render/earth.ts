@@ -196,6 +196,52 @@ export interface EarthSample {
    * retrieval. When known it replaces opticalThickness and iceFraction (cloudLogNormal).
    */
   tauMoments?: { fTau: number; m1: number; m2: number; iceTau: number };
+  /**
+   * The τ population given to the cloud without a retrieval (cloudFraction − f_τ), when the reality level
+   * admits it (unmeasuredTauPopulation; estimated). Absent or null: that cloud stays unknown.
+   */
+  unmeasuredTau?: CloudPopulation | null;
+}
+
+/** A cloud population as τ nodes with probabilities (summing to 1), each node a sub-pixel of its own. */
+export interface CloudPopulation {
+  taus: number[];
+  p: number[];
+}
+
+/**
+ * The cloudTau header's statistic for cloud without a retrieval: constants.unmeasuredTau, the measured τ
+ * distribution of MODIS partly cloudy pixels (Pincus et al. 2023, Fig. 7; docs/rendering-earth.md §3), as
+ * constants.use.unmeasuredShare prescribes. The partly-cloudy, all-heights histogram
+ * (statistics.floorCellsZero.partlyCloudyAllHeights) is used bin by bin, τ_k = exp(tauBinLnCentre[k]). No
+ * fitted shape is used: the log-normal through the same moments is 6–10 % brighter at high Sun, because the
+ * histogram has no mass above τ = 23. Empty bins are dropped and the probabilities renormalized. null when the
+ * header has no usable statistic.
+ */
+export function unmeasuredTauPopulation(header: unknown): (CloudPopulation & { label: string }) | null {
+  const u = (header as { constants?: { unmeasuredTau?: Record<string, unknown> } } | null)?.constants?.unmeasuredTau;
+  if (!u) return null;
+  const ln = u.tauBinLnCentre;
+  const stats = u.statistics as Record<string, Record<string, { binProbability?: unknown }>> | undefined;
+  const pr = stats?.floorCellsZero?.partlyCloudyAllHeights?.binProbability;
+  if (!Array.isArray(ln) || !Array.isArray(pr) || ln.length !== pr.length || ln.length === 0) return null;
+  if (!ln.every((x) => typeof x === 'number' && fin(x)) || !pr.every((x) => typeof x === 'number' && fin(x) && x >= 0)) return null;
+  const sum = (pr as number[]).reduce((a, b) => a + b, 0);
+  if (!(sum > 0)) return null;
+  const taus: number[] = [], p: number[] = [];
+  (pr as number[]).forEach((x, k) => {
+    if (x > 0) { taus.push(Math.exp(ln[k] as number)); p.push(x / sum); }
+  });
+  if (taus.length > MAX_POPULATION_NODES) return null;
+  return { taus, p, label: typeof u.label === 'string' ? u.label : 'unknown' };
+}
+
+/** Nodes of a cloud population the renderer holds per body (struct Body unTau/unP in shaders.ts). */
+export const MAX_POPULATION_NODES = 8;
+
+/** Plane albedo of a population over a black surface, R̄(μ0) = Σ p_k R(τ_k) (the header's planeAlbedoLiquid check). */
+export function populationPlaneAlbedo(pop: CloudPopulation, g: number, mu0: number): number {
+  return pop.taus.reduce((a, t, k) => a + pop.p[k] * cloudPlaneAlbedo(t, g, mu0), 0);
 }
 
 /** Nodes and weights of the 3-point Gauss–Hermite rule for a normal variable: μ, μ ± √3σ with 2/3, 1/6, 1/6. */
@@ -283,28 +329,26 @@ export function earthParts(s: EarthSample, mu0: number, mu: number, glint?: Glin
   let C = s.cloudFraction;
   if (!fin(C)) { C = 0; gap = 1; }
   C = Math.min(Math.max(C, 0), 1);
-  // The cloud's optical thickness: with the cloudTau moments, the retrieved share f_τ as a log-normal in τ (three
-  // nodes, independent pixels); the rest of the cloud, C − f_τ, has no measured thickness: no reflected light, marked
-  // unknown. Without them, the clouds layer's mean τ over the whole cloud (unknown where NaN).
+  // The cloud's optical thickness, as populations of τ nodes (each node a sub-pixel of its own, independent pixels):
+  // with the cloudTau moments, the retrieved share f_τ as a log-normal in τ (three nodes), and the rest of the cloud,
+  // C − f_τ, from the partly-cloudy statistic where the level admits it (liquid; estimated), else no reflected light,
+  // marked unknown. Without the moments, the clouds layer's mean τ over the whole cloud (unknown where NaN).
   const ln = cloudLogNormal(s.tauMoments, C);
-  let taus: number[], wts: number[], cloudy: number, fice: number;
+  const pops: { w: number; taus: number[]; wts: number[]; fice: number }[] = [];
   if (ln) {
-    cloudy = ln.f;
-    gap = Math.max(gap, C - ln.f);
-    taus = ln.taus;
-    wts = LOGNORMAL_WEIGHTS;
-    fice = ln.ice;
+    pops.push({ w: ln.f, taus: ln.taus, wts: LOGNORMAL_WEIGHTS, fice: ln.ice });
+    const rest = C - ln.f;
+    if (rest > 0 && s.unmeasuredTau) pops.push({ w: rest, taus: s.unmeasuredTau.taus, wts: s.unmeasuredTau.p, fice: 0 });
+    else gap = Math.max(gap, rest);
   } else {
     const tau = s.opticalThickness;
-    cloudy = C;
-    if (C > 0 && !fin(tau)) { gap = Math.max(gap, C); cloudy = 0; }
-    taus = [fin(tau) ? Math.max(tau, 0) : 0];
-    wts = [1];
-    fice = fin(s.iceFraction) ? Math.min(Math.max(s.iceFraction, 0), 1) : 0;
+    const fice = fin(s.iceFraction) ? Math.min(Math.max(s.iceFraction, 0), 1) : 0;
+    if (C > 0 && !fin(tau)) gap = Math.max(gap, C);
+    else pops.push({ w: C, taus: [Math.max(tau, 0)], wts: [1], fice });
   }
+  const cloudy = pops.reduce((a, q) => a + q.w, 0);
   // What stays unknown for light emitted at the surface: the cloud state and the cloud of unknown thickness.
   const gapEmit = gap;
-  const g = (1 - fice) * CLOUD_G_LIQUID + fice * CLOUD_G_ICE;
   const clearW = 1 - C;
   gap = Math.max(gap, clearW * surfaceGap);
   const m0 = Math.max(mu0, 0);
@@ -318,9 +362,11 @@ export function earthParts(s: EarthSample, mu0: number, mu: number, glint?: Glin
     : { share: 0, maxRho: 0 };
   const clear: EarthPart = { w: clearW, dir: Rs.map((r) => r * m0 + ow * rg) as XYZS, dif: Rs.map((r) => r + ow * FRESNEL_DIFFUSE) as XYZS, emit: [1, 1, 1, 1] };
   const cl: EarthPart = { w: cloudy, dir: [0, 0, 0, 0], dif: [0, 0, 0, 0], emit: [0, 0, 0, 0] };
-  // Each τ node is a sub-pixel of its own (independent pixel approximation), weighted.
-  if (cloudy > 0) for (let k = 0; k < taus.length; k++) {
-    const tau = taus[k], wk = wts[k];
+  // Each τ node is a sub-pixel of its own (independent pixel approximation), weighted by its share of the cloud.
+  if (cloudy > 0) for (const q of pops) for (let k = 0; k < q.taus.length; k++) {
+    const tau = q.taus[k], wk = (q.w / cloudy) * q.wts[k];
+    if (!(wk > 0)) continue;
+    const g = (1 - q.fice) * CLOUD_G_LIQUID + q.fice * CLOUD_G_ICE;
     const o = cloudOptics(tau, g, mu0, mu);
     const through = o.tView + o.tViewDiffuse;
     // The glint seen through a thin cloud: the unscattered beam both ways.

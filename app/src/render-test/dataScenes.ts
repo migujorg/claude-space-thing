@@ -11,6 +11,7 @@
 import { LABEL_ORDER, type AtmosphereFile, type Label, type RingsFile, type SurfaceLayerHeader, type Sourced, type LightData, type Body, type PhotometryFile } from '../data/schema';
 import type { Mat3, SceneBody, SceneSnapshot, SurfaceLayerRef, Vec3 } from '../render/scene';
 import { AU_KM } from '../render/constants';
+import { unmeasuredTauPopulation } from '../render/earth';
 import { diskModelPPhi, evalPhase, meanRadius, type XYZS } from '../render/photometry';
 import { lookAlong, type TestScene } from './scenes';
 
@@ -165,6 +166,8 @@ export async function buildDataScene(p: URLSearchParams): Promise<TestScene> {
         albedo: off('map') ? undefined : albedo,
         clouds: off('clouds') ? undefined : clouds,
         cloudTau: off('clouds') || off('cloudtau') ? undefined : cloudTau,
+        // unmeasured=0: the cloud without a retrieval stays unknown (as at Strict).
+        cloudTauUnmeasured: off('clouds') || off('cloudtau') || off('unmeasured') ? undefined : unmeasuredTauPopulation(cloudTau?.header) ?? undefined,
         water: off('water') ? undefined : water,
         night: off('night') ? undefined : night,
         wind: off('wind') ? undefined : wind,

@@ -8,6 +8,7 @@
 import type { BodyAtmosphere, DiskReflectanceModel, Label, PhaseFunction, RingReflectance, SpatialPhotometricModel, SurfaceLayerHeader } from '../data/schema';
 import type { EyeSettings } from '../eye/settings';
 import type { CometActivity } from './comets/model';
+import type { CloudPopulation } from './earth';
 
 export type { EyeSettings };
 
@@ -70,6 +71,12 @@ export interface SceneBody {
      * its ln τ distribution. Used with `clouds`; without it the clouds layer's mean τ is used.
      */
     cloudTau?: SurfaceLayerRef;
+    /**
+     * Earth: the τ population for the cloud without a retrieval (cloudFraction − f_τ), when the reality level
+     * admits its label (render/earth.ts unmeasuredTauPopulation of cloudTau's header; estimated). Without it that
+     * cloud stays unknown (hatched where it dominates).
+     */
+    cloudTauUnmeasured?: CloudPopulation;
     /** Earth: a layer of kind 'surface-water' (waterFraction, seaIceFraction): sea ice, and later glint. */
     water?: SurfaceLayerRef;
     /** Earth: a layer of kind 'emitted-radiance' (dnbRadiance, censoredFraction; night lights). */

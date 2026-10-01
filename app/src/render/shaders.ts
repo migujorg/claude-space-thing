@@ -358,7 +358,10 @@ struct Body {
   absR: vec4f,   // the albedo map's absoluteDiskMean (XYZS): texel × absR = absolute reflectance
   nightK: vec4f, // night lights: luminance (cd/m², XYZS) per unit of the layer's radiance
   atm: vec4f,    // atmosphere (shaders-atmosphere.ts): 1 = drawn (shell), march steps, 1 = over the disk too, unused
-  earthT: vec4f, // cloud optical-thickness moments layer (earth.ts cloudLogNormal): base, max level, enabled, unused
+  earthT: vec4f, // cloud optical-thickness moments layer (earth.ts cloudLogNormal): base, max level, enabled,
+                 // w = 1: the cloud without a retrieval takes the population unTau/unP (earth.ts unmeasuredTauPopulation)
+  unTau0: vec4f, unTau1: vec4f, // its τ nodes
+  unP0: vec4f, unP1: vec4f,     // and their probabilities (0 past the last node)
 };
 `;
 
@@ -830,6 +833,10 @@ const EARTH_SAMPLE = /* wgsl */ `
         let baseT = bitcast<u32>(b.earthT.x);
         let sT = sampleLayer(cloudPages, SI.cloudsPerRow, baseT, residentLevel(baseT, surfLevel(b.surfA.w, fp, b.earthT.y), uv), uv, false);
         if (all(sT.known.xyz > vec3f(0.0))) { ein.tauMom = sT.v; ein.tauMomKnown = 1.0; }
+        // The cloud without a retrieval: the partly-cloudy population where the level admits it.
+        ein.unKnown = b.earthT.w;
+        ein.unTau = array<vec4f, 2>(b.unTau0, b.unTau1);
+        ein.unP = array<vec4f, 2>(b.unP0, b.unP1);
       }
       if (b.earthW.z > 0.5) {
         let baseW = bitcast<u32>(b.earthW.x);

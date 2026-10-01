@@ -100,7 +100,9 @@ cloud base, and is seen through the direct view path plus the diffuse part (1 �
   2026-09-28): the pixel is drawn clear and marked.
 - Cloudy but no optical thickness: that share contributes no reflected light and is marked. With the
   `cloudTau` layer this is cloudFraction − f_τ, 39 % of the daylit cloud (below); without it, only the texels
-  with no retrieval at all (2.5 % of the cloud cover). It is hatched where it is over half the pixel.
+  with no retrieval at all (2.5 % of the cloud cover). It is hatched where it is over half the pixel. With the
+  `cloudTau` layer at Best and Complete, cloudFraction − f_τ instead takes the measured partly-cloudy statistic
+  (estimated, below). It is no longer marked.
 - The marks count only where the pixel is lit. At night only the cloud state matters, and only where
   there are lights to hide.
 
@@ -168,10 +170,15 @@ moments also holds per texel at coarse levels.
   multiple reflection, glint through thin cloud). Against a 400-point integral of the plane albedo it is within
   0.05 % for σ(ln τ) = 0.5 and within 0.6 % for σ = 1 (τ ≥ 3); for σ = 1.4 on thin cloud it reaches 1–3 %. The
   ice share among the retrievals (iceTauFraction/f_τ) sets g.
-- The rest of the cloud, cloudFraction − f_τ, has no measured thickness. It gets no guessed τ: it reflects
-  nothing and is marked unknown (hatched where it is over half the pixel). GIBS serves no partly-cloudy
-  thickness for these samples. A population statistic for them is now in the `cloudTau` header (below), not
-  used by the renderer yet.
+- The rest of the cloud, cloudFraction − f_τ, has no measured thickness for its own samples. GIBS serves no
+  partly-cloudy thickness for them.
+  - At Strict it gets no τ: it reflects nothing and is marked unknown (hatched where it is over half the pixel).
+  - At Best and Complete it is a second population, with the measured partly-cloudy τ distribution of the
+    header's `unmeasuredTau` statistic (below), labelled **estimated** in the body's worst label and tint.
+    Its probabilities are taken bin by bin (`earth.ts unmeasuredTauPopulation`; empty bins dropped), as
+    sub-pixels with liquid g, in the same two-stream layer as the retrieved part. The renderer's plane albedo
+    R̄ = Σ p_k R(τ_k) is 0.35599, 0.23700, 0.16705, 0.12035 and 0.08673 at μ0 = 0.2–1.0. The header's
+    `planeAlbedoLiquid` check values are 0.356, 0.237, 0.1671, 0.1204 and 0.0867.
 - Without the layer (older data), the clouds layer's mean τ applies to the whole cloud, as before.
 
 Validation (`earth-himawari9-2026`, Himawari-9 over the cloud layer's own overpass):
@@ -188,6 +195,25 @@ the air. For the same reason the EPOXI Earth of 2008 (whole disk at 75° phase, 
 in for 2008) now renders at 0.85 of its measured disk brightness and 0.62 at its centre, against 1.07 and
 1.01 when the clouds layer's mean τ was spread over the whole cloud. That was the overestimate this layer
 removes. What is missing now is the light of the cloud whose thickness is not measured.
+
+**With the partly-cloudy statistic at Best** (the second population above), the same cases give:
+
+| ROI | unknown (Strict rule) | with the statistic |
+|---|---|---|
+| Himawari disk centre | 1.03 | 1.47 (fail) |
+| Himawari near-centre points | 0.79, 0.99, 0.91 | 1.29, 1.01, 1.36 |
+| Himawari limb (Y) | 0.99 | 1.00 (Z 1.11, just outside its tolerance) |
+| Himawari terminator | 0.71 | 0.57 |
+| EPOXI Earth, whole disk | 0.85 | 0.94 (pass) |
+| EPOXI Earth, centre | 0.62 | 0.92 (pass) |
+| EPOXI Moon/Earth ratio | 0.111 (0.1016 ± 0.0014) | 0.1010 (pass) |
+
+The whole-disk case now passes. The texels at Himawari's centre do not: they are 81–94 % "cloudy" with
+f_τ = 0.06, yet in the image they are about as dark as the clear sea under the air. Their cloud without a
+retrieval is much thinner than the global partly-cloudy mean (τ_g 1.24). Even with no light from it, the centre
+renders 1.03. A regional or per-texel statistic would be needed there. At the terminator the unknown share
+was drawn as clear air over a black surface. That air reached the ground, whereas air over a cloud stops at
+its top, so 0.71 was too bright for the wrong reason.
 
 **A statistic for the unmeasured share (`cloudTau.json` → `constants.unmeasuredTau`; for Best estimate).**
 Most cloudy samples without a retrieval are pixels that the clear-sky restoral flags as partly cloudy or cloud
