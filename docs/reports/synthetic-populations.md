@@ -275,6 +275,7 @@ Synthetic jovian moons have D 0.8–2.3 km (V ≥ 24.3 from the Earth), saturnia
 - **Figures:**
   - `img/synthetic-h-distributions.svg` has five new panels (cumulative model, catalogue, and catalogue + synthetic).
   - `img/synthetic-diagnostic-centaurs-moons.png` is a DIAGNOSTIC data plot, not a rendering. Left: catalogued Centaurs (cyan) and synthetic ones (orange), seen from ecliptic north within 32 au. Middle and right: the (a, i) plane of Jupiter's retrograde and Saturn's irregular moons, known (cyan) and synthetic (orange); the synthetic moons sit in the cells of the known families.
+  - `img/synthetic-moon-inspector.png`: the app at Complete (2026-10-15, orbits on) with a synthetic retrograde moon of Jupiter selected from 0.4 au. Its orbit (yellow) is drawn around Jupiter among the real irregular moons' orbits (grey, NAIF kernels), and the inspector says what it stands for. Taken like the main-belt screenshot of §9 (`__app.select(id)`, `__app.goTo(id, 6e7, true)`, id = −(row + 1), row = core count + `irregular-jupiter` `firstObject` + 12). State in `img/synthetic-moon-inspector.json`. The HUD counts 2 969 843 synthetic objects drawn at Complete.
 
 ### 12.5 Limitations
 
