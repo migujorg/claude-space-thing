@@ -49,7 +49,23 @@ Each scene is compared with `baseline/stats.json` and `baseline/<id>.png`. The d
 
 This check catches blank frames and gross regressions such as a missing body, a lost texture or a wrong exposure. It is not a pixel diff.
 
-A scene that fails to render always fails. Examples: a `__frameError`, or a timeout waiting for `__frameReady`. SwiftShader shares the CPU, so on a busy machine a scene can time out: such a scene is rendered once more, on its own, before it counts as failed (`--retries 0` turns that off).
+A scene that fails to render always fails. Examples: a `__frameError`, or a timeout waiting for `__frameReady`. SwiftShader shares the CPU and memory, so on a busy machine a scene can time out, or its GPU process can be killed. A lost GPU device sets `__frameError` at once, with the reason (`WebGPU device lost (unknown): …`), so the run does not wait for the timeout. Either way the scene is rendered once more, on its own, before it counts as failed (`--retries 0` turns that off).
+
+A scene also fails, without a retry, when the page reports a data product that the manifest lists as missing or unusable, for example when a worktree's `public/data` lacks the `shapes`, `comets` or `synthetic` link. Such a scene would silently draw ellipsoids in place of shape models and no comets, and it could not be accepted as a baseline.
+
+## Determinism
+
+A scene renders the same numbers on every run of an unchanged tree. Two runs of the Moments scenes, earth-night
+and saturn-rings agree on every stat, stars included. Three things make this so:
+
+- **Instant adaptation.** `defaults` sets `adapt=instant`, so the eye is always adapted to the view. With the
+  real-time default, the frames rendered around the settled one would move the pigments by real elapsed time,
+  so star counts near threshold depended on timing. Scenes that test the eye's time dependence set
+  `adapt=realtime` with an `adaptfrom` history, which defines their past.
+- **A settled point cut.** The sky (app/sky.ts) cuts points from background light at the eye's limit, with
+  hysteresis while the view changes. Before `__frameReady` the cut is set afresh at the settled limit
+  (`SkyController.settleCut`), so it does not depend on the limits the loading frames passed through.
+- **Paused time.** A URL with `t` starts paused.
 
 ## Running
 

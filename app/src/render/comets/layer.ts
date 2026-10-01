@@ -15,6 +15,7 @@ import {
   type Coma, type CometInput, type DustPacketGeometry, type TailPacket, type V3,
 } from './model';
 import { COMA_SHADER, PACKET_SHADER } from './shaders';
+import { LIMBS_UB_BYTES } from '../shaders';
 
 export interface CometTargets {
   ext: GPUTexture;
@@ -43,6 +44,7 @@ export class CometLayer {
   private comaPipe: GPURenderPipeline;
   private packetPipe: GPURenderPipeline;
   private comaBuf: GPUBuffer | null = null;
+  private noLimbs: GPUBuffer | null = null;
   private lutBuf: GPUBuffer | null = null;
   private packetBuf: GPUBuffer | null = null;
   private geoCache = new Map<number, { et: number; pos: V3; geo: DustPacketGeometry[] }>();
@@ -87,7 +89,7 @@ export class CometLayer {
    * pass); opts.comaAsPoint false forces every coma into EXT (tests).
    */
   encode(enc: GPUCommandEncoder, t: CometTargets, frameUB: GPUBuffer, et: number, comets: SceneComet[], cam: CameraGeom, riccoAreaSr: number,
-    points: PointSource[], opts: { tails?: boolean; comaAsPoint?: boolean; timestampWrites?: () => GPURenderPassTimestampWrites | undefined } = {}): void {
+    points: PointSource[], opts: { tails?: boolean; comaAsPoint?: boolean; timestampWrites?: () => GPURenderPassTimestampWrites | undefined; limbs?: GPUBuffer } = {}): void {
     const pixelAngle = cam.pixelAngle;
     const m = this.model;
     const comaData = new Float32Array(comets.length * 16);
@@ -138,6 +140,8 @@ export class CometLayer {
     d.queue.writeBuffer(comaBuf, 0, comaData);
     const lutBuf = this.buffer('lutBuf', luts.byteLength);
     d.queue.writeBuffer(lutBuf, 0, luts);
+    // The atmospheres' limbs (shaders.ts LIMB_WGSL; renderer.ts writeLimbs); none without the renderer's uniform.
+    const limbs = opts.limbs ?? (this.noLimbs ??= d.createBuffer({ size: LIMBS_UB_BYTES, usage: GPUBufferUsage.UNIFORM, label: 'comet no limbs' }));
     const pass = enc.beginRenderPass({
       label: 'comets',
       timestampWrites: opts.timestampWrites?.(),
@@ -149,14 +153,14 @@ export class CometLayer {
       const packetBuf = this.buffer('packetBuf', pk.byteLength);
       d.queue.writeBuffer(packetBuf, 0, pk);
       pass.setPipeline(this.packetPipe);
-      pass.setBindGroup(0, d.createBindGroup({ layout: this.packetPipe.getBindGroupLayout(0), entries: [{ binding: 0, resource: { buffer: frameUB } }, { binding: 1, resource: { buffer: packetBuf } }] }));
+      pass.setBindGroup(0, d.createBindGroup({ layout: this.packetPipe.getBindGroupLayout(0), entries: [{ binding: 0, resource: { buffer: frameUB } }, { binding: 1, resource: { buffer: packetBuf } }, { binding: 2, resource: { buffer: limbs } }] }));
       pass.draw(6, nPackets);
     }
     if (nComae) {
       pass.setPipeline(this.comaPipe);
       pass.setBindGroup(0, d.createBindGroup({
         layout: this.comaPipe.getBindGroupLayout(0),
-        entries: [{ binding: 0, resource: { buffer: frameUB } }, { binding: 1, resource: { buffer: comaBuf } }, { binding: 2, resource: { buffer: lutBuf } }],
+        entries: [{ binding: 0, resource: { buffer: frameUB } }, { binding: 1, resource: { buffer: comaBuf } }, { binding: 2, resource: { buffer: lutBuf } }, { binding: 3, resource: { buffer: limbs } }],
       }));
       pass.draw(6, nComae);
     }
@@ -164,6 +168,7 @@ export class CometLayer {
   }
 
   destroy(): void {
+    this.noLimbs?.destroy();
     this.comaBuf?.destroy();
     this.lutBuf?.destroy();
     this.packetBuf?.destroy();

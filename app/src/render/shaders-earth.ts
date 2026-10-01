@@ -116,11 +116,38 @@ struct EarthIn {
   u10: f32,         // 10 m wind speed (m/s)
   windKnown: f32,   // 1 known, 0 unknown
   glint: f32,       // 1: wind layer bound (glint drawn, or marked unknown where the wind is)
+  tauMom: vec4f,    // cloudTau layer: f_τ, Σ ln τ / N, Σ (ln τ)² / N, ice-retrieval share (earth.ts EarthSample.tauMoments)
+  tauMomKnown: f32, // 1: tauMom known (it replaces tau, tauKnown and fice)
+  unTau: array<vec4f, 2>, // the population for the cloud without a retrieval (earth.ts EarthSample.unmeasuredTau): τ nodes
+  unP: array<vec4f, 2>,   // and their probabilities (0 past the last node)
+  unKnown: f32,     // 1: that population is admitted (else the cloud without a retrieval stays unknown)
 };
 
 /** One part of the pixel (earth.ts EarthPart): share, direct and diffuse radiance factors, emission transmission. */
 struct EarthPart { w: f32, dir: vec4f, dif: vec4f, emit: vec4f };
 struct EarthParts { clear: EarthPart, cloudy: EarthPart, gap: f32, gapEmit: f32, glintShare: f32, glintMax: f32 };
+
+/** One τ node of a cloud (earth.ts earthParts, the node loop's body): direct, diffuse and emission terms (w unused). */
+fn cloudNode(tau: f32, g: f32, Rs: vec4f, owRg: f32, m0: f32, mu0: f32, mu: f32) -> EarthPart {
+  let tp = (1.0 - g * g) * tau;
+  var rbar = 0.0;
+  var tdir = 0.0;
+  for (var k = 0; k < 4; k++) {
+    rbar += 2.0 * G4W[k] * G4X[k] * cloudPlaneAlbedo(tau, g, G4X[k]);
+    tdir += 2.0 * G4W[k] * G4X[k] * exp(-tp / G4X[k]);
+  }
+  let R0 = cloudPlaneAlbedo(tau, g, mu0);
+  let through = exp(-tp / max(mu, 1e-4)) + max(1.0 - rbar - tdir, 0.0) * escapeFn(mu);
+  let multi = 1.0 / (1.0 - Rs * rbar);
+  // The glint seen through a thin cloud: the unscattered beam both ways.
+  let glintThrough = owRg * exp(-tp / max(m0, 1e-4)) * exp(-tp / max(mu, 1e-4));
+  return EarthPart(
+    1.0,
+    m0 * (R0 * escapeFn(mu) + (1.0 - R0) * multi * Rs * through) + glintThrough,
+    rbar * escapeFn(mu) + (1.0 - rbar) * multi * Rs * through,
+    multi * through,
+  );
+}
 
 /** earth.ts earthParts. */
 fn earthParts(e: EarthIn, mu0: f32, mu: f32, cosBeta: f32, cosOmega: f32) -> EarthParts {
@@ -130,11 +157,28 @@ fn earthParts(e: EarthIn, mu0: f32, mu: f32, cosBeta: f32, cosOmega: f32) -> Ear
   let surfaceGap = select(1.0 - ai, 0.0, e.surfKnown > 0.5);
   var C = clamp(e.C, 0.0, 1.0);
   if (e.cKnown < 0.5) { C = 0.0; gap = 1.0; }
-  var cloudy = C;
-  var tau = max(e.tau, 0.0);
-  if (C > 0.0 && e.tauKnown < 0.5) { gap = max(gap, C); cloudy = 0.0; tau = 0.0; }
+  // earth.ts earthParts: populations of τ nodes. With the moments, the retrieved share f_τ as a log-normal in τ (three
+  // nodes, cloudLogNormal) and the rest of the cloud from the partly-cloudy statistic (liquid) where it is admitted,
+  // else no light, marked; without the moments, the clouds layer's mean τ.
+  var fRet = C;
+  var fUn = 0.0;
+  var taus = vec3f(max(e.tau, 0.0), 0.0, 0.0);
+  var wts = vec3f(1.0, 0.0, 0.0);
+  var fice = clamp(e.fice, 0.0, 1.0);
+  if (e.tauMomKnown > 0.5 && e.cKnown > 0.5) {
+    let f = clamp(e.tauMom.x, 0.0, C);
+    fRet = f;
+    if (e.unKnown > 0.5) { fUn = C - f; } else { gap = max(gap, C - f); }
+    if (e.tauMom.x > 0.0) {
+      let mu = e.tauMom.y / e.tauMom.x;
+      let sd = sqrt(max(e.tauMom.z / e.tauMom.x - mu * mu, 0.0));
+      taus = exp(vec3f(mu, mu + ${Math.sqrt(3).toPrecision(9)} * sd, mu - ${Math.sqrt(3).toPrecision(9)} * sd));
+      wts = vec3f(2.0 / 3.0, 1.0 / 6.0, 1.0 / 6.0);
+      fice = clamp(e.tauMom.w / e.tauMom.x, 0.0, 1.0);
+    }
+  } else if (C > 0.0 && e.tauKnown < 0.5) { gap = max(gap, C); fRet = 0.0; taus = vec3f(0.0); }
+  let cloudy = fRet + fUn;
   let gapEmit = gap;
-  let fice = clamp(e.fice, 0.0, 1.0);
   let g = (1.0 - fice) * CLOUD_G_LIQUID + fice * CLOUD_G_ICE;
   let clearW = 1.0 - C;
   gap = max(gap, clearW * surfaceGap);
@@ -149,21 +193,29 @@ fn earthParts(e: EarthIn, mu0: f32, mu: f32, cosBeta: f32, cosOmega: f32) -> Ear
   }
   o.clear = EarthPart(clearW, Rs * m0 + ow * rg, Rs + ow * FRESNEL_DIFFUSE, vec4f(1.0));
   o.cloudy = EarthPart(cloudy, vec4f(0.0), vec4f(0.0), vec4f(0.0));
+  // Each τ node is a sub-pixel of its own (independent pixel approximation), weighted by its share of the cloud.
   if (cloudy > 0.0) {
-    let tp = (1.0 - g * g) * tau;
-    var rbar = 0.0;
-    var tdir = 0.0;
-    for (var k = 0; k < 4; k++) {
-      rbar += 2.0 * G4W[k] * G4X[k] * cloudPlaneAlbedo(tau, g, G4X[k]);
-      tdir += 2.0 * G4W[k] * G4X[k] * exp(-tp / G4X[k]);
+    let owRg = ow * rg;
+    for (var n = 0; n < 3; n++) {
+      let w = fRet / cloudy * wts[n];
+      if (w <= 0.0) { continue; }
+      let q = cloudNode(taus[n], g, Rs, owRg, m0, mu0, mu);
+      o.cloudy.dir += w * q.dir;
+      o.cloudy.dif += w * q.dif;
+      o.cloudy.emit += w * q.emit;
     }
-    let R0 = cloudPlaneAlbedo(tau, g, mu0);
-    let through = exp(-tp / max(mu, 1e-4)) + max(1.0 - rbar - tdir, 0.0) * escapeFn(mu);
-    let multi = 1.0 / (1.0 - Rs * rbar);
-    let glintThrough = ow * rg * exp(-tp / max(m0, 1e-4)) * exp(-tp / max(mu, 1e-4));
-    o.cloudy.dir = m0 * (R0 * escapeFn(mu) + (1.0 - R0) * multi * Rs * through) + glintThrough;
-    o.cloudy.dif = rbar * escapeFn(mu) + (1.0 - rbar) * multi * Rs * through;
-    o.cloudy.emit = multi * through;
+    if (fUn > 0.0) {
+      var unTau = e.unTau;
+      var unP = e.unP;
+      for (var n = 0; n < 8; n++) {
+        let w = fUn / cloudy * unP[n / 4][n % 4];
+        if (w <= 0.0) { continue; }
+        let q = cloudNode(unTau[n / 4][n % 4], CLOUD_G_LIQUID, Rs, owRg, m0, mu0, mu);
+        o.cloudy.dir += w * q.dir;
+        o.cloudy.dif += w * q.dif;
+        o.cloudy.emit += w * q.emit;
+      }
+    }
   }
   o.gap = gap;
   o.gapEmit = gapEmit;

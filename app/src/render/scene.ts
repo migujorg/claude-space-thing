@@ -8,6 +8,7 @@
 import type { BodyAtmosphere, DiskReflectanceModel, Label, PhaseFunction, RingReflectance, SpatialPhotometricModel, SurfaceLayerHeader } from '../data/schema';
 import type { EyeSettings } from '../eye/settings';
 import type { CometActivity } from './comets/model';
+import type { CloudPopulation } from './earth';
 
 export type { EyeSettings };
 
@@ -34,6 +35,12 @@ export interface SceneBody {
   surfaceUnknown: boolean;
   /** Worst provenance label among what is drawn, for the provenance-tint overlay. */
   worstLabel: Label;
+  /**
+   * The phase function is a model or an estimate rather than a measurement (its label is `estimated`; e.g. the
+   * Earth's, a radiative-transfer fit). Where the air of a measured atmosphere alone outshines such a curve, the air
+   * is drawn and the surface under it gets no light (frame.ts); against a measured curve the air is not drawn.
+   */
+  phaseEstimated?: boolean;
   selected: boolean;
 
   // ── M2 additions (all optional; see docs/rendering-m2.md) ─────────────────────────────────────
@@ -58,6 +65,18 @@ export interface SceneBody {
      * A surface-only map without this layer is not used.
      */
     clouds?: SurfaceLayerRef;
+    /**
+     * Earth: a layer of kind 'cloud-optical-thickness-moments' (tauRetrievedFraction, lnTauMoment1, lnTauMoment2,
+     * iceTauFraction; the clouds layer's samples): which share of the cloud has a measured optical thickness, and
+     * its ln τ distribution. Used with `clouds`; without it the clouds layer's mean τ is used.
+     */
+    cloudTau?: SurfaceLayerRef;
+    /**
+     * Earth: the τ population for the cloud without a retrieval (cloudFraction − f_τ), when the reality level
+     * admits its label (render/earth.ts unmeasuredTauPopulation of cloudTau's header; estimated). Without it that
+     * cloud stays unknown (hatched where it dominates).
+     */
+    cloudTauUnmeasured?: CloudPopulation;
     /** Earth: a layer of kind 'surface-water' (waterFraction, seaIceFraction): sea ice, and later glint. */
     water?: SurfaceLayerRef;
     /** Earth: a layer of kind 'emitted-radiance' (dnbRadiance, censoredFraction; night lights). */

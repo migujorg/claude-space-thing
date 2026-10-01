@@ -55,9 +55,14 @@ Data landed: 16.4M deep stars (G 10–14) in HEALPix tiles, the faint-star + dif
 
 Gaia DR3 stars with spectra-derived colors, the brightest stars from Hipparcos, the Milky Way's diffuse light, zodiacal light.
 
-## M5 — Eye model v1 and HDR display
+## M5 — Eye model v1 and HDR display  *(done)*
 
-Time-dependent adaptation, HDR output, acuity limits, refinement against published vision data.
+- **Adaptation over time** from published dark/light adaptation data, running in real elapsed time (after 10 min of daylight: limiting V 4.8 after 2 min of dark, 5.1 after 12 min, 6.3 after 30, 6.6 fully adapted); bleaching by very bright exposures; instant adaptation for screenshots and the regression suite.
+- **Fixation-driven adaptation:** the eye adapts where it would look — fixations spread over the frame, weighted by light the eye can actually see; point sources are judged at their own background (Crumey 2014).
+- **HDR output** on HDR displays (extended-range canvas), mapping the eye model's intended display luminance to absolute nits; SDR path unchanged.
+- **Low-light acuity** from published contrast-sensitivity data; stars and the sky background dimmed behind atmospheric limbs; δ-M scaled view transmittance (Wiscombe 1977); aerial-perspective atmosphere for performance.
+- **Shape models** drawn as meshes (56 measured spacecraft/radar shapes, 16,098 DAMIT models) with orientation from each model's own frame or spin state, self-shadowing and energy normalized to the measured albedo (docs/rendering-shapes.md).
+- **Validation runner** (`npm run validate`) against 11 calibrated observations (docs/reports/validation.md); validation cases test the model and are never used to select or tune it.
 
 ## M6 — The complete solar system  *(first layer done)*
 

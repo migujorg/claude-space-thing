@@ -433,9 +433,9 @@ parameter the brightness is the same from 0.3 AU as from far away. The totals ma
 | view | query | eye adaptation (cd/m²) |
 |---|---|---|
 | totality, 6° (Moments view 2, scene `eclipse-2027-totality`) | `t=2027-08-02T10:06:41Z&target=301&dist=350939.1&az=179.99&el=0&fov=6` | 203 (baseline without the corona: 2.9) |
-| Sun shield from 1 AU, 6° | `target=10&dist=149597870.7&az=0&el=0&fov=6&shield=1` | 474 |
-| Sun shield from 1 AU, 30° | the same with `fov=30` | 63 |
-| bare Sun from 1 AU (scene `sun-1au`) | `target=10&dist=149597871` | 1.5 × 10⁵ (baseline without the corona: 1.8 × 10⁵) |
+| Sun shield from 1 AU, 6° | `target=10&dist=149597870.7&az=0&el=0&fov=6&shield=1` | 535 |
+| Sun shield from 1 AU, 30° | the same with `fov=30` | 74 |
+| bare Sun from 1 AU (scene `sun-1au`) | `target=10&dist=149597871` | 2,266, the same without the corona |
 
 The GPU texture against the CPU twin (`checkCorona`, same pixels) agrees to 0.13 % at 1.1 R⊙ and ≤ 0.07 % from 1.3 to
 10 R⊙: half-float storage and float32 arithmetic.
@@ -482,28 +482,22 @@ phase. van de Hulst adopted the photoelectric scale and notes that the radiometr
   At 6° it is the eclipse picture without the Moon; the occulting disc is smaller than the Moon's, so the adaptation
   is higher.
 
-**The bare Sun.** Beside the uncovered Sun the corona is invisible: at 1.1 R⊙ it is 10⁻⁴ of the Sun's veil there.
-It is still scene light, and the eye model sends fixations to scene light. With only the solar disk excluded from
-fixations, the inner corona drew them onto the limb. In `sun-1au` that raised the adaptation 25-fold (1.8 × 10⁵ →
-4.5 × 10⁶ cd/m²; K alone 4.0 × 10⁶, F alone 7.6 × 10⁵) and shrank the glare halo, a visible change made by light
-nobody can see. While any of the disk is uncovered, the eye model now also excludes the ring within half the adaptation field
-(0.5°) of the limb, since a fixation there has part of the disk in its foveal field (docs/eye-model.md §2,
-`sunExclusionRad`). The adaptation is then 1.5 × 10⁵ cd/m² with the corona and 1.1 × 10⁵ without it, against the
-baseline's 1.8 × 10⁵. In totality (the disk all covered) and behind the Sun shield (which keeps its own disc) only the
-disk is excluded, as before, so the inner corona is looked at.
+**The bare Sun.** Beside the uncovered Sun the corona is invisible: at 1.1 R⊙ it is about 10⁻⁴ of the Sun's veil
+there. When fixations were weighted by scene light alone, it still drew the eye onto the limb. In `sun-1au` that raised
+the adaptation 25-fold (1.8 × 10⁵ → 4.5 × 10⁶ cd/m²; K alone 4.0 × 10⁶, F alone 7.6 × 10⁵).
 
-**e2e suite** (26 scenes, against the baseline accepted at c541fca):
-- `eclipse-2027-totality` changes as intended. The adaptation goes from 2.9 to 204 cd/m² because the corona is now the
-  brightest thing in view, and the limiting magnitude from 2.5 to −0.9.
-- `sun-1au` passes at 1.5 × 10⁵ cd/m² (Δlog₁₀ 0.07).
-- Other scenes with the uncovered Sun in view move by ≤ 0.035 dex: `earth-moon-first-run` 10,260 → 9,456 and
-  `eclipse-2027-above` 9,227 → 9,384. Without `sky/corona.json`, `sun-1au` is 1.1 × 10⁵ and fails its tolerance
-  (Δlog₁₀ 0.21), so this needs the rebuilt product.
-- The remaining failures fail identically without the corona and come from elsewhere:
-  - `earth-night` (stars drawn 526 → 893 and an atmosphere warning; the scene renders the current date);
-  - `saturn-rings` (stars 90 → 95);
-  - `neptune` (Proteus label);
-  - `phobos-stickney`, `hyperion-fallback`, `bennu-closeup` (stars drawn).
+The eye model now weights fixations by what can be seen (docs/eye-model.md §2): light below Crumey's large-target
+threshold contrast against the retinal image gets no weight. That alone removes the effect. `sun-1au` adapts to
+2,266 cd/m² with or without the corona, the same to 10⁻⁶. Excluding a wider ring around the disk from fixations was
+tried first; it is not needed, and the code does not use it. In totality nothing veils the corona, and it sets the
+adaptation.
+
+**e2e** (merged tree, main's data build of 2026-10-01 with `sky/corona.json`, against the current baseline):
+- `eclipse-2027-totality` changes as intended. The adaptation goes from 2.9 to 204 cd/m² and the limiting magnitude
+  from 2.5 to −0.9.
+- The suite reports that image as gone black (mean lightness 0.092 → 0.008). The baseline's grey haze is now a bright
+  corona ring on a dark sky.
+- `sun-1au` (2,266 cd/m²), `earth-moon-first-run` (8,776) and `eclipse-2027-above` (8,102) pass unchanged.
 
 ### 5.6 Labels and limits
 

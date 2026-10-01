@@ -194,6 +194,13 @@ export async function startApp(canvas: HTMLCanvasElement, uiRoot: HTMLElement, d
       ui.fatal(`${msg}. The data and UI still work; nothing can be drawn.`);
       window.__frameError = msg;
     }
+    // A lost GPU device (the GPU process killed or out of memory): say so, and let scripts waiting for a frame fail
+    // at once (window.__frameError) instead of at their timeout.
+    renderer?.deviceLost?.then((i) => {
+      const msg = `WebGPU device lost (${i.reason}): ${i.message}`;
+      window.__frameError = msg;
+      ui.fatal(`${msg}. Reload the page to draw again.`);
+    });
     sizeViewport();
     // M4 sky (app/sky.ts): decides which stars are points and which are sky light, streams the deep tiles and
     // draws the sky background; without it, the bright catalogue goes to the renderer as before.
@@ -334,6 +341,12 @@ export async function startApp(canvas: HTMLCanvasElement, uiRoot: HTMLElement, d
     // renderer's settled() waits for the mesh levels) that draws them.
     for (let i = 0; i < 4 && !model.shapesIdle(); i++) {
       await model.shapesSettled();
+      await nextFrame();
+    }
+    // The sky's point cut follows the eye's limit with hysteresis while the view changes; the settled frame is cut
+    // afresh at the settled limit, so it does not depend on the limits the loading frames passed through.
+    for (let i = 0; i < 3 && sky?.settleCut(renderer?.stats ?? null); i++) {
+      await sky.idle();
       await nextFrame();
     }
     if (!window.__frameError) window.__frameReady = true;

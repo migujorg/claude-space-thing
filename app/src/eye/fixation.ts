@@ -8,16 +8,31 @@
 // The adaptation is therefore the log-average of the retinal image weighted by the scene luminance.
 // The eye looks at what is lit (a quarter Moon's sunlit half, not its night side), and a small bright
 // body in a dark field sets the adaptation by its light rather than by its tiny area. The solar disk is
-// not fixated (it cannot be looked at), nor, while any of it is uncovered, is the ring within half the
-// adaptation field of it (a fixation there has part of the disk in its foveal field); its veil still counts
-// where the eye looks.
-// Point sources are judged at their own fixation (eye/points.ts), so faint stars beside a bright body
-// stay visible.
+// not fixated (it cannot be looked at); its veil still counts where the eye looks. Point sources are
+// judged at their own fixation (eye/points.ts), so faint stars beside a bright body stay visible.
+// Only the light the eye can see draws it (fixationWeight): each pixel's scene luminance counts as an increment
+// on the retinal image there, with no weight below the large-target threshold contrast C∞ (Crumey 2014) and full
+// weight from 2·C∞. Light buried in a far brighter veil (the zodiacal light a degree from the Sun, 10⁻⁴ of the
+// veil) attracts nothing, like the veil itself; an object brighter than its veil (a planet on dark sky) keeps its
+// full weight.
 //
 // 'centre' keeps the v1 rule: one fixation at the view centre, the log-average over its 1° field
 // (Ward Larson, Rushmeier & Piatko 1997).
 
 import { DARK_LIGHT_CONE, DARK_LIGHT_ROD } from './tonemap';
+import { largeTargetContrast } from './crumey';
+
+/**
+ * Fixation weight per unit solid angle of a pixel of unscattered scene luminance L on a retinal image of luminance
+ * Lret (both photopic cd/m²): L·clamp(L/(L_r·C∞(L_r)) − 1, 0, 1) + L₀, L_r = Lret + L₀. C∞ is evaluated at the
+ * photopic luminance (a weighting, not a threshold of the rendered image). Mirrored in ADAPT_SHADER.
+ */
+export function fixationWeight(L: number, Lret: number): number {
+  const Ls = Math.max(L, 0);
+  const Lr = Math.max(Lret, 0) + DARK_LIGHT_CONE;
+  const vis = Math.min(Math.max(Ls / (Lr * largeTargetContrast(Lr)) - 1, 0), 1);
+  return Ls * vis + DARK_LIGHT_CONE;
+}
 
 export interface RetinalSample {
   /** Retinal image (unscattered scene + veil, point cores excluded): photopic Y and scotopic S, cd/m². */
@@ -27,21 +42,10 @@ export interface RetinalSample {
   sceneY?: number;
   /** Solid angle, sr. */
   omegaSr: number;
-  /** Inside the resolved solar disk or within half the adaptation field of it (never fixated; sunExclusionRad). */
+  /** Inside the resolved solar disk (never fixated). */
   onSunDisk?: boolean;
   /** Inside the centre field (for 'centre'). */
   inCentreField?: boolean;
-}
-
-/**
- * Angular radius (rad) around the resolved Sun's centre that is never fixated: the disk widened by half the
- * adaptation field (a fixation closer than that has part of the disk in its foveal field, so it is looking at
- * the Sun), and by at least one pixel. Without the widening, light right beside the limb that the veil swamps
- * (the inner corona, 10⁻⁴ of the veil there) would draw the eye onto the Sun. The renderer passes a field of 0
- * when the disk is all covered (totality), so the corona around it is looked at.
- */
-export function sunExclusionRad(sunRadiusRad: number, adaptationFieldDeg: number, pixelRad: number): number {
-  return Math.min(sunRadiusRad + Math.max(pixelRad, ((adaptationFieldDeg / 2) * Math.PI) / 180), Math.PI);
 }
 
 /** Adaptation luminances (cone, rod) the eye settles to over its fixations. */
@@ -51,7 +55,7 @@ export function fixationAdaptation(samples: RetinalSample[], mode: 'brightness' 
     const lc = Math.log(Math.max(s.Y, 0) + DARK_LIGHT_CONE);
     const lr = Math.log(Math.max(s.S, 0) + DARK_LIGHT_ROD);
     let w: number;
-    if (mode === 'brightness') w = s.onSunDisk ? 0 : (Math.max(s.sceneY ?? s.Y, 0) + DARK_LIGHT_CONE) * s.omegaSr;
+    if (mode === 'brightness') w = s.onSunDisk ? 0 : fixationWeight(s.sceneY ?? s.Y, s.Y) * s.omegaSr;
     else w = s.inCentreField ? s.omegaSr : 0;
     sc += lc * w;
     sr += lr * w;

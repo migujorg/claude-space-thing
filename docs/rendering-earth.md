@@ -28,7 +28,7 @@ columns, `skip=limb` leaves stars undimmed, `stars=N` adds N TEST FIXTURE stars,
 |---|---|---|
 | Surface reflectance | `surfaces/399/albedo`: kind `relative-reflectance`, header `normalization.absoluteDiskMean` | texel × absoluteDiskMean = absolute reflectance factor (MODIS NBAR on land; water-leaving reflectance π·Rrs over water) |
 | Clouds | `surfaces/399/clouds`: kind `cloud-properties` (cloudFraction, opticalThickness, cloudTopHeightM, iceFraction; VIIRS CLDPROP, 2026-09-28 daytime overpass) | cloud reflection and transmission (§2) |
-| Cloud τ statistics | `surfaces/399/cloudTau`: kind `cloud-optical-thickness-moments` (tauRetrievedFraction, lnTauMoment1, lnTauMoment2, iceTauFraction; the same samples) | which share of the cloud has an optical thickness, and its ln τ distribution (§2; not used by the renderer yet) |
+| Cloud τ statistics | `surfaces/399/cloudTau`: kind `cloud-optical-thickness-moments` (tauRetrievedFraction, lnTauMoment1, lnTauMoment2, iceTauFraction; the same samples) | which share of the cloud has an optical thickness, and its ln τ distribution (§2) |
 | Water | `surfaces/399/water`: kind `surface-water` (waterFraction, seaIceFraction) | glint, sky reflection, sea ice (§1, §3) |
 | Wind | `surfaces/399/wind`: kind `surface-wind` (10 m speed: AMSR3 ascending ~13:30, daily mean, passes) | glint width (§3) |
 | Night lights | `surfaces/399/night`: kind `emitted-radiance` (VIIRS Black Marble DNB radiance; header `constants.toXYZS`) | emitted light (§5) |
@@ -98,7 +98,11 @@ cloud base, and is seen through the direct view path plus the diffuse part (1 �
 
 - Cloud state unknown (all NaN, poleward of the daylit band: north of 78.8° N and south of 82.5° S on
   2026-09-28): the pixel is drawn clear and marked.
-- Cloudy but no optical thickness (2.5 % of the cloud cover): that share contributes nothing and is marked.
+- Cloudy but no optical thickness: that share contributes no reflected light and is marked. With the
+  `cloudTau` layer this is cloudFraction − f_τ, 39 % of the daylit cloud (below); without it, only the texels
+  with no retrieval at all (2.5 % of the cloud cover). It is hatched where it is over half the pixel. With the
+  `cloudTau` layer at Best and Complete, cloudFraction − f_τ instead takes the measured partly-cloudy statistic
+  (estimated, below). It is no longer marked.
 - The marks count only where the pixel is lit. At night only the cloud state matters, and only where
   there are lights to hide.
 
@@ -123,7 +127,7 @@ of the cloudy share is then unknown), and preferably the mean of ln τ (Cahalan 
 thickness). The renderer change is then small. The 8-px blocks in the rendered case are the glint: the wind
 layer's resolution and swath gaps (§3; clear water where the wind is unknown gets no glint).
 
-**The `cloudTau` layer (pipeline side of that fix; the renderer does not use it yet).** It is built from the
+**The `cloudTau` layer.** It is built from the
 same 16 samples per texel as `clouds` (the rebuilt `clouds` tiles are bit-identical to the previous build),
 float16 × 4:
 
@@ -156,6 +160,96 @@ are bias, then the mean absolute error per texel:
 
 The first row is the plane-parallel bias. The log-mean alone is nearly unbiased; the log-normal from both
 moments also holds per texel at coarse levels.
+
+**How the renderer uses it (M5).** Where the moments are known (`earth.ts cloudLogNormal`, mirrored in
+`shaders-earth.ts`):
+
+- The retrieved share f_τ of the pixel is a log-normal in τ: ln τ has mean m1/f_τ and variance m2/f_τ −
+  mean². It is drawn as three sub-pixels at τ = exp(μ), exp(μ ± √3σ) with weights 2/3, 1/6, 1/6 (the 3-point
+  Gauss–Hermite rule), each with the full two-stream cloud (reflection, transmission to and from the surface,
+  multiple reflection, glint through thin cloud). Against a 400-point integral of the plane albedo it is within
+  0.05 % for σ(ln τ) = 0.5 and within 0.6 % for σ = 1 (τ ≥ 3); for σ = 1.4 on thin cloud it reaches 1–3 %. The
+  ice share among the retrievals (iceTauFraction/f_τ) sets g.
+- The rest of the cloud, cloudFraction − f_τ, has no measured thickness for its own samples. GIBS serves no
+  partly-cloudy thickness for them.
+  - At Strict it gets no τ: it reflects nothing and is marked unknown (hatched where it is over half the pixel).
+  - At Best and Complete it is a second population, with the measured partly-cloudy τ distribution of the
+    header's `unmeasuredTau` statistic (below), labelled **estimated** in the body's worst label and tint.
+    Its probabilities are taken bin by bin (`earth.ts unmeasuredTauPopulation`; empty bins dropped), as
+    sub-pixels with liquid g, in the same two-stream layer as the retrieved part. The renderer's plane albedo
+    R̄ = Σ p_k R(τ_k) is 0.35599, 0.23700, 0.16705, 0.12035 and 0.08673 at μ0 = 0.2–1.0. The header's
+    `planeAlbedoLiquid` check values are 0.356, 0.237, 0.1671, 0.1204 and 0.0867.
+- Without the layer (older data), the clouds layer's mean τ applies to the whole cloud, as before.
+
+Validation (`earth-himawari9-2026`, Himawari-9 over the cloud layer's own overpass):
+
+| ROI | before | after |
+|---|---|---|
+| disk centre | 2.08 | 1.03 |
+| near-centre points | 1.17–1.25 | 0.79, 0.91, 0.99 |
+| limb | 0.99 | 0.99 |
+
+The disk centre's agreement is partly coincidental: at (0°, 140.7° E) the texel has cloudFraction 0.94 and
+f_τ 0.06, so most of that pixel is unknown and hatched. It shows only the retrieved cloud, the clear sea and
+the air. For the same reason the EPOXI Earth of 2008 (whole disk at 75° phase, the app's cloud day standing
+in for 2008) now renders at 0.85 of its measured disk brightness and 0.62 at its centre, against 1.07 and
+1.01 when the clouds layer's mean τ was spread over the whole cloud. That was the overestimate this layer
+removes. What is missing now is the light of the cloud whose thickness is not measured.
+
+**With the partly-cloudy statistic at Best** (the second population above), the same cases give:
+
+| ROI | unknown (Strict rule) | with the statistic |
+|---|---|---|
+| Himawari disk centre | 1.03 | 1.47 (fail) |
+| Himawari near-centre points | 0.79, 0.99, 0.91 | 1.29, 1.01, 1.36 |
+| Himawari limb (Y) | 0.99 | 1.00 (Z 1.11, just outside its tolerance) |
+| Himawari terminator | 0.71 | 0.57 |
+| EPOXI Earth, whole disk | 0.85 | 0.94 (pass) |
+| EPOXI Earth, centre | 0.62 | 0.92 (pass) |
+| EPOXI Moon/Earth ratio | 0.111 (0.1016 ± 0.0014) | 0.1010 (pass) |
+
+The whole-disk case now passes. The texels at Himawari's centre do not: they are 81–94 % "cloudy" with
+f_τ = 0.06, yet in the image they are about as dark as the clear sea under the air. Their cloud without a
+retrieval is much thinner than the global partly-cloudy mean (τ_g 1.24). Even with no light from it, the centre
+renders 1.03. A regional or per-texel statistic would be needed there. At the terminator the unknown share
+was drawn as clear air over a black surface. That air reached the ground, whereas air over a cloud stops at
+its top, so 0.71 was too bright for the wrong reason.
+
+**A statistic for the unmeasured share (`cloudTau.json` → `constants.unmeasuredTau`; for Best estimate).**
+Most cloudy samples without a retrieval are pixels that the clear-sky restoral flags as partly cloudy or cloud
+edge. MODIS and VIIRS do retrieve them, but report the result in `_PCL` fields, and for VIIRS NOAA-20 GIBS
+serves none of these. The table is the measured global τ distribution of MODIS partly cloudy pixels: July 2021,
+MODIS C6.1 Level-3 COSP product, read from Fig. 7 of Pincus et al. (2023) (docs/sources/pincus-2023-modis-cosp.md;
+`pipeline/src/pipeline/cloud_pcl.py`).
+
+- **Partly cloudy, all heights** (`statistics.floorCellsZero.partlyCloudyAllHeights`):
+
+  | τ bin | 0–0.3 | 0.3–1.3 | 1.3–3.6 | 3.6–9.4 | 9.4–23 | > 23 |
+  |---|---|---|---|---|---|---|
+  | probability | 0.042 | 0.468 | 0.335 | 0.132 | 0.024 | 0 |
+
+  ln τ has mean 0.21 and σ = 1.17 (τ_g = 1.24). The population is 91.5 % low (pc ≥ 680 hPa) and 3.5 % ice.
+  For comparison, fully cloudy pixels in the same figure have τ_g = 6.9, and our own VIIRS retrievals of the
+  day have τ_g = 8.3.
+- **How to apply it** (`constants.use.unmeasuredShare`): at Best, give the share cloudFraction − f_τ this
+  distribution as a separate population, labelled **estimated**; at Strict it stays unknown.
+  - The plane albedo is R̄ = Σ_k p_k R(τ_k) over the seven bins, with τ_k = exp(`tauBinLnCentre[k]`); this
+    assumes no shape. Alternatively, use a log-normal with these μ and σ through the same 3-point rule as the
+    retrieved part.
+  - Use liquid g. Do not give this share the texel's own retrieved distribution, which is biased to overcast cloud.
+  - `planeAlbedoLiquid` lists R̄ at μ0 = 0.2–1.0 for checking. The bin sum gives 0.356, 0.237, 0.167, 0.120 and
+    0.087 at μ0 = 0.2, 0.4, 0.6, 0.8 and 1.0. The log-normal agrees to 1–3 % up to μ0 = 0.6 and is 6–10 % higher
+    at μ0 = 0.8–1, because the measured distribution has no mass above τ = 23. R(τ_g) is 30–40 % too low there.
+    So the bin sum is the one to use.
+- **Why a partly-cloudy τ fits a whole sample:** a partly cloudy pixel's τ is retrieved as if the pixel were
+  overcast, i.e. it is the plane-parallel τ that gives the pixel's mean reflectance.
+- **Caveats** (reasons for the estimated label):
+  - The histogram holds only successful partly-cloudy retrievals. About 34 % of global over-ocean liquid PCL
+    attempts fail (Platnick et al. 2017), and failed overcast retrievals and pixels restored to clear are also
+    in our share; the same τ is assumed for them.
+  - It is one month, global, MODIS rather than VIIRS, with no regional dependence.
+  - The palest histogram cells cannot be read. `floorCellsAtFloor` bounds that effect: τ_g up to 1.77,
+    σ up to 1.73.
 
 **Not modelled.** Cloud parallax and cloud shadows on the ground. The cloud-top height is used only to
 place the cloud's reflection inside the atmosphere (§4). Also not modelled: 3D cloud effects, the glory,
@@ -302,6 +396,14 @@ table (log-linear in h), and multiplies the source's XYZS. A ray that meets the 
 background (Milky Way, faint stars, zodiacal light: `sky/background.ts`) is dimmed the same way per pixel,
 the zodiacal light included, since nearly all of it comes from beyond the planet.
 
+Comet comae and tails (`comets/`) are at a finite distance, so they use `limbTransmittanceTo(u, D)`: a limb
+counts only when the source lies beyond the ray's closest approach to that body. A comet in front of a planet
+is not dimmed. Test page: `scene=earth-data&comet=behind|front&cometd=<km>&cometin=<deg>` places the TEST
+FIXTURE comet with its tail across the Earth's limb; `hdrgrid=N` logs the HDR luminance for comparison.
+With the nucleus 45 000 km beyond the Earth, the tail light between the surface and 75 km is 0.93 of that
+without the limb term (2-px bins, 43 km each). Above 75 km it is unchanged, and so is every pixel of the
+comet placed in front.
+
 This applies to the nearest four measured atmospheres that are drawn, with the camera above their top. Stars
 seen from inside an atmosphere are not dimmed (extinction by airmass is not modelled). The test page's
 `stars=N&skip=limb` compares with and without. From 8 000 km with 500 000 TEST FIXTURE stars, a star just
@@ -403,7 +505,7 @@ cached in 1° phase bins, interpolated linearly, one integral of a few ms per ne
 of the ratio I0/Iatm is left out: it is second order. The shader (`ATM_OVER_PHOTOMETRY`) draws the surface
 term × T_sun·T_view, the skylight term and the path radiance, per bin, folded to XYZS.
 
-Three outcomes, each with a warning where it applies:
+Four outcomes, each with a warning where it applies:
 
 1. **Over the disk and beyond** (Mars and Pluto at most phases).
 2. **Beyond the disk only**, when the renormalised surface would reflect more than it receives (Bond
@@ -411,8 +513,18 @@ Three outcomes, each with a warning where it applies:
    in the model, and the disk keeps its measured photometry. Only the shell is drawn, and K is reduced by
    its share, Ashell/pΦ. This is Venus: atmospheres.json starts the profile at 60 km, inside the deck, with
    τ ≈ 12 above it (the file says to use photometry.json for the reflectance there).
-3. **Not drawn**, when the air alone is brighter than the measured body in any channel
-   (Apath + Ashell ≥ pΦ). This is Mars beyond α ≈ 65–70°, first in Z. (Apath + Ashell)/pΦ for X, Y, Z, S
+3. **Air brighter than a phase curve that is a model (M5).** When the air alone is brighter than pΦ in any
+   channel (Apath + Ashell ≥ pΦ) and the phase function is `estimated` (`SceneBody.phaseEstimated`, set from
+   its label), the curve does not hold there; the measured atmosphere is not the part in doubt. The surface
+   scale is then taken at the nearest lower phase (1° bins) where the curve still exceeds the air and the
+   surface's Bond albedo stays ≤ 1, and the air at α is drawn on top, as beyond the measured range. The
+   warning names that phase. Examples:
+   - Mars, whose curve beyond the ~47° seen from Earth is estimated: at α = 100° the scale is taken at 58°.
+   - The Earth drawn from its disk photometry, whose curve is Mallama & Hilton's fit to a radiative-transfer
+     model: at 175° the scale is taken at 103°, and the sunlit air ring is drawn. Earth mode with its layers
+     does not use this.
+4. **Not drawn**, when the air alone is brighter than a *measured* disk in any channel. Until M5 this was
+   also Mars beyond α ≈ 65–70°, first in Z. (Apath + Ashell)/pΦ for X, Y, Z, S
    is 0.37 / 0.40 / 0.58 / 0.48 at α = 0°, 0.61 / 0.65 / 0.94 / 0.78 at 60° and 0.94 / 1.00 / 1.49 / 1.22
    at 95° (dust at L_s ≈ 0°, scale 0.95). In blue the dust (ω ≈ 0.8) is brighter than the dark surface, so
    the dust's light approaching the whole measured blue light at high phase is plausible, and the overshoot
@@ -430,7 +542,7 @@ extrapolated disk could not contain.
 
 | Body | Components | Outcome in the test views |
 |---|---|---|
-| Mars | CO₂ Rayleigh; dust, double HG, ω 0.71–0.98 | Over the disk to α ≈ 65°: haze softens the terminator and lowers contrast. At α = 36° the surface scale is ×0.62 / 0.57 / 0.18 / 0.41 (X, Y, Z, S; with the δ-scaled view transmittance): the blue of the disk is mostly dust light. Not drawn beyond (3.). |
+| Mars | CO₂ Rayleigh; dust, double HG, ω 0.71–0.98 | Over the disk to α ≈ 65°: haze softens the terminator and lowers contrast. At α = 36° the surface scale is ×0.62 / 0.57 / 0.18 / 0.41 (X, Y, Z, S; with the δ-scaled view transmittance): the blue of the disk is mostly dust light. Beyond, the surface scale of the nearest phase where the estimated curve still exceeds the air (3.). |
 | Venus | the cloud and upper haze above 60 km | Beyond the disk only. Near inferior conjunction (α = 172°) the haze alone outshines the measured p·Φ: not drawn. |
 | Pluto | haze (tabulated Mie phase, ω 0.944) | Over the disk; the haze is 1–2 % of the disk at low phase and forms a ring at high phase. |
 | Titan | N₂ Rayleigh; haze with ω and phase unknown | See below. |

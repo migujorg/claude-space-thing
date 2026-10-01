@@ -139,6 +139,30 @@ describe('atmosphere over a photometry-drawn body (fixture)', () => {
     expect(p.resolved[0].K).toEqual(plain.resolved[0].K);
   }, 60000);
 
+  it('against a phase curve that is a model, air brighter than it keeps the surface scale of a lower phase', () => {
+    // TEST VALUES: a Lambert body of albedo 0.3 whose (estimated) phase curve drops steeply beyond 60°, so at 80°
+    // the fixture air outshines it; at lower phases the curve is Lambert's own.
+    const lam = (deg: number) => { const a = (deg * Math.PI) / 180; return (Math.sin(a) + (Math.PI - a) * Math.cos(a)) / Math.PI; };
+    const degs = Array.from({ length: 19 }, (_, i) => i * 5);
+    const phase = { kind: 'tabulated' as const, alphaDeg: degs, deltaMag: degs.map((d) => -2.5 * Math.log10(lam(d) * (d > 60 ? 1e-3 : 1))) };
+    const mk = (deg: number, est: boolean) => {
+      const s = scene(0.3, deg);
+      s.bodies[0] = { ...s.bodies[0], phase: phase as never, phaseEstimated: est };
+      return prepareFrame(s, g, eye, 1e-9, { atmospheres: () => binding() });
+    };
+    const est = mk(80, true), meas = mk(80, false);
+    expect(meas.resolved[0].atmosphere).toBeNull();
+    expect(meas.warnings.join()).toMatch(/brighter than the measured disk → atmosphere not drawn/);
+    expect(est.resolved[0].atmosphere?.onDisk).toBe(true);
+    const w = est.warnings.join();
+    expect(w).toMatch(/a model at this phase → the surface scale is taken at (\d+)°/);
+    // The curve falls between its 60° and 65° entries (interpolated in magnitude): the scale comes from inside that step.
+    const at = Number(w.match(/taken at (\d+)°/)![1]);
+    expect(at).toBeGreaterThanOrEqual(60);
+    expect(at).toBeLessThan(65);
+    expect(est.resolved[0].K[1]).toBeGreaterThan(0);
+  }, 60000);
+
   it('a surface hidden under its air keeps the measured disk; the air is drawn beyond it only', () => {
     // τ ≈ 16 at 550 nm: the surface cannot be seen, so no surface scale reproduces the disk.
     const opaque = fixtureRayleighAtmosphere({ bottomKm: R, topKm: R + 100, beta550: 2 });

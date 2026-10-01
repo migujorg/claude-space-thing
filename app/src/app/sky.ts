@@ -208,6 +208,21 @@ export class SkyController {
     if (this.idleNow()) { const w = this.waiters; this.waiters = []; w.forEach((f) => f()); }
   }
 
+  /**
+   * Cut the points afresh at the renderer's current limit, without the hysteresis beforeFrame applies while the view
+   * changes: a settled frame then does not depend on the limits the loading frames passed through. True when the cut
+   * changed (the points are rebuilt on the next frame).
+   */
+  settleCut(rs: RendererStats | null): boolean {
+    const lim = rs?.pointLimitingMagnitude ?? rs?.limitingMagnitude;
+    const target = Math.round(((Number.isFinite(lim) ? lim! : 6.5) + MARGIN_MAG) / CUT_STEP_MAG) * CUT_STEP_MAG;
+    if (target === this.cutMag) return false;
+    this.cutMag = target;
+    this.stats.cutMag = target;
+    this.dirty = true;
+    return true;
+  }
+
   /** Resolves when the maps are in, every tile the view needs is loaded, and the result is uploaded. */
   idle(): Promise<void> {
     if (this.idleNow()) return Promise.resolve();

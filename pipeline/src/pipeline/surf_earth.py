@@ -38,6 +38,7 @@ from pathlib import Path
 import numpy as np
 
 from . import cie
+from . import cloud_pcl
 from . import download
 from . import surf_cog
 from . import surf_gibs as gb
@@ -286,6 +287,26 @@ class _TauDiagnostics:
         return out
 
 
+def _unmeasured_tau(ctx: BuildContext) -> tuple[dict, str]:
+    """The partly-cloudy τ statistic (cloud_pcl.py) for the cloud share without a retrieval, with its plane albedo
+    (liquid g, δ-Eddington as for the retrieved part) at a few Sun heights for reference."""
+    t, sid = cloud_pcl.table(ctx)
+    d = t["statistics"]["floorCellsZero"]["partlyCloudyAllHeights"]
+    p, tau = np.array(d["binProbability"]), np.exp(np.array(t["tauBinLnCentre"]))
+    mu, sd = d["meanLnTau"], d["sdLnTau"]
+    rows = []
+    for mu0 in (0.2, 0.4, 0.6, 0.8, 1.0):
+        bins = float((p * cloud_plane_albedo(tau, G_LIQUID, mu0)).sum())
+        ln3 = float(2 / 3 * cloud_plane_albedo(np.exp(mu), G_LIQUID, mu0)
+                    + 1 / 6 * cloud_plane_albedo(np.exp(mu + np.sqrt(3) * sd), G_LIQUID, mu0)
+                    + 1 / 6 * cloud_plane_albedo(np.exp(mu - np.sqrt(3) * sd), G_LIQUID, mu0))
+        rows.append({"mu0": mu0, "binSum": round(bins, 4), "logNormal3": round(ln3, 4),
+                     "geometricMeanTau": round(float(cloud_plane_albedo(np.exp(mu), G_LIQUID, mu0)), 4)})
+    t["planeAlbedoLiquid"] = {"what": "plane albedo of partlyCloudyAllHeights (floor cells 0), g = 0.867, by the "
+                                      "seven-bin sum, the 3-point log-normal and R(exp meanLnTau)", "rows": rows}
+    return t, sid
+
+
 def build_clouds(ctx: BuildContext) -> list[dict]:
     """The cloud-properties layer and, from the same samples, its optical-thickness moments (layer `cloudTau`)."""
     caps = gb.capabilities()
@@ -415,11 +436,12 @@ def build_clouds(ctx: BuildContext) -> list[dict]:
     del top
     mfrac = mom[..., 0][known]
     rep = diag.report()
+    unmeasured, pcl_sid = _unmeasured_tau(ctx)
     tau_spec = sl.LayerSpec(
         naif=NAIF, body=NAME, layer=TAU_LAYER, kind="cloud-optical-thickness-moments", fmt="f16", nodata="nan",
         channels=["tauRetrievedFraction", "lnTauMoment1", "lnTauMoment2", "iceTauFraction"],
         frame=FRAME,
-        sources=[SRC_CLDPROP, gibs_id],
+        sources=[SRC_CLDPROP, gibs_id, pcl_sid],
         brightness=sl.Provenance("measured", [SRC_CLDPROP, gibs_id],
                                  "Counts and ln τ moments of the L2 optical-thickness retrievals (0.65/0.86 µm, with "
                                  f"phase) among the {SAMPLES * SAMPLES} ~1.1 km samples of each texel: the same "
@@ -446,12 +468,21 @@ def build_clouds(ctx: BuildContext) -> list[dict]:
                 "iceShare": "iceTauFraction / tauRetrievedFraction",
                 "cloudyWithoutTau": "cloudFraction (clouds layer) − tauRetrievedFraction: cloud-top retrievals "
                                     "without an optical thickness (partly cloudy pixels, failed retrievals); their "
-                                    "thickness is unknown",
+                                    "thickness is not measured here (see unmeasuredTau)",
+                "unmeasuredShare": "At Strict the cloudyWithoutTau share stays unknown. At Best it may take the "
+                                   "partly-cloudy population statistic unmeasuredTau.statistics.floorCellsZero."
+                                   "partlyCloudyAllHeights (label estimated): plane albedo R̄ = Σ_k p_k R(τ_k) over "
+                                   "the seven bins with τ_k = exp(tauBinLnCentre[k]) (no fitted shape; preferred: a "
+                                   "log-normal with meanLnTau and sdLnTau is 6-10 % brighter at μ0 ≥ 0.8 because the "
+                                   "measured distribution has no mass above τ = 23, see planeAlbedoLiquid); liquid "
+                                   "phase (iceShare ≈ 0.035), the same δ-Eddington layer as the retrieved part. Not "
+                                   "the texel's own retrieved distribution, which is biased to overcast cloud.",
                 "levels": "every channel is a per-sample average, so the pyramid's 2×2 means are the same "
                           "quantities for the coarser texel (exact at every level, including the ln τ spread between "
                           "texels)"},
             "samplesPerTexel": SAMPLES * SAMPLES, "sourceDate": day,
-            "companionOf": f"surfaces/{NAIF}/clouds.json"},
+            "companionOf": f"surfaces/{NAIF}/clouds.json",
+            "unmeasuredTau": unmeasured},
         diagnostics={
             "meanTauRetrievedFraction": float(np.nanmean(mfrac)),
             "meanCloudFraction": float(np.nanmean(frac)),

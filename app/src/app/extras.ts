@@ -4,6 +4,7 @@
 import type { AtmosphereFile, Body, Label, RingsFile, RingSystem } from '../data/schema';
 import type { SurfaceLayer } from '../data/surfaces';
 import type { Mat3, SceneBody, SceneRings, SurfaceLayerRef } from '../render/scene';
+import { unmeasuredTauPopulation } from '../render/earth';
 import { allowedValue, labelAllowed, worstOf, type ExistsLevel } from './reality';
 import type { ShapeLibrary } from './shapes';
 
@@ -20,6 +21,8 @@ export interface BodySurfaces {
   photometry?: LayerRef;
   /** Earth's dated layers (render/earth.ts): 'cloud-properties', 'surface-water', 'emitted-radiance', 'surface-wind'. */
   clouds?: LayerRef;
+  /** 'cloud-optical-thickness-moments' (render/earth.ts cloudLogNormal). */
+  cloudTau?: LayerRef;
   water?: LayerRef;
   night?: LayerRef;
   wind?: LayerRef;
@@ -53,6 +56,7 @@ export function surfaceRefs(layers: SurfaceLayer[], dataRoot: string): Map<numbe
     else if (l.layer === 'height') e.height = { ref, label: headerLabel(h, 'brightness') };
     else if (h.kind === 'photometric-parameters') e.photometry = { ref, label: headerLabel(h, 'brightness') };
     else if (h.kind === 'cloud-properties') e.clouds = { ref, label: headerLabel(h, 'brightness') };
+    else if (h.kind === 'cloud-optical-thickness-moments') e.cloudTau = { ref, label: headerLabel(h, 'brightness') };
     else if (h.kind === 'surface-water') e.water = { ref, label: headerLabel(h, 'brightness') };
     else if (h.kind === 'emitted-radiance') e.night = { ref, label: worstOf([headerLabel(h, 'brightness'), headerLabel(h, 'color')]) };
     else if (h.kind === 'surface-wind') e.wind = { ref, label: headerLabel(h, 'brightness') };
@@ -130,12 +134,20 @@ export function applyExtras(sb: SceneBody, body: Body, extras: SceneExtras | und
       if (earthOk) {
         sb.atmosphere = atm;
         used.push(atm!.worstLabel);
-        for (const k of ['clouds', 'water', 'night', 'wind'] as const) {
+        for (const k of ['clouds', 'cloudTau', 'water', 'night', 'wind'] as const) {
           const l = s[k];
           if (l && labelAllowed(l.label, level)) {
             surface[k] = l.ref;
             used.push(l.label);
           }
+        }
+        // The cloud without a retrieval: the partly-cloudy τ population of cloudTau's header (estimated) where the
+        // level admits it (Best, Complete); at Strict it stays unknown (render/earth.ts unmeasuredTauPopulation).
+        const un = surface.cloudTau ? unmeasuredTauPopulation(surface.cloudTau.header) : null;
+        const unLabel = un && (LABELS.includes(un.label) ? (un.label as Label) : 'unknown');
+        if (un && unLabel && labelAllowed(unLabel, level)) {
+          surface.cloudTauUnmeasured = { taus: un.taus, p: un.p };
+          used.push(unLabel);
         }
       }
     }

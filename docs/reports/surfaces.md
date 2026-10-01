@@ -1,6 +1,6 @@
 # Surface maps: review report
 
-Generated 2026-09-30 (commit 67ccd0c) by `cd pipeline && uv run python -m pipeline.surf_report`, from the layer headers and tiles in `app/public/data/surfaces/`. Numbers are computed; prose is hand-written in `pipeline/src/pipeline/surf_report.py`. Contract: docs/architecture.md §4.4; header type `SurfaceLayerHeader` in app/src/data/schema.ts.
+Generated 2026-10-01 (commit b3a9c45) by `cd pipeline && uv run python -m pipeline.surf_report`, from the layer headers and tiles in `app/public/data/surfaces/`. Numbers are computed; prose is hand-written in `pipeline/src/pipeline/surf_report.py`. Contract: docs/architecture.md §4.4; header type `SurfaceLayerHeader` in app/src/data/schema.ts.
 
 ## What the tiles contain
 
@@ -20,7 +20,7 @@ Generated 2026-09-30 (commit 67ccd0c) by `cd pipeline && uv run python -m pipeli
 | Moon (301) | hapke | lroc-wac-hapke-parameters | 0–0 (512×256, 21.32 km) | 0.942 / 0.983 | measured | – | 2010-02/2011-10 | 8.8 |
 | Moon (301) | height | lola-ldem-64 | 0–4 (8192×4096, 1.33 km) | 1.000 / 1.000 | measured | – | 2009-07-13/2016-11-29 | 170.5 |
 | Earth (399) | albedo | modis-mcd43a4-v061, esa-oc-cci-v6-rrs… | 0–4 (8192×4096, 4.89 km) | 0.896 / 0.940 | measured | estimated | 2026-09-06 → 2026-09-21 | 314.5 |
-| Earth (399) | cloudTau | viirs-noaa20-cldprop, nasa-gibs | 0–4 (8192×4096, 4.89 km) | 0.986 / 0.998 | measured | – | 2026-09-28 → 2026-09-28 | 341.0 |
+| Earth (399) | cloudTau | viirs-noaa20-cldprop, nasa-gibs… | 0–4 (8192×4096, 4.89 km) | 0.986 / 0.998 | measured | – | 2026-09-28 → 2026-09-28 | 341.0 |
 | Earth (399) | clouds | viirs-noaa20-cldprop, nasa-gibs | 0–4 (8192×4096, 4.89 km) | 0.986 / 0.998 | measured | – | 2026-09-28 → 2026-09-28 | 341.0 |
 | Earth (399) | night | viirs-noaa20-vj146a2, nasa-gibs… | 0–4 (8192×4096, 4.89 km) | 0.962 / 0.990 | measured | estimated | 2026-09-28 → 2026-09-28 | 162.5 |
 | Earth (399) | water | modis-mod44w-v6-water-mask, noaa-etopo-2022… | 0–4 (8192×4096, 4.89 km) | 1.000 / 1.000 | measured | – | 2026-09-29 → 2026-09-29 | 170.5 |
@@ -38,7 +38,7 @@ Generated 2026-09-30 (commit 67ccd0c) by `cd pipeline && uv run python -m pipeli
 | Charon (901) | albedo | nh-mvic-global-color-maps, buie-2010a… | 0–2 (2048×1024, 1.86 km) | 0.600 / 0.623 | measured | estimated | 2015-07-12 → 2015-07-14 | 16.5 |
 | Pluto (999) | albedo | nh-mvic-global-color-maps, buie-2010a… | 0–3 (4096×2048, 1.82 km) | 0.721 / 0.771 | measured | estimated | 2015-07-12 → 2015-07-14 | 65.0 |
 
-**Product size:** 4322 MiB of tiles (4.53 GB) + 1.1 MiB of headers and tile listings. **Raw downloads kept** in data/raw/surfaces: 3.12 GB (the LROC mosaics — 8.2 GB Hapke + 4.9 GB polar — and the 4.3 GB of Mercury band ranges are reduced and deleted right after download; their sha256 stays in the ledger). **Stage time** per module (last full run: moon 512 s, giants 14 s, mars 46 s, mercury 34 s, pan 45 s, earth 6 s, nh 42 s; the Moon and Mercury from their cached reductions). A cold build downloads ~20 GB and took 1096 s for the Moon (13 GB of LROC mosaics), 431 s for Mercury (4.3 GB of band ranges + the DEM), 106 s for Mars and 35 s for the giant planets on this machine (~20-40 MB/s). Earth, all four layers, cold: 1509 s for 1.8 GB (GIBS renders the 8192 × 4096 WMS blocks slowly; 1890 MODIS byte ranges, 766 MB; OC-CCI 324 MB; ETOPO 156 MB); only the ETOPO subset, the colour maps and the STAC responses are kept. Pluto and Charon: 42 s for 1.27 GB of band ranges, deleted after use.
+**Product size:** 4322 MiB of tiles (4.53 GB) + 1.1 MiB of headers and tile listings. **Raw downloads kept** in data/raw/surfaces: 3.13 GB (the LROC mosaics — 8.2 GB Hapke + 4.9 GB polar — and the 4.3 GB of Mercury band ranges are reduced and deleted right after download; their sha256 stays in the ledger). **Stage time** per module (last full run: moon 512 s, giants 14 s, mars 46 s, mercury 34 s, pan 45 s, earth 6 s, nh 42 s; the Moon and Mercury from their cached reductions). A cold build downloads ~20 GB and took 1096 s for the Moon (13 GB of LROC mosaics), 431 s for Mercury (4.3 GB of band ranges + the DEM), 106 s for Mars and 35 s for the giant planets on this machine (~20-40 MB/s). Earth, all four layers, cold: 1509 s for 1.8 GB (GIBS renders the 8192 × 4096 WMS blocks slowly; 1890 MODIS byte ranges, 766 MB; OC-CCI 324 MB; ETOPO 156 MB); only the ETOPO subset, the colour maps and the STAC responses are kept. Pluto and Charon: 42 s for 1.27 GB of band ranges, deleted after use.
 
 ## Colour: when is it `derived`?
 
