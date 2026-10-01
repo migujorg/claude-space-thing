@@ -101,3 +101,16 @@ Curated views start with the longest total solar and lunar eclipses, then:
 A view may ask for the Sun shield (`K`, badged). The first run (no URL parameters) frames the Earth, with the Moon beside it, now and in real time, with a hint line. The scene suite adds that composition, the eclipse from the shadow axis and from above the atmosphere, and the double shadow transit.
 
 Dropped: an asteroid belt seen from above. From 2–14 AU at +8 to +14 stops, the asteroids were lost among the background stars.
+
+## Paused work  *(2026-10-01, to resume)*
+
+Four slices were stopped mid-way. Each sits on its own branch, based on this branch at 480e2c9 or later. The last commit on each is "WIP (paused)": work that wasn't committed when the slice stopped, and it is untested. None of them is merged here.
+
+| Branch | Slice | State at pause |
+|---|---|---|
+| `claude/wip-nightglow` | Airglow and aurora on the Earth's night side | Close to done. `nightglow` stage (PALACE airglow, OVATION Prime 2010 aurora), emission pass, reality gating, inspector rows, three e2e scenes, report docs/reports/nightglow.md. The WIP commit has doc edits only. Next: final checks, then merge. |
+| `claude/wip-titan-haze` | Titan's haze from Huygens DISR optics | Optics are in atmospheres.json and rendered by orders of scattering. The WIP commit has the docs and source notes in progress. Next: validation against Titan photometry, e2e scenes, then merge. |
+| `claude/wip-giant-planet-rings` | Rings of Jupiter, Uranus and Neptune | A component model (eccentric, inclined, precessing bands and dust tori) with Uranus's rings is committed. The WIP commit adds Jupiter (Throop et al. 2004) and Neptune (arcs, Souami et al. 2022) data and rendering, untested. Next: tests, scenes, report. |
+| `claude/wip-irregular-moons-centaurs` | M6: synthetic irregular moons and Centaurs | Stage, report section and app screenshot are committed. Next: final checks, then merge. |
+
+Product data built on those branches is not in git. Resuming means rebuilding the stage on each branch: `nightglow`, `light` (for atmospheres.json and rings.json), and `synthetic`.
