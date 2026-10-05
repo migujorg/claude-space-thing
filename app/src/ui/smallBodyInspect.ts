@@ -248,12 +248,12 @@ export function smallBodyFacts(t: SmallBodyTables, row: number, level: ExistsLev
   if (cm && t.cometRow.has(row) && rows.some((r) => r.key === 'sb:cometTotal')) {
     // Coma and tails (render/comets): the composition that splits the M1/K1 light into gas and dust.
     const own = t.cometList?.measured[String(row)];
-    const p = cm.composition.population;
-    const v = (k: 'C2' | 'CN' | 'C3' | 'afrho') => (own?.[k] ?? p[k].median).toFixed(2);
-    const label: Label = own?.afrho !== undefined ? 'derived' : 'estimated';
+    const p = cm.composition.value!.population;
+    const v = (k: 'C2' | 'CN' | 'C3' | 'afrho') => (own?.value?.[k] ?? p[k].median).toFixed(2);
+    const label: Label = own?.value?.afrho !== undefined ? 'derived' : 'estimated';
     rows.push({
       key: 'sb:cometComposition', name: 'Coma composition (log Q(X)/Q(OH); dust log Afρ/Q(OH))', label,
-      value: `C2 ${v('C2')}, CN ${v('CN')}, C3 ${v('C3')}; Afρ ${v('afrho')} — ${own ? `this comet (${own.key}, A'Hearn et al. 1995)` : `population medians (${p.afrho.n} comets)`}`,
+      value: `C2 ${v('C2')}, CN ${v('CN')}, C3 ${v('C3')}; Afρ ${v('afrho')} — ${own ? `this comet (${own.value!.key}, A'Hearn et al. 1995)` : `population medians (${p.afrho.n} comets)`}`,
       sources: [...new Set([...(own?.sources ?? []), ...cm.composition.sources])],
       method: `${cm.composition.method} Water production from the M1/K1 magnitude: ${cm.waterFromMagnitude.method}.`,
       withheld: !labelAllowed(label, level),

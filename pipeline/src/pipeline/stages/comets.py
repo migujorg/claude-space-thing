@@ -33,7 +33,7 @@ from ..download import fetch, record, sha256_file
 from ..paths import OUT
 from ..output import write_json
 from ..photometry import filters, solar
-from ..schema import BuildContext
+from ..schema import BuildContext, sourced
 
 STAGE = "comets"
 DEPENDS: tuple[str, ...] = ("light", "smallbodies", "sbphotometry")
@@ -272,14 +272,22 @@ def run(ctx: BuildContext) -> None:
         "gasFractionNote": "If the modelled gas V flux exceeds this fraction of the M1/K1 total, the gas is scaled down to "
                            "it (the rest is dust).",
     }
+    # Inline model payloads use the same provenance envelope as every other JSON value.
+    metadata = {"label", "sources", "unit", "method", "uncertainty"}
+    for name in ("waterFromMagnitude", "composition", "gFactors", "bandRatiosToC2", "haser",
+                 "oxygen", "coPlus", "solarWind", "grains"):
+        entry = model[name]
+        model[name] = sourced({key: value for key, value in entry.items() if key not in metadata},
+                              entry["label"], entry["sources"], unit=entry.get("unit"),
+                              method=entry.get("method"), uncertainty=entry.get("uncertainty"))
     write_json(ctx, f"{DIR}/model.json", model, STAGE)
 
     meas_out = {}
     for j, key in measured.items():
         c = ratios["comets"][key]
-        meas_out[str(int(cat["rows"][j]))] = {"key": key, **{k: c[k] for k in ("C2", "CN", "C3", "afrho") if k in c},
-                                              "n": c["n"], "rRangeAu": c["rRangeAu"], "label": "derived",
-                                              "sources": [src["lowell"]]}
+        meas_out[str(int(cat["rows"][j]))] = sourced(
+            {"key": key, **{k: c[k] for k in ("C2", "CN", "C3", "afrho") if k in c},
+             "n": c["n"], "rRangeAu": c["rRangeAu"]}, "derived", [src["lowell"]])
     lst = {
         "window": w, "notableMag": NOTABLE_MAG, "count": len(peaks),
         "method": "Daily geocentric m1 over the window: core states propagated with the smallbodies force model "
@@ -328,7 +336,7 @@ def run(ctx: BuildContext) -> None:
                            "oursR": o["rAu"], "horizonsDelta": h["deltaAu"], "oursDelta": o["deltaAu"]}
                           for h, o in zip(fx["horizons"]["rows"], fx["ours"])],
         "bandRatiosToC2": band_ratio, "population": ratios["population"],
-        "measuredComets": {k: v["key"] for k, v in meas_out.items()},
+        "measuredComets": {k: v["value"]["key"] for k, v in meas_out.items()},
         "dustColour": {k: {kk: comps["dust"][k][kk] for kk in ("xyzs", "v", "normalizedGradientPer100nm")} for k in comps["dust"]},
         "grains": grains, "oxygenPhotonsPerH2O": ox_photons, "coPlus": cop, "solarWind": model["solarWind"],
         "products": {k: v for k, v in ctx.products.items() if v["stage"] == STAGE},

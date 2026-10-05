@@ -45,7 +45,7 @@ from . import surf_gibs as gb
 from . import surf_layers as sl
 from . import surf_tiles as st
 from .download import fetch, record
-from .schema import BuildContext
+from .schema import BuildContext, sourced
 from .surf_fetch import discard
 
 NAIF = 399
@@ -304,7 +304,8 @@ def _unmeasured_tau(ctx: BuildContext) -> tuple[dict, str]:
                      "geometricMeanTau": round(float(cloud_plane_albedo(np.exp(mu), G_LIQUID, mu0)), 4)})
     t["planeAlbedoLiquid"] = {"what": "plane albedo of partlyCloudyAllHeights (floor cells 0), g = 0.867, by the "
                                       "seven-bin sum, the 3-point log-normal and R(exp meanLnTau)", "rows": rows}
-    return t, sid
+    return sourced({key: value for key, value in t.items() if key not in {"label", "sources"}},
+                   t["label"], t["sources"]), sid
 
 
 def build_clouds(ctx: BuildContext) -> list[dict]:

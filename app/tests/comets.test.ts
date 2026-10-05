@@ -7,7 +7,7 @@
 // dust-tail indicator).
 
 import { describe, expect, it } from 'vitest';
-import type { CometModelProduct } from '../src/data/schema';
+import type { CometMeasuredActivity, CometModelProduct } from '../src/data/schema';
 import {
   activityOf, AU_KM, coma, comaExtentKm, comaLut, dustTail, enclosed, grainPosition, ionTail, ionTailDirection,
   pixelIlluminance, syndyne, synchrone, type CometInput, type V3,
@@ -19,7 +19,7 @@ interface Fixture {
   comet: { row: number; designation: string; name: string; M1: number; K1: number };
   horizons: { rows: { dateUt: string; raDeg: number; decDeg: number; tMag: number; rAu: number; deltaAu: number; stoDeg: number; psAngDeg: number; psAmvDeg: number }[]; M1: number; K1: number };
   ours: { et: number; helioKm: V3; helioVelKmS: V3; earthHelioKm: V3; m1: number; rAu: number; deltaAu: number }[];
-  measured: { C2?: number; CN?: number; C3?: number; afrho?: number; sources: string[] } | null;
+  measured: CometMeasuredActivity | null;
   model: CometModelProduct;
 }
 
@@ -196,9 +196,9 @@ describe('dust tail geometry (Finson-Probstein)', () => {
   it('the ion tail points along the aberrated anti-solar direction, within the aberration of PsAng', () => {
     fx.ours.forEach((o, k) => {
       const h = fx.horizons.rows[k];
-      const d = ionTailDirection(o.helioKm, o.helioVelKmS, model.solarWind.medianKmS);
+      const d = ionTailDirection(o.helioKm, o.helioVelKmS, model.solarWind.value!.medianKmS);
       const vPerp = Math.sqrt(Math.max(0, len(o.helioVelKmS) ** 2 - ((o.helioVelKmS[0] * o.helioKm[0] + o.helioVelKmS[1] * o.helioKm[1] + o.helioVelKmS[2] * o.helioKm[2]) / len(o.helioKm)) ** 2));
-      const aberr = (Math.atan(vPerp / model.solarWind.medianKmS) * 180) / Math.PI;
+      const aberr = (Math.atan(vPerp / model.solarWind.value!.medianKmS) * 180) / Math.PI;
       const toComet = sub(o.helioKm, o.earthHelioKm);
       const tip: V3 = [o.helioKm[0] + d[0] * 1e6, o.helioKm[1] + d[1] * 1e6, o.helioKm[2] + d[2] * 1e6];
       const pa = positionAngle(toComet, sub(tip, o.earthHelioKm));
