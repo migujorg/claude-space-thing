@@ -18,7 +18,9 @@ import csv
 import io
 import pickle
 import tarfile
+from datetime import datetime
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import numpy as np
 
@@ -234,12 +236,14 @@ def build(ctx: BuildContext) -> dict:
     ]
     columns = {c: np.asarray(v) for c, v in cols.items()}
     from .schema import SourceRecord
+    export_name = Path(urlsplit(EXPORT).path).name.removesuffix(".tar.gz")
+    export_date = datetime.strptime(export_name.removeprefix("damit-"), "%Y%m%dT%H%M%SZ").date().isoformat()
     src_id = ctx.add_source(SourceRecord(
         id=SRC, title="DAMIT - Database of Asteroid Models from Inversion Techniques, complete export",
         citation="Ďurech, J., Sidorin, V. & Kaasalainen, M. (2010). DAMIT: a database of asteroid models. A&A 513, "
-                 "A46. doi:10.1051/0004-6361/200912693. Export damit-20260930T000302Z (per-model references in "
+                 f"A46. doi:10.1051/0004-6361/200912693. Export {export_name} (per-model references in "
                  "shapes/damit-index.json).",
-        url=EXPORT, retrieved=rec["retrieved"], sha256=rec["sha256"], version="2026-09-30 export",
+        url=EXPORT, retrieved=rec["retrieved"], sha256=rec["sha256"], version=f"{export_date} export",
         license="CC BY 4.0",
         notes=f"{rec['bytes'] / 1e9:.2f} GB tar (models, light curves, images); only shape.txt, spin.txt, IAUspin "
               "and the tables are read; the tar is deleted after extraction."))

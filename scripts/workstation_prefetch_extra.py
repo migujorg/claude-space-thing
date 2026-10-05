@@ -1,8 +1,10 @@
 """Keep future full-profile download inputs ready without waiting for their build stage."""
 import concurrent.futures as cf
 import json
+import os
 from pathlib import Path
 import time
+os.environ["PIPELINE_NETWORK_METRICS"] = "1"
 import workstation_pipeline as network
 network.install()
 from pipeline import download, shape_damit, surf_mercury, surf_pan, surf_giants, sb_physical_sources

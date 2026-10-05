@@ -5,7 +5,7 @@
 // Eye model v1: the rod path is Hunt's own (F_LS, B_S), not Pattanaik's Eq. 4/6 (see HUNT in constants.ts).
 //
 // This file is the reference implementation (float64, used by tests and on the CPU for per-frame
-// scalars). The per-pixel part is mirrored in WGSL (wgsl.ts); keep them in sync.
+// scalars). The per-pixel part is mirrored in WGSL (app/src/render/shaders.ts); keep them in sync.
 
 import { CRUMEY, HUNT as H, PATTANAIK as P } from './constants';
 

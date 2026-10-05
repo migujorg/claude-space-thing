@@ -63,7 +63,7 @@ def test_stage_params_and_env_export():
     assert config.stage_params(p, "surfaces")["surfaces.maxLevel"] == 3
     assert "surfaces.keepCache" not in config.stage_params(p, "surfaces")      # how, not what: no rebuild
     assert "gaia.xpWorkers" not in config.stage_params(p, "stars")
-    assert config.stage_params(p, "sky") == {"gaia.release": "dr3", "gaia.tapService": "esa", "deepstars.xpSource": "inherit"}
+    assert config.stage_params(p, "sky") == {"gaia.release": "dr3", "gaia.sumsFormat": "csv", "gaia.tapService": "esa", "deepstars.xpSource": "inherit"}
     env: dict = {}
     config.export_env({**p, "surfaces.bodies": [301], "smallbodies.snapshot": "new"}, env)
     assert env == {"SURFACES_BODIES": "301", "SB_SNAPSHOT": "new"}

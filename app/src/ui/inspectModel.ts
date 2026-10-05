@@ -2,7 +2,7 @@
 
 import type { AtmosphereFile, Body, EphemHeader, EphemSegment, Label, LightData, Sourced } from '../data/schema';
 import type { SurfaceLayer } from '../data/surfaces';
-import type { OrientationSourcePort } from '../app/ports';
+import type { EphemerisSourcePort, OrientationSourcePort } from '../app/ports';
 import { labelAllowed, worstOf, type ExistsLevel } from '../app/reality';
 import { formatValue } from './format';
 import type { ShapeStatus } from '../app/shapes';
@@ -63,6 +63,8 @@ function row<T>(key: string, name: string, s: Sourced<T> | undefined, level: Exi
 }
 
 export interface AttributeContext {
+  /** Evaluator-selected chain at this body's frame emission epoch; absent/null → no coverage. */
+  ephemeris?: EphemerisSourcePort | null;
   /** Orientation in use at the current epoch (OrientationSet.provenance); undefined → not shown. */
   orientation?: OrientationSourcePort | null;
   /** The ephemeris file(s) this body needs are still loading. */
@@ -77,23 +79,26 @@ export interface AttributeContext {
 
 export function attributeRows(body: Body, level: ExistsLevel, ephs: { path: string; header: EphemHeader }[], ctx: AttributeContext = {}): AttrRow[] {
   const rows: AttrRow[] = [];
-  const chain = ephemerisChain(ephs, body.id);
-  if (chain.links.length) {
+  const chain = ctx.ephemeris;
+  if (chain?.links.length) {
     const path = [body.id, ...chain.links.map((l) => l.seg.center)].join(' → ');
     const types = uniq(chain.links.map((l) => l.seg.type)).join('/');
-    const files = uniq(chain.links.map((l) => l.file.replace(/^ephem\//, ''))).join(', ');
+    // Match the owning header by identity; target lookup would select the wrong duplicate product.
+    const fileOf = (header: EphemHeader) => (ephs.find((e) => e.header === header)?.path ?? header.bin).replace(/^ephem\//, '');
+    const files = uniq(chain.links.map((l) => fileOf(l.header))).join(', ');
+    const details = chain.links.map(({ header, seg }) => `${seg.target} → ${seg.center}: ${fileOf(header)} segment ${header.segments.indexOf(seg) + 1} (SPK type ${seg.type}, ${seg.label ?? 'unknown'}; sources: ${seg.sources.join(', ') || 'none recorded'})`).join('; ');
     rows.push({
       key: 'position',
       name: 'Position (ephemeris)',
       // A chain is only as grounded as its least grounded segment (e.g. a fitted planet-center offset).
-      label: worstOf(chain.links.map((l) => l.seg.label ?? 'unknown')),
-      value: `SPK type ${types} segments ${path}${chain.complete ? ' (SSB)' : ' — chain to the SSB is incomplete'}${ctx.loading ? ` — ${ctx.loading}` : ''}`,
-      method: `Chebyshev ephemeris from ${files}, evaluated at the light-emission epoch; the light-time correction makes the drawn position derived.`,
+      label: chain.label,
+      value: `SPK type ${types} segments ${path} (SSB)${ctx.loading ? ` — ${ctx.loading}` : ''}`,
+      method: `SPK ephemeris from ${files}, evaluated at the light-emission epoch; the light-time correction makes the drawn position derived. Links (1-based product segment indices): ${details}.`,
       sources: chain.sources,
       withheld: false,
     });
   } else {
-    rows.push({ key: 'position', name: 'Position (ephemeris)', label: 'unknown', value: 'unknown — no ephemeris segment for this body', sources: [], withheld: false });
+    rows.push({ key: 'position', name: 'Position (ephemeris)', label: 'unknown', value: `unknown — no coverage: no complete ephemeris chain at this body's epoch${ctx.loading ? ` — ${ctx.loading}` : ''}`, sources: [], withheld: false });
   }
   rows.push(row('radii', 'Shape (triaxial radii)', body.radii, level, 'radii'));
   const sr = shapeRow(ctx.shape ?? null, level);

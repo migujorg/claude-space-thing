@@ -1,5 +1,5 @@
 // The pure parts of the scene regression suite (scripts/e2e-lib.mjs): scene URLs, PNG thumbnails, the lightness
-// grid, and the comparison rules against a baseline.
+// grid, the comparison rules against a baseline, and the --gpu option's browser arguments and adapter checks.
 
 import { describe, expect, it } from 'vitest';
 
@@ -35,7 +35,17 @@ interface Lib {
   statsTable(results: unknown[]): string;
   THUMB_W: number;
   THUMB_H: number;
+  GPU_MODES: string[];
+  gpuLaunchArgs(mode?: string): string[];
+  isSoftwareAdapter(info: Adapter | null): boolean;
+  adapterLabel(info: Adapter | null): string;
+  gpuMismatch(mode: string, info: Adapter | null): string | null;
+  hdrFormatOf(warnings: string[] | undefined): string;
+  gpuNote(baselineGpu: Gpu | undefined, gpu: Gpu): string | null;
+  starsFramesNote(values: number[] | undefined, compared: number | null | undefined): string | null;
 }
+interface Adapter { vendor: string; architecture: string; device: string; description: string; fallback: boolean; float32Blendable: boolean }
+interface Gpu { mode: string; adapter: Adapter | null }
 // Non-literal specifier: a plain .mjs module of the Node script, without declarations.
 const lib = (await import(/* @vite-ignore */ '../scripts/e2e-lib.mjs' as string)) as Lib;
 
@@ -111,5 +121,75 @@ describe('scene suite helpers', () => {
     // Per-scene tolerance overrides.
     expect(lib.compareScene(scene(debug({ adapt: 300, warnings: ['Sun: limb darkening unknown'] }), g), base, { adaptationLog10: 0.5 }).pass).toBe(true);
     expect(lib.statsTable([{ id: 'x', readyMs: 1000, ...scene(debug(), g), compare: { pass: true, failures: [] } }])).toMatch(/x\s+1\s+100\s+3\.00\s+2\.50\s+1000\s+2 \(1\)\s+1 measured, 1 derived\s+0\s+0\.300\s+pass/);
+  });
+});
+
+// The adapters as Chromium 141 reports them (device and description are empty without developer features).
+const SWIFTSHADER: Adapter = { vendor: 'google', architecture: 'swiftshader', device: '', description: '', fallback: true, float32Blendable: true };
+const RTX: Adapter = { vendor: 'nvidia', architecture: 'blackwell', device: '', description: '', fallback: false, float32Blendable: true };
+
+describe('the --gpu option', () => {
+  it('keeps SwiftShader as the default, with the arguments the scripts always used', () => {
+    const was = ['--enable-unsafe-webgpu', '--enable-features=Vulkan', '--use-webgpu-adapter=swiftshader', '--use-angle=swiftshader', '--ignore-gpu-blocklist'];
+    expect(lib.gpuLaunchArgs()).toEqual(was);
+    expect(lib.gpuLaunchArgs('swiftshader')).toEqual(was);
+    expect(lib.GPU_MODES).toEqual(['swiftshader', 'hardware']);
+  });
+
+  it('asks for Vulkan without a window surface in hardware mode, and for no software adapter', () => {
+    const args = lib.gpuLaunchArgs('hardware');
+    // Both are needed for the GPU process to initialize Vulkan; either alone still gives SwiftShader.
+    expect(args).toContain('--use-angle=vulkan');
+    expect(args).toContain('--enable-features=Vulkan');
+    expect(args).toContain('--disable-vulkan-surface');
+    expect(args).toContain('--enable-unsafe-webgpu');
+    expect(args.join(' ')).not.toMatch(/swiftshader/);
+    expect(() => lib.gpuLaunchArgs('gpu')).toThrow(/--gpu gpu: expected swiftshader or hardware/);
+  });
+
+  it('tells a software adapter from a hardware one', () => {
+    expect(lib.isSoftwareAdapter(SWIFTSHADER)).toBe(true);
+    expect(lib.isSoftwareAdapter(RTX)).toBe(false);
+    expect(lib.isSoftwareAdapter(null)).toBe(false);
+    // By name too (Mesa's CPU rasterizer does not call itself a fallback adapter), as src/app/sky.ts does.
+    expect(lib.isSoftwareAdapter({ ...RTX, vendor: 'mesa', architecture: '', description: 'llvmpipe (LLVM 20.1, 256 bits)' })).toBe(true);
+    expect(lib.isSoftwareAdapter({ ...RTX, fallback: true })).toBe(true);
+    expect(lib.adapterLabel(RTX)).toBe('nvidia blackwell (hardware)');
+    expect(lib.adapterLabel(SWIFTSHADER)).toBe('google swiftshader (software)');
+    expect(lib.adapterLabel(null)).toBe('none');
+    expect(lib.adapterLabel({ ...RTX, vendor: '', architecture: '' })).toBe('unnamed adapter (hardware)');
+  });
+
+  it('fails a hardware run that got a software adapter or none, and requires nothing of a SwiftShader run', () => {
+    expect(lib.gpuMismatch('hardware', RTX)).toBeNull();
+    expect(lib.gpuMismatch('hardware', SWIFTSHADER)).toMatch(/--gpu hardware: the browser's adapter is google swiftshader \(software\)/);
+    expect(lib.gpuMismatch('hardware', null)).toMatch(/no WebGPU adapter/);
+    expect(lib.gpuMismatch('swiftshader', SWIFTSHADER)).toBeNull();
+    expect(lib.gpuMismatch('swiftshader', RTX)).toBeNull();
+    expect(lib.gpuMismatch('swiftshader', null)).toBeNull();
+  });
+
+  it('reads the HDR target format from the renderer warnings', () => {
+    expect(lib.hdrFormatOf([])).toBe('rgba32float');
+    expect(lib.hdrFormatOf(undefined)).toBe('rgba32float');
+    expect(lib.hdrFormatOf(['Sun: limb darkening unknown'])).toBe('rgba32float');
+    expect(lib.hdrFormatOf(['HDR buffers are rgba16float with pre-exposure (float32-blendable unavailable or disabled)'])).toBe('rgba16float');
+  });
+
+  it('notes a baseline accepted on another kind of adapter; a baseline without the record was SwiftShader', () => {
+    const soft: Gpu = { mode: 'swiftshader', adapter: SWIFTSHADER }, hard: Gpu = { mode: 'hardware', adapter: RTX };
+    expect(lib.gpuNote(undefined, soft)).toBeNull();
+    expect(lib.gpuNote(soft, soft)).toBeNull();
+    expect(lib.gpuNote(hard, hard)).toBeNull();
+    expect(lib.gpuNote(undefined, hard)).toBe('The baseline was accepted on swiftshader; this run rendered on hardware (nvidia blackwell (hardware)). Differences may come from the adapter.');
+    expect(lib.gpuNote(hard, soft)).toMatch(/accepted on hardware \(nvidia blackwell \(hardware\)\); this run rendered on swiftshader \(google swiftshader \(software\)\)/);
+  });
+
+  it('notes a star count that is not one number from frame to frame', () => {
+    expect(lib.starsFramesNote(undefined, 10)).toBeNull();
+    expect(lib.starsFramesNote([], 10)).toBeNull();
+    expect(lib.starsFramesNote([1015], 1015)).toBeNull();
+    expect(lib.starsFramesNote([965, 1043], 965)).toBe('starsDrawn changes from frame to frame: 965, 1043; the stats hold 965');
+    expect(lib.starsFramesNote([2631, 2632, 2634, 2635, 2636, 2639, 2643], 2635)).toBe('starsDrawn changes from frame to frame: 2631 … 2643 (7 values); the stats hold 2635');
   });
 });

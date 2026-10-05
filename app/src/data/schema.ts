@@ -1015,8 +1015,15 @@ export interface SmallBodyPhysicalHeader extends SmallBodyTableHeader {
 
 /** A population of the synthetic layer (synthetic/objects.json `populations`; pipeline stage synthetic). */
 export interface SyntheticPopulation {
-  /** neo, hungaria, mainbelt, hilda, trojan, tno */
+  /** neo, hungaria, mainbelt, hilda, trojan, tno, centaur, irregular-jupiter, irregular-saturn, irregular-uranus, irregular-neptune */
   name: string;
+  /**
+   * Planet-centred populations (irregular moons): the elements are osculating elements about this NAIF body (a
+   * planet-system barycentre), ecliptic J2000 axes, mu = gm (km^3/s^2). Absent: heliocentric (mu = gmSun).
+   */
+  center?: { naifId: number; name: string; gm: number; gmSource?: string };
+  /** How the population's elements are referred (planet-centred populations). */
+  frame?: string;
   /** objects.pop / cells.pop value. */
   code: number;
   /** The model (source id, or 'catalogue+<completeness source>+<slope source>'). */
@@ -1059,6 +1066,8 @@ export interface SyntheticObjectsHeader extends SmallBodyTableHeader {
   /** Slope parameter of the H-G magnitude law used for every synthetic object. */
   slopeParameterG?: { value: number; source: string; method: string };
   attributePools?: Record<string, unknown>;
+  /** colorClass value of objects without a class (drawn in the solar colour, grey) and why. */
+  grey?: { colorClass: number; method: string };
 }
 
 /** synthetic/cells.json: one record per (population, a, e, i, H) cell. */
@@ -1196,7 +1205,8 @@ export interface CometListProduct {
   count: number;
   method: string;
   notable: CometListEntry[];
-  showcase: { row: number; designation: string; name: string; rule: string };
+  /** Null when no notable, non-fragment comet has solar elongation >= 30 deg at peak. */
+  showcase: { row: number; designation: string; name: string; rule: string } | null;
   /** core row (as a string) → measured composition. */
   measured: Record<string, CometMeasuredActivity>;
   label: Label;

@@ -1,6 +1,6 @@
 // Scene regression suite (app/e2e/README.md). Renders every scene of app/e2e/scenes.json in the real app with
-// the real data (headless Chromium, SwiftShader WebGPU, ?present=offscreen), one Vite server and one browser,
-// at most two scenes at a time. Saves app/shots/e2e/<id>.png (with the UI) and <id>.thumb.png (the rendered
+// the real data (headless Chromium, SwiftShader WebGPU unless --gpu hardware, ?present=offscreen), one Vite server
+// and one browser, at most two scenes at a time. Saves app/shots/e2e/<id>.png (with the UI) and <id>.thumb.png (the rendered
 // image only, 64×36), writes app/shots/e2e/report.json (renderer stats + debugState per scene) and compares
 // with the committed baseline in app/e2e/baseline/ (stats with tolerances, and a 16×9 lightness grid of the
 // thumbnails).
@@ -12,6 +12,8 @@
 //   npm run e2e -- --no-compare          render and report only
 //   options: --jobs 1|2  --timeout <s per scene, default 600>  --retries <n, default 1: re-render a scene that timed
 //            out or lost its GPU device, alone>  --base http://localhost:5173 (use a running server)
+//            --gpu swiftshader|hardware (default swiftshader; hardware = the machine's GPU through Vulkan, and a
+//            scene fails if the browser gave a software adapter instead)
 
 import { chromium } from 'playwright';
 import { createServer } from 'vite';
@@ -20,7 +22,10 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { compareScene, decodePng, encodePng, extractStats, gridFromThumb, sceneQuery, statsTable, thumbFromLinear, THUMB_H, THUMB_W } from './e2e-lib.mjs';
+import {
+  adapterLabel, compareScene, decodePng, encodePng, extractStats, gpuLaunchArgs, gpuMismatch, gpuNote, gridFromThumb, hdrFormatOf, pageAdapterInfo,
+  pageStarsDrawnFrames, sceneQuery, starsFramesNote, statsTable, thumbFromLinear, THUMB_H, THUMB_W,
+} from './e2e-lib.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const E2E = resolve(ROOT, 'e2e');
@@ -39,6 +44,8 @@ const acceptLast = flag('accept-last');
 const jobs = Math.max(1, Math.min(2, Number(opt('jobs') ?? 2)));
 const timeoutMs = 1000 * Number(opt('timeout') ?? 600);
 const retries = Math.max(0, Number(opt('retries') ?? 1));
+const gpuMode = opt('gpu') ?? 'swiftshader';
+const launchArgs = gpuLaunchArgs(gpuMode); // throws on an unknown mode, before anything starts
 
 const suite = JSON.parse(readFileSync(resolve(E2E, 'scenes.json'), 'utf8'));
 const scenes = suite.scenes.filter((s) => !only || only.includes(s.id));
@@ -90,7 +97,7 @@ if (acceptLast) {
     const png = resolve(OUT, `${r.id}.thumb.png`);
     if (existsSync(png)) r.thumb = decodePng(readFileSync(png)).rgba;
   }
-  writeBaseline(rs, { acceptedAt: last.generatedAt, git: last.git, data: last.data, viewport: last.viewport });
+  writeBaseline(rs, { acceptedAt: last.generatedAt, git: last.git, data: last.data, viewport: last.viewport, gpu: last.gpu });
 }
 
 mkdirSync(OUT, { recursive: true });
@@ -101,10 +108,7 @@ if (!base) {
   await server.listen();
   base = `http://localhost:${server.httpServer.address().port}`;
 }
-const browser = await chromium.launch({
-  headless: true,
-  args: ['--enable-unsafe-webgpu', '--enable-features=Vulkan', '--use-webgpu-adapter=swiftshader', '--use-angle=swiftshader', '--ignore-gpu-blocklist'],
-});
+const browser = await chromium.launch({ headless: true, args: launchArgs });
 const vp = suite.viewport ?? { width: 1280, height: 720 };
 
 /** Box-average the presented canvas (offscreen presentation blits into a 2D canvas) in linear light, in the page. */
@@ -146,9 +150,15 @@ async function renderScene(scene) {
     r.readyMs = Date.now() - t0;
     const err = await page.evaluate(() => window.__frameError ?? null);
     if (err) r.error = String(err).slice(0, 1000);
+    // The adapter this page's renderer was given. Asked per scene: after GPU process crashes Chromium goes on with
+    // SwiftShader, and from then on a --gpu hardware run would be a software run.
+    r.adapter = await page.evaluate(pageAdapterInfo);
+    const wrongGpu = gpuMismatch(gpuMode, r.adapter);
+    if (wrongGpu && !r.error) r.error = wrongGpu;
     const debug = await page.evaluate(() => window.__app?.debugState?.() ?? null);
     r.stats = extractStats(debug);
     r.renderer = debug?.renderer ?? null;
+    r.hdrFormat = debug?.renderer ? hdrFormatOf(debug.renderer.warnings) : null;
     r.debug = debug && {
       et: debug.et, utc: debug.utc, selected: debug.selected, camera: debug.camera, reality: debug.reality, badge: debug.badge,
       drawn: debug.drawn, noPosition: debug.noPosition, loading: debug.loading && { ...debug.loading, systems: undefined },
@@ -167,6 +177,10 @@ async function renderScene(scene) {
       r.grid = gridFromThumb(thumb);
       r.thumb = thumb;
     } else r.imageNote = 'no 2D canvas to read (not offscreen presentation?)';
+    // On the GPU the stats above are those of whichever ~10 ms frame the read landed on; record whether the star
+    // count is steady over the next frames (e2e-lib.mjs pageStarsDrawnFrames). Not sampled on SwiftShader, where
+    // one more frame can cost a second and the read lands on the same frame every run.
+    if (gpuMode === 'hardware' && r.stats) r.starsDrawnFrames = await page.evaluate(pageStarsDrawnFrames, 16);
     // A screenshot waits for a new frame, and a SwiftShader frame can take tens of seconds on a busy machine.
     await page.screenshot({ path: resolve(OUT, `${scene.id}.png`), timeout: Math.min(timeoutMs, 300_000) });
   } catch (e) {
@@ -215,9 +229,18 @@ await server?.close();
 
 // ---- compare ---------------------------------------------------------------------------------------------------
 
+// What rendered this run: the mode asked for and the adapter the pages got (the first scene's; they all share one
+// browser, and a scene whose adapter is not the mode's has failed above).
+const gpu = { mode: gpuMode, adapter: results.find((r) => r.adapter)?.adapter ?? null };
 const notes = [];
 if (compare && baseline.data?.manifestSha256 && baseline.data.manifestSha256 !== dataInfo.manifestSha256)
   notes.push(`The baseline was accepted on another data build (manifest ${baseline.data.manifestGeneratedAt}); this run uses ${dataInfo.manifestGeneratedAt}. Differences may come from the data.`);
+const otherGpu = compare ? gpuNote(baseline.gpu, gpu) : null;
+if (otherGpu) notes.push(otherGpu);
+for (const r of results) {
+  const unsteady = starsFramesNote(r.starsDrawnFrames, r.stats?.starsDrawn);
+  if (unsteady) notes.push(`${r.id}: ${unsteady}`);
+}
 for (const r of results) {
   if (!compare) continue;
   const b = baseline.scenes?.[r.id];
@@ -236,6 +259,7 @@ const report = {
   generatedAt: new Date().toISOString(),
   git: gitRev,
   data: dataInfo,
+  gpu,
   viewport: vp,
   compared: compare ? { baselineAcceptedAt: baseline.acceptedAt, baselineGit: baseline.git } : null,
   notes,
@@ -245,6 +269,8 @@ writeFileSync(resolve(OUT, 'report.json'), JSON.stringify(report, null, 1));
 const table = statsTable(results);
 writeFileSync(resolve(OUT, 'stats.txt'), table + '\n');
 console.log('\n' + table);
+const formats = [...new Set(results.map((r) => r.hdrFormat).filter(Boolean))];
+console.log(`gpu: ${gpu.mode}, adapter ${adapterLabel(gpu.adapter)}, HDR targets ${formats.join(', ') || 'unknown'}`);
 for (const n of notes) console.log(`note: ${n}`);
 for (const r of results) {
   for (const f of r.compare?.failures ?? []) console.log(`FAIL ${r.id}: ${f}`);
@@ -254,7 +280,7 @@ console.log(`\nreport: ${resolve(OUT, 'report.json')}  screenshots: ${OUT}`);
 
 // ---- accept ----------------------------------------------------------------------------------------------------
 
-if (accept) writeBaseline(results, { acceptedAt: report.generatedAt, git: gitRev, data: dataInfo, viewport: vp });
+if (accept) writeBaseline(results, { acceptedAt: report.generatedAt, git: gitRev, data: dataInfo, viewport: vp, gpu });
 
 const failed = results.filter((r) => r.error || (r.compare && !r.compare.pass));
 process.exit(failed.length ? 1 : 0);
