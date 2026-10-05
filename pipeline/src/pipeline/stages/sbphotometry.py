@@ -326,10 +326,10 @@ def run(ctx: BuildContext) -> None:
         "colour": colour,
         "comets": {"method": "Total visual magnitude m1 = M1 + 5 log10(Delta) + K1 log10(r) (comets.M1, K1); where M1 "
                              "is unknown, the nuclear law m2 = M2 + 5 log10(Delta) + K2 log10(r) + PC * phase[deg]. "
-                             "The magnitude is taken as V and drawn with the Sun's colour (c = 1): a comet's coma is "
+                             "The field takes the magnitude as V and draws it with the Sun's colour (c = 1): a comet's coma is "
                              "dust-scattered sunlight plus gas emission, whose colour is not catalogued. Label "
                              "estimated (the laws are fits that comets depart from by 1-2 mag; colour assumed); a coma "
-                             "is extended but is drawn as a point.",
+                             "is drawn as a point in the field; resolved comae use comets/model.json.",
                    "label": "estimated"},
         "rules": {
             "brightness": "V from H and a phase function. Phase function: the SsODNet H-G1-G2 fit in the V band "
@@ -345,7 +345,7 @@ def run(ctx: BuildContext) -> None:
             "best": "Also estimated inputs: G = 0.15, H-G1-G2 outside its fitted range, estimated positions, the "
                     "estimated colour (Gaia spectrum with a bridged gap, else the class colour of core.colorClass), "
                     "and comet magnitude laws.",
-            "complete": "As best (no synthetic small bodies yet).",
+            "complete": "As best, plus the synthetic small-body layer where built.",
             "lightTime": "Position back-dated by the light time tau = Delta / c to first order: x(t - tau) = x(t) - "
                          "v(t) tau (SSB velocity), with Delta from the geometric position.",
         },
