@@ -22,7 +22,8 @@ data/cache/prefetch-status.json; stage status is in data/cache/parallel-status.j
 Stage logs are under data/cache/parallel/<run timestamp>/.
 
 The minimum utilization target is 75 MB/s over a rolling 60-second window.
-The workstation build, stage, and prefetch entry points set
+The workstation build/stage entry points, `workstation_prefetch*.py`, and
+`workstation_bulk_prefetch.py` set
 `PIPELINE_NETWORK_METRICS=1`, opting into a daemon that publishes receive and
 demand counters once a second to `data/cache/network-metrics/<pid>.json`.
 Ordinary pipeline builds keep summary counters in memory without a metrics
