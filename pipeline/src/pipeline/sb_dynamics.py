@@ -1,11 +1,12 @@
 """Small-body dynamics: osculating elements -> state, universal-variable Kepler drift, planetary kicks, and the
-fixed-grid Kepler-drift + kick integrator (a SABA_n splitting, Laskar & Robutel 2001) used by the `smallbodies`
-stage. `app/src/core/smallbody.ts` implements exactly the same scheme in TypeScript; keep the two in step
+fixed-grid integrator used by the `smallbodies` stage: Kepler drift + kicks (SABA_n, Laskar & Robutel 2001),
+switching to classical RK4 near planetary encounters. `app/src/core/smallbody.ts` implements exactly the same
+scheme in TypeScript; keep the two in step
 (the constants they share travel in the product header's `forceModel`, see `sb_model.py`).
 
 Units: km, s, km^3/s^2; heliocentric ICRF (SPICE J2000) positions and velocities.
 
-Scalar numba kernels, one object at a time (the same structure as the TypeScript and, later, the GPU code).
+Scalar numba kernels, one object at a time (the same structure as the TypeScript and GPU code).
 
 References
 - Universal variables and Stumpff functions: Danby, J. M. A. (1988), Fundamentals of Celestial Mechanics,
