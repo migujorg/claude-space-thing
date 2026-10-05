@@ -37,6 +37,30 @@ def test_absent_pinned_document_offline_matches_refused_download(document, monke
     assert document.source().to_json() == expected
 
 
+def test_absent_transcribed_document_offline_matches_refused_download(monkeypatch, tmp_path):
+    monkeypatch.setattr(common, "RAW", tmp_path)
+    monkeypatch.setattr(common, "_FAILED", {})
+    monkeypatch.delenv("PIPELINE_OFFLINE", raising=False)
+
+    def refused(*args, **kwargs):
+        raise requests.HTTPError("archive unavailable")
+
+    monkeypatch.setattr(common, "fetch", refused)
+    expected = KARKOSCHKA_1994_TEXT.source().to_json()
+    assert expected["retrieved"] == ""
+    assert "sha256" not in expected
+    assert "Document unavailable" in expected["notes"]
+
+    monkeypatch.setattr(common, "_FAILED", {})
+    monkeypatch.setenv("PIPELINE_OFFLINE", "1")
+
+    def unexpected_download(*args, **kwargs):
+        pytest.fail("offline transcribed document attempted a download")
+
+    monkeypatch.setattr(common, "fetch", unexpected_download)
+    assert KARKOSCHKA_1994_TEXT.source().to_json() == expected
+
+
 @pytest.mark.parametrize("method", ["fetch", "source"])
 def test_absent_unpinned_input_offline_reaches_download_guard(method, monkeypatch, tmp_path):
     monkeypatch.setattr(common, "RAW", tmp_path)
