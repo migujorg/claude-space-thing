@@ -106,7 +106,7 @@ ITIKAWA = Download(
     title="Cross sections for electron collisions with nitrogen molecules",
     citation="Itikawa, Y. (2006), J. Phys. Chem. Ref. Data 35, 31-53, DOI:10.1063/1.1937426.",
     notes="Table 16 (total ionisation at 100 eV) and Sect. 9.2 / Table 19 (391.4 nm emission) transcribed in "
-          "nightglow_tables/aurora.json (n2plus).")
+          "nightglow_tables/aurora.json (n2plus).", browser_agent=True, transcribed_only=True)
 LAHER = Download(
     id="laher-n2plus-1n", url="https://web.ipac.caltech.edu/staff/laher/fluordir/N2+_B-X.out", subdir=SUB,
     name="Laher_N2plus_B-X.out", title="N2+ B-X (first negative) band system: Franck-Condon factors and Einstein coefficients",
