@@ -103,10 +103,16 @@ def test_product_is_bit_identical_to_excerpt_and_matches_spice(kernel, segments)
             spice = np.array([sp.spkgeo(t, e, "J2000", s.center)[0] for e in ets])
             dp = np.abs(pos - spice[:, :3]).max()
             dv = np.abs(vel - spice[:, 3:]).max()
+            assert dp < 1e-6 and dv < 1e-9, (t, dp, dv)
             if s.type in (2, 3):
                 assert dp == 0.0 and dv == 0.0, (t, dp, dv)  # same operation order as SPICE
-            else:
-                assert dp < 1e-6 and dv < 1e-9, (t, dp, dv)
+                for quantity, actual, expected in (("pos", pos, spice[:, :3]), ("vel", vel, spice[:, 3:])):
+                    actual_bits, expected_bits = actual.view(np.uint64), expected.view(np.uint64)
+                    for i, j in np.argwhere(actual_bits != expected_bits):
+                        assert actual_bits[i, j] == expected_bits[i, j], (
+                            f"{kernel.name}, body {t} wrt {s.center}, type {s.type}, et {ets[i]!r}, {quantity}[{j}]: "
+                            f"ours 0x{actual_bits[i, j]:016x}, SPICE 0x{expected_bits[i, j]:016x}"
+                        )
             worst = max(worst, dp)
     finally:
         sp.unload(str(path))

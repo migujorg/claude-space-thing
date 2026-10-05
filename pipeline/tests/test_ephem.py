@@ -1,7 +1,8 @@
 """Planetary ephemeris product vs the kernel. Requires `python -m pipeline build --only ephemeris`.
 
-Every extracted segment of the planetary kernel (de442s) is bit-identical to the kernel and reproduces SPICE spkgeo
-to < 1 mm. Epochs are drawn from the products' own coverage, so the tests do not depend on when the window was made.
+Every extracted segment of the planetary kernel (de442s) is bit-identical to the kernel; type 2/3 evaluation
+reproduces SPICE spkgeo bit for bit. Epochs are drawn from the products' own coverage, so the tests do not depend
+on when the window was made.
 Satellite products: test_ephem_satellites.py.
 """
 
@@ -72,6 +73,14 @@ def test_every_segment_matches_spkgeo(kernel):
         worst_p, worst_v = max(worst_p, dp), max(worst_v, dv)
         assert dp < 1e-6, (s.target, s.center, dp)   # 1 mm
         assert dv < 1e-9, (s.target, s.center, dv)   # 1 um/s
+        if s.type in (2, 3):
+            for quantity, actual, expected in (("pos", pos, ref[:, :3]), ("vel", vel, ref[:, 3:])):
+                actual_bits, expected_bits = actual.view(np.uint64), expected.view(np.uint64)
+                for i, j in np.argwhere(actual_bits != expected_bits):
+                    assert actual_bits[i, j] == expected_bits[i, j], (
+                        f"body {s.target} wrt {s.center}, type {s.type}, et {et[i]!r}, {quantity}[{j}]: "
+                        f"ours 0x{actual_bits[i, j]:016x}, SPICE 0x{expected_bits[i, j]:016x}"
+                    )
     print(f"{PLANETARY} vs spkgeo: max |dpos| = {worst_p:.3e} km, max |dvel| = {worst_v:.3e} km/s")
 
 

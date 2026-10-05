@@ -31,8 +31,21 @@ const planetary = spk.kernel.file.replace(/\.bsp$/, '');
 const de = loadEphemeris(`ephem/${planetary}`);
 const set = loadEphemerisSet();
 
+// ephem_fixtures.py writes SPICE doubles with json.dumps, without rounding: these JSON numbers round-trip
+// to the same float64 bits in JS. Horizons' printed decimal vectors below are only tolerance references.
+function expectSpiceBits(actual: { pos: Vec3; vel: Vec3 }, reference: SpiceCase, body: string): void {
+  const ours = new BigUint64Array(new Float64Array([...actual.pos, ...actual.vel]).buffer);
+  const spice = new BigUint64Array(new Float64Array([...reference.pos, ...reference.vel]).buffer);
+  const components = ['pos.x', 'pos.y', 'pos.z', 'vel.x', 'vel.y', 'vel.z'];
+  for (let j = 0; j < components.length; j++) {
+    const detail = `${body}, et ${reference.et}, ${components[j]}: ` +
+      `ours 0x${ours[j].toString(16).padStart(16, '0')}, SPICE 0x${spice[j].toString(16).padStart(16, '0')}`;
+    expect(ours[j], detail).toBe(spice[j]);
+  }
+}
+
 describe.skipIf(!de)(`Ephemeris (TS Chebyshev) vs SPICE spkgeo on the original ${spk.kernel.file}`, () => {
-  it('reproduces every segment to < 1 mm and < 1 µm/s', () => {
+  it('reproduces every segment to < 1 mm and < 1 µm/s, types 2/3 bit for bit', () => {
     const max = new MaxTracker();
     for (const seg of spk.segments) {
       for (const c of seg.cases) {
@@ -45,6 +58,10 @@ describe.skipIf(!de)(`Ephemeris (TS Chebyshev) vs SPICE spkgeo on the original $
         max.add('velocity km/s', dv, `${seg.target} wrt ${seg.center}`);
         expect(dp).toBeLessThan(1e-6);
         expect(dv).toBeLessThan(1e-9);
+        const type = de!.find(seg.target, c.et)!.type;
+        if (type === 2 || type === 3) {
+          expectSpiceBits(st!, c, `${seg.target} wrt ${seg.center} (${spk.kernel.file}, type ${type})`);
+        }
       }
     }
     max.report(`TS ${planetary} vs SPICE:`);
@@ -58,7 +75,7 @@ describe.skipIf(!de)(`Ephemeris (TS Chebyshev) vs SPICE spkgeo on the original $
 const satProducts = [...new Set(spk.satellites.map((s) => s.product))];
 const sats = new Map(satProducts.map((p) => [p, loadEphemeris(p)] as const));
 describe.skipIf([...sats.values()].some((e) => !e))('Satellite products vs SPICE spkgeo on the kernel excerpts', () => {
-  it('reproduces sampled segments of every kernel (SPK types 2, 3 and 17) to < 1 mm and < 1e-9 km/s', () => {
+  it('reproduces sampled segments of every kernel to < 1 mm and < 1e-9 km/s, types 2/3 bit for bit', () => {
     const max = new MaxTracker();
     const types = new Set<number>();
     for (const seg of spk.satellites) {
@@ -73,6 +90,9 @@ describe.skipIf([...sats.values()].some((e) => !e))('Satellite products vs SPICE
         max.add(`type ${seg.type} velocity km/s`, dv, `${seg.target} (${seg.kernel})`);
         expect(dp, `${seg.target}`).toBeLessThan(1e-6);
         expect(dv, `${seg.target}`).toBeLessThan(1e-9);
+        if (seg.type === 2 || seg.type === 3) {
+          expectSpiceBits(st!, c, `${seg.target} wrt ${seg.center} (${seg.kernel}, type ${seg.type})`);
+        }
         types.add(seg.type);
       }
     }
