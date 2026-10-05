@@ -23,9 +23,9 @@
 // Ion tail: CO+ ions (Q(CO) = x_CO Q(H2O)) carried at the solar-wind speed along the aberrated anti-solar direction
 // v_sw r̂ − v_comet, each radiating the CO+ comet-tail bands.
 
-import { AU_KM, SECONDS_PER_DAY as DAY } from '../../core/constants';
+import { AU_KM, SECONDS_PER_DAY as DAY, SECONDS_PER_HOUR } from '../../core/constants';
 export { AU_KM } from '../../core/constants';
-import type { CometModelProduct, Label } from '../../data/schema';
+import type { CometMeasuredActivity, CometModelProduct, Label } from '../../data/schema';
 import { keplerDrift } from '../../core/smallbody';
 
 export type V3 = [number, number, number];
@@ -122,9 +122,9 @@ export function erf(x: number): number {
 }
 
 /** Composition of a comet: its measured ratios where present, the population medians elsewhere. */
-export function activityOf(model: CometModelProduct, measured?: { C2?: number; CN?: number; C3?: number; afrho?: number; sources?: string[] } | null): CometActivity {
-  const p = model.composition.population;
-  const m = measured ?? {};
+export function activityOf(model: CometModelProduct, measured?: CometMeasuredActivity | null): CometActivity {
+  const p = model.composition.value!.population;
+  const m: Partial<NonNullable<CometMeasuredActivity['value']>> = measured?.value ?? {};
   const own = m.C2 !== undefined || m.afrho !== undefined;
   return {
     C2: m.C2 ?? p.C2.median,
@@ -132,7 +132,7 @@ export function activityOf(model: CometModelProduct, measured?: { C2?: number; C
     C3: m.C3 ?? p.C3.median,
     afrho: m.afrho ?? p.afrho.median,
     label: own && m.afrho !== undefined ? 'derived' : 'estimated',
-    sources: [...new Set([...(m.sources ?? []), ...model.composition.sources])],
+    sources: [...new Set([...(measured?.sources ?? []), ...model.composition.sources])],
   };
 }
 
@@ -151,7 +151,7 @@ export function dustPhase(model: CometModelProduct, phaseDeg: number): number {
 
 /** CN fluorescence efficiency at 1 au for heliocentric radial velocity v (Swings effect; clamped to the table). */
 function gCN(model: CometModelProduct, vKmS: number): number {
-  return interp(model.gFactors.CN.vKmS, model.gFactors.CN.value, vKmS);
+  return interp(model.gFactors.value!.CN.vKmS, model.gFactors.value!.CN.value, vKmS);
 }
 
 /** The coma as seen from input.observer (see the file header). */
@@ -162,27 +162,27 @@ export function coma(model: CometModelProduct, input: CometInput): Coma {
   const phase = phaseAngleDeg(input.helioPos, input.observer);
   const mH = input.M1 + input.K1 * Math.log10(r);
   const m1 = mH + 5 * Math.log10(deltaKm / AU_KM);
-  const w = model.waterFromMagnitude;
+  const w = model.waterFromMagnitude.value!;
   const qH2O = 10 ** (w.a - w.b * mH);
   const qOH = qH2O / w.qH2OPerQOH;
   const act = input.activity;
-  const vGas = model.haser.velocityKmS * KM_CM;               // cm/s
-  const ld = (s: 'C2' | 'CN' | 'C3' | 'OH') => model.haser.species[s].daughterKm1Au * r * r;   // km at r
-  const n1 = (s: 'C2' | 'CN' | 'C3', q: number) => (q * model.haser.species[s].daughterKm1Au * KM_CM) / vGas; // Q l_d,1 / v
+  const vGas = model.haser.value!.velocityKmS * KM_CM;               // cm/s
+  const ld = (s: 'C2' | 'CN' | 'C3' | 'OH') => model.haser.value!.species[s].daughterKm1Au * r * r;   // km at r
+  const n1 = (s: 'C2' | 'CN' | 'C3', q: number) => (q * model.haser.value!.species[s].daughterKm1Au * KM_CM) / vGas; // Q l_d,1 / v
   const rdot = dot(input.helioPos, input.helioVel) / len(input.helioPos);
   const flux = (lErg: number) => lErg / (4 * Math.PI * deltaCm * deltaCm);   // erg cm^-2 s^-1
   const bands = model.components.bands;
   // Band luminosities (erg/s): g ∝ r^-2 and l_d ∝ r^2 cancel.
   const qC2 = qOH * 10 ** act.C2, qCN = qOH * 10 ** act.CN, qC3 = qOH * 10 ** act.C3;
-  const lC2 = model.gFactors.C2 * n1('C2', qC2);
+  const lC2 = model.gFactors.value!.C2 * n1('C2', qC2);
   const gas: { name: string; key: string; l: number; profile: Profile }[] = [
     { name: 'C2 Swan Δv=0', key: 'C2(0)', l: lC2, profile: { kind: 'haser', species: 'C2', ldKm: ld('C2') } },
-    { name: 'C2 Swan Δv=+1', key: 'C2(1)', l: lC2 * model.bandRatiosToC2['C2(1)'].median, profile: { kind: 'haser', species: 'C2', ldKm: ld('C2') } },
+    { name: 'C2 Swan Δv=+1', key: 'C2(1)', l: lC2 * model.bandRatiosToC2.value!['C2(1)'].median, profile: { kind: 'haser', species: 'C2', ldKm: ld('C2') } },
     { name: 'CN violet (0-0)', key: 'CN(0)', l: gCN(model, rdot) * n1('CN', qCN), profile: { kind: 'haser', species: 'CN', ldKm: ld('CN') } },
-    { name: 'C3 (4050 Å group)', key: 'C3', l: model.gFactors.C3 * n1('C3', qC3), profile: { kind: 'haser', species: 'C3', ldKm: ld('C3') } },
+    { name: 'C3 (4050 Å group)', key: 'C3', l: model.gFactors.value!.C3 * n1('C3', qC3), profile: { kind: 'haser', species: 'C3', ldKm: ld('C3') } },
   ];
-  if (model.bandRatiosToC2.CH) gas.push({ name: 'CH (4300 Å)', key: 'CH', l: lC2 * model.bandRatiosToC2.CH.median, profile: { kind: 'haser', species: 'C2', ldKm: ld('C2') } });
-  const ox = model.oxygen;
+  if (model.bandRatiosToC2.value!.CH) gas.push({ name: 'CH (4300 Å)', key: 'CH', l: lC2 * model.bandRatiosToC2.value!.CH.median, profile: { kind: 'haser', species: 'C2', ldKm: ld('C2') } });
+  const ox = model.oxygen.value!;
   for (const line of ['6300', '6364'] as const) {
     gas.push({ name: `[O I] ${line} Å`, key: `OI${line}`, l: qH2O * ox.photonsPerH2O * ox.branching[line] * ox.photonEnergyErg[line], profile: { kind: 'haser', species: 'OH', ldKm: ld('OH') } });
   }
@@ -220,7 +220,7 @@ export function coma(model: CometModelProduct, input: CometInput): Coma {
 export function enclosedFraction(model: CometModelProduct, p: Profile, rhoKm: number): number {
   if (rhoKm <= 0) return 0;
   if (p.kind === 'dust') return erf(rhoKm / p.reKm);
-  const t = model.haser.species[p.species];
+  const t = model.haser.value!.species[p.species];
   const lx = Math.log10(rhoKm / p.ldKm);
   if (lx <= t.log10X[0]) {
     // below the table: the projected Haser column is ~ flat-to-1/ρ; scale the first entry linearly in ρ
@@ -276,7 +276,7 @@ export interface ComaLut {
 
 export function comaLut(model: CometModelProduct, c: Coma, extentKm: number): ComaLut {
   let inner = c.reKm;
-  for (const k of c.components) if (k.profile.kind === 'haser') inner = Math.min(inner, model.haser.species[k.profile.species].parentKm1Au * c.rAu * c.rAu);
+  for (const k of c.components) if (k.profile.kind === 'haser') inner = Math.min(inner, model.haser.value!.species[k.profile.species].parentKm1Au * c.rAu * c.rAu);
   const rho0 = Math.max(inner * 1e-4, 1e-3);
   const rho1 = Math.max(extentKm, rho0 * 10);
   const values = new Float32Array(LUT_SIZE * 4);
@@ -406,7 +406,7 @@ export interface DustTailOptions {
 
 /** Terminal grain speed (km/s) v0 β^γ r^Γ (Moreno & Jehin 2025, Eq. 1, zenith term averaged). */
 export function grainSpeedKmS(model: CometModelProduct, beta: number, rAu: number): number {
-  const e = model.grains.ejection;
+  const e = model.grains.value!.ejection;
   return e.v0KmS * beta ** e.gamma * rAu ** e.Gamma;
 }
 
@@ -428,7 +428,7 @@ export interface DustPacketGeometry {
 export function dustTailGeometry(model: CometModelProduct, input: Pick<CometInput, 'helioPos' | 'helioVel' | 'K1'>, c: Pick<Coma, 'afrhoCm' | 'rAu' | 'radiusKm'>, opts: DustTailOptions = {}): DustPacketGeometry[] {
   const nTau = opts.nTau ?? 48, nBeta = opts.nBeta ?? 24;
   const tau0 = (opts.tauMinDays ?? 0.25) * DAY, tau1 = (opts.tauMaxDays ?? 90) * DAY;
-  const g = model.grains;
+  const g = model.grains.value!;
   const b0 = g.betaMin, b1 = g.betaMax;
   const k = g.crossSectionBetaExponent;
   const mu = model.sun.gmKm3S2;
@@ -442,7 +442,7 @@ export function dustTailGeometry(model: CometModelProduct, input: Pick<CometInpu
     betas.push(b);
     pw.push((b ** k / pnorm) * b * dlnB * (j === 0 || j === nBeta - 1 ? 0.5 : 1));
   }
-  const bW = model.waterFromMagnitude.b;
+  const bW = model.waterFromMagnitude.value!.b;
   const out: DustPacketGeometry[] = [];
   for (let i = 0; i < nTau; i++) {
     const tau = tau0 * Math.exp(i * dlnTau);
@@ -503,13 +503,13 @@ export interface IonTailOptions {
  * comet-tail bands at the packet's own r; width set by the coma (the ions' source region). */
 export function ionTail(model: CometModelProduct, input: CometInput, c: Coma, opts: IonTailOptions = {}): TailPacket[] {
   const n = opts.n ?? 96;
-  const vsw = model.solarWind.medianKmS;
-  const len_ = vsw * (opts.hours ?? 24) * 3600;
+  const vsw = model.solarWind.value!.medianKmS;
+  const len_ = vsw * (opts.hours ?? 24) * SECONDS_PER_HOUR;
   const dir = ionTailDirection(input.helioPos, input.helioVel, vsw);
-  const qIon = c.qH2O * model.coPlus.coPerH2O;
+  const qIon = c.qH2O * model.coPlus.value!.coPerH2O;
   const perKm = qIon / vsw;
   const dx = len_ / n;
-  const cp = model.coPlus;
+  const cp = model.coPlus.value!;
   let colour: XYZS = [0, 0, 0, 0];
   for (const [band, share] of Object.entries(cp.share)) colour = addX(colour, model.components.bands[`COplus${band}`].xyzs as XYZS, share);
   const out: TailPacket[] = [];
@@ -530,5 +530,5 @@ export function ionTail(model: CometModelProduct, input: CometInput, c: Coma, op
 export function dustTailLengthKm(model: CometModelProduct, rAu: number, tauMaxDays = 90): number {
   const g = model.sun.gmKm3S2 / (rAu * AU_KM) ** 2;          // km/s^2
   const t = tauMaxDays * DAY;
-  return 0.5 * model.grains.betaMax * g * t * t;
+  return 0.5 * model.grains.value!.betaMax * g * t * t;
 }
