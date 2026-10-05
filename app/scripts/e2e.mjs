@@ -24,7 +24,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   adapterLabel, compareScene, decodePng, encodePng, extractStats, gpuLaunchArgs, gpuMismatch, gpuNote, gridFromThumb, hdrFormatOf, pageAdapterInfo,
-  sceneQuery, statsTable, thumbFromLinear, THUMB_H, THUMB_W,
+  pageStarsDrawnFrames, sceneQuery, starsFramesNote, statsTable, thumbFromLinear, THUMB_H, THUMB_W,
 } from './e2e-lib.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -177,6 +177,10 @@ async function renderScene(scene) {
       r.grid = gridFromThumb(thumb);
       r.thumb = thumb;
     } else r.imageNote = 'no 2D canvas to read (not offscreen presentation?)';
+    // On the GPU the stats above are those of whichever ~10 ms frame the read landed on; record whether the star
+    // count is steady over the next frames (e2e-lib.mjs pageStarsDrawnFrames). Not sampled on SwiftShader, where
+    // one more frame can cost a second and the read lands on the same frame every run.
+    if (gpuMode === 'hardware' && r.stats) r.starsDrawnFrames = await page.evaluate(pageStarsDrawnFrames, 16);
     // A screenshot waits for a new frame, and a SwiftShader frame can take tens of seconds on a busy machine.
     await page.screenshot({ path: resolve(OUT, `${scene.id}.png`), timeout: Math.min(timeoutMs, 300_000) });
   } catch (e) {
@@ -233,6 +237,10 @@ if (compare && baseline.data?.manifestSha256 && baseline.data.manifestSha256 !==
   notes.push(`The baseline was accepted on another data build (manifest ${baseline.data.manifestGeneratedAt}); this run uses ${dataInfo.manifestGeneratedAt}. Differences may come from the data.`);
 const otherGpu = compare ? gpuNote(baseline.gpu, gpu) : null;
 if (otherGpu) notes.push(otherGpu);
+for (const r of results) {
+  const unsteady = starsFramesNote(r.starsDrawnFrames, r.stats?.starsDrawn);
+  if (unsteady) notes.push(`${r.id}: ${unsteady}`);
+}
 for (const r of results) {
   if (!compare) continue;
   const b = baseline.scenes?.[r.id];
