@@ -26,7 +26,7 @@ if (!af) console.warn('[render-titan] atmospheres.json not built; skipping');
 
 interface McFile {
   alphaDeg: number[];
-  inputs: { columnOpticalDepth: Record<string, number[]>; surfaceReflectance: number[] };
+  inputs: { columnOpticalDepth: Record<string, number[]>; singleScatteringAlbedo: Record<string, number[]>; surfaceReflectance: number[] };
   curves: { sample: number; wavelengthNm: number; AgPhi: number[]; sigma: number[] }[];
 }
 const mc = JSON.parse(fs.readFileSync(MC_PATH, 'utf8')) as McFile;
@@ -56,6 +56,7 @@ describe.skipIf(!af)('Titan drawn from its atmosphere model', () => {
       const ref = mc.inputs.columnOpticalDepth[c.id];
       expect(ref, c.id).toBeDefined();
       c.columnOpticalDepth.forEach((t, k) => expect(Math.abs(t - ref[k])).toBeLessThanOrEqual(1e-5 * Math.max(1, t)));
+      expect(c.singleScatteringAlbedo.value, c.id).toEqual(mc.inputs.singleScatteringAlbedo[c.id]);
     }
     expect(body.surfaceReflectance!.value!.reflectance).toEqual(mc.inputs.surfaceReflectance);
   });

@@ -608,7 +608,9 @@ summed in azimuthal Fourier terms m = 0…5:
 - **Two particle groups**: the haze has two phase functions (below and above 80 km). Particle species with the
   same table form a group (`particleGroups`; at most two, else one column-weighted table as before); the
   second group's scattering is the profile's fourth slot. Every other body has one group, so nothing changes
-  for them.
+  for them there. One thing does: every tabulated phase function is now renormalised so that its 1° table, as
+  the renderer interpolates it, integrates to 1 over the sphere (`phaseTableIntegral`; Titan's forward peak needs
+  it, +0.3 to +1.1 %), which lowers Venus's cloud phase function by 0.04–0.30 % and Pluto's haze by 0.13 %.
 - **GPU**: the source tiles follow the seven usual table layers (8 × 2 tiles of 32 × 32 per layer, 8 layers per
   4 bins); `Atm.ms.x` switches the march (`atmStep` in shaders-atmosphere.ts, shared by `atmMarch` and the
   aerial-perspective columns) to the source table and the scaled path; `Atm.delta2` holds the second group's f.
