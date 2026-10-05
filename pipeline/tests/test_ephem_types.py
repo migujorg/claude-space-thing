@@ -33,7 +33,7 @@ def test_eqncpv_matches_spice_on_random_elements():
     assert wp < 1e-10 and wv < 1e-10
 
 
-# Scan of all 14 de442s and 564 satellite type 2/3 product endpoints: maximum 8 ulps
+# Scan of all 14 de442s and 464 satellite type 2/3 product endpoints: maximum 8 ulps
 # in position, 3 in velocity (satellite excerpts: 0); 10 allows a small margin.
 # Only a trimmed final record boundary may use this bound: full-kernel SPICE selects
 # the neighbouring polynomial, while the product retains the polynomial ending there.

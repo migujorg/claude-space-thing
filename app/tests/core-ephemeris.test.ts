@@ -34,7 +34,7 @@ const set = loadEphemerisSet();
 
 // ephem_fixtures.py writes SPICE doubles with json.dumps, without rounding: these JSON numbers round-trip
 // to the same float64 bits in JS. Horizons' printed decimal vectors below are only tolerance references.
-// Endpoint scan: all 14 planetary and 564 satellite type 2/3 segments had at most
+// Endpoint scan: all 14 planetary and 464 satellite type 2/3 segments had at most
 // 8 position ulps and 3 velocity ulps (satellite excerpts: 0); 10 adds a small margin.
 const endpointUlps = 10;
 
