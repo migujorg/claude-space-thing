@@ -768,25 +768,38 @@ export interface SyntheticKernelConfig {
   /** Colour relative to sunlight (X, Y, Z, S) per core colorClass index; null entries draw grey (1, 1, 1, 1). */
   classColours: ([number, number, number, number] | null)[];
   photometry: SmallBodyPhotometry | null;
+  /**
+   * GM (km^3/s^2) of the centres of planet-centred objects (irregular moons), at most SYN_MAX_CENTERS: centre k + 1 of
+   * an object (bits 8-15 of its colour word; 0 = the Sun) is cfg.centerGm[k]; its camera-relative position and SSB
+   * velocity come per frame in the uniforms (SynU.cen).
+   */
+  centerGm?: number[];
 }
+
+/** Planet-centred populations the synthetic kernel can move (uniform slots per frame). */
+export const SYN_MAX_CENTERS = 4;
 
 /** Brightness code of a synthetic object for `light`: H-G law (model 1), every label synthetic (3). */
 export const SYNTHETIC_CODE = (1 | (3 << 4) | (3 << 7) | (3 << 10) | (3 << 14)) >>> 0;
 
 /**
- * Synthetic objects (the COMPLETE level): two-body motion of their elements (fixed Kepler ellipses about the Sun;
- * mean motion and mean anomaly in df64, the rest float32, ~1e-7 relative), light time, direction and illuminance,
- * written as star-layout records after the catalogue's (index = base + object). Elements per object:
- * vec4(a au, e, i rad, node rad), vec4(peri rad, M0 rad at epochEt, H, bitcast(colour class)).
+ * Synthetic objects (the COMPLETE level): two-body motion of their elements (fixed Kepler ellipses about the Sun, or
+ * about a planet-system barycentre for irregular moons; mean motion and mean anomaly in df64, the rest float32, ~1e-7
+ * relative), light time, direction and illuminance, written as star-layout records after the catalogue's (index =
+ * base + object). Elements per object: vec4(a au, e, i rad, node rad), vec4(peri rad, M0 rad at epochEt, H,
+ * bitcast(colour class | centre << 8)). A planet-centred object's position is the centre's camera-relative position
+ * (the f64 difference on the CPU, as float32) plus its orbit offset, so its direction keeps ~1e-7 of the offset.
  */
 export function syntheticShader(cfg: SyntheticKernelConfig): string {
   const cls = cfg.classColours.length ? cfg.classColours : [null];
   const clsLit = cls.map((c) => (c && c.every(Number.isFinite) ? `vec4f(${c.map(f32).join(', ')})` : 'vec4f(1.0)')).join(', ');
+  const gms = [cfg.gmSun, ...(cfg.centerGm ?? [])].slice(0, SYN_MAX_CENTERS + 1);
   return /* wgsl */ `
 ${DF64_WGSL}
 ${photometryWgsl(cfg.photometry, cfg.auKm)}
 const C_KM_S: f32 = ${f32(cfg.cKmS)};
-const MU_DD = ${df(cfg.gmSun)};
+const NCEN: u32 = ${gms.length}u;
+const MU_C = array<vec2f, ${gms.length}>(${gms.map(df).join(', ')});
 const AU_DD = ${df(cfg.auKm)};
 const TWO_PI_DD = ${df(2 * Math.PI)};
 const INV_TWO_PI: f32 = ${f32(1 / (2 * Math.PI))};
@@ -800,6 +813,8 @@ struct SynU {
   camH: vec4f, camL: vec4f, sunV: vec4f,
   dt: vec2f, mode: u32, zeroBits: u32,
   first: u32, n: u32, groupsX: u32, base: u32,
+  // centres 1..${SYN_MAX_CENTERS}: cen[k - 1] = centre - camera (km), cen[k - 1 + ${SYN_MAX_CENTERS}] = its SSB velocity (km/s)
+  cen: array<vec4f, ${2 * SYN_MAX_CENTERS}>,
 };
 @group(0) @binding(0) var<uniform> U: SynU;
 @group(0) @binding(1) var<storage, read> EL: array<vec4f>;
@@ -836,9 +851,11 @@ fn sincos_acc(x: f32) -> vec2f {
   let e1 = EL[2u * i + 1u];
   let idx = U.base + i;
   let ecc = e0.y;
+  let word = bitcast<u32>(e1.w);
+  let cid = min((word >> 8u) & 0xffu, NCEN - 1u);
   // Mean anomaly M0 + n dt in df64, reduced to [0, 2 pi).
   let a_dd = dd_mul_f(AU_DD, e0.x);
-  let nn = dd_sqrt(dd_div(MU_DD, dd_mul(dd_mul(a_dd, a_dd), a_dd)));
+  let nn = dd_sqrt(dd_div(MU_C[cid], dd_mul(dd_mul(a_dd, a_dd), a_dd)));
   var M = dd_add_f(dd_mul(nn, U.dt), e1.y);
   let k = floor(M.x * INV_TWO_PI);
   M = dd_add(M, dd_mul_f(TWO_PI_DD, -k));
@@ -864,16 +881,32 @@ fn sincos_acc(x: f32) -> vec2f {
   let Q = vec3f(-cO * sw - sO * cw * ci, -sO * sw + cO * cw * ci, cw * si);
   let pos = ecl_to_icrf((a * (cE - ecc)) * P + (b * sE) * Q);
   let vel = ecl_to_icrf((-a * sE * edot) * P + (b * cE * edot) * Q);
-  // Camera-relative position, back-dated by the light time (first order, SSB velocity).
-  var rel = (pos - U.camH.xyz) - U.camL.xyz;
+  // Camera-relative position, back-dated by the light time (first order, SSB velocity). pos and vel are relative to
+  // the object's centre: the Sun (cid = 0), or a planet-system barycentre.
+  var rel: vec3f;
+  var vssb: vec3f;     // SSB velocity
+  var helio: vec3f;    // heliocentric position and velocity
+  var vh: vec3f;
+  if (cid == 0u) {
+    rel = (pos - U.camH.xyz) - U.camL.xyz;
+    vssb = vel + U.sunV.xyz;
+    helio = pos;
+    vh = vel;
+  } else {
+    let c = U.cen[cid - 1u].xyz;
+    rel = c + pos;
+    vssb = vel + U.cen[cid - 1u + ${SYN_MAX_CENTERS}u].xyz;
+    helio = ((c + U.camH.xyz) + U.camL.xyz) + pos;
+    vh = vssb - U.sunV.xyz;
+  }
   let tau = length(rel) / C_KM_S;
-  rel = rel - tau * (vel + U.sunV.xyz);
-  let xo = pos - tau * vel;
+  rel = rel - tau * vssb;
+  let xo = helio - tau * vh;
   let dist = length(rel);
   let dir = rel / dist;
   let r = length(xo);
   let alpha = atan2(length(cross(xo, rel)), dot(xo, rel));
-  let cc = bitcast<u32>(e1.w);
+  let cc = word & 0xffu;
   let c = select(vec4f(1.0), CLS[min(cc, NCLS - 1u)], cc < NCLS);
   let pp0 = vec4u(bitcast<u32>(e1.z), pack2x16float(vec2f(SLOPE_G, 0.0)), pack2x16float(c.xy), pack2x16float(c.zw));
   let pp1 = vec4u(pack2x16float(vec2f(0.0, 180.0)), ${SYNTHETIC_CODE}u, idx, 0u);
