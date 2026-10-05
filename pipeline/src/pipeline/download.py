@@ -38,7 +38,7 @@ from urllib.parse import urlsplit
 
 import requests
 
-from .paths import RAW
+from .paths import RAW, CACHE
 
 _LEDGER = RAW / "_downloads.json"
 _LEDGER_LOCK = threading.Lock()  # fetch may be called from worker threads; ledger updates are read-modify-write
@@ -174,6 +174,35 @@ _STATS_LOCK = threading.Lock()
 _HOST_SEMS: dict[str, threading.BoundedSemaphore] = {}
 _DEST_LOCKS: dict[Path, threading.Lock] = {}
 _LOCAL = threading.local()
+_METRICS_STARTED = False
+_METRICS_PID = os.getpid()
+_NETWORK_WORK = {"active": 0, "waiting": 0, "genericActive": 0, "genericWaiting": 0, "receivedBytes": 0}
+
+
+def _ensure_metrics():
+    global _METRICS_STARTED, _METRICS_PID, _STATS_LOCK
+    if _METRICS_PID != os.getpid():
+        _METRICS_PID = os.getpid()
+        _METRICS_STARTED = False
+        _STATS_LOCK = threading.Lock()
+        _STATS.update(bytes=0, files=0)
+        for key in _NETWORK_WORK:
+            _NETWORK_WORK[key] = 0
+    with _STATS_LOCK:
+        if _METRICS_STARTED:
+            return
+        _METRICS_STARTED = True
+    def emit():
+        folder = CACHE / "network-metrics"
+        folder.mkdir(parents=True, exist_ok=True)
+        while True:
+            with _STATS_LOCK:
+                snapshot = {**_STATS, **_NETWORK_WORK, "pid": os.getpid(), "updatedAt": time.time()}
+            tmp = folder / f"{os.getpid()}.tmp"
+            tmp.write_text(json.dumps(snapshot))
+            tmp.replace(folder / f"{os.getpid()}.json")
+            time.sleep(1)
+    threading.Thread(target=emit, daemon=True).start()
 
 
 def stats() -> dict:
@@ -182,20 +211,83 @@ def stats() -> dict:
         return dict(_STATS)
 
 
-def count(nbytes: int, files: int = 0) -> None:
+def count(nbytes: int, files: int = 0, *, network: bool = True) -> None:
     """Add bytes received outside `fetch` (e.g. streamed and reduced on the fly) to `stats()`."""
+    _ensure_metrics()
     with _STATS_LOCK:
         _STATS["bytes"] += int(nbytes)
         _STATS["files"] += int(files)
+        if network:
+            _NETWORK_WORK["receivedBytes"] += int(nbytes)
 
 
-def host_slot(url: str) -> threading.BoundedSemaphore:
-    """Semaphore limiting concurrent transfers to url's host."""
+@contextlib.contextmanager
+def _process_slot(label: str, limit: int, start_slot: int = 0):
+    """POSIX leases shared by independent download/build processes; locks release automatically on exit."""
+    try:
+        import fcntl
+    except ImportError:
+        yield
+        return
+    folder = RAW / ".locks" / hashlib.sha256(label.encode()).hexdigest()
+    folder.mkdir(parents=True, exist_ok=True)
+    lease = None
+    try:
+        while lease is None:
+            if label.startswith("host:"):
+                limit = host_limit(label[5:])
+            for slot in range(start_slot, limit):
+                handle = (folder / f"{slot}.lock").open("a+b")
+                try:
+                    fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                except BlockingIOError:
+                    handle.close()
+                else:
+                    lease = handle
+                    break
+            if lease is None:
+                time.sleep(0.05)
+        yield
+    finally:
+        if lease is not None:
+            fcntl.flock(lease, fcntl.LOCK_UN)
+            lease.close()
+
+
+@contextlib.contextmanager
+def host_slot(url: str):
+    """Per-host limit shared across threads and POSIX worker processes."""
     host = (urlsplit(url).hostname or "").lower()
+    _ensure_metrics()
+    generic = host not in HOST_LIMITS
     with _STATS_LOCK:
-        if host not in _HOST_SEMS:
-            _HOST_SEMS[host] = threading.BoundedSemaphore(HOST_LIMITS.get(host, DEFAULT_HOST_LIMIT))
-        return _HOST_SEMS[host]
+        _NETWORK_WORK["waiting"] += 1
+        _NETWORK_WORK["genericWaiting"] += int(generic)
+    acquired = False
+    try:
+        with _process_slot("host:" + host, host_limit(host)):
+            with _STATS_LOCK:
+                _NETWORK_WORK["waiting"] -= 1
+                _NETWORK_WORK["genericWaiting"] -= int(generic)
+                _NETWORK_WORK["active"] += 1
+                _NETWORK_WORK["genericActive"] += int(generic)
+            acquired = True
+            yield
+    finally:
+        with _STATS_LOCK:
+            key = "active" if acquired else "waiting"
+            _NETWORK_WORK[key] -= 1
+            _NETWORK_WORK["genericActive" if acquired else "genericWaiting"] -= int(generic)
+
+
+def host_limit(host: str) -> int:
+    if host in HOST_LIMITS:
+        return HOST_LIMITS[host]
+    try:
+        control = json.loads((CACHE / "network-control.json").read_text())
+        return max(1, int(control.get("genericPerHost", DEFAULT_HOST_LIMIT)))
+    except (OSError, ValueError, TypeError):
+        return DEFAULT_HOST_LIMIT
 
 
 def session() -> requests.Session:
@@ -372,7 +464,7 @@ def fetch(url: str, subdir: str, name: str | None = None, *, params: dict | None
     rng = f"bytes={byte_range[0]}-{byte_range[1] - 1}" if byte_range else None
     with _STATS_LOCK:
         dest_lock = _DEST_LOCKS.setdefault(dest, threading.Lock())
-    with dest_lock:
+    with dest_lock, _process_slot("file:" + str(dest.resolve()), 1):
         ledger = _load_ledger()
         if (dest.exists() and key in ledger and ledger[key].get("range") == rng
                 and (validate is None or validate(dest))):

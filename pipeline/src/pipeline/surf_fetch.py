@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import concurrent.futures as cf
 import hashlib
+import os
 from collections.abc import Callable, Iterable
 from pathlib import Path
 
@@ -41,7 +42,8 @@ def fetch_transient(url: str, subdir: str, name: str | None = None) -> tuple[Pat
 
 def discard(path: Path) -> None:
     """Delete a large raw file after reduction (its ledger entry stays)."""
-    download.remove(path)
+    if os.environ.get("PIPELINE_KEEP_RAW") != "1":
+        download.remove(path)
 
 
 def fetch_range(url: str, subdir: str, name: str, start: int, length: int) -> tuple[Path, dict]:

@@ -22,6 +22,11 @@ XP_TAG = "xyzs_pioneerBR_v1"
 XP_COLUMNS = ("X", "Y", "Z", "S", "pioneerB", "pioneerR")
 
 
+def xp_source(ctx):
+    source = ctx.param("deepstars.xpSource")
+    return ctx.param("stars.xpSource") if source == "inherit" else source
+
+
 def xp_operator() -> tuple[np.ndarray, np.ndarray]:
     """(W, cover): W is 343 x 6 (flux in W m^-2 nm^-1 -> X,Y,Z,S in the cie units, then band means in
     W m^-2 nm^-1); `cover` marks the samples that must all be finite (360-830 nm, as `stars_light.covers_cie`)."""
@@ -44,6 +49,8 @@ def deep_xp(ids: np.ndarray, *, source: str, workers: int = 4, log=print) -> tup
     if source == "archive":
         paths, ledger = sg.xp_reduced_archive(ids, W, cover, XP_TAG, workers=workers, log=log)
     else:
-        paths, ledger = sg.stream_xp_reduced(W, cover, XP_TAG, workers=workers, log=log)
+        from . import download
+        with download._process_slot("bulk-reduction:" + XP_TAG, 1):
+            paths, ledger = sg.stream_xp_reduced(W, cover, XP_TAG, workers=workers, log=log)
     sid, red = sg.load_xp_reduced(paths)
     return sid, red, {**ledger, "source": source}

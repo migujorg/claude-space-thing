@@ -150,7 +150,7 @@ describe.skipIf(!built)('event finder on the real products', () => {
     }
   }, 120_000);
 
-  it('near-Earth objects: approaches computed from the catalogue orbits match JPL CNEOS', () => {
+  it.skipIf(!fs.existsSync(DATA_DIR + 'smallbodies/core.json') || !fs.existsSync(DATA_DIR + 'smallbodies/names.txt'))('near-Earth objects: approaches computed from the catalogue orbits match JPL CNEOS', () => {
     const core = JSON.parse(fs.readFileSync(DATA_DIR + 'smallbodies/core.json', 'utf8')) as SmallBodyCoreHeader;
     const names = fs.readFileSync(DATA_DIR + 'smallbodies/names.txt', 'utf8').split('\n');
     const rowOf = new Map(names.map((l, i) => [l.split('\t')[1], i]));
@@ -159,8 +159,13 @@ describe.skipIf(!built)('event finder on the real products', () => {
     const off = (f: string) => core.fields.find((x) => x.name === f)!.offset;
     const fx = fixture<{ fields: string[]; data: string[][] }>('cneos_close_approaches.json');
     const I = Object.fromEntries(fx.fields.map((k, i) => [k, i]));
+    const inWindow = fx.data.filter((r) => {
+      const t = (Number(r[I.jd]) - 2451545) * DAY;
+      return t >= core.window.startEt && t <= core.window.endEt;
+    });
+    expect(inWindow.length, 'CNEOS reference cases inside the built window').toBeGreaterThan(0);
     const bit = Number(Object.entries(core.flagBits).find(([, n]) => n === 'nonGravitational')![0]);
-    const cands = fx.data.map((r) => {
+    const cands = inWindow.map((r) => {
       const row = rowOf.get(r[I.des])!;
       expect(dv.getUint16(row * core.stride + off('flags'), true) & bit).toBe(0); // no non-gravitational terms needed
       const state = [0, 1, 2].map((k) => dv.getFloat64(row * core.stride + off('pos') + 8 * k, true)).concat([0, 1, 2].map((k) => dv.getFloat64(row * core.stride + off('vel') + 8 * k, true)));
@@ -173,7 +178,7 @@ describe.skipIf(!built)('event finder on the real products', () => {
     const l = engine.find('neo');
     const ms = performance.now() - t0;
     let worstDt = 0, worstRel = 0;
-    for (const r of fx.data) {
+    for (const r of inWindow) {
       const row = rowOf.get(r[I.des])!, body = r[I.body] === 'Earth' ? 'earth' : 'moon';
       const t = (Number(r[I.jd]) - 2451545) * DAY;
       const e = l.find((x) => x.data?.row === row && x.subtype === body && Math.abs(x.et - t) < DAY)!;
