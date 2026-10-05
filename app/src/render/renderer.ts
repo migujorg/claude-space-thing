@@ -18,6 +18,7 @@
 //   8. overlays → hatch / provenance tint / markers / orbits in display space
 
 import type { RendererStats, SceneBody, SceneSnapshot, StarCatalog } from './scene';
+import { requestRenderingAdapter } from './adapter';
 import {
   ADAPT_REDUCE_SHADER, ADAPT_SHADER, ADAPT_TILE_PX, AP_COLUMNS_SHADER, ATM_BODY_SHADER, ATMOSPHERE_SHELL_SHADER, BODY_OVERLAY_SHADER, BODY_SHADER, CLAMP_ARGS_SHADER, COMPOSITE_SHADER, EARTH_BODY_SHADER,
   CULL_SHADER, LINE_SHADER, MASK_HATCH_SHADER, OVERFLOW_SHADER, POINT_SHADER, PYRAMID_BLUR_SIGMA, PYRAMID_SHADER,
@@ -369,9 +370,7 @@ export class Renderer {
     /** Canvas colour space: 'auto' (default) = Display P3 when the screen covers it ((color-gamut: p3)). */
     colorSpace?: 'auto' | 'srgb' | 'display-p3';
   } = {}): Promise<Renderer> {
-    if (!navigator.gpu) throw new Error('WebGPU is not available in this browser');
-    const adapter = await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' });
-    if (!adapter) throw new Error('No WebGPU adapter');
+    const adapter = await requestRenderingAdapter(navigator.gpu);
     // float32-blendable is required for rgba32float HDR targets; otherwise (or with hdr: 'f16', for
     // testing) the targets are rgba16float with pre-exposure 1/A_cone and clamping at the fp16 maximum.
     const blend32 = adapter.features.has('float32-blendable') && options.hdr !== 'f16';

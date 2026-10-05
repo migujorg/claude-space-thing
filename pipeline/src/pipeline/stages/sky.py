@@ -126,6 +126,7 @@ def log(msg: str) -> None:
 
 
 def run(ctx: BuildContext) -> None:
+    sg.set_tap_service(ctx.param("gaia.tapService"))
     t0 = time.time()
     ids = solar.register_sources(ctx)
     diag: dict = {}
@@ -436,7 +437,7 @@ def build_diffuse(ctx: BuildContext, ids: dict, diag: dict) -> None:
     d_xp_lit = d_route == 0
     # the XP reductions of every star lit by its XP spectrum (cached by the deepstars stage)
     xsid, xred, _ = sdp.deep_xp(np.concatenate([sf.gaia_id(br["catId"][b_xp_lit]), sf.gaia_id(d_cat[d_xp_lit])]),
-                                source=ctx.param("stars.xpSource"), log=log, workers=ctx.param("gaia.xpWorkers"))
+                                source=sdp.xp_source(ctx), log=log, workers=ctx.param("gaia.xpWorkers"))
 
     def band_fluxes(xp_lit, cat, xyzs_):
         """IPP-band fluxes from the star's XP spectrum where its light comes from XP, else from its XYZ."""
@@ -633,10 +634,19 @@ def colour_bin_ratios(bprp: np.ndarray, ratio: np.ndarray) -> tuple[np.ndarray, 
     return u[keep], meds
 
 
+def _load_archive_sums(path) -> dict[str, np.ndarray]:
+    if str(path).endswith(".fits"):
+        from astropy.table import Table
+        table = Table.read(path, format="fits")
+        return {name: np.ma.filled(np.ma.asarray(table[name], dtype=np.float64), np.nan)
+                for name in table.colnames}
+    return st.load_table(path)
+
+
 def _load_colour_sums(paths) -> dict[str, np.ndarray]:
     hpx, cbin, fg, n = [], [], [], []
     for p in paths:
-        t = st.load_table(p)
+        t = _load_archive_sums(p)
         hpx.append(np.asarray(t["hpx"], np.int64))
         cbin.append(np.asarray(t["cbin"], float))
         fg.append(np.nan_to_num(np.asarray(t["fg"], float)))
@@ -649,7 +659,7 @@ def _load_sums(paths) -> dict[str, np.ndarray]:
     npx = hp.npix(FAINT_ORDER)
     out = {k: np.zeros(npx) for k in ("n", "fg", "n_c", "fg_c", "fbp_c", "frp_c")}
     for p in paths:
-        t = st.load_table(p)
+        t = _load_archive_sums(p)
         h = np.asarray(t["hpx"], np.int64)
         for k in out:
             out[k][h] += np.nan_to_num(np.asarray(t[k], float))
@@ -682,8 +692,9 @@ def _register_sources(ctx: BuildContext) -> None:
                  "DOI:10.1051/0004-6361/202039587.",
         url=sg.TAP_URL, retrieved=record(sums[0])["retrieved"], sha256=st._digest(sums + csums),
         version=sg.REL.label, license="ESA/Gaia/DPAC, CC BY-SA 3.0 IGO",
-        notes=f"2 x {len(sums)} synchronous TAP queries (one per HEALPix level-{sg.SUM_LEVEL} source_id range; "
-              "sha256 over all result files). Per level-8 pixel: "
+        notes=f"2 x {len(sums)} TAP result files (one per HEALPix level-{sg.SUM_LEVEL} source_id range; "
+              "sha256 over all result files; actual synchronous or asynchronous retrieval URLs are retained "
+              "in the download ledger). Per level-8 pixel: "
               + sums[0].with_name(sums[0].name + ".adql").read_text(encoding="utf-8") + " || per level-6 pixel and BP-RP bin: "
               + csums[0].with_name(csums[0].name + ".adql").read_text(encoding="utf-8")))
 

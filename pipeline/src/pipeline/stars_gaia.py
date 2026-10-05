@@ -2,7 +2,8 @@
 
 Access paths, all recorded for provenance:
 
-* ADQL queries on the ESA Gaia archive's synchronous TAP endpoint, downloaded with `download.fetch` (so the
+* ADQL queries on ESA or its ARI Heidelberg partner archive's synchronous TAP endpoint (`gaia.tapService`),
+  downloaded with `download.fetch` (so the
   query URL and the result's sha256 land in the ledger); the ADQL text is also stored as `<name>.adql`.
   (During development the asynchronous service sat in "WRITING_RESULT" for > 20 min on 1e5-row results, while
   synchronous CSV returned 2e5 rows in ~2 min.)
@@ -29,6 +30,7 @@ import os
 import threading
 import time
 import zlib
+import contextlib
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
@@ -41,6 +43,18 @@ from .download import fetch, sha256_file
 from .paths import CACHE, RAW
 
 TAP_URL = "https://gea.esac.esa.int/tap-server/tap"
+# ARI defaults to 100,000 rows; a valid FITS file can otherwise silently omit a dense tile.
+# Use each provider's advertised hard cap; queries remain partitioned by magnitude / HEALPix.
+TAP_MAXREC = 3_000_000
+
+
+def set_tap_service(service: str) -> None:
+    """Select the documented archive provider; results keep their actual query URLs in the download ledger."""
+    global TAP_URL, TAP_MAXREC
+    if service not in {"esa", "ari"}:
+        raise ValueError(f"unknown Gaia TAP service {service!r}")
+    TAP_URL = "https://gaia.ari.uni-heidelberg.de/tap" if service == "ari" else "https://gea.esac.esa.int/tap-server/tap"
+    TAP_MAXREC = 10_000_000 if service == "ari" else 3_000_000
 
 
 @dataclass(frozen=True)
@@ -86,8 +100,12 @@ def _sync(query: str, timeout: float = 300.0) -> str:
     delay = 5.0
     for attempt in range(5):
         try:
-            r = requests.get(TAP_URL + "/sync", params={"REQUEST": "doQuery", "LANG": "ADQL", "FORMAT": "csv",
-                                                        "QUERY": query}, timeout=timeout)
+            params = {"REQUEST": "doQuery", "LANG": "ADQL", "FORMAT": "csv", "MAXREC": TAP_MAXREC, "QUERY": query}
+            with download.host_slot(TAP_URL):
+                if len(query) > 1800:
+                    r = requests.post(TAP_URL + "/sync", data=params, timeout=timeout)
+                else:
+                    r = requests.get(TAP_URL + "/sync", params=params, timeout=timeout)
             r.raise_for_status()
             return r.text
         except requests.RequestException:
@@ -117,9 +135,11 @@ def tap_query(select: str, table: str, where: str, subdir: str, base: str, expec
     name = f"{base}_{qhash}.csv"
     dest = RAW / subdir / name
     rows_file = dest.with_name(name + ".rows")
+    params = {"REQUEST": "doQuery", "LANG": "ADQL", "FORMAT": "csv", "MAXREC": TAP_MAXREC, "QUERY": query}
+    request_args = {"data": params} if len(query) > 1800 else {"params": params}
     for attempt in range(retries + 1):
         path = fetch(TAP_URL + "/sync", subdir, name, timeout=900.0,
-                     params={"REQUEST": "doQuery", "LANG": "ADQL", "FORMAT": "csv", "QUERY": query})
+                     **request_args)
         with path.open("rb") as f:
             head = f.read(200)
         if not head.startswith(expect.encode()):
@@ -145,7 +165,7 @@ def tap_query(select: str, table: str, where: str, subdir: str, base: str, expec
     return path
 
 
-def _fits_table_ok(path: Path) -> bool:
+def _fits_table_ok(path: Path, max_rows: int | None = None) -> bool:
     """True when `path` is a complete FITS file whose first extension is a binary table (a truncated response or
     an error document fails). Reads only the headers."""
     size = path.stat().st_size
@@ -183,10 +203,12 @@ def _fits_table_ok(path: Path) -> bool:
         if cards.get("XTENSION", "").strip("' ") != "BINTABLE":
             return False
         need = int(cards["NAXIS1"]) * int(cards["NAXIS2"]) + int(cards.get("PCOUNT", "0"))
-        return size >= off + need
+        rows = int(cards["NAXIS2"])
+        return size >= off + need and (max_rows is None or rows < max_rows)
 
 
-def tap_query_fits(select: str, table: str, where: str, subdir: str, base: str) -> Path:
+def tap_query_fits(select: str, table: str, where: str, subdir: str, base: str,
+                   max_rows: int | None = None, post: bool = False) -> Path:
     """Like `tap_query` but FITS binary table output (~2.5x smaller than CSV for numeric columns).
 
     A FITS response declares its row count before the data, so a truncated transfer is detected from the file
@@ -194,8 +216,10 @@ def tap_query_fits(select: str, table: str, where: str, subdir: str, base: str) 
     query = f"SELECT {select} FROM {table} WHERE {where}"
     qhash = hashlib.sha256(query.encode()).hexdigest()[:10]
     name = f"{base}_{qhash}.fits"
-    path = fetch(TAP_URL + "/sync", subdir, name, timeout=1800.0, validate=_fits_table_ok,
-                 params={"REQUEST": "doQuery", "LANG": "ADQL", "FORMAT": "fits", "QUERY": query})
+    parameters = {"REQUEST": "doQuery", "LANG": "ADQL", "FORMAT": "fits", "MAXREC": TAP_MAXREC, "QUERY": query}
+    path = fetch(TAP_URL + "/sync", subdir, name, timeout=1800.0,
+                 validate=lambda p: _fits_table_ok(p, max_rows),
+                 **({"data": parameters} if post else {"params": parameters}))
     sidecar = path.with_name(path.name + ".adql")
     if not sidecar.exists():
         sidecar.write_text(query, encoding="utf-8", newline="\n")
@@ -232,6 +256,24 @@ def _init_worker(wanted: np.ndarray | None, W: np.ndarray | None = None, cover: 
     global _WANTED, _W, _COVER
     _WANTED = set(int(x) for x in wanted) if wanted is not None else set()
     _W, _COVER = W, cover
+
+
+@contextlib.contextmanager
+def _bulk_chunks(name: str, url: str, expected_md5: str):
+    if os.environ.get("PIPELINE_XP_CACHE_BULK") == "1":
+        def valid(path):
+            h = hashlib.md5()
+            with path.open("rb") as f:
+                for block in iter(lambda: f.read(1 << 20), b""):
+                    h.update(block)
+            return h.hexdigest() == expected_md5
+        path = fetch(url, XP_SUBDIR + "_bulk", name, timeout=1800, validate=valid)
+        with path.open("rb") as f:
+            yield iter(lambda: f.read(1 << 20), b""), False
+    else:
+        with download.host_slot(url), download.session().get(url, stream=True, timeout=180) as r:
+            r.raise_for_status()
+            yield r.iter_content(1 << 20), True
 
 
 def _parse_array(field: bytes) -> np.ndarray:
@@ -300,10 +342,11 @@ def _stream_file(name: str, md5_expected: str, subset_out: str | None, reduced_o
                         rids.append(sid)
                         fl.append(_parse_flux(ln[q1 + 1:q2]))
 
-            with requests.get(url, stream=True, timeout=180) as r:
-                r.raise_for_status()
-                for chunk in r.iter_content(1 << 20):
+            with _bulk_chunks(name, url, md5_expected) as (chunks, network_read):
+                for chunk in chunks:
                     nbytes += len(chunk)
+                    if network_read:
+                        download.count(len(chunk))
                     md5.update(chunk)
                     sha.update(chunk)
                     buf += dec.decompress(chunk)
@@ -424,7 +467,7 @@ def _run_stream(index: list[tuple[str, str]], subset: _Target | None, reduced: _
                     if key in recs:
                         tgt.ledger["files"][recs[key]["name"]] = recs[key]
                 rec = next(iter(recs.values()))
-                download.count(rec["bytes"], files=1)
+                download.count(rec["bytes"], files=1, network=False)
                 got += rec["bytes"]
                 done += 1
                 if done % 25 == 0 or done == len(todo):
@@ -779,17 +822,20 @@ G_SLICES = ((None, 8.0), (8.0, 9.0), (9.0, 9.5), (9.5, 9.75), (9.75, 10.0), (10.
 SUBDIR = f"stars/gaia_{REL.key}"
 
 
-def fetch_gaia_sources(g_max: float) -> list[Path]:
+def fetch_gaia_sources(g_max: float, workers: int = 1) -> list[Path]:
     """gaiadr3.gaia_source rows with phot_g_mean_mag < g_max (astrometry, photometry, XP availability)."""
-    out = []
+    slices = []
     for lo, hi in G_SLICES:
         if lo is not None and lo >= g_max:
             break
         hi = min(hi, g_max)
+        slices.append((lo, hi))
+    def one(bounds):
+        lo, hi = bounds
         cond = f"phot_g_mean_mag < {hi}" if lo is None else f"phot_g_mean_mag >= {lo} AND phot_g_mean_mag < {hi}"
-        out.append(tap_query(", ".join(GAIA_COLUMNS), f"{REL.schema}.gaia_source", cond, SUBDIR,
-                             f"gaia_source_G{lo if lo is not None else 'min'}-{hi}", "source_id"))
-    return out
+        return tap_query(", ".join(GAIA_COLUMNS), f"{REL.schema}.gaia_source", cond, SUBDIR,
+                         f"gaia_source_G{lo if lo is not None else 'min'}-{hi}", "source_id")
+    return _in_order(one, slices, workers)
 
 
 def fetch_hip_xmatch() -> Path:
@@ -798,8 +844,16 @@ def fetch_hip_xmatch() -> Path:
                      f"{REL.schema}.hipparcos2_best_neighbour", "", SUBDIR, "hipparcos2_best_neighbour", "source_id")
 
 
-def fetch_tycho_pm_for_2p(g_max: float) -> Path:
+def fetch_tycho_pm_for_2p(g_max: float, source_ids: np.ndarray | None = None) -> Path:
     """Tycho-2 proper motions of the Gaia DR3 sources that have only a 2-parameter solution (no proper motion)."""
+    if source_ids is not None:
+        ids = ",".join(str(int(x)) for x in np.unique(source_ids))
+        where = f"b.source_id IN ({ids})" if ids else "1 = 0"
+        return tap_query(
+            "b.source_id, t.id, t.pm_ra, t.pm_de, t.e_pm_ra, t.e_pm_de, b.angular_distance",
+            f"{REL.schema}.tycho2tdsc_merge_best_neighbour AS b JOIN {REL.schema}.tycho2tdsc_merge AS t "
+            "ON t.id = b.original_ext_source_id", where,
+            SUBDIR, f"tycho2_pm_for_gaia2p_G{g_max}", "source_id")
     return tap_query(
         "g.source_id, t.id, t.pm_ra, t.pm_de, t.e_pm_ra, t.e_pm_de, b.angular_distance",
         f"{REL.schema}.gaia_source AS g JOIN {REL.schema}.tycho2tdsc_merge_best_neighbour AS b ON b.source_id = g.source_id "
@@ -857,6 +911,27 @@ def fetch_gaia_deep(g_lo: float, g_hi: float, *, log=print, workers: int = 1) ->
 SUM_LEVEL = 1  # aggregation queries run per HEALPix level-1 pixel (48 queries)
 
 
+def _sums_query(select: str, table: str, where: str, subdir: str, base: str,
+                count_query: str) -> Path:
+    query = f"SELECT {select} FROM {table} WHERE {where}"
+    name = f"{base}_{hashlib.sha256(query.encode()).hexdigest()[:10]}.csv"
+    verified_csv = (RAW / subdir / (name + ".rows")).exists()
+    if os.environ.get("PIPELINE_GAIA_SUMS_FITS") == "1" and not verified_csv:
+        existing_fits = RAW / subdir / name.replace(".csv", ".fits")
+        if existing_fits.exists() and _fits_table_ok(existing_fits, TAP_MAXREC):
+            return tap_query_fits(select, table, where, subdir, base, max_rows=TAP_MAXREC, post=True)
+        # The partner archive recommends its narrower copy of the same Gaia
+        # catalogue for these photometry-only scans. Source IDs and all three
+        # magnitude columns were checked against the full table; a complete
+        # 16,384-pixel aggregate also matches the recorded full-table result.
+        if REL.key == "dr3" and table == f"{REL.schema}.gaia_source":
+            table = f"{REL.schema}.gaia_source_lite"
+        # A complete FITS table declares its row count. Reject a result at the
+        # explicit MAXREC boundary as potentially clipped by the service.
+        return tap_query_fits(select, table, where, subdir, base, max_rows=TAP_MAXREC, post=True)
+    return tap_query(select, table, where, subdir, base, "hpx", count_query=count_query)
+
+
 def fetch_faint_sums(g_min: float, level: int, workers: int = 1) -> list[Path]:
     """Per HEALPix pixel (nested, `level`) sums over all gaia_source rows with G >= g_min: counts and sums of
     10^(-0.4 m) in G, BP, RP, split by whether BP and RP both exist."""
@@ -872,8 +947,8 @@ def fetch_faint_sums(g_min: float, level: int, workers: int = 1) -> list[Path]:
         cut = f"source_id >= {lo} AND source_id < {hi} AND phot_g_mean_mag >= {g_min}"
         count = (f"SELECT COUNT(*) AS n FROM (SELECT GAIA_HEALPIX_INDEX({level}, source_id) AS hpx FROM "
                  f"{REL.schema}.gaia_source WHERE {cut} GROUP BY hpx) AS t")
-        return tap_query(select, f"{REL.schema}.gaia_source", cut + " GROUP BY hpx", SUBDIR + "_sums",
-                         f"faint_sums_G{g_min}_L{level}_p{pix:02d}", "hpx", count_query=count)
+        return _sums_query(select, f"{REL.schema}.gaia_source", cut + " GROUP BY hpx", SUBDIR + "_sums",
+                           f"faint_sums_G{g_min}_L{level}_p{pix:02d}", count)
     return _in_order(one, list(range(12 * 4 ** SUM_LEVEL)), workers)
 
 
@@ -890,8 +965,8 @@ def fetch_faint_colour_sums(g_min: float, level: int, workers: int = 1) -> list[
         count = (f"SELECT COUNT(*) AS n FROM (SELECT GAIA_HEALPIX_INDEX({level}, source_id) AS hpx, "
                  f"FLOOR(10 * (phot_bp_mean_mag - phot_rp_mean_mag)) AS cbin FROM {REL.schema}.gaia_source "
                  f"WHERE {cut} GROUP BY hpx, cbin) AS t")
-        return tap_query(select, f"{REL.schema}.gaia_source", cut + " GROUP BY hpx, cbin", SUBDIR + "_sums",
-                         f"faint_colour_sums_G{g_min}_L{level}_p{pix:02d}", "hpx", count_query=count)
+        return _sums_query(select, f"{REL.schema}.gaia_source", cut + " GROUP BY hpx, cbin", SUBDIR + "_sums",
+                           f"faint_colour_sums_G{g_min}_L{level}_p{pix:02d}", count)
     return _in_order(one, list(range(12 * 4 ** SUM_LEVEL)), workers)
 
 

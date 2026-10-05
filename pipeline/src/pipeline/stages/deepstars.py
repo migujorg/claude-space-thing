@@ -70,6 +70,7 @@ def load_deep(paths) -> dict[str, np.ndarray]:
 
 
 def run(ctx: BuildContext) -> None:
+    sg.set_tap_service(ctx.param("gaia.tapService"))
     t0 = time.time()
     epoch_et = 0.5 * (ctx.start_et + ctx.end_et)
     epoch = sa.et_to_jyear(epoch_et)
@@ -94,8 +95,14 @@ def run(ctx: BuildContext) -> None:
     u[has_pm] = sa.propagate(g["ra"][has_pm], g["dec"][has_pm], g["pmra"][has_pm], g["pmdec"][has_pm],
                              st.GAIA_EPOCH, epoch, g["parallax"][has_pm], None)
     pos_route[has_pm] = 0
-    tp_path = sg.fetch_tycho_pm_for_2p(DEEP_G_MAX)
-    tp = st.load_table(tp_path)
+    # The catalogue already tells us exactly which sources need Tycho motion.
+    # Query their indexed IDs in bounded batches instead of joining all Gaia rows.
+    needed = np.unique(sid[(~has_pm) & (g["astrometric_params_solved"] == 3)])
+    batches = [needed[i:i + 5000] for i in range(0, len(needed), 5000)] or [needed]
+    tp_paths = sg._in_order(lambda ids: sg.fetch_tycho_pm_for_2p(DEEP_G_MAX, source_ids=ids),
+                            batches, ctx.param("gaia.tapWorkers"))
+    parts = [st.load_table(path) for path in tp_paths]
+    tp = {key: np.concatenate([part[key] for part in parts]) for key in parts[0]}
     tsid = np.asarray(tp["source_id"], np.int64)
     o = np.argsort(tsid)
     tsid_s = tsid[o]
@@ -119,7 +126,7 @@ def run(ctx: BuildContext) -> None:
     b_xp = sf.gaia_id(bright["catId"])[(bright["src"] == bh["sourceTable"].index(st.SRC_GAIA))
                                        & np.isin(bright["lightRoute"], b_xp_routes)]
     xsid, xred, xp_ledger = sd.deep_xp(np.concatenate([sid[g["has_xp_sampled"].astype(bool)], b_xp]),
-                                       source=ctx.param("stars.xpSource"), log=log,
+                                       source=sd.xp_source(ctx), log=log,
                                        workers=ctx.param("gaia.xpWorkers"))
     k = np.clip(np.searchsorted(xsid, sid), 0, xsid.size - 1)
     has_xp = xsid[k] == sid
@@ -266,7 +273,7 @@ def run(ctx: BuildContext) -> None:
     diag["labels"] = {"light": {LABEL_ORDER[i]: int((rec["labelFlux"] == i).sum()) for i in range(len(LABEL_ORDER))},
                       "pos": {LABEL_ORDER[i]: int((rec["labelPos"] == i).sum()) for i in range(len(LABEL_ORDER))}}
 
-    _register_sources(ctx, paths, xp_ledger, tp_path)
+    _register_sources(ctx, paths, xp_ledger, tp_paths)
     header = {
         "binPattern": f"deep-o{TILE_ORDER}-{{pix:03d}}.bin",
         "count": int(n),
@@ -304,7 +311,7 @@ def run(ctx: BuildContext) -> None:
     log(f"wrote {n} stars in {hp.npix(TILE_ORDER)} tiles ({total_bytes / 1e6:.0f} MB), {time.time() - t0:.0f} s")
 
 
-def _register_sources(ctx: BuildContext, paths, xp_ledger, tp_path) -> None:
+def _register_sources(ctx: BuildContext, paths, xp_ledger, tp_paths) -> None:
     rec0 = record(paths[0])
     q0 = paths[0].with_name(paths[0].name + ".adql").read_text(encoding="utf-8")
     ctx.add_source(SourceRecord(
@@ -347,11 +354,14 @@ def _register_sources(ctx: BuildContext, paths, xp_ledger, tp_path) -> None:
                    f"every spectrum reduced on the fly to {', '.join(sd.XP_COLUMNS)} (stars_deep.xp_operator; W sha256 "
                    f"{xp_ledger['W_sha256'][:16]}...) and kept in data/cache/{sg.XP_REDUCED_SUBDIR}/{sd.XP_TAG}; "
                    "per-file url/md5/sha256 in its _streamed.json; this sha256 is over the per-file sha256s.")))
-    r = record(tp_path)
+    r = record(tp_paths[0])
     ctx.add_source(SourceRecord(
         id=SRC_TP, title=f"Tycho-2 proper motions of {sg.REL.label} 2-parameter sources (Gaia archive best neighbour)",
         citation="Høg E. et al. 2000, The Tycho-2 catalogue of the 2.5 million brightest stars, A&A 355, L27; "
                  "Marrese P. M. et al. 2019, Gaia DR2 cross-match with external catalogues, A&A 621, A144, "
                  "DOI:10.1051/0004-6361/201834142.",
-        url=sg.TAP_URL, retrieved=r["retrieved"], sha256=r["sha256"], version=sg.REL.label,
-        notes="ADQL: " + tp_path.with_name(tp_path.name + ".adql").read_text(encoding="utf-8")))
+        url=sg.TAP_URL, retrieved=r["retrieved"], sha256=st._digest(tp_paths), version=sg.REL.label,
+        notes=(f"{len(tp_paths)} queries restricted to the deep catalogue's 2-parameter source IDs, "
+               "at most 5000 IDs per query. This checksum combines the response checksums; "
+               "query text and per-response provenance remain in data/raw. First ADQL: " +
+               tp_paths[0].with_name(tp_paths[0].name + ".adql").read_text(encoding="utf-8"))))
