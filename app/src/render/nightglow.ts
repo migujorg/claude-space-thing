@@ -53,6 +53,11 @@ export const KEV_PER_ERG_PER_1E8 = 1e-8 / 1.602176634e-9;
 /** Radiance of 1 rayleigh: 10¹⁰/(4π) photons m⁻² s⁻¹ sr⁻¹ (Hunten, Roach & Chamberlain 1956). */
 export const PHOTON_RADIANCE_PER_R = 1e10 / (4 * Math.PI);
 
+/** CPU twin of the shader's PALACE night-domain weight at an integration node. */
+export function nightDomainWeight(cosSolarZenith: number, cosMinSolarZenith: number): number {
+  return cosSolarZenith < cosMinSolarZenith ? 1 : 0;
+}
+
 /**
  * ∫ v(h(u)) du of a Gaussian layer (normalised: a vertical path through it gives 1) along one side of a straight
  * ray, u = distance from the ray's closest approach to the centre (r_t), from u0 to u1, on a sphere of radius rRef
@@ -420,7 +425,8 @@ fn agBranch(b: Body, R: Ray, l: i32, sgn: f32, u0: f32, u1: f32) -> vec4f {
     let h = r - mix(Ra, Rz, fu);
     let z = (h - hc) / sig;
     let v = exp(-0.5 * z * z) * (0.3989422804014327 / sig);
-    let night = 1.0 - smoothstep(NG.b.y - 0.004, NG.b.y + 0.004, (qs + ds * u) / r);
+    // PALACE has no twilight/day model: do not fade light into that unknown domain.
+    let night = select(0.0, 1.0, (qs + ds * u) / r < NG.b.y);
     let w = GW[i] * xr * dudx * v * night;
     if (w <= 0.0) { continue; }
     let lt = lta + dlt * fu;

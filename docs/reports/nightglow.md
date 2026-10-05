@@ -62,7 +62,8 @@ DOI:10.5194/acp-23-1599-2023); applying it to Na, O₂ and the green line is an 
 
 **Domain.** PALACE is a night-time climatology (solar zenith angle > 100°: the Sun below the horizon up to ~200 km).
 The airglow is drawn where the solar zenith angle at the ground point below the emission exceeds 100°; in twilight
-and day it is unknown and not drawn (no dayglow). Local time is the mean solar time at the emission point
+and day it is unknown and not drawn (no dayglow). The shader uses the strict comparison at each integration
+node; it does not fade airglow into twilight outside this domain. Local time is the mean solar time at the emission point
 (UT + longitude/15); beyond PALACE's local-time bins (18:30–05:30 bin centres) the end values are held (polar night).
 
 **Assumptions (why `estimated`).** PALACE is measured at one site; it is applied at every latitude, with the same
@@ -199,6 +200,7 @@ occlusion, attenuation, adaptation and the three rendered scenes remain unverifi
 | Field-line tracing against a pure dipole | AACGM latitude = analytic dipole latitude within 0.05° (pass) |
 | OP2010 midnight oval at coupling 2763 | energy-flux peak 1.9 erg cm⁻² s⁻¹ at 67.2° MLAT (inside 60–72°, pass) |
 | Oval location vs the NOAA SWPC OVATION nowcast (2026-10-01 03:58 UT; the same model family with SWPC's real-time solar wind, so this checks the coordinates, MLT and hemisphere handling and the climatological driver, not the physics; ours at the climatological coupling 3555) | latitude of the northern energy-flux maximum minus the nowcast's probability maximum, over 331 longitudes: median −2.5°, mean \|Δ\| 3.9°, 90th percentile 11.5°; night side (MLT 18–06, 154 longitudes) median −0.5°, mean \|Δ\| 3.1°; day side median −3.5°, mean \|Δ\| 4.6° |
+| PALACE night domain at the boundary (CPU twin; the WGSL comparison was checked by reading) | zero at and below the source's solar-zenith limit, one above it (pass); no fixed-width fade into unknown twilight |
 | PALACE normalisation: night-weighted climatology mean at 100 sfu | 1 within 5 % for Og, Na, Or, FeO, OH 5a (pass) |
 | Step integration of the aurora (5–7 steps over 600 km, vertical and 60° slant) | the column to 10⁻⁴ (pass) |
 

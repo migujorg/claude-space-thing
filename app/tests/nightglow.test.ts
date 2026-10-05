@@ -13,7 +13,7 @@ import { describe, expect, it } from 'vitest';
 import type { AirglowModel, AuroraModel } from '../src/data/schema';
 import { decodeFloat16 } from '../src/data/nightglow';
 import { airglowLayers, auroraGrid, couplingAt, dayOfYear, monthWeights, NightglowSource, seasonWeights, solarRadioFlux } from '../src/app/nightglow';
-import { emissionTables, layerBranchIntegral, limbFactor, packTables, PHOTON_RADIANCE_PER_R, sampleBins, slabIntegral, toF16Array } from '../src/render/nightglow';
+import { emissionTables, layerBranchIntegral, limbFactor, nightDomainWeight, packTables, PHOTON_RADIANCE_PER_R, sampleBins, slabIntegral, toF16Array } from '../src/render/nightglow';
 import { numberToF16 } from '../src/render/surface';
 import { nightglowRows } from '../src/ui/inspectModel';
 import { DATA_DIR } from './core-data';
@@ -100,6 +100,14 @@ describe.skipIf(!built)('nightglow products (nightglow/*.json)', () => {
       const sum = c.xyzsPerRBySample.reduce((a, r) => a + r[ch], 0);
       expect(Math.abs(sum - c.xyzsPerR[ch])).toBeLessThanOrEqual(2e-3 * Math.abs(c.xyzsPerR[ch]) + 1e-15);
     }
+  });
+
+  it('PALACE has no emission outside its measured night domain, including just below the SZA limit', () => {
+    const limit = ag.climatology.nightMinSolarZenithDeg!;
+    const cos = (deg: number) => Math.cos(deg * Math.PI / 180);
+    expect(nightDomainWeight(cos(limit - 0.1), cos(limit))).toBe(0);
+    expect(nightDomainWeight(cos(limit), cos(limit))).toBe(0);
+    expect(nightDomainWeight(cos(limit + 0.1), cos(limit))).toBe(1);
   });
 
   it('layer quadrature: a vertical column is 1, the limb follows the parabolic closed form', () => {
