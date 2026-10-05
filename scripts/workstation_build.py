@@ -8,6 +8,7 @@ import subprocess
 import sys
 import time
 
+os.environ["PIPELINE_NETWORK_METRICS"] = "1"
 from pipeline import build, config
 from pipeline.__main__ import _build_args, _window
 from pipeline.paths import CACHE

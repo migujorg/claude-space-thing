@@ -19,7 +19,8 @@ read it, so they compare with the build they run against and never with a file m
 
 Orbits: JPL SBDB, full precision (sb_sbdb). Every object's osculating elements are turned into a state at its own
 epoch and integrated to the common epoch (the manifest window centre, rounded to 0h TDB) with the same Kepler-drift +
-kick scheme the app uses (sb_dynamics / app/src/core/smallbody.ts). Exceptions, each flagged and labelled:
+kick scheme with classical RK4 near planetary encounters, as in the app (sb_dynamics / app/src/core/smallbody.ts).
+Exceptions, each flagged and labelled:
   - epoch before the planetary ephemeris (1849-12-26): two-body drift to its start first -> position `estimated`;
   - orbit model terms the propagator does not have (e.g. Bennu's thermal Yarkovsky model): the state at the
     common epoch is JPL Horizons' own (fetched) -> `derived`, source jpl-horizons-sb-states;

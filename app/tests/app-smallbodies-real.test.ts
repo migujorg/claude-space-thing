@@ -6,7 +6,7 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { SmallBodies } from '../src/app/smallbodies';
 import { DataLoader } from '../src/data/load';
-import type { Manifest, SmallBodyCoreHeader } from '../src/data/schema';
+import type { CometListProduct, Manifest, SmallBodyCoreHeader } from '../src/data/schema';
 import { discoverSmallBodies, loadSmallBodyTables, type SmallBodyTables } from '../src/data/smallbodies';
 import { smallBodyFacts, smallBodyLegend } from '../src/ui/smallBodyInspect';
 import { DATA_DIR, buildRecord, loadEphemerisSet, notCompared, type SmallBodyRecord } from './core-data';
@@ -21,6 +21,13 @@ const eph = built ? loadEphemerisSet() : null;
 
 // What the pipeline computed for this build (null with the reason when the build has no record).
 const rec = buildRecord<SmallBodyRecord>('verification/smallbodies.json', 'smallbodies');
+
+/** The showcase check needs an eligible comet; absence is a named skip, never a substitute. */
+function showcasePeak(list: CometListProduct, skip: (reason: string) => never) {
+  const show = list.showcase;
+  if (show === null) skip('No comet qualifies as the showcase in this build window');
+  return list.notable.find((n) => n.row === show.row)!;
+}
 
 describe.skipIf(!built || !eph)('small bodies on the real products', () => {
   let tables: SmallBodyTables;
@@ -153,14 +160,12 @@ describe.skipIf(!built || !eph)('small bodies on the real products', () => {
     console.log(f.rows.map((r) => `${r.name}: ${r.value} [${r.label}; ${r.sources.join(', ')}]`).join('\n'));
   });
 
-  it('comets: the showcase comet is drawn with coma and tails from Earth at its peak; per-frame cost', () => {
+  it('comets: the showcase comet is drawn with coma and tails from Earth at its peak; per-frame cost', (ctx) => {
     const sb = new SmallBodies(tables, eph!);
     if (!sb.comets || !tables.cometList) {
-      console.warn('[small-body tests] comets/* not built; skipping the comet shell check');
-      return;
+      return ctx.skip('comets/* not built: no showcase comet shell check');
     }
-    const show = tables.cometList.showcase;
-    const peak = tables.cometList.notable.find((n) => n.row === show.row)!;
+    const peak = showcasePeak(tables.cometList, ctx.skip);
     const et = peak.peakEt;
     const earth = eph!.positionSSB(399, et)!;
     const pix = (60 * Math.PI) / 180 / 720;
@@ -170,13 +175,53 @@ describe.skipIf(!built || !eph)('small bodies on the real products', () => {
     const t1 = performance.now();
     const again = sb.comets.frame([], earth, et, core, 'best', pix);
     const t2 = performance.now();
-    expect(first.rows).toContain(show.row);
+    expect(first.rows).toContain(peak.row);
     expect(again.rows).toEqual(first.rows);
-    const sc = first.comets.find((c) => c.id === -(show.row + 1))!;
+    const sc = first.comets.find((c) => c.id === -(peak.row + 1))!;
     // its apparent distance and the M1/K1 magnitude match the list (Horizons T-mag, see comets.test.ts)
     expect(Math.hypot(...sc.rel) / 149597870.7).toBeCloseTo(peak.deltaAu, 2);
     // nothing is drawn extended at Strict (the coma model is estimated)
     expect(sb.comets.frame([], earth, et, core, 'strict', pix).comets.length).toBe(0);
     console.log(`comets from Earth on ${new Date((946728000 + et - 69.184) * 1000).toISOString().slice(0, 10)}: extended ${first.comets.map((c) => c.name).join(', ')}; first frame ${(t1 - t0).toFixed(0)} ms (states from the catalogue epoch), next ${(t2 - t1).toFixed(1)} ms`);
   }, 120_000);
+
+  it.for([true, false])('comets: loads a null showcase (retain notable comets: %s), reports its absence and renders only actual candidates', { timeout: 120_000 }, async (retainNotable, ctx) => {
+    if (!tables.cometList || !tables.cometModel) return ctx.skip('comets/* not built: null-showcase regression needs the comet products');
+    // Change only a test response, never the shared data product or its manifest.
+    const json = JSON.stringify({ ...tables.cometList, showcase: null, notable: retainNotable ? tables.cometList.notable : [] });
+    // A zero-row core fixture exercises the production table-loading path without copying the catalogue again.
+    const responses: Record<string, string | ArrayBuffer> = {
+      'smallbodies/core.json': JSON.stringify({ ...tables.core.header, bin: 'core.bin', count: 0 }),
+      'smallbodies/core.bin': new ArrayBuffer(0),
+      'comets/model.json': JSON.stringify(tables.cometModel),
+      'comets/list.json': json,
+    };
+    const L = new DataLoader({ base: '', fetch: async (path) => new Response(responses[path]) });
+    L.manifest = {
+      ...loader.manifest!,
+      products: Object.fromEntries(Object.entries(responses).map(([path, body]) => [path, {
+        bytes: typeof body === 'string' ? new TextEncoder().encode(body).byteLength : body.byteLength,
+        path, sha256: '', stage: path.startsWith('comets/') ? 'comets' : 'smallbodies',
+      }])),
+    };
+    const loaded = await loadSmallBodyTables(L, discoverSmallBodies(L.manifest)!);
+    const list = loaded!.cometList!;
+    expect(L.report.products.find((r) => r.path === 'comets/list.json')).toMatchObject({ status: 'ok' });
+    expect(list.showcase).toBeNull();
+    const noShowcase = 'No comet qualifies as the showcase in this build window';
+    expect(() => showcasePeak(list, (reason) => { throw new Error(reason); })).toThrow(noShowcase);
+
+    const sb = new SmallBodies({ ...tables, cometList: list }, eph!);
+    const et = tables.cometList.notable[0]?.peakEt ?? tables.cometList.window.startEt;
+    const earth = eph!.positionSSB(399, et)!;
+    const pix = (60 * Math.PI) / 180 / 720;
+    const frame = sb.comets!.frame([], earth, et, { apparentPosition }, 'best', pix);
+    if (retainNotable) {
+      const baseline = new SmallBodies(tables, eph!);
+      expect(frame).toEqual(baseline.comets!.frame([], earth, et, { apparentPosition }, 'best', pix));
+      for (const row of frame.rows) expect(list.notable.some((n) => n.row === row)).toBe(true);
+    } else {
+      expect(frame).toEqual({ comets: [], rows: [] });
+    }
+  });
 });

@@ -11,10 +11,12 @@ Built for long unattended builds:
   always computed over the complete file, so a resumed download is recorded exactly as an uninterrupted one.
 - **Retries** with exponential backoff and jitter on connection errors, timeouts, HTTP 408/425/429/5xx and failed
   `validate` checks; `Retry-After` is honoured. Other HTTP errors (404, 403, ...) fail at once.
-- **Politeness.** At most HOST_LIMITS[host] (default DEFAULT_HOST_LIMIT) transfers per host at a time, however many
-  threads call `fetch`; `fetch_many` runs a list of downloads in parallel within those limits.
+- **Politeness.** POSIX host and destination leases coordinate transfers across threads and processes. Published
+  HOST_LIMITS stay fixed; other hosts use network-control.json's genericPerHost (default DEFAULT_HOST_LIMIT).
+  Valid ledger-backed cache hits return without locks or writes; transfers recheck the cache under their lease.
 - **Progress.** Transfers taking longer than PROGRESS_EVERY_S print bytes, rate and ETA; `stats()` counts bytes and
-  files downloaded (the build summary uses it).
+  files downloaded for the build summary. Only PIPELINE_NETWORK_METRICS=1 starts a daemon publishing receive and
+  demand counters once a second to data/cache/network-metrics/<pid>.json for the workstation bandwidth controller.
 """
 
 from __future__ import annotations
@@ -188,6 +190,8 @@ def _ensure_metrics():
         _STATS.update(bytes=0, files=0)
         for key in _NETWORK_WORK:
             _NETWORK_WORK[key] = 0
+    if os.environ.get("PIPELINE_NETWORK_METRICS") != "1":
+        return
     with _STATS_LOCK:
         if _METRICS_STARTED:
             return
@@ -462,12 +466,19 @@ def fetch(url: str, subdir: str, name: str | None = None, *, params: dict | None
     dest = RAW / subdir / name
     key = ledger_key(dest)
     rng = f"bytes={byte_range[0]}-{byte_range[1] - 1}" if byte_range else None
+
+    def cached() -> bool:
+        ledger = _load_ledger()
+        return (dest.exists() and key in ledger and ledger[key].get("range") == rng
+                and (validate is None or validate(dest)))
+
+    if cached():
+        return dest
     with _STATS_LOCK:
         dest_lock = _DEST_LOCKS.setdefault(dest, threading.Lock())
     with dest_lock, _process_slot("file:" + str(dest.resolve()), 1):
-        ledger = _load_ledger()
-        if (dest.exists() and key in ledger and ledger[key].get("range") == rng
-                and (validate is None or validate(dest))):
+        # Another process may have finished the transfer while this one waited for the lease.
+        if cached():
             return dest
         dest.parent.mkdir(parents=True, exist_ok=True)
         part = dest.with_name(dest.name + ".partial")

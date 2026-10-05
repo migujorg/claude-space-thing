@@ -192,7 +192,6 @@ def reserve_tap_prefetch():
 
 
 def install():
-    os.environ.setdefault("PIPELINE_GAIA_SUMS_FITS", "1")
     original = requests.Session.__init__
 
     def initialize(self):

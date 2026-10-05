@@ -8,6 +8,7 @@ import resource
 import os
 import subprocess
 import sys
+os.environ["PIPELINE_NETWORK_METRICS"] = "1"
 import workstation_pipeline as network
 network.install()
 from pipeline import download, stars_gaia as sg

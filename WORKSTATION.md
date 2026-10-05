@@ -22,6 +22,13 @@ data/cache/prefetch-status.json; stage status is in data/cache/parallel-status.j
 Stage logs are under data/cache/parallel/<run timestamp>/.
 
 The minimum utilization target is 75 MB/s over a rolling 60-second window.
+The workstation build/stage entry points, `workstation_prefetch*.py`, and
+`workstation_bulk_prefetch.py` set
+`PIPELINE_NETWORK_METRICS=1`, opting into a daemon that publishes receive and
+demand counters once a second to `data/cache/network-metrics/<pid>.json`.
+Ordinary pipeline builds keep summary counters in memory without a metrics
+thread or metrics files. This environment switch controls process telemetry,
+not data products, and is inherited by child workers.
 data/cache/network-control.json reports measured project receive rate, ready
 download demand, and feedback-controlled per-host concurrency. The controller
 raises concurrency below target with waiting work; it does not throttle for
@@ -103,8 +110,8 @@ CSV results with verified row counts are reused. This avoids the separate
 COUNT query and preserves masked colour bins. FITS byte-size validation rejects
 incomplete transfers, and results at the explicit MAXREC boundary are rejected
 as potentially clipped. The numerical aggregation queries are unchanged.
-The normal pipeline retains its CSV default; the workstation wrapper sets
-`PIPELINE_GAIA_SUMS_FITS=1`. Each actual query URL, format, and checksum remains
+The normal pipeline retains its CSV default; the workstation launcher passes
+`--set gaia.sumsFormat=fits` (environment alias: `PIPELINE_GAIA_SUMS_FORMAT=fits`). Each actual query URL, format, and checksum remains
 in the download ledger.
 
 Deep-tier Tycho proper motions are looked up only for the catalogue's known

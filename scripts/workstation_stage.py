@@ -1,5 +1,6 @@
 """Isolated stage worker. The coordinator alone publishes the manifest."""
 import json
+import os
 from pathlib import Path
 import sys
 import time
@@ -7,6 +8,7 @@ import traceback
 import faulthandler
 import signal
 
+os.environ["PIPELINE_NETWORK_METRICS"] = "1"
 import workstation_pipeline as network
 network.install()
 from pipeline import build, config, download
