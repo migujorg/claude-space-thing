@@ -188,6 +188,178 @@ def test_known_plus_synthetic_matches_model(products):
             have = float(c["nObs"][mm].sum() + c["nShown"][mm].sum())
             if model > 2000:
                 assert abs(have - model) / model < 0.05, (p["name"], h, have, model)
+        if not m.any():
+            assert p["objects"] == 0
+            continue
+        # Population total: the model against the catalogued objects in the cells' (a, H) groups (any e, i: known
+        # objects can sit in (e, i) cells the model leaves empty, e.g. irregular moons outside the known-moon template)
+        # plus the synthetic ones; rounding adds up to half an object per cell.
         tm = float(c["nModel"][m].sum())
-        th = float(c["nObs"][m].sum() + c["nShown"][m].sum())
-        assert abs(th - tm) / tm < 0.03, (p["name"], th, tm)
+        th = float(p["totals"]["knownInGroups"] + c["nShown"][m].sum())
+        assert abs(th - tm) <= max(0.03 * tm, 0.5 * math.sqrt(int(m.sum())) + 2.0), (p["name"], th, tm)
+
+
+def test_new_populations_in_products(products):
+    """Centaurs and irregular moons: frames, regions (no overlap with the Trojan and Kuiper-belt grids), grey colour
+    and unknown rotation of synthetic moons, and the irregular-moon limits."""
+    ho, o, hc, c = products
+    by = {p["name"]: p for p in ho["populations"]}
+    assert {"centaur", "irregular-jupiter", "irregular-saturn", "irregular-uranus", "irregular-neptune"} <= set(by)
+    cen = o["pop"] == by["centaur"]["code"]
+    assert cen.sum() > 10000
+    a, e = o["a"][cen].astype(np.float64), o["e"][cen].astype(np.float64)
+    assert np.all((a >= 5.35) & (a < 30.0) & (a * (1 - e) > 5.2 - 1e-5))
+    for name in ("trojan", "tno"):
+        edges = by[name]["grid"]["aEdgesAu"]
+        assert edges[-1] <= 5.35 or edges[0] >= 30.0
+    for name in ("irregular-jupiter", "irregular-saturn", "irregular-uranus", "irregular-neptune"):
+        p = by[name]
+        assert p["center"]["naifId"] in (5, 6, 7, 8) and p["center"]["gm"] > 1e6
+        m = o["pop"] == p["code"]
+        assert int(m.sum()) == p["objects"]
+        if m.any():
+            assert np.all(o["colorClass"][m] == 255) and np.all(np.isnan(o["rotPeriod"][m]))
+            assert np.all(o["a"][m] < p["grid"]["aEdgesAu"][-1]) and np.all(o["H"][m] >= p["limit"]["hLimV"] - 1e-4)
+    # Jupiter: retrograde only (the model's class); Uranus and Neptune: no published population, nothing added
+    assert np.all(o["i"][o["pop"] == by["irregular-jupiter"]["code"]] > 90.0)
+    assert by["irregular-jupiter"]["objects"] > 100
+    assert by["irregular-uranus"]["objects"] == 0 and by["irregular-neptune"]["objects"] == 0
+
+
+# ---------------------------------------------------------------------------------------------- outer populations
+_HIMALIA = ("J006S        K2669 2461304.80448  49.57893  35.41308  28.49007 0.1545808 0.0649571 05  7.93  48328  4099 "
+            "Ale MPC xxxxx I941Q-K265M  0.53 M-v 3Ek Himalia")
+_S2003J4 = ("    SK03J040 K25BL 2461065.98254 274.50624 288.33026 152.13451 0.4839109 0.0809965 05 16.74   8807    48 Ale "
+            "MPC194205 K01CA-K261K  0.09 M-v 3Ek")
+
+
+def test_parse_mpc_natural_satellite_elements():
+    """MPC one-line natural-satellite elements (SatOrbitFormat.html): numbered and provisional designations."""
+    from pipeline import syn_sources as ss
+    rows = ss.parse_natsats(f"<pre>{_HIMALIA}\n{_S2003J4}\n</pre>")
+    assert [r["key"] for r in rows] == ["J6", "S/2003 J 4"]
+    h, s = rows
+    assert h["name"] == "Himalia" and h["planet"] == 5 and h["H"] == 7.93 and h["i"] == 28.49007
+    assert math.isclose(h["a"], 0.0649571 / (1 - 0.1545808)) and s["name"] == "" and s["i"] > 90
+    assert ss.satellite_key("SK19S010") == "S/2019 S 1" and ss.satellite_key("S067S") == "S67"
+
+
+def test_moon_calibration_and_models():
+    """The offset is the median of H_MPC - m (an outlier does not move it); the models reproduce the papers' counts."""
+    from pipeline import syn_outer as so
+    rows = [{"key": "J30", "name": "Hermippe", "H": 15.5}, {"key": "J25", "name": "Erinome", "H": 16.04},
+            {"key": "S/2003 J 16", "name": "", "H": 16.34}, {"key": "J51", "name": "unnamed", "H": 16.13}]
+    cal = so.calibrate([["Hermippe", 21.8], ["Erinome", 22.4], ["S/2003 J 16", 22.8], ["J51", 24.2], ["Nope", 20]], rows)
+    assert cal["n"] == 4 and cal["notInMpcList"] == ["Nope"]
+    assert math.isclose(cal["offset"], np.median([-6.3, -6.36, -6.46, -8.07]), abs_tol=1e-9)
+    jup = so.moon_model({"magRange": [24.0, 25.7], "nBright": 160, "nFaint": 600, "alpha": 0.29}, -6.37)
+    assert math.isclose(jup.n_between(0, 99), 440.0) and math.isclose(jup.h_lo, 17.63) and math.isclose(jup.h_hi, 19.33)
+    assert jup.n_between(18.5, 19.0) > jup.n_between(18.0, 18.5)          # rising luminosity function
+    sat = so.moon_model({"magRange": [25.7, 26.3], "nFaint": 150, "q": 4.9}, -9.98)
+    assert math.isclose(sat.alpha, 0.78) and math.isclose(sat.n_total, 150 * (1 - 10 ** (-0.78 * 0.6)))
+    # limit: the first bin where known < model - 2 sqrt(model)
+    H = np.r_[np.full(60, 17.8), np.full(110, 18.2)]
+    hlim, rows_ = so.moon_limit(H, jup)
+    assert hlim == 18.5 and [r["short"] for r in rows_] == [False, False, True, True]
+    assert so.moon_limit(np.full(1000, 18.7), so.MoonModel(18.5, 19.0, 0.3, 10.0))[0] is None
+
+
+def test_knee_law_and_selection_reweighting():
+    """The knee law's inverse and cumulative agree; weighting a magnitude-selected sample by 1/P(selected | distance
+    modulus) recovers the full sample size (the Centaur archive's reconstruction)."""
+    from pipeline import syn_outer as so
+    law = so.KneeLaw(0.9, 0.4, 7.7, 13.7)
+    u = np.linspace(0.001, 0.999, 50)
+    h = law.inverse(u)
+    assert np.allclose(law.cum(h) / law.cum(13.7), u, atol=1e-12) and np.all(np.diff(h) > 0)
+    rng = np.random.default_rng(3)
+    n = 400_000
+    H = law.inverse(rng.random(n))
+    d = 5 * np.log10(rng.uniform(6, 30, n) ** 2)                 # distance moduli of objects 6-30 au away
+    m = H + d
+    sel = (m > 21) & (m < 23.5)
+    w = 1 / law.selection_probability(d[sel], 21.0, 23.5)
+    assert abs(w.sum() / n - 1) < 0.03
+
+
+@pytest.fixture(scope="module")
+def centaur_archive():
+    from pipeline import syn_sources as ss
+    if not ss.KURLANDER_ARCHIVE._dest().exists():
+        pytest.skip("Centaur model archive not downloaded")
+    return ss.read_centaur_archive()
+
+
+def test_centaur_archive_reconstruction(centaur_archive):
+    """The archive follows the knee law read as a differential law (and not the cumulative reading), and the
+    selection weights add up to the model size stated in the archive (within the members that could never be
+    selected, about 1 %)."""
+    from pipeline import syn_outer as so
+    from pipeline import syn_sources as ss
+    tab = ss.tables()["centaurs"]
+    chk = so.knee_check(centaur_archive, tab)
+    assert chk["differential knee (used)"]["chi2PerBin"] < 1.5 < 10 < chk["cumulative knee (alternative)"]["chi2PerBin"]
+    mem, diag = so.centaur_realization(centaur_archive, tab)
+    assert 0.97 < diag["sumWeightsOverModelSize"] <= 1.0 and diag["effectiveSampleSize"] > 50_000
+    assert mem["a"].size == 21_400 and np.all(mem["Hr"] <= 13.7 + 1e-9)
+    mem2, _ = so.centaur_realization(centaur_archive, tab)
+    assert np.array_equal(mem["a"], mem2["a"]) and np.array_equal(mem["H"], mem2["H"])
+
+
+def test_centaur_yield_to_discoveries(cat, centaur_archive):
+    """Remove catalogued Centaurs fainter than their limit: the synthetic count in their groups rises by about as
+    many, and every synthetic Centaur shown before is still shown (same cell, same place in its stream)."""
+    from pipeline.stages import synthetic as syn
+    base = syn.build(cat, only=("centaur",), centaur_archive=centaur_archive)["populations"]["centaur"]
+    grid = syn.GRIDS["centaur"]
+    rows = np.nonzero(syn.population_masks(cat)["centaur"])[0]
+    ia, ie, ii, ih = grid.index(cat["a"][rows], cat["e"][rows], cat["i"][rows], cat["H"][rows])
+    hl = base["hlim"]
+    ok = (ia >= 0) & np.isfinite(hl[np.maximum(ia, 0)]) & (cat["H"][rows] >= hl[np.maximum(ia, 0)] + 0.5) \
+        & (cat["H"][rows] < base["hFloor"])
+    removed = rows[np.nonzero(ok)[0]]
+    assert removed.size >= 20
+    groups = {(int(a), int(h)) for a, h in zip(ia[ok], ih[ok])}
+    cat2 = dict(cat)
+    cat2["ok"] = cat["ok"].copy()
+    cat2["ok"][removed] = False
+    after = syn.build(cat2, only=("centaur",), centaur_archive=centaur_archive)["populations"]["centaur"]
+
+    def shown_in(r):
+        c = r["cells"]
+        m = np.array([(int(a), int(h)) in groups for a, h in zip(c.ia, c.ih)])
+        return int(c.n_shown[m].sum()), int(m.sum())
+
+    n0, k0 = shown_in(base)
+    n1, _ = shown_in(after)
+    assert abs((n1 - n0) - removed.size) <= 3.0 * math.sqrt(k0) / 2.0 + 2.0, (n1 - n0, removed.size)
+    key = lambda r: {(int(r["cells"].ia[c]), int(r["cells"].ie[c]), int(r["cells"].ii[c]), int(r["cells"].ih[c]), int(k))
+                     for c, k in zip(r["cellOf"], r["k"])}
+    assert not key(base) - key(after)
+
+
+def test_irregular_moons_yield_to_discoveries(cat):
+    """Discover 30 of the synthetic retrograde jovian moons (add them to the MPC list as known moons): the layer
+    shows about 30 fewer, all of them moons it showed before; the same seed gives the same moons."""
+    from pipeline import syn_sources as ss
+    from pipeline.stages import synthetic as syn
+    if not ss.NATSATS["jupiter"]._dest().exists():
+        pytest.skip("MPC natural-satellite elements not downloaded")
+    rows = ss.read_natsats("jupiter")
+    pop = ("irregular-jupiter",)
+    base = syn.build(cat, only=pop, moons={"jupiter": rows})["populations"]["irregular-jupiter"]
+    again = syn.build(cat, only=pop, moons={"jupiter": rows})["populations"]["irregular-jupiter"]
+    assert all(np.array_equal(base["objects"][k], again["objects"][k]) for k in ("a", "e", "i", "node", "H", "pV"))
+    o = base["objects"]
+    pick = np.nonzero((o["H"] >= 18.0) & (o["H"] < 18.5))[0][:30]
+    assert pick.size == 30
+    found = [{"key": f"S/2099 J {j + 1}", "name": "", "planet": 5, "H": float(o["H"][j]), "e": float(o["e"][j]),
+              "q": float(o["a"][j] * (1 - o["e"][j])), "a": float(o["a"][j]), "i": float(o["i"][j]), "node": 0.0,
+              "peri": 0.0, "epoch": "", "arcDays": None} for j in pick]
+    after = syn.build(cat, only=pop, moons={"jupiter": rows + found})["populations"]["irregular-jupiter"]
+    n0, n1 = int(base["cells"].n_shown.sum()), int(after["cells"].n_shown.sum())
+    assert abs((n0 - n1) - 30) <= 4, (n0, n1)
+    key = lambda r: {(int(r["cells"].ia[c]), int(r["cells"].ie[c]), int(r["cells"].ii[c]), int(r["cells"].ih[c]), int(k))
+                     for c, k in zip(r["cellOf"], r["k"])}
+    assert not key(after) - key(base)
+    assert after["limit"]["hLimV"] == base["limit"]["hLimV"]
