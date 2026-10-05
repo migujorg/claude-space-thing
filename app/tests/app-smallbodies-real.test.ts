@@ -96,14 +96,14 @@ describe.skipIf(!built || !eph)('small bodies on the real products', () => {
         let worstHz = 0;
         for (const { t, k } of order) {
           const s = sb.cpu.stateOf(o.coreRow, t);
-          expect(s, `${o.label} at ${t}`).not.toBeNull();
-          const py = o.python[k], hz = o.horizons[k];
+          expect(s, `${o.name} at ${t}`).not.toBeNull();
+          const py = o.python.value[k], hz = o.horizons.value[k];
           worst = Math.max(worst, Math.hypot(s!.pos[0] - py[0], s!.pos[1] - py[1], s!.pos[2] - py[2]));
           worstHz = Math.max(worstHz, Math.hypot(s!.pos[0] - hz[0], s!.pos[1] - hz[1], s!.pos[2] - hz[2]));
           n++;
         }
-        lines.push(`${o.label.padEnd(30)} vs Horizons ${worstHz.toFixed(3).padStart(9)} km (tol ${o.toleranceKm})`);
-        expect(worstHz, o.label).toBeLessThanOrEqual(o.toleranceKm);
+        lines.push(`${o.name.padEnd(30)} vs Horizons ${worstHz.toFixed(3).padStart(9)} km (tol ${o.toleranceKm})`);
+        expect(worstHz, o.name).toBeLessThanOrEqual(o.toleranceKm);
       }
       const ms = performance.now() - t0;
       console.log(`small-body CPU positions: ${n} states of ${record.objects.length} objects in ${ms.toFixed(0)} ms; worst vs pipeline ${worst.toExponential(2)} km\n${lines.join('\n')}`);

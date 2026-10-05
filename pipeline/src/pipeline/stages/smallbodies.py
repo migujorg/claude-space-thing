@@ -43,7 +43,7 @@ from ..download import record
 from ..output import write_json
 from ..paths import CACHE, OUT
 from ..photometry import filters, solar
-from ..schema import BuildContext, SourceRecord
+from ..schema import LABEL_ORDER, BuildContext, SourceRecord, sourced, worst
 from ..sb_table import LABEL_CODE, Field, write_table
 
 DEPENDS: tuple[str, ...] = ("ephemeris", "light")
@@ -540,14 +540,12 @@ def run(ctx: BuildContext) -> None:
         "products": {k: ctx.products[k]["sha256"] for k in (f"{DIR}/core.json", f"{DIR}/core.bin",
                                                             f"{DIR}/nongrav.bin", f"{DIR}/names.txt")},
         "stepDays": RECORD_STEP_DAYS,
-        "objects": verification_objects(cat, model, res, flags),
+        "objects": [_record_object(o, LABEL_ORDER[int(pos_label[o["coreRow"]])], sources[int(pos_src[o["coreRow"]])])
+                    for o in verification_objects(cat, model, res, flags)],
         "closeApproaches": close_approach_cases(cad[0], cad[1], cat, flags, ctx.start_et, ctx.end_et),
-        "label": "derived", "sources": ["jpl-sbdb-orbits", "jpl-sbdb-nongrav", "jpl-horizons-sb-states", "jpl-cneos-cad"],
-        "method": "objects: stateCommon is the object's record in core.bin; python the stage's integrator from it, "
-                  "chained outward from epochEt on the integration grid; horizons JPL Horizons heliocentric ICRF "
-                  "(query in horizonsQueryUrl), fetched by this run for the same orbit solution (orbitId = "
-                  "horizonsSolution, or the build fails). maxErrKm is over every grid epoch of the window, not only "
-                  "the ones kept here.",
+        "notes": "Horizons answers are for the orbit solution the catalogue holds (orbitId = horizonsSolution, or "
+                 "the build fails). maxErrKm is over every grid epoch of the window (2 d), not only the ones kept "
+                 "here (stepDays).",
     }, STAGE, indent=None)
     timing["total"] = round(time.time() - t_stage, 1)
     report = {"generated": _dt.datetime.now(_dt.timezone.utc).isoformat(timespec="seconds"), "epochEt": common,
@@ -600,6 +598,29 @@ def verification_objects(cat: sb_catalog.Catalog, model: sb_model.ForceModel, re
     return out
 
 
+def _record_object(o: dict, pos_label: str, pos_source: str) -> dict:
+    """A verification object as the build record holds it: what identifies it, and its states as Sourced values
+    (docs/architecture.md 2.2). `o` is an entry of verification_objects; pos_label and pos_source are the label and
+    source of its position in core.bin."""
+    orbit = [pos_source] + (["jpl-sbdb-nongrav"] if o["nonGrav"] else [])
+    return {
+        "name": o["label"], "category": o["category"], "designation": o["designation"], "spkid": o["spkid"],
+        "coreRow": o["coreRow"], "orbitId": o["orbitId"], "horizonsSolution": o["horizonsSolution"],
+        "horizonsQueryUrl": o["horizonsQueryUrl"], "epochs": o["epochs"],
+        "stateCommon": sourced(o["stateCommon"], pos_label, [pos_source], unit="km, km/s",
+                               method="The object's record in smallbodies/core.bin: heliocentric ICRF state at "
+                                      "epochEt."),
+        "python": sourced(o["python"], worst(pos_label, "derived"),
+                          [*orbit, "naif-de442s", "naif-gm-de440", "naif-pck00011"], unit="km, km/s",
+                          method="stateCommon integrated to each of `epochs` by this stage with the product's "
+                                 "forceModel (sb_model.propagate), chained outward from epochEt on the grid."),
+        "horizons": sourced(o["horizons"], "derived", ["jpl-horizons-sb-states"], unit="km",
+                            method="JPL Horizons heliocentric ICRF position at each of `epochs` (TDB), fetched by "
+                                   "this run (horizonsQueryUrl) for the solution horizonsSolution."),
+        "maxErrKm": o["maxErrKm"], "toleranceKm": o["toleranceKm"], "maxLevel": o["maxLevel"],
+    }
+
+
 def close_approach_cases(doc: dict, rec: dict, cat: sb_catalog.Catalog, flags: np.ndarray, start_et: float,
                          end_et: float) -> dict:
     """Earth and Moon approaches of the CNEOS answer that our propagation of the catalogue must reproduce: inside
@@ -638,14 +659,16 @@ def close_approach_cases(doc: dict, rec: dict, cat: sb_catalog.Catalog, flags: n
     for c in by_time[:CA_EDGES] + by_time[len(by_time) - CA_EDGES:]:
         keep[id(c[2])] = c
     fields = ["des", "orbit_id", "jd", "cd", "dist", "v_rel", "body", "t_sigma_f"]
+    rows = [[int(row), et, *(r[f[k]] for k in fields)] for et, row, r in sorted(keep.values(), key=lambda c: c[0])]
     return {
-        "source": "jpl-cneos-cad", "url": rec["url"], "sha256": rec["sha256"], "retrieved": rec["retrieved"],
-        "rule": f"Earth and Moon rows inside the window whose orbit_id is the catalogue's and whose object has a "
-                f"position and no non-gravitational or unmodelled terms: the {CA_CLOSEST['Earth']} closest to the "
-                f"Earth, the closest to the Moon, and the first and the last in time.",
-        "counts": counts, "fields": ["coreRow", "et", *fields],
-        "units": {"jd": "TDB", "dist": "au from the body centre", "v_rel": "km/s", "et": "TDB s past J2000"},
-        "rows": [[int(row), et, *(r[f[k]] for k in fields)] for et, row, r in sorted(keep.values(), key=lambda c: c[0])],
+        **sourced({"fields": ["coreRow", "et", *fields], "rows": rows}, "derived", ["jpl-cneos-cad"],
+                  unit="jd: TDB; dist: au from the body centre; v_rel: km/s; et: TDB s past J2000",
+                  method=f"Rows of the JPL CNEOS answer, values unchanged, with the catalogue row and the time as "
+                         f"ET. Kept: Earth and Moon rows inside the window whose orbit_id is the catalogue's and "
+                         f"whose object has a position and no non-gravitational or unmodelled terms; of those the "
+                         f"{CA_CLOSEST['Earth']} closest to the Earth, the closest to the Moon, and the first and "
+                         f"the last in time."),
+        "url": rec["url"], "sha256": rec["sha256"], "retrieved": rec["retrieved"], "counts": counts,
     }
 
 

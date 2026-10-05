@@ -173,13 +173,13 @@ export class MaxTracker {
 }
 
 // ---------------------------------------------------------------------------------------------- small bodies
-/** A verification object, in the committed reference (smallbody_reference.json) and in a build record alike. */
+/** A verification object of the committed reference (smallbody_reference.json). */
 export interface VerificationObject {
   label: string;
   category: string;
   designation: string;
   spkid: number;
-  /** Row in the catalogue of the build the file was made from. In the committed reference: not the build under test. */
+  /** Row in the catalogue of the build the reference was made from: not the build under test. */
   coreRow: number;
   horizonsSolution: string;
   elements: { qKm: number; e: number; iRad: number; nodeRad: number; periRad: number; dtPeriS: number; epochEt: number };
@@ -194,24 +194,37 @@ export interface VerificationObject {
   toleranceKm: number;
 }
 
+/** A value of a build record with its label and sources (schema.ts Sourced; never unknown in a record). */
+interface Recorded<T> {
+  value: T;
+  label: string;
+  sources: string[];
+}
+
 /** verification/smallbodies.json: the smallbodies stage's build record. */
 export interface SmallBodyRecord extends BuildRecordHeader {
   snapshot: string;
   epochEt: number;
   window: { startEt: number; endEt: number };
-  objects: VerificationObject[];
-  closeApproaches: {
-    rule: string;
-    counts: Record<string, number>;
-    fields: string[];
-    rows: (string | number)[][];
-  };
+  objects: {
+    name: string;
+    spkid: number;
+    /** Row in smallbodies/core.bin of this build. */
+    coreRow: number;
+    epochs: number[];
+    stateCommon: Recorded<number[]>;
+    /** The pipeline integrator's state at each epoch, and JPL Horizons' position. */
+    python: Recorded<number[][]>;
+    horizons: Recorded<number[][]>;
+    toleranceKm: number;
+  }[];
+  closeApproaches: Recorded<{ fields: string[]; rows: (string | number)[][] }> & { counts: Record<string, number> };
 }
 
 /** verification/orientation.json: the bodies stage's build record. */
 export interface OrientationRecord extends BuildRecordHeader {
   kernels: { source: string; file: string; sha256: string }[];
-  bodies: { id: number; frame: string; product: string; cases: { et: number; segment: number; label: string; sources: string[]; bodyToJ2000: number[] }[] }[];
+  bodies: { id: number; frame: string; product: string; cases: { et: number; segment: number; bodyToJ2000: Recorded<number[]> }[] }[];
 }
 
 const J2000_MS = Date.UTC(2000, 0, 1, 12, 0, 0);

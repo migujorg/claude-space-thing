@@ -94,9 +94,9 @@ describe.skipIf(!earth || !moon || !bodies)('Precise orientation (NAIF binary PC
           const m = p.bodyToIcrf(b.id, c.et);
           expect(m, `${b.frame} et ${c.et}: inside the product by construction`).not.toBeNull();
           const seg = p.segment(b.id, c.et)!;
-          expect(seg.label).toBe(c.label);
-          expect(seg.sources).toEqual(c.sources);
-          const err = maxDiff(m!, c.bodyToJ2000);
+          expect(seg.label).toBe(c.bodyToJ2000.label);
+          expect(seg.sources).toEqual(c.bodyToJ2000.sources);
+          const err = maxDiff(m!, c.bodyToJ2000.value);
           max.add(`${b.frame} (${seg.label}, ${seg.sources.join(' + ')})`, err, `et ${c.et}`);
           expect(err, `${b.frame} et ${c.et}`).toBeLessThan(ROUNDING);
           seen.add(`${b.id}/${p.header.segments.indexOf(seg)}`);

@@ -71,7 +71,9 @@ def test_close_approach_cases_keep_only_what_our_propagation_must_reproduce(cat)
     rec = {"url": "https://example.invalid/cad", "sha256": "0" * 64, "retrieved": "2026-10-03"}
     out = sbs.close_approach_cases({"fields": CAD_FIELDS, "data": rows}, rec, cat, flags, START, END)
 
-    assert out["counts"] == {"earthMoonRows": 15, "outsideWindow": 2, "notInCatalogue": 1, "otherOrbitSolution": 1,
+    assert out["label"] == "derived" and out["sources"] == ["jpl-cneos-cad"]
+    out, counts = out["value"], out["counts"]
+    assert counts == {"earthMoonRows": 15, "outsideWindow": 2, "notInCatalogue": 1, "otherOrbitSolution": 1,
                              "otherForceModel": 2, "comparable": 9}
     I = {k: n for n, k in enumerate(out["fields"])}
     kept = {(r[I["des"]], r[I["body"]], float(r[I["dist"]])) for r in out["rows"]}
@@ -83,14 +85,14 @@ def test_close_approach_cases_keep_only_what_our_propagation_must_reproduce(cat)
         assert START <= r[I["et"]] <= END and r[I["et"]] == (float(r[I["jd"]]) - sbs.J2000_JD) * DAY
         assert str(cat.s["pdes"][r[I["coreRow"]]]) == r[I["des"]]
         assert sb_verify.same_solution(cat.s["orbit_id"][r[I["coreRow"]]], r[I["orbit_id"]])
-    assert (out["source"], out["url"], out["sha256"]) == ("jpl-cneos-cad", rec["url"], rec["sha256"])
     json.dumps(out, allow_nan=False)
 
 
 def test_close_approach_cases_with_nothing_comparable(cat):
     out = sbs.close_approach_cases({"fields": CAD_FIELDS, "data": [_row(cat, "1", START - 1.0, 0.01)]},
                                    {"url": "u", "sha256": "s", "retrieved": "r"}, cat, _flags(cat), START, END)
-    assert out["rows"] == [] and out["counts"]["comparable"] == 0 and out["counts"]["outsideWindow"] == 1
+    assert out["value"]["rows"] == [] and out["counts"]["comparable"] == 0 and out["counts"]["outsideWindow"] == 1
+    assert (out["url"], out["sha256"]) == ("u", "s")
 
 
 def _result(cat, pdes: str, category: str, epochs: np.ndarray, bad: bool = False) -> sb_verify.Result:
@@ -128,6 +130,17 @@ def test_verification_objects_shape_rows_and_sampling(cat):
         sbs.TOL_DEFAULT_KM, sbs.TOL_COMET_NG_KM, sbs.TOL_LOW_Q_KM, sbs.TOL_ENCOUNTER_KM]
     assert by["1"]["maxErrKm"] == pytest.approx(np.sqrt(3.0))
     json.dumps(objs, allow_nan=False)
+
+    # In the build record the states are Sourced values with the label and source of the row's position.
+    rec = sbs._record_object(by["99942"], "derived", "jpl-sbdb-orbits")
+    assert rec["name"] == "99942" and rec["coreRow"] == by["99942"]["coreRow"] and "label" not in rec
+    assert rec["stateCommon"] == {"value": by["99942"]["stateCommon"], "label": "derived", "sources": ["jpl-sbdb-orbits"],
+                                  "unit": "km, km/s", "method": rec["stateCommon"]["method"]}
+    assert rec["python"]["value"] == by["99942"]["python"] and rec["python"]["label"] == "derived"
+    assert rec["python"]["sources"][:2] == ["jpl-sbdb-orbits", "jpl-sbdb-nongrav"]       # fitted A2: its source too
+    assert rec["horizons"]["value"] == by["99942"]["horizons"] and rec["horizons"]["sources"] == ["jpl-horizons-sb-states"]
+    est = sbs._record_object(by["1"], "estimated", "jpl-sbdb-orbits")
+    assert est["python"]["label"] == "estimated" and "jpl-sbdb-nongrav" not in est["python"]["sources"]
 
     # States a failed propagation left undefined are null in the record, never a number.
     bad = sbs.verification_objects(cat, Model, [_result(cat, "1", "main belt", epochs, bad=True)], _flags(cat))[0]
@@ -171,10 +184,10 @@ def test_bodies_stage_writes_spice_on_the_kernels_it_copied(tmp_path, monkeypatc
         assert sorted(c["segment"] for c in b["cases"]) == sorted(segs * bodies.RECORD_SAMPLES)
         worst = 0.0
         for c in b["cases"]:
-            s = header["segments"][c["segment"]]
-            assert s["startEt"] < c["et"] < s["endEt"] and c["label"] == s["label"] and c["sources"] == s["sources"]
+            s, m = header["segments"][c["segment"]], c["bodyToJ2000"]
+            assert s["startEt"] < c["et"] < s["endEt"] and m["label"] == s["label"] and m["sources"] == s["sources"]
             ours = ephem_orient.body_to_j2000(header, data, b["id"], c["et"])
-            worst = max(worst, float(np.abs(ours.reshape(-1) - np.array(c["bodyToJ2000"])).max()))
+            worst = max(worst, float(np.abs(ours.reshape(-1) - np.array(m["value"])).max()))
         print(f"{b['frame']}: max |product - record| = {worst:.2e} over {len(b['cases'])} epochs")
         assert worst < 1e-12   # the product holds the kernel's own records: rounding only
 
@@ -207,10 +220,12 @@ def test_built_smallbody_record_holds_the_states_of_core_bin():
     for o in rec["objects"]:
         i = o["coreRow"]
         assert names[i].split("\t")[0] == str(o["spkid"])
-        assert o["stateCommon"] == [*map(float, table["pos"][i]), *map(float, table["vel"][i])]
-        assert o["maxErrKm"] <= o["toleranceKm"] and o["orbitId"] and len(o["epochs"]) == len(o["python"])
+        assert o["stateCommon"]["value"] == [*map(float, table["pos"][i]), *map(float, table["vel"][i])]
+        assert o["stateCommon"]["label"] == core["labelEncoding"][int(table["posLabel"][i])]
+        assert o["maxErrKm"] <= o["toleranceKm"] and o["orbitId"]
+        assert len(o["epochs"]) == len(o["python"]["value"]) == len(o["horizons"]["value"])
         assert all(core["window"]["startEt"] <= t <= core["window"]["endEt"] for t in o["epochs"])
-    ca = rec["closeApproaches"]
+    ca = rec["closeApproaches"]["value"]
     I = {k: n for n, k in enumerate(ca["fields"])}
     for r in ca["rows"]:
         assert core["window"]["startEt"] <= r[I["et"]] <= core["window"]["endEt"]

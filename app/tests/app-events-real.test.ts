@@ -200,9 +200,9 @@ describe.skipIf(!built)('event finder on the real products', () => {
   const NEO = 'near-Earth objects: approaches computed from the catalogue orbits match JPL CNEOS';
   if (!haveSb) notCompared(NEO, 'smallbodies/core is not built (a minimal-profile build)');
   else if (!rec.record) notCompared(NEO, rec.why);
-  else if (rec.record.closeApproaches.rows.length === 0) notCompared(NEO, `JPL CNEOS lists no comparable approach in this window (${JSON.stringify(rec.record.closeApproaches.counts)})`);
+  else if (rec.record.closeApproaches.value.rows.length === 0) notCompared(NEO, `JPL CNEOS lists no comparable approach in this window (${JSON.stringify(rec.record.closeApproaches.counts)})`);
   else {
-    const ca = rec.record.closeApproaches;
+    const ca = rec.record.closeApproaches.value, counts = rec.record.closeApproaches.counts;
     it(`${NEO} (${ca.rows.length} approaches of this build's window, by the build record's rule)`, () => {
       expect(rec.unbound).toEqual([]);
       const core = JSON.parse(fs.readFileSync(DATA_DIR + 'smallbodies/core.json', 'utf8')) as SmallBodyCoreHeader;
@@ -241,7 +241,7 @@ describe.skipIf(!built)('event finder on the real products', () => {
       }
       expect(worstDt).toBeLessThan(2);
       expect(worstRel).toBeLessThan(1e-4);
-      console.log(`NEO approaches: ${cands.length} objects (${ca.rows.map((r) => `${r[I.des]} ${r[I.cd]} ${r[I.body]}`).join('; ')}) in ${ms.toFixed(0)} ms; vs CNEOS worst |dt| ${worstDt.toFixed(2)} s, worst |dd|/d ${worstRel.toExponential(2)}; counts ${JSON.stringify(ca.counts)}`);
+      console.log(`NEO approaches: ${cands.length} objects (${ca.rows.map((r) => `${r[I.des]} ${r[I.cd]} ${r[I.body]}`).join('; ')}) in ${ms.toFixed(0)} ms; vs CNEOS worst |dt| ${worstDt.toFixed(2)} s, worst |dd|/d ${worstRel.toExponential(2)}; counts ${JSON.stringify(counts)}`);
     }, 120_000);
   }
 });

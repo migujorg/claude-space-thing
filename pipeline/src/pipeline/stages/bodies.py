@@ -143,8 +143,9 @@ def orientation_record(ctx: BuildContext) -> dict:
                     for k in range(RECORD_SAMPLES):
                         et = seg["startEt"] + (seg["endEt"] - seg["startEt"]) * (k + 0.5) / RECORD_SAMPLES
                         m = np.array(sp.pxform(info["frame"], "J2000", et)).reshape(-1)
-                        cases.append({"et": et, "segment": n, "label": seg["label"], "sources": seg["sources"],
-                                      "bodyToJ2000": [float(x) for x in m]})
+                        # The label and sources of the segment: SPICE reads the same records the product holds.
+                        cases.append({"et": et, "segment": n,
+                                      "bodyToJ2000": sourced([float(x) for x in m], seg["label"], seg["sources"])})
                 bodies.append({"id": int(body), "frame": info["frame"], "product": product, "cases": cases})
     names = [f"{p}.{ext}" for p in dict.fromkeys(ORIENTATION.values()) for ext in ("json", "bin")]
     return {

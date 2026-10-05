@@ -122,10 +122,10 @@ describe.skipIf(!fs.existsSync(corePath))('smallbodies/core product against the 
     const names = fs.readFileSync(DATA_DIR + 'smallbodies/names.txt', 'utf8').split('\n');
     expect(record.objects.length).toBeGreaterThan(0);
     for (const o of record.objects) {
-      expect(names[o.coreRow].split('\t')[0], o.label).toBe(String(o.spkid));
+      expect(names[o.coreRow].split('\t')[0], o.name).toBe(String(o.spkid));
       const s = coreState(cat, o.coreRow);
-      expect(s, o.label).not.toBeNull();
-      for (let j = 0; j < 6; j++) expect(s![j], o.label).toBe(o.stateCommon[j]);
+      expect(s, o.name).not.toBeNull();
+      for (let j = 0; j < 6; j++) expect(s![j], o.name).toBe(o.stateCommon.value[j]);
     }
   });
 });
