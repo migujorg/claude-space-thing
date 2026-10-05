@@ -102,9 +102,9 @@ describe('earthShade', () => {
       const header = {
         constants: {
           unmeasuredTau: {
-            label: 'estimated',
-            tauBinLnCentre: [-2.905, -0.471, 0.772, 1.761, 2.688, 3.615, 4.552],
-            statistics: { floorCellsZero: { partlyCloudyAllHeights: { binProbability: [0.0421, 0.4675, 0.335, 0.1317, 0.0237, 0, 0] } } },
+            label: 'estimated', sources: ['pincus2023-modis-cosp'],
+            value: { tauBinLnCentre: [-2.905, -0.471, 0.772, 1.761, 2.688, 3.615, 4.552],
+            statistics: { floorCellsZero: { partlyCloudyAllHeights: { binProbability: [0.0421, 0.4675, 0.335, 0.1317, 0.0237, 0, 0] } } } },
           },
         },
       };
@@ -116,7 +116,8 @@ describe('earthShade', () => {
         expect(pop.p.reduce((a, b) => a + b, 0)).toBeCloseTo(1, 12);
         for (const [mu0, R] of check) expect(populationPlaneAlbedo(pop, CLOUD_G_LIQUID, mu0)).toBeCloseTo(R, 3);
         expect(unmeasuredTauPopulation({ constants: {} })).toBeNull();
-        expect(unmeasuredTauPopulation({ constants: { unmeasuredTau: { tauBinLnCentre: [0, 1], statistics: { floorCellsZero: { partlyCloudyAllHeights: { binProbability: [0.5] } } } } } })).toBeNull();
+        expect(unmeasuredTauPopulation({ constants: { unmeasuredTau: { value: null, label: 'unknown', sources: [] } } })).toBeNull();
+        expect(unmeasuredTauPopulation({ constants: { unmeasuredTau: { label: 'estimated', sources: ['s'], value: { tauBinLnCentre: [0, 1], statistics: { floorCellsZero: { partlyCloudyAllHeights: { binProbability: [0.5] } } } } } } })).toBeNull();
       });
       it('gives the share C − f_τ its own population: no longer unknown, and black-surface cloud light = f·R̄_ret + (C − f)·R̄_pop', () => {
         const mu0 = 0.8;

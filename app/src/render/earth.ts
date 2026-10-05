@@ -221,8 +221,11 @@ export interface CloudPopulation {
 export function unmeasuredTauPopulation(header: unknown): (CloudPopulation & { label: string }) | null {
   const u = (header as { constants?: { unmeasuredTau?: Record<string, unknown> } } | null)?.constants?.unmeasuredTau;
   if (!u) return null;
-  const ln = u.tauBinLnCentre;
-  const stats = u.statistics as Record<string, Record<string, { binProbability?: unknown }>> | undefined;
+  const value = u.value;
+  if (!value || typeof value !== 'object') return null;
+  const payload = value as Record<string, unknown>;
+  const ln = payload.tauBinLnCentre;
+  const stats = payload.statistics as Record<string, Record<string, { binProbability?: unknown }>> | undefined;
   const pr = stats?.floorCellsZero?.partlyCloudyAllHeights?.binProbability;
   if (!Array.isArray(ln) || !Array.isArray(pr) || ln.length !== pr.length || ln.length === 0) return null;
   if (!ln.every((x) => typeof x === 'number' && fin(x)) || !pr.every((x) => typeof x === 'number' && fin(x) && x >= 0)) return null;
