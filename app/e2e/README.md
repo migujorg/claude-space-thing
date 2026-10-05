@@ -2,7 +2,7 @@
 
 `npm run e2e` renders the canonical views in [`scenes.json`](scenes.json) with the real app and the real data, then compares them with the committed baseline in [`baseline/`](baseline/).
 
-The suite uses one Vite server and one headless Chromium with SwiftShader WebGPU, and renders at most two scenes at a time. SwiftShader is slow: a scene takes about 1–3 minutes, and the whole suite about 15 minutes.
+The suite uses one Vite server and one headless Chromium with SwiftShader WebGPU, and renders at most two scenes at a time. SwiftShader is slow: on a 4-vCPU cloud workspace a scene takes about 1–3 minutes and the whole suite about 15 minutes; on the 32-thread workstation a scene takes 7–86 s and the suite 6 minutes. `--gpu hardware` renders on the machine's GPU instead, in about a minute: see [On the GPU](#on-the-gpu---gpu-hardware).
 
 The suite needs the built data in `app/public/data`. It cannot run in CI, which has no data and no WebGPU; CI runs the unit tests, including `tests/e2e-lib.test.ts` for the comparison logic.
 
@@ -14,7 +14,7 @@ All output goes to `app/shots/e2e/`, which git ignores.
 |---|---|
 | `<id>.png` | Screenshot of the page, with the UI. For people. |
 | `<id>.thumb.png` | 64×36 thumbnail of the rendered image only, without UI overlays. Box-averaged in linear light. |
-| `report.json` | For each scene: renderer stats, a trimmed `debugState()`, the 16×9 lightness grid, console errors and warnings, and the comparison. |
+| `report.json` | For each scene: renderer stats, a trimmed `debugState()`, the 16×9 lightness grid, console errors and warnings, the WebGPU adapter and HDR target format it rendered with, and the comparison. For the run: `gpu`, the mode asked for and the adapter. |
 | `stats.txt` | The stats table that is also printed to the console. |
 
 ## What is compared
@@ -76,7 +76,44 @@ npm run e2e -- --only earth-day,saturn-rings  # some scenes
 npm run e2e -- --no-compare                   # render and report only
 npm run e2e -- --jobs 1 --timeout 900         # one scene at a time, 15 min per scene (default 2 and 600 s)
 npm run e2e -- --base http://localhost:5173   # use a running dev server
+npm run e2e -- --gpu hardware                 # on the machine's GPU instead of SwiftShader (see below)
 ```
+
+## On the GPU (`--gpu hardware`)
+
+`e2e.mjs`, `validate.mjs` and `shot.mjs` take `--gpu swiftshader|hardware`. The default is `swiftshader`, with the browser arguments the scripts always used. `hardware` launches the same headless Chromium on the system's Vulkan drivers (`gpuLaunchArgs` in `scripts/e2e-lib.mjs`):
+
+```
+--enable-unsafe-webgpu --enable-features=Vulkan --use-angle=vulkan --disable-vulkan-surface --ignore-gpu-blocklist
+```
+
+- `--use-angle=vulkan` and `--enable-features=Vulkan` are both needed. With either one alone the adapter is still SwiftShader.
+- No display, X11 or environment variable is needed. The app asks for the `high-performance` adapter and gets the discrete GPU.
+- Chromium falls back to SwiftShader without a word when Vulkan does not initialize. A `hardware` run therefore checks the adapter the page got and fails if it is a software one: every scene in `e2e`, the whole run in `validate`, exit 1 in `shot`. `DEBUG=pw:browser` shows the browser's own log.
+- To pin a driver, set `VK_DRIVER_FILES` to its ICD file. This works only because of `--disable-vulkan-surface`: without it, `VK_DRIVER_FILES=/usr/share/vulkan/icd.d/nvidia_icd.x86_64.json` makes `vkCreateInstance` fail (`-7`, extension not present) and the run falls back to SwiftShader.
+
+Measured on the workstation (RTX 5090, NVIDIA driver 615.71, Playwright's Chromium 141 headless shell, data built 2026-10-05, `rc` at 08c1941):
+
+| | SwiftShader | GPU |
+|---|---|---|
+| Adapter (`vendor architecture`) | `google swiftshader` | `nvidia blackwell` |
+| `float32-blendable`, so HDR targets | yes, `rgba32float` | yes, `rgba32float` |
+| `npm run e2e`, 26 scenes, wall time | 5 min 41 s and 5 min 49 s | 63–85 s (six runs) |
+| Time to `__frameReady` per scene | 7–86 s, median 20 s | 3–17 s, median 4–5 s |
+| The frame in the stats (`renderer.stats.frameMs`), median over the scenes | 1.6–1.8 s | 9–16 ms |
+| `npm run validate`, 11 cases, wall time | 66 s and 69 s | 58 s and 59 s |
+| Render and settle per validation case, without Himawari and Pluto | 0.09–1.2 s | 25–430 ms |
+| Pluto case | 2.3 s and 4.3 s | 1.9 s and 2.0 s |
+| Himawari case (the same on both: its time is not GPU time) | 55 s | 52 s |
+
+How the numbers differ between the two adapters, same tree and data:
+
+- **Validation (HDR readback):** the same 39 pass, 25 fail, 5 not compared, with the same failing channels. Of the 276 channel means (69 regions × X, Y, Z, S), 92 are identical and 184 differ, by 3 × 10⁻⁶ to 6 × 10⁻³ relative (median 5 × 10⁻⁴; the largest are a sky-near and a terminator region), against tolerances of 5 % and more. Two runs on the same adapter are bit-identical, on either adapter.
+- **Scene stats:** over six GPU runs against a SwiftShader run, adaptation luminance within 0.005 dex (1.1 %), pupil within 0.001 mm, limiting magnitude within 0.007 mag, the same bodies, points, labels and warnings, and the coarse image within 0.003 lightness. Every scene passes against the SwiftShader baseline on all of these.
+- **Stars drawn is not one number on the GPU.** In 9 of the 26 scenes the count alternates between two values on consecutive frames: pluto-charon 902 ↔ 1107, 908 ↔ 1101 or 965 ↔ 1043 depending on the run (the two-frame mean stays at 1004–1005), jupiter-galileans 179 ↔ 186, and earth-night, uranus, neptune, starfield, starfield-enhanced, comet-lemmon and hyperion-fallback by 2 % or less (starfield-dark-30min, whose adaptation runs in real time, also moves by a few stars). The renderer culls each star against the light of the frame before, which holds the other stars' light. SwiftShader shows the same alternation (pluto-charon 996 ↔ 1014), but its frames take about a second, so a script reads the same frame on almost every run; on the GPU the read lands on either. In six GPU runs pluto-charon failed the 5 % star tolerance three times (809, 909 and 1101 against 1015), and nothing else failed. A `hardware` run records the values seen over 16 animation frames in `starsDrawnFrames` and prints a note for a scene where they differ.
+- **The sky cube** is 512² on a hardware adapter and 256² on a software one (`src/app/sky.ts`), so the sky background is not the same computation on the two.
+
+The committed baseline was accepted on SwiftShader. A baseline accepted with `--gpu` records the mode and the adapter, and comparing a run with a baseline of the other kind prints a note.
 
 ## Accepting a new baseline
 
@@ -105,7 +142,7 @@ The baseline records the data build it was made with: the manifest's `generatedA
 
 # Validation against calibrated images
 
-`npm run validate` compares the renderer with real, calibrated spacecraft and satellite images. It uses the eleven ground-truth cases in [`validation/`](../../validation), from Cassini, Voyager 2, New Horizons, EPOXI and Himawari-9. How they were made, and what their tolerances mean, is in [docs/reports/validation.md](../../docs/reports/validation.md). Like the scene suite, it needs the built data in `app/public/data` and SwiftShader WebGPU. It is not part of CI.
+`npm run validate` compares the renderer with real, calibrated spacecraft and satellite images. It uses the eleven ground-truth cases in [`validation/`](../../validation), from Cassini, Voyager 2, New Horizons, EPOXI and Himawari-9. How they were made, and what their tolerances mean, is in [docs/reports/validation.md](../../docs/reports/validation.md). Like the scene suite, it needs the built data in `app/public/data` and WebGPU: SwiftShader by default, the machine's GPU with `--gpu hardware` ([On the GPU](#on-the-gpu---gpu-hardware)). It is not part of CI.
 
 For each case, the runner (`scripts/validate.mjs`, page `validation.html`, code in `src/validation/`) does three things.
 
@@ -131,12 +168,15 @@ For each case, the runner (`scripts/validate.mjs`, page `validation.html`, code 
 
 ```sh
 cd app
-npm run validate                                   # all cases (about 4 minutes; Himawari is the slowest)
+npm run validate                                   # all cases (about 1 minute on the workstation, 4 on a cloud workspace; Himawari is the slowest)
 npm run validate -- --only io-nh-lorri-2007        # some cases
 npm run validate -- --ss 2                         # 2 × 2 samples per pixel (the references are pixel-area averages)
 npm run validate -- --reality strict               # measured and derived data only
 npm run validate -- --hdr f16                      # the rgba16float fallback targets
 npm run validate -- --strict                       # exit 1 when a region fails (default: only when a case does not render)
+npm run validate -- --gpu hardware                 # on the machine's GPU instead of SwiftShader
 ```
+
+`report.md`'s header and `report.json` (`gpu`, and `hdrFormat` per case) say which adapter and which HDR targets rendered the run.
 
 From a script, the page exposes `window.__validation.run(case, { ss, reality })`. For experiments with a changed scene, it also exposes `window.__validation.debug`, which is `{ renderer, data }`.
