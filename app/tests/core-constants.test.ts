@@ -28,7 +28,9 @@ it('defines physical coefficients and display standards only in the cited consta
     const file = ts.createSourceFile(path, fs.readFileSync(path, 'utf8'), ts.ScriptTarget.Latest, true);
     const visit = (node: ts.Node) => {
       if (ts.isNumericLiteral(node) && (physical.has(Number(node.text)) ||
-        (path.endsWith('/render/earth.ts') && Number(node.text) === 1.02))) {
+        (path.endsWith('/render/earth.ts') && Number(node.text) === 1.02) ||
+        (path.endsWith('/app/sky.ts') && Number(node.text) === 6.5 &&
+          ts.isCallExpression(node.parent) && node.parent.expression.getText(file) === 'luxFromMagnitude'))) {
         offenders.push(`${path.slice(src.length)}:${file.getLineAndCharacterOfPosition(node.getStart()).line + 1}: ${node.text}`);
       }
       ts.forEachChild(node, visit);

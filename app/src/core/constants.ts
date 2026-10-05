@@ -80,6 +80,13 @@ export const EARTH_MEAN_LONGITUDE = { epochDeg: 100.46457166, rateDegPerCentury:
 export const S10_PER_SOLAR_FLUX_SR = 6.61e-12;
 
 /**
+ * Pioneer IPP sky maps' bright-star removal threshold, V mag. Leinert et al. (1998), §10.4,
+ * p. 69 and Table 34 (DOI:10.1051/aas:1998105): stars typically brighter than 6.5 mag removed.
+ * Used only to select the same comparison population in the sky diagnostic.
+ */
+export const PIONEER_STAR_REMOVAL_V_MAG = 6.5;
+
+/**
  * Faint H_g limit of the CFEPS L7 synthetic model v0.9 (Petit et al. 2011; Gladman et al. 2012).
  * Defining model release: https://www.cfeps.net/L7Release/L7SyntheticModel-v09.txt.gz
  * (pipeline source cfeps-l7-synthetic-model; model page https://www.cfeps.net/?page_id=105).

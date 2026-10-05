@@ -1,6 +1,6 @@
 // Inspector view-model for a synthetic object (the COMPLETE level; pipeline stage synthetic): what it stands for
 // (its population model, cell, the numbers of the conditioning, its seed) and its attributes, every one labelled
-// synthetic. Pure, no DOM. Every number comes from synthetic/objects + cells and their headers.
+// synthetic. Pure, no DOM. Numbers come from synthetic/objects + cells and their headers, or cited core constants.
 
 import { CFEPS_L7_HG_MAX, D_H_CONSTANT_KM } from '../core/constants';
 import type { SyntheticPopulation } from '../data/schema';

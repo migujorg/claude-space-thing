@@ -24,6 +24,7 @@ import { npix, pix2vec, vec2pix } from '../render/sky/healpix';
 import { AU_KM, earthMeanLongitude, icrfToEcliptic, losBrightness, parseZodiacal, zodiXYZS, type ZodiParams } from '../render/sky/zodiacal';
 import { coronaXYZS, cyclePhase, fNear, kBrightness, kFootprintN, parseCorona, poleFromRaDec, type CoronaParams } from '../render/sky/corona';
 import { luxFromMagnitude } from '../eye/crumey';
+import { PIONEER_STAR_REMOVAL_V_MAG } from '../core/constants';
 import { CRUMEY } from '../eye/constants';
 import type { RendererPort, Vec3 } from './ports';
 
@@ -465,7 +466,7 @@ export class SkyController {
       const a = [0, 0, 0, 0];
       // the same for points fainter than V = 6.5 only (Leinert Table 34 removes the brighter stars)
       const a65 = [0, 0, 0, 0];
-      const y65 = luxFromMagnitude(6.5);
+      const y65 = luxFromMagnitude(PIONEER_STAR_REMOVAL_V_MAG);
       for (let k = 0; k < this.points.length; k++) {
         if (pd[k * 7] * d[0] + pd[k * 7 + 1] * d[1] + pd[k * 7 + 2] * d[2] < c) continue;
         for (let j = 0; j < 4; j++) a[j] += pd[k * 7 + 3 + j] / om;
