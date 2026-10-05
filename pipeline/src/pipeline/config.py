@@ -122,6 +122,10 @@ PARAMS: dict[str, Param] = {p.key: p for p in [
     Param("gaia.tapService", _choice("esa", "ari"), "esa",
           "Gaia catalogue TAP provider: ESA or its ARI Heidelberg partner archive (same Gaia release).",
           env="PIPELINE_GAIA_TAP_SERVICE", stages=("stars", "deepstars", "sky")),
+    Param("gaia.sumsFormat", _choice("csv", "fits"), "csv",
+          "Faint-star TAP sum result format. Verified CSV results are reused; FITS uses the DR3 lite table "
+          "unless a valid full-table FITS result is cached.",
+          env="PIPELINE_GAIA_SUMS_FORMAT", stages=("sky",)),
     Param("gaia.release", str, "dr3",
           "Gaia data release (stars_gaia.RELEASES).", env="PIPELINE_GAIA_RELEASE",
           stages=("stars", "deepstars", "sky")),
