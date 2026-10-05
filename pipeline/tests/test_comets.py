@@ -273,4 +273,10 @@ def test_list_product():
     lst = json.loads((OUT / "comets" / "list.json").read_text())
     mags = [n["peakMag"] for n in lst["notable"]]
     assert mags == sorted(mags) and all(m <= lst["notableMag"] for m in mags)
-    assert lst["showcase"]["designation"] in [n["designation"] for n in lst["notable"]]
+    best = next((n for n in lst["notable"] if n["elongationDeg"] >= comets.SHOWCASE_MIN_ELONGATION
+                 and "-" not in n["designation"]), None)
+    if best is None:
+        assert lst["showcase"] is None
+    else:
+        assert lst["showcase"]["row"] == best["row"]
+        assert lst["showcase"]["designation"] == best["designation"]
