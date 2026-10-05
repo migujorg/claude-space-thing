@@ -1,5 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1140" height="640" viewBox="0 0 1140 640" font-family="sans-serif" font-size="11">
-<rect width="1140" height="640" fill="white"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="1140" height="1296" viewBox="0 0 1140 1296" font-family="sans-serif" font-size="11">
+<rect width="1140" height="1296" fill="white"/>
 <text x="52" y="16" font-weight="bold">NEOs (Granvik et al. 2018 model)</text>
 <rect x="52" y="26" width="314" height="252" fill="none" stroke="#bbb"/>
 <line x1="52" x2="366" y1="278.0" y2="278.0" stroke="#eee"/>
@@ -193,5 +193,133 @@
 <polyline points="840.5,558.8 869.1,528.4 897.6,510.3 926.2,489.4 954.7,471.0 983.3,448.1 1011.8,425.7 1040.4,403.5 1068.9,381.4 1097.5,358.8 1126.0,355.5" fill="none" stroke="#d95f02" stroke-width="1.6"/>
 <line x1="820" x2="842" y1="384" y2="384" stroke="#d95f02" stroke-width="1.6"/>
 <text x="846" y="388">catalogue + synthetic (total to the floor: 64,756)</text>
-<text x="8" y="634" fill="#555">Cumulative number N(&lt;H) inside each population's grid, below its H floor. Synthetic objects appear only fainter than the completeness limit of their a-bin. (pipeline stage synthetic; numbers in docs/reports/synthetic-populations.json)</text>
+<text x="52" y="656" font-weight="bold">Centaurs (Kurlander et al. 2025 model)</text>
+<rect x="52" y="666" width="314" height="252" fill="none" stroke="#bbb"/>
+<line x1="52" x2="366" y1="918.0" y2="918.0" stroke="#eee"/>
+<text x="48" y="922.0" text-anchor="end">1e0</text>
+<line x1="52" x2="366" y1="867.6" y2="867.6" stroke="#eee"/>
+<text x="48" y="871.6" text-anchor="end">1e1</text>
+<line x1="52" x2="366" y1="817.2" y2="817.2" stroke="#eee"/>
+<text x="48" y="821.2" text-anchor="end">1e2</text>
+<line x1="52" x2="366" y1="766.8" y2="766.8" stroke="#eee"/>
+<text x="48" y="770.8" text-anchor="end">1e3</text>
+<line x1="52" x2="366" y1="716.4" y2="716.4" stroke="#eee"/>
+<text x="48" y="720.4" text-anchor="end">1e4</text>
+<line x1="52" x2="366" y1="666.0" y2="666.0" stroke="#eee"/>
+<text x="48" y="670.0" text-anchor="end">1e5</text>
+<text x="72.9" y="932" text-anchor="middle">7</text>
+<text x="114.8" y="932" text-anchor="middle">8</text>
+<text x="156.7" y="932" text-anchor="middle">9</text>
+<text x="198.5" y="932" text-anchor="middle">10</text>
+<text x="240.4" y="932" text-anchor="middle">11</text>
+<text x="282.3" y="932" text-anchor="middle">12</text>
+<text x="324.1" y="932" text-anchor="middle">13</text>
+<text x="366.0" y="932" text-anchor="middle">14</text>
+<text x="209.0" y="946" text-anchor="middle">H (V mag)</text>
+<polyline points="72.9,887.7 93.9,858.7 114.8,831.5 135.7,817.9 156.7,805.3 177.6,792.6 198.5,781.4 219.5,770.6 240.4,759.5 261.3,749.3 282.3,739.3 303.2,729.4 324.1,719.3 345.1,709.3 366.0,699.7" fill="none" stroke="#222" stroke-width="1.6" stroke-dasharray="5,3"/>
+<line x1="60" x2="82" y1="676" y2="676" stroke="#222" stroke-width="1.6" stroke-dasharray="5,3"/>
+<text x="86" y="680">model (total to the floor: 21,400)</text>
+<polyline points="72.9,887.7 93.9,861.9 114.8,849.4 135.7,836.2 156.7,824.7 177.6,814.9 198.5,809.5 219.5,805.3 240.4,801.8 261.3,797.9 282.3,795.0 303.2,792.9 324.1,791.3 345.1,789.0 366.0,787.4" fill="none" stroke="#888" stroke-width="1.4"/>
+<line x1="60" x2="82" y1="690" y2="690" stroke="#888" stroke-width="1.4"/>
+<text x="86" y="694">catalogue (total to the floor: 390)</text>
+<polyline points="72.9,887.7 93.9,861.9 114.8,840.2 135.7,826.3 156.7,810.5 177.6,795.5 198.5,783.1 219.5,771.7 240.4,760.2 261.3,749.7 282.3,739.6 303.2,729.7 324.1,719.4 345.1,709.4 366.0,699.8" fill="none" stroke="#d95f02" stroke-width="1.6"/>
+<line x1="60" x2="82" y1="704" y2="704" stroke="#d95f02" stroke-width="1.6"/>
+<text x="86" y="708">catalogue + synthetic (total to the floor: 21,327)</text>
+<text x="432" y="656" font-weight="bold">Jupiter's retrograde irregular moons</text>
+<rect x="432" y="666" width="314" height="252" fill="none" stroke="#bbb"/>
+<line x1="432" x2="746" y1="918.0" y2="918.0" stroke="#eee"/>
+<text x="428" y="922.0" text-anchor="end">1e0</text>
+<line x1="432" x2="746" y1="834.0" y2="834.0" stroke="#eee"/>
+<text x="428" y="838.0" text-anchor="end">1e1</text>
+<line x1="432" x2="746" y1="750.0" y2="750.0" stroke="#eee"/>
+<text x="428" y="754.0" text-anchor="end">1e2</text>
+<line x1="432" x2="746" y1="666.0" y2="666.0" stroke="#eee"/>
+<text x="428" y="670.0" text-anchor="end">1e3</text>
+<text x="432.0" y="932" text-anchor="middle">10</text>
+<text x="498.1" y="932" text-anchor="middle">12</text>
+<text x="564.2" y="932" text-anchor="middle">14</text>
+<text x="630.3" y="932" text-anchor="middle">16</text>
+<text x="696.4" y="932" text-anchor="middle">18</text>
+<text x="589.0" y="946" text-anchor="middle">H (V mag)</text>
+<polyline points="448.5,918.0 465.1,892.7 481.6,877.9 498.1,867.4 514.6,867.4 531.2,867.4 547.7,867.4 564.2,867.4 580.7,859.3 597.3,852.6 613.8,834.0 630.3,806.9 646.8,784.4 663.4,764.6 679.9,753.8 696.4,735.4 712.9,715.8 729.5,699.2 746.0,689.1" fill="none" stroke="#222" stroke-width="1.6" stroke-dasharray="5,3"/>
+<line x1="440" x2="462" y1="676" y2="676" stroke="#222" stroke-width="1.6" stroke-dasharray="5,3"/>
+<text x="466" y="680">model (total to the floor: 531)</text>
+<polyline points="448.5,918.0 465.1,892.7 481.6,877.9 498.1,867.4 514.6,867.4 531.2,867.4 547.7,867.4 564.2,867.4 580.7,859.3 597.3,852.6 613.8,834.0 630.3,806.9 646.8,784.4 663.4,764.6 679.9,753.8 696.4,753.0 712.9,753.0 729.5,753.0 746.0,753.0" fill="none" stroke="#888" stroke-width="1.4"/>
+<line x1="440" x2="462" y1="690" y2="690" stroke="#888" stroke-width="1.4"/>
+<text x="466" y="694">catalogue (total to the floor: 92)</text>
+<polyline points="448.5,918.0 465.1,892.7 481.6,877.9 498.1,867.4 514.6,867.4 531.2,867.4 547.7,867.4 564.2,867.4 580.7,859.3 597.3,852.6 613.8,834.0 630.3,806.9 646.8,784.4 663.4,764.6 679.9,753.8 696.4,735.7 712.9,716.4 729.5,700.0 746.0,689.4" fill="none" stroke="#d95f02" stroke-width="1.6"/>
+<line x1="440" x2="462" y1="704" y2="704" stroke="#d95f02" stroke-width="1.6"/>
+<text x="466" y="708">catalogue + synthetic (total to the floor: 527)</text>
+<text x="812" y="656" font-weight="bold">Saturn's irregular moons</text>
+<rect x="812" y="666" width="314" height="252" fill="none" stroke="#bbb"/>
+<line x1="812" x2="1126" y1="918.0" y2="918.0" stroke="#eee"/>
+<text x="808" y="922.0" text-anchor="end">1e0</text>
+<line x1="812" x2="1126" y1="834.0" y2="834.0" stroke="#eee"/>
+<text x="808" y="838.0" text-anchor="end">1e1</text>
+<line x1="812" x2="1126" y1="750.0" y2="750.0" stroke="#eee"/>
+<text x="808" y="754.0" text-anchor="end">1e2</text>
+<line x1="812" x2="1126" y1="666.0" y2="666.0" stroke="#eee"/>
+<text x="808" y="670.0" text-anchor="end">1e3</text>
+<text x="827.7" y="932" text-anchor="middle">7</text>
+<text x="890.5" y="932" text-anchor="middle">9</text>
+<text x="953.3" y="932" text-anchor="middle">11</text>
+<text x="1016.1" y="932" text-anchor="middle">13</text>
+<text x="1078.9" y="932" text-anchor="middle">15</text>
+<text x="969.0" y="946" text-anchor="middle">H (V mag)</text>
+<polyline points="827.7,918.0 843.4,918.0 859.1,918.0 874.8,918.0 890.5,918.0 906.2,918.0 921.9,918.0 937.6,918.0 953.3,892.7 969.0,877.9 984.7,867.4 1000.4,859.3 1016.1,852.6 1031.8,842.1 1047.5,837.8 1063.2,827.3 1078.9,808.7 1094.6,799.1 1110.3,763.5 1126.0,739.2" fill="none" stroke="#222" stroke-width="1.6" stroke-dasharray="5,3"/>
+<line x1="820" x2="842" y1="676" y2="676" stroke="#222" stroke-width="1.6" stroke-dasharray="5,3"/>
+<text x="846" y="680">model (total to the floor: 135)</text>
+<polyline points="827.7,918.0 843.4,918.0 859.1,918.0 874.8,918.0 890.5,918.0 906.2,918.0 921.9,918.0 937.6,918.0 953.3,892.7 969.0,877.9 984.7,867.4 1000.4,859.3 1016.1,852.6 1031.8,842.1 1047.5,837.8 1063.2,827.3 1078.9,808.7 1094.6,799.1 1110.3,763.5 1126.0,744.9" fill="none" stroke="#888" stroke-width="1.4"/>
+<line x1="820" x2="842" y1="690" y2="690" stroke="#888" stroke-width="1.4"/>
+<text x="846" y="694">catalogue (total to the floor: 115)</text>
+<polyline points="827.7,918.0 843.4,918.0 859.1,918.0 874.8,918.0 890.5,918.0 906.2,918.0 921.9,918.0 937.6,918.0 953.3,892.7 969.0,877.9 984.7,867.4 1000.4,859.3 1016.1,852.6 1031.8,842.1 1047.5,837.8 1063.2,827.3 1078.9,808.7 1094.6,799.1 1110.3,763.5 1126.0,738.3" fill="none" stroke="#d95f02" stroke-width="1.6"/>
+<line x1="820" x2="842" y1="704" y2="704" stroke="#d95f02" stroke-width="1.6"/>
+<text x="846" y="708">catalogue + synthetic (total to the floor: 138)</text>
+<text x="52" y="976" font-weight="bold">Uranus's irregular moons (no model)</text>
+<rect x="52" y="986" width="314" height="252" fill="none" stroke="#bbb"/>
+<line x1="52" x2="366" y1="1238.0" y2="1238.0" stroke="#eee"/>
+<text x="48" y="1242.0" text-anchor="end">1e0</text>
+<line x1="52" x2="366" y1="986.0" y2="986.0" stroke="#eee"/>
+<text x="48" y="990.0" text-anchor="end">1e1</text>
+<text x="52.0" y="1252" text-anchor="middle">0</text>
+<text x="100.3" y="1252" text-anchor="middle">2</text>
+<text x="148.6" y="1252" text-anchor="middle">4</text>
+<text x="196.9" y="1252" text-anchor="middle">6</text>
+<text x="245.2" y="1252" text-anchor="middle">8</text>
+<text x="293.5" y="1252" text-anchor="middle">10</text>
+<text x="341.8" y="1252" text-anchor="middle">12</text>
+<text x="209.0" y="1266" text-anchor="middle">H (V mag)</text>
+<polyline points="245.2,1238.0 257.3,1238.0 269.4,1162.1 281.5,1162.1 293.5,1162.1 305.6,1162.1 317.7,1086.3 329.8,1086.3 341.8,1061.9 353.9,1041.9 366.0,997.5" fill="none" stroke="#222" stroke-width="1.6" stroke-dasharray="5,3"/>
+<line x1="60" x2="82" y1="996" y2="996" stroke="#222" stroke-width="1.6" stroke-dasharray="5,3"/>
+<text x="86" y="1000">model (total to the floor: 9)</text>
+<polyline points="245.2,1238.0 257.3,1238.0 269.4,1162.1 281.5,1162.1 293.5,1162.1 305.6,1162.1 317.7,1086.3 329.8,1086.3 341.8,1061.9 353.9,1041.9 366.0,997.5" fill="none" stroke="#888" stroke-width="1.4"/>
+<line x1="60" x2="82" y1="1010" y2="1010" stroke="#888" stroke-width="1.4"/>
+<text x="86" y="1014">catalogue (total to the floor: 9)</text>
+<polyline points="245.2,1238.0 257.3,1238.0 269.4,1162.1 281.5,1162.1 293.5,1162.1 305.6,1162.1 317.7,1086.3 329.8,1086.3 341.8,1061.9 353.9,1041.9 366.0,997.5" fill="none" stroke="#d95f02" stroke-width="1.6"/>
+<line x1="60" x2="82" y1="1024" y2="1024" stroke="#d95f02" stroke-width="1.6"/>
+<text x="86" y="1028">catalogue + synthetic (total to the floor: 9)</text>
+<text x="432" y="976" font-weight="bold">Neptune's irregular moons (no model)</text>
+<rect x="432" y="986" width="314" height="252" fill="none" stroke="#bbb"/>
+<line x1="432" x2="746" y1="1238.0" y2="1238.0" stroke="#eee"/>
+<text x="428" y="1242.0" text-anchor="end">1e0</text>
+<line x1="432" x2="746" y1="986.0" y2="986.0" stroke="#eee"/>
+<text x="428" y="990.0" text-anchor="end">1e1</text>
+<text x="432.0" y="1252" text-anchor="middle">0</text>
+<text x="482.2" y="1252" text-anchor="middle">2</text>
+<text x="532.5" y="1252" text-anchor="middle">4</text>
+<text x="582.7" y="1252" text-anchor="middle">6</text>
+<text x="633.0" y="1252" text-anchor="middle">8</text>
+<text x="683.2" y="1252" text-anchor="middle">10</text>
+<text x="733.4" y="1252" text-anchor="middle">12</text>
+<text x="589.0" y="1266" text-anchor="middle">H (V mag)</text>
+<polyline points="545.0,1238.0 557.6,1238.0 570.2,1238.0 582.7,1238.0 595.3,1238.0 607.8,1238.0 620.4,1238.0 633.0,1238.0 645.5,1238.0 658.1,1238.0 670.6,1238.0 683.2,1162.1 695.8,1162.1 708.3,1041.9 720.9,1025.0 733.4,1025.0 746.0,1010.4" fill="none" stroke="#222" stroke-width="1.6" stroke-dasharray="5,3"/>
+<line x1="440" x2="462" y1="996" y2="996" stroke="#222" stroke-width="1.6" stroke-dasharray="5,3"/>
+<text x="466" y="1000">model (total to the floor: 8)</text>
+<polyline points="545.0,1238.0 557.6,1238.0 570.2,1238.0 582.7,1238.0 595.3,1238.0 607.8,1238.0 620.4,1238.0 633.0,1238.0 645.5,1238.0 658.1,1238.0 670.6,1238.0 683.2,1162.1 695.8,1162.1 708.3,1041.9 720.9,1025.0 733.4,1025.0 746.0,1010.4" fill="none" stroke="#888" stroke-width="1.4"/>
+<line x1="440" x2="462" y1="1010" y2="1010" stroke="#888" stroke-width="1.4"/>
+<text x="466" y="1014">catalogue (total to the floor: 8)</text>
+<polyline points="545.0,1238.0 557.6,1238.0 570.2,1238.0 582.7,1238.0 595.3,1238.0 607.8,1238.0 620.4,1238.0 633.0,1238.0 645.5,1238.0 658.1,1238.0 670.6,1238.0 683.2,1162.1 695.8,1162.1 708.3,1041.9 720.9,1025.0 733.4,1025.0 746.0,1010.4" fill="none" stroke="#d95f02" stroke-width="1.6"/>
+<line x1="440" x2="462" y1="1024" y2="1024" stroke="#d95f02" stroke-width="1.6"/>
+<text x="466" y="1028">catalogue + synthetic (total to the floor: 8)</text>
+<text x="8" y="1290" fill="#555">Cumulative number N(&lt;H) inside each population's grid, below its H floor. Synthetic objects appear only fainter than the completeness limit of their a-bin. (pipeline stage synthetic; numbers in docs/reports/synthetic-populations.json)</text>
 </svg>
