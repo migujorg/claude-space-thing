@@ -115,7 +115,8 @@ describe.skipIf(!earth || !moon || !bodies)('Precise orientation (NAIF binary PC
   const comparable: { id: number; frame: string; et: number; bodyToJ2000: number[] }[] = [];
   const not = new Map<string, number[]>();
   let total = 0;
-  for (const b of ref.bodies) {
+  // (Without built data this suite is skipped, but its body still runs to list its tests: nothing to classify.)
+  for (const b of earth && moon ? ref.bodies : []) {
     const p = product(b.id);
     for (const c of b.cases) {
       total++;

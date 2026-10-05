@@ -47,12 +47,13 @@ describe('elementsToState vs the pipeline', () => {
 
 describe.skipIf(!eph)(`SmallBodyPropagator vs the Python integrator and JPL Horizons (committed reference, its own epoch ${etDate(fx.epochEt)})`, () => {
   // The reference's epochs that the built ephemeris covers. Chains run outward from the reference epoch, so the
-  // covered epochs are the ones inside the coverage, provided the reference epoch itself is.
-  const w = eph!.window;
+  // covered epochs are the ones inside the coverage, provided the reference epoch itself is. (Without built data
+  // this suite is skipped, but its body still runs to list its tests: then every epoch is listed.)
+  const w = eph?.window ?? { startEt: fx.epochEt, endEt: fx.epochEt };
   const inside = (t: number) => t >= w.startEt && t <= w.endEt;
   const coverage = `the built ephemeris covers ${etMinute(w.startEt)} to ${etMinute(w.endEt)} TDB`;
   const all = [...new Set(fx.objects.flatMap((o) => o.epochs))].sort((a, b) => a - b);
-  const out = inside(fx.epochEt) ? all.filter((t) => !inside(t)) : all;
+  const out = !eph ? [] : inside(fx.epochEt) ? all.filter((t) => !inside(t)) : all;
   if (out.length > 0) {
     notCompared(`SmallBodyPropagator at ${out.length} of ${all.length} reference epochs (${etMinute(out[0])} to ${etMinute(out[out.length - 1])} TDB) of ${fx.objects.length} objects`, coverage);
   }

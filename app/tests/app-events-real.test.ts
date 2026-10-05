@@ -61,7 +61,9 @@ const near = (l: SkyEvent[], t: number, pred: (e: SkyEvent) => boolean = () => t
 
 describe.skipIf(!built)('event finder on the real products', () => {
   const engine = built ? EventEngine.fromFiles(init()) : null!;
-  const W = built ? init().window : { startEt: 0, endEt: 0 };
+  // (Without built data this suite is skipped, but its body still runs to list its tests: then every published
+  // case is listed, as for a window that holds them all.)
+  const W = built ? init().window : { startEt: et('2025-03-31T00:00:00'), endEt: et('2028-04-05T00:00:00') };
   const window = `${etDate(W.startEt)} to ${etDate(W.endEt)}`;
   const inside = (t0: number, t1 = t0) => t0 >= W.startEt && t1 <= W.endEt;
   /**
