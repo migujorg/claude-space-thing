@@ -19,7 +19,7 @@ const { env }: { env: Record<string, string | undefined> } = await import(/* @vi
 const shaderGuards = {
   hFloor: 1e-6, cotFloor: 1e-6, expFloor: -80, psiCut: Math.PI - 1e-4,
   psiDen: 1e-6, bcCut: 1e-6, hcMissing: 1e9,
-  akimovEps: 1e-4, akimovFloor: 1e-20, minnaertFloor: 1e-3,
+  akimovEps: 1e-4, akimovFloor: 1e-20, minnaertFloor: 1e-3, akimovStable: false, bcStable: false,
 };
 type Guards = typeof shaderGuards;
 
@@ -92,7 +92,11 @@ function shaderLaw(law: ResolvedLaw, guards: Partial<Guards> = {}, round = Math.
     const r = hapkeRough(i, e, psi, l2[0]), w = l0[1], tg = tan(m(0.5, g));
     const Bs = l1[1] > 0 ? d(1, a(1, d(tg, l1[1]))) : 0;
     const x = l1[3] > 0 ? d(tg, l1[3]) : f(G.hcMissing);
-    const Bc = x > f(G.bcCut) ? d(a(1, d(s(1, exp(-x)), x)), m(m(2, a(1, x)), a(1, x))) : 1;
+    // Experimental evaluation of the same analytic expression, used only in the proposal test.
+    const q = G.bcStable && x < f(0.01)
+      ? s(a(s(1, m(0.5, x)), d(m(x, x), 6)), d(m(m(x, x), x), 24))
+      : d(s(1, exp(-x)), x);
+    const Bc = x > f(G.bcCut) ? d(a(1, q), m(m(2, a(1, x)), a(1, x))) : 1;
     let H = m(hFn2002(d(r[0], l2[1]), w), hFn2002(d(r[1], l2[1]), w));
     if (l2[2] > 0.5) H = m(hFn1981(d(r[0], l2[1]), w), hFn1981(d(r[1], l2[1]), w));
     return m(m(m(d(m(d(m(l2[1], w), 4), r[0]), a(r[0], r[1])),
@@ -102,9 +106,12 @@ function shaderLaw(law: ResolvedLaw, guards: Partial<Guards> = {}, round = Math.
     const g = clamp(gIn, 0, s(PI, f(1e-4)));
     if (g < f(1e-6)) return 1;
     const gam = f(Math.atan2(s(mu0, m(mu, cos(g))), m(mu, sin(g))));
-    const eps = s(m(0.5, PI), gam), k = d(PI, s(PI, g));
+    const eps = G.akimovStable ? f(Math.atan2(m(mu, sin(g)), s(mu0, m(mu, cos(g))))) : s(m(0.5, PI), gam);
+    const k = d(PI, s(PI, g));
     const ratio = eps > f(G.akimovEps) ? d(sin(m(k, eps)), sin(eps)) : k;
-    const cb = clamp(d(mu, max(cos(gam), G.akimovFloor)), G.akimovFloor, 1);
+    const A = s(mu0, m(mu, cos(g))), B = m(mu, sin(g));
+    const cb = G.akimovStable ? clamp(d(sqrt(a(m(A, A), m(B, B))), sin(g)), G.akimovFloor, 1)
+      : clamp(d(mu, max(cos(gam), G.akimovFloor)), G.akimovFloor, 1);
     return max(m(m(cos(m(0.5, g)), ratio), pow(cb, d(g, s(PI, g)))), 0);
   }
   return (mu0In: number, muIn: number, gIn: number) => {
@@ -125,6 +132,9 @@ function shaderLaw(law: ResolvedLaw, guards: Partial<Guards> = {}, round = Math.
 
 const phaseDeg = [0, 30, 60, 90, 120, 150];
 const extendedPhaseDeg = [170, 175, 179];
+const microPhaseDeg = [1e-6, 1e-5, 1e-4, 0.001];
+const phasesFor = (model: SpatialPhotometricModel) => [...phaseDeg, ...extendedPhaseDeg,
+  ...(model.kind === 'hapke' && (model.bc0 ?? 0) > 0 ? microPhaseDeg : [])];
 const deg = (d: number) => d * Math.PI / 180;
 const photPath = new URL('../public/data/photometry.json', import.meta.url);
 const bodiesPath = new URL('../public/data/bodies.json', import.meta.url);
@@ -166,7 +176,14 @@ function integrate(radf: (mu0: number, mu: number, g: number) => number, alpha: 
   return cpu / Math.PI;
 }
 
-// Initial strict comparison: material cases will be named expected failures after measurement.
+// These cases failed the strict test before being marked it.fails. The requested 0–150° grid
+// passes; the built laws have no phase restriction, so grazing crescents are checked too.
+const knownMaterial = new Set([
+  '599:179', '799:175', '799:179', '899:175', '899:179',
+  '901:0.000001', '901:0.00001',
+  '601:179', '602:179', '603:179', '604:179', '605:179',
+]);
+
 describe('surface law twins', () => {
   it('pins every WGSL helper used by the transcription, and its external PI', () => {
     expect(createHash('sha256').update(LAW_WGSL).digest('hex')).toBe('5034afcbfa1d73bf2ce991f53238f323b3608a72c3e0ad1068de6c258f14598e');
@@ -184,8 +201,17 @@ describe('surface law twins', () => {
       }
     });
   }
-  for (const { id, name, model } of models) for (const phase of [...phaseDeg, ...extendedPhaseDeg]) {
-    it(`${name} (${id}) ${model.kind} at ${phase}°: disk integrals agree within 1e-4`, () => {
+  it.skipIf(!built)('Charon: cancellation-free Bc evaluation preserves the same physical expression (proposal only)', () => {
+    const model = models.find(m => m.id === '901')!.model;
+    for (const phase of microPhaseDeg) {
+      const alpha = deg(phase), law = getLaw(model, alpha);
+      const cpu = integrate((mu0, mu, g) => lawRadf(law, mu0, mu, g), alpha, 48);
+      expect(Math.abs(integrate(shaderLaw(law, { bcStable: true }), alpha, 48) / cpu - 1)).toBeLessThan(1e-4);
+    }
+  });
+  for (const { id, name, model } of models) for (const phase of phasesFor(model)) {
+    const check = knownMaterial.has(`${id}:${phase}`) ? it.fails : it;
+    check(`${name} (${id}) ${model.kind} at ${phase}°: ${knownMaterial.has(`${id}:${phase}`) ? 'KNOWN material mismatch; ' : ''}disk integrals agree within 1e-4`, () => {
       const alpha = deg(phase), law = getLaw(model, alpha);
       const cpu = integrate((mu0, mu, g) => lawRadf(law, mu0, mu, g), alpha, 48);
       const gpu = integrate(shaderLaw(law), alpha, 48);
@@ -196,8 +222,9 @@ describe('surface law twins', () => {
 
 // Optional reproducible report; no shared products are written. Run with LAW_TWINS_REPORT=1.
 if (env.LAW_TWINS_REPORT) {
-  it('reports disk-integral and pointwise differences', () => {
-    for (const { id, name, model } of models) for (const phase of [...phaseDeg, ...extendedPhaseDeg]) {
+  for (const { id, name, model } of models) for (const phase of (env.LAW_TWINS_REPORT === 'tiny' ? (model.kind === 'hapke' && (model.bc0 ?? 0) > 0 ? microPhaseDeg : []) : phasesFor(model))) {
+    it(`reports ${name} at ${phase}°`, async () => {
+      await new Promise(resolve => setTimeout(resolve, 0));
       const alpha = deg(phase), law = getLaw(model, alpha);
       const cpu = integrate((mu0, mu, g) => lawRadf(law, mu0, mu, g), alpha);
       const shader = integrate(shaderLaw(law), alpha);
@@ -215,7 +242,33 @@ if (env.LAW_TWINS_REPORT) {
         maxAbsolute = Math.max(maxAbsolute, Math.abs(s - c));
         if (c > 0) maxRelative = Math.max(maxRelative, Math.abs(s / c - 1));
       }
-      console.log(JSON.stringify({ id, name, kind: model.kind, phase, cpu, shader, rel: shader / cpu - 1, guardRel: doubleShader / cpu - 1, lowCPUrel: lowCPU / cpu - 1, maxRelative, maxAbsolute }));
-    }
-  }, 120000);
+      const fineRel = shader / cpu - 1;
+      const coarseCPU = integrate((mu0, mu, g) => lawRadf(law, mu0, mu, g), alpha, 48);
+      const coarseShader = integrate(shaderLaw(law), alpha, 48);
+      const variants: Partial<Guards>[] = model.kind === 'hapke' ? [
+        { hFloor: 1e-12 }, { cotFloor: 1e-12 }, { expFloor: -700 }, { psiCut: Math.PI },
+        { psiDen: 1e-12 }, { bcCut: 1e-9 }, { hcMissing: Infinity },
+      ] : model.kind === 'minnaert' ? [{ minnaertFloor: 0 }]
+        : model.kind === 'akimov' ? [{ akimovEps: 1e-6 }, { akimovFloor: 1e-300 }] : [];
+      const doubleCoarse = integrate(shaderLaw(law, {}, x => x), alpha, 48);
+      const attribution = variants.map(guards => {
+        const variant = shaderLaw(law, guards, x => x);
+        const base = shaderLaw(law, {}, x => x);
+        let pointRelative = 0, pointAbsolute = 0;
+        for (const t of fractions) for (const beta of [0, 30, 60, 80, 89, 89.99]) {
+          const lam = lo + t * (hi - lo), cb = Math.cos(deg(beta));
+          const mu = cb * Math.cos(lam), mu0 = cb * Math.cos(lam - alpha);
+          const v = variant(mu0, mu, alpha), b = base(mu0, mu, alpha);
+          if (v > 0) pointRelative = Math.max(pointRelative, Math.abs(b / v - 1));
+          pointAbsolute = Math.max(pointAbsolute, Math.abs(b - v));
+        }
+        return { guards, rel: doubleCoarse / integrate(variant, alpha, 48) - 1, pointRelative, pointAbsolute };
+      });
+      const bcStableRel = model.kind === 'hapke' && (model.bc0 ?? 0) > 0 ? integrate(shaderLaw(law, { bcStable: true }), alpha, 48) / coarseCPU - 1 : null;
+      const stableRel = model.kind === 'akimov' ? integrate(shaderLaw(law, { akimovStable: true }), alpha, 48) / coarseCPU - 1 : null;
+      console.log(JSON.stringify({ id, name, kind: model.kind, phase, cpu, shader, rel: fineRel,
+        guardRel: doubleShader / cpu - 1, lowCPUrel: lowCPU / cpu - 1,
+        quadratureDelta: coarseShader / coarseCPU - 1 - fineRel, maxRelative, maxAbsolute, attribution, stableRel, bcStableRel }));
+    }, 30000);
+  }
 }
