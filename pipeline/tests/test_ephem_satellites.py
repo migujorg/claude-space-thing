@@ -3,7 +3,9 @@
 Requires `python -m pipeline build --only ephemeris`; the excerpt-vs-original checks also need the whole originals
 that `python -m pipeline.ephem_fixtures` downloads (VERIFY_ORIGINALS), and are skipped without them.
 - every product segment is bit-identical to its kernel excerpt, with the declared coverage carried through;
-- SPICE spkgeo on each excerpt equals our evaluator (types 2/3 exactly; type 17 to < 1 mm);
+- SPICE spkgeo equals our evaluator at type 2/3 starts and interior epochs, and at endpoints where it uses the
+  same record; a trimmed final boundary matches the retained source record exactly and SPICE to <= 10 ulps;
+- type 17 agrees to < 1 mm inside the build window;
 - for the kernels downloaded whole, spkgeo on the original equals spkgeo on the excerpt, exactly;
 - no DE copy from a satellite kernel leaks into the products; every excerpt was byte-checked against its original.
 Epochs come from the products' own coverage and each excerpt is found through its ledger entry, so the tests do not
@@ -22,6 +24,7 @@ from pipeline.ephem_fixtures import VERIFY_ORIGINALS
 from pipeline.ephem_spk import evaluate, load_product, read_spk
 from pipeline.paths import OUT, RAW
 from pipeline.stages.ephemeris import MARGIN_S
+from test_ephem_types import compare_spice
 
 PRODUCTS = sorted((OUT / "ephem").glob("sat-*.json"))
 pytestmark = pytest.mark.skipif(len(PRODUCTS) != len(sat.SYSTEMS), reason="satellite products not built")
@@ -89,34 +92,36 @@ def test_product_is_bit_identical_to_excerpt_and_matches_spice(kernel, segments)
     assert set(theirs) == set(ours)
     rng = np.random.default_rng(17)
     worst = 0.0
+    failures = []
     sp.furnsh(str(path))
     try:
         for t, s in ours.items():
             ref = theirs[t]
-            assert (s.type, s.intlen, s.rsize) == (ref.type, ref.intlen, ref.rsize)
-            i0 = (s.init - ref.init) / s.intlen if s.type != 17 else 0.0
-            assert i0 == int(i0) and int(i0) + s.n <= ref.n
-            assert np.array_equal(s.records, ref.records[int(i0): int(i0) + s.n]), t
-            assert (s.start, s.end) == (ref.start, ref.end)
-            ets = rng.uniform(s.start, s.end, 20) if s.type != 17 else rng.uniform(*build_window(segments), 20)
-            pos, vel = evaluate(s, ets)
-            spice = np.array([sp.spkgeo(t, e, "J2000", s.center)[0] for e in ets])
-            dp = np.abs(pos - spice[:, :3]).max()
-            dv = np.abs(vel - spice[:, 3:]).max()
-            assert dp < 1e-6 and dv < 1e-9, (t, dp, dv)
+            try:
+                assert (s.type, s.intlen, s.rsize) == (ref.type, ref.intlen, ref.rsize)
+                i0 = (s.init - ref.init) / s.intlen if s.type != 17 else 0.0
+                assert i0 == int(i0) and int(i0) + s.n <= ref.n
+                assert np.array_equal(s.records.view(np.uint64),
+                                      ref.records[int(i0): int(i0) + s.n].view(np.uint64)), t
+                assert (s.start, s.end) == (ref.start, ref.end)
+            except AssertionError as error:
+                failures.append(f"{kernel.name}, body {t}: source record/coverage mismatch: {error}")
+                continue
             if s.type in (2, 3):
-                assert dp == 0.0 and dv == 0.0, (t, dp, dv)  # same operation order as SPICE
-                for quantity, actual, expected in (("pos", pos, spice[:, :3]), ("vel", vel, spice[:, 3:])):
-                    actual_bits, expected_bits = actual.view(np.uint64), expected.view(np.uint64)
-                    for i, j in np.argwhere(actual_bits != expected_bits):
-                        assert actual_bits[i, j] == expected_bits[i, j], (
-                            f"{kernel.name}, body {t} wrt {s.center}, type {s.type}, et {ets[i]!r}, {quantity}[{j}]: "
-                            f"ours 0x{actual_bits[i, j]:016x}, SPICE 0x{expected_bits[i, j]:016x}"
-                        )
+                b = s.init + s.intlen * np.arange(s.n + 1)
+                ets = np.unique(np.concatenate([rng.uniform(s.start, s.end, 20),
+                                               b[(b >= s.start) & (b < s.end)],
+                                               [s.start, s.end]]))
+            else:
+                ets = rng.uniform(*build_window(segments), 20)
+            spice = np.array([sp.spkgeo(t, e, "J2000", s.center)[0] for e in ets])
+            dp, dv = compare_spice(s, ref, ets, spice,
+                                   f"{kernel.name}, body {t} wrt {s.center}, type {s.type}", failures)
             worst = max(worst, dp)
     finally:
         sp.unload(str(path))
     print(f"{kernel.name}: {len(ours)} bodies, max |ours - spkgeo| {worst:.3e} km")
+    assert not failures, "\n".join(failures)
 
 
 @pytest.mark.parametrize("name", VERIFY_ORIGINALS)
@@ -138,6 +143,20 @@ def test_excerpt_equals_original_in_spice(name, segments):
             sp.unload(str(path))
     assert np.array_equal(states[original], states[excerpt]), name
     print(f"{name}: {len(pairs)} bodies x {ets.size} epochs, spkgeo(original) == spkgeo(excerpt) exactly")
+    sources = {(s.target, s.center): s for s in read_spk(original, {s.target for s in segs})}
+    failures = []
+    sp.furnsh(str(original))
+    try:
+        for s in segs:
+            b = s.init + s.intlen * np.arange(s.n + 1)
+            epochs = np.unique(np.concatenate([ets, b[(b >= s.start) & (b < s.end)],
+                                               [s.start, s.end]]))
+            spice = np.array([sp.spkgeo(s.target, e, "J2000", s.center)[0] for e in epochs])
+            compare_spice(s, sources[s.target, s.center], epochs, spice,
+                          f"{name} full kernel, body {s.target} wrt {s.center}, type {s.type}", failures)
+    finally:
+        sp.unload(str(original))
+    assert not failures, "\n".join(failures)
 
 
 def test_every_excerpt_was_checked_against_its_original(segments):
