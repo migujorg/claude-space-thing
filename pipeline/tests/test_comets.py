@@ -256,6 +256,10 @@ def test_model_product():
     for k in ("C2(0)", "C2(1)", "CN(0)", "C3", "CH", "OI6300", "OI6364", "COplus(2,0)", "COplus(3,0)"):
         b = m["components"]["bands"][k]
         assert b["xyzs"][1] >= 0 and b["v"] >= 0
+    for name in ("waterFromMagnitude", "composition", "gFactors", "bandRatiosToC2", "haser",
+                 "oxygen", "coPlus", "solarWind", "grains"):
+        assert isinstance(m[name]["value"], dict)
+        assert m[name]["label"] in ("measured", "estimated") and m[name]["sources"]
     # C2 Swan emission is green: y chromaticity above the Sun's
     xyz = m["components"]["bands"]["C2(0)"]["xyzs"]
     sun = m["components"]["sunV"]["xyzs1Au"]
@@ -263,14 +267,17 @@ def test_model_product():
     # dust redder than the Sun (x chromaticity)
     d = m["components"]["dust"]["longPeriod"]["xyzs"]
     assert d[0] / sum(d[:3]) > sun[0] / sum(sun[:3])
-    assert m["oxygen"]["photonsPerH2O"] == pytest.approx(0.064 + 0.81 * 0.357)
-    assert sum(m["coPlus"]["share"].values()) == pytest.approx(1.0)
-    assert 300 < m["solarWind"]["medianKmS"] < 500
+    assert m["oxygen"]["value"]["photonsPerH2O"] == pytest.approx(0.064 + 0.81 * 0.357)
+    assert sum(m["coPlus"]["value"]["share"].values()) == pytest.approx(1.0)
+    assert 300 < m["solarWind"]["value"]["medianKmS"] < 500
 
 
 @pytest.mark.skipif(not HAVE_MODEL, reason="comets products not built")
 def test_list_product():
     lst = json.loads((OUT / "comets" / "list.json").read_text())
+    for activity in lst["measured"].values():
+        assert activity["label"] == "derived" and activity["sources"]
+        assert activity["value"]["key"] and all(n > 0 for n in activity["value"]["n"].values())
     mags = [n["peakMag"] for n in lst["notable"]]
     assert mags == sorted(mags) and all(m <= lst["notableMag"] for m in mags)
     best = next((n for n in lst["notable"] if n["elongationDeg"] >= comets.SHOWCASE_MIN_ELONGATION
