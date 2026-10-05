@@ -93,3 +93,21 @@ def test_empty_tycho_source_set_does_not_query_every_star(monkeypatch):
     monkeypatch.setattr(stars_gaia, "tap_query", query)
     stars_gaia.fetch_tycho_pm_for_2p(10, np.array([], dtype=np.int64))
     assert observed["where"] == "1 = 0"
+
+
+def test_sums_format_parameter_validation_environment_and_fingerprint():
+    default = config.resolve("full", environ={})
+    assert default["gaia.sumsFormat"] == "csv"
+    env = {"PIPELINE_GAIA_SUMS_FORMAT": "fits"}
+    assert config.resolve("full", environ=env)["gaia.sumsFormat"] == "fits"
+    explicit = config.resolve("full", config.parse_sets(["gaia.sumsFormat=csv"]), environ=env)
+    assert explicit["gaia.sumsFormat"] == "csv"
+    for stage in ("stars", "deepstars", "light"):
+        assert "gaia.sumsFormat" not in config.stage_params(default, stage)
+    assert config.stage_params(default, "sky")["gaia.sumsFormat"] == "csv"
+    assert "gaia.sumsFormat" in config.describe()
+    with pytest.raises(config.ConfigError, match="csv, fits"):
+        config.parse_sets(["gaia.sumsFormat=votable"])
+    from pipeline import build
+    assert build.fingerprint("sky", (), default, (0, 1), {})["fingerprint"] != build.fingerprint(
+        "sky", (), {**default, "gaia.sumsFormat": "fits"}, (0, 1), {})["fingerprint"]
