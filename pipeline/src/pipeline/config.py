@@ -201,7 +201,8 @@ COSTS: dict[str, Cost] = {
                         "JPL SBDB is queried one request at a time, as JPL asks"),
     "sbphotometry": Cost(0.002, 0.002, 0.002, 0.00003, 0.5, 0.2,
                          "estimated from its inputs: one 1.3 MB source archive, a few Horizons queries"),
-    "synthetic": Cost(0.03, 0.03, 0.2, 0.15, 1.5, 1, "docs/reports/synthetic-populations.md"),
+    "synthetic": Cost(0.15, 0.15, 0.35, 0.15, 2, 1.5, "docs/reports/synthetic-populations.md",
+                      "includes the 0.11 GB Centaur-model archive (Zenodo) of Kurlander et al. 2025"),
     "comets": Cost(0.02, 0.02, 0.05, 0.002, 5, 5, "docs/reports/comets.md",
                    "propagates every comet with M1/K1 day by day through the window; a few Horizons queries"),
     "stars": Cost(0.95, 0.9, 1.0, 0.024, 20, 1, "docs/reports/stars.md section 8 (measured 2026-09-30)",
@@ -237,7 +238,7 @@ RAW_DIRS: dict[str, tuple[str, ...]] = {
               "decolibus2026", "smallbody_colors", "neowise_v2"),
     "surfaces": ("surfaces",), "shapes": ("shapes",),
     "smallbodies": ("sbdb", "ssodnet", "mpc", "lcdb", "gaia_dr3_sso", "cneos", "horizons"),
-    "sbphotometry": ("sbpy",), "synthetic": ("synthetic",), "comets": ("comets", "papers"),
+    "sbphotometry": ("sbpy",), "synthetic": ("synthetic", "papers"), "comets": ("comets", "papers"),
     "stars": ("stars",), "deepstars": ("stars/gaia_dr3_deep",), "sky": ("sky", "stars/gaia_dr3_sums"),
 }
 
