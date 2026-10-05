@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 import io
 import json
+import os
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -64,7 +65,8 @@ class Download:
     Some publishers answer scripted clients with a bot-check page (status 200). For such documents (papers whose
     numbers are transcribed under tables/, not parsed), `sha256`/`retrieved` give the digest and date of the copy the
     transcription was made from. If the scripted download fails, a copy placed by hand at data/raw/<subdir>/<name>
-    with that digest is accepted, and `source()` cites the digest (saying it was not re-downloaded)."""
+    with that digest is accepted, and `source()` cites the digest (saying it was not re-downloaded).
+    Offline, an absent pinned copy uses the same source record without attempting a download."""
     id: str
     url: str
     subdir: str
@@ -86,6 +88,9 @@ class Download:
         dest = self._dest()
         if self.sha256 and dest.exists() and file_sha256(dest) == self.sha256:
             return dest     # the hand-retrieved copy (or an earlier scripted download of the same bytes)
+        if self.sha256 and not dest.exists() and os.environ.get("PIPELINE_OFFLINE") == "1":
+            # Only a pinned citation can use source()'s existing fallback. Numerical inputs remain required.
+            raise RuntimeError(f"{self.id}: pinned document absent and PIPELINE_OFFLINE=1: {dest}")
         if self.url in _FAILED:
             raise RuntimeError(_FAILED[self.url])
         headers = {"User-Agent": BROWSER_AGENT} if self.browser_agent else None

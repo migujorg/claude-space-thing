@@ -63,3 +63,15 @@ def test_explicit_straggler_move_cancels_old_job_and_preserves_cache_identity(mo
     assert job["provider"] == "aip" and "url" not in job
     assert "source_id/8796093022208" in job["query"]
     session.post.assert_called_once_with(job["originalJobUrl"] + "/phase", data={"PHASE": "ABORT"}, timeout=30)
+
+
+def test_plan_selects_fits_without_environment_switch(monkeypatch, tmp_path):
+    monkeypatch.delenv("PIPELINE_GAIA_SUMS_FITS", raising=False)
+    monkeypatch.setenv("PIPELINE_GAIA_SUMS_FORMAT", "csv")
+    monkeypatch.setattr(s.sg, "RAW", tmp_path)
+    monkeypatch.setattr(s.d, "_load_ledger", lambda: {})
+    monkeypatch.setattr(s, "cached", lambda *args: False)
+    jobs = s.plan()
+    assert len(jobs) == 96
+    assert all(job["name"].endswith(".fits") for job in jobs)
+    assert all("gaiadr3.gaia_source_lite" in job["query"] for job in jobs)

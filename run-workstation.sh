@@ -19,7 +19,7 @@ if ! pipeline/.venv/bin/python -c 'import socks' 2>/dev/null; then
   uv pip install --python pipeline/.venv/bin/python PySocks==1.7.1
 fi
 if [ "${SKIP_BUILD:-0}" != 1 ]; then
-  if pipeline/.venv/bin/python scripts/workstation_build.py --profile "$profile" --jobs 4 --set gaia.xpWorkers=8 --set gaia.tapWorkers=8 --set gaia.tapService=ari --set deepstars.xpSource=bulk "$@"; then
+  if pipeline/.venv/bin/python scripts/workstation_build.py --profile "$profile" --jobs 4 --set gaia.xpWorkers=8 --set gaia.tapWorkers=8 --set gaia.tapService=ari --set gaia.sumsFormat=fits --set deepstars.xpSource=bulk "$@"; then
     echo "Data build complete."
     # Vite can retain a public-file list from before a large stage created its
     # directories, answering new binary URLs with index.html. Refresh after

@@ -6,6 +6,10 @@ from __future__ import annotations
 import hashlib
 import http.server
 import json
+import os
+from pathlib import Path
+import subprocess
+import sys
 import threading
 import time
 
@@ -13,6 +17,11 @@ import pytest
 import requests
 
 from pipeline import download
+
+
+@pytest.fixture(autouse=True)
+def metrics_off(monkeypatch):
+    monkeypatch.delenv("PIPELINE_NETWORK_METRICS", raising=False)
 
 
 class Handler(http.server.BaseHTTPRequestHandler):
@@ -179,6 +188,210 @@ def test_cached_file_is_not_fetched_again(server):
     assert download.fetch(server + "/a.bin", "t") == p and Handler.log == []
 
 
+@pytest.mark.parametrize("byte_range", [None, (1, 4)])
+def test_cache_hit_needs_no_locks_or_writes(tmp_path, monkeypatch, byte_range):
+    raw = tmp_path / "raw"
+    dest = raw / "t" / "cached.bin"
+    dest.parent.mkdir(parents=True)
+    dest.write_bytes(b"cached")
+    ledger = raw / "_downloads.json"
+    entry = {"sha256": hashlib.sha256(b"cached").hexdigest(), "bytes": 6}
+    if byte_range:
+        entry["range"] = "bytes=1-3"
+    ledger.write_text(json.dumps({"t/cached.bin": entry}))
+    monkeypatch.setattr(download, "RAW", raw)
+    monkeypatch.setattr(download, "_LEDGER", ledger)
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("a cache hit must not lock or write")
+
+    class NoLock:
+        __enter__ = forbidden
+        __exit__ = forbidden
+
+    original_open = Path.open
+    def read_only_open(path, mode="r", *args, **kwargs):
+        if any(flag in mode for flag in "wax+"):
+            raise PermissionError("raw is read only")
+        return original_open(path, mode, *args, **kwargs)
+
+    monkeypatch.setattr(download, "_STATS_LOCK", NoLock())
+    monkeypatch.setattr(download, "_process_slot", forbidden)
+    monkeypatch.setattr(Path, "mkdir", forbidden)
+    monkeypatch.setattr(Path, "open", read_only_open)
+    assert download.fetch("https://unused.example/cached.bin", "t", byte_range=byte_range,
+                          validate=lambda path: path.read_bytes() == b"cached") == dest
+    assert not (raw / ".locks").exists()
+
+
+@pytest.mark.parametrize("miss", ["file", "ledger", "range", "validation"])
+def test_cache_miss_still_transfers(server, miss):
+    dest = download.fetch(server + "/a.bin", "t")
+    Handler.log.clear()
+    options = {}
+    if miss == "file":
+        dest.unlink()
+    elif miss == "ledger":
+        download.update_ledger(download.ledger_key(dest), None)
+    elif miss == "range":
+        options["byte_range"] = (1, 4)
+    else:
+        dest.write_bytes(b"invalid")
+        options["validate"] = lambda path: path.read_bytes() == Handler.blob
+    assert download.fetch(server + "/a.bin", "t", **options) == dest
+    assert len(Handler.log) == 1
+    assert dest.read_bytes() == (Handler.blob[1:4] if miss == "range" else Handler.blob)
+
+
+def test_processes_recheck_cache_after_waiting_for_destination(server, tmp_path):
+    # Hold the lease until both independent processes have observed a miss.
+    code = '''
+import contextlib, json, sys
+from pathlib import Path
+from pipeline import download
+slot = download._process_slot
+@contextlib.contextmanager
+def ready_slot(label, limit, start_slot=0):
+    if label.startswith("file:"):
+        Path(sys.argv[2]).touch()
+    with slot(label, limit, start_slot):
+        yield
+download._process_slot = ready_slot
+path = download.fetch(sys.argv[1] + "/shared.bin", "t")
+print(json.dumps({"sha256": download.sha256_file(path), **download.stats()}))
+'''
+    env = {**os.environ, "PIPELINE_RAW": str(download.RAW), "PIPELINE_CACHE": str(tmp_path / "cache")}
+    dest = download.RAW / "t" / "shared.bin"
+    processes = []
+    ready = [tmp_path / f"ready-{i}" for i in range(2)]
+    try:
+        with download._process_slot("file:" + str(dest.resolve()), 1):
+            for marker in ready:
+                processes.append(subprocess.Popen([sys.executable, "-c", code, server, str(marker)],
+                                                  env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True))
+            deadline = time.monotonic() + 10
+            while not all(marker.exists() for marker in ready) and time.monotonic() < deadline:
+                time.sleep(0.01)
+            assert all(marker.exists() for marker in ready), "both processes must observe the initial miss"
+        results = []
+        for process in processes:
+            stdout, stderr = process.communicate(timeout=20)
+            assert process.returncode == 0, stderr
+            results.append(json.loads(stdout))
+        assert len(Handler.log) == 1
+        assert [result["sha256"] for result in results] == [hashlib.sha256(Handler.blob).hexdigest()] * 2
+        assert sorted(result["files"] for result in results) == [0, 1]
+    finally:
+        for process in processes:
+            if process.poll() is None:
+                process.kill()
+            process.communicate()
+
+
+@pytest.mark.parametrize("first_call", ["count", "host_slot"])
+@pytest.mark.parametrize("switch", [None, "0", "1"])
+def test_network_metrics_require_explicit_opt_in(tmp_path, switch, first_call):
+    # Each child exits with its daemon, so no writer outlives a temporary cache.
+    code = '''
+import json, os, sys, threading, time
+from pipeline import download
+folder = download.CACHE / "network-metrics"
+enabled = os.environ.get("PIPELINE_NETWORK_METRICS") == "1"
+threads = threading.active_count()
+def add_counts():
+    download.count(7, files=1)
+    download.count(5, network=False)
+if sys.argv[1] == "count":
+    add_counts()
+    if not enabled:
+        assert not download._METRICS_STARTED
+        assert threading.active_count() == threads
+        assert not folder.exists()
+def wait_for(active):
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline:
+        try:
+            metric = json.loads((folder / f"{os.getpid()}.json").read_text())
+            if (metric["bytes"], metric["files"], metric["receivedBytes"], metric["active"], metric["waiting"]) == (12, 1, 7, active, 0):
+                assert metric["genericActive"] == active and metric["genericWaiting"] == 0
+                return
+        except (OSError, ValueError):
+            pass
+        time.sleep(0.01)
+    raise AssertionError("metrics did not publish current counters")
+with download.host_slot("https://generic.example/file"):
+    if sys.argv[1] == "host_slot":
+        if not enabled:
+            assert not download._METRICS_STARTED
+            assert threading.active_count() == threads
+            assert not folder.exists()
+        add_counts()
+    if enabled:
+        wait_for(1)
+    else:
+        assert not download._METRICS_STARTED
+        assert threading.active_count() == threads
+        assert not folder.exists()
+if enabled:
+    wait_for(0)
+    assert threading.active_count() == threads + 1
+else:
+    assert not folder.exists()
+assert download.stats() == {"bytes": 12, "files": 1}
+'''
+    env = {**os.environ, "PIPELINE_RAW": str(tmp_path / "raw"), "PIPELINE_CACHE": str(tmp_path / "cache")}
+    if switch is not None:
+        env["PIPELINE_NETWORK_METRICS"] = switch
+    result = subprocess.run([sys.executable, "-c", code, first_call], env=env,
+                            capture_output=True, text=True, timeout=15)
+    assert result.returncode == 0, result.stderr
+
+
+def test_processes_share_controlled_host_limit_without_metrics(tmp_path, monkeypatch):
+    raw, cache = tmp_path / "raw", tmp_path / "cache"
+    cache.mkdir()
+    (cache / "network-control.json").write_text(json.dumps({"genericPerHost": 1}))
+    monkeypatch.setattr(download, "RAW", raw)
+    monkeypatch.setattr(download, "CACHE", cache)
+    code = '''
+import sys, time
+from pathlib import Path
+from pipeline import download
+Path(sys.argv[1]).touch()
+with download.host_slot("https://controlled.example/file"):
+    with Path(sys.argv[2]).open("a") as events:
+        events.write("enter\\n")
+    time.sleep(0.1)
+    with Path(sys.argv[2]).open("a") as events:
+        events.write("exit\\n")
+assert not download._METRICS_STARTED
+'''
+    env = {**os.environ, "PIPELINE_RAW": str(raw), "PIPELINE_CACHE": str(cache)}
+    events = tmp_path / "events"
+    ready = [tmp_path / f"ready-{i}" for i in range(2)]
+    processes = []
+    try:
+        with download.host_slot("https://controlled.example/file"):
+            for marker in ready:
+                processes.append(subprocess.Popen([sys.executable, "-c", code, str(marker), str(events)],
+                                                  env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True))
+            deadline = time.monotonic() + 10
+            while not all(marker.exists() for marker in ready) and time.monotonic() < deadline:
+                time.sleep(0.01)
+            assert all(marker.exists() for marker in ready)
+            assert not events.exists(), "the parent's host lease must block both children"
+        for process in processes:
+            stdout, stderr = process.communicate(timeout=20)
+            assert process.returncode == 0, stderr
+        assert events.read_text().splitlines() == ["enter", "exit", "enter", "exit"]
+        assert not (cache / "network-metrics").exists()
+    finally:
+        for process in processes:
+            if process.poll() is None:
+                process.kill()
+            process.communicate()
+
+
 def test_fetch_many_keeps_order_and_host_limit(server, monkeypatch):
     monkeypatch.setitem(download.HOST_LIMITS, "127.0.0.1", 2)
     Handler.delay = 0.1
@@ -206,6 +419,8 @@ def test_names_must_be_portable(bad):
 def test_portable_names_pass():
     download.check_portable("surfaces/earth/gibs/VIIRS_2026-09-28_-90_-180_-45_-90_8192x4096.png")
     download.check_portable("naif/spk-excerpts/sat441_JD2460763.876-2461863.876.bsp")
+
+
 def test_reserved_host_slots_leave_foreground_slots_free(tmp_path, monkeypatch):
     import fcntl
     import hashlib

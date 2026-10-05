@@ -238,6 +238,24 @@ function linearEphemeris(target: number, center: number, x0: number, vx: number,
 }
 
 describe('EphemerisSet mechanics (synthetic)', () => {
+  it('exposes the owning headers of exactly the selected chain, with fallback outside a later file', () => {
+    const base = linearEphemeris(5, 0, 1000, 0, 0, 100, 10);
+    const early = linearEphemeris(599, 5, 10, 0, 0, 100, 10);
+    const late = linearEphemeris(599, 5, 20, 0, 200, 100, 1);
+    const s = new EphemerisSet();
+    for (const e of [base, early, late]) s.add(e);
+    for (const [et, e, x] of [[199, early, 1010], [200, late, 1020], [300, late, 1020], [301, early, 1010]] as const) {
+      expect(s.positionSSB(599, et)).toEqual([x, 0, 0]);
+      const p = s.provenance(599, et)!;
+      expect(p.links.map((l) => l.header)).toEqual([e.header, base.header]);
+      expect(p.links.map((l) => l.seg)).toEqual(p.segments);
+      expect(p.links[0].seg).toBe(e.header.segments[0]);
+    }
+    expect(s.provenance(599, 1001)).toBeNull();
+    expect(s.provenance(599, NaN)).toBeNull();
+    expect(s.provenance(0, 500)!.links).toEqual([]);
+  });
+
   it('chains to the SSB, prefers later files, returns velocities, and has an empty window when unloaded', () => {
     const s = new EphemerisSet();
     expect(s.window.startEt).toBe(Infinity);
