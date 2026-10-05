@@ -97,9 +97,11 @@ def phase_table(name: str, values: np.ndarray, label: str, sources: list[str], m
         v = np.repeat(v[:, None], 4, axis=1)
     if v.shape != (len(grid), 4) or not np.all(np.isfinite(v)) or np.any(v < 0):
         raise ValueError(f"{name}: bad phase table")
-    return {"name": name, "phaseDeg": [float(x) for x in grid],
-            "valuesXYZS": [[float(f"{x:.6g}") for x in row] for row in v],
-            "minPhaseDeg": float(domain[0]), "maxPhaseDeg": float(domain[1]),
+    payload = {"name": name, "phaseDeg": [float(x) for x in grid],
+               "valuesXYZS": [[float(f"{x:.6g}") for x in row] for row in v],
+               "minPhaseDeg": float(domain[0]), "maxPhaseDeg": float(domain[1])}
+    # Keep the renderer's flat fields as compatibility aliases of the canonical Sourced payload.
+    return {**payload, "value": payload if label != "unknown" else None,
             "label": label, "sources": list(sources), "method": method}
 
 
@@ -144,8 +146,11 @@ class Prov:
     sources: list[str]
     method: str
 
-    def json(self) -> dict:
-        return {"label": self.label, "sources": list(self.sources), "method": self.method}
+    def json(self, value, inputs: list[str] | None = None) -> dict:
+        if (value is None) != (self.label == "unknown"):
+            raise ValueError("component provenance: value must be null iff label is unknown")
+        return {"value": value, "label": self.label,
+                "sources": sorted(set(self.sources + (inputs or []))), "method": self.method}
 
 
 @dataclass
@@ -176,13 +181,29 @@ class Component:
                          "values": [float(f"{x:.5g}") for x in self.profile],
                          "widthRefKm": round(self.width_ref_km, 4), "widthScaling": self.width_scaling,
                          "opticalDepthKnown": self.optical_depth_known},
-             "layer": self.layer, "thin": self.thin,
-             "provenance": {"geometry": self.geometry.json(), "opticalDepth": self.optical_depth.json(),
-                            "reflectance": self.reflectance.json()}}
+             "layer": self.layer, "thin": self.thin}
         if self.arcs:
             d["arcs"] = self.arcs
         if self.vertical:
             d["vertical"] = self.vertical
+        geometry = {k: d[k] for k in ("kind", "inner", "outer", "vertical") if k in d}
+        reflectance = {"layer": self.layer, "thin": self.thin}
+        if self.arcs:
+            geometry["arcs"] = {k: v for k, v in self.arcs.items() if k != "factor"}
+            reflectance["longitudinalFactor"] = self.arcs["factor"]
+        if not self.optical_depth_known:
+            # This profile is a reference brightness, not a measured optical depth.
+            reflectance["profile"] = d["profile"]
+        known = lambda p, v: v if p.label != "unknown" else None
+        d["provenance"] = {
+            "geometry": self.geometry.json(known(self.geometry, geometry)),
+            "opticalDepth": self.optical_depth.json(
+                known(self.optical_depth, {"profile": d["profile"]}),
+                self.geometry.sources if self.optical_depth.label != "unknown" else []),
+            "reflectance": self.reflectance.json(
+                known(self.reflectance, reflectance),
+                self.geometry.sources + self.optical_depth.sources if self.reflectance.label != "unknown" else []),
+        }
         return d
 
 

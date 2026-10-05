@@ -83,6 +83,28 @@ def test_figure_inputs_remain_estimated_in_the_product(built):
     assert arcs["provenance"]["reflectance"]["label"] == "estimated"
 
 
+@pytest.mark.parametrize("key", ["599", "799", "899"])
+def test_component_metadata_has_sourced_values_and_matching_aliases(built, key):
+    m = _model(built[1], key)
+    for t in m["phaseFunctions"].values():
+        assert t["value"] is not None
+        assert all(t["value"][k] == t[k] for k in ("name", "phaseDeg", "valuesXYZS", "minPhaseDeg", "maxPhaseDeg"))
+    for c in m["components"]:
+        p = c["provenance"]
+        for aspect in p.values():
+            assert (aspect["value"] is None) == (aspect["label"] == "unknown")
+        assert p["geometry"]["value"]["inner"] == c["inner"]
+        assert p["geometry"]["value"]["outer"] == c["outer"]
+        if c["profile"]["opticalDepthKnown"]:
+            assert p["opticalDepth"]["value"]["profile"] == c["profile"]
+        else:
+            assert p["opticalDepth"]["value"] is None
+            assert p["reflectance"]["value"]["profile"] == c["profile"]
+        if p["reflectance"]["value"] is not None:
+            assert p["reflectance"]["value"]["layer"] == c["layer"]
+            assert p["reflectance"]["value"]["thin"] == c["thin"]
+
+
 # ---------------------------------------------------------------------------------------------- transcriptions
 def test_transcribed_tables():
     orb = rings_uranus.orbits()

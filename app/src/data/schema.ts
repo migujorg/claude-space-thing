@@ -475,6 +475,8 @@ export interface RingComponentEdge {
 }
 
 export interface RingComponentProvenance {
+  /** Canonical Sourced payload; absent only in products built before the envelope migration. */
+  value?: Record<string, unknown> | null;
   label: Label;
   sources: string[];
   method: string;
@@ -482,6 +484,10 @@ export interface RingComponentProvenance {
 
 /** A tabulated phase function per CIE channel (X, Y, Z, scotopic), interpolated log-linearly in α. */
 export interface RingPhaseTable {
+  /** Canonical Sourced payload. Flat fields below mirror it for existing renderer consumers. */
+  value?: {
+    name: string; phaseDeg: number[]; valuesXYZS: number[][]; minPhaseDeg: number; maxPhaseDeg: number;
+  } | null;
   name: string;
   phaseDeg: number[];
   valuesXYZS: number[][];
