@@ -639,6 +639,18 @@ a 512 × 512 view, Titan 330 px across, SwiftShader, 2026-10-04) is 1.003–1.00
 at 30°, 0.997 at 60°, 0.989 at 90°, 0.982–0.985 at 120°, 0.988–0.991 at 150° and 0.983–0.991 at 166° (X, Y, Z,
 S): the shaders draw what the twin computes to within 2 %, so the twin's numbers stand for the picture.
 
+**The two scenes** (app/e2e/scenes.json; rendered 2026-10-04, no baseline accepted yet). `titan-haze` (61°,
+from 12 000 km): a tan-orange disk, brightest toward the sub-solar point, with no sharp terminator (the light
+fades over about a quarter of the radius and wraps past the cusps), the haze visible to about 150 km beyond the
+solid limb with a blue-grey outer fringe, the night side black. `titan-haze-ring` (170°, from 12 000 km): the
+camera is inside Titan's shadow, the Sun 10° from the disk centre behind a limb that spans 12.4–14.8° (surface
+to the model's top), so the scattering angle is 2–5° on the limb nearest the Sun and 22–25° on the far one.
+The picture is a crescent over about ±65° of the limb, dark for the first ~150 km above the surface (the
+sunlight does not get through the lower haze), orange at 200–300 km and white-blue to 500 km; the rest of the
+limb is 15 or more times fainter (the phase function between 3° and 17–24°) and black to the adapted eye. From
+far away, where the scattering angle is 10° all round, the CPU twin gives a complete ring: at 350–400 km the
+far limb has 0.36–0.54 of the near limb's radiance.
+
 **The 12 bins.** Methane bands narrower than a bin are averaged in extinction, not in transmission. Against
 every sample its own bin, Titan's X, Y, Z, S at 5.7° change by −1.5, −1.0, +0.5 and −0.2 %.
 
