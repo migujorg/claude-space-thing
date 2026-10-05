@@ -1,0 +1,49 @@
+{
+ "utc": "2026-10-15T00:00:00Z",
+ "reality": {
+  "exists": "complete",
+  "view": "eye",
+  "exposureBoostStops": 0,
+  "overlays": {
+   "labels": true,
+   "orbits": true,
+   "provenanceTint": false
+  },
+  "sunShield": false,
+  "instantAdaptation": true
+ },
+ "selected": -4542418,
+ "smallBodies": {
+  "status": "ready",
+  "message": null,
+  "loadMs": 10440.800000000745,
+  "count": 1573014,
+  "field": true,
+  "names": {
+   "state": "idle",
+   "count": 0,
+   "error": null
+  },
+  "counts": {
+   "drawn": 1569741,
+   "withheld": 3211,
+   "noPosition": 61,
+   "from": "field",
+   "synthetic": {
+    "drawn": 2968842,
+    "objects": 2969849
+   }
+  },
+  "cpuPropagationMs": 0,
+  "closeUps": [],
+  "selected": {
+   "row": 4542417,
+   "name": "Synthetic irregular moon of Jupiter #13",
+   "spkid": null,
+   "flags": [],
+   "distKm": 59998730.0430944,
+   "lightTimeS": 200.13422099862964
+  }
+ },
+ "url": "t=2026-10-15T00:00:00.000Z&orbits=1&adapt=instant"
+}
