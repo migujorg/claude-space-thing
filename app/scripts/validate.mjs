@@ -1,14 +1,17 @@
 // Validation against calibrated images (app/e2e/README.md, docs/reports/validation.md). Renders every case of
-// validation/index.json with the real renderer and the real data (headless Chromium, SwiftShader WebGPU, offscreen)
-// on validation.html, reads the HDR XYZS buffer before the eye model over each region of interest, and compares it
-// with the case's expected radiance and tolerance. Writes app/shots/validation/report.json, report.md (the table),
-// and per case <id>.display.png (the eye-model image) and <id>.hdr.png (rendered Y, square-root scale).
+// validation/index.json with the real renderer and the real data (headless Chromium, SwiftShader WebGPU unless
+// --gpu hardware, offscreen) on validation.html, reads the HDR XYZS buffer before the eye model over each region of
+// interest, and compares it with the case's expected radiance and tolerance. Writes app/shots/validation/report.json,
+// report.md (the table), and per case <id>.display.png (the eye-model image) and <id>.hdr.png (rendered Y,
+// square-root scale).
 //
 //   npm run validate                         all cases
 //   npm run validate -- --only io-nh-lorri-2007,saturn-cassini-wac-2016
 //   options: --ss N (N × N samples per pixel, default 1)  --reality strict|best|complete (default best)
 //            --hdr f16 (rgba16float fallback targets)  --timeout <s per case, default 900>
 //            --base http://localhost:5173 (use a running server)  --strict (exit 1 when an ROI fails)
+//            --gpu swiftshader|hardware (default swiftshader; hardware = the machine's GPU through Vulkan, and the
+//            run stops if the browser gave a software adapter instead)
 // Not part of CI (no data, no WebGPU there). A failing ROI is a finding, reported with its numbers.
 
 import { chromium } from 'playwright';
@@ -17,7 +20,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { encodePng } from './e2e-lib.mjs';
+import { adapterLabel, encodePng, gpuLaunchArgs, gpuMismatch, pageAdapterInfo } from './e2e-lib.mjs';
 import { markdownReport } from './validate-lib.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -35,6 +38,8 @@ const only = opt('only')?.split(',').filter(Boolean);
 const ss = Math.max(1, Number(opt('ss') ?? 1));
 const reality = opt('reality') ?? 'best';
 const timeoutMs = 1000 * Number(opt('timeout') ?? 900);
+const gpuMode = opt('gpu') ?? 'swiftshader';
+const launchArgs = gpuLaunchArgs(gpuMode); // throws on an unknown mode, before anything starts
 
 const index = JSON.parse(readFileSync(resolve(VALIDATION, 'index.json'), 'utf8'));
 const cases = index.cases.filter((c) => !only || only.includes(c.id));
@@ -58,10 +63,7 @@ if (!base) {
   await server.listen();
   base = `http://localhost:${server.httpServer.address().port}`;
 }
-const browser = await chromium.launch({
-  headless: true,
-  args: ['--enable-unsafe-webgpu', '--enable-features=Vulkan', '--use-webgpu-adapter=swiftshader', '--use-angle=swiftshader', '--ignore-gpu-blocklist'],
-});
+const browser = await chromium.launch({ headless: true, args: launchArgs });
 
 /** Rendered Y as an 8-bit grey image, square-root scale with `peak` at white. */
 function yPng(y, w, h, peak) {
@@ -81,6 +83,15 @@ await page.goto(`${base}/validation.html${opt('hdr') === 'f16' ? '?hdr=f16' : ''
 await page.waitForFunction(() => window.__frameReady === true || !!window.__frameError, null, { timeout: 300000, polling: 500 });
 const startErr = await page.evaluate(() => window.__frameError ?? null);
 if (startErr) throw new Error(`validation page failed: ${startErr}`);
+// The adapter the page's renderer was given (it is created once, so one look covers every case).
+const gpu = { mode: gpuMode, adapter: await page.evaluate(pageAdapterInfo) };
+const wrongGpu = gpuMismatch(gpuMode, gpu.adapter);
+if (wrongGpu) {
+  await browser.close();
+  await server?.close();
+  throw new Error(wrongGpu);
+}
+process.stdout.write(`gpu: ${gpu.mode}, adapter ${adapterLabel(gpu.adapter)}\n`);
 const dataMissing = await page.evaluate(() => window.__validation.data.missing);
 
 const results = [];
@@ -118,6 +129,7 @@ const report = {
   git: gitRev,
   dataGeneratedAt,
   options: { ss, reality, hdr: opt('hdr') ?? 'auto' },
+  gpu,
   dataMissing,
   consoleErrors,
   doc: 'docs/reports/validation.md (the cases), app/e2e/README.md (this runner)',
