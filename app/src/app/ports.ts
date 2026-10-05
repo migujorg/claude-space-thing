@@ -6,7 +6,7 @@
 // where this port says `eph: EphemerisSetPort`, even if the concrete class has extra/private members.
 
 import type {
-  CometModelProduct, EphemHeader, IauRotation, Label, OrientationHeader, SmallBodyCoreHeader, SmallBodyPhotometry, SmallBodyPhysicalHeader, SmallBodyTableHeader, Sourced, SyntheticObjectsHeader, TimeData,
+  CometModelProduct, EphemHeader, EphemSegment, IauRotation, Label, OrientationHeader, SmallBodyCoreHeader, SmallBodyPhotometry, SmallBodyPhysicalHeader, SmallBodyTableHeader, Sourced, SyntheticObjectsHeader, TimeData,
 } from '../data/schema';
 import type { Mat3, RendererStats, SceneSnapshot, StarCatalog, Vec3 } from '../render/scene';
 import type { SkyBackgroundHook } from '../render/sky/background';
@@ -43,6 +43,14 @@ export interface StateVector {
   vel: Vec3;
 }
 
+/** Exact links chosen by the evaluator at an epoch; null provenance means no complete chain covers it. */
+export interface EphemerisSourcePort {
+  segments: EphemSegment[];
+  links: { header: EphemHeader; seg: EphemSegment }[];
+  label: Label;
+  sources: string[];
+}
+
 /** `class EphemerisSet` — km, km/s, ICRF, SSB origin. */
 export interface EphemerisSetPort {
   add(e: EphemerisPort): void;
@@ -51,7 +59,7 @@ export interface EphemerisSetPort {
   covers(id: number, et: number): boolean;
   readonly window: { startEt: number; endEt: number };
   /** Optional (M2): where a chained position comes from (worst segment label, sources). */
-  provenance?(id: number, et: number): { label: Label; sources: string[] } | null;
+  provenance?(id: number, et: number): EphemerisSourcePort | null;
 }
 export interface EphemerisSetCtor {
   new (): EphemerisSetPort;

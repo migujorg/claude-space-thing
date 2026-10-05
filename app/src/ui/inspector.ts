@@ -145,6 +145,7 @@ export class Inspector {
     const st = m.bodyLoadState(body.id);
     const loading = st === 'loaded' ? null : st === 'error' ? 'its ephemeris file failed to load (see Data)' : 'its ephemeris file is still loading';
     let rows = attributeRows(body, level, [...(m.data?.ephemerides ?? []), ...(m.data?.deferred ?? [])], {
+      ephemeris: m.ephemerisSource(body.id),
       orientation: m.orientationSource(body.id),
       loading,
       surfaces: m.data?.surfaces.filter((x) => x.bodyId === body.id) ?? [],
@@ -198,14 +199,16 @@ export class Inspector {
       this.el.append(h('div', { class: 'st-row' }, h('button', { onclick: () => this.actions.openSources(allSources, `${owner}: all sources`) }, `All ${allSources.length} sources`)));
   }
 
-  /** Load state + orientation source of a body: when this changes, the rows must be rebuilt. */
+  /** Load state and selected ephemeris/orientation: changes at coverage boundaries rebuild the rows. */
   private stateKey(id: number): string {
     if (id < 0) {
       const m = this.model;
       return `sb|${m.sb.status}|${!!m.smallBodies?.field}|${m.reality.exists}|${m.names?.spkidOf(sbRow(id)) ?? ''}|${m.shapeStatus(id)?.text ?? ''}`;
     }
     const o = this.model.orientationSource(id);
-    return `${this.model.bodyLoadState(id)}|${o ? `${o.kind}:${o.label}:${o.frame}` : '-'}|${this.model.reality.exists}|${this.model.shapeStatus(id)?.text ?? ''}`;
+    const chain = this.model.ephemerisSource(id);
+    const links = chain ? JSON.stringify(chain.links.map((l) => [l.header.bin, l.header.segments.indexOf(l.seg)])) : '-';
+    return `${this.model.bodyLoadState(id)}|${links}|${o ? `${o.kind}:${o.label}:${o.frame}` : '-'}|${this.model.reality.exists}|${this.model.shapeStatus(id)?.text ?? ''}`;
   }
 
   private setWhy(line: string): void {

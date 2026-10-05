@@ -1,13 +1,16 @@
 // Headless screenshot harness (docs/architecture.md §5.4).
-// Starts a Vite dev server unless --base is given, opens the page in Chromium with SwiftShader WebGPU,
-// waits for window.__frameReady, and saves a PNG. Prints console errors.
+// Starts a Vite dev server unless --base is given, opens the page in Chromium with SwiftShader WebGPU (or, with
+// --gpu hardware, the machine's GPU through Vulkan), waits for window.__frameReady, and saves a PNG. Prints console
+// errors and the adapter that rendered.
 //
 //   node scripts/shot.mjs --url "/?t=2026-09-30T00:00:00Z" --out shots/x.png [--width 1280 --height 720] [--wait 0] [--base http://localhost:5173]
+//                         [--gpu swiftshader|hardware] (default swiftshader; with hardware a software adapter is an error)
 import { chromium } from 'playwright';
 import { createServer } from 'vite';
 import { mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { adapterLabel, gpuLaunchArgs, gpuMismatch, pageAdapterInfo } from './e2e-lib.mjs';
 
 const args = Object.fromEntries(
   process.argv.slice(2).reduce((acc, a, i, arr) => (a.startsWith('--') ? [...acc, [a.slice(2), arr[i + 1]?.startsWith('--') ? 'true' : arr[i + 1]]] : acc), []),
@@ -20,6 +23,8 @@ const width = Number(args.width ?? 1280);
 const height = Number(args.height ?? 720);
 const extraWaitMs = Number(args.wait ?? 0);
 const timeoutMs = Number(args.timeout ?? 180000);
+const gpuMode = args.gpu ?? 'swiftshader';
+const launchArgs = gpuLaunchArgs(gpuMode); // throws on an unknown mode, before anything starts
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 let server;
@@ -31,10 +36,7 @@ if (!base) {
   base = `http://localhost:${addr.port}`;
 }
 
-const browser = await chromium.launch({
-  headless: true,
-  args: ['--enable-unsafe-webgpu', '--enable-features=Vulkan', '--use-webgpu-adapter=swiftshader', '--use-angle=swiftshader', '--ignore-gpu-blocklist'],
-});
+const browser = await chromium.launch({ headless: true, args: launchArgs });
 let failed = false;
 try {
   const page = await browser.newPage({ viewport: { width, height } });
@@ -44,6 +46,10 @@ try {
   await page.waitForFunction(() => window.__frameReady === true || window.__frameError, null, { timeout: timeoutMs, polling: 250 });
   const err = await page.evaluate(() => window.__frameError);
   if (err) { console.log('[frameError]', err); failed = true; }
+  const adapter = await page.evaluate(pageAdapterInfo);
+  console.log('[gpu]', `${gpuMode}, adapter ${adapterLabel(adapter)}`);
+  const wrongGpu = gpuMismatch(gpuMode, adapter);
+  if (wrongGpu) { console.log('[gpu]', wrongGpu); failed = true; }
   if (extraWaitMs) await page.waitForTimeout(extraWaitMs);
   mkdirSync(dirname(out), { recursive: true });
   await page.screenshot({ path: out });
