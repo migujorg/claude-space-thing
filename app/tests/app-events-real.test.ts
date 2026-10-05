@@ -206,6 +206,7 @@ describe.skipIf(!built)('event finder on the real products', () => {
     it(`${NEO} (${ca.rows.length} approaches of this build's window, by the build record's rule)`, () => {
       expect(rec.unbound).toEqual([]);
       const core = JSON.parse(fs.readFileSync(DATA_DIR + 'smallbodies/core.json', 'utf8')) as SmallBodyCoreHeader;
+      expect(core.window, 'one build has one window: the catalogue\'s is the manifest\'s').toEqual(W);
       const names = fs.readFileSync(DATA_DIR + 'smallbodies/names.txt', 'utf8').split('\n');
       const u8 = fs.readFileSync(DATA_DIR + core.bin);
       const dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
