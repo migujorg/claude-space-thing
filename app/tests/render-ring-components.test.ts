@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import type { RingComponent, RingComponentEdge, RingComponentModel, RingPhaseTable } from '../src/data/schema';
+import type { Body, RingComponent, RingComponentEdge, RingComponentModel, RingPhaseTable, RingsFile } from '../src/data/schema';
+import { applyExtras } from '../src/app/extras';
+import type { SceneBody } from '../src/render/scene';
+import { prepareRings } from '../src/render/rings';
+import { DATA_DIR } from './core-data';
 import {
   CMP_RECORD_VEC4, DAY_S, arcFactor, bandAt, componentBounds, componentTable, componentsIF, componentsTransmission,
   edgeRadius, gAt, gExact, modeArgument, packComponentRecords, packComponents, phaseValue, ringLongitude,
@@ -176,5 +180,60 @@ describe('ring components: packing', () => {
     const t: RingPhaseTable = { name: 'x', phaseDeg: [0, 10, 20], valuesXYZS: [[1, 1, 1, 1], [4, 4, 4, 4], [2, 2, 2, 2]], minPhaseDeg: 0, maxPhaseDeg: 15, label: 'estimated', sources: [], method: '' };
     expect(phaseValue(t, 5)![0]).toBeCloseTo(2, 9);
     expect(phaseValue(t, 16)).toBeNull();
+  });
+});
+
+// Actual light-stage products: exercise the shell's reality gate, GPU packing and the unknown-light path together.
+const fs = await import(/* @vite-ignore */ 'node:fs' as string);
+const rings: RingsFile | null = fs.existsSync(DATA_DIR + 'rings.json')
+  ? JSON.parse(fs.readFileSync(DATA_DIR + 'rings.json', 'utf8')) : null;
+const hasComponents = ['599', '799', '899'].every((id) => rings?.[id]?.components?.value);
+if (!hasComponents) console.warn('[ring tests] Outer-ring components not built; run the light stage.');
+
+describe.skipIf(!hasComponents)('ring components: real light-stage products', () => {
+  it.each([599, 799, 899])('system %i is estimated, packs without truncation, and is withheld at Strict', (id) => {
+    const sys = rings![String(id)];
+    const m = sys.components!.value!;
+    expect(sys.components!.label).toBe('estimated');
+    const p = packComponents(m);
+    expect(p.count).toBe(m.components.length);
+    const records = packComponentRecords(p, m.epochEt);
+    expect(Array.from(records).every(Number.isFinite)).toBe(true);
+    expect(Array.from(p.staticData).every(Number.isFinite)).toBe(true);
+    m.components.forEach((c, k) => {
+      const o = k * CMP_RECORD_VEC4 * 4;
+      expect(records[o + 3] + records[o + 7]).toBe(c.inner.modes.length + c.outer.modes.length);
+    });
+    for (const level of ['strict', 'best', 'complete'] as const) {
+      const sb: SceneBody = {
+        id, name: 'test planet', pos: [0, 0, 1e6], toSun: [0, 0, -1e9],
+        orient: [1, 0, 0, 0, 1, 0, 0, 0, 1], radii: [1000, 1000, 1000],
+        albedoXYZS: null, phase: null, surfaceUnknown: true, worstLabel: 'measured', selected: false,
+      };
+      applyExtras(sb, { id } as Body, { rings, surfaces: new Map() }, level, false, m.epochEt);
+      if (level === 'strict') {
+        expect(sb.rings?.components).toBeUndefined();
+        if (id === 599) expect(sb.rings).toBeNull();
+        else expect(sb.rings?.reflectance).toBeNull();
+      } else {
+        expect(sb.rings?.components).toBe(m);
+        expect(sb.rings?.et).toBe(m.epochEt);
+        expect(prepareRings(sb, [1, 1, 1, 1], 1000, 1e-5).draw?.cmp?.packed.count).toBe(m.components.length);
+      }
+    }
+  });
+
+  it('Galle emits no light and retains a not-measured footprint despite its small optical depth', () => {
+    const m = rings!['899'].components!.value!;
+    const c = m.components.find((c) => c.id === 'neptune-galle')!;
+    expect(c.provenance.reflectance.label).toBe('unknown');
+    expect(c.layer).toBeNull();
+    expect(c.thin).toBeNull();
+    const r = 0.5 * (c.inner.a + c.outer.a);
+    const out = componentsIF(m, m.components.map(componentTable), r, 0, m.epochEt, 100, 0.5, 0.5, true, 5);
+    expect(out.iof).toEqual([0, 0, 0, 0]);
+    expect(out.tauUnknown).toBeGreaterThan(0);
+    expect(out.tauUnknown).toBeLessThan(0.001);
+    expect(out.unknownCoverage).toBeCloseTo(1, 9);
   });
 });
