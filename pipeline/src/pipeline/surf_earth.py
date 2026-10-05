@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import concurrent.futures as cf
 import datetime as _dt
+import hashlib
 import json
 import threading
 import time
@@ -141,7 +142,7 @@ def _register_gibs(ctx: BuildContext) -> str:
         "NASA Global Imagery Browse Services (GIBS), part of NASA's Earth Science Data and Information System "
         "(ESDIS). https://earthdata.nasa.gov/gibs. Colour maps: https://gibs.earthdata.nasa.gov/colormaps/v1.3/.",
         gb.CAPS, {caps.name: record(caps)}, license="NASA data policy (no restrictions on use; cite GIBS)",
-        notes="Capabilities document of the build day; layer images are fetched by WMS GetMap and decoded through "
+        notes=f"Capabilities snapshot pinned to {gb.CAPS_SNAPSHOT}; layer images are fetched by WMS GetMap and decoded through "
               "the layer's colour map (see the layer sources).")
 
 
@@ -511,6 +512,7 @@ def build_clouds(ctx: BuildContext) -> list[dict]:
 RSR_ZIP = "https://ncc.nesdis.noaa.gov/NOAA-20/docs/J1_VIIRS_RSR_DAWG_At-Launch_Public_Release_V2.1_Nov2016.zip"
 RSR_MEMBER = "J1_VIIRS_BA_RSR_V2F/J1_VIIRS_RSR_DNBLGS_BA_Fused_V2FS.txt"
 CIE_BASE = "https://files.cie.co.at/Publications-datasets/"
+NIGHT_DAY = "2026-10-02"          # surfaces/399/night.json constants.sourceDate of the shared build
 
 
 def dnb_rsr() -> tuple[np.ndarray, Path]:
@@ -557,7 +559,9 @@ def build_night(ctx: BuildContext) -> dict:
     f_hp1, f_led = luminance_factors(rsr, hp1), luminance_factors(rsr, led)
     caps = gb.capabilities()
     info = gb.layer_info(caps, L_DNB)
-    day = info["default"]
+    day = NIGHT_DAY
+    if not _serves(info, day):
+        raise RuntimeError(f"GIBS snapshot does not advertise {L_DNB} for pin {day}")
     cm = gb.colormap(info["colormap"])
     h, w = st.level_shape(LEVEL)
     top = np.full((h, w, 2), np.nan, np.float32)
@@ -644,6 +648,8 @@ L_SEAICE = "GHRSST_L4_MUR_Sea_Ice_Concentration"
 WATER_RGB = (168, 248, 255)
 SRC_MOD44W = "modis-mod44w-v6-water-mask"
 SRC_MUR_ICE = "ghrsst-mur-sea-ice"
+WATER_DAY = "2015-01-01"          # shared water header's waterMaskYear; MOD44W annual GIBS date
+SEAICE_DAY = "2026-10-02"         # surfaces/399/water.json constants.seaIceDate of the shared build
 
 
 SOUTH_LIMIT = -60.0     # south of this, MOD44W "water" also means "not mapped" (see WaterMask)
@@ -683,9 +689,12 @@ class WaterMask:
     def __init__(self):
         caps = gb.capabilities()
         self.info = gb.layer_info(caps, L_WATER)
-        self.day = self.info["default"]
+        self.day = WATER_DAY
         self.ice_info = gb.layer_info(caps, L_SEAICE)
-        self.ice_day = self.ice_info["default"]
+        self.ice_day = SEAICE_DAY
+        for info, day in ((self.info, self.day), (self.ice_info, self.ice_day)):
+            if not _serves(info, day):
+                raise RuntimeError(f"GIBS snapshot does not advertise {info['layer']} for pin {day}")
         cm = gb.colormap(self.ice_info["colormap"])
         self.ice_cm_url = cm.url
         h, w = st.level_shape(LEVEL)
@@ -813,6 +822,11 @@ def build_water(ctx: BuildContext, mask: WaterMask) -> dict:
 PC_STAC = "https://planetarycomputer.microsoft.com/api/stac/v1/search"
 PC_SAS = "https://planetarycomputer.microsoft.com/api/sas/v1/token/modiseuwest/modis-061-cogs"
 MCD_COLLECTION = "modis-43A4-061"
+# The shared albedo header's epoch.observed gives this centre day and A2026257.
+# Digest of the sorted (granule id, three band hrefs) from the recorded STAC responses:
+# includes each granule's processing stamp, so a date alone cannot select a new reprocessing.
+MCD_DAY = "2026-09-14"
+MCD_GRANULES_SHA256 = "45265021a95244bfe11da6d0c5a9352929879aef8d71b154727e245fc0fd85b3"
 MCD_BANDS = (("Nadir_Reflectance_Band3", 469.0), ("Nadir_Reflectance_Band4", 555.0),
              ("Nadir_Reflectance_Band1", 645.0))
 MCD_PAGE = 1                        # 926.6 m overview (2 × 2 reduction of the 463 m product)
@@ -846,14 +860,11 @@ class _Sas:
 
 
 def mcd43_items() -> tuple[str, list[dict], list[Path]]:
-    """STAC items of the most recent MCD43A4 day (all tiles), and the saved STAC responses."""
-    today = _dt.datetime.now(_dt.timezone.utc).date().isoformat()
-    latest = fetch(PC_STAC, f"{SUBDIR}/mcd43a4", f"stac-latest-{today}.json",
-                   params={"collections": MCD_COLLECTION, "limit": "1", "sortby": "-datetime"})
-    dt = json.loads(latest.read_text(encoding="utf-8"))["features"][0]["properties"]["datetime"]
-    day = dt[:10]
+    """Pinned MCD43A4 centre day and exact granules, reusing the saved STAC pages."""
+    day = MCD_DAY
+    dt = f"{day}T00:00:00Z"
     doy = f"A{day[:4]}{_dt.date.fromisoformat(day).timetuple().tm_yday:03d}"
-    items, paths, k = [], [latest], 0
+    items, paths, k = [], [], 0
     url, params = PC_STAC, {"collections": MCD_COLLECTION, "datetime": dt, "limit": "1000"}
     while url:
         pth = fetch(url, f"{SUBDIR}/mcd43a4", f"stac-{doy}-{k}.json", params=params)
@@ -864,7 +875,13 @@ def mcd43_items() -> tuple[str, list[dict], list[Path]]:
         url, params, k = (nxt[0]["href"], None, k + 1) if nxt else (None, None, k)
     if len(items) < 250:
         raise RuntimeError(f"MCD43A4 {doy}: only {len(items)} tiles in the STAC catalogue")
-    return doy, sorted(items, key=lambda f: f["id"]), paths
+    items.sort(key=lambda f: f["id"])
+    identity = [(f["id"], [f["assets"][b]["href"] for b, _ in MCD_BANDS]) for f in items]
+    digest = hashlib.sha256(json.dumps(identity, separators=(",", ":")).encode()).hexdigest()
+    if digest != MCD_GRANULES_SHA256 or any(f["properties"]["datetime"] != dt for f in items):
+        raise ValueError(f"MCD43A4 {doy}: granule pin mismatch; restore the recorded STAC pages or explicitly "
+                         "update MCD_DAY and MCD_GRANULES_SHA256")
+    return doy, items, paths
 
 
 def _mcd43_tile(item: dict, sas: _Sas) -> tuple[object, np.ndarray, dict]:
@@ -1066,7 +1083,8 @@ def build_albedo(ctx: BuildContext, mask: WaterMask) -> dict:
         "microsoft/PlanetaryComputer: October 2022 (2022.10.28). Zenodo. doi:10.5281/zenodo.7261897. Collection "
         f"{MCD_COLLECTION} (cloud-optimized GeoTIFF conversions of the LP DAAC HDF files).",
         PC_STAC, {p.name: record(p) for p in la["stac"]}, license="MODIS data: no restrictions (NASA data policy)",
-        notes="STAC search responses of the build day. Files are read with an anonymous read token that is not "
+        notes=f"STAC search responses for the pinned centre day {MCD_DAY}; exact granule ids and band URLs are "
+              f"pinned by sha256 {MCD_GRANULES_SHA256}. Files are read with an anonymous read token that is not "
               "recorded.")
     sl.register_dataset(
         ctx, SRC_MCD43, f"MODIS Terra+Aqua BRDF-adjusted nadir reflectance MCD43A4 v061, {la['doy']}",
