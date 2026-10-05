@@ -645,7 +645,7 @@ fades over about a quarter of the radius and wraps past the cusps), the haze vis
 solid limb with a blue-grey outer fringe, the night side black. `titan-haze-ring` (170°, from 12 000 km): the
 camera is inside Titan's shadow, the Sun 10° from the disk centre behind a limb that spans 12.4–14.8° (surface
 to the model's top), so the scattering angle is 2–5° on the limb nearest the Sun and 22–25° on the far one.
-The picture is a crescent over about ±65° of the limb, dark for the first ~150 km above the surface (the
+The picture is a crescent over about ±65° of the limb, dark for the first 150–200 km above the surface (the
 sunlight does not get through the lower haze), orange at 200–300 km and white-blue to 500 km; the rest of the
 limb is 15 or more times fainter (the phase function between 3° and 17–24°) and black to the adapted eye. From
 far away, where the scattering angle is 10° all round, the CPU twin gives a complete ring: at 350–400 km the
