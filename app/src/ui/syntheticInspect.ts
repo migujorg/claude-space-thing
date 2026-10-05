@@ -1,6 +1,6 @@
 // Inspector view-model for a synthetic object (the COMPLETE level; pipeline stage synthetic): what it stands for
 // (its population model, cell, the numbers of the conditioning, its seed) and its attributes, every one labelled
-// synthetic. Pure, no DOM. Every number comes from synthetic/objects + cells and their headers.
+// synthetic when known, unknown when absent. Pure, no DOM. Every number comes from synthetic/objects + cells and their headers.
 
 import type { SyntheticPopulation } from '../data/schema';
 import { SYNTHETIC_POP_TEXT } from '../app/smallbodies';
@@ -48,7 +48,7 @@ export interface SyntheticFacts {
   what: string;
 }
 
-/** Everything about synthetic object j at a level (all rows labelled synthetic: withheld below Complete). */
+/** Everything about synthetic object j at a level (known values are synthetic: withheld below Complete). */
 export function syntheticFacts(s: SyntheticCatalog, j: number, level: ExistsLevel, epochTdb: string | undefined): SyntheticFacts {
   const t = s.table;
   const get = (f: string) => (t.has(f) ? t.get(f, j) : NaN);
@@ -96,6 +96,8 @@ export function syntheticFacts(s: SyntheticCatalog, j: number, level: ExistsLeve
   }
   const rot = get('rotPeriod');
   if (Number.isFinite(rot)) rows.push(row('rot', 'Rotation period', `${fmt(rot, 4)} h`, cols.rotPeriod?.method));
+  else rows.push({ key: 'syn:rot', name: 'Rotation period', label: 'unknown', value: 'unknown', sources: [], withheld: false,
+    method: cols.rotPeriod?.method ?? 'Not provided by the population model.' });
   return { rows, population: pop, what };
 }
 

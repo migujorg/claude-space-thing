@@ -260,7 +260,11 @@ describe('synthetic objects in the app shell', () => {
     expect(orbit.name).toMatch(/about the Jupiter system barycentre/);
     expect(orbit.method).toMatch(/an assumption: no debiased orbit model of irregular moons exists.*fake motion text/);
     expect(f.rows.find((r) => r.key === 'syn:limit')!.method).toMatch(/H_V = m − 6\.37 ± 0\.06, the median offset over the survey's photometry of 7 known moons/);
-    expect(f.rows.some((r) => r.key === 'syn:rot')).toBe(false);     // rotation unknown (NaN)
+    // A missing population attribute must be shown as unknown, including below Complete.
+    for (const level of ['complete', 'best'] as const) {
+      expect(syntheticFacts(s, 0, level, 'fake epoch').rows.find((r) => r.key === 'syn:rot'))
+        .toMatchObject({ name: 'Rotation period', label: 'unknown', value: 'unknown', sources: [], withheld: false });
+    }
   });
 
   it('places a synthetic irregular moon at its planet, draws its orbit around the planet now, and lights it grey', () => {
