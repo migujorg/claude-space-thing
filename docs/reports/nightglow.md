@@ -24,8 +24,8 @@ WebGPU scene verification on the running app.
 | `nightglow/aurora-emission.bin` | float32 [mean energy 22][altitude 257 (86–598 km)][N₂⁺ 1N (427.8 nm), O 557.7 nm, O 630.0+636.4 nm, 0]: R per km per (erg cm⁻² s⁻¹) | `estimated` |
 
 The build checked on 2026-10-04 contains 59 raw inputs (122,867,792 bytes, including the reused CIE tables,
-US76 document and NAIF leap-second kernel) and five products (5,236,095 bytes). The final rebuild with all raw
-inputs cached took 45 s; most of it was magnetic field-line tracing. Itikawa's NIST PDF first returned HTTP 403
+US76 document and NAIF leap-second kernel) and five products (5,236,153 bytes). Rebuilds with all raw
+inputs cached took 45–67 s; most of it was magnetic field-line tracing. Itikawa's NIST PDF first returned HTTP 403
 and succeeded with the pipeline's browser user agent. If the publisher refuses a future retrieval, the existing
 transcription remains cited and the source record explicitly omits a retrieval date and checksum. UTC dates use
 SPICE and the registered NAIF LSK rather than a fixed TDB-to-UTC offset.
@@ -85,8 +85,9 @@ A03216, DOI:10.1029/2009JA014805; the NOAA operational model, Machol et al. 2012
 (the 36 published files, via the OvationPyme distribution) are evaluated as the IDL code does: flux = (b₁ + b₂ dΦ/dt)
 × the type probability, the code's caps, the northern dawn-wedge interpolation, hemispheres averaged; diffuse,
 monoenergetic and broadband electrons summed (ions not included). The grid is precomputed at 32 coupling nodes
-(0–7184 in steps of 276.3, then 8000–24000); the app interpolates linearly between nodes (exact for the regressions,
-approximate for the probability, which is piecewise in steps of 276) and between seasons with OP2010's day-of-year
+(0–7184 in steps of 276.3, then 8000–24000); the app interpolates the combined flux linearly between nodes
+(approximate: regression × probability with caps; the tabulated probability uses bins of 552.625 = 4421/8,
+not the finer build-node spacing) and between seasons with OP2010's day-of-year
 weights (southern hemisphere: 365 − doy). Coupling above the last node (24 000; reached in the strongest hours of the
 window, e.g. 2026-01-20 09 UT at 65 000) is held at the last node.
 

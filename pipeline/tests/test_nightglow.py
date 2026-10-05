@@ -189,6 +189,8 @@ def test_products_labels_and_layout():
     assert "naif-lsk-naif0012" in a["solarRadioFlux"]["sources"]
     assert {"naif-lsk-naif0012", "ovation-prime-2010"} <= set(u["coupling"]["sources"])
     ov = u["ovation"]["value"]
+    # OP2010 tabulates probability in dF_AVE / 8 bins: 4421 / 8 = 552.625, not the finer build nodes.
+    assert "bins of 552.625" in u["ovation"]["method"]
     n = 4 * 2 * len(ov["couplingNodes"]) * len(ov["mltHours"]) * len(ov["mlatDeg"])
     size = {"float16": 2, "float32": 4}[ov["dtype"]]
     assert (OUT / "aurora-ovation.bin").stat().st_size == n * size

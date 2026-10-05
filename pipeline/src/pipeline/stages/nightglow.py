@@ -431,8 +431,9 @@ def build_aurora(ctx: BuildContext, cie_ids: list[str]) -> tuple[dict, dict, dic
             "estimated", [src["op2010"]],
             method="OVATION Prime 2010 evaluated as its IDL code does (regression b1 + b2 dPhi/dt times the type "
                    "probability, the code's caps on extreme bins, the northern dawn-wedge interpolation, hemispheres "
-                   "averaged) at each coupling node; linear interpolation between nodes and in season weight is exact "
-                   "for the regressions and approximate for the probability (piecewise in dPhi/dt bins of 276)."),
+                   "averaged) at each coupling node; season weights interpolate linearly. Interpolation between "
+                   "coupling nodes approximates the combined flux (regression times probability, with caps); the "
+                   f"tabulated probability is piecewise in dPhi/dt bins of {na.DF_AVE / 8:g}."),
         "coupling": sourced({
             "unit": "Newell dPhi_MP/dt, (km/s)^(4/3) nT^(2/3), OP2010 4-hour weighted",
             "hourlyStart": hourly_start.isoformat().replace("+00:00", "Z"), "stepHours": 1,
