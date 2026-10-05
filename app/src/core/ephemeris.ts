@@ -15,6 +15,7 @@ const MAX_CHAIN = 16;
 
 /** A segment bound to its data (internal to core; exported only so EphemerisSet can type it). */
 export interface LoadedSegment {
+  header: EphemHeader;
   meta: EphemSegment;
   target: number;
   center: number;
@@ -55,7 +56,7 @@ export class Ephemeris {
         throw new Error(`ephemeris segment ${m.target}: records [${m.offset}, +${m.n * m.rsize}) outside data (${data.length})`);
       }
       const s: LoadedSegment = {
-        meta: m, target: m.target, center: m.center, type: m.type, initEt: m.initEt, intLen: m.intLen,
+        header, meta: m, target: m.target, center: m.center, type: m.type, initEt: m.initEt, intLen: m.intLen,
         rsize: m.rsize, n: m.n, offset: m.offset, ncoef, data,
         // Declared coverage (may be narrower than the records' span, as in SPICE), intersected with the records.
         startEt: Math.max(m.initEt, m.startEt ?? -Infinity),
@@ -256,6 +257,8 @@ function eqncpv(d: Float64Array, o: number, et: number, pos: Vec3, vel: Vec3 | n
 /** Provenance of a chained position: the segments used, their worst label, and all their sources. */
 export interface ChainProvenance {
   segments: EphemSegment[];
+  /** Owning product and exact segment selected by the evaluator, in body → SSB order. */
+  links: { header: EphemHeader; seg: EphemSegment }[];
   label: Label;
   sources: string[];
 }
@@ -339,7 +342,7 @@ export class EphemerisSet {
       worst = Math.max(worst, i);
       for (const src of s.meta.sources) sources.add(src);
     }
-    return { segments: segs.map((s) => s.meta), label: LABEL_ORDER[worst], sources: [...sources] };
+    return { segments: segs.map((s) => s.meta), links: segs.map((s) => ({ header: s.header, seg: s.meta })), label: LABEL_ORDER[worst], sources: [...sources] };
   }
 
   /** Segments from `id` down to the SSB, all covering `et`; null if any link is missing. */
