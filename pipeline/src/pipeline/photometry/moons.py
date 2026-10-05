@@ -162,7 +162,9 @@ KARKOSCHKA_1994_TEXT = Download(
     title="Karkoschka (1994) paper text in PDS volume GBAT_0001 (Table III: disk radii, incl. Titan 2575 km)",
     citation="Karkoschka, E. (1994). Spectrophotometry of the jovian planets and Titan at 300- to 1000-nm "
              "wavelength: the methane spectrum. Icarus 111, 174-192. DOI:10.1006/icar.1994.1139. ASCII text in the "
-             "PDS Atmospheres Node volume GBAT_0001, document/icarus94.asc.")
+             "PDS Atmospheres Node volume GBAT_0001, document/icarus94.asc.",
+    notes="Table III's Titan radius (2575 km) is already transcribed in this module; the document is cited "
+          "but never parsed as a numerical input.", transcribed_only=True)
 
 
 # ---------------------------------------------------------------------------------------------- helpers
