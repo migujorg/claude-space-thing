@@ -1,7 +1,19 @@
 // Test helper (not a test): loads the pipeline's built products from app/public/data and the fixtures in
 // app/tests/fixtures. Tests that need built data skip themselves, loudly, when it is missing: build it with
 //   cd pipeline && uv run python -m pipeline build --only time,ephemeris,bodies
+//
+// Two kinds of reference, never mixed (README "Tests and references"):
+//   * committed references (app/tests/fixtures): values for stated inputs (orbit solutions, their own epoch and
+//     force model, Horizons queries, SPICE kernels by sha256). Use them with their own epoch and model. They say
+//     nothing about the build under test, whose epoch, window, catalogue snapshot and kernel revisions differ;
+//   * build records (verification/*.json in the built data, `buildRecord`): what the pipeline computed for the
+//     products of this very build. "The app reads this product as the pipeline wrote it" compares with these.
+// A comparison this run cannot make is declared with `notCompared`, never dropped.
+//
+// TEST_DATA_DIR and TEST_FIXTURE_DIR (absolute paths) point the suite at another build's products or another
+// set of references.
 
+import { it } from 'vitest';
 import type { Body, EphemHeader, Manifest, OrientationHeader, TimeData } from '../src/data/schema';
 import { Ephemeris, EphemerisSet } from '../src/core/ephemeris';
 import { PreciseOrientation } from '../src/core/rotation';
@@ -17,8 +29,48 @@ const nodeUrl: { fileURLToPath(u: URL): string } = await import(/* @vite-ignore 
 
 // fileURLToPath, not URL.pathname: on Windows the latter gives "/C:/..." which fs cannot open.
 const dir = (rel: string) => nodeUrl.fileURLToPath(new URL(rel, import.meta.url));
-export const DATA_DIR = dir('../public/data/');
-export const FIXTURE_DIR = dir('./fixtures/');
+const env = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env ?? {};
+const slash = (p: string) => (/[\\/]$/.test(p) ? p : p + '/');
+export const DATA_DIR = env.TEST_DATA_DIR ? slash(env.TEST_DATA_DIR) : dir('../public/data/');
+export const FIXTURE_DIR = env.TEST_FIXTURE_DIR ? slash(env.TEST_FIXTURE_DIR) : dir('./fixtures/');
+
+/**
+ * Declare, inside a describe, a comparison this run cannot make. It appears in the report as a skipped test named
+ * after what is not compared and why, and counts in the summary's "skipped": nothing stops being checked silently.
+ */
+export function notCompared(what: string, why: string): void {
+  it.skip(`NOT COMPARED: ${what}: ${why}`, () => {});
+}
+
+/** A build record's header: the sha256 of every product it describes. */
+export interface BuildRecordHeader {
+  stage: string;
+  products: Record<string, string>;
+}
+
+export interface BuildRecord<T> {
+  /** The record, or null with `why` when this build has none. */
+  record: T | null;
+  why: string;
+  /** Products whose sha256 in the manifest is not the one the record names (must be empty: see `bound`). */
+  unbound: string[];
+}
+
+/**
+ * The record a stage wrote next to its products (verification/<name>.json), read from the build under test. A
+ * build made before the stage wrote one has none: the caller reports its comparisons as not compared.
+ */
+export function buildRecord<T extends BuildRecordHeader>(rel: string, stage: string): BuildRecord<T> {
+  const none = (why: string): BuildRecord<T> => ({ record: null, why, unbound: [] });
+  if (!fs.existsSync(DATA_DIR + 'manifest.json')) return none('the data is not built');
+  const manifest = JSON.parse(fs.readFileSync(DATA_DIR + 'manifest.json', 'utf8')) as Manifest;
+  if (!manifest.products[rel] || !fs.existsSync(DATA_DIR + rel)) {
+    return none(`this build has no ${rel} (it was made before the ${stage} stage wrote its build record): rebuild the ${stage} stage`);
+  }
+  const record = JSON.parse(fs.readFileSync(DATA_DIR + rel, 'utf8')) as T;
+  const unbound = Object.entries(record.products).filter(([p, sha]) => manifest.products[p]?.sha256 !== sha).map(([p]) => p);
+  return { record, why: '', unbound };
+}
 
 export function fixture<T>(name: string): T {
   return JSON.parse(fs.readFileSync(FIXTURE_DIR + name, 'utf8')) as T;
@@ -109,6 +161,7 @@ export class MaxTracker {
     const cov = this.checked + this.skipped > 0
       ? ` [${this.checked} cases checked, ${this.skipped} skipped: outside the built products' coverage]` : '';
     console.log(`${title}${cov}\n${lines.join('\n')}`);
+    if (this.skipped > 0) console.warn(`NOT COMPARED: ${title} ${this.skipped} of ${this.checked + this.skipped} reference cases: outside the built products' coverage`);
   }
   /** Fail only if nothing at all could be checked: then the fixtures need regenerating for this window. */
   requireSome(what: string): void {
@@ -118,3 +171,49 @@ export class MaxTracker {
     }
   }
 }
+
+// ---------------------------------------------------------------------------------------------- small bodies
+/** A verification object, in the committed reference (smallbody_reference.json) and in a build record alike. */
+export interface VerificationObject {
+  label: string;
+  category: string;
+  designation: string;
+  spkid: number;
+  /** Row in the catalogue of the build the file was made from. In the committed reference: not the build under test. */
+  coreRow: number;
+  horizonsSolution: string;
+  elements: { qKm: number; e: number; iRad: number; nodeRad: number; periRad: number; dtPeriS: number; epochEt: number };
+  nonGrav: { a1: number; a2: number; a3: number; dt: number; aln: number; r0: number; nm: number; nn: number; nk: number } | null;
+  stateAtEpoch: number[];
+  stateCommon: number[];
+  stateCommonFrom: 'horizons' | 'integrated';
+  epochs: number[];
+  horizons: number[][];
+  python: number[][];
+  maxErrKm: number;
+  toleranceKm: number;
+}
+
+/** verification/smallbodies.json: the smallbodies stage's build record. */
+export interface SmallBodyRecord extends BuildRecordHeader {
+  snapshot: string;
+  epochEt: number;
+  window: { startEt: number; endEt: number };
+  objects: VerificationObject[];
+  closeApproaches: {
+    rule: string;
+    counts: Record<string, number>;
+    fields: string[];
+    rows: (string | number)[][];
+  };
+}
+
+/** verification/orientation.json: the bodies stage's build record. */
+export interface OrientationRecord extends BuildRecordHeader {
+  kernels: { source: string; file: string; sha256: string }[];
+  bodies: { id: number; frame: string; product: string; cases: { et: number; segment: number; label: string; sources: string[]; bodyToJ2000: number[] }[] }[];
+}
+
+const J2000_MS = Date.UTC(2000, 0, 1, 12, 0, 0);
+/** Calendar date (TDB) of an ET, for messages. */
+export const etDate = (et: number): string => new Date(J2000_MS + et * 1000).toISOString().slice(0, 10);

@@ -9,6 +9,13 @@ Products (layouts in the headers; see docs/reports/small-bodies.md and schema.ts
   nongrav.json / nongrav.bin    non-gravitational model parameters, row -> core row (the propagator needs them).
   names.json / names.txt        one line per core row: spkid, primary designation, name, prefix, principal
                                 provisional designation (tab-separated), for search.
+  verification/smallbodies.json the build record (below).
+
+Build record: what this run computed for the verification objects (sb_verify.OBJECTS) from the very states it
+wrote to core.bin (their rows, those states, the integrator's positions through the window next to JPL Horizons',
+the tolerances), and the JPL CNEOS close approaches of this window whose orbit solution is the catalogue's. It names
+the sha256 of the products it describes. Tests of "the app reads and propagates this product as the pipeline did"
+read it, so they compare with the build they run against and never with a file made from another build.
 
 Orbits: JPL SBDB, full precision (sb_sbdb). Every object's osculating elements are turned into a state at its own
 epoch and integrated to the common epoch (the manifest window centre, rounded to 0h TDB) with the same Kepler-drift +
@@ -63,6 +70,14 @@ SELF_PERTURBERS = {20134340: ("999", 9)}   # 134340 Pluto: NAIF 999 (the Pluto s
 
 CAD_URL = "https://ssd-api.jpl.nasa.gov/cad.api"
 CLOSE_APPROACH_AU = 0.05
+
+VERIFICATION = "verification/smallbodies.json"
+# The verification compares every grid epoch (2 d); the record and the committed reference keep one in ten.
+RECORD_STEP_DAYS = 20
+# Close-approach cases kept in the record (a sample for the app's event finder, chosen by rule, not by result):
+CA_BODIES = ("Earth", "Moon")
+CA_CLOSEST = {"Earth": 3, "Moon": 1}   # the deepest encounters: where the integrator's encounter substeps matter
+CA_EDGES = 1                           # and the first and the last approach of the window: its boundaries
 
 CLASS_NAMES = {
     "IEO": "Atira (interior-Earth) NEO", "ATE": "Aten NEO", "APO": "Apollo NEO", "AMO": "Amor NEO",
@@ -167,7 +182,7 @@ def run(ctx: BuildContext) -> None:
     self_pert = np.isin(cat.spkid, list(SELF_PERTURBERS))
     hz_rows, hz_notes = _horizons_states(cat, np.nonzero(unsupported | self_pert)[0], common, states, status)
     t = lap(f"Horizons states for {len(hz_rows)} objects", t)
-    cad_rows, cad_n = _close_approaches(ctx, cat)
+    cad_rows, cad_n, cad = _close_approaches(ctx, cat)
 
     # ------------------------------------------------------------------ MPC U and cross-check
     mpc = ps.read_mpcorb(mpc_path)
@@ -514,6 +529,25 @@ def run(ctx: BuildContext) -> None:
         print(f"[{STAGE}] verify {r.label:30s} max |dr| = {r.max_err_km:9.3f} km over {r.epochs.size} epochs "
               f"(tol {tol:g}) level<={r.max_substep_level} {r.horizons_soln}")
     t = lap("verification vs Horizons", t)
+    write_json(ctx, VERIFICATION, {
+        "description": "Build record of the smallbodies stage: what this run computed for its verification objects "
+                       "from the states it wrote to smallbodies/core.bin, and the JPL CNEOS close approaches of this "
+                       "window computed by JPL from the orbit solutions the catalogue holds. Read by tests that "
+                       "compare another implementation (the app) with the pipeline on this same build.",
+        "stage": STAGE, "snapshot": snap.tag, "epochEt": common, "epochTdb": epoch_cal,
+        "window": {"startEt": ctx.start_et, "endEt": ctx.end_et},
+        "products": {k: ctx.products[k]["sha256"] for k in (f"{DIR}/core.json", f"{DIR}/core.bin",
+                                                            f"{DIR}/nongrav.bin", f"{DIR}/names.txt")},
+        "stepDays": RECORD_STEP_DAYS,
+        "objects": verification_objects(cat, model, res, flags),
+        "closeApproaches": close_approach_cases(cad[0], cad[1], cat, flags, ctx.start_et, ctx.end_et),
+        "label": "derived", "sources": ["jpl-sbdb-orbits", "jpl-sbdb-nongrav", "jpl-horizons-sb-states", "jpl-cneos-cad"],
+        "method": "objects: stateCommon is the object's record in core.bin; python the stage's integrator from it, "
+                  "chained outward from epochEt on the integration grid; horizons JPL Horizons heliocentric ICRF "
+                  "(query in horizonsQueryUrl), fetched by this run for the same orbit solution (orbitId = "
+                  "horizonsSolution, or the build fails). maxErrKm is over every grid epoch of the window, not only "
+                  "the ones kept here.",
+    }, STAGE, indent=None)
     timing["total"] = round(time.time() - t_stage, 1)
     report = {"generated": _dt.datetime.now(_dt.timezone.utc).isoformat(timespec="seconds"), "epochEt": common,
               "timing": timing, "statistics": stats, "verification": ver,
@@ -522,6 +556,96 @@ def run(ctx: BuildContext) -> None:
     print(f"[{STAGE}] {n} objects; positions: {stats['labels']['position']}; total {timing['total']} s")
     if fails:
         raise ValueError("small-body verification failed: " + "; ".join(fails))
+
+
+def _floats(a) -> list:
+    """JSON numbers; a non-finite value (a failed propagation) is null, and the verification reports the failure."""
+    return [float(x) if math.isfinite(x) else None for x in a]
+
+
+def verification_objects(cat: sb_catalog.Catalog, model: sb_model.ForceModel, res: list[sb_verify.Result],
+                         flags: np.ndarray, step_days: float = RECORD_STEP_DAYS) -> list[dict]:
+    """One entry per verification object: its SBDB solution, our state at the SBDB epoch and at the common epoch,
+    and every `step_days` across the window the integrator's state next to JPL Horizons' position. `flags` is the
+    core flags column. The build record and the committed reference (sb_fixtures) share this shape."""
+    out = []
+    for r in res:
+        i = r.row
+        step = float(np.median(np.diff(np.sort(r.epochs)))) / DAY if r.epochs.size > 1 else step_days
+        k = np.arange(0, r.epochs.size, max(1, int(round(step_days / step))))
+        one = cat.subset(np.array([i]))
+        ng = None
+        if cat.has_ng[i]:
+            ng = dict(zip(("a1", "a2", "a3", "dt", "aln", "r0", "nm", "nn", "nk"), (float(x) for x in cat.ng[i])))
+        out.append({
+            "label": r.label, "category": r.category, "designation": r.pdes, "spkid": int(cat.spkid[i]),
+            "coreRow": int(i), "orbitId": r.orbit_id, "horizonsSolution": r.horizons_soln,
+            "horizonsQueryUrl": r.horizons_url,
+            "elements": {"qKm": float(cat.f["q"][i] * sb_model.AU_KM), "e": float(cat.f["e"][i]),
+                         "iRad": float(np.radians(cat.f["i"][i])), "nodeRad": float(np.radians(cat.f["om"][i])),
+                         "periRad": float(np.radians(cat.f["w"][i])),
+                         "dtPeriS": float(sb_catalog.time_since_perihelion(one, model.mu_sun)[0]),
+                         "epochEt": float(sb_catalog.epoch_et(one)[0])},
+            "nonGrav": ng,
+            "stateAtEpoch": _floats(r.state_epoch),
+            "stateCommon": _floats(r.state_common),
+            "stateCommonFrom": "horizons" if int(flags[i]) & (1 << FLAGS["horizonsState"]) else "integrated",
+            "epochs": [float(x) for x in r.epochs[k]],
+            "horizons": [_floats(r.horizons[j, :3]) for j in k],
+            "python": [_floats(r.ours[j, :6]) for j in k],
+            "maxErrKm": r.max_err_km if math.isfinite(r.max_err_km) else None, "toleranceKm": _tolerance(cat, r),
+            "maxLevel": r.max_substep_level,
+        })
+    return out
+
+
+def close_approach_cases(doc: dict, rec: dict, cat: sb_catalog.Catalog, flags: np.ndarray, start_et: float,
+                         end_et: float) -> dict:
+    """Earth and Moon approaches of the CNEOS answer that our propagation of the catalogue must reproduce: inside
+    the window (the query is by calendar date), of an object whose catalogue orbit is the solution CNEOS computed
+    the approach from, with a position and without non-gravitational or unmodelled terms (the same point-mass
+    problem JPL solved). Kept: the closest per body (CA_CLOSEST) and the first and last in time (CA_EDGES)."""
+    f = {k: n for n, k in enumerate(doc["fields"])}
+    pdes_idx = {str(p): i for i, p in enumerate(cat.s["pdes"])}
+    skip = sum(1 << FLAGS[k] for k in ("nonGravitational", "unsupportedModelTerms", "positionLost", "horizonsState",
+                                       "planetaryEphemeris"))
+    counts = {"earthMoonRows": 0, "outsideWindow": 0, "notInCatalogue": 0, "otherOrbitSolution": 0,
+              "otherForceModel": 0, "comparable": 0}
+    ok = []
+    for r in doc.get("data", []):
+        if r[f["body"]] not in CA_BODIES:
+            continue
+        counts["earthMoonRows"] += 1
+        et = (float(r[f["jd"]]) - J2000_JD) * DAY
+        row = pdes_idx.get(r[f["des"]])
+        if not (start_et <= et <= end_et):
+            counts["outsideWindow"] += 1
+        elif row is None:
+            counts["notInCatalogue"] += 1
+        elif not sb_verify.same_solution(cat.s["orbit_id"][row], str(r[f["orbit_id"]])):
+            counts["otherOrbitSolution"] += 1
+        elif int(flags[row]) & skip:
+            counts["otherForceModel"] += 1
+        else:
+            counts["comparable"] += 1
+            ok.append((et, row, r))
+    keep: dict[int, tuple] = {}
+    for body, n in CA_CLOSEST.items():
+        for c in sorted((c for c in ok if c[2][f["body"]] == body), key=lambda c: float(c[2][f["dist"]]))[:n]:
+            keep[id(c[2])] = c
+    by_time = sorted(ok, key=lambda c: c[0])
+    for c in by_time[:CA_EDGES] + by_time[len(by_time) - CA_EDGES:]:
+        keep[id(c[2])] = c
+    fields = ["des", "orbit_id", "jd", "cd", "dist", "v_rel", "body", "t_sigma_f"]
+    return {
+        "source": "jpl-cneos-cad", "url": rec["url"], "sha256": rec["sha256"], "retrieved": rec["retrieved"],
+        "rule": f"Earth and Moon rows inside the window whose orbit_id is the catalogue's and whose object has a "
+                f"position and no non-gravitational or unmodelled terms: the {CA_CLOSEST['Earth']} closest to the "
+                f"Earth, the closest to the Moon, and the first and the last in time.",
+        "counts": counts, "fields": ["coreRow", "et", *fields],
+        "units": {"jd": "TDB", "dist": "au from the body centre", "v_rel": "km/s", "et": "TDB s past J2000"},
+        "rows": [[int(row), et, *(r[f[k]] for k in fields)] for et, row, r in sorted(keep.values(), key=lambda c: c[0])],
+    }
 
 
 def _cache_key(snap, cat, model, common: float) -> str:
@@ -576,9 +700,10 @@ def _horizons_states(cat: sb_catalog.Catalog, rows: np.ndarray, common: float, s
     return done, notes
 
 
-def _close_approaches(ctx: BuildContext, cat: sb_catalog.Catalog) -> tuple[list[int], int]:
+def _close_approaches(ctx: BuildContext, cat: sb_catalog.Catalog) -> tuple[list[int], int, tuple[dict, dict]]:
     """Rows of objects that JPL CNEOS lists with a planetary approach closer than CLOSE_APPROACH_AU inside the window
-    (cad.api, all bodies). The GPU propagator needs encounter substeps for them."""
+    (cad.api, all bodies). The GPU propagator needs encounter substeps for them. Also the answer itself and its
+    download record, for the build record (close_approach_cases)."""
     from ..download import fetch
     lo, hi = hz.et_to_tdb_calendar(ctx.start_et)[:10], hz.et_to_tdb_calendar(ctx.end_et)[:10]
     params = {"date-min": lo, "date-max": hi, "dist-max": str(CLOSE_APPROACH_AU), "body": "ALL"}
@@ -596,7 +721,7 @@ def _close_approaches(ctx: BuildContext, cat: sb_catalog.Catalog) -> tuple[list[
     fi = d["fields"].index("des")
     pdes_idx = {str(p): i for i, p in enumerate(cat.s["pdes"])}
     rows = sorted({pdes_idx[r[fi]] for r in d.get("data", []) if r[fi] in pdes_idx})
-    return rows, int(d.get("count", 0))
+    return rows, int(d.get("count", 0)), (d, rec)
 
 
 def _mpc_crosscheck(cat, mpc, mpc_row, state_epoch, model) -> dict:

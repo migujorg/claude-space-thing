@@ -1,4 +1,6 @@
-"""Regenerate the app's core verification fixtures: `uv run python -m pipeline.ephem_fixtures`.
+"""Regenerate the app's core references: `uv run python -m pipeline.ephem_fixtures`
+(`... -m pipeline.ephem_fixtures orientation`: only core_spice_orient.json, from the kernels already in data/raw,
+at the epochs the committed file has; no network).
 
 Writes app/tests/fixtures/:
   horizons_geometric.json    JPL Horizons geometric SSB-centred ICRF states (independent of our pipeline)
@@ -8,14 +10,23 @@ Writes app/tests/fixtures/:
   core_spice_spk.json        SPICE spkgeo (geometric state, like spkgps + velocity) on the planetary kernel, every segment,
                              and on the satellite kernel excerpts for a sample of each kernel's segments (types 2, 3, 17)
   horizons_moons.json        JPL Horizons moons relative to their planet's centre
-  core_spice_orient.json     SPICE pxform('ITRF93' / 'MOON_ME_DE440_ME421', 'J2000') with NAIF's Earth and lunar PCKs
+  core_spice_orient.json     SPICE pxform('ITRF93' / 'MOON_ME_DE440_ME421', 'J2000') with NAIF's Earth and lunar PCKs;
+                             every case names the kernel files it was computed from (sha256 in kernelSha256)
 It also downloads a few small satellite kernels whole (VERIFY_ORIGINALS) for pipeline/tests/test_ephem_satellites.py.
 
 Each Horizons entry records the exact query URL. Horizons answers are built on different planetary ephemerides per
 system (HORIZONS_BASE); each epoch carries `toOurs`, the SPICE-computed shift (our planetary kernel minus the one
 Horizons used, for the planetary-ephemeris part of the chain) that re-bases the Horizons vector onto our kernel.
-The epochs are fixed (below) and must lie inside the data
-window of the build being tested (now ± ~18 months); move them and rerun this when that stops being true.
+The epochs are fixed (below). A test checks the cases the build under test covers and reports the others as not
+compared, so a rebuild never requires running this; move the epochs and rerun it when the window has moved so far
+that most cases are reported as not compared.
+
+SPICE values are a reference for the kernel files they were computed from. The lunar kernel and the planetary
+kernels are fixed files, but NAIF reissues the Earth orientation kernel as measurements arrive (values of past,
+measured days move by ~1e-11, the newest days by ~1e-9: measured between the files of 2026-09-29 and 2026-10-03).
+So a test compares an ITRF93 case only with a product copied from the same kernel file (sha256), and otherwise
+reports it as not compared; SPICE on the kernels of the build itself is the bodies stage's build record
+(verification/orientation.json).
 """
 
 from __future__ import annotations
@@ -32,15 +43,15 @@ from . import ephem_horizons as hz
 from . import ephem_satellites as sat
 from .download import fetch, record
 from .ephem_kernels import PLANETARY, lsk, naif_planets, pck, planetary
-from .ephem_spk import read_spk
+from .ephem_spk import read_pck, read_spk
 from .paths import CACHE, OUT, RAW, REPO
 
 FIXTURES = REPO / "app" / "tests" / "fixtures"
 
 # JD TDB, chosen with binary-exact fractions so ET = (JD - 2451545) * 86400 is exact.
 EPOCHS_JD = [2461012.15625, 2461178.84375, 2461313.5078125, 2461487.2890625, 2461617.9609375]
-# Every fixture epoch lies at least this far inside the persisted window, so the fixtures stay usable in builds
-# whose window was made some weeks earlier or later (tests skip, and count, cases outside a build's coverage).
+# When regenerated, every epoch lies at least this far inside the persisted window, so every case is covered by
+# builds whose window was made some weeks earlier or later (tests report the cases a build does not cover).
 INSIDE_MARGIN_S = 90 * 86400.0
 
 GEOMETRIC_TARGETS = [10, 199, 299, 399, 301, 499, 599, 699, 799, 899, 999, 3, 4, 5, 6, 7, 8, 9]
@@ -194,28 +205,44 @@ def _moons(common: dict) -> None:
            "positionSSB(moon) - positionSSB(planet); the planetary ephemeris cancels.", "bodies": bodies})
 
 
-def _orientation(common: dict, epochs_et: list[float]) -> None:
-    """SPICE pxform for the precise orientation products (ITRF93, MOON_ME_DE440_ME421)."""
-    t0, t1 = _window()
+def _orientation(common: dict, ets: list[float]) -> None:
+    """SPICE pxform for the precise orientation frames (ITRF93, MOON_ME_DE440_ME421) at `ets`, with the newest
+    Earth kernels in data/raw. Each case names the kernel files its value comes from."""
     pck_dir = RAW / "naif" / "pck"
     hp = sorted(pck_dir.glob("earth_000101_*.bpc"))[-1]
     pr = sorted(pck_dir.glob("earth_*_predict.bpc"))[-1]
     moon_pa = pck_dir / "moon_pa_de440_200625.bpc"
     moon_fk = RAW / "naif" / "fk-satellites" / "moon_de440_250416.tf"
     kernels = [pr, hp, moon_pa, moon_fk]  # high-precision after predict: it takes priority, as in orient/earth
+    hp_end = max(s.end for s in read_pck(hp))
+
+    def used(body: int, et: float) -> list[str]:
+        return [moon_pa.name, moon_fk.name] if body == 301 else [hp.name if et <= hp_end else pr.name]
+
     for k in kernels:
         sp.furnsh(str(k))
     try:
-        ets = sorted(set(epochs_et) | {float(x) for x in np.linspace(t0 + INSIDE_MARGIN_S, t1 - INSIDE_MARGIN_S, 7)})
-        out = [{"id": i, "frame": f, "cases": [{"et": e, "bodyToJ2000": np.array(sp.pxform(f, "J2000", e)).reshape(-1)
-                                                .tolist()} for e in ets]}
+        out = [{"id": i, "frame": f, "cases": [{"et": e, "kernels": used(i, e),
+                                                "bodyToJ2000": np.array(sp.pxform(f, "J2000", e)).reshape(-1).tolist()}
+                                               for e in sorted(ets)]}
                for i, f in ((399, "ITRF93"), (301, "MOON_ME_DE440_ME421"))]
     finally:
         for k in kernels:
             sp.unload(str(k))
     _write("core_spice_orient.json", {**common, "kernels": [k.name for k in kernels],
+           "kernelSha256": {k.name: record(k)["sha256"] for k in kernels},
            "spiceVersion": sp.tkvrsn("TOOLKIT"), "description": "Row-major body-fixed -> J2000 matrices from "
-           "spiceypy.pxform(frame, 'J2000', et) with NAIF's Earth and lunar PCKs.", "bodies": out})
+           "spiceypy.pxform(frame, 'J2000', et) with NAIF's Earth and lunar PCKs. A reference for the kernel files "
+           "each case names (`kernels`, sha256 in kernelSha256): comparable only with a product copied from the same "
+           "files.", "bodies": out})
+
+
+def orientation() -> None:
+    """Only core_spice_orient.json, from the kernels already downloaded, at the committed file's epochs."""
+    old = json.loads((FIXTURES / "core_spice_orient.json").read_text(encoding="utf-8"))
+    _orientation({"generatedBy": "uv run python -m pipeline.ephem_fixtures orientation",
+                  "generated": _dt.date.today().isoformat()},
+                 sorted({c["et"] for b in old["bodies"] for c in b["cases"]}))
 
 
 def query_check(params: dict, ledger_url: str) -> str:
@@ -294,7 +321,8 @@ def main() -> None:
            "kernel excerpts (each loaded alone) for a sample of every kernel's segments.", "segments": spk,
            "satellites": _satellite_spk(epochs_et)})
     _moons(common)
-    _orientation(common, epochs_et)
+    _orientation(common, sorted(set(epochs_et) | {float(x) for x in np.linspace(t0 + INSIDE_MARGIN_S,
+                                                                               t1 - INSIDE_MARGIN_S, 7)}))
     for name in VERIFY_ORIGINALS:
         fetch(f"{sat.SAT_URL}/{name}.bsp", "naif/spk-satellites-full")  # for pipeline/tests (excerpt vs original)
 
@@ -305,4 +333,10 @@ def _write(name: str, obj: dict) -> None:
 
 
 if __name__ == "__main__":
-    main()
+    import sys
+    if sys.argv[1:] == ["orientation"]:
+        orientation()
+    elif sys.argv[1:]:
+        raise SystemExit("usage: python -m pipeline.ephem_fixtures [orientation]")
+    else:
+        main()

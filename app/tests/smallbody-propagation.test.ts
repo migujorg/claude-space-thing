@@ -1,39 +1,28 @@
 // The TypeScript reference propagator against (a) the pipeline's Python integrator (same scheme: must agree to
 // rounding-level differences), and (b) independent JPL Horizons states for a diverse set of asteroids and comets.
-// Fixture: app/tests/fixtures/smallbody_reference.json (uv run python -m pipeline.sb_fixtures). The planets come
-// from the built ephemeris products (skips, loudly, when they are not built).
+//
+// Two references, kept apart (core-data.ts):
+//   * the committed one, app/tests/fixtures/smallbody_reference.json (uv run python -m pipeline.sb_fixtures): stated
+//     orbit solutions at the reference's own epoch with its own force model. It is used with that epoch and model
+//     whatever build is under test; the build only supplies the planets (ephemeris products), so reference epochs
+//     outside the built ephemeris coverage are reported as not compared;
+//   * the build record verification/smallbodies.json, written by the smallbodies stage with the products: the
+//     states it put in core.bin. "The product holds what the pipeline computed" is checked against that.
 
 import { describe, expect, it } from 'vitest';
 import type { SmallBodyCoreHeader, SmallBodyForceModel } from '../src/data/schema';
-import type { NonGrav } from '../src/core/smallbody';
 import { SB_OK, SmallBodyPropagator, elementsToState } from '../src/core/smallbody';
 import { coreState, readCore } from '../src/core/smallbodyCatalog';
-import { DATA_DIR, MaxTracker, fixture, loadEphemerisSet } from './core-data';
+import { DATA_DIR, MaxTracker, buildRecord, etDate, fixture, loadEphemerisSet, notCompared, type SmallBodyRecord, type VerificationObject } from './core-data';
 
-interface FixtureObject {
-  label: string;
-  category: string;
-  designation: string;
-  spkid: number;
-  coreRow: number;
-  horizonsSolution: string;
-  elements: { qKm: number; e: number; iRad: number; nodeRad: number; periRad: number; dtPeriS: number; epochEt: number };
-  nonGrav: NonGrav | null;
-  stateAtEpoch: number[];
-  stateCommon: number[];
-  epochs: number[];
-  horizons: number[][];
-  python: number[][];
-  maxErrKm: number;
-  toleranceKm: number;
-}
-interface Fixture {
+interface Reference {
   epochEt: number;
+  sbdbSnapshot: string;
   forceModel: SmallBodyForceModel;
-  objects: FixtureObject[];
+  objects: VerificationObject[];
 }
 
-const fx = fixture<Fixture>('smallbody_reference.json');
+const fx = fixture<Reference>('smallbody_reference.json');
 const eph = loadEphemerisSet();
 
 const fs: { existsSync(p: string): boolean; readFileSync(p: string): Uint8Array; readFileSync(p: string, e: 'utf8'): string } =
@@ -56,14 +45,26 @@ describe('elementsToState vs the pipeline', () => {
   });
 });
 
-describe.skipIf(!eph)('SmallBodyPropagator vs the Python integrator and JPL Horizons', () => {
-  it('propagates every verification object across the window', () => {
+describe.skipIf(!eph)(`SmallBodyPropagator vs the Python integrator and JPL Horizons (committed reference, its own epoch ${etDate(fx.epochEt)})`, () => {
+  // The reference's epochs that the built ephemeris covers. Chains run outward from the reference epoch, so the
+  // covered epochs are the ones inside the coverage, provided the reference epoch itself is.
+  const w = eph!.window;
+  const inside = (t: number) => t >= w.startEt && t <= w.endEt;
+  const coverage = `the built ephemeris covers ${etDate(w.startEt)} to ${etDate(w.endEt)}`;
+  const all = [...new Set(fx.objects.flatMap((o) => o.epochs))].sort((a, b) => a - b);
+  const out = inside(fx.epochEt) ? all.filter((t) => !inside(t)) : all;
+  if (out.length > 0) {
+    notCompared(`SmallBodyPropagator at ${out.length} of ${all.length} reference epochs (${etDate(out[0])} to ${etDate(out[out.length - 1])}) of ${fx.objects.length} objects`, coverage);
+  }
+
+  it.skipIf(out.length === all.length)(`propagates every verification object across the reference epochs it can (${all.length - out.length} of ${all.length})`, () => {
     const prop = new SmallBodyPropagator(fx.forceModel, eph!);
     const max = new MaxTracker();
     const lines: string[] = [];
+    let checked = 0;
     for (const o of fx.objects) {
-      // Chain outward from the common epoch, as the pipeline did (on the grid this equals direct propagation).
-      const order = o.epochs.map((t, k) => ({ t, k }));
+      // Chain outward from the reference epoch, as the pipeline did (on the grid this equals direct propagation).
+      const order = o.epochs.map((t, k) => ({ t, k })).filter((e) => inside(e.t));
       const fwd = order.filter((e) => e.t >= fx.epochEt).sort((a, b) => a.t - b.t);
       const bwd = order.filter((e) => e.t < fx.epochEt).sort((a, b) => b.t - a.t);
       let worstPy = 0;
@@ -79,6 +80,7 @@ describe.skipIf(!eph)('SmallBodyPropagator vs the Python integrator and JPL Hori
           const hz = o.horizons[k];
           worstPy = Math.max(worstPy, Math.hypot(s[0] - py[0], s[1] - py[1], s[2] - py[2]));
           worstHz = Math.max(worstHz, Math.hypot(s[0] - hz[0], s[1] - hz[1], s[2] - hz[2]));
+          checked++;
         }
       }
       max.add(`${o.label} TS vs Python km`, worstPy, o.category);
@@ -86,22 +88,41 @@ describe.skipIf(!eph)('SmallBodyPropagator vs the Python integrator and JPL Hori
       expect(worstPy, o.label).toBeLessThan(0.01);
       expect(worstHz, o.label).toBeLessThanOrEqual(o.toleranceKm);
     }
-    console.log(lines.join('\n'));
+    expect(checked).toBe(fx.objects.length * (all.length - out.length));
+    console.log(`reference of ${etDate(fx.epochEt)} (SBDB snapshot ${fx.sbdbSnapshot}), ${checked} states:\n${lines.join('\n')}`);
   }, 120_000);
 });
 
 const corePath = DATA_DIR + 'smallbodies/core.json';
-describe.skipIf(!fs.existsSync(corePath))('smallbodies/core product', () => {
-  it('holds the fixture states at the common epoch, bit for bit', () => {
+describe.skipIf(!fs.existsSync(corePath))('smallbodies/core product against the build record of the same build', () => {
+  it('ships the force model the committed reference was made with (Earth\'s pole apart: it is taken at each catalogue epoch)', () => {
+    const header = JSON.parse(fs.readFileSync(corePath, 'utf8')) as SmallBodyCoreHeader;
+    const noPole = (m: SmallBodyForceModel) => ({ ...m, zonal: { ...m.zonal, poleIcrf: null } });
+    expect(noPole(header.forceModel), 'the force model changed: regenerate the reference (python -m pipeline.sb_fixtures)').toEqual(noPole(fx.forceModel));
+  });
+
+  const { record, why, unbound } = buildRecord<SmallBodyRecord>('verification/smallbodies.json', 'smallbodies');
+  if (!record) {
+    notCompared('smallbodies/core.bin states of the verification objects against the states the pipeline computed', why);
+    return;
+  }
+
+  it('the build record names the products of this build (sha256 as in the manifest)', () => {
+    expect(unbound).toEqual([]);
+  });
+
+  it('holds the states the pipeline computed at the catalogue epoch, bit for bit, in the rows it says', () => {
     const header = JSON.parse(fs.readFileSync(corePath, 'utf8')) as SmallBodyCoreHeader;
     const u8 = fs.readFileSync(DATA_DIR + header.bin);
     const buf = new ArrayBuffer(u8.byteLength);
     new Uint8Array(buf).set(u8);
     const cat = readCore(header, buf);
-    expect(cat.epochEt).toBe(fx.epochEt);
-    expect(header.forceModel).toEqual(fx.forceModel);
-    for (const o of fx.objects) {
-      if (o.coreRow >= cat.count) continue; // partial (development) build
+    expect(cat.epochEt).toBe(record.epochEt);
+    expect(header.window).toEqual(record.window);
+    const names = fs.readFileSync(DATA_DIR + 'smallbodies/names.txt', 'utf8').split('\n');
+    expect(record.objects.length).toBeGreaterThan(0);
+    for (const o of record.objects) {
+      expect(names[o.coreRow].split('\t')[0], o.label).toBe(String(o.spkid));
       const s = coreState(cat, o.coreRow);
       expect(s, o.label).not.toBeNull();
       for (let j = 0; j < 6; j++) expect(s![j], o.label).toBe(o.stateCommon[j]);

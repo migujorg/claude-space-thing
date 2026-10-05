@@ -1,6 +1,7 @@
 // Small bodies on the real products (skips, loudly, when app/public/data/smallbodies is not built): table loading
 // through the integrity-checked DataLoader, the real headers' columns and flags, the app's CPU positions against
-// the pipeline's integrator (fixture), per-level counts against the header statistics, and inspector rows.
+// the pipeline's integrator and JPL Horizons (the build record the smallbodies stage wrote with these products:
+// verification/smallbodies.json), per-level counts against the header statistics, and inspector rows.
 
 import { beforeAll, describe, expect, it } from 'vitest';
 import { SmallBodies } from '../src/app/smallbodies';
@@ -8,7 +9,7 @@ import { DataLoader } from '../src/data/load';
 import type { Manifest, SmallBodyCoreHeader } from '../src/data/schema';
 import { discoverSmallBodies, loadSmallBodyTables, type SmallBodyTables } from '../src/data/smallbodies';
 import { smallBodyFacts, smallBodyLegend } from '../src/ui/smallBodyInspect';
-import { DATA_DIR, fixture, loadEphemerisSet } from './core-data';
+import { DATA_DIR, buildRecord, loadEphemerisSet, notCompared, type SmallBodyRecord } from './core-data';
 import { apparentPosition } from '../src/core/lighttime';
 
 interface Fs { existsSync(p: string): boolean; readFileSync(p: string): Uint8Array; readFileSync(p: string, e: 'utf8'): string }
@@ -18,8 +19,8 @@ const built = fs.existsSync(DATA_DIR + 'smallbodies/core.json') && fs.existsSync
 if (!built) console.warn('[small-body tests] smallbodies/* not built; skipping the real-data tests');
 const eph = built ? loadEphemerisSet() : null;
 
-interface FixtureObject { label: string; coreRow: number; epochs: number[]; python: number[][] }
-const fx = fixture<{ epochEt: number; objects: FixtureObject[] }>('smallbody_reference.json');
+// What the pipeline computed for this build (null with the reason when the build has no record).
+const rec = buildRecord<SmallBodyRecord>('verification/smallbodies.json', 'smallbodies');
 
 describe.skipIf(!built || !eph)('small bodies on the real products', () => {
   let tables: SmallBodyTables;
@@ -67,26 +68,41 @@ describe.skipIf(!built || !eph)('small bodies on the real products', () => {
     console.log(`small-body tables: ${tables.count} objects loaded + verified in ${loadMs.toFixed(0)} ms`);
   });
 
-  it('reproduces the pipeline integrator at the verification epochs (CPU fallback, shuffled queries)', () => {
-    const sb = new SmallBodies(tables, eph!);
-    let worst = 0;
-    let n = 0;
-    const t0 = performance.now();
-    for (const o of fx.objects) {
-      if (o.coreRow >= tables.count) continue;
-      const order = o.epochs.map((t, k) => ({ t, k })).sort((a, b) => ((a.k * 7919) % 55) - ((b.k * 7919) % 55));
-      for (const { t, k } of order) {
-        const s = sb.cpu.stateOf(o.coreRow, t);
-        expect(s, `${o.label} at ${t}`).not.toBeNull();
-        const py = o.python[k];
-        worst = Math.max(worst, Math.hypot(s!.pos[0] - py[0], s!.pos[1] - py[1], s!.pos[2] - py[2]));
-        n++;
+  if (!rec.record) {
+    notCompared('the app\'s CPU positions of the verification objects against the pipeline\'s integrator and JPL Horizons', rec.why);
+  } else {
+    const record = rec.record;
+    it('the build record names the products of this build (sha256 as in the manifest)', () => {
+      expect(rec.unbound).toEqual([]);
+      expect(record.epochEt).toBe(tables.core.header.epochEt);
+    });
+
+    it('reproduces the pipeline integrator at the verification epochs and stays within tolerance of JPL Horizons (CPU fallback, shuffled queries)', () => {
+      const sb = new SmallBodies(tables, eph!);
+      let worst = 0;
+      let n = 0;
+      const lines: string[] = [];
+      const t0 = performance.now();
+      expect(record.objects.length).toBeGreaterThan(0);
+      for (const o of record.objects) {
+        const order = o.epochs.map((t, k) => ({ t, k })).sort((a, b) => ((a.k * 7919) % 55) - ((b.k * 7919) % 55));
+        let worstHz = 0;
+        for (const { t, k } of order) {
+          const s = sb.cpu.stateOf(o.coreRow, t);
+          expect(s, `${o.label} at ${t}`).not.toBeNull();
+          const py = o.python[k], hz = o.horizons[k];
+          worst = Math.max(worst, Math.hypot(s!.pos[0] - py[0], s!.pos[1] - py[1], s!.pos[2] - py[2]));
+          worstHz = Math.max(worstHz, Math.hypot(s!.pos[0] - hz[0], s!.pos[1] - hz[1], s!.pos[2] - hz[2]));
+          n++;
+        }
+        lines.push(`${o.label.padEnd(30)} vs Horizons ${worstHz.toFixed(3).padStart(9)} km (tol ${o.toleranceKm})`);
+        expect(worstHz, o.label).toBeLessThanOrEqual(o.toleranceKm);
       }
-    }
-    const ms = performance.now() - t0;
-    console.log(`small-body CPU positions: ${n} states of ${fx.objects.length} objects in ${ms.toFixed(0)} ms; worst vs pipeline ${worst.toExponential(2)} km`);
-    expect(worst).toBeLessThan(0.01);
-  }, 120_000);
+      const ms = performance.now() - t0;
+      console.log(`small-body CPU positions: ${n} states of ${record.objects.length} objects in ${ms.toFixed(0)} ms; worst vs pipeline ${worst.toExponential(2)} km\n${lines.join('\n')}`);
+      expect(worst).toBeLessThan(0.01);
+    }, 120_000);
+  }
 
   it('counts per level partition the catalogue and match the header statistics', () => {
     const sb = new SmallBodies(tables, eph!);
@@ -115,7 +131,10 @@ describe.skipIf(!built || !eph)('small bodies on the real products', () => {
 
   it('shows every attribute of Ceres with labels and sources, and a sphere of its measured diameter', () => {
     const sb = new SmallBodies(tables, eph!);
-    const row = fx.objects.find((o) => o.label === '1 Ceres')!.coreRow;
+    // (1) Ceres is SPK-ID 20000001: its row is the line of names.txt that starts with it.
+    const names = new TextDecoder().decode(fs.readFileSync(DATA_DIR + 'smallbodies/names.txt')).split('\n');
+    const row = names.findIndex((l) => l.startsWith('20000001\t'));
+    expect(row).toBeGreaterThanOrEqual(0);
     const f = smallBodyFacts(tables, row, 'best');
     const keys = f.rows.map((r) => r.key);
     for (const k of ['sb:orbit', 'sb:H', 'sb:G', 'sb:diameter', 'sb:albedo', 'sb:rotation', 'sb:phase', 'sb:spin']) expect(keys, k).toContain(k);

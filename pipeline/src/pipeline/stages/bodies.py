@@ -11,6 +11,12 @@ Bodies: the Sun, planets, the Moon and Pluto, plus every moon in the ephemeris s
   needed to chain it to the SSB (read from the ephemeris headers);
 - `orientation`: the precise-orientation product for bodies that have one (Earth: ITRF93; Moon: DE440 ME frame).
 `photometry` is not written here (the `light` stage produces photometry.json).
+
+Build record `verification/orientation.json`: SPICE's own body-fixed -> J2000 matrices (pxform) from the very
+kernel files this run copied orient/earth and orient/moon from, at epochs spread over every segment, with the
+sha256 of those kernels and of the products. NAIF reissues the Earth kernel as measurements arrive, so SPICE values
+are a reference for one kernel revision only: a test of "another implementation reads this product as SPICE reads
+its kernels" compares with this record, never with values computed from another revision.
 """
 
 from __future__ import annotations
@@ -18,6 +24,7 @@ from __future__ import annotations
 import json
 import re
 
+import numpy as np
 import spiceypy as sp
 from spiceypy.utils.exceptions import NotFoundError
 
@@ -25,7 +32,7 @@ from .. import ephem_orient as orient
 from .. import ephem_satellites as sat
 from ..ephem_kernels import PLANETARY, SRC_GM, SRC_PCK, gd, gi, gm, lsk, pck, pool
 from ..output import write_json
-from ..paths import OUT
+from ..paths import OUT, RAW
 from ..schema import BuildContext, sourced, unknown
 from .ephemeris import MARGIN_S
 
@@ -61,6 +68,8 @@ ROTATION_UNCERTAINTY = {
          "lunar libration solution. Use orient/moon (DE440, ME frame) where it covers.",
 }
 ORIENTATION = {399: "orient/earth", 301: "orient/moon"}
+VERIFICATION = "verification/orientation.json"
+RECORD_SAMPLES = 16   # epochs per product segment in the build record, evenly spread strictly inside it
 
 
 def run(ctx: BuildContext) -> None:
@@ -103,6 +112,7 @@ def run(ctx: BuildContext) -> None:
     orient.write(ctx, "moon", msegs, mbodies, "bodies", notes=(
         "Moon (301) Mean Earth/Polar Axis frame MOON_ME_DE440_ME421 = DE440 principal axes (moon_pa_de440) rotated "
         "by the constant rotation of moon_de440_250416.tf."))
+    write_json(ctx, VERIFICATION, orientation_record(ctx), "bodies", indent=None)
     for f in (OUT / "orient").iterdir():
         if f"orient/{f.name}" not in ctx.products:
             f.unlink()
@@ -110,6 +120,44 @@ def run(ctx: BuildContext) -> None:
     write_json(ctx, "bodies.json", out, "bodies")
     known = {k: sum(1 for b in out if b[k]["label"] != "unknown") for k in ("radii", "gm", "rotation")}
     print(f"[bodies] {len(out)} bodies ({len(moons)} moons besides the Moon); known: {known}")
+
+
+def orientation_record(ctx: BuildContext) -> dict:
+    """SPICE pxform(frame, 'J2000', et) on the kernels the orientation products were just copied from (the files
+    named by the stage's SourceRecords), at RECORD_SAMPLES epochs inside every product segment."""
+    order = (orient.SRC_EARTH_PRED, orient.SRC_EARTH_HP, orient.SRC_MOON_PA, orient.SRC_MOON_FK)
+    kernels = []
+    for sid in order:   # the high-precision Earth file after the predict file: it takes priority, as in orient/earth
+        src = ctx.sources[sid]
+        path = RAW / "naif" / ("fk-satellites" if src.version.endswith(".tf") else "pck") / src.version
+        kernels.append((sid, src, path))
+    bodies = []
+    with pool(*(k[2] for k in kernels)):
+        for product in dict.fromkeys(ORIENTATION.values()):
+            header = json.loads((OUT / f"{product}.json").read_text(encoding="utf-8"))
+            for body, info in header["bodies"].items():
+                cases = []
+                for n, seg in enumerate(header["segments"]):
+                    if seg["body"] != int(body):
+                        continue
+                    for k in range(RECORD_SAMPLES):
+                        et = seg["startEt"] + (seg["endEt"] - seg["startEt"]) * (k + 0.5) / RECORD_SAMPLES
+                        m = np.array(sp.pxform(info["frame"], "J2000", et)).reshape(-1)
+                        cases.append({"et": et, "segment": n, "label": seg["label"], "sources": seg["sources"],
+                                      "bodyToJ2000": [float(x) for x in m]})
+                bodies.append({"id": int(body), "frame": info["frame"], "product": product, "cases": cases})
+    names = [f"{p}.{ext}" for p in dict.fromkeys(ORIENTATION.values()) for ext in ("json", "bin")]
+    return {
+        "description": "Build record of the bodies stage: SPICE's evaluation (spiceypy.pxform(frame, 'J2000', et), "
+                       "row-major body-fixed -> J2000) of the kernel files this run copied the orientation products "
+                       "from. Read by tests that compare another evaluator of those products with SPICE on this "
+                       "same build.",
+        "stage": "bodies", "window": {"startEt": ctx.start_et, "endEt": ctx.end_et},
+        "products": {k: ctx.products[k]["sha256"] for k in names},
+        "spiceVersion": sp.tkvrsn("TOOLKIT"),
+        "kernels": [{"source": sid, "file": src.version, "sha256": src.sha256} for sid, src, _ in kernels],
+        "samplesPerSegment": RECORD_SAMPLES, "bodies": bodies,
+    }
 
 
 def _body(naif: int, name: str, kind: str, parent: int | None, owner, kernel_gms) -> dict:
