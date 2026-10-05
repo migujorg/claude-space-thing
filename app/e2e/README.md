@@ -92,25 +92,25 @@ npm run e2e -- --gpu hardware                 # on the machine's GPU instead of 
 - Chromium falls back to SwiftShader without a word when Vulkan does not initialize. A `hardware` run therefore checks the adapter the page got and fails if it is a software one: every scene in `e2e`, the whole run in `validate`, exit 1 in `shot`. `DEBUG=pw:browser` shows the browser's own log.
 - To pin a driver, set `VK_DRIVER_FILES` to its ICD file. This works only because of `--disable-vulkan-surface`: without it, `VK_DRIVER_FILES=/usr/share/vulkan/icd.d/nvidia_icd.x86_64.json` makes `vkCreateInstance` fail (`-7`, extension not present) and the run falls back to SwiftShader.
 
-Measured on the workstation (RTX 5090, NVIDIA driver 615.71, Playwright's Chromium 141 headless shell, data built 2026-10-05, `rc` at 08c1941):
+Measured on the workstation (RTX 5090, NVIDIA driver 615.71, Playwright's Chromium 141 headless shell, data built 2026-10-05, `rc` at 08c1941 and again at a1204ae):
 
 | | SwiftShader | GPU |
 |---|---|---|
 | Adapter (`vendor architecture`) | `google swiftshader` | `nvidia blackwell` |
 | `float32-blendable`, so HDR targets | yes, `rgba32float` | yes, `rgba32float` |
-| `npm run e2e`, 26 scenes, wall time | 5 min 41 s and 5 min 49 s | 63–85 s (six runs) |
-| Time to `__frameReady` per scene | 7–86 s, median 20 s | 3–17 s, median 4–5 s |
-| The frame in the stats (`renderer.stats.frameMs`), median over the scenes | 1.6–1.8 s | 9–16 ms |
-| `npm run validate`, 11 cases, wall time | 66 s and 69 s | 58 s and 59 s |
-| Render and settle per validation case, without Himawari and Pluto | 0.09–1.2 s | 25–430 ms |
-| Pluto case | 2.3 s and 4.3 s | 1.9 s and 2.0 s |
-| Himawari case (the same on both: its time is not GPU time) | 55 s | 52 s |
+| `npm run e2e`, 26 scenes, wall time | 5 min 2 s to 5 min 49 s (three runs) | 63–91 s (seven runs) |
+| Time to `__frameReady` per scene | 7–86 s, median 16–20 s | 3–17 s, median 4–5 s |
+| The frame in the stats (`renderer.stats.frameMs`), median over the scenes | 1.6–1.9 s | 9–16 ms |
+| `npm run validate`, 11 cases, wall time | 66–77 s (three runs) | 58–59 s (three runs) |
+| Render and settle per validation case, without Himawari and Pluto | 0.09–1.7 s | 25–440 ms |
+| Pluto case | 2.3–4.3 s | 1.4–2.0 s |
+| Himawari case (nearly the same on both: its time is not GPU time) | 55–60 s | 52 s |
 
 How the numbers differ between the two adapters, same tree and data:
 
 - **Validation (HDR readback):** the same 39 pass, 25 fail, 5 not compared, with the same failing channels. Of the 276 channel means (69 regions × X, Y, Z, S), 92 are identical and 184 differ, by 3 × 10⁻⁶ to 6 × 10⁻³ relative (median 5 × 10⁻⁴; the largest are a sky-near and a terminator region), against tolerances of 5 % and more. Two runs on the same adapter are bit-identical, on either adapter.
-- **Scene stats:** over six GPU runs against a SwiftShader run, adaptation luminance within 0.005 dex (1.1 %), pupil within 0.001 mm, limiting magnitude within 0.007 mag, the same bodies, points, labels and warnings, and the coarse image within 0.003 lightness. Every scene passes against the SwiftShader baseline on all of these.
-- **Stars drawn is not one number on the GPU.** In 9 of the 26 scenes the count alternates between two values on consecutive frames: pluto-charon 902 ↔ 1107, 908 ↔ 1101 or 965 ↔ 1043 depending on the run (the two-frame mean stays at 1004–1005), jupiter-galileans 179 ↔ 186, and earth-night, uranus, neptune, starfield, starfield-enhanced, comet-lemmon and hyperion-fallback by 2 % or less (starfield-dark-30min, whose adaptation runs in real time, also moves by a few stars). The renderer culls each star against the light of the frame before, which holds the other stars' light. SwiftShader shows the same alternation (pluto-charon 996 ↔ 1014), but its frames take about a second, so a script reads the same frame on almost every run; on the GPU the read lands on either. In six GPU runs pluto-charon failed the 5 % star tolerance three times (809, 909 and 1101 against 1015), and nothing else failed. A `hardware` run records the values seen over 16 animation frames in `starsDrawnFrames` and prints a note for a scene where they differ.
+- **Scene stats:** over seven GPU runs against a SwiftShader run, adaptation luminance within 0.005 dex (1.1 %), pupil within 0.001 mm, limiting magnitude within 0.007 mag, the same bodies, points, labels and warnings, and the coarse image within 0.003 lightness. Every scene passes against the SwiftShader baseline on all of these.
+- **Stars drawn is not one number on the GPU.** In 9 of the 26 scenes the count alternates between two values on consecutive frames: pluto-charon 889 ↔ 1120, 908 ↔ 1101, 965 ↔ 1043 or 994 ↔ 1014 depending on the run (the two-frame mean stays at 1004–1005), jupiter-galileans 179 ↔ 186, and earth-night, uranus, neptune, starfield, starfield-enhanced, comet-lemmon and hyperion-fallback by 2 % or less (starfield-dark-30min, whose adaptation runs in real time, also moves by a few stars). The renderer culls each star against the light of the frame before, which holds the other stars' light. SwiftShader shows the same alternation (pluto-charon 996 ↔ 1014), but its frames take about a second, so a script reads the same frame on almost every run; on the GPU the read lands on either. In seven GPU runs pluto-charon failed the 5 % star tolerance three times (809, 909 and 1101 against 1015), and nothing else failed. A `hardware` run records the values seen over 16 animation frames in `starsDrawnFrames` and prints a note for a scene where they differ.
 - **The sky cube** is 512² on a hardware adapter and 256² on a software one (`src/app/sky.ts`), so the sky background is not the same computation on the two.
 
 The committed baseline was accepted on SwiftShader. A baseline accepted with `--gpu` records the mode and the adapter, and comparing a run with a baseline of the other kind prints a note.
