@@ -130,6 +130,23 @@ export const K_NODES = 32;
 const GL = gaussLegendre(K_NODES);
 
 /**
+ * The K-corona texture's footprint average (background.ts coronaKPass). Near the limb the brightness falls about as
+ * b^−17 (the density's r^−18 term integrated along the line of sight), i.e. by e over b/17 solar radii. A pixel
+ * spanning more than half of that, within b < K_FOOTPRINT_MAX_B, is averaged over N×N sub-pixels
+ * (N = ⌈2·pixel·17/b⌉ ≤ K_FOOTPRINT_MAX_N), so a Sun a few pixels across gets a smooth ring and not a dotted one.
+ * At the eclipse view's 0.03 R_sun pixels N = 1: one sample at the pixel centre, as before.
+ */
+export const K_FOOTPRINT_SLOPE = 17;
+export const K_FOOTPRINT_MAX_N = 4;
+export const K_FOOTPRINT_MAX_B = 3;
+
+/** Sub-pixels per axis for a pixel pixelRsun solar radii wide at impact parameter b (the WGSL mirrors it). */
+export function kFootprintN(pixelRsun: number, b: number, inFront: boolean): number {
+  if (!inFront || !(b < K_FOOTPRINT_MAX_B)) return 1;
+  return Math.min(Math.max(Math.ceil((2 * pixelRsun * K_FOOTPRINT_SLOPE) / Math.max(b, 1)), 1), K_FOOTPRINT_MAX_N);
+}
+
+/**
  * K-corona brightness (units of B_sun) along unit ray d (ICRF) from the observer at o (ICRF, R_sun, relative to the
  * Sun's centre), at cycle phase P. 0 when the ray meets the Sun (p < 1) or passes outside rMax.
  */

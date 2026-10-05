@@ -53,11 +53,13 @@ def _dsk(key, name, naif, sbdb, url, method, citation, finest, frame, kernels=()
 
 
 SPACECRAFT = [
-    _dsk("phobos", "Phobos", 401, None, f"{E}/ROSETTA/kernels/dsk/PHOBOS_M003_GAS_V01.BDS",
+    _dsk("phobos", "Phobos", 401, None, f"{N}/MEX/kernels/dsk/PHOBOS_M003_GAS_V01.BDS",
          "Stereophotoclinometry (SPC) from Viking Orbiter and other images, 3.1 M plates (ICQ q = 512)",
          "Gaskell, R.W. (2011). Gaskell Phobos Shape Model V1.0. VO1-SA-VISA/VISB-5-PHOBOSSHAPE-V1.0, NASA "
          "Planetary Data System. DSK by the ESA SPICE Service (PHOBOS_M003_GAS_V01.BDS, 2018).",
-         2_000_000, "IAU_PHOBOS", [PCK10], "built with pck00010"),
+         2_000_000, "IAU_PHOBOS", [PCK10], "built with pck00010",
+         notes=["Retrieved from the official NAIF Mars Express mirror of ESA's PHOBOS_M003_GAS_V01 model. "
+                "The mirror's file comments differ from the ROSETTA copy; the source ledger pins its bytes."]),
     _dsk("deimos", "Deimos", 402, None, f"{E}/HERA/kernels/dsk/deimos_k005_tho_v02.bds",
          "Limb and control-point model from Viking Orbiter images (Thomas), 5040 plates",
          "Thomas, P.C. (1993). Gravity, tides, and topography on small satellites and asteroids: application to "

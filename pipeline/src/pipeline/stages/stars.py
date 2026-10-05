@@ -154,6 +154,17 @@ _FLOAT_COLS = {"ra", "dec", "ra_error", "dec_error", "parallax", "parallax_error
 def _column(name: str, c) -> np.ndarray:
     """astropy column (possibly masked) from a Gaia archive CSV -> plain numpy array. Nulls: NaN / 0 / ''."""
     kind = c.dtype.kind
+    if name in {"has_xp_sampled", "duplicated_source"}:
+        a = np.ma.asarray(c)
+        if kind in "SUO":
+            low = np.char.lower(np.char.strip(np.ma.filled(a.astype(str), "").astype(str)))
+            if not np.isin(low, ["", "true", "false", "t", "f", "1", "0"]).all():
+                raise ValueError(f"invalid Gaia boolean column {name}")
+            return np.isin(low, ["true", "t", "1"])
+        values = np.ma.filled(a, False)
+        if not np.isin(values, [0, 1]).all():
+            raise ValueError(f"invalid Gaia boolean column {name}")
+        return values.astype(bool)
     if name in _FLOAT_COLS:
         a = np.ma.asarray(c)
         if a.dtype.kind in "SU":  # an all-null column parses as strings
@@ -187,6 +198,11 @@ def load_gaia(paths) -> Gaia:
     return Gaia(cols=cols, paths=list(paths))
 
 
+def _tycho_pm_path(gaia: Gaia):
+    needed = (gaia["astrometric_params_solved"] == 3) & (gaia["phot_g_mean_mag"] < G_LIMIT)
+    return sg.fetch_tycho_pm_for_2p(G_LIMIT, source_ids=gaia["source_id"][needed])
+
+
 # ============================================================================================ records
 
 @dataclass
@@ -215,6 +231,7 @@ def nearest(tree_pts: np.ndarray, query_pts: np.ndarray, radius_arcsec: float):
 # ============================================================================================ run
 
 def run(ctx: BuildContext) -> None:
+    sg.set_tap_service(ctx.param("gaia.tapService"))
     today = _dt.date.today().isoformat()
     epoch = sa.et_to_jyear(0.5 * (ctx.start_et + ctx.end_et))
     epoch_et = 0.5 * (ctx.start_et + ctx.end_et)
@@ -222,7 +239,7 @@ def run(ctx: BuildContext) -> None:
     diag: dict = {"epochJyear": epoch}
 
     # ---------------------------------------------------------------------------------------- load
-    gaia = load_gaia(sg.fetch_gaia_sources(G_XMATCH))
+    gaia = load_gaia(sg.fetch_gaia_sources(G_XMATCH, workers=ctx.param("gaia.tapWorkers")))
     log(f"Gaia DR3 sources G < {G_XMATCH}: {gaia.n}")
     hipxm = load_table(sg.fetch_hip_xmatch())
     tyc = load_table(sg.fetch_tycho_unmatched(VT_QUERY))
@@ -414,7 +431,7 @@ def run(ctx: BuildContext) -> None:
     pos_route[a] = 0
     a = gsel[use_g2]
     flags[a] |= sf.FLAG_POS_2016_NO_PM
-    tp = load_table(sg.fetch_tycho_pm_for_2p(G_LIMIT))
+    tp = load_table(_tycho_pm_path(gaia))
     okp = np.isfinite(tp["pm_ra"]) & np.isfinite(tp["pm_de"])
     o = np.argsort(np.where(okp, tp["angular_distance"], np.inf))[::-1]  # closest match written last wins
     tyc_pm = {int(tp["source_id"][i]): (tp["pm_ra"][i], tp["pm_de"][i]) for i in o if okp[i]}
@@ -1053,7 +1070,7 @@ def _register_sources(ctx, today, gaia, xp_ledger, tyc_path, hip2, hipm, pk, cal
     gaia_paths = list(gaia.paths)
     xm_path = sg.fetch_hip_xmatch()
     ty_path = sg.fetch_tycho_unmatched(VT_QUERY)
-    tp_path = sg.fetch_tycho_pm_for_2p(G_LIMIT)
+    tp_path = _tycho_pm_path(gaia)
     rec0 = record(gaia_paths[0])
     queries = " || ".join((p.with_name(p.name + ".adql")).read_text(encoding="utf-8") for p in gaia_paths)
     ctx.add_source(SourceRecord(

@@ -4,7 +4,7 @@
 
 import { describe, expect, it } from 'vitest';
 import type { CoronaModel } from '../src/data/schema';
-import { coronaXYZS, cyclePhase, fLaw, fNear, kBrightness, parseCorona, poleFromRaDec, type CoronaParams } from '../src/render/sky/corona';
+import { coronaXYZS, cyclePhase, fLaw, fNear, K_FOOTPRINT_MAX_N, kBrightness, kFootprintN, parseCorona, poleFromRaDec, type CoronaParams } from '../src/render/sky/corona';
 import type { V3 } from '../src/render/sky/zodiacal';
 import { DATA_DIR } from './core-data';
 
@@ -147,5 +147,26 @@ describe.skipIf(!built)('solar corona (sky/corona.json) against the published ph
     expect(f[2] / f[1]).toBeLessThan(k[2] / k[1]);   // less Z (blue) relative to Y
     const [o, d] = geometry(D, 0.9, 30);
     expect(kBrightness(p, o, d, 0.5)).toBe(0);        // the ray meets the Sun
+  });
+
+  it('a coarse pixel near the limb is a footprint average (no dotted ring); a fine one is a single sample', () => {
+    // From 1 AU: the 6° eclipse view has 0.031 R_sun pixels, the 30° shield view 0.156 R_sun.
+    expect(kFootprintN(0.031, 1.08, true)).toBe(1);
+    expect(kFootprintN(0.156, 1.1, true)).toBe(K_FOOTPRINT_MAX_N);
+    expect(kFootprintN(0.156, 3.5, true)).toBe(1);
+    expect(kFootprintN(0.156, 1.1, false)).toBe(1);
+    // 0.156 R_sun pixels across the limb (radially; the GPU averages N×N): the N-point average lands near the true
+    // pixel mean (64 points) within 25 % even across the limb, where the centre sample alone is 0 inside the limb.
+    const px = 0.156;
+    for (const c of [0.99, 1.15]) {
+      const n = kFootprintN(px, c, true);
+      const at = (dx: number) => { const [o, d] = geometry(AU_RSUN, c + dx * px, 90); return kBrightness(p, o, d, 0.5); };
+      const mean = (k: number) => { let s = 0; for (let i = 0; i < k; i++) s += at((i + 0.5) / k - 0.5); return s / k; };
+      const truth = mean(64);
+      const errN = Math.abs(mean(n) / truth - 1), err1 = Math.abs(at(0) / truth - 1);
+      expect(n).toBe(K_FOOTPRINT_MAX_N);
+      expect(errN).toBeLessThan(0.25);
+      expect(errN).toBeLessThan(err1 / 2);
+    }
   });
 });

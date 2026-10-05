@@ -22,7 +22,7 @@ import type { RendererStats, SceneSnapshot, StarCatalog } from '../render/scene'
 import { SkyBackground } from '../render/sky/background';
 import { npix, pix2vec, vec2pix } from '../render/sky/healpix';
 import { AU_KM, earthMeanLongitude, icrfToEcliptic, losBrightness, parseZodiacal, zodiXYZS, type ZodiParams } from '../render/sky/zodiacal';
-import { coronaXYZS, cyclePhase, fNear, kBrightness, parseCorona, poleFromRaDec, type CoronaParams } from '../render/sky/corona';
+import { coronaXYZS, cyclePhase, fNear, kBrightness, kFootprintN, parseCorona, poleFromRaDec, type CoronaParams } from '../render/sky/corona';
 import { luxFromMagnitude } from '../eye/crumey';
 import { CRUMEY } from '../eye/constants';
 import type { RendererPort, Vec3 } from './ports';
@@ -577,13 +577,31 @@ export class SkyController {
     }
     const g = await this.bg.readCoronaK(pts.map((p) => [p.px, p.py]));
     if (!g) return [];
-    return pts.map((p, i) => {
-      const ndx = ((p.px + 0.5) / W) * 2 - 1, ndy = 1 - ((p.py + 0.5) / H) * 2;
+    // The direction through a point of the frame (pixel units, the GPU's convention).
+    const dirAt = (fx: number, fy: number): Vec3 => {
+      const ndx = (fx / W) * 2 - 1, ndy = 1 - (fy / H) * 2;
       const cc = [ndx * tanX, ndy * tanY, -1];
       const d = [o[0] * cc[0] + o[1] * cc[1] + o[2] * cc[2], o[3] * cc[0] + o[4] * cc[1] + o[5] * cc[2], o[6] * cc[0] + o[7] * cc[1] + o[8] * cc[2]];
       const dn = Math.hypot(d[0], d[1], d[2]);
-      const u: Vec3 = [d[0] / dn, d[1] / dn, d[2] / dn];
-      return { ...p, gpuY: g[i][1], cpuY: coronaXYZS(c, kBrightness(c, obs, u, P), 0)[1] };
+      return [d[0] / dn, d[1] / dn, d[2] / dn];
+    };
+    // The Sun shield's disc (render/frame.ts: the solar radius plus a pixel) is left out of the average, as on the GPU.
+    const cosShield = s.view.sunShield ? Math.cos(Math.asin(Math.min(1, s.sun.radius / D)) + (2 * tanY) / H) : 2;
+    const shielded = (u: Vec3) => u[0] * n[0] + u[1] * n[1] + u[2] * n[2] >= cosShield;
+    return pts.map((p, i) => {
+      // The same footprint average as the GPU pass (corona.ts kFootprintN).
+      const u = dirAt(p.px + 0.5, p.py + 0.5);
+      const sca = -(obs[0] * u[0] + obs[1] * u[1] + obs[2] * u[2]);
+      const b = Math.hypot(obs[0] + sca * u[0], obs[1] + sca * u[1], obs[2] + sca * u[2]);
+      const u1 = dirAt(p.px + 1.5, p.py + 0.5);
+      const pxR = Math.hypot(u1[0] - u[0], u1[1] - u[1], u1[2] - u[2]) * Math.max(sca, 0);
+      const nf = kFootprintN(pxR, b, sca > 0);
+      let bK = 0;
+      for (let j = 0; j < nf; j++) for (let k = 0; k < nf; k++) {
+        const us = nf === 1 ? u : dirAt(p.px + (k + 0.5) / nf, p.py + (j + 0.5) / nf);
+        if (!shielded(us)) bK += kBrightness(c, obs, us, P);
+      }
+      return { ...p, gpuY: g[i][1], cpuY: coronaXYZS(c, bK / (nf * nf), 0)[1] };
     });
   }
 

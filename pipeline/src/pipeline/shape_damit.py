@@ -29,7 +29,7 @@ from .paths import CACHE
 from .sb_table import Field, write_table
 from .schema import BuildContext
 
-EXPORT = "https://damit.cuni.cz/projects/damit/exports/complete/damit-20260930T000302Z.tar.gz"
+EXPORT = "https://damit.cuni.cz/projects/damit/exports/complete/damit-20261004T000302Z.tar.gz"
 SUBDIR = "shapes/damit"
 SRC = "damit"
 CACHE_FILE = CACHE / "shapes" / "damit-extract.pkl"
