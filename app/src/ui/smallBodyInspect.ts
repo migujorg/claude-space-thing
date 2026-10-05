@@ -253,7 +253,7 @@ export function smallBodyFacts(t: SmallBodyTables, row: number, level: ExistsLev
     const label: Label = own?.value?.afrho !== undefined ? 'derived' : 'estimated';
     rows.push({
       key: 'sb:cometComposition', name: 'Coma composition (log Q(X)/Q(OH); dust log Afρ/Q(OH))', label,
-      value: `C2 ${v('C2')}, CN ${v('CN')}, C3 ${v('C3')}; Afρ ${v('afrho')} — ${own ? `this comet (${own.value!.key}, A'Hearn et al. 1995)` : `population medians (${p.afrho.n} comets)`}`,
+      value: `C2 ${v('C2')}, CN ${v('CN')}, C3 ${v('C3')}; Afρ ${v('afrho')} — ${own?.value ? `this comet (${own.value.key}, A'Hearn et al. 1995)` : `population medians (${p.afrho.n} comets)`}`,
       sources: [...new Set([...(own?.sources ?? []), ...cm.composition.sources])],
       method: `${cm.composition.method} Water production from the M1/K1 magnitude: ${cm.waterFromMagnitude.method}.`,
       withheld: !labelAllowed(label, level),

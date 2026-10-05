@@ -220,7 +220,8 @@ export interface CloudPopulation {
  */
 export function unmeasuredTauPopulation(header: unknown): (CloudPopulation & { label: string }) | null {
   const u = (header as { constants?: { unmeasuredTau?: Record<string, unknown> } } | null)?.constants?.unmeasuredTau;
-  const value = u?.value;
+  if (!u) return null;
+  const value = u.value;
   if (!value || typeof value !== 'object') return null;
   const payload = value as Record<string, unknown>;
   const ln = payload.tauBinLnCentre;
@@ -235,7 +236,7 @@ export function unmeasuredTauPopulation(header: unknown): (CloudPopulation & { l
     if (x > 0) { taus.push(Math.exp(ln[k] as number)); p.push(x / sum); }
   });
   if (taus.length > MAX_POPULATION_NODES) return null;
-  return { taus, p, label: typeof u!.label === 'string' ? u!.label : 'unknown' };
+  return { taus, p, label: typeof u.label === 'string' ? u.label : 'unknown' };
 }
 
 /** Nodes of a cloud population the renderer holds per body (struct Body unTau/unP in shaders.ts). */
