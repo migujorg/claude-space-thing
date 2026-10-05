@@ -173,6 +173,8 @@ def test_palace_reference_is_the_annual_nocturnal_mean():
 @pytest.mark.skipif(not (OUT / "airglow.json").exists(), reason="nightglow products not built")
 def test_products_labels_and_layout():
     a = json.loads((OUT / "airglow.json").read_text())
+    assert a["version"] == 2 and isinstance(a["value"], dict)
+    a = {**a["value"], **{k: a[k] for k in ("label", "sources")}}
     u = json.loads((OUT / "aurora.json").read_text())
     assert a["label"] == "estimated" and u["label"] == "estimated"
     assert {s["label"] for s in a["solarRadioFlux"]["value"]["labelSegments"]} <= {"derived", "estimated", "unknown"}
@@ -188,6 +190,7 @@ def test_products_labels_and_layout():
     assert u["emission"]["value"]["checks"]["source"] in sources
     assert "naif-lsk-naif0012" in a["solarRadioFlux"]["sources"]
     assert {"naif-lsk-naif0012", "ovation-prime-2010"} <= set(u["coupling"]["sources"])
+    assert set(u["coupling"]["value"]["climatology"]["sources"]) <= sources
     ov = u["ovation"]["value"]
     # OP2010 tabulates probability in dF_AVE / 8 bins: 4421 / 8 = 552.625, not the finer build nodes.
     assert "bins of 552.625" in u["ovation"]["method"]

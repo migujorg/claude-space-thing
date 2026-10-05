@@ -271,7 +271,7 @@ def build_airglow(ctx: BuildContext, cie_ids: list[str]) -> tuple[dict, dict]:
     lc["srfMethod"] = (f"mean of the DRAO daily 10.7 cm flux over {m0.isoformat()} - 13 d to {m1.isoformat()} + 13 d "
                        f"({len(xs)} days): the 27-day windows centred on the days of the month")
     model = {
-        "kind": "airglowModel", "version": 1,
+        "kind": "airglowModel", "version": 2,
         "description": "Nightglow of the Earth's upper atmosphere from PALACE v1.0 (Cerro Paranal climatology from 10 "
                        "years of X-shooter spectra) applied to the whole night side (docs/reports/nightglow.md).",
         "units": {"xyzsPerR": "luminance (X, Y, Z cd/m^2; S scotopic cd/m^2) of a column emission rate of 1 rayleigh "
@@ -312,7 +312,11 @@ def build_airglow(ctx: BuildContext, cie_ids: list[str]) -> tuple[dict, dict]:
     }
     diag = {"zenithXYZS": tot.tolist(), "zenithYByClass": zen, "srfLabels": labels,
             "limbRatioMesopause": ag.gaussian_column_limb_ratio(6371.0 + 97.0, layers[0]["sigmaKm"])}
-    return model, diag
+    # Inline physical data uses the canonical Sourced.value envelope (architecture §2.2).
+    header_keys = {"kind", "version", "label", "sources", "method", "uncertainty"}
+    product = {k: v for k, v in model.items() if k in header_keys}
+    product["value"] = {k: v for k, v in model.items() if k not in header_keys}
+    return product, diag
 
 
 # ============================================================================================ aurora
@@ -440,6 +444,7 @@ def build_aurora(ctx: BuildContext, cie_ids: list[str]) -> tuple[dict, dict, dic
             "values": [None if not np.isfinite(x) else round(float(x), 1) for x in vals],
             "measuredUntil": t[first + last_valid].isoformat().replace("+00:00", "Z"),
             "climatology": {"value": round(clim, 1), "label": "estimated",
+                            "sources": [src[f"omni{y}"] for y in sorted(OMNI)] + [src["op2010"], SRC_LSK],
                             "method": "median of the measured hourly series over the 365 days before measuredUntil; used "
                                       "at Best estimate for times without measured solar wind (and for gaps)"}},
             "derived", [src[f"omni{y}"] for y in sorted(OMNI)] + [src["op2010"], SRC_LSK],
@@ -500,7 +505,7 @@ def run(ctx: BuildContext) -> None:
     us76_upper.profile(np.array([100.0]))      # fail early if the port breaks
     air, adiag = build_airglow(ctx, cie_ids)
     write_json(ctx, f"{DIR}/airglow.json", air, STAGE)
-    log(f"airglow: {len(air['classes'])} classes on {len(air['layers'])} layers; zenith Y at reference "
+    log(f"airglow: {len(air['value']['classes'])} classes on {len(air['value']['layers'])} layers; zenith Y at reference "
         f"{adiag['zenithXYZS'][1]:.3e} cd/m^2; srf labels {adiag['srfLabels']}")
     aur, bdiag, bins = build_aurora(ctx, cie_ids)
     write_bin(ctx, f"{DIR}/aurora-ovation.bin", bins["ovation"], STAGE)

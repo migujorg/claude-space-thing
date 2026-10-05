@@ -20,6 +20,7 @@ import type {
   ShapeIndex,
   TimeData,
   AirglowModel,
+  AirglowProduct,
   AuroraModel,
 } from './schema';
 import { BinaryTable } from './binaryTable';
@@ -27,7 +28,7 @@ import { parseStarNames, type StarName } from './stars';
 import { discoverSmallBodies, type SmallBodyProducts } from './smallbodies';
 import { discoverSurfaces, parseSurfaceHeader, type SurfaceLayer } from './surfaces';
 import { deepTilePaths, loadSkyHeaders, mapPath, type SkyHeaders } from './sky';
-import { decodeFloat16, type AuroraBins } from './nightglow';
+import { decodeAirglowProduct, decodeFloat16, type AuroraBins } from './nightglow';
 
 export type FetchFn = (url: string) => Promise<Response>;
 
@@ -454,7 +455,7 @@ export async function loadAll(opts: LoadOptions): Promise<LoadedData> {
   let nightglow: LoadedData['nightglow'] = null;
   if (manifest?.products['nightglow/airglow.json'] || manifest?.products['nightglow/aurora.json']) {
     const [airglow, aurora] = await Promise.all([
-      manifest.products['nightglow/airglow.json'] ? L.get('nightglow/airglow.json', (b) => validateKind<AirglowModel>(json(b), 'airglowModel'), CONSEQUENCE['nightglow/airglow.json']) : null,
+      manifest.products['nightglow/airglow.json'] ? L.get('nightglow/airglow.json', (b) => decodeAirglowProduct(validateKind<AirglowProduct>(json(b), 'airglowModel')), CONSEQUENCE['nightglow/airglow.json']) : null,
       manifest.products['nightglow/aurora.json'] ? L.get('nightglow/aurora.json', (b) => validateKind<AuroraModel>(json(b), 'auroraModel'), CONSEQUENCE['nightglow/aurora.json']) : null,
     ]);
     let bins: AuroraBins | null = null;
@@ -547,4 +548,3 @@ function validateOrientHeader(x: unknown): OrientationHeader {
     throw new Error('expected { bin, references, bodies, segments }');
   return x as unknown as OrientationHeader;
 }
-

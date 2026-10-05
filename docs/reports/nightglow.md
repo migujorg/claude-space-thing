@@ -17,18 +17,20 @@ WebGPU scene verification on the running app.
 
 | File | Content | Label |
 |---|---|---|
-| `nightglow/airglow.json` | PALACE v1.0 emission classes: luminance per rayleigh (and per 10 nm sample), reference zenith intensities, the 12 × 12 month × local-time climatology with solar-cycle slopes; 9 Gaussian layers; the 10.7 cm solar radio flux (27-day centred means) per day of the window | model `estimated`; flux per day `derived` (observed) or `estimated` (predictions fill the window) |
+| `nightglow/airglow.json` | v2 `Sourced.value` payload: PALACE v1.0 emission classes, luminance per rayleigh (and per 10 nm sample), reference zenith intensities, the 12 × 12 month × local-time climatology with solar-cycle slopes; 9 Gaussian layers; the 10.7 cm solar radio flux (27-day centred means) per day of the window | model `estimated`; flux per day `derived` (observed) or `estimated` (predictions fill the window) |
 | `nightglow/aurora.json` | OVATION Prime 2010 grid description, the solar-wind coupling per hour, magnetic-coordinate grid description, the emission model (columns, peaks, luminance per R per line group) | model `estimated`; coupling `derived` (measured part) / climatology `estimated`; magnetic coordinates `estimated` |
 | `nightglow/aurora-ovation.bin` | float16 [season 4][energy flux, number flux][coupling node 32][MLT 96][\|MLAT\| 80] | `estimated` |
 | `nightglow/aurora-magnetic.bin` | float32 [lat 180][lon 360][AACGM-like latitude, cos and sin of longitude] at 110 km | `estimated` |
 | `nightglow/aurora-emission.bin` | float32 [mean energy 22][altitude 257 (86–598 km)][N₂⁺ 1N (427.8 nm), O 557.7 nm, O 630.0+636.4 nm, 0]: R per km per (erg cm⁻² s⁻¹) | `estimated` |
 
 The build checked on 2026-10-04 contains 59 raw inputs (122,867,792 bytes, including the reused CIE tables,
-US76 document and NAIF leap-second kernel) and five products (5,236,153 bytes). Rebuilds with all raw
+US76 document and NAIF leap-second kernel) and five products (5,256,249 bytes). Rebuilds with all raw
 inputs cached took 45–67 s; most of it was magnetic field-line tracing. Itikawa's NIST PDF first returned HTTP 403
 and succeeded with the pipeline's browser user agent. If the publisher refuses a future retrieval, the existing
 transcription remains cited and the source record explicitly omits a retrieval date and checksum. UTC dates use
-SPICE and the registered NAIF LSK rather than a fixed TDB-to-UTC offset.
+SPICE and the registered NAIF LSK rather than a fixed TDB-to-UTC offset. Airglow v2 wraps its physical
+payload in the canonical `Sourced.value` envelope; the app resolves that envelope without altering the numbers.
+The climatological coupling is also a complete `Sourced` value with its own registered source list.
 
 ## 2. Airglow
 

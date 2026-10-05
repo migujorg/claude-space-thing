@@ -10,8 +10,8 @@
 // Skipped when nightglow/*.json is not built.
 
 import { describe, expect, it } from 'vitest';
-import type { AirglowModel, AuroraModel } from '../src/data/schema';
-import { decodeFloat16 } from '../src/data/nightglow';
+import type { AirglowModel, AirglowProduct, AuroraModel } from '../src/data/schema';
+import { decodeAirglowProduct, decodeFloat16 } from '../src/data/nightglow';
 import { airglowLayers, auroraGrid, couplingAt, dayOfYear, monthWeights, NightglowSource, seasonWeights, solarRadioFlux } from '../src/app/nightglow';
 import { emissionTables, layerBranchIntegral, limbFactor, nightDomainWeight, packTables, PHOTON_RADIANCE_PER_R, sampleBins, slabIntegral, toF16Array } from '../src/render/nightglow';
 import { numberToF16 } from '../src/render/surface';
@@ -51,7 +51,7 @@ describe('nightglow input provenance', () => {
     coupling: { label: 'derived', sources: [], value: {
       unit: 'test', hourlyStart: '2026-01-01T00:00:00Z', stepHours: 1,
       values: [3000, null], measuredUntil: '2026-01-01T00:00:00Z',
-      climatology: { value: 1000, label: 'estimated', method: 'test fixture' },
+      climatology: { value: 1000, label: 'estimated', method: 'test fixture', sources: [] },
     } },
     ovation: { label: 'estimated', sources: [], value: null },
     magneticCoordinates: { label: 'synthetic', sources: [], value: null },
@@ -79,7 +79,7 @@ describe('nightglow input provenance', () => {
 });
 
 describe.skipIf(!built)('nightglow products (nightglow/*.json)', () => {
-  const ag = built ? json<AirglowModel>('nightglow/airglow.json') : (null as unknown as AirglowModel);
+  const ag = built ? decodeAirglowProduct(json<AirglowProduct>('nightglow/airglow.json'))! : (null as unknown as AirglowModel);
   const au = built ? json<AuroraModel>('nightglow/aurora.json') : (null as unknown as AuroraModel);
 
   it('green line: 1 R → cd/m² from the CIE tables (O I 557.7339 nm air, 557.8887 nm vacuum; NIST ASD)', () => {

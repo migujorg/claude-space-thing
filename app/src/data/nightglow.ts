@@ -1,5 +1,18 @@
 // The binary products of the nightglow stage (nightglow/aurora-*.bin; schema AuroraModel), as loaded.
 
+import type { AirglowModel, AirglowProduct } from './schema';
+
+/** Resolve the canonical inline payload while retaining its provenance for the shell and inspector. */
+export function decodeAirglowProduct(product: AirglowProduct): AirglowModel | null {
+  if (product.label === 'unknown' && product.value === null) return null;
+  if (!product.value || product.label === 'unknown') throw new Error('airglow: expected a Sourced.value payload');
+  return {
+    ...product.value, kind: product.kind, version: product.version,
+    label: product.label, sources: product.sources,
+    method: product.method ?? 'unknown', uncertainty: product.uncertainty ?? 'unknown',
+  };
+}
+
 /** The aurora model's binaries, decoded to float32. */
 export interface AuroraBins {
   /** [season 4][quantity 2][coupling node][MLT][MLAT] */

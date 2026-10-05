@@ -1502,7 +1502,7 @@ export interface SolarRadioFluxSeries {
   lastObservedDay: string;
 }
 
-/** nightglow/airglow.json */
+/** Resolved airglow data used by the app; serialized as AirglowProduct. */
 export interface AirglowModel {
   kind: 'airglowModel';
   version: number;
@@ -1536,6 +1536,12 @@ export interface AirglowModel {
   };
 }
 
+/** nightglow/airglow.json v2: inline physical data in the canonical Sourced.value envelope. */
+export interface AirglowProduct extends Sourced<Omit<AirglowModel, 'kind' | 'version' | 'label' | 'sources' | 'method' | 'uncertainty'>> {
+  kind: 'airglowModel';
+  version: number;
+}
+
 /** An aurora line group of the emission model. */
 export interface AuroraLineGroup {
   /** Column per unit energy flux at each average-energy node, R per (erg cm⁻² s⁻¹). */
@@ -1564,7 +1570,7 @@ export interface AuroraModel {
     stepHours: number;
     values: (number | null)[];
     measuredUntil: string;
-    climatology: { value: number; label: Label; method: string };
+    climatology: { value: number; label: Label; method: string; sources: string[] };
   }>;
   magneticCoordinates: Sourced<{
     file: string; dtype: 'float32'; layout: string;
