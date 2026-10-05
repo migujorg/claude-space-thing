@@ -287,13 +287,17 @@ def main() -> None:
     w("|---|---|---|---|" + "---|" * len(hdr))
     iss = v["iss"]
 
-    def grouped(name: str, ratio_of) -> list[str]:
+    def grouped(name: str, ratio_of) -> list[float]:
+        """Median of measured / model per phase-angle range (NaN where the filter has no measurement)."""
         al, val = TD.read_iss()[name]
         out_ = []
         for lo, hi in groups:
             sel = (al >= lo) & (al < hi)
-            out_.append(f"{np.median(ratio_of(al[sel], val[sel])):.2f}" if sel.sum() else "—")
+            out_.append(float(np.median(ratio_of(al[sel], val[sel]))) if sel.sum() else float("nan"))
         return out_
+
+    def cell(x: float) -> str:
+        return "—" if math.isnan(x) else f"{x:.2f}"
 
     mcd = TC.mc()
     cells_of: dict[str, list[float]] = {}
@@ -305,9 +309,9 @@ def main() -> None:
         curve = np.array([TC.filters.band_average(f["filter"], mcd["wl"], mcd["A"][:, j])
                           for j in range(mcd["alpha"].size)])
         cells = grouped(name, lambda a, x: x / np.interp(a, mcd["alpha"], curve))
-        cells_of[name] = [float(c) if c != "—" else np.nan for c in cells]
+        cells_of[name] = cells
         w(f"| {name}{'' if f['broad'] else ' *'} | {f['lambda_eff_nm']:.0f} | {f['n']} | {f['median_ratio']:.2f} | "
-          + " | ".join(cells) + " |")
+          + " | ".join(cell(c) for c in cells) + " |")
     w("")
     w("\\* Methane filters (5 nm wide): the model's 10 nm samples (box-averaged extinction) do not resolve them.")
     w("")
@@ -378,13 +382,13 @@ def main() -> None:
             key = TC.ISS[name][0]
             curve = np.array([TC.filters.band_average(key, wl_r, row) for row in per])
             cells = grouped(name, lambda a, x: x / np.interp(a, ph, curve))
-            lim = 2.0 * TC.ISS_ABSOLUTE
-            ok = all(c == "—" or abs(float(c) - 1) <= lim for c in cells)
-            fails = [h for h, c in zip(hdr, cells) if c != "—" and abs(float(c) - 1) > lim]
+            lim = 2.0 * TC.ISS_ABSOLUTE          # on the medians themselves, not on their rounded table cells
+            fails = [h for h, c in zip(hdr, cells) if not math.isnan(c) and abs(c - 1) > lim]
+            ok = not fails
             res = "PASS" if ok else "FAIL (" + ", ".join(fails) + ")"
             if not f["broad"]:
                 res += " *"
-            w(f"| {name} | {f['median_ratio']:.2f} | " + " | ".join(cells) + f" | {res} |")
+            w(f"| {name} | {f['median_ratio']:.2f} | " + " | ".join(cell(c) for c in cells) + f" | {res} |")
         w("")
     w("")
     # ---------------------------------------------------------------- Venus
