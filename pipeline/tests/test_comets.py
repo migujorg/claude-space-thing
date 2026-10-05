@@ -277,7 +277,7 @@ def test_list_product():
     lst = json.loads((OUT / "comets" / "list.json").read_text())
     for activity in lst["measured"].values():
         assert activity["label"] == "derived" and activity["sources"]
-        assert activity["value"]["key"] and activity["value"]["n"] > 0
+        assert activity["value"]["key"] and all(n > 0 for n in activity["value"]["n"].values())
     mags = [n["peakMag"] for n in lst["notable"]]
     assert mags == sorted(mags) and all(m <= lst["notableMag"] for m in mags)
     best = next((n for n in lst["notable"] if n["elongationDeg"] >= comets.SHOWCASE_MIN_ELONGATION

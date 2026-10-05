@@ -49,6 +49,22 @@ function positionAngle(a: V3, b: V3): number {
 }
 const angDiff = (a: number, b: number) => ((a - b + 540) % 360) - 180;
 
+describe('sourced comet composition', () => {
+  it('uses the per-comet payload and retains envelope sources alongside population inputs', () => {
+    // Test ratios selected from the real reference model's observed population bounds.
+    const p = model.composition.value!.population;
+    const measured: CometMeasuredActivity = {
+      value: { key: 'test-comet', C2: p.C2.p16, afrho: p.afrho.p84, n: { C2: 1, afrho: 1 }, rRangeAu: [1, 2] },
+      label: 'derived', sources: ['test-measured-composition'],
+    };
+    expect(activityOf(model, measured)).toEqual({
+      C2: p.C2.p16, CN: p.CN.median, C3: p.C3.median, afrho: p.afrho.p84,
+      label: 'derived', sources: [...new Set([...measured.sources, ...model.composition.sources])],
+    });
+    expect(activityOf(model, { value: null, label: 'unknown', sources: [] })).toEqual(activityOf(model));
+  });
+});
+
 describe('coma photometry', () => {
   it('total V light is the M1/K1 law (and our m1 is Horizons T-mag)', () => {
     fx.ours.forEach((_o, k) => {

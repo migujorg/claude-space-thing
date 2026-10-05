@@ -1175,7 +1175,7 @@ export type CometMeasuredActivity = Sourced<{
   CN?: number;
   C3?: number;
   afrho?: number;
-  n: number;
+  n: Partial<Record<'C2' | 'CN' | 'C3' | 'afrho', number>>;
   rRangeAu: [number, number];
 }>;
 
