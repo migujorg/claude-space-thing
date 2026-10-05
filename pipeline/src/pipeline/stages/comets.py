@@ -210,7 +210,7 @@ def run(ctx: BuildContext) -> None:
         full = _full(des, prefix)
         notable.append({**p, "designation": full, "name": name, "label": f"{full} {name}".strip(),
                         "measured": measured.get(p["index"])})
-    best = next(n for n in notable if n["elongationDeg"] >= SHOWCASE_MIN_ELONGATION and "-" not in n["designation"])
+    best = next((n for n in notable if n["elongationDeg"] >= SHOWCASE_MIN_ELONGATION and "-" not in n["designation"]), None)
 
     ox_photons = cm.oxygen_photons_per_h2o(tabs)
     cop = cm.co_plus(tabs)
@@ -290,18 +290,33 @@ def run(ctx: BuildContext) -> None:
                     for n in notable],
         "showcase": {"row": best["row"], "designation": best["designation"], "name": best["name"],
                      "rule": f"brightest notable comet with solar elongation >= {SHOWCASE_MIN_ELONGATION:g} deg at peak, "
-                             "not a fragment"},
+                             "not a fragment"} if best is not None else None,
         "measured": meas_out,
         "label": "estimated", "sources": ["jpl-sbdb-orbits", "naif-de442s", *lab_src["composition"]],
     }
     write_json(ctx, f"{DIR}/list.json", lst, STAGE)
 
-    fx = horizons_fixture(best, cat, cur)
-    # The model itself travels with the fixture, so the app's comet tests do not need built data.
-    fx["measured"] = meas_out.get(str(best["row"]))
-    fx["model"] = model
-    FIXTURE.write_text(json.dumps(fx, indent=None, separators=(",", ":")))
-    FIGURE.write_text(magnitude_svg(cat, cur, notable))
+    showcase_note = (f"showcase {best['designation']} {best['name']} (peak {best['peakMag']:.2f} on {_et_iso(best['peakEt'])})"
+                     if best is not None else
+                     f"no showcase (no notable non-fragment comet with solar elongation >= {SHOWCASE_MIN_ELONGATION:g} deg at peak)")
+    print(f"[comets] {len(peaks)} comets with M1/K1, {len(notable)} brighter than m1 = {NOTABLE_MAG:g} at peak; "
+          f"{showcase_note}; {time.time() - t_stage:.0f} s")
+    if not ctx.param("build.writeRepoFiles"):
+        print(f"[comets] {REPORT.name}, {FIGURE.name} and test fixture {FIXTURE.name} not rewritten "
+              "(build.writeRepoFiles is off)")
+        return
+
+    fx = None
+    if best is not None:
+        fx = horizons_fixture(best, cat, cur)
+        # The model itself travels with the fixture, so the app's comet tests do not need built data.
+        fx["measured"] = meas_out.get(str(best["row"]))
+        fx["model"] = model
+        FIXTURE.write_text(json.dumps(fx, indent=None, separators=(",", ":")), encoding="utf-8", newline="\n")
+    else:
+        # Keep the last real reference case: fixture consumers require a comet and its Horizons observations.
+        print(f"[comets] test fixture {FIXTURE.name} not refreshed (no showcase qualifies; previous reference retained)")
+    FIGURE.write_text(magnitude_svg(cat, cur, notable), encoding="utf-8", newline="\n")
     report = {
         "generated": _dt.datetime.now(_dt.timezone.utc).isoformat(timespec="seconds"),
         "seconds": round(time.time() - t_stage, 1),
@@ -309,7 +324,7 @@ def run(ctx: BuildContext) -> None:
                                        "measured")} | {"peakDate": _et_iso(n["peakEt"]), "perihelionDate": _et_iso(n["perihelionEt"])}
                     for n in notable],
         "showcase": lst["showcase"],
-        "horizonsCheck": [{"date": h["dateUt"], "horizonsTMag": h["tMag"], "oursM1": o["m1"], "horizonsR": h["rAu"],
+        "horizonsCheck": [] if fx is None else [{"date": h["dateUt"], "horizonsTMag": h["tMag"], "oursM1": o["m1"], "horizonsR": h["rAu"],
                            "oursR": o["rAu"], "horizonsDelta": h["deltaAu"], "oursDelta": o["deltaAu"]}
                           for h, o in zip(fx["horizons"]["rows"], fx["ours"])],
         "bandRatiosToC2": band_ratio, "population": ratios["population"],
@@ -318,7 +333,4 @@ def run(ctx: BuildContext) -> None:
         "grains": grains, "oxygenPhotonsPerH2O": ox_photons, "coPlus": cop, "solarWind": model["solarWind"],
         "products": {k: v for k, v in ctx.products.items() if v["stage"] == STAGE},
     }
-    REPORT.write_text(json.dumps(report, indent=1, allow_nan=False))
-    print(f"[comets] {len(peaks)} comets with M1/K1, {len(notable)} brighter than m1 = {NOTABLE_MAG:g} at peak; showcase "
-          f"{best['designation']} {best['name']} (peak {best['peakMag']:.2f} on {_et_iso(best['peakEt'])}); "
-          f"{time.time() - t_stage:.0f} s")
+    REPORT.write_text(json.dumps(report, indent=1, allow_nan=False), encoding="utf-8", newline="\n")
