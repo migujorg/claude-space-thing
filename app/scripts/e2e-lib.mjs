@@ -14,6 +14,84 @@ export function sceneQuery(suite, scene) {
   return q.toString().replace(/%3A/gi, ':');
 }
 
+// ---- the browser's WebGPU adapter (--gpu) --------------------------------------------------------------------
+
+/** `--gpu` of e2e.mjs, validate.mjs and shot.mjs: SwiftShader (the default) or the machine's GPU through Vulkan. */
+export const GPU_MODES = ['swiftshader', 'hardware'];
+
+/**
+ * Chromium arguments for headless WebGPU.
+ * - `swiftshader`: the software adapter. Runs anywhere, and is what the committed baseline was accepted on.
+ * - `hardware`: Dawn on the system's Vulkan drivers. `--use-angle=vulkan` with `--enable-features=Vulkan` is what
+ *   makes the GPU process initialize Vulkan at all (either one alone still gives SwiftShader);
+ *   `--disable-vulkan-surface` because a headless browser has no window: without it Chromium asks for a window
+ *   surface extension, and vkCreateInstance fails (-7, then a silent fall back to SwiftShader) when the loader is
+ *   restricted to a driver that offers none without a display (VK_DRIVER_FILES = the NVIDIA ICD alone).
+ *   Measured with Playwright's Chromium 141 headless shell on Linux, NVIDIA 615.71 (app/e2e/README.md).
+ */
+export function gpuLaunchArgs(mode = 'swiftshader') {
+  if (mode === 'swiftshader') return ['--enable-unsafe-webgpu', '--enable-features=Vulkan', '--use-webgpu-adapter=swiftshader', '--use-angle=swiftshader', '--ignore-gpu-blocklist'];
+  if (mode === 'hardware') return ['--enable-unsafe-webgpu', '--enable-features=Vulkan', '--use-angle=vulkan', '--disable-vulkan-surface', '--ignore-gpu-blocklist'];
+  throw new Error(`--gpu ${mode}: expected ${GPU_MODES.join(' or ')}`);
+}
+
+/**
+ * Runs in the page (page.evaluate; it must not use anything outside its body): the adapter the app's own request
+ * gets (src/render/adapter.ts: high-performance, then the default), or null without WebGPU. Chromium leaves
+ * `device` and `description` empty unless developer features are on, so vendor and architecture identify it.
+ */
+export async function pageAdapterInfo() {
+  const gpu = navigator.gpu;
+  if (!gpu) return null;
+  const a = (await gpu.requestAdapter({ powerPreference: 'high-performance' })) ?? (await gpu.requestAdapter());
+  if (!a) return null;
+  const i = a.info ?? {};
+  return {
+    vendor: i.vendor ?? '', architecture: i.architecture ?? '', device: i.device ?? '', description: i.description ?? '',
+    fallback: !!(i.isFallbackAdapter ?? a.isFallbackAdapter),
+    float32Blendable: a.features.has('float32-blendable'),
+  };
+}
+
+/** A software rasterizer? The app asks the same of its device (src/app/sky.ts: a 256² sky cube instead of 512²). */
+export function isSoftwareAdapter(info) {
+  return !!info && (info.fallback === true || /swiftshader|llvmpipe|software/i.test(`${info.vendor} ${info.architecture} ${info.description}`));
+}
+
+/** "nvidia blackwell (hardware)", "google swiftshader (software)", "none". */
+export function adapterLabel(info) {
+  if (!info) return 'none';
+  const name = [info.vendor, info.architecture, info.device, info.description].filter(Boolean).join(' ') || 'unnamed adapter';
+  return `${name} (${isSoftwareAdapter(info) ? 'software' : 'hardware'})`;
+}
+
+/**
+ * Why this adapter is not what `--gpu` asked for, or null. Only `hardware` is checked: Chromium falls back to
+ * SwiftShader without a word when Vulkan does not initialize or the GPU process keeps crashing, and such a run
+ * must not pass for a run on the GPU. (With `swiftshader` the adapter is recorded, as before nothing is required.)
+ */
+export function gpuMismatch(mode, info) {
+  if (mode !== 'hardware') return null;
+  if (!info) return '--gpu hardware: the browser has no WebGPU adapter';
+  if (isSoftwareAdapter(info)) return `--gpu hardware: the browser's adapter is ${adapterLabel(info)}; Vulkan did not initialize or the GPU process was lost (DEBUG=pw:browser shows the browser's log)`;
+  return null;
+}
+
+/** The HDR targets of a frame, from the renderer's warnings (it warns when they are the rgba16float fallback). */
+export function hdrFormatOf(warnings) {
+  return (warnings ?? []).some((w) => w.includes('rgba16float')) ? 'rgba16float' : 'rgba32float';
+}
+
+/**
+ * A note when a baseline and a run were rendered by different kinds of adapter (a baseline without the record
+ * predates `--gpu` and was SwiftShader). Their numbers differ a little by construction: see app/e2e/README.md.
+ */
+export function gpuNote(baselineGpu, gpu) {
+  const was = baselineGpu?.mode ?? 'swiftshader', is = gpu?.mode ?? 'swiftshader';
+  if (was === is) return null;
+  return `The baseline was accepted on ${was}${baselineGpu?.adapter ? ` (${adapterLabel(baselineGpu.adapter)})` : ''}; this run rendered on ${is}${gpu?.adapter ? ` (${adapterLabel(gpu.adapter)})` : ''}. Differences may come from the adapter.`;
+}
+
 // ---- tolerances ----------------------------------------------------------------------------------------------
 
 /** Suite defaults; a scene's `tolerance` in scenes.json overrides any of them. */
