@@ -15,14 +15,12 @@
 // mean elements (JPL, "Keplerian Elements for Approximate Positions of the Major Planets", EM barycentre:
 // L = 100.46457166° + 35999.37244981° T, T in Julian centuries past J2000) — adequate for a blob 12° wide.
 
+import { DAYS_PER_JULIAN_CENTURY, EARTH_MEAN_LONGITUDE, OBLIQUITY_J2000_RAD, SECONDS_PER_DAY } from '../../core/constants';
+export { AU_KM, OBLIQUITY_J2000_RAD, S10_PER_SOLAR_FLUX_SR } from '../../core/constants';
 import type { ZodiacalLightModel } from '../../data/schema';
 
 export type V3 = [number, number, number];
 export type XYZS = [number, number, number, number];
-
-/** IAU 1976 obliquity of the ecliptic at J2000 (84381.448″), as used for the J2000 ecliptic frame. */
-export const OBLIQUITY_J2000_RAD = (84381.448 / 3600) * (Math.PI / 180);
-export const AU_KM = 149597870.7;
 
 export interface ZodiParams {
   smooth: { n0: number; alpha: number; beta: number; gamma: number; mu: number; i: number; om: number; x0: number; y0: number; z0: number };
@@ -147,9 +145,6 @@ export function zodiXYZS(m: ZodiParams, I: number, eps: number): XYZS {
   return [0, 1, 2, 3].map((k) => I * ((1 - t) * m.eps30[k] + t * m.eps90[k])) as XYZS;
 }
 
-/** 1 S10sun = 6.61e-12 F_sun/sr (Leinert et al. 1998, p. 4): I in S10sun at 500 nm. */
-export const S10_PER_SOLAR_FLUX_SR = 6.61e-12;
-
 /** ICRF → heliocentric ecliptic J2000 (rotation about x by the obliquity). */
 export function icrfToEcliptic(v: readonly number[]): V3 {
   const c = Math.cos(OBLIQUITY_J2000_RAD), s = Math.sin(OBLIQUITY_J2000_RAD);
@@ -163,8 +158,8 @@ export function eclipticToIcrf(v: readonly number[]): V3 {
 
 /** Earth's heliocentric mean longitude (rad) at TDB seconds past J2000 (Standish, EM barycentre). */
 export function earthMeanLongitude(et: number): number {
-  const T = et / (36525 * 86400);
-  const L = 100.46457166 + 35999.37244981 * T;
+  const T = et / (DAYS_PER_JULIAN_CENTURY * SECONDS_PER_DAY);
+  const L = EARTH_MEAN_LONGITUDE.epochDeg + EARTH_MEAN_LONGITUDE.rateDegPerCentury * T;
   return deg(((L % 360) + 360) % 360);
 }
 

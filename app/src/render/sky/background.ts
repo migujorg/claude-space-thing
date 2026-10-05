@@ -18,6 +18,7 @@
 // is integrated per frame (when the observer or the view changed) on a coarse screen-aligned grid (one ray per
 // ZODI_STEP pixels) and interpolated bilinearly.
 
+import { AU_KM, DAYS_PER_JULIAN_CENTURY, EARTH_MEAN_LONGITUDE, SECONDS_PER_DAY } from '../../core/constants';
 import { COMMON, LIMB_WGSL } from '../shaders';
 import { HEALPIX_WGSL, npix } from './healpix';
 import { zodiacalWgsl, OBLIQUITY_J2000_RAD, type ZodiParams } from './zodiacal';
@@ -479,15 +480,14 @@ export class SkyBackground implements SkyBackgroundHook {
     const s = t.snapshot;
     if (!s.sun) return false;
     const d = this.device;
-    const AU = 149597870.7;
     // observer heliocentric (ICRF, AU) = −(camera-relative Sun position)
-    const oI = [-s.sun.pos[0] / AU, -s.sun.pos[1] / AU, -s.sun.pos[2] / AU];
+    const oI = [-s.sun.pos[0] / AU_KM, -s.sun.pos[1] / AU_KM, -s.sun.pos[2] / AU_KM];
     const c = Math.cos(OBLIQUITY_J2000_RAD), sn = Math.sin(OBLIQUITY_J2000_RAD);
     const oE = [oI[0], c * oI[1] + sn * oI[2], -sn * oI[1] + c * oI[2]];
     const r = Math.hypot(oI[0], oI[1], oI[2]);
     const sunDir = [-oI[0] / r, -oI[1] / r, -oI[2] / r];
-    const T = s.et / (36525 * 86400);
-    const earthLon = ((((100.46457166 + 35999.37244981 * T) % 360) + 360) % 360) * (Math.PI / 180);
+    const T = s.et / (DAYS_PER_JULIAN_CENTURY * SECONDS_PER_DAY);
+    const earthLon = ((((EARTH_MEAN_LONGITUDE.epochDeg + EARTH_MEAN_LONGITUDE.rateDegPerCentury * T) % 360) + 360) % 360) * (Math.PI / 180);
     const gw = Math.ceil(t.W / ZODI_STEP) + 1, gh = Math.ceil(t.H / ZODI_STEP) + 1;
     const o = s.camera.orient;
     const key = [...oE.map((x) => x.toPrecision(7)), earthLon.toFixed(3), ...o.map((x) => x.toFixed(6)), s.camera.fovY.toFixed(6), gw, gh].join(',');

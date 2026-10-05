@@ -23,15 +23,15 @@
 // Ion tail: CO+ ions (Q(CO) = x_CO Q(H2O)) carried at the solar-wind speed along the aberrated anti-solar direction
 // v_sw r̂ − v_comet, each radiating the CO+ comet-tail bands.
 
+import { AU_KM, SECONDS_PER_DAY as DAY } from '../../core/constants';
+export { AU_KM } from '../../core/constants';
 import type { CometModelProduct, Label } from '../../data/schema';
 import { keplerDrift } from '../../core/smallbody';
 
 export type V3 = [number, number, number];
 export type XYZS = [number, number, number, number];
 
-export const AU_KM = 149597870.7;
 const KM_CM = 1e5;
-const DAY = 86400;
 
 /** Composition of one comet: log10 Q(X)/Q(OH) and log10 Afρ[cm]/Q(OH) (blue continuum). */
 export interface CometActivity {
