@@ -37,6 +37,30 @@ def test_absent_pinned_document_offline_matches_refused_download(document, monke
     assert document.source().to_json() == expected
 
 
+def test_absent_transcribed_document_offline_matches_refused_download(monkeypatch, tmp_path):
+    monkeypatch.setattr(common, "RAW", tmp_path)
+    monkeypatch.setattr(common, "_FAILED", {})
+    monkeypatch.delenv("PIPELINE_OFFLINE", raising=False)
+
+    def refused(*args, **kwargs):
+        raise requests.HTTPError("archive unavailable")
+
+    monkeypatch.setattr(common, "fetch", refused)
+    expected = KARKOSCHKA_1994_TEXT.source().to_json()
+    assert expected["retrieved"] == ""
+    assert "sha256" not in expected
+    assert "Document unavailable" in expected["notes"]
+
+    monkeypatch.setattr(common, "_FAILED", {})
+    monkeypatch.setenv("PIPELINE_OFFLINE", "1")
+
+    def unexpected_download(*args, **kwargs):
+        pytest.fail("offline transcribed document attempted a download")
+
+    monkeypatch.setattr(common, "fetch", unexpected_download)
+    assert KARKOSCHKA_1994_TEXT.source().to_json() == expected
+
+
 @pytest.mark.parametrize("method", ["fetch", "source"])
 def test_absent_unpinned_input_offline_reaches_download_guard(method, monkeypatch, tmp_path):
     monkeypatch.setattr(common, "RAW", tmp_path)
@@ -67,6 +91,27 @@ def test_cached_pinned_document_offline_is_still_available(monkeypatch, tmp_path
 
     monkeypatch.setattr(common, "fetch", unexpected_download)
     assert document.fetch() == path
+
+
+def test_cached_transcribed_document_offline_keeps_retrieval(monkeypatch, tmp_path):
+    monkeypatch.setattr(common, "RAW", tmp_path)
+    monkeypatch.setattr(common, "_FAILED", {})
+    monkeypatch.setenv("PIPELINE_OFFLINE", "1")
+    document = KARKOSCHKA_1994_TEXT
+    path = tmp_path / document.subdir / document.name
+    path.parent.mkdir()
+    path.write_text("Archived document fixture", encoding="utf-8")
+    retrieval = {"url": document.url, "retrieved": "2026-10-04", "sha256": common.file_sha256(path)}
+
+    def cached_download(*args, **kwargs):
+        return path
+
+    monkeypatch.setattr(common, "fetch", cached_download)
+    monkeypatch.setattr(common, "record", lambda fetched: retrieval)
+    source = document.source()
+    assert source.retrieved == retrieval["retrieved"]
+    assert source.sha256 == retrieval["sha256"]
+    assert source.notes == document.notes
 
 
 def test_unavailable_transcribed_paper_does_not_claim_retrieval(monkeypatch):
