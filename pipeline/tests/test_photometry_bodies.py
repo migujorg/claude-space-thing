@@ -1,11 +1,13 @@
 """photometry.json entries: schema shape, provenance rules, internal consistency, published comparisons."""
 
 import math
+import re
 
 import pytest
 
 from pipeline.photometry import bodies, filters, phase, solar
 from pipeline.photometry.common import read_table_csv
+from pipeline.photometry.moons import KARKOSCHKA_1994_TEXT
 from pipeline.schema import BuildContext, LABEL_ORDER
 
 NAIF = tuple(bodies.BODIES)     # planets, the Moon, Pluto and the major moons (moons: see test_photometry_moons.py)
@@ -69,9 +71,23 @@ def test_every_source_record_is_complete(built):
     ctx, _ = built
     for rec in ctx.sources.values():
         j = rec.to_json()
-        assert j["citation"] and j["url"] and j["retrieved"]
+        assert j["citation"] and j["url"], rec.id
+        document = KARKOSCHKA_1994_TEXT
+        if rec.id == document.id and j["retrieved"] == "":
+            # A cited transcription can outlive its archive. Do not invent retrieval metadata;
+            # only this explicitly declared citation-only document may use the unavailable record.
+            assert document.transcribed_only and document.sha256 is None
+            assert rec.sha256 is None, rec.id
+            assert j["citation"] == document.citation and j["url"] == document.url, rec.id
+            notes = j.get("notes", "")
+            assert document.notes in notes, rec.id
+            assert "Document unavailable in this build" in notes, rec.id
+            assert "existing transcription" in notes, rec.id
+            assert "no retrieval date or content checksum is claimed" in notes, rec.id
+            continue
+        assert j["retrieved"], rec.id
         if rec.id != "edlen-1966":          # formula-only reference, nothing downloaded
-            assert len(j.get("sha256", "")) == 64, rec.id
+            assert re.fullmatch(r"[0-9a-fA-F]{64}", j.get("sha256", "")), rec.id
 
 
 def test_labels_follow_propagation(built):
