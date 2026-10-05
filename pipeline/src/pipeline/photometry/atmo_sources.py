@@ -247,8 +247,8 @@ ES_SAYEH_2023 = Download(
              "area. Planetary Science Journal 4, 44. DOI:10.3847/PSJ/acbd37.",
     license="CC BY 4.0", notes="HAL open archive copy insu-04036493v1.")
 HUYGENS_GCMS_CH4 = Download(
-    id="huygens-gcms-ch4", url="https://atmos.nmsu.edu/PDS/data/hpgcms_0001/DATA/DTWG_MOLE_FRACTION/"
-                               "GCMS_MOLE_FRACTION_STG2.TAB",
+    id="huygens-gcms-ch4", url="https://archives.esac.esa.int/psa/ftp/CASSINI-HUYGENS/GCMS/"
+                               "HP-SSA-GCMS-3-FCO-DESCENT-V1.0/DATA/DTWG_MOLE_FRACTION/GCMS_MOLE_FRACTION_STG2.TAB",
     subdir="atmospheres/titan", name="GCMS_MOLE_FRACTION_STG2.TAB",
     title="Huygens GCMS methane (and argon) mole fraction during the descent, by UTC (DTWG submission)",
     citation="Niemann, H. B., Atreya, S. K., Demick, J. E., Gautier, D., Haberman, J. A., Harpold, D. N., Kasprzak, W. "
@@ -257,9 +257,14 @@ HUYGENS_GCMS_CH4 = Download(
              "experiment. J. Geophys. Res. 115, E12006. DOI:10.1029/2010JE003659. Data: Huygens GCMS, NASA PDS "
              "Atmospheres Node hpgcms_0001, product DESCENT_GCMS_MOLE_FRACTION_STG2 (data set "
              "HP-SSA-GCMS-3-FCO/DESCENT-V1.0, NASA GSFC, 2006).",
-    license="NASA PDS")
+    license="NASA PDS",
+    notes="Retrieved from ESA's official PSA archive (the NMSU archive resets connections). The accompanying PDS "
+          "label (GCMS_MOLE_FRACTION_STG2.LBL) identifies DATA_SET_ID HP-SSA-GCMS-3-FCO/DESCENT-V1.0, PRODUCT_ID "
+          "DESCENT_GCMS_MOLE_FRACTION_STG2, 1303 records of 43 bytes (one header line). Original NMSU URL: "
+          "https://atmos.nmsu.edu/PDS/data/hpgcms_0001/DATA/DTWG_MOLE_FRACTION/GCMS_MOLE_FRACTION_STG2.TAB.")
 HUYGENS_DTWG_DESCENT = Download(
-    id="huygens-dtwg-descent", url="https://atmos.nmsu.edu/PDS/data/hpdtwg_0001/DATA/HUY_DTWG_DESCENT_POS.TAB",
+    id="huygens-dtwg-descent", url="https://archives.esac.esa.int/psa/ftp/CASSINI-HUYGENS/DTWG/"
+                                   "HP-SSA-DTWG-6-TRAJECTORY-V1.0/DATA/HUY_DTWG_DESCENT_POS.TAB",
     subdir="atmospheres/titan", name="HUY_DTWG_DESCENT_POS.TAB",
     title="Huygens reconstructed descent trajectory: UTC, pressure, altitude above the 2575 km sphere",
     citation="Kazeminejad, B., Atkinson, D. H., Perez-Ayucar, M., Lebreton, J.-P. & Sollazzo, C. (2007). Huygens' "
@@ -267,7 +272,12 @@ HUYGENS_DTWG_DESCENT = Download(
              "Planet. Space Sci. 55, 1845-1876. DOI:10.1016/j.pss.2007.04.013. Data: Huygens Descent Trajectory "
              "Working Group, NASA PDS Atmospheres Node hpdtwg_0001, HUY_DTWG_DESCENT_POS (HP-SSA-DTWG-6-TRAJECTORY-"
              "V1.0).",
-    license="NASA PDS")
+    license="NASA PDS",
+    notes="Retrieved from ESA's official PSA archive (the NMSU archive resets connections). The accompanying PDS "
+          "label (HUY_DTWG_DESCENT_POS.LBL) identifies DATA_SET_ID HP-SSA-DTWG-6-TRAJECTORY-V1.0, 10000 records of "
+          "167 bytes, altitude above the 2575 km reference sphere. The PSA also holds a V2.0 data set (2011, "
+          "producer ESA-ESTEC), which is not the one used here. Original NMSU URL: "
+          "https://atmos.nmsu.edu/PDS/data/hpdtwg_0001/DATA/HUY_DTWG_DESCENT_POS.TAB.")
 
 # ------------------------------------------------------------------------------------------------ Venus
 HANSEN_HOVENIER = Download(
