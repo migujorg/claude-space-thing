@@ -718,6 +718,15 @@ export class AppModel {
     return label;
   }
 
+  /** Evaluator-selected ephemeris chain at the frame's light-emission epoch (or now before a frame). */
+  ephemerisSource(id: number) {
+    if (id < 0) return null;
+    const g = this.world?.bodies.get(id);
+    // A frame without an apparent position has no chain to report, even if reception time is covered.
+    if (g && !g.app) return null;
+    return this.eph?.provenance?.(id, g?.app?.emitEt ?? this.clock.et) ?? null;
+  }
+
   /** Orientation provenance of a body at the light-emission epoch of the current frame (or now). */
   /** Earth's airglow and aurora at the current time and level (the inspector), or null without the products. */
   nightglowInfo(): NightglowInfo | null {
