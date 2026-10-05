@@ -586,7 +586,7 @@ ellipsoid) are integrated on each side with 8 Gauss–Legendre nodes in x = √(
 column and the limb's path enhancement alike; the night domain (solar zenith angle > 100° below the emission) is
 evaluated per node, the local time and ellipsoid radius at the ends of each layer crossing (linear between). The aurora is marched (48 steps) through the parts of the ray inside the shell and
 the auroral caps; per step the precipitation at the step's magnetic coordinates and the emission's cumulative
-altitude table give exact column integrals for any step size. Light that crosses the lower atmosphere is attenuated
-per 40 nm bin with §4's transmittance table. The airglow also lights the ground and clouds: E = 2π L_z ∫₀¹ T(μ) dμ
-from the layers above the point (van Rhijn), reflected with earthShade as light from the zenith (like moonshine).
-Not yet: the scattering of this light in the lower atmosphere (path radiance), and the aurora's light on the ground.
+altitude table give column integrals for the within-step linear-altitude approximation. Light that crosses the lower atmosphere is attenuated
+per 40 nm bin with §4's transmittance table. Neither emission lights the ground or clouds: the pass adds light
+along the view ray and sends no irradiance to earthShade. Scattering of this light in the lower atmosphere
+(path radiance) is also not modelled. The CPU model and product tests pass; WebGPU scene checks remain pending.

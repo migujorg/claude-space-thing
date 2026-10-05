@@ -10,17 +10,25 @@ The Earth's upper atmosphere emits light of its own: the **airglow** (chemilumin
 orbit the airglow is a thin green band along the night limb, with a fainter red layer above it; the aurora is a
 green-and-red oval around each magnetic pole. Both are drawn as an additional source term of the Earth's atmosphere,
 in absolute luminance (X, Y, Z cd/m² and scotopic cd/m²), so the eye model decides what is seen: a dark-adapted eye
-sees the airglow band, a daylight-adapted one does not.
+is expected to see the airglow band, a daylight-adapted one is expected not to. These perceptual results still require
+WebGPU scene verification on the running app.
 
 ## 1. Products
 
 | File | Content | Label |
 |---|---|---|
 | `nightglow/airglow.json` | PALACE v1.0 emission classes: luminance per rayleigh (and per 10 nm sample), reference zenith intensities, the 12 × 12 month × local-time climatology with solar-cycle slopes; 9 Gaussian layers; the 10.7 cm solar radio flux (27-day centred means) per day of the window | model `estimated`; flux per day `derived` (observed) or `estimated` (predictions fill the window) |
-| `nightglow/aurora.json` | OVATION Prime 2010 grid description, the solar-wind coupling per hour, magnetic-coordinate grid description, the emission model (columns, peaks, luminance per R per line group) | model `estimated`; coupling `derived` (measured part) / climatology `estimated`; magnetic coordinates `derived` |
+| `nightglow/aurora.json` | OVATION Prime 2010 grid description, the solar-wind coupling per hour, magnetic-coordinate grid description, the emission model (columns, peaks, luminance per R per line group) | model `estimated`; coupling `derived` (measured part) / climatology `estimated`; magnetic coordinates `estimated` |
 | `nightglow/aurora-ovation.bin` | float16 [season 4][energy flux, number flux][coupling node 32][MLT 96][\|MLAT\| 80] | `estimated` |
-| `nightglow/aurora-magnetic.bin` | float32 [lat 180][lon 360][AACGM-like latitude, cos and sin of longitude] at 110 km | `derived` |
+| `nightglow/aurora-magnetic.bin` | float32 [lat 180][lon 360][AACGM-like latitude, cos and sin of longitude] at 110 km | `estimated` |
 | `nightglow/aurora-emission.bin` | float32 [mean energy 22][altitude 257 (86–598 km)][N₂⁺ 1N (427.8 nm), O 557.7 nm, O 630.0+636.4 nm, 0]: R per km per (erg cm⁻² s⁻¹) | `estimated` |
+
+The build checked on 2026-10-04 contains 59 raw inputs (122,867,792 bytes, including the reused CIE tables,
+US76 document and NAIF leap-second kernel) and five products (5,236,095 bytes). The final rebuild with all raw
+inputs cached took 45 s; most of it was magnetic field-line tracing. Itikawa's NIST PDF first returned HTTP 403
+and succeeded with the pipeline's browser user agent. If the publisher refuses a future retrieval, the existing
+transcription remains cited and the source record explicitly omits a retrieval date and checksum. UTC dates use
+SPICE and the registered NAIF LSK rather than a fixed TDB-to-UTC offset.
 
 ## 2. Airglow
 
@@ -29,7 +37,7 @@ DOI:10.5281/zenodo.14064022, CC BY 4.0). It is a measured climatology: 10 years 
 Paranal (24.6° S) reduced to 23 emission classes (OH Meinel bands by vibrational level, O₂ bands, the O green and red
 lines, Na D, K, N, FeO and HO₂ pseudo-continua, …), each with its line list or continuum, a reference zenith intensity
 (annual nocturnal mean at 100 sfu), and a 12 × 12 month × local-time table of the scaling factor f₀, the solar-cycle
-effect (SCE, % per 100 sfu) and the residual variability σ. PALACE Eq. 1: I = I_ref · f₀ · (1 + 0.01 · SCE · (S − 100)),
+effect (SCE, % per sfu) and the residual variability σ. PALACE Eq. 1: I = I_ref · f₀ · (1 + 0.01 · SCE · (S − 100)),
 S the 27-day centred mean of the 10.7 cm flux. PALACE was chosen over SM-01 and over a physical model because it is a
 measured, open, line-resolved climatology of the visible spectrum with its solar-cycle dependence.
 
@@ -64,9 +72,9 @@ oscillation's latitude dependence and the high-latitude enhancements are not mod
 night-to-night variability: 20–50 % for the mesopause emissions, up to 100 % for the red lines.
 
 **Solar radio flux.** Daily DRAO Penticton observations (the 20 UT value; NRC Canada) give the centred 27-day means
-over the window: `derived` from 2025-03-31 to 2026-09-17 (all 27 days observed; last observation 2026-09-30), then
-`estimated` to 2028-03-31 with the NOAA SWPC predicted monthly F10.7 filling the missing days. The values range
-94–168 sfu. At Strict nothing estimated is drawn, and the airglow model itself is `estimated`, so the airglow is
+in the build checked on 2026-10-04: `derived` from 2025-04-04 to 2026-09-21 (all 27 days observed; last observation
+2026-10-04), then `estimated` to 2028-04-04 with the NOAA SWPC predicted monthly F10.7 filling the missing days.
+The values range 93.69–166.01 sfu. At Strict nothing estimated is drawn, and the airglow model itself is `estimated`, so the airglow is
 drawn at Best estimate and Complete only.
 
 ## 3. Aurora
@@ -84,7 +92,7 @@ window, e.g. 2026-01-20 09 UT at 65 000) is held at the last node.
 **Driver: measured solar wind.** The Newell et al. (2007) coupling dΦ_MP/dt = v^{4/3} B_T^{2/3} sin^{8/3}(θ_c/2) from
 hourly OMNI 2 (King & Papitashvili 2005, DOI:10.1029/2004JA010649; NASA SPDF): By, Bz in GSM and the flow speed, then
 OP2010's average of the four preceding hours (weights 1, 0.65, 0.65², 0.65³; at least two hours measured). Over the
-window this covers 2025-03-31 to 2026-09-03 03 UT (12 508 hours, 331 gaps): label `derived`.
+window this covers 2025-04-04 to 2026-09-03 03 UT (12 412 hours, 331 gaps): label `derived`.
 
 **Outside the measured solar wind** (after 2026-09-03, and in gaps) there is no nowcast. Following NORTH_STAR §3.2
 (no invention; unknowns shown as unknown) and architecture §2 (estimated values only at Best/Complete, labelled), the
@@ -99,12 +107,13 @@ choices are:
   the end of OMNI and today is climatological too.
 - The SWPC OVATION nowcast (`ovation_aurora_latest.json`) is downloaded only as a location check (§6).
 
-**Magnetic coordinates.** IGRF-14 (IAGA Division V Working Group V-MOD; NOAA NCEI coefficient file) at the window's mid-epoch (2026.75);
+**Magnetic coordinates.** IGRF-14 (IAGA Division V Working Group V-MOD; NOAA NCEI coefficient file) at the window's mid-epoch (2026.757);
 field lines traced from 110 km with RK4 (2 % of r per step) to the centred dipole's equatorial plane, continued as
 dipole lines beyond 5 R_E; AACGM-like latitude acos(√(R/r_apex)) (Baker & Wing 1989), longitude the apex's dipole
 longitude; MLT = 12 + (mlon − dipole longitude of the Sun)/15. Grid 1° × 1°, undefined (no aurora) below 20° latitude.
 The aurora is placed in vertical columns above these points (field-line tilt neglected: at 70° magnetic latitude a dipole field is about 10° from
-vertical, so the top of a 100 km tall curtain is misplaced by ~18 km). Label `derived`.
+vertical, so the top of a 100 km tall curtain is misplaced by ~18 km). Label `estimated`: the fixed epoch,
+dipole continuation, spherical start points and vertical columns introduce modelling assumptions.
 
 **Emission.** For Maxwellian electrons of mean energy ⟨E⟩ = 2E₀ and unit energy flux:
 
@@ -121,8 +130,8 @@ vertical, so the top of a 100 km tall curtain is misplaced by ~18 km). Label `de
 - vertical profiles: blue and green follow the N₂ ionisation; red follows the ionisation times the O(¹D) survival
   A/(A + k_N₂[N₂] + k_O₂[O₂]) (rate constants: IUPAC, Atkinson et al. 2004, ACP 4, 1461).
 
-Columns per erg cm⁻² s⁻¹ (R): 427.8 nm 86 (0.2 keV), 195 (1.7 keV), 248 (7 keV); 557.7 nm 680, 1670, 1945; 630.0 nm
-3320, 480, 73. Peak heights of the blue/green emission 210 km at 0.2 keV, 126 km at 1.7 keV, 106 km at 7 keV, 94 km
+Columns per erg cm⁻² s⁻¹ (R), evaluated at mean energies 0.2, 1.7 and 7 keV: 427.8 nm 86, 195, 247;
+557.7 nm 679, 1667, 1952; 630.0 nm 3320, 487, 75. Peak heights of the blue/green emission 210 km at 0.2 keV, 126 km at 1.7 keV, 106 km at 7 keV, 94 km
 at 30 keV. Electrons above ~20 keV deposit up to 3 % of their energy below 86 km, which is not in the table.
 
 **Line groups and attenuation.** The table holds the three groups' volume emission rates; the renderer multiplies the
@@ -132,8 +141,8 @@ path integral of each group by its luminance per R, folded per 40 nm bin with th
 
 The emission is computed at half the frame's resolution in its own pass (covering the emission shell, up to 600 km
 above the largest radius; full screen when the camera is inside it or near the Earth) and added at full resolution
-after the atmosphere shells, bilinearly, depth-tested at the shell's near entry against the bodies in front (a cost
-choice: on SwiftShader at 1280 × 720 the emission pass takes ~3 s of ~25 s of GPU time per frame in the ISS view).
+after the atmosphere shells, bilinearly, depth-tested at the shell's near entry against the bodies in front
+(a numerical cost choice; GPU timing has not been verified on this machine).
 For each pixel the view ray is split at its closest approach to the Earth's centre (the tangent point), ends at the
 ground where the pixel is on the disk (the solid Earth occludes everything behind it; at the limb's edge the far side
 is weighted by the uncovered share of the pixel), and:
@@ -149,16 +158,13 @@ is weighted by the uncovered share of the pixel), and:
   a double cone about the dipole axis) are marched in 48 steps. Per step the precipitation at the midpoint's magnetic
   coordinates and MLT gives the energy flux and the mean energy (energy flux / number flux); the altitude is linear in
   path length within a step and the emission is integrated exactly in altitude from the cumulative table,
-  (C(h₂) − C(h₁))·Δs/Δh, so a step of 100 km through a 20 km thick layer neither misses nor aliases it.
+  (C(h₂) − C(h₁))·Δs/Δh, so the step does not skip a thin layer under that within-step linear-altitude approximation.
 - **Lower atmosphere:** light from the far side below the atmosphere's top (86 km), or any light when the camera is
   inside the atmosphere, is attenuated with the atmosphere's transmittance table per 40 nm bin (Bruneton 2017's
   transmittance between two points) at the emission-weighted point of each layer and side.
-- **Ground and clouds lit by the airglow:** the layers above a point send down E = ∫ L cos θ dΩ with L = L_z/cos θ
-  (a thin layer, van Rhijn), i.e. 2π L_z without extinction and 2π L_z ∫₀¹ T(μ) dμ through the atmosphere (per bin,
-  4-point Gauss–Legendre in μ). The Earth's surface and cloud model (earth.ts) reflects it as light from the zenith,
-  like moonshine, and the view path dims it. Under a cloud deck of reflectance ~0.7 this is ~1.4× the zenith
-  airglow, so clouds stand out on the night side. Not modelled: the aurora's light on the ground, and the
-  airglow and aurora scattered into the view path by the lower atmosphere (§7).
+- **Ground and clouds:** neither airglow nor aurora illuminates them in this slice. The emission pass adds light
+  along the view ray; it does not feed an irradiance term into `earthShade`. Scattering of this light into the view
+  path by the lower atmosphere is also not modelled (§7).
 - **Eye:** the pass writes the HDR luminance buffer like every other light, so adaptation, the mesopic colour
   response and the thresholds of the eye model (docs/eye-model.md) apply unchanged.
 
@@ -174,8 +180,10 @@ is weighted by the uncovered share of the pixel), and:
 
 ## 6. Checks
 
-All numbers below come from the tests (`app/tests/nightglow.test.ts`, `pipeline/tests/test_nightglow.py`). Checks
-against measurements test the model; nothing was tuned to them.
+The CPU model and product checks below were run on this machine (`app/tests/nightglow.test.ts`,
+`pipeline/tests/test_nightglow.py`). Checks against measurements test the model; nothing was tuned to them.
+The historical SWPC nowcast comparison was not rerun: its downloaded snapshot is time-dependent. GPU emission,
+occlusion, attenuation, adaptation and the three rendered scenes remain unverified here.
 
 | Check | Result |
 |---|---|
@@ -207,12 +215,8 @@ against measurements test the model; nothing was tuned to them.
   the SWPC real-time solar wind would make the last week live.
 - Field-line tilt neglected (vertical columns); the magnetic grid is fixed at the window's mid-epoch (the secular
   variation over 3 years moves the pole by < 0.5°).
-- Not scattered in the air: no airglow or aurora path radiance from the lower atmosphere (of order 10 % of the
-  zenith airglow seen from orbit, estimated as half the Rayleigh optical depth times the downward irradiance/π).
-  The aurora does not light the ground. The airglow's light on the ground uses the flat
-  van Rhijn law (the sphere's limit on near-horizon paths, which lowers E by ~10 %, is left out) and the local
-  zenith airglow at the point (not the airglow over the horizon). Light from the far side is attenuated at one
-  representative point per layer.
+- No airglow or aurora path radiance from scattering in the lower atmosphere. Neither emission illuminates the
+  ground or clouds. Light from the far side is attenuated at one representative point per layer.
 - The task brief's rule of thumb of ~1 kR of 427.8 nm per erg cm⁻² s⁻¹ is not reproduced: the model gives 0.19–0.26
   kR per erg for ⟨E⟩ 1.7–30 keV (and 1.7–1.9 kR of 557.7 nm). The model is built from the cross sections and transport
   ratios above and was not adjusted; the difference is left open.

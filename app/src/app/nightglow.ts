@@ -75,11 +75,12 @@ export function couplingAt(a: AuroraModel, ms: number): { value: number; label: 
   const t0 = Date.parse(c.hourlyStart);
   const x = (ms - t0) / (c.stepHours * HOUR_MS);
   const i = Math.floor(x);
+  if (i >= 0 && i < c.values.length && x === i && c.values[i] !== null) {
+    return { value: c.values[i]!, label: a.coupling.label, measured: true };
+  }
   if (i >= 0 && i + 1 < c.values.length) {
     const v0 = c.values[i], v1 = c.values[i + 1];
     if (v0 !== null && v1 !== null) return { value: v0 + (v1 - v0) * (x - i), label: a.coupling.label, measured: true };
-  } else if (i === c.values.length - 1 && x === i && c.values[i] !== null) {
-    return { value: c.values[i]!, label: a.coupling.label, measured: true };
   }
   return { value: c.climatology.value, label: c.climatology.label, measured: false };
 }
@@ -131,6 +132,7 @@ export interface NightglowInfo {
     coupling: { value: number; label: Label; measured: boolean; unit: string; measuredUntil: string };
     sources: string[];
     method: string;
+    uncertainty: string;
   } | null;
 }
 
@@ -176,13 +178,14 @@ export class NightglowSource {
     const a = this.aurora;
     if (a && a.coupling.value) {
       const c = couplingAt(a, ms);
-      const label = worstOf([a.label, c.label]);
+      const label = worstOf([a.label, a.ovation.label, a.magneticCoordinates.label, a.emission.label, c.label]);
       const au = this.auroraAt(level, ms);
       out.aurora = {
         drawn: !!au, label,
         coupling: { ...c, unit: a.coupling.value.unit, measuredUntil: a.coupling.value.measuredUntil },
         sources: [...a.ovation.sources, ...a.coupling.sources, ...a.magneticCoordinates.sources, ...a.emission.sources],
         method: `${a.ovation.method ?? ''} ${a.emission.method ?? ''}`.trim(),
+        uncertainty: [a.ovation.uncertainty, a.emission.uncertainty].filter(Boolean).join(' ') || 'unknown',
         ...(au ? {} : { reason: !this.bins ? 'aurora binaries not loaded' : `${label} — not admitted at this level` }),
       };
     }

@@ -24,12 +24,14 @@ import time
 from pathlib import Path
 
 import numpy as np
+import spiceypy as sp
 
 from .. import cie
 from .. import nightglow_airglow as ag
 from .. import nightglow_aurora as na
 from .. import us76_upper
 from ..download import record
+from ..ephem_kernels import SRC_LSK, lsk, pool
 from ..output import write_bin, write_json
 from ..photometry.common import Download, vacuum_to_air
 from ..schema import BuildContext, SourceRecord, sourced
@@ -174,7 +176,9 @@ def log(msg: str) -> None:
 
 
 def _utc_date(et: float) -> _dt.date:
-    return (_dt.datetime(2000, 1, 1, 12) + _dt.timedelta(seconds=et - 69.184)).date()
+    # TDB -> UTC needs both the leap seconds and the periodic TDB-TT term, including at midnight.
+    with pool(lsk()):
+        return _dt.date.fromisoformat(sp.et2utc(et, "ISOC", 9)[:10])
 
 
 def _sample_bins() -> list[tuple[float, float]]:
@@ -287,7 +291,7 @@ def build_airglow(ctx: BuildContext, cie_ids: list[str]) -> tuple[dict, dict]:
                       "(PALACE's nighttime limit, when the Sun is below the horizon up to about 200 km); elsewhere "
                       "the airglow is unknown and not drawn"},
         "solarRadioFlux": sourced(
-            srf, "derived" if labels == ["derived"] else "estimated", [src["drao"], src["swpc"]], unit="sfu",
+            srf, "derived" if labels == ["derived"] else "estimated", [src["drao"], src["swpc"], SRC_LSK], unit="sfu",
             method="Centred 27-day mean of the daily 10.7 cm flux observed at DRAO Penticton (20 UT measurement), as "
                    "PALACE's climatology uses; days whose window reaches beyond the last observation "
                    f"({srf['lastObservedDay']}) take the NOAA SWPC predicted monthly F10.7 for the missing days "
@@ -437,7 +441,7 @@ def build_aurora(ctx: BuildContext, cie_ids: list[str]) -> tuple[dict, dict, dic
             "climatology": {"value": round(clim, 1), "label": "estimated",
                             "method": "median of the measured hourly series over the 365 days before measuredUntil; used "
                                       "at Best estimate for times without measured solar wind (and for gaps)"}},
-            "derived", [src[f"omni{y}"] for y in sorted(OMNI)],
+            "derived", [src[f"omni{y}"] for y in sorted(OMNI)] + [src["op2010"], SRC_LSK],
             method="Newell et al. (2007) coupling from hourly OMNI 2 By, Bz (GSM) and flow speed (bow-shock-shifted "
                    "measurements), then the OP2010 average of the 4 preceding hours with weights 1, 0.65, 0.65^2, "
                    "0.65^3 (at least 2 hours measured). Value k applies at hourlyStart + k hours."),
@@ -448,12 +452,13 @@ def build_aurora(ctx: BuildContext, cie_ids: list[str]) -> tuple[dict, dict, dic
             "mlt": "MLT = 12 + (mlon - lon_d(Sun)) / 15 h, lon_d(Sun) = longitude of the Sun's direction in the dipole "
                    "frame (dipoleFrameRows: x, y, z axes in Earth-fixed coordinates)",
             "undefined": "NaN where |lat| < 20 deg or the field line closes below the reference radius"},
-            "derived", [src["igrf"]],
+            "estimated", [src["igrf"]],
             method="IGRF-14 at the window's mid-epoch; field lines traced (RK4, step 2 % of r) from 110 km to the centred "
                    "dipole's equatorial plane, or beyond 5 R_E continued as dipole lines; AACGM latitude = "
                    "acos(sqrt(6371.2 km / r_apex)) (Baker & Wing 1989), longitude = dipole longitude of the apex. "
                    "Spherical Earth of radius 6371.2 km for the start points; the aurora is placed in vertical columns "
-                   "above these 110 km points (field-line tilt neglected)."),
+                   "above these 110 km points (field-line tilt neglected). These assumptions, the fixed epoch and "
+                   "the dipole continuation beyond the IGRF tracing domain make the grid estimated."),
         "emission": sourced({
             "file": f"{DIR}/aurora-emission.bin", "dtype": "float32",
             "layout": "[energyNode][altitude][N2p4278, OI5577, OI6300, 0]",
@@ -489,6 +494,7 @@ def build_aurora(ctx: BuildContext, cie_ids: list[str]) -> tuple[dict, dict, dic
 
 def run(ctx: BuildContext) -> None:
     t0 = time.time()
+    lsk(ctx)                                # register the source of the TDB -> UTC dates
     cie_ids = cie.register_sources(ctx)
     us76_upper.profile(np.array([100.0]))      # fail early if the port breaks
     air, adiag = build_airglow(ctx, cie_ids)

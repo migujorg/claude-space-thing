@@ -1477,7 +1477,7 @@ export interface AirglowClass {
   shareOfZenithY: number;
   shareOfZenithS: number;
   brightestVisibleLines: { nmAir: number; R: number }[];
-  /** PALACE climatology [month 12][local-time bin 12]: scaling at 100 sfu, solar-cycle effect (% per 100 sfu), residual σ. */
+  /** PALACE climatology [month 12][local-time bin 12]: scaling at 100 sfu, solar-cycle effect (% per sfu), residual σ. */
   f0: number[][];
   sce: number[][];
   sigma: number[][];

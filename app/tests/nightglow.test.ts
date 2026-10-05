@@ -15,6 +15,7 @@ import { decodeFloat16 } from '../src/data/nightglow';
 import { airglowLayers, auroraGrid, couplingAt, dayOfYear, monthWeights, NightglowSource, seasonWeights, solarRadioFlux } from '../src/app/nightglow';
 import { emissionTables, layerBranchIntegral, limbFactor, packTables, PHOTON_RADIANCE_PER_R, sampleBins, slabIntegral, toF16Array } from '../src/render/nightglow';
 import { numberToF16 } from '../src/render/surface';
+import { nightglowRows } from '../src/ui/inspectModel';
 import { DATA_DIR } from './core-data';
 
 interface Fs { existsSync(p: string): boolean; readFileSync(p: string): Uint8Array; readFileSync(p: string, enc: 'utf8'): string }
@@ -41,6 +42,39 @@ describe('float16 upload', () => {
     const back = decodeFloat16(h.buffer);
     expect(back[8]).toBeCloseTo(3.14159, 2);
     expect(back[9]).toBeCloseTo(12.56, 1);
+  });
+});
+
+describe('nightglow input provenance', () => {
+  const model = (): AuroraModel => ({
+    kind: 'auroraModel', version: 1, description: 'test fixture', label: 'estimated',
+    coupling: { label: 'derived', sources: [], value: {
+      unit: 'test', hourlyStart: '2026-01-01T00:00:00Z', stepHours: 1,
+      values: [3000, null], measuredUntil: '2026-01-01T00:00:00Z',
+      climatology: { value: 1000, label: 'estimated', method: 'test fixture' },
+    } },
+    ovation: { label: 'estimated', sources: [], value: null },
+    magneticCoordinates: { label: 'synthetic', sources: [], value: null },
+    emission: { label: 'estimated', sources: [], value: null, uncertainty: 'uncertainty from the product' },
+  });
+
+  it('keeps an exact measured hour even when its next hour is a gap', () => {
+    const a = model();
+    expect(couplingAt(a, Date.parse(a.coupling.value!.hourlyStart))).toEqual({
+      value: 3000, label: 'derived', measured: true,
+    });
+    expect(couplingAt(a, Date.parse(a.coupling.value!.hourlyStart) + 1800e3).measured).toBe(false);
+  });
+
+  it('reports the worst aurora input label in the inspector', () => {
+    const src = new NightglowSource(null, model(), null);
+    expect(src.info('best', Date.parse('2026-01-01T00:00:00Z')).aurora?.label).toBe('synthetic');
+  });
+
+  it('reads aurora uncertainty from the product', () => {
+    const src = new NightglowSource(null, model(), null);
+    const rows = nightglowRows(src.info('best', Date.parse('2026-01-01T00:00:00Z')), 'best');
+    expect(rows.find((r) => r.key === 'aurora')?.uncertainty).toContain('uncertainty from the product');
   });
 });
 
@@ -230,6 +264,7 @@ describe.skipIf(!built)('nightglow products (nightglow/*.json)', () => {
     expect(s.airglow).not.toBeNull();
     expect(s.aurora).not.toBeNull();
     expect(s.worstLabel).toBe('estimated');
+    expect(src.scene('complete', t)?.worstLabel).toBe('estimated');
     expect(s.utHours).toBe(0);
     const info = src.info('strict', t);
     expect(info.airglow?.drawn).toBe(false);

@@ -153,7 +153,7 @@ export function nightglowRows(info: NightglowInfo, level: ExistsLevel): AttrRow[
       name: 'Airglow (PALACE climatology, measured at Cerro Paranal)',
       label: a.label,
       value: a.drawn
-        ? `drawn on the night side (Sun > 100° from the zenith below the emission); zenith luminance near local midnight ${a.zenithY !== null ? sig(a.zenithY) : '?'} cd/m², green O 557.7 nm at 97 km, red O 630 nm near 250 km, OH, Na, O₂ and FeO in the mesopause; ${srf}`
+        ? `drawn on the night side; zenith luminance near local midnight ${a.zenithY !== null ? sig(a.zenithY) : 'unknown'} cd/m²; ${srf}`
         : `not drawn — ${a.reason ?? 'unknown'}; ${srf}`,
       method: a.method,
       uncertainty: a.uncertainty,
@@ -173,7 +173,7 @@ export function nightglowRows(info: NightglowInfo, level: ExistsLevel): AttrRow[
       label: u.label,
       value: u.drawn ? `drawn: electron aurora, ${drive}` : `not drawn — ${u.reason ?? 'unknown'}; ${drive}`,
       method: u.method,
-      uncertainty: 'Precipitation: OP2010 is a statistical model (individual arcs and substorms are not reproduced); brightness ±30–50 %, red line within a factor 2 (docs/reports/nightglow.md).',
+      uncertainty: u.uncertainty,
       sources: u.sources,
       withheld: !u.drawn && u.label !== 'unknown' && !labelAllowed(u.label, level),
     });

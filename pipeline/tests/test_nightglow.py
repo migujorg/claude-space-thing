@@ -75,6 +75,31 @@ def test_srf_series_labels():
     assert seg["from"] == (d0 + dt.timedelta(days=27)).isoformat()
 
 
+@pytest.mark.parametrize("utc", ["2010-09-01T00:00:00", "2026-10-04T00:00:00"])
+def test_utc_day_uses_the_leap_second_table(utc):
+    import spiceypy as sp
+    from pipeline.ephem_kernels import lsk, pool
+    from pipeline.stages import nightglow as st
+    with pool(lsk()):
+        et = sp.str2et(utc)
+        assert st._utc_date(et) == dt.date.fromisoformat(utc[:10])
+
+
+def test_transcribed_paper_keeps_an_honest_source_when_the_publisher_refuses(monkeypatch):
+    from pipeline.photometry.common import Download
+    from pipeline.stages import nightglow as st
+
+    def refused(self):
+        raise RuntimeError("403 Forbidden")
+
+    monkeypatch.setattr(Download, "fetch", refused)
+    source = st.ITIKAWA.source()
+    assert source.id == "itikawa-2006-n2"
+    assert source.retrieved == "" and source.sha256 is None
+    assert "unavailable" in source.notes
+    assert "transcription" in source.notes
+
+
 def test_fang2008_energy_closure():
     """The ionisation rate integrates to the energy flux / 35 eV for electrons that stop above 86 km."""
     z = np.arange(86.0, 600.0, 0.5)
@@ -152,11 +177,23 @@ def test_products_labels_and_layout():
     assert a["label"] == "estimated" and u["label"] == "estimated"
     assert {s["label"] for s in a["solarRadioFlux"]["value"]["labelSegments"]} <= {"derived", "estimated", "unknown"}
     assert u["coupling"]["label"] == "derived" and u["coupling"]["value"]["climatology"]["label"] == "estimated"
-    assert u["magneticCoordinates"]["label"] == "derived"
+    assert u["magneticCoordinates"]["label"] == "estimated"
+    assert u["ovation"]["label"] == u["emission"]["label"] == "estimated"
+    sources = {s["id"] for s in json.loads((OUT.parent / "sources.json").read_text())}
+    for refs in (a["sources"], a["solarRadioFlux"]["sources"],
+                 *(u[k]["sources"] for k in ("ovation", "coupling", "magneticCoordinates", "emission"))):
+        assert refs and set(refs) <= sources
+    assert a["limbCheck"]["source"] in sources
+    assert u["nowcastCheck"]["source"] in sources
+    assert u["emission"]["value"]["checks"]["source"] in sources
+    assert "naif-lsk-naif0012" in a["solarRadioFlux"]["sources"]
+    assert {"naif-lsk-naif0012", "ovation-prime-2010"} <= set(u["coupling"]["sources"])
     ov = u["ovation"]["value"]
     n = 4 * 2 * len(ov["couplingNodes"]) * len(ov["mltHours"]) * len(ov["mlatDeg"])
     size = {"float16": 2, "float32": 4}[ov["dtype"]]
     assert (OUT / "aurora-ovation.bin").stat().st_size == n * size
+    mag = u["magneticCoordinates"]["value"]
+    assert (OUT / "aurora-magnetic.bin").stat().st_size == mag["latDeg"][2] * mag["lonDeg"][2] * 3 * 4
     e = u["emission"]["value"]
     assert (OUT / "aurora-emission.bin").stat().st_size == len(e["averageEnergyNodesKeV"]) * len(e["altitudesKm"]) * 4 * 4
     for g in e["groups"]:
