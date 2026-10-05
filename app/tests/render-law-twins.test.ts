@@ -201,6 +201,13 @@ describe('surface law twins', () => {
       }
     });
   }
+  it.skipIf(!built)('Minnaert: removing the emission floor reproduces the published law (proposal only)', () => {
+    for (const { model } of models.filter(m => m.model.kind === 'minnaert')) for (const phase of [...phaseDeg, ...extendedPhaseDeg]) {
+      const alpha = deg(phase), law = getLaw(model, alpha);
+      const cpu = integrate((mu0, mu, g) => lawRadf(law, mu0, mu, g), alpha, 48);
+      expect(Math.abs(integrate(shaderLaw(law, { minnaertFloor: 0 }), alpha, 48) / cpu - 1)).toBeLessThan(1e-4);
+    }
+  });
   it.skipIf(!built)('Charon: cancellation-free Bc evaluation preserves the same physical expression (proposal only)', () => {
     const model = models.find(m => m.id === '901')!.model;
     for (const phase of microPhaseDeg) {
@@ -222,13 +229,16 @@ describe('surface law twins', () => {
 
 // Optional reproducible report; no shared products are written. Run with LAW_TWINS_REPORT=1.
 if (env.LAW_TWINS_REPORT) {
-  for (const { id, name, model } of models) for (const phase of (env.LAW_TWINS_REPORT === 'tiny' ? (model.kind === 'hapke' && (model.bc0 ?? 0) > 0 ? microPhaseDeg : []) : phasesFor(model))) {
+  for (const { id, name, model } of models) for (const phase of (
+    env.LAW_TWINS_REPORT === 'tiny' ? (model.kind === 'hapke' && (model.bc0 ?? 0) > 0 ? microPhaseDeg : [])
+      : env.LAW_TWINS_REPORT === 'akimov-edge' ? (id === '601' ? [179] : []) : phasesFor(model))) {
     it(`reports ${name} at ${phase}°`, async () => {
       await new Promise(resolve => setTimeout(resolve, 0));
       const alpha = deg(phase), law = getLaw(model, alpha);
-      const cpu = integrate((mu0, mu, g) => lawRadf(law, mu0, mu, g), alpha);
-      const shader = integrate(shaderLaw(law), alpha);
-      const doubleShader = integrate(shaderLaw(law, {}, x => x), alpha);
+      const n = env.LAW_TWINS_REPORT === 'akimov-edge' ? 384 : 96;
+      const cpu = integrate((mu0, mu, g) => lawRadf(law, mu0, mu, g), alpha, n);
+      const shader = integrate(shaderLaw(law), alpha, n);
+      const doubleShader = integrate(shaderLaw(law, {}, x => x), alpha, n);
       const lowCPU = lawDiskIntegral(law, alpha, undefined, law.kind === LAW.hapke ? 24 : 32)[0];
       let maxRelative = 0, maxAbsolute = 0;
       // Uniform lune grid + logarithmically spaced rays approaching the limb and terminator.
@@ -266,7 +276,7 @@ if (env.LAW_TWINS_REPORT) {
       });
       const bcStableRel = model.kind === 'hapke' && (model.bc0 ?? 0) > 0 ? integrate(shaderLaw(law, { bcStable: true }), alpha, 48) / coarseCPU - 1 : null;
       const stableRel = model.kind === 'akimov' ? integrate(shaderLaw(law, { akimovStable: true }), alpha, 48) / coarseCPU - 1 : null;
-      console.log(JSON.stringify({ id, name, kind: model.kind, phase, cpu, shader, rel: fineRel,
+      console.log(JSON.stringify({ id, name, kind: model.kind, phase, n, cpu, shader, rel: fineRel,
         guardRel: doubleShader / cpu - 1, lowCPUrel: lowCPU / cpu - 1,
         quadratureDelta: coarseShader / coarseCPU - 1 - fineRel, maxRelative, maxAbsolute, attribution, stableRel, bcStableRel }));
     }, 30000);
