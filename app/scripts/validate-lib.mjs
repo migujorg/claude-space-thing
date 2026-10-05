@@ -1,4 +1,6 @@
-// Pure helpers of scripts/validate.mjs (tested in tests/validate-lib.test.ts): the markdown report.
+// Pure helpers of scripts/validate.mjs (tested in tests/validation-runner.test.ts): the markdown report.
+
+import { adapterLabel } from './e2e-lib.mjs';
 
 const g = (v, d = 4) => (v === null || v === undefined || !Number.isFinite(v) ? '—' : Number(v).toPrecision(d));
 const f = (v, d = 2) => (v === null || v === undefined || !Number.isFinite(v) ? '—' : Number(v).toFixed(d));
@@ -23,8 +25,13 @@ export function roiRow(caseId, q) {
 export function markdownReport(report) {
   const L = [];
   L.push('# Validation run: renderer HDR buffer against calibrated images', '');
+  // What rendered it: the HDR targets the cases actually had (rgba32float needs float32-blendable) and, when the
+  // runner recorded it, the WebGPU adapter.
+  const formats = [...new Set(report.cases.map((c) => c.hdrFormat).filter(Boolean))];
   L.push(`${report.generatedAt} · git ${report.git ?? '?'} · data ${report.dataGeneratedAt ?? '?'} · reality level ` +
-    `${report.options.reality} · ${report.options.ss}×${report.options.ss} samples per pixel · HDR ${report.options.hdr}`, '');
+    `${report.options.reality} · ${report.options.ss}×${report.options.ss} samples per pixel · HDR ${report.options.hdr}` +
+    (formats.length ? ` (${formats.join(', ')})` : '') +
+    (report.gpu ? ` · GPU ${report.gpu.mode}: ${adapterLabel(report.gpu.adapter)}` : ''), '');
   L.push('Y in cd/m² (X, Z in cd/m², S in scotopic cd/m² are in report.json). Tolerance = 2σ of the observation\'s ' +
     'budget; a verdict covers all four channels (the failing ones are named). Upper limits: the rendered mean must not ' +
     'exceed the observed sky level. σ: deviation in units of the 1σ budget.', '');
