@@ -2,6 +2,7 @@
 
 import json
 import math
+import re
 
 import numpy as np
 import pytest
@@ -87,6 +88,40 @@ def test_plate_and_obj_readers(tmp_path):
     o.write_text("".join(f"v {x} {y} {z}\n" for x, y, z in m.v) + "".join(f"f {a + 1} {b + 1} {c + 1}\n"
                                                                            for a, b, c in m.f), encoding="utf-8", newline="\n")
     assert np.allclose(sm.read_obj(o).v, m.v)
+
+
+@pytest.mark.parametrize("export", [None, "https://damit.cuni.cz/projects/damit/exports/complete/damit-20310203T040506Z.tar.gz"])
+def test_damit_source_record_matches_export(monkeypatch, tmp_path, export):
+    from pipeline import output, shape_damit
+    from pipeline.schema import BuildContext
+
+    if export is not None:
+        monkeypatch.setattr(shape_damit, "EXPORT", export)
+    mesh = _cube()
+    data = {
+        "tables": {
+            "asteroids.csv": "id,number\n1,1\n",
+            "asteroid_models.csv": (
+                "id,asteroid_id,quality_flag,calibrated_size,nonconvex,lambda,beta,period,jd0,phi0,yorp,equiv_diameter\n"
+                "1,1,1,0,0,0,0,1,2451545,0,,\n"),
+            "references.csv": "id\n",
+            "asteroid_models_references.csv": "asteroid_model_id,reference_id\n",
+        },
+        "models": {1: {"v": mesh.v, "f": mesh.f}},
+    }
+    ledger = {"retrieved": "2031-02-04", "sha256": "a" * 64, "bytes": 123}
+    monkeypatch.setattr(shape_damit, "load", lambda: (data, ledger))
+    monkeypatch.setattr(output, "OUT", tmp_path)
+    ctx = BuildContext(0.0, 1.0)
+    shape_damit.build(ctx)
+    rec = ctx.sources["damit"]
+    match = re.search(r"/(damit-(\d{4})(\d{2})(\d{2})T\d{6}Z)\.tar\.gz$", shape_damit.EXPORT)
+    assert match is not None
+    name, year, month, day = match.groups()
+    assert f"Export {name} (per-model references in shapes/damit-index.json)." in rec.citation
+    assert rec.version == f"{year}-{month}-{day} export"
+    assert rec.url == shape_damit.EXPORT
+    assert rec.retrieved == ledger["retrieved"] and rec.sha256 == ledger["sha256"]
 
 
 # ------------------------------------------------------------------------------------------------ products
