@@ -18,7 +18,10 @@
 
 import { AU_KM } from '../core/constants';
 import { coreState, readCore, readNonGrav, type SmallBodyCatalog } from '../core/smallbodyCatalog';
-import { diameterFromH, readSynthetic, syntheticPeriod, syntheticPopulation, syntheticState, type SyntheticCatalog } from '../core/smallbodySynthetic';
+import {
+  centerStateFrom, diameterFromH, readSynthetic, syntheticCenter, syntheticPeriod, syntheticPopulation, syntheticRelativeState, syntheticState,
+  type CenterState, type SyntheticCatalog,
+} from '../core/smallbodySynthetic';
 import { SB_OK, SmallBodyPropagator, type NonGrav } from '../core/smallbody';
 import type { EphemerisSet } from '../core/ephemeris';
 import type { Body, BodyKind, Label, PhaseFunction, Sourced } from '../data/schema';
@@ -48,6 +51,11 @@ export const SYNTHETIC_POP_TEXT: Record<string, { short: string; long: string; p
   hilda: { short: 'Hilda', long: 'Hilda-region asteroid (3.7–4.2 au)', plural: 'Hilda-region asteroids' },
   trojan: { short: 'Jupiter Trojan', long: 'Jupiter Trojan (5.05–5.35 au)', plural: 'Jupiter Trojans' },
   tno: { short: 'trans-Neptunian object', long: 'trans-Neptunian object (a ≥ 30 au)', plural: 'trans-Neptunian objects' },
+  centaur: { short: 'Centaur', long: 'Centaur (q > 5.2 au, a 5.35–30 au)', plural: 'Centaurs' },
+  'irregular-jupiter': { short: 'irregular moon of Jupiter', long: 'retrograde irregular moon of Jupiter', plural: 'retrograde irregular moons of Jupiter' },
+  'irregular-saturn': { short: 'irregular moon of Saturn', long: 'irregular moon of Saturn', plural: 'irregular moons of Saturn' },
+  'irregular-uranus': { short: 'irregular moon of Uranus', long: 'irregular moon of Uranus', plural: 'irregular moons of Uranus' },
+  'irregular-neptune': { short: 'irregular moon of Neptune', long: 'irregular moon of Neptune', plural: 'irregular moons of Neptune' },
 };
 export const sbRow = (id: number): number => -id - 1;
 export const isSmallBodyId = (id: number | null | undefined): id is number => typeof id === 'number' && id < 0;
@@ -370,8 +378,12 @@ export class SmallBodies {
     const syn = tables.synthetic;
     this.synthetic = syn ? readSynthetic(syn.objects.header, syn.objects.buffer, syn.cells?.header ?? null, syn.cells?.buffer ?? null) : null;
     this.syntheticCount = this.synthetic?.count ?? 0;
+    this.centerState = centerStateFrom(eph, this.sunNaif);
     this.comets = tables.cometModel ? new CometShell(this, tables.cometModel, tables.cometList ?? null) : null;
   }
+
+  /** Heliocentric state of a planet-system barycentre: the centre of a synthetic irregular moon's orbit. */
+  private readonly centerState: CenterState;
 
   /** Comets drawn with their coma and tails (comets/model.json), when the product is built. */
   readonly comets: CometShell | null;
@@ -490,7 +502,7 @@ export class SmallBodies {
   helio(row: number, et: number): HelioState | null {
     if (!this.has(row) || !this.cpu.inWindow(et)) return null;
     if (this.isSynthetic(row)) {
-      const s = this.field?.syntheticCount ? this.field.stateOf(row, et) : syntheticState(this.synthetic!, this.syntheticIndex(row), et);
+      const s = this.field?.syntheticCount ? this.field.stateOf(row, et) : syntheticState(this.synthetic!, this.syntheticIndex(row), et, this.centerState);
       return s ? { pos: [s.pos[0], s.pos[1], s.pos[2]], vel: [s.vel[0], s.vel[1], s.vel[2]] } : null;
     }
     if (this.field) {
@@ -654,7 +666,12 @@ export class SmallBodies {
     const pop = syntheticPopulation(s, j);
     const src = pop?.sources ?? [];
     const cls = t.has('colorClass') ? this.tables.core.header.colorClasses?.classes[t.get('colorClass', j)] : undefined;
-    const xyzs = cls && Number.isFinite(pv) ? (cls.xyzsPerUnitPV.map((v) => v * pv) as [number, number, number, number]) : null;
+    // No class (irregular moons): grey, the solar colour (as the GPU draws it), an assumption stated in the header.
+    const grey = !cls && t.has('colorClass') && t.get('colorClass', j) === (s.header.grey?.colorClass ?? 255);
+    const sun = this.tables.photometry?.sunIrradianceXYZS1AU?.value ?? null;
+    const perPV = cls ? cls.xyzsPerUnitPV : grey && sun ? sun : null;
+    const xyzs = perPV && Number.isFinite(pv) ? (perPV.map((v) => v * pv) as [number, number, number, number]) : null;
+    const colourMethod = cls ? `The class colour of ${cls.name} (smallbody-class-colors) at the synthetic p_V.` : `Grey (the solar colour) at the synthetic p_V: ${s.header.grey?.method ?? 'no colour class'}.`;
     return {
       id: sbId(row),
       name: this.name(row),
@@ -664,7 +681,7 @@ export class SmallBodies {
       gm: { value: null, label: 'unknown', sources: [] },
       rotation: { value: null, label: 'unknown', sources: [] },
       photometry: {
-        geometricAlbedoXYZS: xyzs ? { value: xyzs, label: 'synthetic', sources: src, method: `The class colour of ${cls!.name} (smallbody-class-colors) at the synthetic p_V.` } : { value: null, label: 'unknown', sources: [] },
+        geometricAlbedoXYZS: xyzs ? { value: xyzs, label: 'synthetic', sources: src, method: colourMethod } : { value: null, label: 'unknown', sources: [] },
         geometricAlbedoV: Number.isFinite(pv) ? { value: pv, label: 'synthetic', sources: src, method: s.header.columns?.pV?.method } : { value: null, label: 'unknown', sources: [] },
         phaseFunction: { value: { kind: 'lambert' }, label: 'synthetic', sources: src, method: 'Points are lit with the H-G law of the synthetic H (G of the layer header); no resolved phase function.' },
       },
@@ -681,6 +698,24 @@ export class SmallBodies {
   orbit(row: number, et: number, window: TimeWindow): OrbitSamples | null {
     const w = { startEt: Math.max(window.startEt, this.window.startEt), endEt: Math.min(window.endEt, this.window.endEt) };
     if (!(w.endEt > w.startEt)) return null;
+    if (this.isSynthetic(row)) {
+      const s = this.synthetic!, j = this.syntheticIndex(row);
+      const c = syntheticCenter(s, j);
+      if (c) {
+        // A planet-centred ellipse (synthetic irregular moon): one period about the planet-system barycentre, drawn
+        // around the barycentre's position now. Not cached: the planet moves along its own orbit.
+        const cs = this.centerState(c.naifId, et);
+        if (!cs) return null;
+        const period = syntheticPeriod(s, j);
+        const n = 257;
+        const pos = new Float64Array(3 * n);
+        for (let k = 0; k < n; k++) {
+          const st = syntheticRelativeState(s, j, et + (period * k) / (n - 1));
+          pos.set(st ? [cs.pos[0] + st.pos[0], cs.pos[1] + st.pos[1], cs.pos[2] + st.pos[2]] : [NaN, NaN, NaN], 3 * k);
+        }
+        return { row, t0: et, t1: et + period, centerEt: et, period, pos };
+      }
+    }
     const old = this.tracks.get(row);
     if (old && (old.period === null || Math.abs(et - old.centerEt) < (old.t1 - old.t0) / 4)) return old;
     if (this.isSynthetic(row)) {

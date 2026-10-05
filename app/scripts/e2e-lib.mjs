@@ -92,6 +92,29 @@ export function gpuNote(baselineGpu, gpu) {
   return `The baseline was accepted on ${was}${baselineGpu?.adapter ? ` (${adapterLabel(baselineGpu.adapter)})` : ''}; this run rendered on ${is}${gpu?.adapter ? ` (${adapterLabel(gpu.adapter)})` : ''}. Differences may come from the adapter.`;
 }
 
+/**
+ * Runs in the page: the distinct values `renderer.starsDrawn` takes over `frames` animation frames, ascending.
+ * The star cull judges each star against the light of the frame before (stars included), and in some scenes the
+ * count alternates between two values on consecutive frames. On SwiftShader a frame takes about a second and a
+ * script reads the same one every run; on a GPU it takes ~10 ms and the read lands on either.
+ */
+export async function pageStarsDrawnFrames(frames) {
+  const seen = new Set();
+  for (let i = 0; i < frames; i++) {
+    await new Promise(requestAnimationFrame);
+    const n = window.__app?.debugState?.()?.renderer?.starsDrawn;
+    if (typeof n === 'number') seen.add(n);
+  }
+  return [...seen].sort((a, b) => a - b);
+}
+
+/** A note for a scene whose star count was not one number over the sampled frames (`compared`: the one in the stats). */
+export function starsFramesNote(values, compared) {
+  if (!values || values.length < 2) return null;
+  const list = values.length <= 6 ? values.join(', ') : `${values[0]} … ${values[values.length - 1]} (${values.length} values)`;
+  return `starsDrawn changes from frame to frame: ${list}; the stats hold ${compared ?? 'none'}`;
+}
+
 // ---- tolerances ----------------------------------------------------------------------------------------------
 
 /** Suite defaults; a scene's `tolerance` in scenes.json overrides any of them. */

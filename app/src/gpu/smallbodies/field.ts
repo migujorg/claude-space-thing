@@ -27,9 +27,9 @@ import type { Vec3 } from '../../core/vec';
 import { AU_KM, C_KM_S } from '../../core/constants';
 import { SB_OK, SmallBodyPropagator, type NonGrav, type PlanetPositions } from '../../core/smallbody';
 import { coreState, readCore, readNonGrav, type SmallBodyCatalog } from '../../core/smallbodyCatalog';
-import { readSynthetic, syntheticState, type SyntheticCatalog } from '../../core/smallbodySynthetic';
+import { centerStateFrom, readSynthetic, syntheticState, type CenterState, type SyntheticCatalog } from '../../core/smallbodySynthetic';
 import { LEVEL_CODE, SmallBodyLight, type ExistsLevel } from '../../core/smallbodyPhotometry';
-import { PICK_SHADER, SELFTEST_SHADER, WG, shadeShader, stepShader, syntheticShader, type KernelConfig } from './kernels';
+import { PICK_SHADER, SELFTEST_SHADER, SYN_MAX_CENTERS, WG, shadeShader, stepShader, syntheticShader, type KernelConfig } from './kernels';
 import { PlanetTable, SAMPLES } from './planetTable';
 import { split64 } from './wgslConst';
 
@@ -120,7 +120,7 @@ const EXCLUDED = 0x20000000;
 /** Synthetic objects: 8 float32 of elements each (kernels.ts syntheticShader); uniform slot per dispatch chunk. */
 const SYN_FLOATS = 8;
 const SYN_SLOT = 256;
-const SYN_U_BYTES = 80;
+const SYN_U_BYTES = 80 + 2 * SYN_MAX_CENTERS * 16;
 const DEG = Math.PI / 180;
 
 type Op =
@@ -179,6 +179,10 @@ export class SmallBodyField {
   private synBG: GPUBindGroup | null = null;
   /** Whether the synthetic records hold points (they are cleared when the layer is not shown). */
   private synLive = false;
+  /** NAIF ids of the centres of planet-centred synthetic populations (kernel centre k + 1). */
+  private synCenters: number[] = [];
+  /** Heliocentric state of a planet-system barycentre (centres of synthetic irregular moons). */
+  private readonly centerState: CenterState;
   private readonly nongrav: Map<number, NonGrav>;
   private readonly table: PlanetTable;
   private readonly H: number;
@@ -345,8 +349,16 @@ export class SmallBodyField {
       synReason = 'synthetic/objects.json gives no slope parameter G';
       S = 0;
     }
+    // Planet-centred populations (irregular moons): their centres, numbered 1.. in the kernel (0 = the Sun).
+    const centers = [...new Set((syn?.header.populations ?? []).filter((p) => p.center).map((p) => p.center!.naifId))].sort((a, b) => a - b);
+    if (S && centers.length > SYN_MAX_CENTERS) {
+      synReason = `synthetic/objects.json has ${centers.length} planet-centred populations; the kernel moves at most ${SYN_MAX_CENTERS}`;
+      S = 0;
+    }
     this.synthetic = S ? syn : null;
     this.syntheticCount = S;
+    this.synCenters = S ? centers : [];
+    this.centerState = centerStateFrom(planets, this.model.sun.naifId);
 
     // --- planet table, checkpoints
     this.table = new PlanetTable(this.model, planets, this.epochEt, this.window);
@@ -428,6 +440,8 @@ export class SmallBodyField {
       const t = syn!.table;
       const cols = ['a', 'e', 'i', 'node', 'peri', 'M', 'H'].map((c) => t.column(c));
       const cc = t.has('colorClass') ? t.column('colorClass') : null;
+      const pop = t.column('pop');
+      const centerOf = new Map(syn!.header.populations.map((p) => [p.code, p.center ? centers.indexOf(p.center.naifId) + 1 : 0]));
       for (let j = 0; j < S; j++) {
         const o = j * SYN_FLOATS;
         el[o] = cols[0].get(j);
@@ -437,7 +451,7 @@ export class SmallBodyField {
         el[o + 4] = cols[4].get(j) * DEG;
         el[o + 5] = cols[5].get(j) * DEG;
         el[o + 6] = cols[6].get(j);
-        eu[o + 7] = cc ? cc.get(j) : 255;
+        eu[o + 7] = ((cc ? cc.get(j) : 255) & 0xff) | ((centerOf.get(pop.get(j)) ?? 0) << 8);
       }
       this.synEl = buf(el.byteLength, SU.STORAGE | SU.COPY_DST, 'sb synthetic elements');
       d.queue.writeBuffer(this.synEl, 0, el);
@@ -449,6 +463,7 @@ export class SmallBodyField {
       const code = syntheticShader({
         gmSun: syn!.mu, auKm: syn!.auKm, cKmS: C_KM_S, obliquityRad: syn!.obliquity, slopeG: syn!.header.slopeParameterG!.value,
         classColours, photometry: tables.photometry ?? null,
+        centerGm: centers.map((id) => syn!.header.populations.find((p) => p.center?.naifId === id)!.center!.gm),
       });
       const synLayout = d.createBindGroupLayout({
         label: 'sb synthetic', entries: [
@@ -636,6 +651,15 @@ export class SmallBodyField {
       const sunV = sa && sb ? [(sb[0] - sa[0]) / 2, (sb[1] - sa[1]) / 2, (sb[2] - sa[2]) / 2] : [0, 0, 0];
       const cam = [0, 1, 2].map((k) => split64(cameraSSB[k] - sunP[k]));
       const [dth, dtl] = split64(et - this.synthetic!.epochEt);
+      // Centres of planet-centred populations: camera-relative position (f64 difference) and SSB velocity. A centre
+      // without an ephemeris parks its objects at infinity (they draw nothing).
+      const cen = new Float32Array(8 * SYN_MAX_CENTERS);
+      this.synCenters.forEach((id, k) => {
+        const p = this.planets.positionSSB(id, et), pa = this.planets.positionSSB(id, et - 1), pb = this.planets.positionSSB(id, et + 1);
+        if (!p || !pa || !pb) { cen.set([Infinity, Infinity, Infinity], 4 * k); return; }
+        cen.set([p[0] - cameraSSB[0], p[1] - cameraSSB[1], p[2] - cameraSSB[2]], 4 * k);
+        cen.set([(pb[0] - pa[0]) / 2, (pb[1] - pa[1]) / 2, (pb[2] - pa[2]) / 2], 4 * (k + SYN_MAX_CENTERS));
+      });
       for (let ch = 0; ch < synChunks; ch++) {
         const o = (ch * SYN_SLOT) / 4;
         const first = ch * this.opts.chunkObjects;
@@ -648,6 +672,7 @@ export class SmallBodyField {
         w[o + 17] = cnt;
         w[o + 18] = gx;
         w[o + 19] = this.count;
+        f.set(cen, o + 20);
       }
       this.device.queue.writeBuffer(this.synUB!, 0, u);
       pass.setPipeline(this.synPipe!);
@@ -922,7 +947,7 @@ export class SmallBodyField {
    * planetary ephemeris (999, else the system barycentre 9) minus the Sun.
    */
   stateOf(index: number, et: number): { pos: Vec3; vel: Vec3 } | null {
-    if (this.synthetic && index >= this.count && index < this.count + this.syntheticCount) return syntheticState(this.synthetic, index - this.count, et);
+    if (this.synthetic && index >= this.count && index < this.count + this.syntheticCount) return syntheticState(this.synthetic, index - this.count, et, this.centerState);
     if (!(index >= 0 && index < this.count)) return null;
     const sunId = this.model.sun.naifId;
     if (this.extFlag[index]) {

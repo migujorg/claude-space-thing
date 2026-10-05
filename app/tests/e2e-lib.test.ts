@@ -42,6 +42,7 @@ interface Lib {
   gpuMismatch(mode: string, info: Adapter | null): string | null;
   hdrFormatOf(warnings: string[] | undefined): string;
   gpuNote(baselineGpu: Gpu | undefined, gpu: Gpu): string | null;
+  starsFramesNote(values: number[] | undefined, compared: number | null | undefined): string | null;
 }
 interface Adapter { vendor: string; architecture: string; device: string; description: string; fallback: boolean; float32Blendable: boolean }
 interface Gpu { mode: string; adapter: Adapter | null }
@@ -182,5 +183,13 @@ describe('the --gpu option', () => {
     expect(lib.gpuNote(hard, hard)).toBeNull();
     expect(lib.gpuNote(undefined, hard)).toBe('The baseline was accepted on swiftshader; this run rendered on hardware (nvidia blackwell (hardware)). Differences may come from the adapter.');
     expect(lib.gpuNote(hard, soft)).toMatch(/accepted on hardware \(nvidia blackwell \(hardware\)\); this run rendered on swiftshader \(google swiftshader \(software\)\)/);
+  });
+
+  it('notes a star count that is not one number from frame to frame', () => {
+    expect(lib.starsFramesNote(undefined, 10)).toBeNull();
+    expect(lib.starsFramesNote([], 10)).toBeNull();
+    expect(lib.starsFramesNote([1015], 1015)).toBeNull();
+    expect(lib.starsFramesNote([965, 1043], 965)).toBe('starsDrawn changes from frame to frame: 965, 1043; the stats hold 965');
+    expect(lib.starsFramesNote([2631, 2632, 2634, 2635, 2636, 2639, 2643], 2635)).toBe('starsDrawn changes from frame to frame: 2631 … 2643 (7 values); the stats hold 2635');
   });
 });
