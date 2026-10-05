@@ -38,7 +38,7 @@ from pathlib import Path
 import numpy as np
 import requests
 
-from . import download
+from . import config, download
 from .download import fetch, sha256_file
 from .paths import CACHE, RAW
 
@@ -912,11 +912,14 @@ SUM_LEVEL = 1  # aggregation queries run per HEALPix level-1 pixel (48 queries)
 
 
 def _sums_query(select: str, table: str, where: str, subdir: str, base: str,
-                count_query: str) -> Path:
+                count_query: str, *, sums_format: str | None = None) -> Path:
     query = f"SELECT {select} FROM {table} WHERE {where}"
     name = f"{base}_{hashlib.sha256(query.encode()).hexdigest()[:10]}.csv"
     verified_csv = (RAW / subdir / (name + ".rows")).exists()
-    if os.environ.get("PIPELINE_GAIA_SUMS_FITS") == "1" and not verified_csv:
+    sums_format = config.value({}, "gaia.sumsFormat") if sums_format is None else sums_format
+    if sums_format not in {"csv", "fits"}:
+        raise ValueError(f"unknown Gaia sums format {sums_format!r}")
+    if sums_format == "fits" and not verified_csv:
         existing_fits = RAW / subdir / name.replace(".csv", ".fits")
         if existing_fits.exists() and _fits_table_ok(existing_fits, TAP_MAXREC):
             return tap_query_fits(select, table, where, subdir, base, max_rows=TAP_MAXREC, post=True)
@@ -932,7 +935,8 @@ def _sums_query(select: str, table: str, where: str, subdir: str, base: str,
     return tap_query(select, table, where, subdir, base, "hpx", count_query=count_query)
 
 
-def fetch_faint_sums(g_min: float, level: int, workers: int = 1) -> list[Path]:
+def fetch_faint_sums(g_min: float, level: int, workers: int = 1, *,
+                     sums_format: str | None = None) -> list[Path]:
     """Per HEALPix pixel (nested, `level`) sums over all gaia_source rows with G >= g_min: counts and sums of
     10^(-0.4 m) in G, BP, RP, split by whether BP and RP both exist."""
     select = (f"GAIA_HEALPIX_INDEX({level}, source_id) AS hpx, COUNT(*) AS n, "
@@ -948,11 +952,12 @@ def fetch_faint_sums(g_min: float, level: int, workers: int = 1) -> list[Path]:
         count = (f"SELECT COUNT(*) AS n FROM (SELECT GAIA_HEALPIX_INDEX({level}, source_id) AS hpx FROM "
                  f"{REL.schema}.gaia_source WHERE {cut} GROUP BY hpx) AS t")
         return _sums_query(select, f"{REL.schema}.gaia_source", cut + " GROUP BY hpx", SUBDIR + "_sums",
-                           f"faint_sums_G{g_min}_L{level}_p{pix:02d}", count)
+                           f"faint_sums_G{g_min}_L{level}_p{pix:02d}", count, sums_format=sums_format)
     return _in_order(one, list(range(12 * 4 ** SUM_LEVEL)), workers)
 
 
-def fetch_faint_colour_sums(g_min: float, level: int, workers: int = 1) -> list[Path]:
+def fetch_faint_colour_sums(g_min: float, level: int, workers: int = 1, *,
+                            sums_format: str | None = None) -> list[Path]:
     """Per HEALPix pixel (`level`) and BP-RP bin of 0.1 mag (cbin = FLOOR(10 (BP - RP)); NULL = no colour), for all
     sources with G >= g_min: count and sum of 10^(-0.4 G). Gives the colour mix of the faint stars."""
     select = (f"GAIA_HEALPIX_INDEX({level}, source_id) AS hpx, "
@@ -966,7 +971,7 @@ def fetch_faint_colour_sums(g_min: float, level: int, workers: int = 1) -> list[
                  f"FLOOR(10 * (phot_bp_mean_mag - phot_rp_mean_mag)) AS cbin FROM {REL.schema}.gaia_source "
                  f"WHERE {cut} GROUP BY hpx, cbin) AS t")
         return _sums_query(select, f"{REL.schema}.gaia_source", cut + " GROUP BY hpx, cbin", SUBDIR + "_sums",
-                           f"faint_colour_sums_G{g_min}_L{level}_p{pix:02d}", count)
+                           f"faint_colour_sums_G{g_min}_L{level}_p{pix:02d}", count, sums_format=sums_format)
     return _in_order(one, list(range(12 * 4 ** SUM_LEVEL)), workers)
 
 

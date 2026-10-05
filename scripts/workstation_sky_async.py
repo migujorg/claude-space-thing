@@ -41,8 +41,8 @@ def plan():
         sg._in_order = lambda fn, items, workers: [fn(item) for item in items]
         sg.tap_query_fits = capture
         sg.tap_query = lambda *args, **kwargs: None  # already-verified CSV
-        jobs = sg.fetch_faint_sums(sky.FAINT_G_MIN, sky.FAINT_ORDER, 1)
-        jobs += sg.fetch_faint_colour_sums(sky.FAINT_G_MIN, sky.COLOUR_ORDER, 1)
+        jobs = sg.fetch_faint_sums(sky.FAINT_G_MIN, sky.FAINT_ORDER, 1, sums_format="fits")
+        jobs += sg.fetch_faint_colour_sums(sky.FAINT_G_MIN, sky.COLOUR_ORDER, 1, sums_format="fits")
     finally:
         sg._in_order, sg.tap_query_fits, sg.tap_query = original_order, original_fits, original_csv
     ledger = d._load_ledger()

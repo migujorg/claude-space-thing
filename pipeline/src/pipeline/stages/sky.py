@@ -13,8 +13,13 @@ Products (docs/architecture.md §6):
 
 from __future__ import annotations
 
+import hashlib
 import json
+import re
 import time
+from collections import Counter
+from pathlib import Path
+from urllib.parse import urlsplit
 
 import numpy as np
 
@@ -27,7 +32,7 @@ from .. import stars_catalogs as sc
 from .. import stars_deep as sdp
 from .. import stars_format as sf
 from .. import stars_gaia as sg
-from ..download import record
+from ..download import record, sha256_file
 from ..output import write_bin, write_json
 from ..paths import CACHE, OUT
 from ..photometry import solar
@@ -461,10 +466,12 @@ def build_diffuse(ctx: BuildContext, ids: dict, diag: dict) -> None:
     diag["bandFluxFromXP"] = {"bright": [int(b_hit.sum()), int(b_hit.size)], "deep": [int(d_hit.sum()), int(d_hit.size)]}
 
     # --------------------------------------------------------------- faint Gaia sums (G >= 14)
-    sums = _load_sums(sg.fetch_faint_sums(FAINT_G_MIN, FAINT_ORDER, ctx.param("gaia.tapWorkers")))
+    sums = _load_sums(sg.fetch_faint_sums(FAINT_G_MIN, FAINT_ORDER, ctx.param("gaia.tapWorkers"),
+                                      sums_format=ctx.param("gaia.sumsFormat")))
     npx8 = hp.npix(FAINT_ORDER)
     om8 = 4 * np.pi / npx8
-    csum = _load_colour_sums(sg.fetch_faint_colour_sums(FAINT_G_MIN, COLOUR_ORDER, ctx.param("gaia.tapWorkers")))
+    csum = _load_colour_sums(sg.fetch_faint_colour_sums(FAINT_G_MIN, COLOUR_ORDER, ctx.param("gaia.tapWorkers"),
+                                                sums_format=ctx.param("gaia.sumsFormat")))
     # effective (XYZS, B, R) per 10^(-0.4 G) of the faint stars in each order-6 pixel: colour-bin mix
     npx6c = hp.npix(COLOUR_ORDER)
     num = np.zeros((npx6c, len(cols)))
@@ -684,19 +691,88 @@ def _register_sources(ctx: BuildContext) -> None:
                "0 = no data. B: 437.0 nm (826 A wide), R: 644.1 nm (968 A). Measurements from beyond 3.3 AU (no "
                "zodiacal light); stars 'typically brighter than 6.5 mag' removed by Toller from a 12457-star catalog "
                "(Leinert 1998 p. 69). Files: " + st._files_note(list(paths.values())))))
-    sums = sg.fetch_faint_sums(FAINT_G_MIN, FAINT_ORDER, ctx.param("gaia.tapWorkers"))
-    csums = sg.fetch_faint_colour_sums(FAINT_G_MIN, COLOUR_ORDER, ctx.param("gaia.tapWorkers"))
-    ctx.add_source(SourceRecord(
-        id=SRC_SUMS, title=f"{sg.REL.label} gaia_source: per-HEALPix sums of G, BP, RP fluxes for G >= {FAINT_G_MIN:g}",
+    sums = sg.fetch_faint_sums(FAINT_G_MIN, FAINT_ORDER, ctx.param("gaia.tapWorkers"),
+                               sums_format=ctx.param("gaia.sumsFormat"))
+    csums = sg.fetch_faint_colour_sums(FAINT_G_MIN, COLOUR_ORDER, ctx.param("gaia.tapWorkers"),
+                                       sums_format=ctx.param("gaia.sumsFormat"))
+    ctx.add_source(_faint_sums_source(sums, csums))
+
+
+def _faint_sums_source(sums: list[Path], csums: list[Path]) -> SourceRecord:
+    """Describe only the responses selected for this build, using their recorded evidence.
+
+    Mirror jobs retain the logical cache filename but write their actual query in the sidecar;
+    neither that filename nor the currently configured TAP endpoint identifies the answering table/service.
+    """
+    paths = sums + csums
+    tables, hosts = Counter(), Counter()
+    missing_adql, unknown_tables, missing_ledger, unknown_hosts = [], [], [], []
+    urls, dates, queries = [], [], {}
+    digest = hashlib.sha256()
+    for path in paths:
+        digest.update(f"{path.name} {sha256_file(path)}\n".encode())
+        sidecar = path.with_name(path.name + ".adql")
+        if not sidecar.exists():
+            missing_adql.append(path.name)
+        else:
+            query = sidecar.read_text(encoding="utf-8")
+            queries[path] = query
+            found = re.findall(r"\bFROM\s+([\w.]+)", query, re.IGNORECASE)
+            if found:
+                tables.update(set(found))
+            else:
+                unknown_tables.append(path.name)
+        try:
+            entry = record(path)
+        except KeyError:
+            missing_ledger.append(path.name)
+            continue
+        url = entry.get("url", "")
+        host = urlsplit(url).hostname
+        if host:
+            hosts[host] += 1
+            urls.append(url)
+        else:
+            unknown_hosts.append(path.name)
+        if entry.get("retrieved"):
+            dates.append(entry["retrieved"])
+
+    def counts(values):
+        return ", ".join(f"{name} ({count})" for name, count in sorted(values.items())) or "unknown"
+
+    table_title = ("mixed tables: " if len(tables) > 1 else "table: ") + ", ".join(sorted(tables))
+    if not tables:
+        table_title = "tables unknown"
+    elif missing_adql or unknown_tables:
+        table_title += "; some tables unknown"
+    formats = Counter(path.suffix.lower() for path in paths)
+    notes = (f"{len(paths)} TAP result files ({len(sums)} flux sums, {len(csums)} colour-bin sums). "
+             f"Result formats: CSV={formats['.csv']}, FITS={formats['.fits']}. "
+             f"Tables from ADQL sidecars: {counts(tables)}. "
+             f"Service hosts{' (mixed)' if len(hosts) > 1 else ''}: {counts(hosts)}. "
+             "sha256 over result filenames and their file sha256 hashes in flux-sum then colour-sum order; "
+             "actual query text and synchronous or asynchronous retrieval URLs are retained in the ADQL "
+             "sidecars and download ledger. The url field is the first known result URL; retrieved is the "
+             "latest known result retrieval date.")
+    for label, names in (("Missing ADQL sidecars", missing_adql),
+                         ("Table unknown in ADQL sidecars", unknown_tables),
+                         ("Missing download ledger entries", missing_ledger),
+                         ("Service host unknown in download ledger", unknown_hosts)):
+        if names:
+            notes += f" {label}: {', '.join(names)}."
+    if len(dates) != len(paths):
+        notes += f" Retrieval date unknown for {len(paths) - len(dates)} result files."
+    for label, group in (("Flux-sum example", sums), ("Colour-bin-sum example", csums)):
+        path = next((p for p in group if p in queries), None)
+        if path is not None:
+            notes += f" {label} ({path.name}): {queries[path]}"
+    return SourceRecord(
+        id=SRC_SUMS,
+        title=f"{sg.REL.label} ({table_title}): per-HEALPix sums of G, BP, RP fluxes for G >= {FAINT_G_MIN:g}",
         citation=sg.REL.citation + f", DOI:{sg.REL.doi}; photometry: Riello M. et al. 2021, A&A 649, A3, "
                  "DOI:10.1051/0004-6361/202039587.",
-        url=sg.TAP_URL, retrieved=record(sums[0])["retrieved"], sha256=st._digest(sums + csums),
-        version=sg.REL.label, license="ESA/Gaia/DPAC, CC BY-SA 3.0 IGO",
-        notes=f"2 x {len(sums)} TAP result files (one per HEALPix level-{sg.SUM_LEVEL} source_id range; "
-              "sha256 over all result files; actual synchronous or asynchronous retrieval URLs are retained "
-              "in the download ledger). Per level-8 pixel: "
-              + sums[0].with_name(sums[0].name + ".adql").read_text(encoding="utf-8") + " || per level-6 pixel and BP-RP bin: "
-              + csums[0].with_name(csums[0].name + ".adql").read_text(encoding="utf-8")))
+        url=urls[0] if urls else "", retrieved=max(dates) if dates else "unknown", sha256=digest.hexdigest(),
+        version=sg.REL.label, license="ESA/Gaia/DPAC, CC BY-SA 3.0 IGO", notes=notes)
 
 
 def _write_diffuse(ctx, ids, diag, faint_xyzs, xyzs6, label6, agg, filled, reg, incl_w, br_from_xyz,
