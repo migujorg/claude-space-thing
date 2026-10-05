@@ -11,8 +11,10 @@ a path that reaches a band boundary restarts there). At a real collision the wei
 scattering albedo (implicit capture), the scattering species is drawn by its share of the scattering coefficient,
 and the new direction from that species' phase function (inverse CDF of the tabulated function; Rayleigh by rejection).
 At the bottom sphere the photon is reflected by a Lambert surface (weight × albedo, cosine-weighted direction).
-Russian roulette below a weight of 1e-3. A photon leaving the top sphere is tallied by the angle α between its
-direction and the Sun (+z):
+Russian roulette below a weight of 1e-3. A photon leaving the top sphere after at least one interaction (a
+scattering or a surface reflection) is tallied by the angle α between its direction and the Sun (+z); sunlight
+that crosses the air beyond the limb unscattered is the transmitted beam at α = 180°, not reflected light, and is
+left out:
 
     A_gΦ(α) = (π R_top² / R²) · ΣW / (N · ΔΩ),   ΔΩ = 2π (cos α_lo − cos α_hi)
 
@@ -141,6 +143,7 @@ def _run(n_photons, seed, R, Rt, alt, ext, sca, band_r, band_max, kind, rho, mu_
         ux, uy, uz = 0.0, 0.0, -1.0
         w = 1.0
         alive = True
+        touched = False         # scattered or reflected at least once (the unscattered beam is not tallied)
         while alive:
             r = math.sqrt(x * x + y * y + z * z)
             # band of r
@@ -166,6 +169,7 @@ def _run(n_photons, seed, R, Rt, alt, ext, sca, band_r, band_max, kind, rho, mu_
                     if b == 0:
                         # the surface: Lambert reflection
                         w *= surf
+                        touched = True
                         rr = math.sqrt(x * x + y * y + z * z)
                         nx, ny, nz = x / rr, y / rr, z / rr
                         mu = math.sqrt(np.random.random())
@@ -206,7 +210,8 @@ def _run(n_photons, seed, R, Rt, alt, ext, sca, band_r, band_max, kind, rho, mu_
                         # disk (the exit ray's impact parameter |p × u| below R) or the air beyond its edge
                         cx, cy, cz = y * uz - z * uy, z * ux - x * uz, x * uy - y * ux
                         part = 0 if cx * cx + cy * cy + cz * cz < R * R else 1
-                        tally[part, k] += w
+                        if touched:
+                            tally[part, k] += w
                         alive = False
                     else:
                         x += x / rr * 1e-6
@@ -225,6 +230,7 @@ def _run(n_photons, seed, R, Rt, alt, ext, sca, band_r, band_max, kind, rho, mu_
             for s in range(ns):
                 st_tot += _interp(alt, sca[s], h)
             w *= st_tot / e
+            touched = True
             u = np.random.random() * st_tot
             s = 0
             acc = _interp(alt, sca[0], h)
@@ -327,7 +333,8 @@ def main(argv: list[str] | None = None) -> None:
     """Run the reference for every spectral sample of one body of a built atmospheres.json and write its curves:
     `python -m pipeline.photometry.titan_rt [atmospheres.json] [out.json] [--photons N] [--body 606]` (defaults: the
     repository's app/public/data/atmospheres.json, docs/reports/titan-mc.json, 400000 photons per sample, Titan).
-    Deterministic (a fixed seed per sample); a few minutes per sample."""
+    Deterministic (a fixed seed per sample); a few seconds per sample once numba has compiled (a few minutes for all
+    48 on a slow machine)."""
     import argparse
     import json
 
