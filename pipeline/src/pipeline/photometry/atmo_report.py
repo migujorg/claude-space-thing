@@ -5,6 +5,7 @@ Run: `uv run python -m pipeline.photometry.atmo_report` (builds atmospheres.json
 from __future__ import annotations
 
 import json
+import math
 
 import numpy as np
 import spiceypy as sp
@@ -224,18 +225,21 @@ def main() -> None:
       f"equivalents {', '.join(f'{x:.3f}' for x in sr['channelEquivalents'])}.")
     w("- **Labels**: every haze quantity and the surface are `estimated` — DISR retrievals (their authors' radiative-"
       "transfer fits to the descent data), read from a figure or a secondary machine-readable copy, and one landing "
-      "site used for the whole moon. The methane mole fraction is `measured`, its absorption coefficient `estimated` "
+      "site used for the whole moon. The methane mole-fraction profile is `derived` (two measured products "
+      "combined: the GCMS mole fraction and the DTWG altitude, by time), its absorption coefficient `estimated` "
       "(Karkoschka's own label).")
     w("")
     m = v["mc"]
     s = v["spectrum"]
     w("### The model against Titan's measured brightness")
     w("")
-    w(f"The model is solved exactly by a Monte Carlo reference (`titan_rt.py`: {m['photons']:,} photons per sample, "
-      "spherical geometry, every order of scattering with the tabulated phase functions; "
-      "`docs/reports/titan-mc.json`), so this tests the data, not the renderer. Compared with "
-      f"Karkoschka's (1998) full-disk albedo at {s['alpha_obs']}° (1995; ±4 % absolute) — the model at "
-      f"{s['alpha_mod']:.1f}°, the observation box-averaged over each 10 nm sample:")
+    w(f"The model is solved by a Monte Carlo reference (`titan_rt.py`: {m['photons']:,} photons per sample, "
+      "spherical geometry, every order of scattering with the tabulated phase functions; tested against exact "
+      "solutions in `pipeline/tests/test_titan_rt.py`; `docs/reports/titan-mc.json`), so this tests the data, not "
+      f"the renderer. Compared with Karkoschka's (1998) full-disk albedo at {s['alpha_obs']}° (1995; absolute "
+      f"calibration ±{100 * s['observed_sigma']:.0f} %, 1σ) — the model in the reference's first bin (α 0–"
+      f"{s['alpha_mod_max']:.1f}°, solid-angle mean {s['alpha_mod_mean']:.1f}°), the observation box-averaged over "
+      "each 10 nm sample:")
     w("")
     w("| λ (nm) | " + " | ".join(f"{x:.0f}" for x in s["wl"][::4]) + " |")
     w("|---|" + "---|" * len(s["wl"][::4]))
@@ -244,14 +248,33 @@ def main() -> None:
     w("| ratio | " + " | ".join(f"{x:.2f}" for x in s["ratio"][::4]) + " |")
     w("")
     rat = np.array(s["ratio"])
+    rel = np.array(s["model_sigma"]) / np.array(s["model"])
     w(f"- 520–830 nm: model / observed {rat[wl >= 520].min():.2f}–{rat[wl >= 520].max():.2f}; 440–510 nm: "
       f"{rat[(wl >= 440) & (wl <= 510)].min():.2f}–{rat[(wl >= 440) & (wl <= 510)].max():.2f}; below 440 nm "
       f"{rat[wl < 440].min():.2f}–{rat[wl < 440].max():.2f}, where the haze albedo is extrapolated: the model is "
-      "too bright in the violet.")
-    cr = s["xyzs_ratio"]
-    w(f"- Folded to X, Y, Z, S: model / observed {', '.join(f'{x:.3f}' for x in cr)}; chromaticity x, y "
-      f"{s['xy_model'][0]:.4f}, {s['xy_model'][1]:.4f} (model) against {s['xy_observed'][0]:.4f}, "
-      f"{s['xy_observed'][1]:.4f} (observed).")
+      f"too bright in the violet and blue. Monte Carlo noise per sample: {100 * rel.min():.1f}–{100 * rel.max():.1f} % "
+      "(1σ).")
+    cr, cs, sh = s["xyzs_ratio"], s["xyzs_ratio_sigma"], s["extrapolated_share"]
+    w("- Folded to X, Y, Z, S: model / observed "
+      + ", ".join(f"{x:.3f} ± {e:.3f}" for x, e in zip(cr, cs))
+      + " (± the Monte Carlo noise, 1σ; folding 10 nm samples instead of integrating at 1 nm changes the "
+      f"observation's own channels by at most {100 * max(abs(x) for x in s['fold_error']):.2f} %). The luminance "
+      f"agrees with the measurement ({100 * (cr[1] - 1):+.1f} % against ±{100 * s['observed_sigma']:.0f} %); Z is "
+      f"{100 * (cr[2] - 1):+.1f} %, {(cr[2] - 1) / s['observed_sigma']:.1f}σ of the absolute calibration alone, and the "
+      f"colour ratio Z/Y, in which a calibration error common to all wavelengths cancels, is "
+      f"{100 * (cr[2] / cr[1] - 1):+.1f} %. {100 * sh[2]:.0f} % of the model's Z (and {100 * sh[1]:.0f} % of its Y) "
+      f"comes from the samples below {ssa['first_nm']:.0f} nm, where the haze albedo is extrapolated.")
+    w(f"- Colour of the reflected sunlight (CIE 1931 x, y): {s['xy_model'][0]:.4f}, {s['xy_model'][1]:.4f} (model) "
+      f"against {s['xy_observed'][0]:.4f}, {s['xy_observed'][1]:.4f} (observed); Δu′v′ = {s['delta_uv']:.4f} ± "
+      f"{s['delta_uv_sigma']:.4f} (Monte Carlo): the model is bluer (less orange) than Titan.")
+    w("- How independent the test is: Doose et al.'s (2016) model was developed against radiances measured \"inside "
+      "and outside the atmosphere\" (its title), and García Muñoz et al. (2017, Methods) note that it is "
+      "\"consistent with past spectroscopic measurements of the geometric albedo between 500 and 950 nm\" "
+      "(Karkoschka's). Agreement above 500 nm therefore shows that the transcribed model and the radiative "
+      "transfer reproduce the published one, more than it tests that model; and Karkoschka's methane coefficients "
+      "were partly inferred from Titan's own spectrum (`tables/titan_disr_haze.json`), so the depths of the methane "
+      "bands are not independent either. Below 500 nm the comparison is a real test, of the extrapolation, and it "
+      "fails.")
     w("")
     w("Cassini ISS disk-integrated phase curves (García Muñoz et al. 2017, Fig. 1, digitized: "
       "`tables/titan_garcia_munoz_2017_iss.csv`; NAC images 2004–2015, CISSCAL calibration ~10 %), median of "
@@ -320,17 +343,32 @@ def main() -> None:
         w("| min | " + " | ".join(f"{x:.2f}" for x in q.min(axis=1)) + " |")
         w("| median | " + " | ".join(f"{x:.2f}" for x in np.median(q, axis=1)) + " |")
         w("| max | " + " | ".join(f"{x:.2f}" for x in q.max(axis=1)) + " |")
+        noise = [float(np.median(np.array([np.interp(a, mcd["alpha"], row) for row in mcd["sigma"]])
+                                 / TC.mc_at(mcd, a))) for a in ph]
+        w("| reference 1σ | " + " | ".join(f"{x:.2f}" for x in noise) + " |")
+        w("")
+        w(f"The reference's own noise per sample and phase bin (last row: its median over the samples, "
+          f"{100 * min(noise):.0f}–{100 * max(noise):.0f} %) accounts for much of the spread between min and max; "
+          "the median over the 48 samples is the renderer's systematic error, known to about "
+          f"{100 * max(noise) / math.sqrt(48):.1f} %.")
         w("")
         ca = r["xyzs_ratio_app_bins"]
         cp = r["xyzs_ratio_per_sample"]
-        w(f"Against Karkoschka at 5.7° (pass: within 2σ = ±8 % per channel): with the app's 12 bins of 4 samples X, Y, "
-          f"Z, S = {', '.join(f'{x:.3f}' for x in ca)} of observed ({', '.join(f'{x:.3f}' for x in cp)} with every "
-          f"sample its own bin); chromaticity {r['xy_app_bins'][0]:.4f}, {r['xy_app_bins'][1]:.4f} against "
-          f"{r['xy_observed'][0]:.4f}, {r['xy_observed'][1]:.4f}. "
-          + ", ".join(f"{c} {'PASS' if abs(x - 1) <= 0.08 else 'FAIL'} ({100 * (x - 1):+.1f} %)"
+        tol = 2.0 * TC.K98_ABSOLUTE
+        w(f"Against Karkoschka at 5.7° (pass: within 2σ = ±{100 * tol:.0f} % per channel; the renderer at "
+          f"{ph[0]:.2f}°, where its light differs from that at 5.7° by about 0.1 %): with the app's 12 bins of 4 "
+          f"samples X, Y, Z, S = {', '.join(f'{x:.3f}' for x in ca)} of observed "
+          f"({', '.join(f'{x:.3f}' for x in cp)} with every sample its own bin), that is "
+          f"{', '.join(f'{x:.3f}' for x in r['xyzs_app_bins_over_mc'])} of the reference: the renderer's own "
+          f"approximation adds {100 * (min(r['xyzs_app_bins_over_mc']) - 1):.1f}–"
+          f"{100 * (max(r['xyzs_app_bins_over_mc']) - 1):.1f} % at this phase. Colour x, y "
+          f"{r['xy_app_bins'][0]:.4f}, {r['xy_app_bins'][1]:.4f} against {r['xy_observed'][0]:.4f}, "
+          f"{r['xy_observed'][1]:.4f} (Δu′v′ {r['delta_uv_app_bins']:.4f}). "
+          + ", ".join(f"{c} {'PASS' if abs(x - 1) <= tol else 'FAIL'} ({100 * (x - 1):+.1f} %)"
                       for c, x in zip("XYZS", ca)) + ".")
         w("")
-        w("Against the ISS phase curves (pass: each range's median within 2σ = ±20 %; measured / renderer):")
+        w(f"Against the ISS phase curves (pass: each range's median within 2σ = ±{200 * TC.ISS_ABSOLUTE:.0f} %; "
+          "measured / renderer):")
         w("")
         w("| filter | all | " + " | ".join(hdr) + " | result |")
         w("|---|---|" + "---|" * len(hdr) + "---|")
@@ -340,8 +378,9 @@ def main() -> None:
             key = TC.ISS[name][0]
             curve = np.array([TC.filters.band_average(key, wl_r, row) for row in per])
             cells = grouped(name, lambda a, x: x / np.interp(a, ph, curve))
-            ok = all(c == "—" or abs(float(c) - 1) <= 0.2 for c in cells)
-            fails = [h for h, c in zip(hdr, cells) if c != "—" and abs(float(c) - 1) > 0.2]
+            lim = 2.0 * TC.ISS_ABSOLUTE
+            ok = all(c == "—" or abs(float(c) - 1) <= lim for c in cells)
+            fails = [h for h, c in zip(hdr, cells) if c != "—" and abs(float(c) - 1) > lim]
             res = "PASS" if ok else "FAIL (" + ", ".join(fails) + ")"
             if not f["broad"]:
                 res += " *"

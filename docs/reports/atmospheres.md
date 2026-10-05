@@ -90,11 +90,11 @@ Five components over a surface (`surfaceReflectance`), all from the Huygens desc
 - **Methane** (pure absorber): Karkoschka's (1998) cold-temperature absorption coefficients × the Huygens GCMS mole fraction at the DTWG altitudes × the HASI density; column 2.80 km-amagat; vertical τ = 7.13 at the strongest sample (730 nm, 10 nm box average of the extinction).
 - N2 Rayleigh τ(550) = 1.089 (HASI surface 146645 Pa, 93.50 K, n = 1.136e+26 m⁻³).
 - **Surface**: Lambert reflectance 0.041–0.150 over 360–830 nm (the values García Muñoz et al. 2017 adopted from Karkoschka & Schröder's 2016 DISR maps); X, Y, Z, S equivalents 0.108, 0.105, 0.072, 0.087.
-- **Labels**: every haze quantity and the surface are `estimated` — DISR retrievals (their authors' radiative-transfer fits to the descent data), read from a figure or a secondary machine-readable copy, and one landing site used for the whole moon. The methane mole fraction is `measured`, its absorption coefficient `estimated` (Karkoschka's own label).
+- **Labels**: every haze quantity and the surface are `estimated` — DISR retrievals (their authors' radiative-transfer fits to the descent data), read from a figure or a secondary machine-readable copy, and one landing site used for the whole moon. The methane mole-fraction profile is `derived` (two measured products combined: the GCMS mole fraction and the DTWG altitude, by time), its absorption coefficient `estimated` (Karkoschka's own label).
 
 ### The model against Titan's measured brightness
 
-The model is solved exactly by a Monte Carlo reference (`titan_rt.py`: 400,000 photons per sample, spherical geometry, every order of scattering with the tabulated phase functions; `docs/reports/titan-mc.json`), so this tests the data, not the renderer. Compared with Karkoschka's (1998) full-disk albedo at 5.7° (1995; ±4 % absolute) — the model at 6.0°, the observation box-averaged over each 10 nm sample:
+The model is solved by a Monte Carlo reference (`titan_rt.py`: 400,000 photons per sample, spherical geometry, every order of scattering with the tabulated phase functions; tested against exact solutions in `pipeline/tests/test_titan_rt.py`; `docs/reports/titan-mc.json`), so this tests the data, not the renderer. Compared with Karkoschka's (1998) full-disk albedo at 5.7° (1995; absolute calibration ±4 %, 1σ) — the model in the reference's first bin (α 0–8.5°, solid-angle mean 5.7°), the observation box-averaged over each 10 nm sample:
 
 | λ (nm) | 360 | 400 | 440 | 480 | 520 | 560 | 600 | 640 | 680 | 720 | 760 | 800 |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
@@ -102,8 +102,10 @@ The model is solved exactly by a Monte Carlo reference (`titan_rt.py`: 400,000 p
 | observed | 0.071 | 0.090 | 0.115 | 0.148 | 0.187 | 0.226 | 0.257 | 0.282 | 0.291 | 0.214 | 0.280 | 0.201 |
 | ratio | 1.54 | 1.32 | 1.07 | 1.06 | 0.98 | 0.98 | 0.95 | 1.01 | 1.01 | 0.96 | 1.02 | 0.98 |
 
-- 520–830 nm: model / observed 0.94–1.05; 440–510 nm: 1.05–1.12; below 440 nm 1.10–1.54, where the haze albedo is extrapolated: the model is too bright in the violet.
-- Folded to X, Y, Z, S: model / observed 0.994, 0.990, 1.090, 1.028; chromaticity x, y 0.3846, 0.3738 (model) against 0.3924, 0.3827 (observed).
+- 520–830 nm: model / observed 0.94–1.05; 440–510 nm: 1.05–1.12; below 440 nm 1.10–1.54, where the haze albedo is extrapolated: the model is too bright in the violet and blue. Monte Carlo noise per sample: 0.9–4.0 % (1σ).
+- Folded to X, Y, Z, S: model / observed 0.994 ± 0.005, 0.990 ± 0.005, 1.090 ± 0.009, 1.028 ± 0.006 (± the Monte Carlo noise, 1σ; folding 10 nm samples instead of integrating at 1 nm changes the observation's own channels by at most 0.05 %). The luminance agrees with the measurement (-1.0 % against ±4 %); Z is +9.0 %, 2.2σ of the absolute calibration alone, and the colour ratio Z/Y, in which a calibration error common to all wavelengths cancels, is +10.1 %. 93 % of the model's Z (and 4 % of its Y) comes from the samples below 500 nm, where the haze albedo is extrapolated.
+- Colour of the reflected sunlight (CIE 1931 x, y): 0.3731, 0.3744 (model) against 0.3811, 0.3838 (observed); Δu′v′ = 0.0055 ± 0.0005 (Monte Carlo): the model is bluer (less orange) than Titan.
+- How independent the test is: Doose et al.'s (2016) model was developed against radiances measured "inside and outside the atmosphere" (its title), and García Muñoz et al. (2017, Methods) note that it is "consistent with past spectroscopic measurements of the geometric albedo between 500 and 950 nm" (Karkoschka's). Agreement above 500 nm therefore shows that the transcribed model and the radiative transfer reproduce the published one, more than it tests that model; and Karkoschka's methane coefficients were partly inferred from Titan's own spectrum (`tables/titan_disr_haze.json`), so the depths of the methane bands are not independent either. Below 500 nm the comparison is a real test, of the extrapolation, and it fails.
 
 Cassini ISS disk-integrated phase curves (García Muñoz et al. 2017, Fig. 1, digitized: `tables/titan_garcia_munoz_2017_iss.csv`; NAC images 2004–2015, CISSCAL calibration ~10 %), median of measured / model over the measurements in each phase-angle range, the model band-averaged with the SVO NAC system responses:
 
@@ -131,8 +133,11 @@ The renderer's CPU twin (`atmosphere.ts` `diskReflectanceSpectral`, the tables a
 | min | 0.99 | 0.99 | 0.97 | 1.00 | 0.98 | 0.98 | 0.97 | 0.95 | 0.94 | 0.94 | 0.90 | 0.91 | 0.90 | 0.88 | 0.86 | 0.82 | 0.83 | 0.83 | 0.86 | 0.89 | 0.91 |
 | median | 1.04 | 1.04 | 1.04 | 1.03 | 1.02 | 1.01 | 1.01 | 1.00 | 1.00 | 0.98 | 0.97 | 0.96 | 0.95 | 0.95 | 0.91 | 0.89 | 0.89 | 0.90 | 0.92 | 0.94 | 0.96 |
 | max | 1.08 | 1.08 | 1.08 | 1.07 | 1.08 | 1.05 | 1.05 | 1.05 | 1.08 | 1.05 | 1.10 | 1.08 | 1.07 | 1.06 | 0.99 | 0.95 | 1.05 | 0.99 | 0.98 | 0.99 | 1.01 |
+| reference 1σ | 0.02 | 0.02 | 0.02 | 0.02 | 0.02 | 0.02 | 0.03 | 0.03 | 0.03 | 0.03 | 0.03 | 0.04 | 0.04 | 0.04 | 0.04 | 0.03 | 0.03 | 0.03 | 0.03 | 0.03 | 0.02 |
 
-Against Karkoschka at 5.7° (pass: within 2σ = ±8 % per channel): with the app's 12 bins of 4 samples X, Y, Z, S = 1.017, 1.018, 1.126, 1.057 of observed (1.033, 1.029, 1.120, 1.060 with every sample its own bin); chromaticity 0.3832, 0.3740 against 0.3924, 0.3827. X PASS (+1.7 %), Y PASS (+1.8 %), Z FAIL (+12.6 %), S PASS (+5.7 %).
+The reference's own noise per sample and phase bin (last row: its median over the samples, 2–4 %) accounts for much of the spread between min and max; the median over the 48 samples is the renderer's systematic error, known to about 0.6 %.
+
+Against Karkoschka at 5.7° (pass: within 2σ = ±8 % per channel; the renderer at 6.04°, where its light differs from that at 5.7° by about 0.1 %): with the app's 12 bins of 4 samples X, Y, Z, S = 1.017, 1.018, 1.126, 1.057 of observed (1.033, 1.029, 1.120, 1.060 with every sample its own bin), that is 1.024, 1.028, 1.033, 1.028 of the reference: the renderer's own approximation adds 2.4–3.3 % at this phase. Colour x, y 0.3717, 0.3745 against 0.3811, 0.3838 (Δu′v′ 0.0060). X PASS (+1.7 %), Y PASS (+1.8 %), Z FAIL (+12.6 %), S PASS (+5.7 %).
 
 Against the ISS phase curves (pass: each range's median within 2σ = ±20 %; measured / renderer):
 

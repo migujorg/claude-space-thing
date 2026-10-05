@@ -474,10 +474,11 @@ def titan(b: Build) -> tuple[dict, dict]:
         ssa_method="Absorption only.", phase={"kind": "none"}, phase_label="derived", phase_sources=[s_kark],
         phase_method="Pure absorber: no scattering.", g_fine=np.zeros(atmo.FINE.size),
         extra={"methaneMoleFraction": sourced({"altitudeKm": _sig(mp["z_km"]), "moleFraction": _sig(mp["x"], 4)},
-                                              "measured", [s_gcms, s_dtwg],
+                                              "derived", [s_gcms, s_dtwg],
                                               method="Huygens GCMS mole fraction by UTC (PDS hpgcms_0001 "
                                                      "DTWG_MOLE_FRACTION, stage 2) at the DTWG altitude of each UTC "
-                                                     "(PDS hpdtwg_0001), 1 km bins."),
+                                                     "(PDS hpdtwg_0001, linear in time between its records), means "
+                                                     "over 1 km bins: computed from two measured products."),
                "absorptionCoefficient": sourced({"wavelengthNm": [float(x) for x in atmo.FINE],
                                                  "perKmAmagat": _sig(k_fine, 4)}, "estimated", [s_kark, s_k94],
                                                 method="Karkoschka (1998) k on the 1 nm air grid (mean of the 0.4 nm "

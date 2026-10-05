@@ -201,6 +201,10 @@ def test_titan_phase_functions_and_methane(built):
         assert np.all(np.abs(np.asarray(d[key]["raw_norm"]) - 1) < 0.012), key
     meth = next(c for c in out["bodies"]["606"]["components"] if c["id"] == "methane")
     assert meth["singleScatteringAlbedo"]["value"] == [0.0] * 48 and meth["phaseFunction"]["value"]["kind"] == "none"
+    # The profile is computed from two measured products (GCMS mole fraction by time, DTWG altitude by time; 1 km bin
+    # means): derived, not measured (architecture §2.1); the coefficient is Karkoschka's "estimated".
+    assert meth["methaneMoleFraction"]["label"] == "derived" and meth["absorptionCoefficient"]["label"] == "estimated"
+    assert meth["extinctionPerKm"]["label"] == "estimated"
     # the extinction encodes the measured column: τ_k = column × k (10 nm box average) at every sample
     col = d["ch4_column_km_am"]
     assert 1.0 < col < 5.0
