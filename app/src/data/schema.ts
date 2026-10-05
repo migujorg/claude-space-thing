@@ -1195,7 +1195,8 @@ export interface CometListProduct {
   count: number;
   method: string;
   notable: CometListEntry[];
-  showcase: { row: number; designation: string; name: string; rule: string };
+  /** Null when no notable, non-fragment comet has solar elongation >= 30 deg at peak. */
+  showcase: { row: number; designation: string; name: string; rule: string } | null;
   /** core row (as a string) → measured composition. */
   measured: Record<string, CometMeasuredActivity>;
   label: Label;

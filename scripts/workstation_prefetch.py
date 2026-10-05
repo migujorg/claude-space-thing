@@ -2,9 +2,11 @@
 import concurrent.futures as cf
 import itertools
 import json
+import os
 from pathlib import Path
 import time
 
+os.environ["PIPELINE_NETWORK_METRICS"] = "1"
 import workstation_pipeline as network
 network.install()
 
