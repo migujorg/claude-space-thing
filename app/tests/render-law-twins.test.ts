@@ -201,6 +201,13 @@ describe('surface law twins', () => {
       }
     });
   }
+  it.skipIf(!built).fails('Akimov Mimas at 179°: KNOWN production quadrature error; disk energy agrees within 1e-4', () => {
+    const model = models.find(m => m.id === '601')!.model;
+    const alpha = deg(179), law = getLaw(model, alpha);
+    const shader = integrate(shaderLaw(law), alpha, 384);
+    const cpuNormalization = lawDiskIntegral(law, alpha, undefined, 32)[0];
+    expect(Math.abs(shader / cpuNormalization - 1)).toBeLessThan(1e-4);
+  });
   it.skipIf(!built)('Minnaert: removing the emission floor reproduces the published law (proposal only)', () => {
     for (const { model } of models.filter(m => m.model.kind === 'minnaert')) for (const phase of [...phaseDeg, ...extendedPhaseDeg]) {
       const alpha = deg(phase), law = getLaw(model, alpha);
@@ -272,13 +279,15 @@ if (env.LAW_TWINS_REPORT) {
           if (v > 0) pointRelative = Math.max(pointRelative, Math.abs(b / v - 1));
           pointAbsolute = Math.max(pointAbsolute, Math.abs(b - v));
         }
-        return { guards, rel: doubleCoarse / integrate(variant, alpha, 48) - 1, pointRelative, pointAbsolute };
+        return { guards: Object.fromEntries(Object.entries(guards).map(([key, value]) =>
+          [key, typeof value === 'number' && !Number.isFinite(value) ? String(value) : value])), rel: doubleCoarse / integrate(variant, alpha, 48) - 1, pointRelative, pointAbsolute };
       });
       const bcStableRel = model.kind === 'hapke' && (model.bc0 ?? 0) > 0 ? integrate(shaderLaw(law, { bcStable: true }), alpha, 48) / coarseCPU - 1 : null;
       const stableRel = model.kind === 'akimov' ? integrate(shaderLaw(law, { akimovStable: true }), alpha, 48) / coarseCPU - 1 : null;
       console.log(JSON.stringify({ id, name, kind: model.kind, phase, n, cpu, shader, rel: fineRel,
         guardRel: doubleShader / cpu - 1, lowCPUrel: lowCPU / cpu - 1,
-        quadratureDelta: coarseShader / coarseCPU - 1 - fineRel, maxRelative, maxAbsolute, attribution, stableRel, bcStableRel }));
+        quadratureDelta: coarseShader / coarseCPU - 1 - fineRel,
+        maxRelative: Number.isFinite(maxRelative) ? maxRelative : 'overflow', maxAbsolute, attribution, stableRel, bcStableRel }));
     }, 30000);
   }
 }
