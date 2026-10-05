@@ -1,9 +1,9 @@
 {
- "acceptedAt": "2026-10-01T00:37:20.084Z",
- "git": "21e2e74",
+ "acceptedAt": "2026-10-01T02:04:20.913Z",
+ "git": "48c7878",
  "data": {
-  "manifestGeneratedAt": "2026-09-30T22:06:28+00:00",
-  "manifestSha256": "17984e36c1446ed2e8a064226164536833ced4cae8ae627bdf6cb293b8abfdc1"
+  "manifestGeneratedAt": "2026-10-01T01:21:52+00:00",
+  "manifestSha256": "64e1da3bb8bff5250e646d17b2c5654c7bd70a0a134efcdda0f856b0990d4e8a"
  },
  "viewport": {
   "width": 1280,
@@ -2150,12 +2150,12 @@
   "eclipse-2027-totality": {
    "query": "t=2027-08-02T10:06:41.000Z&smallbodies=0&adapt=instant&target=301&dist=350939.1&az=179.99&el=0&fov=6",
    "stats": {
-    "adaptationLuminance": 2.933101925220398,
-    "scotopicAdaptationLuminance": 6.687328101372959,
-    "pupilDiameterMm": 7.208775196801148,
-    "mesopicM": 0.9282843469548748,
-    "limitingMagnitude": 2.508317465810339,
-    "starsDrawn": 1,
+    "adaptationLuminance": 203.4880974773421,
+    "scotopicAdaptationLuminance": 479.5009761038194,
+    "pupilDiameterMm": 6.569558537086447,
+    "mesopicM": 1,
+    "limitingMagnitude": -0.8860676943840289,
+    "starsDrawn": 0,
     "bodiesDrawn": 3,
     "bodies": [
      {
@@ -2184,7 +2184,7 @@
     ]
    },
    "consoleErrors": [],
-   "readyMs": 41293
+   "readyMs": 17767
   },
   "jupiter-double-shadow": {
    "query": "t=2027-01-30T15:12:07.461Z&smallbodies=0&adapt=instant&target=599&dist=300266.4&az=2.32&el=0.58",

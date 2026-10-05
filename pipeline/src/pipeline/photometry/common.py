@@ -77,6 +77,7 @@ class Download:
     browser_agent: bool = False     # send a browser User-Agent
     sha256: str | None = None       # digest of the hand-retrieved copy (documents behind a bot check only)
     retrieved: str | None = None    # date of that retrieval
+    transcribed_only: bool = False  # document cited for existing code/table transcriptions, never parsed as input
 
     def _dest(self) -> Path:
         return RAW / self.subdir / (self.name or self.url.rstrip("/").split("/")[-1])
@@ -104,6 +105,11 @@ class Download:
         try:
             path = self.fetch()
         except RuntimeError:
+            if self.transcribed_only and not self.sha256:
+                return SourceRecord(id=self.id, title=self.title, citation=self.citation, url=self.url,
+                                    retrieved="", version=self.version, license=self.license,
+                                    notes=(self.notes or "") + " (Document unavailable in this build. The pipeline "
+                                    "uses its existing transcription; no retrieval date or content checksum is claimed.)")
             if not self.sha256:
                 raise
             return SourceRecord(id=self.id, title=self.title, citation=self.citation, url=self.url,

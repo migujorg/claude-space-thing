@@ -206,3 +206,20 @@ def test_names_must_be_portable(bad):
 def test_portable_names_pass():
     download.check_portable("surfaces/earth/gibs/VIIRS_2026-09-28_-90_-180_-45_-90_8192x4096.png")
     download.check_portable("naif/spk-excerpts/sat441_JD2460763.876-2461863.876.bsp")
+def test_reserved_host_slots_leave_foreground_slots_free(tmp_path, monkeypatch):
+    import fcntl
+    import hashlib
+    host = "reserved.example"
+    monkeypatch.setattr(download, "RAW", tmp_path)
+    monkeypatch.setitem(download.HOST_LIMITS, host, 16)
+    label = "host:" + host
+    folder = tmp_path / ".locks" / hashlib.sha256(label.encode()).hexdigest()
+    with download._process_slot(label, 16, start_slot=8):
+        assert (folder / "8.lock").exists()
+        assert not (folder / "0.lock").exists()
+        with (folder / "8.lock").open("a+b") as occupied:
+            with pytest.raises(BlockingIOError):
+                fcntl.flock(occupied, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        with (folder / "0.lock").open("a+b") as foreground:
+            fcntl.flock(foreground, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            fcntl.flock(foreground, fcntl.LOCK_UN)

@@ -20,7 +20,8 @@ from . import filters, phase
 # ---------------------------------------------------------------------------------------------- datasets
 KARKOSCHKA = Download(
     id="karkoschka-1998-pds",
-    url="https://pds-atmospheres.nmsu.edu/PDS/data/gbat_0001/data/1995low.tab", subdir="karkoschka",
+    url="https://raw.githubusercontent.com/OrbitalCommons/starfield/"
+        "c9fb9df048e6e275e4f0b3e19e631762474b2f3c/crates/surfaces/data/planet-spectra/1995low.tab", subdir="karkoschka",
     name="1995low.tab",
     title="Full-disk albedo spectra of Jupiter, Saturn, Uranus, Neptune and Titan, 300-1050 nm, July 1995 "
           "(PDS ESO-J/S/N/U-SPECTROPHOTOMETER-4-V2.0, file 1995LOW.TAB)",
@@ -30,7 +31,11 @@ KARKOSCHKA = Download(
              "DOI:10.17189/2bp8-k793. Method: Karkoschka, E. (1994), Icarus 111, 174-192, "
              "DOI:10.1006/icar.1994.1139.",
     version="PDS3 GBAT_0001 (1999-02-18), product 1995LOW.TAB created 1998-12-17",
-    notes="ESO 1.52 m + Boller & Chivens spectrograph, 1995 July 6-10; 1 nm resolution sampled every 0.4 nm; air and "
+    notes="Retrieved from the Starfield redistribution of PDS GBAT_0001 product 1995LOW.TAB, pinned to commit "
+          "c9fb9df048e6e275e4f0b3e19e631762474b2f3c because the NMSU archive resets connections. The accompanying "
+          "PDS label identifies the same V2.0 product: 1875 fixed-length records of 54 bytes. Original URL: "
+          "https://pds-atmospheres.nmsu.edu/PDS/data/gbat_0001/data/1995low.tab. "
+          "ESO 1.52 m + Boller & Chivens spectrograph, 1995 July 6-10; 1 nm resolution sampled every 0.4 nm; air and "
           "vacuum wavelength columns (air used). Jupiter: full-disk albedo at phase 6.8°; Saturn: full-disk albedo "
           "at 5.7° for zero ring tilt (rings edge-on; the 3 % of the disk they hid was filled in); Uranus and "
           "Neptune: geometric albedo (phase 0.7° and 0.3°). Absolute calibration 4 % (relative 2 %), with an "

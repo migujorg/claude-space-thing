@@ -137,21 +137,28 @@ VINCENDON_2010 = Download(
 
 # ------------------------------------------------------------------------------------------------ Titan
 HASI_DESCENT = Download(
-    id="hasi-l4-descent", url="https://atmos.nmsu.edu/PDS/data/hphasi_0001/DATA/PROFILES/HASI_L4_ATMO_PROFILE_DESCEN.TAB",
+    id="hasi-l4-descent", url="https://archives.esac.esa.int/psa/ftp/CASSINI-HUYGENS/HASI/"
+        "HP-SSA-HASI-2-3-4-MISSION-V1.0/DATA/PROFILES/HASI_L4_ATMO_PROFILE_DESCEN.TAB",
     subdir="atmospheres/titan", name="HASI_L4_ATMO_PROFILE_DESCEN.TAB",
     title="Huygens HASI level-4 atmospheric profile, descent (time, altitude m, pressure Pa, temperature K, density)",
     citation="Fulchignoni, M., et al. (2005). In situ measurements of the physical characteristics of Titan's "
              "environment. Nature 438, 785-791. DOI:10.1038/nature04314. Data: Huygens HASI Mission Raw and "
              "Calibrated Data V1.1, HP-SSA-HASI-2-3-4-MISSION-V1.1, NASA PDS Atmospheres Node (hphasi_0001), "
              "product HASI_L4_ATMO_PROFILE_DESCEN (A. Aboudan, CISAS-UPD).",
-    license="NASA PDS")
+    license="NASA PDS",
+    notes="Retrieved from ESA's official PSA archive. Despite the directory name V1.0, the accompanying PDS "
+          "label explicitly identifies DATA_SET_ID HP-SSA-HASI-2-3-4-MISSION-V1.1, the required product version. "
+          "Original NMSU URL: https://atmos.nmsu.edu/PDS/data/hphasi_0001/DATA/PROFILES/HASI_L4_ATMO_PROFILE_DESCEN.TAB.")
 HASI_ENTRY = Download(
-    id="hasi-l4-entry", url="https://atmos.nmsu.edu/PDS/data/hphasi_0001/DATA/PROFILES/HASI_L4_ATMO_PROFILE_ENTRY.TAB",
+    id="hasi-l4-entry", url="https://archives.esac.esa.int/psa/ftp/CASSINI-HUYGENS/HASI/"
+        "HP-SSA-HASI-2-3-4-MISSION-V1.0/DATA/PROFILES/HASI_L4_ATMO_PROFILE_ENTRY.TAB",
     subdir="atmospheres/titan", name="HASI_L4_ATMO_PROFILE_ENTRY.TAB",
     title="Huygens HASI level-4 atmospheric profile, entry (time, altitude m, pressure Pa, temperature K)",
     citation="Fulchignoni, M., et al. (2005). Nature 438, 785-791. DOI:10.1038/nature04314. Data: NASA PDS "
              "Atmospheres Node hphasi_0001, product HASI_L4_ATMO_PROFILE_ENTRY.",
-    license="NASA PDS")
+    license="NASA PDS",
+    notes="Retrieved from ESA's official PSA archive. The accompanying PDS label identifies the V1.1 dataset. "
+          "Original NMSU URL: https://atmos.nmsu.edu/PDS/data/hphasi_0001/DATA/PROFILES/HASI_L4_ATMO_PROFILE_ENTRY.TAB.")
 PECK_KHANNA_N2 = Download(
     id="peck-khanna-1966-n2",
     url="https://raw.githubusercontent.com/polyanskiy/refractiveindex.info-database/master/database/data/main/N2/nk/"
