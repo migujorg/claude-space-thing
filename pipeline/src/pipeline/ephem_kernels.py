@@ -76,7 +76,7 @@ def planetary(ctx: BuildContext | None = None) -> Path:
             license=_LICENSE,
             notes="Contains barycenters 1-9 and the Sun (10) wrt the SSB, Mercury 199 wrt 1, Venus 299 wrt 2, "
                   "Moon 301 and Earth 399 wrt the Earth-Moon barycenter 3. Planet centers 499-999 wrt their "
-                  "system barycenters are NOT in this file (see jpl-horizons-center-*).",
+                  "system barycenters come from satellite kernels (ephem/centers), not this file.",
         ))
     return path
 
