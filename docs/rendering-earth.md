@@ -566,15 +566,23 @@ the surface scale is K = E☉/(πd²)·ρ_c with ρ_c the surface's X, Y, Z, S e
 (`ATM_OVER_PHOTOMETRY`) adds the sunlight and skylight through the air and the air's own light over and beyond
 the disk, and nothing is renormalised. The measured brightness and colour are thus a test of the data, not an
 input (results below). Until the tables are ready, or if the atmosphere cannot be drawn, the disk photometry
-stands in. An unresolved Titan (under 2 px) is still drawn from its disk photometry, so a growing disk switches
-from Karkoschka's measurement to the model; at 5.7° they differ by +1.8 % in Y.
+stands in (beyond its phase range, 0–5.7°, extrapolated with a Lambert law at Best estimate, with the usual
+warning). An unresolved Titan (under 1 px) is still drawn from its disk photometry, and between 1 and 2 px the
+two are blended, so a growing disk switches from Karkoschka's measurement to the model: at 5.7° the model's disk
+is +2 % in X and Y, +13 % in Z and +6 % in S (below, "Against the measurements"). This is an exception to
+architecture §4.3, which asks that a resolved disk's integral reproduce p·Φ(α): inside the photometry's range
+Titan's does not, in Z by more than the measurement's uncertainty. Beyond 5.7° the point is the Lambert
+extrapolation, which knows nothing of the haze's forward scattering: at 150° the model's disk reflects about 25
+times what that point does.
 
 **Why not Hillaire's table.** The haze is optically thick (τ ≈ 8 at 550 nm, ω 0.84–1, asymmetry 0.73–0.80).
-Hillaire's per-point estimate (isotropic orders ≥ 2, infinite-series closure) gave a geometric albedo 26 %
-(550 nm) and 54 % (400 nm) above a Monte Carlo solution of the same model; with the particle scattering
-similarity-scaled it was 70 % too dark. An isotropic emission of the diffuse field's mean intensity, even from
-an exact solution, was off by up to 17 % at low phase or 45 % at high phase, depending on how single scattering
-was attenuated. The angular shape of the multiple-scattering source matters.
+Hillaire's per-point estimate (isotropic orders ≥ 2, infinite-series closure) gives a disk 22 % (550 nm) and 48 %
+(400 nm) brighter at 6° phase than a Monte Carlo solution of the same model (the CPU twin with
+`multipleScattering` left at 'hillaire'). Two variants tried while this was written are no longer in the code,
+and their numbers were not measured again: with the particle scattering similarity-scaled it was 70 % too dark,
+and an isotropic emission of the diffuse field's mean intensity, even from an exact solution, was off by up to
+17 % at low phase or 45 % at high phase, depending on how single scattering was attenuated. The angular shape
+of the multiple-scattering source matters.
 
 **Orders of scattering** (`atmosphereMs.ts`, `AtmosphereModel.multipleScattering = 'orders'`, chosen for a body
 drawn from its model). Per 40 nm bin and solar zenith cosine μs (32 values), successive orders of scattering are
@@ -584,8 +592,9 @@ summed in azimuthal Fourier terms m = 0…5:
   every level is the table's spherical transmittance to the Sun. Each of 2 × 8 Gauss streams crosses each layer
   along its straight path in the shell, its radiance at the far level interpolated in μ between that level's
   streams: light travelling near the horizontal climbs out of the haze, as it does around a sphere. A plane-
-  parallel solution keeps it in the layer and made the air beyond the disk edge 15–24 % too bright.
-- **Forward peak**: the particle phase function is clipped at 16° (δ-fit; the clipped fraction f, 0.35–0.49,
+  parallel solution keeps it in the layer and made the air beyond the disk edge 15–24 % too bright (a variant no
+  longer in the code; not measured again).
+- **Forward peak**: the particle phase function is clipped at 16° (δ-fit; the clipped fraction f, 0.36–0.49,
   counts as unscattered). The whole path radiance is attenuated in the scaled medium (σ_t − f·σ_s,particle),
   single scattering with the full phase function and the scaled sunlight (Nakajima & Tanaka 1988, "TMS"). The
   transmittance table of an 'orders' model is the scaled one, also for the surface's sunlight.
@@ -604,20 +613,29 @@ summed in azimuthal Fourier terms m = 0…5:
   4 bins); `Atm.ms.x` switches the march (`atmStep` in shaders-atmosphere.ts, shared by `atmMarch` and the
   aerial-perspective columns) to the source table and the scaled path; `Atm.delta2` holds the second group's f.
   Per march step and 4 bins: 12 more texture reads.
-- **Cost**: about 8 s for Titan's 12 bins in the worker (Node).
+- **Cost**: 6.6 s for Titan's 12 bins (Node, the workstation; the app computes them in a worker).
 
-Sampling choices, at 550 and 750 nm and α = 6°, 90°, 166°: 16 instead of 8 streams, 10 instead of 6 Fourier
-terms, 37 instead of 19 view directions, layers of 0.01, a 64 × 64 table each change A_gΦ by ≤ 0.7 %. Clip angles
-from 2° to 24° change it by ≤ 1.5 % at 6° and by −5 to +13 % at 166°; 16° matches the streams' resolution
-(about 11°).
+Sampling choices, at 550 and 750 nm and α = 6°, 90°, 166° (measured when the solver was written; the constants
+are fixed in `atmosphereMs.ts` and the variations were not run again): 16 instead of 8 streams, 10 instead of 6
+Fourier terms, 37 instead of 19 view directions, layers of 0.01, a 64 × 64 table each change A_gΦ by ≤ 0.7 %.
+Clip angles from 2° to 24° change it by ≤ 1.5 % at 6° and by −5 to +13 % at 166°; 16° matches the streams'
+resolution (about 11°).
 
 **Accuracy** (`app/tests/render-titan.test.ts`; docs/reports/atmospheres.md "The renderer"). Against the Monte
-Carlo solution of the same model (`titan_rt.py`, every sample its own bin), the disk-integrated A_gΦ is
-1.04 times the reference (0.99–1.08 over 360–830 nm) at 6°, 0.97–1.05 at 60°, 0.94–1.05 at 90°, 0.90–1.07 at
-120°, 0.82–0.95 at 150° and 0.89–0.99 at 166°. Split at the solid limb (550 and 750 nm), the air beyond the disk
-is within ±5 % up to 120°; the low phases' excess is on the disk, and the deficit at 120–160° on the crescent
-(−20 to −30 % at 150°): the local-spherical-symmetry assumption misses the light that reaches the terminator
-from the sunlit side.
+Carlo solution of the same model (`titan_rt.py`, every sample its own bin), the disk-integrated A_gΦ of the CPU
+twin is, as the median over the 48 samples, 1.04 times the reference at 6°, 1.01 at 60°, 0.98 at 90°, 0.95 at
+120°, 0.89 at 150° and 0.94 at 166°. The reference's noise is 2–4 % per sample and phase bin, so the spread
+between samples (0.99–1.08 at 6°, 0.82–0.95 at 150°) is partly its noise; the medians are good to about 0.6 %.
+Split at the solid limb (550 and 750 nm; the reference's noise on each part is 2–10 %): the disk is 3–6 % too
+bright at 6° and 22–26 % too dark at 150°, where it is the thin crescent; the air beyond the disk is within 6 %
+from 60° to 120° and 5–14 % too dark at 150–166°, where it is nearly all the light (at 6°, where it is a tenth
+of the light, it is +19 % at 550 nm and −12 % at 750 nm, 3 and 1 times the noise). The local-spherical-symmetry
+assumption misses the light that reaches the terminator from the sunlit side.
+
+**The shaders against the CPU twin.** The disk-integrated light of rendered frames (the HDR buffer summed over
+a 512 × 512 view, Titan 330 px across, SwiftShader, 2026-10-04) is 1.003–1.004 of the CPU twin's at 6°, 1.002
+at 30°, 0.997 at 60°, 0.989 at 90°, 0.982–0.985 at 120°, 0.988–0.991 at 150° and 0.983–0.991 at 166° (X, Y, Z,
+S): the shaders draw what the twin computes to within 2 %, so the twin's numbers stand for the picture.
 
 **The 12 bins.** Methane bands narrower than a bin are averaged in extinction, not in transmission. Against
 every sample its own bin, Titan's X, Y, Z, S at 5.7° change by −1.5, −1.0, +0.5 and −0.2 %.
@@ -627,14 +645,20 @@ transmittances folded per channel (a per-channel product in place of the spectra
 δ-scaled transmittance, the surface gives under 0.01 % of the disk's light at 550 nm and 0.3 % at 750 nm (at 6°);
 the rest of its light reaches the eye scattered by the haze, inside the orders' solution.
 
-**Against the measurements** (pass: within twice the observation's 1σ). Karkoschka's (1998) albedo at 5.7°
-(±4 %): the rendered disk has X, Y, Z, S = 1.017, 1.018, 1.126, 1.057 of it, chromaticity (0.3832, 0.3740)
-against (0.3924, 0.3827): X, Y and S pass, Z fails. The blue excess comes from the haze albedo below 500 nm,
-which Doose et al. do not give and which is extrapolated (the Monte Carlo solution of the model has the same
-excess, Z 1.090). Cassini ISS phase curves (García Muñoz et al. 2017; CISSCAL ~10 %): the medians of measured /
-rendered pass in every 15–30° range from 0° to 160° in BL1, GRN, CB1, RED and CB2 (0.82–1.09); at 160–170° the
-rendering is 22–30 % brighter than measured (BL1 and GRN fail) — its forward scattering through the upper haze is too
-strong, as in the exact solution.
+**Against the measurements** (pass: within twice the observation's 1σ). Karkoschka's (1998) full-disk albedo at
+5.7° (absolute calibration ±4 %): the model itself, solved by the reference, has X, Y, Z, S = 0.994 ± 0.005,
+0.990 ± 0.005, 1.090 ± 0.009, 1.028 ± 0.006 of it (± the Monte Carlo noise); the CPU twin with the app's 12 bins
+1.017, 1.018, 1.126, 1.057; the rendered frame 1.022, 1.023, 1.130, 1.062. X, Y and S pass, Z fails. The
+brightness is right and the colour is not: the reflected sunlight has x, y = (0.3717, 0.3745) against the
+measured (0.3811, 0.3838), Δu′v′ = 0.006, bluer and less orange than Titan, and Z/Y is 10 % high, where a
+calibration error common to all wavelengths cancels. 93 % of the model's Z comes from below 500 nm, where Doose
+et al. give no haze albedo and it is extrapolated. At exact opposition the model is bluer still (Z rises by 12 %
+from 5.7° to 0°, Y by 1 %: the backscatter peak of the 355 and 430 nm phase functions), against the 2 % in every
+channel that the photometry assumes. Cassini ISS phase curves (García Muñoz et al. 2017; CISSCAL ~10 %): the
+medians of measured / rendered pass in every range from 0° to 160° in BL1, GRN, CB1, RED and CB2 (0.82–1.09),
+with BL1 (455 nm) at 0.82–0.88 up to 90°, the same blue excess seen by a second instrument; at 160–170° the
+rendering is 22–30 % brighter than measured (BL1, GRN and CB1 fail) — its forward scattering through the upper
+haze is too strong, as in the exact solution. Nothing in the model was changed for these results.
 
 **Not done for Titan:** the change of μs along a scattering path (the terminator), Saturnshine on the haze
 (planetshine lights the surface only), refraction, the methane bands at their 1 nm resolution, the detached

@@ -183,8 +183,9 @@ def _loglinear_in_angle(ang: np.ndarray, p: np.ndarray, to: np.ndarray) -> np.nd
 def titan_phase_on_grid(path, grid_nm: np.ndarray) -> dict:
     """Tomasko et al. (2008) phase functions at the product's wavelengths: linear in wavelength between the tabulated
     wavelengths (355, 430, 491, 600, 713, 822, 935 nm in the visible), log-linear in angle between the tabulated angles
-    onto TITAN_PHASE_ANGLES (the table's 1° steps under-resolve the forward peak: linear interpolation of them would
-    add 2-4 % to the integral, log-linear 0.1-1 %), each row then renormalized to a mean of 1 over the sphere with
+    (39: every 1° over 0-10° and 170-180°, 5-10° apart between) onto TITAN_PHASE_ANGLES (the table's 1° steps
+    under-resolve the forward peak: linear interpolation would add 2-4 % to the integral, log-linear 0.1-1 %), each
+    row then renormalized to a mean of 1 over the sphere with
     the schema's linear interpolation between the new nodes. Returns the table and diagnostics."""
     ang, lam, p = read_tomasko_phase(path)
     g = np.asarray(grid_nm, float)

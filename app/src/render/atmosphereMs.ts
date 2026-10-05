@@ -1,7 +1,7 @@
 // Multiple scattering for an optically thick, forward-scattering atmosphere (Titan's haze: τ ≈ 8 at 550 nm,
 // ω ≈ 0.85–1, asymmetry ≈ 0.75), where Hillaire's (2020) per-point estimate of atmosphere.ts does not hold
-// (docs/rendering-earth.md §8 "Titan": +26 % at 550 nm and +54 % at 400 nm on the geometric albedo against a
-// Monte Carlo solution of the same model). Instead the diffuse radiance field is solved by successive orders of
+// (docs/rendering-earth.md §8 "Titan": +22 % at 550 nm and +48 % at 400 nm on the disk's light at 6° phase against
+// a Monte Carlo solution of the same model). Instead the diffuse radiance field is solved by successive orders of
 // scattering (e.g. Lenoble 1985, Radiative Transfer in Scattering and Absorbing Atmospheres, ch. 6), per wavelength
 // bin and solar zenith cosine μs, in azimuthal Fourier terms m = 0 … FOURIER_N − 1 about the local vertical:
 //

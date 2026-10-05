@@ -211,9 +211,10 @@ def _tomasko_phase(region: str, alt: str) -> Download:
         citation=f"{_TOMASKO_2008} (Table 1: phase functions of the fractal-aggregate model fitted to the DISR "
                  f"measurements, above and below 80 km). Machine-readable copy: {_ADAMKOVICS}.",
         notes="Secondary transcription: Tomasko et al. (2008) is paywalled. Columns are wavelengths in Angstrom "
-              "(3550 ... 51660), rows scattering angles 0-180 deg; normalized to a mean of 1 over the sphere (checked: "
-              "1.001-1.011). Below 600 nm the two altitude regions are identical in the table; from 713 nm the "
-              "below-80-km functions have the stronger backscatter lobe.")
+              "(3550 ... 51660), rows 39 scattering angles from 0 to 180 deg (every 1 deg over 0-10 and 170-180, 5-10 "
+              "deg apart between); normalized to a mean of 1 over the sphere (checked: 1.001-1.012 with log-linear "
+              "interpolation in angle). Up to 600 nm the two altitude regions are identical in the table; from 713 nm "
+              "the below-80-km functions have the stronger backscatter lobe.")
 
 
 TOMASKO_PHASE_LOW = _tomasko_phase("below-80km", "0-80")

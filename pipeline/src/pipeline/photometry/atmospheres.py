@@ -409,8 +409,9 @@ def titan(b: Build) -> tuple[dict, dict]:
     phase_method = ("Huygens DISR aerosol phase function of Tomasko et al. (2008, Table 1: the fractal-aggregate "
                     "phase functions fitted to the DISR measurements, {which}), from the machine-readable copy in the "
                     "reference data of Adamkovics et al. (2016); linear in wavelength between the tabulated 355, 430, "
-                    "491, 600, 713, 822 and 935 nm, log-linear in angle onto 0.25° steps through the forward peak "
-                    "(0-10°), 1° to 30° and 2° beyond (the table's 1° steps under-resolve the peak), each row "
+                    "491, 600, 713, 822 and 935 nm, log-linear in angle from the table's 39 angles (every 1° over "
+                    "0-10° and 170-180°, 5-10° apart between) onto 0.25° steps through the forward peak (0-10°), 1° "
+                    "to 30° and 2° beyond (the table's 1° steps under-resolve the peak), each row "
                     "renormalized to a mean of 1 over the sphere (the tabulated rows integrate to "
                     "{norm_lo:.4f}-{norm_hi:.4f}). Asymmetry 0.73-0.80. ESTIMATE: a secondary transcription, "
                     "interpolated in wavelength, the landing-site fit used globally.")

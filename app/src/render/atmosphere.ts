@@ -69,7 +69,7 @@ export interface AtmosphereModel {
   groundAlbedo: number[];
   /**
    * How the multiple-scattering table is computed: Hillaire's per-point estimate (default; thin atmospheres) or
-   * successive orders of scattering in plane-parallel geometry (atmosphereMs.ts; optically thick haze).
+   * successive orders of scattering in a spherical shell (atmosphereMs.ts; optically thick haze).
    */
   multipleScattering?: 'hillaire' | 'orders';
   /**
