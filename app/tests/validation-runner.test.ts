@@ -133,5 +133,20 @@ describe('validate-lib markdownReport', () => {
     expect(md).toContain('Notes: n1');
     expect(md).toContain('Renderer warnings: w1');
     expect(md).toContain('did not render');
+    // A report without the adapter record (written before --gpu) keeps its header.
+    expect(md).toContain('1×1 samples per pixel · HDR auto\n');
+  });
+
+  it('says in the header which HDR targets and which adapter rendered the cases', () => {
+    const q = compareRoi(roi(VALUE, 'disk-centre'), { mean: [100, 100, 100, 100], std: [0, 0, 0, 0], n: 4 });
+    const c = (id: string, hdrFormat: string) => ({ id, width: 10, height: 10, renderMs: 1000, hdrFormat, rois: [q], ratios: [], stats: { warnings: [] }, scene: { notes: [], bodies: [] } });
+    const report = {
+      generatedAt: 'now', git: 'abc', dataGeneratedAt: 'then', options: { ss: 1, reality: 'best', hdr: 'auto' },
+      gpu: { mode: 'hardware', adapter: { vendor: 'nvidia', architecture: 'blackwell', device: '', description: '', fallback: false, float32Blendable: true } },
+      cases: [c('c1', 'rgba32float'), c('c2', 'rgba32float')],
+    };
+    expect(lib.markdownReport(report)).toContain('· HDR auto (rgba32float) · GPU hardware: nvidia blackwell (hardware)\n');
+    expect(lib.markdownReport({ ...report, options: { ...report.options, hdr: 'f16' }, gpu: { mode: 'swiftshader', adapter: null }, cases: [c('c1', 'rgba16float')] }))
+      .toContain('· HDR f16 (rgba16float) · GPU swiftshader: none\n');
   });
 });
