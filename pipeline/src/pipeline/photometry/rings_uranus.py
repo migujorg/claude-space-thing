@@ -520,7 +520,7 @@ def build(ctx: BuildContext | None = None) -> tuple[dict, dict]:
             id=f"uranus-{ring}", name=NAMES.get(ring, f"ring {ring}"), inner=i_e, outer=o_e,
             u_start=float(prof.u[0]), u_step=float(prof.u[1] - prof.u[0]), profile=prof.tau_ref,
             width_ref_km=prof.w_ref, width_scaling=ring != "lambda", optical_depth_known=True,
-            geometry=rc.Prov("derived", [s_french], geo_method if ring != "lambda" else
+            geometry=rc.Prov("derived" if ring != "lambda" else "estimated", [s_french], geo_method if ring != "lambda" else
                              f"Circular band ±{LAMBDA_HALF_WINDOW} km about the λ ring's fitted semimajor axis (French "
                              "et al. 2024 Table 5; its eccentricity and inclination were held at 0)."),
             optical_depth=rc.Prov(
@@ -569,8 +569,9 @@ def build(ctx: BuildContext | None = None) -> tuple[dict, dict]:
         id="uranus-zeta", name="ζ ring", inner=rc.edge(float(zr[0])), outer=rc.edge(float(zr[-1])),
         u_start=0.0, u_step=float((zr[1] - zr[0]) / (zr[-1] - zr[0])), profile=zv, width_ref_km=float(zr[-1] - zr[0]),
         width_scaling=False, optical_depth_known=False,
-        geometry=rc.Prov("measured", [s_zeta], "Circular, 33,300-41,500 km (Voyager 2 WAC, 1986; Hedman et al. "
-                         "2023 Table 5). Its 2007 form (de Pater et al. 2007) differs: the 1986 profile is shown."),
+        geometry=rc.Prov("estimated", [s_zeta], "Assumed circular, 33,300-41,500 km radial profile (Voyager 2 WAC, "
+                         "1986; Hedman et al. 2023 Table 5); eccentricity and inclination not measured. Its 2007 "
+                         "form (de Pater et al. 2007) differs: the 1986 profile is shown."),
         optical_depth=rc.Prov("unknown", [], "Below the occultation detection limit; brightness only."),
         reflectance=rc.Prov("estimated", [s_zeta, s_hs],
                             f"Normal I/F profile at α ≈ {z_alpha:.1f}° (Hedman et al. 2023 Table 5, 1986, negative "

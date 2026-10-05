@@ -63,6 +63,26 @@ def test_tiled_bins_cover_the_band_exactly():
     assert u0 - 0.5 * du == 0.0 and centres[-1] + 0.5 * du == pytest.approx(1.0)
 
 
+@pytest.mark.parametrize("key,cid,aspect", [
+    ("899", "neptune-adams", "opticalDepth"),
+    ("799", "uranus-lambda", "geometry"),
+    ("799", "uranus-zeta", "geometry"),
+])
+def test_assumed_component_values_are_estimated(built, key, cid, aspect):
+    # Redistributing a measured integral or choosing circular geometry/width introduces an assumption.
+    comp = next(c for c in _model(built[1], key)["components"] if c["id"] == cid)
+    assert comp["provenance"][aspect]["label"] == "estimated"
+
+
+def test_figure_inputs_remain_estimated_in_the_product(built):
+    for c in _model(built[1], "599")["components"]:
+        assert all(p["label"] == "estimated" for p in c["provenance"].values())
+    for t in _model(built[1], "599")["phaseFunctions"].values():
+        assert t["label"] == "estimated"
+    arcs = next(c for c in _model(built[1], "899")["components"] if "arcs" in c)
+    assert arcs["provenance"]["reflectance"]["label"] == "estimated"
+
+
 # ---------------------------------------------------------------------------------------------- transcriptions
 def test_transcribed_tables():
     orb = rings_uranus.orbits()
@@ -89,6 +109,21 @@ def test_jupiter_large_bodies_follow_the_callisto_power_law():
     v = np.array([float(r["large_tau_w0_p"]) for r in rows])
     model = v[0] * rc.power_law(a, rings_jupiter.N_CALLISTO)
     assert np.max(np.abs(v / model - 1)) < 0.15
+
+
+def test_souami_transcription_matches_both_text_peaks():
+    """Souami et al. (2022), Sect. 3.1: Fraternité 84 m, Égalité 76 m (both ±18 m observational error).
+    Use the ~1.5 m digitization error, not the much larger observation error, for a transcription check.
+    """
+    lon, ew = rings_neptune.arcs_profile()
+    assert ew[lon < 7.5].max() == pytest.approx(84.0, abs=2.0)
+    assert ew[lon >= 7.5].max() == pytest.approx(76.0, abs=2.0)
+
+
+def test_throop_profile_peak_matches_the_text_radius():
+    """Throop et al. (2004), Sect. 2.1.2: α=1° peak at Metis, 1.79 R_J, radius error ±0.02 R_J."""
+    p = rings_jupiter.profiles()
+    assert p["r"][np.nanargmax(p["p1"])] == pytest.approx(1.79, abs=0.02)
 
 
 # ---------------------------------------------------------------------------------------------- Uranus checks

@@ -137,6 +137,18 @@ describe('ring components: optical depth and light', () => {
     // exact up to the interpolation of G between its nodes (power law): here 3e-4
     expect(Math.abs(T - (1 - (100 / 400) * (1 - Math.exp(-0.3 / 0.6))))).toBeLessThan(1e-3);
   });
+
+  it('unknown light marks the covered footprint even for a faint ring or a brightness-only band', () => {
+    for (const brightnessOnly of [false, true]) {
+      const faint = comp({ values: [1e-8, 0, 1e-8, 0], layer: null });
+      faint.profile.opticalDepthKnown = !brightnessOnly;
+      const m = model([faint]);
+      const out = componentsIF(m, [componentTable(faint)], 1050, 0, 0, 400, 0.5, 0.5, true, 5);
+      expect(out.iof).toEqual([0, 0, 0, 0]);
+      expect(out.unknownCoverage).toBeCloseTo((100 / 400) * 0.5, 9);
+      expect(componentsIF(m, [componentTable(faint)], 900, 0, 0, 50, 0.5, 0.5, true, 5).unknownCoverage).toBe(0);
+    }
+  });
 });
 
 describe('ring components: packing', () => {

@@ -13,8 +13,9 @@ longitude uncertainty grows by 0.01° per year). The arcs' shapes and brightness
 leading arcs Liberté and Courage faded after 1989; Égalité's brightness relative to Fraternité changed by ~20 %
 between 2002 and 2009): the 2016 profile is shown at all times.
 
-Optical depth: the Adams ring's from the Voyager 2 PPS σ Sgr occultation (PDS VG_2801, 5 km; measured: its equivalent
-depth spread over the 15 km band); the others from Table 5.1 (order-of-magnitude values: estimated).
+Optical depth: the Adams ring's from the Voyager 2 PPS σ Sgr occultation (PDS VG_2801, 5 km; estimated: its measured
+equivalent depth spread uniformly over the assumed 15 km band); the others from Table 5.1 (order-of-magnitude values:
+estimated).
 
 Reflectance (estimated): optically thin scattering (I/F = D(α)·τ/(4μ)) calibrated on the JWST NIRCam F210M (2.09 µm)
 normal equivalent widths of the Adams ring (arcs excluded) and of the Le Verrier + Lassell + Arago rings (Hedman et
@@ -169,7 +170,7 @@ def build(ctx: BuildContext | None, pps) -> tuple[dict, dict]:
         geometry=rc.Prov("estimated", geo_src, f"Circular and equatorial at a = {ADAMS_A_KM} km (Porco 1991, from the "
                          f"arcs' mean motion), {w:.0f} km wide (Table 5.1, in the arcs); the measured 29.6 km m = 43 "
                          "distortion is not modelled."),
-        optical_depth=rc.Prov("measured", pps_srcs,
+        optical_depth=rc.Prov("estimated", pps_srcs + geo_src,
                               f"Voyager 2 PPS σ Sgr ingress (1989, 5 km bins): equivalent depth ∫τ dr = {adams_ed:.3f} "
                               f"± {adams_sig:.3f} km over {ADAMS_PPS_WINDOW[0]:.0f}-{ADAMS_PPS_WINDOW[1]:.0f} km, "
                               f"spread uniformly over the {w:.0f} km band (τ = {tau_adams:.4f}); one cut, outside the "

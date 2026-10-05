@@ -447,7 +447,7 @@ export function prepareRings(b: SceneBody, sunIrradianceXYZS_1AU: XYZS | null, s
   const alphaDeg = (Math.acos(Math.max(-1, Math.min(1, dot(toObs, sunDir)))) * 180) / Math.PI;
   if (comps) {
     const dark = comps.components.filter((c) => !c.layer && !c.thin && c.profile.opticalDepthKnown).map((c) => c.name);
-    if (dark.length) out.warnings.push(`${b.name} rings: reflectance not measured for ${dark.join(', ')} → absorbs and casts shadows only, hatched as not measured where its mean optical depth in a pixel exceeds 0.001`);
+    if (dark.length) out.warnings.push(`${b.name} rings: reflectance not measured for ${dark.join(', ')} → absorbs and casts shadows only, covered material hatched as not measured`);
     const outside = Object.values(comps.phaseFunctions).filter((t) => !phaseValue(t, alphaDeg)).map((t) => t.name);
     if (outside.length) out.warnings.push(`${b.name} rings: phase angle ${alphaDeg.toFixed(2)}° outside the measured range of ${outside.join('; ')} → that light not measured (hatched)`);
   } else if (!m) out.warnings.push(`${b.name} rings: reflectance not measured → rings absorb and cast shadows only; their material is hatched as not measured`);

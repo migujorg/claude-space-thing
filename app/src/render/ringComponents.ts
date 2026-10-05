@@ -209,6 +209,8 @@ export interface ComponentLight {
   iof: XYZS;
   /** Mean τ over the footprint where reflectance is not known (no layer/thin, or α outside a table's domain). */
   tauUnknown: number;
+  /** Covered fraction with unknown brightness, independent of the material's optical depth. */
+  unknownCoverage: number;
   /** Mean τ over the footprint (optical-depth components). */
   tau: number;
 }
@@ -221,7 +223,7 @@ export function componentsIF(
   model: RingComponentModel, tables: ComponentTable[], r: number, lam: number, et: number, fw: number,
   mu: number, mu0: number, lit: boolean, alphaDeg: number,
 ): ComponentLight {
-  const out: ComponentLight = { iof: [0, 0, 0, 0], tauUnknown: 0, tau: 0 };
+  const out: ComponentLight = { iof: [0, 0, 0, 0], tauUnknown: 0, unknownCoverage: 0, tau: 0 };
   model.components.forEach((c, k) => {
     if (c.kind !== 'sheet') return;
     const b = bandAt(model, c, lam, et);
@@ -234,7 +236,10 @@ export function componentsIF(
     const L = c.layer ? phaseValue(model.phaseFunctions[c.layer.phaseFunction], alphaDeg) : null;
     const D = c.thin ? phaseValue(model.phaseFunctions[c.thin.phaseFunction], alphaDeg) : null;
     if (c.profile.opticalDepthKnown) out.tau += tauMean;
-    if ((c.layer && !L) || (c.thin && !D) || (!c.layer && !c.thin)) out.tauUnknown += tauMean;
+    if ((c.layer && !L) || (c.thin && !D) || (!c.layer && !c.thin)) {
+      out.tauUnknown += tauMean;
+      if (b.s > 0) out.unknownCoverage += frac * tableSegment(t, 1, ua, ub);
+    }
     if (!(mu > 0) || !(mu0 > 0)) return;
     if (L && c.layer) {
       let geo: number;

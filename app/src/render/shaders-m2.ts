@@ -685,7 +685,7 @@ fn cmpVertCdf(R: Ring, k: u32, rho: f32, z: f32) -> f32 {
   return 0.5 + sign(z) * 0.5 * g / (i1 + i2);
 }
 
-struct TorusOut { L: vec4f, tNear: f32 };
+struct TorusOut { L: vec4f, tNear: f32, unknown: f32 };
 
 /** Half-thickness (km) of torus component k at its outer radius: the slab its material fills. */
 fn cmpTorusHalf(R: Ring, k: u32) -> f32 {
@@ -711,6 +711,7 @@ fn cmpTorus(R: Ring, o: vec3f, d: vec3f, tMax: f32, alphaDeg: f32) -> TorusOut {
   var out: TorusOut;
   out.L = vec4f(0.0);
   out.tNear = 1e30;
+  out.unknown = 0.0;
   let N = R.N.xyz;
   let oz = dot(o, N);
   let dz = dot(d, N);
@@ -725,7 +726,7 @@ fn cmpTorus(R: Ring, o: vec3f, d: vec3f, tMax: f32, alphaDeg: f32) -> TorusOut {
     if ((u32(h3.w) & 8u) == 0u) { continue; }
     let h4 = cmpV(R, base + 4u);
     let D = cmpPhase(R, h4.z, alphaDeg);
-    if (D.w < 0.0) { continue; }
+    let lightKnown = D.w >= 0.0;
     let b6 = cmpV(R, base + 6u);
     let zM = cmpTorusHalf(R, k);
     var t0 = 0.0;
@@ -770,10 +771,11 @@ fn cmpTorus(R: Ring, o: vec3f, d: vec3f, tMax: f32, alphaDeg: f32) -> TorusOut {
       }
       let dtau = prof * frac * dt;
       if (dtau <= 0.0) { continue; }
-      acc += dtau * planetShadow(R, X);
+      if (lightKnown) { acc += dtau * planetShadow(R, X); }
+      else { out.unknown = 1.0; }
       out.tNear = min(out.tNear, ta);
     }
-    out.L += h4.w * D * (0.25 * acc);
+    if (lightKnown) { out.L += h4.w * D * (0.25 * acc); }
   }
   return out;
 }
@@ -859,6 +861,7 @@ fn fsComponents(R: Ring, X: vec3f, t: f32, dir: vec3f, r: f32, fw: f32) -> FOut 
     let lenD = length(dir);
     let tor = cmpTorus(R, R.o.xyz, dirN, tPlanet * lenD, alphaDeg);
     if (tor.tNear < 1e29) { L += tor.L; tNear = tor.tNear / lenD; }
+    unk += tor.unknown;
   }
   // Sheets: at the ring-plane intersection, if it lies in front of the camera and of the planet.
   if (t > 0.0 && t < tPlanet && r - fw <= R.geo.x && r + fw >= R.N.w) {
@@ -881,12 +884,11 @@ fn fsComponents(R: Ring, X: vec3f, t: f32, dir: vec3f, r: f32, fw: f32) -> FOut 
       let T = cmpSeg(R, k, 0u, ua, ub);
       if (T <= 0.0 || bd.s <= 0.0) { continue; }
       let frac = bd.W / fw;
-      let tauMean = frac * bd.s * T;
       let h4 = cmpV(R, base + 4u);
       let Lt = cmpPhase(R, h4.x, alphaDeg);
       let Dt = cmpPhase(R, h4.z, alphaDeg);
       let noLight = h4.x < 0.0 && h4.z < 0.0;
-      if (noLight || (h4.x >= 0.0 && Lt.w < 0.0) || (h4.z >= 0.0 && Dt.w < 0.0)) { unk += tauMean; }
+      if (noLight || (h4.x >= 0.0 && Lt.w < 0.0) || (h4.z >= 0.0 && Dt.w < 0.0)) { unk += frac * cmpSeg(R, k, 1u, ua, ub); }
       if (mu <= 0.0 || mu0 <= 0.0) { continue; }
       if (h4.x >= 0.0 && Lt.w >= 0.0) {
         var geo: f32;
@@ -902,13 +904,13 @@ fn fsComponents(R: Ring, X: vec3f, t: f32, dir: vec3f, r: f32, fw: f32) -> FOut 
       if (h4.z >= 0.0 && Dt.w >= 0.0) { Ls += h4.w * Dt * (frac * bd.s * T / (4.0 * mu)); }
     }
     L += Ls * planetShadow(R, X);
-    if (dot(Ls, vec4f(1.0)) > 0.0 || unk > 1e-3) { tNear = min(tNear, t); }
+    if (dot(Ls, vec4f(1.0)) > 0.0 || unk > 0.0) { tNear = min(tNear, t); }
   }
   if (tNear >= 1e29) { discard; }
   var o: FOut;
   o.ext = toStore(F, L * R.esun);
   o.w = 1.0;
-  o.mask = select(0.0, 1.0, unk > 1e-3);
+  o.mask = clamp(unk, 0.0, 1.0);
   o.depth = F.proj.z / max(tNear * dot(dir, -F.back.xyz), F.proj.z);
   return o;
 }
@@ -929,4 +931,3 @@ export const MASK_HATCH_SHADER = /* wgsl */ `
   return vec4f(vec3f(g) * 0.7, 0.7);
 }
 `;
-
