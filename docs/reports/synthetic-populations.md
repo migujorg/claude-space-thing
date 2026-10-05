@@ -243,7 +243,7 @@ The limits lie fainter than the surveys' own statements of completeness. Sheppar
 
 - **p_V:** a quantile draw from the NEOWISE albedos of the planet's irregulars (Grav et al. 2015 Table 3): seven retrograde jovians, 0.029–0.052; for Saturn, Phoebe, Albiorix and Siarnaq, 0.050–0.10.
 - **Colour:** grey (the solar colour), because no irregular-moon colours are transcribed. The app draws the real irregular moons grey for the same reason (`grav-2015` note). A synthetic moon has `colorClass` 255 (header `grey`).
-- **Rotation:** unknown (NaN). G = 0.15, as for every synthetic object.
+- **Rotation:** unknown (NaN in the binary product); the inspector shows an `unknown` row. G = 0.15, as for every synthetic object.
 
 Synthetic jovian moons have D 0.8–2.3 km (V ≥ 24.3 from the Earth), saturnian ones D 2.3–3.7 km (V ≥ 25.5).
 
