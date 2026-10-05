@@ -2,14 +2,14 @@
 //   /sb-test.html?mode=accuracy[&n=1000]   GPU vs float64 CPU reference (19 verification objects + n random ones)
 //   /sb-test.html?mode=timing[&chunk=65536] full catalogue: create, one grid step, shade
 //   /sb-test.html?mode=render&scene=above|inside  real-data frame through the renderer (enhanced / eye)
-//   /sb-test.html?mode=synthetic                   synthetic layer: GPU records vs float64 two-body positions and
+//   /sb-test.html?mode=synthetic[&syncam=5]       synthetic layer: GPU records vs float64 two-body positions and
 //                                                  photometry, level gating, pick, timing
 //   /sb-test.html?mode=comet                       comet coma shader: rendered flux vs the M1/K1 illuminance
 // Results in window.__sbResult (JSON); render mode sets window.__frameReady.
 
 import { cometGpuFlux } from '../../render/comets/gputest';
 import type { EphemHeader, LightData, SmallBodyCoreHeader, SmallBodyPhotometry, SmallBodyPhysicalHeader, SmallBodyTableHeader, BinaryTableHeader, SyntheticObjectsHeader } from '../../data/schema';
-import { readSynthetic, syntheticState } from '../../core/smallbodySynthetic';
+import { centerStateFrom, readSynthetic, syntheticState } from '../../core/smallbodySynthetic';
 import { hgPhi, magnitudeToXYZS } from '../../core/smallbodyPhotometry';
 import { Ephemeris, EphemerisSet } from '../../core/ephemeris';
 import { SB_OK, SmallBodyPropagator, type NonGrav } from '../../core/smallbody';
@@ -617,25 +617,31 @@ async function synthetic(): Promise<unknown> {
   const cls = (tables.coreHeader.colorClasses?.classes ?? []).map((c) => c.xyzsPerUnitPV.map((v, k) => v / sunXYZS[k]));
   const G = all.synthetic.header.slopeParameterG!.value;
   const rand = rng(99);
-  const sample = Array.from({ length: 20000 }, () => Math.floor(rand() * S));
+  // 20 000 random objects, plus every object of the planet-centred populations (synthetic irregular moons)
+  const cen = centerStateFrom(eph, 10);
+  const moonRows = all.synthetic.header.populations.filter((p) => p.center).flatMap((p) => Array.from({ length: p.objects }, (_, k) => p.firstObject + k));
+  const isMoon = new Set(moonRows);
+  const sample = [...Array.from({ length: 20000 }, () => Math.floor(rand() * S)), ...moonRows];
   const DAY = 86400;
   const res: Record<string, unknown>[] = [];
   const win = tables.coreHeader.window;
   for (const dd of (params.get('days') ?? '0,0.37,200.6,-547.2,547.9').split(',').map(Number)) {
     const et = Math.min(win.endEt - 60, Math.max(win.startEt + 60, field.epochEt + dd * DAY));
     const sun = eph.positionSSB(10, et)!;
-    const cam: Vec3 = [sun[0] + 0.4 * AU_KM, sun[1] + 2.2 * AU_KM, sun[2] - 0.1 * AU_KM];
+    // syncam=<naif id>: the camera 0.2 au from that body (e.g. 5: next to Jupiter, among its synthetic irregular moons)
+    const near = params.get('syncam') ? eph.positionSSB(Number(params.get('syncam')), et) : null;
+    const cam: Vec3 = near ? [near[0] + 0.15 * AU_KM, near[1] + 0.12 * AU_KM, near[2] + 0.05 * AU_KM] : [sun[0] + 0.4 * AU_KM, sun[1] + 2.2 * AU_KM, sun[2] - 0.1 * AU_KM];
     const ms = await submit(dev, field, et, cam, 'complete');
     const recs = await field.readRecords();
     const u32 = new Uint32Array(recs.buffer);
     const sa = eph.positionSSB(10, et - 1)!, sb = eph.positionSSB(10, et + 1)!;
     const sv = [0, 1, 2].map((j) => (sb[j] - sa[j]) / 2);
-    let maxAng = 0, maxKm = 0, maxDm = 0, maxDm30 = 0, idxOk = 0, lit = 0;
+    let maxAng = 0, maxKm = 0, maxDm = 0, maxDm30 = 0, maxDm30Alpha120 = 0, maxDmMoon = 0, idxOk = 0, lit = 0;
     const angs: number[] = [];
     for (const j of sample) {
       const o = 8 * (N + j);
       if (u32[o + 7] === N + j) idxOk++;
-      const st = syntheticState(syn, j, et)!;
+      const st = syntheticState(syn, j, et, cen)!;
       const rel0 = [0, 1, 2].map((k) => st.pos[k] + sun[k] - cam[k]);
       const tau = Math.hypot(...rel0) / C_KM_S;
       const rel = [0, 1, 2].map((k) => rel0[k] - tau * (st.vel[k] + sv[k]));
@@ -656,13 +662,15 @@ async function synthetic(): Promise<unknown> {
         const dm = Math.abs(-2.5 * Math.log10(recs[o + 4] / E[1]));
         maxDm = Math.max(maxDm, dm);
         if (m < 30) maxDm30 = Math.max(maxDm30, dm);
+        if (m < 30 && alpha < 2.1) maxDm30Alpha120 = Math.max(maxDm30Alpha120, dm);
+        if (isMoon.has(j)) maxDmMoon = Math.max(maxDmMoon, dm);
       }
     }
     if (params.get('debug') === '1') {
       // worst few: CPU with / without light time, elements
       const worst = sample.map((j) => {
         const o = 8 * (N + j);
-        const st = syntheticState(syn, j, et)!;
+        const st = syntheticState(syn, j, et, cen)!;
         const rel0 = [0, 1, 2].map((k) => st.pos[k] + sun[k] - cam[k]);
         const d0 = Math.hypot(...rel0);
         const tau = d0 / C_KM_S;
@@ -675,7 +683,7 @@ async function synthetic(): Promise<unknown> {
       log(`worst: ${JSON.stringify(worst)}`);
       const wph = sample.map((j) => {
         const o = 8 * (N + j);
-        const st = syntheticState(syn, j, et)!;
+        const st = syntheticState(syn, j, et, cen)!;
         const rel0 = [0, 1, 2].map((k) => st.pos[k] + sun[k] - cam[k]);
         const tau = Math.hypot(...rel0) / C_KM_S;
         const rel = [0, 1, 2].map((k) => rel0[k] - tau * (st.vel[k] + sv[k]));
@@ -688,16 +696,19 @@ async function synthetic(): Promise<unknown> {
         const k = syn.table.get('colorClass', j);
         const E = magnitudeToXYZS(phot, m, cls[k] ?? [1, 1, 1, 1]);
         return { j, k, cls: cls[k], dm: -2.5 * Math.log10(recs[o + 4] / E[1]), alphaDeg: alpha * 180 / Math.PI, rAu: r / AU_KM, dAu: dist / AU_KM, m, gpuY: recs[o + 4], cpuY: E[1] };
-      }).sort((x, y) => Math.abs(y.dm) - Math.abs(x.dm)).slice(0, 4);
+      }).filter((x) => x.m < 30 && Number.isFinite(x.dm)).sort((x, y) => Math.abs(y.dm) - Math.abs(x.dm)).slice(0, 4);
       log(`worst photometry: ${JSON.stringify(wph)}`);
       const pops = new Map<number, number[]>();
       sample.forEach((j, q) => { const pp = syn.table.get('pop', j); if (!pops.has(pp)) pops.set(pp, []); pops.get(pp)!.push(angs[q]); });
       log(`by pop (unsorted angs): ${JSON.stringify([...pops].map(([k, v]) => [k, v.length, v.sort((a, b) => a - b)[v.length >> 1]]))}`);
     }
+    const moonAngs = sample.map((j, q) => (isMoon.has(j) ? angs[q] : -1)).filter((x) => x >= 0).sort((a, b) => a - b);
     angs.sort((a, b) => a - b);
-    const r = { days: dd, gpuMs: Math.round(ms), sampled: sample.length, indexOk: idxOk, lit, maxDirErrRad: maxAng, p50DirErrRad: angs[angs.length >> 1], p99DirErrRad: angs[Math.floor(0.99 * angs.length)], maxPosErrKm: maxKm, maxDmagVsCpuBrighterThanV30: maxDm30, maxDmagVsCpuAll: maxDm };
+    const r = { days: dd, gpuMs: Math.round(ms), sampled: sample.length, indexOk: idxOk, lit, maxDirErrRad: maxAng, p50DirErrRad: angs[angs.length >> 1], p99DirErrRad: angs[Math.floor(0.99 * angs.length)], maxPosErrKm: maxKm, maxDmagVsCpuBrighterThanV30: maxDm30, maxDmagVsCpuAll: maxDm,
+      maxDmagVsCpuBrighterThanV30PhaseBelow120: maxDm30Alpha120,
+      moons: moonAngs.length ? { n: moonAngs.length, p50DirErrRad: moonAngs[moonAngs.length >> 1], maxDirErrRad: moonAngs[moonAngs.length - 1], maxDmagVsCpu: maxDmMoon } : null };
     res.push(r);
-    log(`t = ${dd} d: GPU ${ms.toFixed(0)} ms; direction max ${maxAng.toExponential(2)} rad (${maxKm.toFixed(0)} km at the object), p99 ${r.p99DirErrRad.toExponential(2)}, p50 ${angs[angs.length >> 1].toExponential(2)}; photometry max ${maxDm30.toFixed(4)} mag (V < 30; ${maxDm.toFixed(2)} for all, the faintest being V ~ 36 where the device's exp2 is coarse) over ${lit} lit; index ok ${idxOk}/${sample.length}`);
+    log(`t = ${dd} d: GPU ${ms.toFixed(0)} ms; direction max ${maxAng.toExponential(2)} rad (${maxKm.toFixed(0)} km at the object), p99 ${r.p99DirErrRad.toExponential(2)}, p50 ${angs[angs.length >> 1].toExponential(2)}; photometry max ${maxDm30.toFixed(4)} mag (V < 30; ${maxDm.toFixed(2)} for all, the faintest being V ~ 36 where the device's exp2 is coarse) (phase < 120°: ${maxDm30Alpha120.toFixed(4)}) over ${lit} lit; index ok ${idxOk}/${sample.length}${r.moons ? `; irregular moons (${r.moons.n}): direction p50 ${r.moons.p50DirErrRad.toExponential(2)}, max ${r.moons.maxDirErrRad.toExponential(2)} rad, photometry max ${r.moons.maxDmagVsCpu.toFixed(4)} mag` : ''}`);
   }
   // Level gating: below complete every synthetic record is zero (not drawn, not pickable); counts arrive later.
   const et = field.epochEt;
@@ -720,7 +731,7 @@ async function synthetic(): Promise<unknown> {
   await new Promise((r) => setTimeout(r, 50));
   const statsBest = field.stats;
   const so = field.stateOf(N + j0, et + 10 * DAY);
-  const cpu = syntheticState(syn, j0, et + 10 * DAY);
+  const cpu = syntheticState(syn, j0, et + 10 * DAY, cen);
   log(`gating: at complete pick -> ${pickedOn} (want ${N + j0}), stats ${JSON.stringify(statsComplete)}; at best ${nonZero} non-zero synthetic records, pick -> ${pickedOff}, stats ${JSON.stringify(statsBest)}; shade ${onMs.toFixed(0)} ms (complete) vs ${offMs.toFixed(0)} ms (best)`);
   return {
     catalogue: N, synthetic: S, createMs, info: field.info.synthetic, times: res,
