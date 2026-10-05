@@ -157,10 +157,14 @@ retain their logical pipeline query identities, while sidecars, job state, and
 the download ledger retain the actual mirror queries and result URLs. ARI jobs
 aborted at its execution limit are retried at AIP. No scientific tolerances changed.
 
-After rebuilding the small-body catalogue or changing its window, regenerate
-its reference fixtures with `pipeline/.venv/bin/python -m pipeline.sb_fixtures`.
-Event tests compare only CNEOS reference dates inside the built window and
-require at least one such reference; their numerical tolerances are unchanged.
+Rebuilding the small-body catalogue, or changing its window, does not require
+regenerating any test fixture. The `smallbodies` stage writes a build record
+(`verification/smallbodies.json`) with its products, and the tests that compare
+the app with the pipeline on the built catalogue read it; the committed
+references keep their own epoch (README, "Tests and references"). The event
+test takes its CNEOS approaches from the same record: the ones JPL computed for
+this window from the orbit solutions the catalogue holds. Numerical tolerances
+are unchanged.
 
 NMSU's two PDS archive hosts reset connections both directly and through eight
 tested Mullvad relay countries. Three download declarations were repaired:
@@ -177,8 +181,12 @@ No scientific calculations or transcribed values were changed.
 The upstream precise-orientation test fixture was generated with the September
 29 Earth kernel. This build downloaded the October 3 revision. The exported
 orientation agrees with SPICE using the current inputs within 3.6e-13; the old
-fixture differs by up to 1.9e-9. The fixture was refreshed with the pipeline's
-SPICE generator and now records input hashes. After future body-data rebuilds,
-refresh it with `pipeline/.venv/bin/python scripts/refresh-orientation-fixture.py`
-before running app tests. The NEO event test now skips when its optional
-small-body catalogue has not been built, including minimal-profile builds.
+fixture differs by up to 1.9e-9, because NAIF reissues that kernel as
+measurements arrive. The 1e-12 bound of the test is a rounding bound against
+SPICE on the same kernel file, so the `bodies` stage now writes SPICE's values
+for the files it copied (`verification/orientation.json`) and the app test
+compares with that. The committed reference now holds the Moon only (its
+kernels are fixed files), names the kernel files of each case, and is compared
+only where the built product was copied from the same files. Nothing needs
+refreshing after a body-data rebuild. A minimal-profile build has no small-body catalogue: the NEO
+event test then reports itself as not compared.

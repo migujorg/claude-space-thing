@@ -13,7 +13,7 @@ import { describe, expect, it } from 'vitest';
 import type { SmallBodyCoreHeader, SmallBodyForceModel } from '../src/data/schema';
 import { SB_OK, SmallBodyPropagator, elementsToState } from '../src/core/smallbody';
 import { coreState, readCore } from '../src/core/smallbodyCatalog';
-import { DATA_DIR, MaxTracker, buildRecord, etDate, fixture, loadEphemerisSet, notCompared, type SmallBodyRecord, type VerificationObject } from './core-data';
+import { DATA_DIR, MaxTracker, buildRecord, etDate, etMinute, fixture, loadEphemerisSet, notCompared, type SmallBodyRecord, type VerificationObject } from './core-data';
 
 interface Reference {
   epochEt: number;
@@ -50,11 +50,11 @@ describe.skipIf(!eph)(`SmallBodyPropagator vs the Python integrator and JPL Hori
   // covered epochs are the ones inside the coverage, provided the reference epoch itself is.
   const w = eph!.window;
   const inside = (t: number) => t >= w.startEt && t <= w.endEt;
-  const coverage = `the built ephemeris covers ${etDate(w.startEt)} to ${etDate(w.endEt)}`;
+  const coverage = `the built ephemeris covers ${etMinute(w.startEt)} to ${etMinute(w.endEt)} TDB`;
   const all = [...new Set(fx.objects.flatMap((o) => o.epochs))].sort((a, b) => a - b);
   const out = inside(fx.epochEt) ? all.filter((t) => !inside(t)) : all;
   if (out.length > 0) {
-    notCompared(`SmallBodyPropagator at ${out.length} of ${all.length} reference epochs (${etDate(out[0])} to ${etDate(out[out.length - 1])}) of ${fx.objects.length} objects`, coverage);
+    notCompared(`SmallBodyPropagator at ${out.length} of ${all.length} reference epochs (${etMinute(out[0])} to ${etMinute(out[out.length - 1])} TDB) of ${fx.objects.length} objects`, coverage);
   }
 
   it.skipIf(out.length === all.length)(`propagates every verification object across the reference epochs it can (${all.length - out.length} of ${all.length})`, () => {

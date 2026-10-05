@@ -10,7 +10,7 @@ Writes app/tests/fixtures/:
   core_spice_spk.json        SPICE spkgeo (geometric state, like spkgps + velocity) on the planetary kernel, every segment,
                              and on the satellite kernel excerpts for a sample of each kernel's segments (types 2, 3, 17)
   horizons_moons.json        JPL Horizons moons relative to their planet's centre
-  core_spice_orient.json     SPICE pxform('ITRF93' / 'MOON_ME_DE440_ME421', 'J2000') with NAIF's Earth and lunar PCKs;
+  core_spice_orient.json     SPICE pxform('MOON_ME_DE440_ME421', 'J2000') with NAIF's lunar PCK and frames kernel;
                              every case names the kernel files it was computed from (sha256 in kernelSha256)
 It also downloads a few small satellite kernels whole (VERIFY_ORIGINALS) for pipeline/tests/test_ephem_satellites.py.
 
@@ -22,11 +22,13 @@ compared, so a rebuild never requires running this; move the epochs and rerun it
 that most cases are reported as not compared.
 
 SPICE values are a reference for the kernel files they were computed from. The lunar kernel and the planetary
-kernels are fixed files, but NAIF reissues the Earth orientation kernel as measurements arrive (values of past,
-measured days move by ~1e-11, the newest days by ~1e-9: measured between the files of 2026-09-29 and 2026-10-03).
-So a test compares an ITRF93 case only with a product copied from the same kernel file (sha256), and otherwise
-reports it as not compared; SPICE on the kernels of the build itself is the bodies stage's build record
-(verification/orientation.json).
+kernels are fixed files. NAIF reissues the Earth orientation kernels as measurements arrive: between the
+high-precision files of 2026-09-29 and 2026-10-03 the ITRF93 matrix moved by up to 1.4e-11 on measured days more
+than a year old and by 1.8e-9 on the newest days (the long-term predict file is reissued too, less often). A product
+copied from one file agrees with SPICE on that file to rounding (1e-12) and with no other. So there is no ITRF93
+reference here: it would be a reference for the build of one day. SPICE on the Earth kernels of a build is in that
+build's record (verification/orientation.json, written by the bodies stage), and the tests compare with that. A test
+compares a case of this file only with a product copied from the kernel files the case names (sha256).
 """
 
 from __future__ import annotations
@@ -43,7 +45,7 @@ from . import ephem_horizons as hz
 from . import ephem_satellites as sat
 from .download import fetch, record
 from .ephem_kernels import PLANETARY, lsk, naif_planets, pck, planetary
-from .ephem_spk import read_pck, read_spk
+from .ephem_spk import read_spk
 from .paths import CACHE, OUT, RAW, REPO
 
 FIXTURES = REPO / "app" / "tests" / "fixtures"
@@ -206,35 +208,28 @@ def _moons(common: dict) -> None:
 
 
 def _orientation(common: dict, ets: list[float]) -> None:
-    """SPICE pxform for the precise orientation frames (ITRF93, MOON_ME_DE440_ME421) at `ets`, with the newest
-    Earth kernels in data/raw. Each case names the kernel files its value comes from."""
-    pck_dir = RAW / "naif" / "pck"
-    hp = sorted(pck_dir.glob("earth_000101_*.bpc"))[-1]
-    pr = sorted(pck_dir.glob("earth_*_predict.bpc"))[-1]
-    moon_pa = pck_dir / "moon_pa_de440_200625.bpc"
+    """SPICE pxform for the precise orientation frame of the Moon (MOON_ME_DE440_ME421) at `ets`: the one whose
+    kernels are fixed files (module docstring). Each case names the kernel files its value comes from."""
+    moon_pa = RAW / "naif" / "pck" / "moon_pa_de440_200625.bpc"
     moon_fk = RAW / "naif" / "fk-satellites" / "moon_de440_250416.tf"
-    kernels = [pr, hp, moon_pa, moon_fk]  # high-precision after predict: it takes priority, as in orient/earth
-    hp_end = max(s.end for s in read_pck(hp))
-
-    def used(body: int, et: float) -> list[str]:
-        return [moon_pa.name, moon_fk.name] if body == 301 else [hp.name if et <= hp_end else pr.name]
-
+    kernels = [moon_pa, moon_fk]
     for k in kernels:
         sp.furnsh(str(k))
     try:
-        out = [{"id": i, "frame": f, "cases": [{"et": e, "kernels": used(i, e),
+        out = [{"id": i, "frame": f, "cases": [{"et": e, "kernels": [k.name for k in kernels],
                                                 "bodyToJ2000": np.array(sp.pxform(f, "J2000", e)).reshape(-1).tolist()}
                                                for e in sorted(ets)]}
-               for i, f in ((399, "ITRF93"), (301, "MOON_ME_DE440_ME421"))]
+               for i, f in ((301, "MOON_ME_DE440_ME421"),)]
     finally:
         for k in kernels:
             sp.unload(str(k))
     _write("core_spice_orient.json", {**common, "kernels": [k.name for k in kernels],
            "kernelSha256": {k.name: record(k)["sha256"] for k in kernels},
            "spiceVersion": sp.tkvrsn("TOOLKIT"), "description": "Row-major body-fixed -> J2000 matrices from "
-           "spiceypy.pxform(frame, 'J2000', et) with NAIF's Earth and lunar PCKs. A reference for the kernel files "
-           "each case names (`kernels`, sha256 in kernelSha256): comparable only with a product copied from the same "
-           "files.", "bodies": out})
+           "spiceypy.pxform(frame, 'J2000', et) with NAIF's lunar PCK and frames kernel. A reference for the kernel "
+           "files each case names (`kernels`, sha256 in kernelSha256): comparable only with a product copied from "
+           "the same files. No ITRF93: NAIF reissues the Earth kernels, so SPICE on them is a reference for one "
+           "build only and is written with that build (verification/orientation.json).", "bodies": out})
 
 
 def orientation() -> None:

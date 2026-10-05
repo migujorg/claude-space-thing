@@ -63,12 +63,15 @@ const moon = loadOrientation('orient/moon');
 
 // The products hold Chebyshev records copied unchanged from NAIF's kernels, so the TypeScript evaluator must agree
 // with SPICE on the same records to rounding: 1e-12 in a matrix element. That bound holds only against SPICE on the
-// same kernel file. NAIF reissues the Earth kernel as measurements arrive (its values for past days move by ~1e-11
-// and for the newest days by ~1e-9: ephem_fixtures.py), so SPICE values from another revision are not a reference
-// for this product at this bound. Hence two comparisons:
-//   * with the build record (verification/orientation.json): SPICE on the very files the bodies stage copied;
-//   * with the committed reference (core_spice_orient.json): only its cases whose kernel file (sha256) is the one
-//     the product segment was copied from, e.g. the Moon's fixed kernel. The others are reported as not compared.
+// same kernel file. NAIF reissues the Earth kernels as measurements arrive (ITRF93 moved by up to 1.4e-11 on
+// measured days more than a year old, and by 1.8e-9 on the newest days, between the files of 2026-09-29 and
+// 2026-10-03: ephem_fixtures.py), so SPICE values from another file are not a reference for this product at this
+// bound, and a looser bound would only measure how much NAIF revised its kernel. Hence two comparisons:
+//   * with the build record (verification/orientation.json): SPICE on the very files the bodies stage copied, for
+//     the Earth and the Moon, in every segment;
+//   * with the committed reference (core_spice_orient.json, the Moon: its kernels are fixed files): only the cases
+//     whose kernel files (sha256) are the ones the product segment was copied from. Others are reported as not
+//     compared, as would be cases of a reference that held values from one build's Earth kernel.
 describe.skipIf(!earth || !moon || !bodies)('Precise orientation (NAIF binary PCKs) vs SPICE pxform', () => {
   const product = (id: number) => (id === 399 ? earth! : moon!);
   const ROUNDING = 1e-12;

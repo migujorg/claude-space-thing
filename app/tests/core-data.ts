@@ -215,5 +215,6 @@ export interface OrientationRecord extends BuildRecordHeader {
 }
 
 const J2000_MS = Date.UTC(2000, 0, 1, 12, 0, 0);
-/** Calendar date (TDB) of an ET, for messages. */
+/** Calendar date (TDB) of an ET, for messages; `etMinute` to the minute. */
 export const etDate = (et: number): string => new Date(J2000_MS + et * 1000).toISOString().slice(0, 10);
+export const etMinute = (et: number): string => new Date(J2000_MS + et * 1000).toISOString().slice(0, 16);
