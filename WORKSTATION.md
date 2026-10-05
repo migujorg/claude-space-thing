@@ -103,8 +103,8 @@ CSV results with verified row counts are reused. This avoids the separate
 COUNT query and preserves masked colour bins. FITS byte-size validation rejects
 incomplete transfers, and results at the explicit MAXREC boundary are rejected
 as potentially clipped. The numerical aggregation queries are unchanged.
-The normal pipeline retains its CSV default; the workstation wrapper sets
-`PIPELINE_GAIA_SUMS_FITS=1`. Each actual query URL, format, and checksum remains
+The normal pipeline retains its CSV default; the workstation launcher passes
+`--set gaia.sumsFormat=fits` (environment alias: `PIPELINE_GAIA_SUMS_FORMAT=fits`). Each actual query URL, format, and checksum remains
 in the download ledger.
 
 Deep-tier Tycho proper motions are looked up only for the catalogue's known
