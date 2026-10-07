@@ -67,7 +67,11 @@ function usesOf(sb: SceneBody): string[] {
   if (sb.albedoXYZS && sb.phase) u.push('disk photometry');
   if (sb.diskReflectanceModel) u.push(`disk model ${sb.diskReflectanceModel.kind}`);
   if (sb.spatialModel) u.push('spatial model');
-  for (const k of ['albedo', 'height', 'photometry', 'clouds', 'cloudTau', 'water', 'night', 'wind'] as const) if (sb.surface?.[k]) u.push(`map ${k}`);
+  // The thickness layer is named as bound: cloudTau (measured) or cloudTauEstimated (the provider's estimates added).
+  for (const k of ['albedo', 'height', 'photometry', 'clouds', 'cloudTau', 'water', 'night', 'wind'] as const) {
+    const l = sb.surface?.[k];
+    if (l) u.push(`map ${(l.header as { layer?: string }).layer ?? k}`);
+  }
   if (sb.surface?.cloudTauUnmeasured) u.push('partly-cloudy τ statistic for the cloud without a retrieval (estimated)');
   if (sb.rings) u.push(`rings${sb.rings.reflectance ? '' : ' (absorbing only)'}`);
   if (sb.atmosphere) u.push('atmosphere');
