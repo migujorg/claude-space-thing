@@ -14,6 +14,7 @@ from importlib.metadata import version
 import json
 import os
 from pathlib import Path
+from types import FunctionType
 import platform
 import sys
 
@@ -22,6 +23,7 @@ from ..paths import RAW, OUT, REPO
 
 THREAD_VARS = ('OPENBLAS_NUM_THREADS', 'OMP_NUM_THREADS', 'MKL_NUM_THREADS')
 _ACTIVE = ContextVar('validation_input_capture', default=None)
+_TABLES = ContextVar('validation_table_capture', default=None)
 EXPECTED_CASE = ContextVar('validation_expected_case', default=None)
 
 
@@ -65,7 +67,8 @@ def input_path(key):
 
 def _audit(event, args):
     state = _ACTIVE.get()
-    if state is None or event != 'open' or not isinstance(args[0], (str, bytes, os.PathLike)):
+    tables = _TABLES.get()
+    if (state is None and tables is None) or event != 'open' or not isinstance(args[0], (str, bytes, os.PathLike)):
         return
     # CPython reports both Python and native library opens here; only successful
     # reads become dependencies. Do not capture download temporary files/writes.
@@ -73,17 +76,24 @@ def _audit(event, args):
     if flags & (os.O_WRONLY | os.O_RDWR | os.O_CREAT):
         return
     path = Path(os.fsdecode(args[0])).absolute()
+    if tables is not None:
+        base = REPO / 'pipeline/src/pipeline'
+        if path.is_relative_to(base) and path.suffix not in ('.py', '.pyc') and '__pycache__' not in path.parts and path.is_file():
+            tables.add(path)
+    if state is None:
+        return
     key = _input_key(path)
     if key is None or not path.is_file() or key in state['seen']:
         return
     state['seen'][key] = path
     expected = state['expected']
-    if expected is not None:
+    if expected is not None and not (state['renew'] and key.startswith('products/')):
         if key not in expected:
             raise ReproductionError(f'{key}: unrecorded rebuild input')
         token = _ACTIVE.set(None)
         try:
-            check_file(path, expected[key])
+            if 'selection' not in expected[key]:
+                check_file(path, expected[key])
         finally:
             _ACTIVE.reset(token)
 
@@ -92,9 +102,9 @@ sys.addaudithook(_audit)
 
 
 @contextmanager
-def capture_inputs(expected=None):
+def capture_inputs(expected=None, *, renew=False):
     out = {}
-    state = {'seen': {}, 'expected': expected}
+    state = {'seen': {}, 'expected': expected, 'selections': {}, 'renew': renew}
     token = _ACTIVE.set(state)
     successful = False
     try:
@@ -103,7 +113,8 @@ def capture_inputs(expected=None):
     finally:
         _ACTIVE.reset(token)
         for key, path in sorted(state['seen'].items()):
-            out[key] = file_record(path)
+            out[key] = (selected_record(path, state['selections'][key])
+                        if key in state['selections'] else file_record(path))
         if successful:
             from .. import download
             ledger = download._load_ledger()
@@ -111,9 +122,23 @@ def capture_inputs(expected=None):
                 stored = ledger.get(key.removeprefix('raw/')) if key.startswith('raw/') else None
                 if stored and stored.get('sha256') != rec['sha256']:
                     raise ReproductionError(f'{key}: actual input sha256 differs from download ledger')
-        if successful and expected is not None and out != expected:
-            changed = [k for k in sorted(set(out) | set(expected)) if out.get(k) != expected.get(k)]
-            raise ReproductionError(f'rebuild input set/bytes differ: {", ".join(changed)}')
+        if successful and expected is not None:
+            actual = {k: v for k, v in out.items() if not (renew and k.startswith('products/'))}
+            pinned = {k: v for k, v in expected.items() if not (renew and k.startswith('products/'))}
+            changed = [k for k in sorted(set(actual) | set(pinned)) if actual.get(k) != pinned.get(k)]
+            if changed:
+                raise ReproductionError(f'rebuild input set/bytes differ: {", ".join(changed)}')
+
+
+@contextmanager
+def capture_tables():
+    """Keep only source tables read by this case from the walker's table directories."""
+    tables = set()
+    token = _TABLES.set(tables)
+    try:
+        yield tables
+    finally:
+        _TABLES.reset(token)
 
 
 def runtime():
@@ -141,30 +166,120 @@ def require_single_thread():
                                 'OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 set before Python starts')
 
 
-def implementation():
-    base = REPO / 'pipeline/src/pipeline'
-    # Include imported physics and transcriptions, not only the validation fitter.
-    return {p.relative_to(base).as_posix(): file_record(p)['sha256']
-            for p in sorted(base.rglob('*')) if p.is_file() and
-            (p.suffix in ('.py', '.csv', '.json') and '__pycache__' not in p.parts)
-            and p != base / 'validation/report.py'}
+def implementation(case=None, *, tables=None):
+    """Reuse the stage fingerprint import/table walker with a validation entry point.
+
+    Its public interface takes a stage name. A private globals copy adapts that
+    entry point without mutating the runner or duplicating its AST traversal.
+    The selected frame reader is an explicit dynamic-import seed.
+    Himawari alone adds its prepare module. CLI/report orchestration is not science.
+    """
+    from .. import build as fingerprints
+    root = fingerprints.PKG_ROOT
+    from .cases import CASES
+    cid = (case or {}).get('id')
+    entry = 'validation.himawari' if (case or {}).get('id') == 'earth-himawari9-2026' else 'validation.build'
+    def module_file(name):
+        if name == 'stages.__validation__':
+            name = entry
+        path = fingerprints._module_file(name)
+        return None if path == root / 'build.py' else path
+    namespace = dict(fingerprints.code_closure.__globals__)
+    namespace.update(_module_file=module_file, NOT_CODE=fingerprints.NOT_CODE - {'build'})
+    walker = FunctionType(fingerprints.code_closure.__code__, namespace)
+    files, _ = walker('__validation__')
+    if cid in CASES:
+        entry = f'validation.reader_{CASES[cid].reader}'
+        reader_files, _ = walker('__validation__')
+        files = sorted(set(files) | set(reader_files))
+    candidates = set(files)
+    # Module initialization precedes capture (and modules may already be loaded).
+    # Top-level bytecode constants name its eagerly read tables. Do not descend
+    # into function code: those table reads are captured during the case build.
+    def strings(value):
+        if isinstance(value, str):
+            yield value
+        elif isinstance(value, tuple):
+            for member in value:
+                yield from strings(member)
+    eager_names = {value for path in files if path.suffix == '.py'
+                   for constant in compile(path.read_text(encoding='utf-8'), str(path), 'exec').co_consts
+                   for value in strings(constant)}
+    eager_tables = {path for path in files if path.suffix != '.py' and path.name in eager_names}
+    if tables is None:
+        # The code hash detects changes that introduce/remove a table read; the
+        # rebuild capture checks that the actual set still matches the lock.
+        tables = {root / name for name in (case or {}).get('reproducibility', {}).get('implementation', {})
+                  if Path(name).suffix != '.py'}
+    if not set(tables) <= candidates:
+        raise ReproductionError('read table outside static import/table closure')
+    files = sorted({p for p in files if p.suffix == '.py'} | set(tables) | eager_tables)
+    return {p.relative_to(root).as_posix(): file_record(p)['sha256'] for p in files}
 
 
-def preflight(case):
+def selected_record(path, selection):
+    """Canonical selected JSON paths, including presence (missing differs from null)."""
+    token = _ACTIVE.set(None)
+    try:
+        document = json.loads(path.read_text(encoding='utf-8'))
+    finally:
+        _ACTIVE.reset(token)
+    values = []
+    for parts in selection:
+        value = document
+        present = True
+        for part in parts:
+            try:
+                value = value[part]
+            except (KeyError, IndexError, TypeError):
+                present, value = False, None
+                break
+        values.append({'path': parts, 'present': present, 'value': value})
+    payload = json.dumps(values, sort_keys=True, separators=(',', ':'), ensure_ascii=False,
+                         allow_nan=False).encode('utf-8')
+    return {'selection': selection, 'sha256': hashlib.sha256(payload).hexdigest()}
+
+
+def read_product(path, selection):
+    """Record exactly the fields consumed, rather than incidental product prose."""
+    state = _ACTIVE.get()
+    key = _input_key(path)
+    document = json.loads(path.read_text(encoding='utf-8'))
+    if state is not None:
+        selections = state['selections'].setdefault(key, [])
+        for parts in selection:
+            if parts not in selections:
+                selections.append(parts)
+        selections.sort(key=lambda parts: json.dumps(parts))
+    return document
+
+
+def check_input(path, record):
+    if 'selection' not in record:
+        return check_file(path, record)
+    if not path.is_file():
+        raise ReproductionError(f'{path}: locked input product missing')
+    if selected_record(path, record['selection']) != record:
+        raise ReproductionError(f'{path}: consumed product values differ from committed rebuild lock')
+
+
+def preflight(case, *, check_raw=True, renew=False):
     lock = case.get('reproducibility')
     if lock:
-        if lock.get('schema') != 'validation-rebuild-v1':
+        if lock.get('schema') not in ('validation-rebuild-v1', 'validation-rebuild-v2'):
             raise ReproductionError('unsupported validation rebuild lock schema')
         if lock['runtime'] != runtime():
             raise ReproductionError('numerical environment differs from committed rebuild lock')
-        if lock['implementation'] != implementation():
+        if not renew and lock['implementation'] != implementation(case):
             raise ReproductionError('pipeline code/tables differ from committed rebuild lock')
         for key, rec in lock['inputs'].items():
             # Missing raw files can be fetched by their declared builders, but the
             # audit check must match their recorded bytes before consuming them.
             path = input_path(key)
-            if path.exists() or key.startswith('products/'):
-                check_file(path, rec)
+            if key.startswith('raw/') and check_raw and path.exists():
+                check_input(path, rec)
+            elif key.startswith('products/') and not renew:
+                check_input(path, rec)
     else:
         # Legacy cases already record many sources. Check actual bytes, never just
         # trust the download ledger's stored hash. Missing sources are checked after
@@ -259,6 +374,19 @@ def compare_cases(old_dir, new_dir):
             'caseBytesIdentical': file_record(old_dir/'case.json') == file_record(new_dir/'case.json'),
             'previewBytesIdentical': file_record(old_dir/'preview.png') == file_record(new_dir/'preview.png'),
             'differentSections': different, 'reference': refs, 'regions': regions}
+
+
+def assert_renewal(old_dir, new_dir):
+    old = json.loads((old_dir / 'case.json').read_text())
+    new = json.loads((new_dir / 'case.json').read_text())
+    old.pop('reproducibility', None)
+    new.pop('reproducibility', None)
+    if old != new:
+        sections = sorted(k for k in set(old) | set(new) if old.get(k) != new.get(k))
+        raise ReproductionError('renewal changes committed JSON outside lock: ' + ', '.join(sections))
+    for name in ('reference.bin', 'preview.png'):
+        if (old_dir / name).read_bytes() != (new_dir / name).read_bytes():
+            raise ReproductionError(f'renewal changes committed {name} bytes')
 
 
 @contextmanager
