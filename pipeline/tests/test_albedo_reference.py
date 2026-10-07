@@ -21,6 +21,9 @@ def test_reference_stage_is_downstream_and_fingerprints_the_bridge():
             return original(path) + (b'\n// fingerprint probe' if path.as_posix().endswith(rel) else b'')
         with patch.object(Path, 'read_bytes', changed):
             assert build.fingerprint('albedo_reference', stage.DEPENDS, {}, (0, 1), {})['code'] != base['code']
+    for dependency in stage.DEPENDS:
+        products = {'input.json': {'stage': dependency, 'sha256': 'changed'}}
+        assert build.fingerprint('albedo_reference', stage.DEPENDS, {}, (0,1), products)['inputs'] != base['inputs']
     assert config.stage_params({}, 'albedo_reference') == {}
 
 
@@ -28,7 +31,8 @@ def test_missing_node_fails_even_with_cached_tables(monkeypatch):
     stage = importlib.import_module('pipeline.stages.albedo_reference')
     monkeypatch.setattr(stage.shutil, 'which', lambda _: None)
     with pytest.raises(RuntimeError, match='albedo_reference requires Node.js'):
-        stage.check_toolchain()
+        from pipeline.schema import BuildContext
+        stage.run(BuildContext(0, 1))
 
 
 def test_missing_app_esbuild_fails_clearly(tmp_path):

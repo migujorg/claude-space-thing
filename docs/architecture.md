@@ -249,7 +249,7 @@ A comet's total light is the SBDB total-magnitude law m1 = M1 + 5 log Δ + K1 lo
 
 ## 6. Data products (app/public/data)
 
-Stages (`config.STAGES`): `time`, `ephemeris`, `light`, `surfaces`, `shapes`, `bodies`, `smallbodies`, `sbphotometry`, `synthetic`, `comets`, `stars`, `deepstars`, `sky`, `nightglow`.
+Stages (`config.STAGES`): `time`, `ephemeris`, `light`, `surfaces`, `albedo_reference`, `shapes`, `bodies`, `smallbodies`, `sbphotometry`, `synthetic`, `comets`, `stars`, `deepstars`, `sky`, `nightglow`.
 
 | File | Producer stage | Content |
 |---|---|---|

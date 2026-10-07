@@ -161,3 +161,48 @@ describe('ellipsoid calibration at Strict and Best', () => {
     });
   }
 });
+
+// Compare every built physical body's admission with the rc reality contract.
+// Geometry is an injected visible epoch here, so missing ephemeris coverage cannot
+// hide a normalization-induced change. Test both bare and resident map paths.
+import { filterBody } from '../src/app/reality';
+import { sceneBodyOf } from '../src/app/snapshot';
+import { surfaceRefs } from '../src/app/extras';
+import type { Body, PhotometryFile, AlbedoReferenceFile } from '../src/data/schema';
+import type { SurfaceLayer } from '../src/data/surfaces';
+const builtFs: {existsSync(p:URL):boolean;readFileSync(p:URL,enc:'utf8'):string} = await import(/* @vite-ignore */ 'node:fs' as string);
+const builtBodyPath=new URL('../public/data/bodies.json',import.meta.url);
+const hasBuiltBodies=builtFs.existsSync(builtBodyPath);
+describe.skipIf(!hasBuiltBodies)('built-body normalization preserves reality admission',()=>{
+  for (const level of ['strict','best','complete'] as const) for (const mapped of [false,true]) it(`${level}, resident maps=${mapped}`,()=>{
+    const read=(p:string)=>JSON.parse(builtFs.readFileSync(new URL(`../public/data/${p}`,import.meta.url),'utf8'));
+    const photos:PhotometryFile=read('photometry.json');
+    const refs:AlbedoReferenceFile=read('albedo-reference.json');
+    const bs:Body[]=read('bodies.json');
+    const layers:SurfaceLayer[]=[];
+    for (const b of bs) {
+      const p=photos[b.id];
+      if (p) b.photometry={...p,albedoReferenceNormalization:refs[b.id]};
+      for (const layer of ['albedo','clouds']) {
+        const path=`surfaces/${b.id}/${layer}.json`,url=new URL(`../public/data/${path}`,import.meta.url);
+        if (builtFs.existsSync(url)) layers.push({bodyId:b.id,layer,path,header:read(path)} as SurfaceLayer);
+      }
+    }
+    const orientations=new IauOrientationSet(bs,fakeBodyToIcrf);
+    const extras={surfaces:surfaceRefs(mapped?layers:[], '/data'),rings:null,atmospheres:read('atmospheres.json')};
+    const before:number[]=[],after:number[]=[],knownBefore:number[]=[],knownAfter:number[]=[];
+    for (const b of bs.filter(b=>b.kind!=='star'&&b.kind!=='barycenter')) {
+      const geometry={id:b.id,body:b,app:{rel:[0,0,-1e6] as Vec3,emitEt:0,lightTime:0},toSun:[1e8,0,0] as Vec3};
+      const f=filterBody(b,level,{orientation:b.radii.value?orientations.provenance(b.id,0):undefined});
+      const got=sceneBodyOf(geometry,level,orientations,undefined,null,extras);
+      expect(got && 'body' in got, `${b.id} has a known shape or brightness`).toBe(!!f.radii||!!f.albedoXYZS);
+      if (f.surfaceUnknown) before.push(b.id);
+      if (got && 'body' in got && got.body.surfaceUnknown) after.push(b.id);
+      if (f.radii && !f.surfaceUnknown) knownBefore.push(b.id);
+      if (got && 'body' in got && got.body.radii && !got.body.surfaceUnknown) knownAfter.push(b.id);
+    }
+    expect(after).toEqual(before);
+    expect(knownAfter).toEqual(knownBefore);
+    if (level==='strict') expect(knownAfter).toEqual([799,899,703,704]);
+  });
+});

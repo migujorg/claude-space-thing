@@ -39,9 +39,6 @@ def reference_table(naif: int, entry: dict) -> dict | None:
     and esbuild are the existing app toolchain, not an observational input.
     """
     import hashlib
-    import json
-    import subprocess
-    from pathlib import Path
     from ..paths import OUT, CACHE
     model = entry.get("spatialModel", {}).get("value")
     view = entry["albedoMeasurementView"]["value"]
@@ -84,7 +81,7 @@ def run(ctx: BuildContext) -> None:
             sources = list(dict.fromkeys([*entry["albedoMeasurementView"]["sources"],
                                          *entry["spatialModel"]["sources"], *h.get("sources",[])]))
             product[key] = sourced(table,
-                worst(entry["spatialModel"]["label"], h.get("color",{}).get("label","derived"),
+                worst(entry["albedoMeasurementView"]["label"], entry["spatialModel"]["label"], h.get("color",{}).get("label","derived"),
                       h.get("provenance",{}).get("label","derived"), "derived"), sources,
                 method="Fixed dated-view integral and its bare-sphere factor, precomputed with the pure TypeScript "
                        "normal-space quadrature. Binary16 map rows are evaluated exactly piecewise-linearly "
