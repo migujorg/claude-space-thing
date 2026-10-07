@@ -5,6 +5,62 @@ import pytest
 
 from pipeline.photometry import rings
 from pipeline.schema import LABEL_ORDER, BuildContext
+from pipeline.paths import RAW
+
+
+def _archived(pair):
+    paths = [RAW / dl.subdir / dl.name for dl in pair]
+    for path in paths:
+        if not path.is_file():
+            pytest.skip(f"archived ring input absent: {path}; offline comparison needs the raw file")
+    return np.loadtxt(paths[1], delimiter=",")
+
+
+@pytest.fixture
+def profile_product(monkeypatch):
+    # Isolate the occultation products from unrelated component-table downloads.
+    from pipeline.photometry import rings_jupiter, rings_neptune, rings_uranus
+    for module in (rings_jupiter, rings_neptune, rings_uranus):
+        monkeypatch.setattr(module, "build", lambda *args: ({"model": {}, "label": "estimated", "sources": []}, {}))
+    return rings.rings_json(None)[0]
+
+
+def test_saturn_measured_product_is_archive_bin_for_bin(profile_product):
+    d = _archived(rings.UVIS)
+    measured = profile_product["699"]["opticalDepth"]
+    missing = (d[:, 4] == -1) | ((d[:, 11].astype(int) & 64) != 0)
+    expected = [None if m else float(t) for t, m in zip(d[:, 4], missing)]
+    assert measured["label"] == "measured"
+    assert measured["value"][0]["normalTau"] == expected
+
+
+def test_saturn_estimate_product_is_cleaner_output(profile_product):
+    d = _archived(rings.UVIS)
+    meta = rings._label(rings.UVIS[0])
+    mu = abs(np.sin(np.deg2rad(float(meta["OBSERVED_RING_ELEVATION"]))))
+    sigma = rings.photon_sigma(d[:, 3], d[:, 9], d[:, 8], d[:, 10], mu)
+    missing = (d[:, 4] == -1) | ((d[:, 11].astype(int) & 64) != 0)
+    cleaned, _ = rings.clean_saturn_tau(d[:, 0], np.where(missing, np.nan, d[:, 4]), sigma)
+    estimate = profile_product["699"]["opticalDepthEstimate"]
+    assert estimate["label"] == "estimated"
+    assert estimate["sources"] == profile_product["699"]["opticalDepth"]["sources"]
+    assert estimate["value"][0]["normalTau"] == [None if m else round(float(t), 4) for t, m in zip(cleaned, missing)]
+
+
+def test_neptune_unconstrained_product_bins_are_null(profile_product):
+    d = _archived(rings.VG_NEPTUNE)
+    missing = (d[:, 1] == 0) | (d[:, 4] == -9)
+    assert missing.sum() == 40
+    assert d[missing, 0][[0, -1]].tolist() == [51200.0, 51395.0]
+    tau = profile_product["899"]["opticalDepth"]["value"][0]["normalTau"]
+    assert tau == [None if m else float(t) for t, m in zip(d[:, 3], missing)]
+
+
+def test_uranus_product_remains_archive_bin_for_bin(profile_product):
+    d = _archived(rings.VG_URANUS)
+    measured = profile_product["799"]["opticalDepth"]
+    assert measured["label"] == "measured"
+    assert measured["value"][0]["normalTau"] == d[:, 3].tolist()
 
 
 @pytest.fixture(scope="module")
@@ -54,8 +110,7 @@ def test_saturn_structure(built):
 
 
 def test_saturn_bins_consistent_with_zero_are_zero():
-    """UVIS β Cen 2008-231: inside the C ring and beyond the F ring the archived τ⊥ is noise plus (outside) a smooth
-    instrumental ramp; those bins become 0 while the F ring and its strands are kept; nothing is negative."""
+    """Regression of the existing estimated reconstruction, not proof that the removed ramp is instrumental."""
     js, _, prof = rings.saturn_profile(None)
     r = np.array(js["radiusKm"])
     tau = np.array([np.nan if v is None else v for v in js["normalTau"]])
@@ -73,4 +128,4 @@ def test_uranus_and_neptune(built):
     _, _, d = built
     assert np.max(_tau(d, "799", 51400, 51700)) > 0.5                  # the ε ring (near apoapse in this cut)
     assert np.median(_tau(d, "799", 38000, 41000)) < 0.05              # inside ring 6
-    assert np.max(np.abs(_tau(d, "899", 42500, 76000))) < 0.2          # Neptune's faint rings
+    assert np.nanmax(np.abs(_tau(d, "899", 42500, 76000))) < 0.2       # Neptune's faint rings; unconstrained = NaN
