@@ -189,12 +189,13 @@ describe('ring systems per frame', () => {
     expect(b[1]).toBeLessThan(0.97 * a[1]);
     expect(b[1]).toBeGreaterThan(0.5 * a[1]);
   });
-  it('outside the model phase range the ring brightness is not measured: warning, no light', () => {
+  it('outside the model phase range the ring brightness is unknown in this product: warning, no light', () => {
     const m = fixtureModel(() => 0.5);
     const b = base(fixtureRings(m, () => 0.5), toObs.map((v) => -v * 1e9) as [number, number, number], el(-40, Math.PI).map((v) => v * 9.5 * AU_KM) as [number, number, number]);
     const rf = prepareRings(b, sunIrr, 695700, 1);
     expect(rf.pointE).toBeNull();
     expect(rf.warnings.join()).toMatch(/outside the reflectance model/);
+    expect(rf.warnings.join()).toContain('ring brightness unknown in this product (hatched)');
   });
   it('effective elevation below the calibrated tables is flagged as estimated', () => {
     const m = fixtureModel(() => 0.5);

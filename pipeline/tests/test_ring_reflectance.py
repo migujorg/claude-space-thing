@@ -128,3 +128,20 @@ def test_reflectance_keeps_estimated_cleaned_tau(model):
     refl, _ = rr.model_json(None)
     assert refl["reflectance"]["label"] == "estimated"
     assert "opticalDepthEstimate" in refl["reflectance"]["method"]
+
+
+@pytest.mark.parametrize("with_context", [False, True])
+def test_reflectance_names_every_input_source(with_context):
+    """The produced record must retain the pedigree of the tau and photometry it inverts."""
+    from pipeline import cie
+    from pipeline.photometry import rings
+    ctx = BuildContext(0.0, 1.0) if with_context else None
+    out, _ = rings.rings_json(ctx)
+    saturn = out["699"]
+    inputs = [saturn["opticalDepthEstimate"], *saturn["reflectanceMeasurements"].values()]
+    expected = {sid for record in inputs for sid in record["sources"]}
+    expected.update([solar.HSRS.id, cie.SOURCE_CMF, cie.SOURCE_SCOTOPIC])
+    sources = set(saturn["reflectance"]["sources"])
+    assert expected <= sources, f"reflectance missing input sources: {sorted(expected - sources)}"
+    if ctx is not None:
+        assert sources <= ctx.sources.keys()

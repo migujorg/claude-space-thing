@@ -848,7 +848,8 @@ How each body was drawn:
   outside the case's uncertainty budget, rather than evidence for choosing a different law.
 * **Saturn's terminator:** the frame shows night-side light with ringshine's signature, which the
   app does not draw. The deficit does not establish that the Barkstrom law darkens too steeply.
-  **Ring rows:** the case's phase is beyond the ring reflectance model's domain. Ring brightness
+  **Ring rows:** the case's phase is beyond the product's calibrated 0.25–47° domain;
+  [published measurements beyond 47° exist](../sources/rings-high-phase.md) and are not yet included. Ring brightness
   is shown as unknown, and these HDR rows compare the reference with zero ring light.
 * **Moon/Earth ratio:** the table above gives its refreshed tolerance, failing channels and relative
   errors. It depends on the Earth's rendered clouds and on a scene from another epoch. It is not
