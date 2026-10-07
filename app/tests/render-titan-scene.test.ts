@@ -303,6 +303,28 @@ describe('the frame of a body drawn from its atmosphere model (fixture)', () => 
     } finally { spy.mockRestore(); }
   });
 
+  it('requests an extrapolated model point through 100° of the eye field, and no table beyond it', () => {
+    const s = scene(60, 2e7);
+    for (const offset of [60, 99.9, 100.1, 150]) {
+      const t = offset * Math.PI / 180;
+      const turned = { ...g, back: [Math.sin(t), 0, Math.cos(t)] as V3,
+        right: [Math.cos(t), 0, -Math.sin(t)] as V3 };
+      const tables = vi.fn(() => binding());
+      const frame = prepareFrame(s, turned, eye, 1e-9, { atmospheres: tables });
+      expect(tables).toHaveBeenCalledTimes(offset <= 100 ? 1 : 0);
+      if (offset <= 100) {
+        // Off-frame light belongs to adaptation even if its analytic veil is below the glare-source cut.
+        expect(frame.offFrameFluxDeg2).toBeGreaterThan(0);
+      } else {
+        const noBody = prepareFrame({ ...s, bodies: [] }, turned, eye, 1e-9);
+        expect(frame.offFrameFluxDeg2).toBe(noBody.offFrameFluxDeg2);
+        expect(frame.glare).toEqual(noBody.glare);
+        expect(frame.points).toHaveLength(0);
+        expect(frame.resolved).toHaveLength(0);
+      }
+    }
+  });
+
   it('an in-range point uses photometry bit for bit, without model tables, an integral or a scaling line', () => {
     const integral = vi.spyOn(atmosphereMath, 'modelDiskXYZS');
     const tables = vi.fn(() => ({ ...binding(), key: 'in-range-point-no-integral' }));
