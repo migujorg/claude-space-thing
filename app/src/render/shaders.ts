@@ -75,9 +75,9 @@ struct Eye {
   cat1: vec4f,
   cat2: vec4f,     // chromatic adaptation matrix rows
   misc: vec4f,     // dither amplitude, cos(adaptation field radius), star sigma px, analytic source count
-  misc2: vec4f,    // star quad half-extent px, 1/(1-exp(-extent^2/2 sigma^2)), rod threshold elevation 10^(a·ΔB), cone photon catch (bleaching.ts)
+  misc2: vec4f,    // star splat cut-off px (each axis), 1/erf(extent/(sigma sqrt 2))^2, rod threshold elevation 10^(a·ΔB), cone photon catch (bleaching.ts)
   dark: vec4f,     // dark-light pedestal: L0 cone, L0 rod, R(L0) cone, R(L0) rod
-  pts: vec4f,      // points (eye/points.ts): display response at the bleaching luminance, viewer's Ricco area (sr), cone summation area (sr), own veil in the background per lux per pixel solid angle
+  pts: vec4f,      // points (eye/points.ts): display response at the bleaching luminance, viewer's Ricco area (sr), cone summation area (sr), 2^-kR: the scale of the veil level a point's background is read at
   fix: vec4f,      // never fixated: unit direction to the resolved Sun (or the Sun shield's disc), w = chord 2·sin((angular radius + 1 px) / 2) (< 0: none)
   flags: vec4f,    // display black response, cone bleaching (1/0), fixation mode (1 brightness, 0 centre), 1 = low-light acuity (eye mode)
   hdr: vec4f,      // output: brightest displayable luminance (HDR peak, or white on SDR) cd/m², its display response, 1 = extended (HDR) encoding, 1 = Display P3
@@ -314,11 +314,15 @@ fn displayChroma(xyz: vec3f, k: f32) -> vec3f {
 }
 `;
 
-/** Bilinear sample of a (coarser) screen-aligned texture at an NDC position. */
+/**
+ * A veil level's texture at a full-resolution pixel position, linear between its texels. Texel t of level k covers
+ * the pixels [t·2^k, (t+1)·2^k): the levels' sizes round up, so a texture's own size is not the frame's over 2^k,
+ * and a read scaled by the texture's size would be displaced in a frame that is not a multiple of 2^k. inv = 2^-k.
+ */
 const BG = /* wgsl */ `
-fn bgAt(t: texture_2d<f32>, ndc: vec2f) -> vec4f {
+fn bgAt(t: texture_2d<f32>, px: vec2f, inv: f32) -> vec4f {
   let d = vec2i(textureDimensions(t));
-  let c = (ndc * vec2f(0.5, -0.5) + 0.5) * vec2f(d) - 0.5;
+  let c = px * inv - 0.5;
   let i0 = vec2i(floor(c));
   let fr = c - vec2f(i0);
   let l = vec2i(0);
@@ -333,11 +337,12 @@ fn bgAt(t: texture_2d<f32>, ndc: vec2f) -> vec4f {
  * veil at scales from the Ricco area up, less the source's own light there (never below zero); the analytic veil
  * (Sun, off-frame bodies); and the extended image's unscattered light at the source's pixel (the sky, a body's
  * disk or atmosphere behind it). One function for the cull and for the point shader, so there is one test: what
- * the cull passes is what is displayed. Needs F, E, analyticVeil.
+ * the cull passes is what is displayed. px is the source's centre in pixels, own its own light in the veil there
+ * (exactly: CULL_SHADER ownVeil), E.pts.w the veil level's scale. Needs F, E, analyticVeil.
  */
-fn pointBackground(veil: texture_2d<f32>, ext: texture_2d<f32>, ndc: vec2f, own: vec4f, dir: vec3f) -> vec4f {
-  let px = clamp(vec2i((ndc * vec2f(0.5, -0.5) + 0.5) * F.size.xy), vec2i(0), vec2i(F.size.xy) - 1);
-  return max(bgAt(veil, ndc) / F.proj.w - own, vec4f(0.0)) + analyticVeil(E, dir) + E.glare.x * textureLoad(ext, px, 0) / F.proj.w;
+fn pointBackground(veil: texture_2d<f32>, ext: texture_2d<f32>, px: vec2f, own: vec4f, dir: vec3f) -> vec4f {
+  let at = clamp(vec2i(floor(px)), vec2i(0), vec2i(F.size.xy) - 1);
+  return max(bgAt(veil, px, E.pts.w) / F.proj.w - own, vec4f(0.0)) + analyticVeil(E, dir) + E.glare.x * textureLoad(ext, at, 0) / F.proj.w;
 }
 `;
 
@@ -1087,6 +1092,95 @@ ${BG}
 ${LIMB_WGSL(8)}
 @group(0) @binding(9) var<storage, read_write> unseen: array<vec4f>;
 @group(0) @binding(10) var extTex: texture_2d<f32>;            // resolved bodies and sky, this frame's (drawn before the cull)
+struct Own { kR: u32, levels: u32, pad0: u32, pad1: u32, w: array<vec4f, 4> };   // the veil level read; the pyramid's level count and weights
+@group(0) @binding(11) var<uniform> own: Own;
+
+/**
+ * One axis of what the level-kR veil texture holds of a splat centred at c (px), read back at c: rho[k] for each
+ * level k >= kR with weight. Every stage from the splat to the read is the same operation along x and along y, so
+ * level k's part of the texture at the source is rho_x[k]·rho_y[k] (eye/points.ts ownVeilAxis is the reference,
+ * tested against the pyramid run in two dimensions).
+ */
+fn ownAxis(c: f32, n0: i32) -> array<f32, 16> {
+  var rho: array<f32, 16>;
+  var taps = array<f32, 4>(0.39905027, 0.24203623, 0.05400558, 0.00443305);   // PYRAMID_SHADER W0..W3
+  // The splat's samples along this axis (POINT_SHADER splatAt): the pixels whose centres lie within the cut-off.
+  let ext = E.misc2.x;
+  let s = E.misc.z;
+  let p0 = max(0, i32(ceil(c - ext - 0.5)));
+  let cnt = min(n0 - 1, i32(floor(c + ext - 0.5))) - p0 + 1;
+  if (cnt <= 0) { return rho; }
+  var g: array<f32, 8>;
+  let few = cnt <= 8;
+  if (few) {
+    for (var i = 0; i < cnt; i++) {
+      let d = f32(p0 + i) + 0.5 - c;
+      g[i] = select(0.0, exp(-d * d / (2.0 * s * s)), abs(d) <= ext);
+    }
+  }
+  let K = i32(own.levels);
+  let kR = i32(own.kR);
+  // The read (bgAt): two texels of level kR. l holds the read's weights on texels a, a+1, a+2 of the current level.
+  var n = (n0 + (1 << u32(kR)) - 1) >> u32(kR);
+  let cc = c * E.pts.w - 0.5;
+  let i0 = i32(floor(cc));
+  let fr = cc - f32(i0);
+  let t0 = clamp(i0, 0, n - 1);
+  var a = t0;
+  var l = vec3f(1.0 - fr, 0.0, 0.0);
+  l[clamp(i0 + 1, 0, n - 1) - t0] += fr;
+  var scale = E.pts.w;
+  for (var k = kR; k < K; k++) {
+    if (k > kR) {
+      // One more upsampling of the accumulation: a texel takes 3/4 of its parent and 1/4 of the parent's neighbour
+      // on its side; a texel beyond the level's edge holds nothing.
+      n = max(1, (n + 1) >> 1u);
+      let b = (a - 1) >> 1u;
+      var m = vec3f(0.0);
+      for (var j = 0; j < 3; j++) {
+        let wt = l[j];
+        if (wt == 0.0) { continue; }
+        let t = a + j;
+        let par = t >> 1u;
+        let nb = select(par - 1, par + 1, (t & 1) == 1);
+        if (par >= 0 && par < n) { m[par - b] += 0.75 * wt; }
+        if (nb >= 0 && nb < n) { m[nb - b] += 0.25 * wt; }
+      }
+      a = b;
+      l = m;
+      scale *= 0.5;
+    }
+    if (own.w[k / 4][k % 4] <= 0.0) { continue; }
+    var r = 0.0;
+    for (var i = 0; i < cnt; i++) {
+      let o = ((p0 + i) >> u32(k)) - a;   // this pixel's texel, counted from a: the blur brings it to a+j by |j - o|
+      if (o < -3 || o > 5) { continue; }
+      var gi = g[min(i, 7)];
+      if (!few) {
+        let d = f32(p0 + i) + 0.5 - c;
+        gi = select(0.0, exp(-d * d / (2.0 * s * s)), abs(d) <= ext);
+      }
+      var q = 0.0;
+      for (var j = 0; j < 3; j++) {
+        let dd = abs(j - o);
+        if (dd <= 3) { q += l[j] * taps[dd]; }
+      }
+      r += gi * q;
+    }
+    rho[k] = r * scale;
+  }
+  return rho;
+}
+
+/** A source's own light in its background, at pixel position px: luminance (cd/m2) per lux (eye/points.ts ownVeilExact). */
+fn ownVeil(px: vec2f, ndc: vec2f) -> f32 {
+  let rx = ownAxis(px.x, i32(F.size.x));
+  let ry = ownAxis(px.y, i32(F.size.y));
+  var o = 0.0;
+  for (var k = i32(own.kR); k < i32(own.levels); k++) { o += own.w[k / 4][k % 4] * rx[k] * ry[k]; }
+  let s = E.misc.z;
+  return o * E.misc2.y / (2.0 * PI * s * s) / pixelSolidAngle(F, ndc);
+}
 
 @compute @workgroup_size(256) fn main(@builtin(global_invocation_id) gid: vec3u) {
   let i = gid.x + gid.y * info.groupsX * 256u;
@@ -1104,12 +1198,14 @@ ${LIMB_WGSL(8)}
   // Local background (pointBackground): last frame's scattered light at scales ≥ the Ricco area (so a star's own
   // core glare does not mask it), the analytic veil (Sun, off-frame bodies), and the extended image's direct light
   // at the source's pixel. That veil holds this source's light whatever last frame's verdict was (both lists go
-  // into PT), so taking its own light out is always right; only in the first frame a source is in view does the
-  // veil not hold it yet (hence the max there). This is the display's test: a source that passes is displayed,
-  // and the point shader does not judge it again. (The Sun's disk is drawn after the cull: a source on it is
-  // judged against the Sun's analytic veil there.)
-  let own = e * (E.pts.w / pixelSolidAngle(F, ndc));
-  let bg = pointBackground(bgTex, extTex, ndc, own, normalize(u));
+  // into PT), and ownVeil is exactly what it holds of it at the source: a source alone on a dark background is
+  // judged against zero, wherever it sits in the pixels. Only in the first frame a source is in view, or while
+  // the view moves, does the veil not hold it where it now is (hence the max there). This is the display's test:
+  // a source that passes is displayed, and the point shader does not judge it again. (The Sun's disk is drawn
+  // after the cull: a source on it is judged against the Sun's analytic veil there.)
+  let px = (ndc * vec2f(0.5, -0.5) + 0.5) * F.size.xy;
+  let ownL = ownVeil(px, ndc);
+  let bg = pointBackground(bgTex, extTex, px, e * ownL, normalize(u));
   // Judged by the eye looking at the star, adapted to that background (Crumey's condition), not to the
   // frame's global state (eye-model.md §2 "Fixations").
   let aC = max(bg.y, E.cr1.y);
@@ -1120,13 +1216,13 @@ ${LIMB_WGSL(8)}
     // Not picked out by the eye: light on the retina all the same.
     let j = atomicAdd(&args[5], 1u);
     if (j >= info.maxUnseen) { return; }
-    unseen[2u * j] = vec4f(ndc, 0.0, 0.0);
+    unseen[2u * j] = vec4f(px, 0.0, ownL);
     unseen[2u * j + 1u] = e;
     return;
   }
   let k = atomicAdd(&args[1], 1u);
   if (k >= info.maxVisible) { return; }
-  visible[2u * k] = vec4f(ndc, -1.0, 0.0);   // depth < 0: at infinity, and judged here (POINT_SHADER vs)
+  visible[2u * k] = vec4f(px, -1.0, ownL);   // depth < 0: at infinity, and judged here (POINT_SHADER vs)
   visible[2u * k + 1u] = e;
 }
 `;
@@ -1152,8 +1248,10 @@ export const CLAMP_ARGS_SHADER = /* wgsl */ `
 export const POINT_SHADER = COMMON + TONE + BG + /* wgsl */ `
 @group(0) @binding(0) var<uniform> F: Frame;
 @group(0) @binding(1) var<uniform> E: Eye;
-// (ndc.x, ndc.y, depth, _), (E XYZS). A depth below zero marks a source of the cull's visible list: it is at
-// infinity (depth 0) and its verdict is made; a point written by the CPU (a body, the Sun) is judged in vs.
+// A source: (centre px.x, px.y, depth, its own light in its background: cd/m² per lux), (E XYZS). The centre is in
+// pixels and is never recomputed: the cull's own-light term and the splat's samples use the same number. A depth
+// below zero marks a source of the cull's visible list: it is at infinity (depth 0) and its verdict is made; a
+// point written by the CPU (a body, the Sun) is judged in vs.
 @group(0) @binding(2) var<storage, read> pts: array<vec4f>;
 @group(0) @binding(3) var bgTex: texture_2d<f32>;              // coarse physical veil (≥ Ricco scale)
 @group(0) @binding(4) var extTex: texture_2d<f32>;             // resolved bodies
@@ -1162,29 +1260,33 @@ ${VEIL}
 
 struct PV {
   @builtin(position) pos: vec4f,
-  @location(0) off: vec2f,
+  @location(0) @interpolate(flat) c: vec3f,      // the splat: centre (px), peak per sr
   @location(1) @interpolate(flat) e: vec4f,
   @location(2) @interpolate(flat) disp: vec4f,   // drawn display flux × chroma (XYZ)
   @location(3) @interpolate(flat) over: vec4f,   // overflowing display flux × chroma (XYZ)
 };
+
+/** The splat's centre and its peak per sr: one solid angle for the whole splat, the centre's. */
+fn splatOf(px: vec2f, ndc: vec2f) -> vec3f {
+  return vec3f(px, E.misc2.y / (2.0 * PI * E.misc.z * E.misc.z) / pixelSolidAngle(F, ndc));
+}
 
 @vertex fn vs(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> PV {
   var corners = array<vec2f, 6>(vec2f(-1.0, -1.0), vec2f(1.0, -1.0), vec2f(-1.0, 1.0), vec2f(-1.0, 1.0), vec2f(1.0, -1.0), vec2f(1.0, 1.0));
   let q = pts[2u * ii];
   let e = pts[2u * ii + 1u];
   let judged = q.z < 0.0;                       // the cull's verdict stands: this source is displayed
-  let p = vec4f(q.xy, max(q.z, 0.0), q.w);
-  let ext = E.misc2.x;
-  let offPx = corners[vi] * ext;
+  let p = vec4f(ndcFromFrag(F, q.xy), max(q.z, 0.0), q.w);
+  let offPx = corners[vi] * (E.misc2.x + 1.0);   // a pixel wider than the cut-off: the fragment decides (splatAt)
   var o: PV;
   o.pos = vec4f(p.xy + offPx * 2.0 * F.size.zw, p.z, 1.0);
-  o.off = offPx * vec2f(1.0, -1.0);
+  o.c = splatOf(q.xy, p.xy);
   o.e = e;
   // Appearance (points.ts pointAppearance). Background: coarse veil + analytic veil + bodies.
   let dir = normalize(worldDirNdc(F, p.xy));
-  // The source's own light is removed from the background (it would otherwise mask itself).
-  let own = e * (E.pts.w / pixelSolidAngle(F, p.xy));
-  let bgPhys = pointBackground(bgTex, extTex, p.xy, own, dir);
+  // The source's own light is removed from the background (it would otherwise mask itself): q.w is exactly what
+  // the veil holds of it at its own position, per lux (CULL_SHADER ownVeil; eye/points.ts ownVeilExact).
+  let bgPhys = pointBackground(bgTex, extTex, q.xy, e * q.w, dir);
   // The eye looking at the point is adapted to that background (its own fixation, eye-model.md §2).
   let ob = obsAt(bgPhys.y, bgPhys.w);
   let aC = max(bgPhys.y, E.cr1.y);
@@ -1212,17 +1314,21 @@ struct PV {
   return o;
 }
 
-/** The splat at an offset (px) from the true (sub-pixel) centre, for the fragment at frag (px): per sr; < 0 outside. */
-fn splatAt(off: vec2f, frag: vec2f) -> f32 {
+/**
+ * The splat for the fragment at frag (px), per sr; < 0 outside. A Gaussian along each axis about the true
+ * (sub-pixel) centre, cut where |dx| or |dy| exceeds the extent: a product of two axes, like every stage of the
+ * veil pyramid after it, which is what makes a source's own light in its background computable (CULL_SHADER
+ * ownAxis). The offset is taken from the stored centre, not interpolated: the rasteriser snaps vertices.
+ */
+fn splatAt(c: vec3f, frag: vec2f) -> f32 {
   let s = E.misc.z;
-  let r2 = dot(off, off);
+  let d = frag - c.xy;
   let ext = E.misc2.x;
-  if (r2 > ext * ext) { return -1.0; }
-  let ndc = ndcFromFrag(F, frag);
-  return exp(-r2 / (2.0 * s * s)) / (2.0 * PI * s * s) * E.misc2.y / pixelSolidAngle(F, ndc);
+  if (abs(d.x) > ext || abs(d.y) > ext) { return -1.0; }
+  return exp(-dot(d, d) / (2.0 * s * s)) * c.z;
 }
 fn splat(in: PV) -> f32 {
-  return splatAt(in.off, in.pos.xy);
+  return splatAt(in.c, in.pos.xy);
 }
 
 struct PhysOut { @location(0) pt: vec4f, @location(1) ex: vec4f };
@@ -1245,23 +1351,24 @@ struct PhysOut { @location(0) pt: vec4f, @location(1) ex: vec4f };
 // Light only: a source the eye does not pick out (same list layout, same splat, PT alone).
 struct LV {
   @builtin(position) pos: vec4f,
-  @location(0) off: vec2f,
+  @location(0) @interpolate(flat) c: vec3f,
   @location(1) @interpolate(flat) e: vec4f,
 };
 
 @vertex fn vsLight(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> LV {
   var corners = array<vec2f, 6>(vec2f(-1.0, -1.0), vec2f(1.0, -1.0), vec2f(-1.0, 1.0), vec2f(-1.0, 1.0), vec2f(1.0, -1.0), vec2f(1.0, 1.0));
-  let p = pts[2u * ii];
-  let offPx = corners[vi] * E.misc2.x;
+  let q = pts[2u * ii];
+  let ndc = ndcFromFrag(F, q.xy);
+  let offPx = corners[vi] * (E.misc2.x + 1.0);
   var o: LV;
-  o.pos = vec4f(p.xy + offPx * 2.0 * F.size.zw, p.z, 1.0);
-  o.off = offPx * vec2f(1.0, -1.0);
+  o.pos = vec4f(ndc + offPx * 2.0 * F.size.zw, q.z, 1.0);
+  o.c = splatOf(q.xy, ndc);
   o.e = pts[2u * ii + 1u];
   return o;
 }
 
 @fragment fn fsLight(in: LV) -> @location(0) vec4f {
-  let g = splatAt(in.off, in.pos.xy);
+  let g = splatAt(in.c, in.pos.xy);
   if (g < 0.0) { discard; }
   return toStore(F, in.e * g);
 }

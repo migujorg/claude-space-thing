@@ -134,7 +134,10 @@ export function veilKernelPerPixel(levels: VeilLevel[], kR: number, rPx: number)
   return v;
 }
 
-/** A source's own light in its background, at its own position: the kernel at zero distance (Eye.pts.w). */
+/**
+ * The continuous kernel at zero distance. In the continuous model of the veil (pointVeil) this is a source's own
+ * light in its background; in the shaders' pyramid it is not (ownVeilExact below is), and nothing on the GPU uses it.
+ */
 export function ownVeilPerPixel(levels: VeilLevel[], kR: number): number {
   return veilKernelPerPixel(levels, kR, 0);
 }
@@ -190,8 +193,11 @@ export function pointVisible(eye: EyeFrame, E: { Y: number; S: number }, bg: { Y
 //   N · Σ_{k ≥ kR} w_k · rho_k(x) · rho_k(y)      per unit illuminance and per pixel solid angle,
 // with N the splat's normalisation. Nothing is fitted and no texture is read.
 //
-// STATUS (7 October 2026): this is the reference for the exact term (lane own-light, job E). The shaders still draw
-// a round splat with one solid angle per pixel and subtract ownVeilPerPixel; they take this form in phase 2.
+// The cull computes it per source (shaders.ts CULL_SHADER ownAxis, the same arithmetic) and hands it to the point
+// shader in the list; the renderer computes it here for the points it writes itself (unresolved bodies). Measured
+// on the GPU for a source alone in the frame (scripts/point-census.mjs --lone): what is left of its own light in
+// its background is under 10⁻⁶ of it where the HDR targets are float32, and under 10⁻³ where they are half float.
+// Until 7 October 2026 the shaders subtracted ownVeilPerPixel, which is 30 to 60 % too much at level 0.
 
 /** The retina pyramid's blur: a discrete Gaussian of σ = 1 texel, seven taps (shaders.ts PYRAMID_SHADER W0..W3). */
 export const VEIL_BLUR_TAPS: readonly number[] = [0.39905027, 0.24203623, 0.05400558, 0.00443305];

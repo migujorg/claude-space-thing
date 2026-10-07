@@ -147,7 +147,10 @@ describe('the star cull: no verdict depends on an earlier verdict (twin of CULL_
     // never beyond the last level, even for an area no level reaches
     expect(backgroundLevel(levels, pixelSr, 1e9)).toBe(levels.length - 1);
   });
-  it('a source\'s own light in its background is the veil kernel at zero distance, and the cull removes exactly that', () => {
+  // This block models the veil as the continuous kernel (pointVeil), which is enough to state the rule: there a
+  // source's own light is the kernel at zero distance. What the shaders take out is what the pyramid holds
+  // (ownVeilExact, tested at the end of this file).
+  it('in the continuous model a source\'s own light in its background is the veil kernel at zero distance, and taking it out leaves the others\' light', () => {
     const k0 = ownVeilPerPixel(levels, kR);
     let sum = 0;
     for (let k = kR; k < levels.length; k++) sum += levels[k].weight / (2 * Math.PI * levels[k].sigmaPx ** 2);
@@ -263,13 +266,6 @@ describe('the star cull: no verdict depends on an earlier verdict (twin of CULL_
   });
 });
 
-// How good is the own-light term? The pyramid's own arithmetic, run on the CPU for one splat (shaders.ts
-// PYRAMID_SHADER: 2 × 2 box downsampling, the 7-tap blur, the accumulation w_k·blur_k + bilinear upsample of the
-// level above, textures zero outside; POINT_SHADER's splat; BG's bilinear read), gives what the background texture
-// really holds of a source at its own position. The term is each level's Gaussian at full resolution, at its peak:
-// it leaves out the splat's own width and the fact that level kR is read, not level 0, and it is one number per
-// frame while the texture's value depends on where the source sits in the texels. These tests state the size of
-// that error; they are the measure a better term has to beat (the lane's handoff of 7 Oct 2026 has the consequences).
 describe('one test for the cull and the display: the background includes the extended image\'s direct light', () => {
   const eye = eyeAt(2e-4);
   const none = { Y: 0, S: 0 };
@@ -294,7 +290,14 @@ describe('one test for the cull and the display: the background includes the ext
   });
 });
 
-describe('known limit: a point source\'s own light in its background against the retina pyramid run on the CPU', () => {
+// The own-light term as it was until 7 October 2026: one number per frame, the kernel at zero distance
+// (ownVeilPerPixel). The pyramid's own arithmetic, run on the CPU for one splat as the shaders drew it then (a round
+// cut-off; shaders.ts PYRAMID_SHADER: 2 × 2 box downsampling, the 7-tap blur, the accumulation w_k·blur_k + bilinear
+// upsample of the level above, textures zero outside; BG's bilinear read), gives what the background texture really
+// held of a source at its own position. The term left out the splat's own width and the fact that level kR is
+// read, not level 0, and it was one number while the texture's value depends on where the source sits in the
+// texels. These tests keep the size of that error on record; the exact term that replaced it is tested below.
+describe('the own-light term as it was (one number per frame) against the retina pyramid run on the CPU', () => {
   const W = 1280, H = 720;
   const sigma = (k: number) => { const p = 4 ** k; return Math.sqrt(p + (p - 1) / 12 + (4 * p - 4) / 18); };
   const nLevels = Math.ceil(Math.log2(Math.max(W, H))) + 1;
@@ -587,6 +590,31 @@ describe('a point source\'s own light in its background, exactly: the product fo
     }
     expect(worst).toBeLessThan(1e-6);
     expect(worst).toBeGreaterThan(0);   // it is rounding, not an identity of the test with itself
+  });
+
+  it('with the point image stored in half floats (the fallback without float32 blending) what is left is under a thousandth', () => {
+    // a half float keeps 11 significant bits; a GPU may round to nearest or toward zero when it stores one
+    const half = (v: number, floor: boolean) => {
+      if (v === 0) return 0;
+      const e = Math.floor(Math.log2(v)), m = (v / 2 ** e) * 1024;
+      return ((floor ? Math.floor(m) : Math.round(m)) / 1024) * 2 ** e;
+    };
+    for (const floor of [false, true]) {
+      let worst = 0;
+      for (const c of cases.slice(0, 3)) {
+        const K = sizes(c.W, c.H).length, w = someWeights(K).map((v) => Math.fround(v));
+        for (const [x, y] of positionsIn(c.W, c.H, 10, c.splat.extentPx)) {
+          const base = pointImage(c.W, c.H, c.splat, [{ x, y, E: 1 }], Float32Array).map((v) => half(v, floor));
+          const acc = veilPyramid(c.W, c.H, w, base, Float32Array);
+          for (let kR = 0; kR < K; kR++) {
+            const own = ownVeilExact(x, y, c.W, c.H, c.splat, kR, w);
+            if (own > 0) worst = Math.max(worst, Math.abs(readAt(acc[kR], kR, x, y) - own) / own);
+          }
+        }
+      }
+      expect(worst, floor ? 'rounded toward zero' : 'rounded to nearest').toBeLessThan(1e-3);
+      expect(worst).toBeGreaterThan(1e-5);   // and it is far from the float32 bound: the storage is what limits it
+    }
   });
 
   it('a splat cut by the frame: only the part inside is in the point image, and only that is taken out', () => {

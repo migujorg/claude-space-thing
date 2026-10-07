@@ -89,11 +89,16 @@ The check is a script, to be run after any change to the cull, the point path or
 cd app
 node scripts/point-census.mjs --gpu hardware --perturb   # every scene: 300 frames, then seven perturbations
 node scripts/point-census.mjs --frames 40 --only pluto-charon   # SwiftShader, where a frame takes seconds
+node scripts/point-census.mjs --gpu hardware --lone --only starfield,pluto-charon   # a source alone: none of its own light in its background
 ```
 
 It compares the lists by identity, not by count. A scene with instant adaptation fails if any star's verdict
 differs between two consecutive frames, or if the settled set after a perturbation is not the first one. A
 real-time scene fails only if a star goes back and forth. Exit 1 on a failure.
+
+`--lone` checks the own-light term (docs/eye-model.md §6): the scene's stars are replaced by one source at a
+time, and what is left of its light in the background it is judged against must be under 10⁻⁶ of it (10⁻³ where
+the HDR targets are half float).
 
 ## Running
 

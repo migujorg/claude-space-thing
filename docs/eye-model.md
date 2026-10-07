@@ -454,8 +454,31 @@ frame, its own or a neighbour's (`eye/points.ts` is the tested CPU twin). Until 
 sources that had passed the test were in the point image. A star at threshold was then judged against a
 veil that held its light only on the frames after it had passed, and was drawn every other frame.
 
-The source's own light in it (Σ_{k≥k_R} w_k/(2πσ_k²) per unit illuminance) is subtracted, so a source
-never masks itself. This term is approximate (§10).
+**A source's own light** in that texture is taken out, so a source never masks itself, and it is taken out
+exactly: a source alone on a dark background is judged against zero, wherever it sits in the pixels and
+whichever level is read. Every stage between the splat and the read is the same operation along x and along
+y (the splat's samples, the 2 × 2 mean, the seven-tap blur, the accumulation's upsampling, the linear
+read), so what level k holds of the source at its own position is a product ρ_k(x)·ρ_k(y), and the own
+light is N·Σ_{k≥k_R} w_k·ρ_k(x)·ρ_k(y)·E/Ω. The cull computes it per source from the splat's own samples,
+with no texture read and nothing fitted (`CULL_SHADER` `ownAxis`; `eye/points.ts` `ownVeilExact` is the
+twin, tested against the pyramid run in two dimensions). For that the splat is itself such a product: a
+Gaussian along each axis cut at ±3σ, one solid angle for the whole splat, offsets taken from a centre stored
+in pixels. Measured on the GPU with one source alone in the frame (`scripts/point-census.mjs --lone`), what
+is left of its own light in its background is under 10⁻⁶ of it with float32 targets and under 10⁻³ with half
+float ones. Until 7 October 2026 the term was one number per frame, the levels' Gaussians at their peaks:
+30 to 60 % more than the texture holds when level 0 is read, so every point in a light-adapted frame was
+judged against a background that was too dark, and zero where its own veil was most of what was there.
+
+**A bright point beside a brighter disk.** A moon a few tens of pixels from its planet is judged, and shown,
+by an eye adapted to what the retina holds there without the moon: the planet's veil. Beside Jupiter that is
+about 0.1 cd/m² at Io and Europa in the regression suite's frame, and beside Saturn 0.2 cd/m² at Mimas and
+Enceladus. The moon is then a compact dot near the display's white, with little or no painted glare. With
+the old term its background came out as zero: it was shown as to an eye adapted to darkness, a clipped disk
+several pixels across in a wide painted halo, next to a planet the same frame is adapted to. Three limits
+remain. A splat cut by the frame's edge is handled (only the part inside is taken out), but a splat cut by a
+nearer body's depth is not: the term then takes out more than the point image holds (§10). The cull reads
+the veil of the frame before, so while the view moves the veil holds the source where it was. And the Sun as
+a point is drawn after the pyramid, so the veil holds none of it and nothing is taken out for it.
 
 The mesopic state m, the Ricco area, the cone summation area and the tone response (Pattanaik's
 observer with Hunt's rods, reference white and black, appearance rules) are all evaluated at that
@@ -718,16 +741,15 @@ checks that the Sun's light on the bodies is unaffected.
   shows the Sun's veil from just outside the frame). Starlight outside the frame does not scatter
   into it, so the veil darkens slightly within the pyramid's reach of the frame edges (visible only in
   dense star fields with enhanced mode). A guard band would fix it.
-- **A point's own light in its background is one number per frame**, the sum of the veil levels' Gaussians
-  at their peaks. What the background texture really holds of a source at its own position (the pyramid's
-  arithmetic run on the CPU, `tests/eye-points.test.ts`) is less by a third when the background is read at
-  level 0 (a light-adapted eye at an ordinary field of view), because the term leaves out the splat's own
-  width and the bilinear read; from level 1 up the term is right in the mean within 6 %; and at any level
-  the texture's value moves by up to a quarter with the source's place in the texels. Consequences: read
-  at level 0, every point's background comes out too dark (stars somewhat below their threshold are
-  drawn, and the glare of a planet at its moon is not counted); elsewhere a point's background is off by
-  up to a quarter of its own light either way, which is small for a star at threshold and large for a
-  bright point. An exact term (the pyramid's response to the splat, per source) is the fix.
+- **A point's splat cut by a nearer body.** The point passes test each fragment against the depth buffer,
+  so a source within the splat's reach (two pixels at the smallest splat) of a nearer body's limb has part of
+  its splat missing from the point image. Its own-light term (§6) then takes out more than is there and its
+  background comes out too dark. A point's image on the retina is not clipped by the image of a body beside
+  it; occlusion belongs to the source, not to the fragments.
+- **One splat's light is right to a percent, not exactly.** The splat's normalisation is the integral's. The
+  cut-off at 3σ is hard, so the samples of one splat sum to between 0.990 and 1.005 at σ = 0.6 px depending
+  on where the source sits in the pixels (the mean is 1). The own-light term uses the samples themselves and
+  is not affected.
 - **The veil level of a point's background** comes from the Ricco area of the frame's adaptation, not of
   the point's own background. In a frame adapted to a sunlit body, a star in the dark sky beside it is
   judged against a much finer veil than its own Ricco area, in which its own light dominates.

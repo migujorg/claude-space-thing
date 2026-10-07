@@ -47,7 +47,7 @@ import { NO_SKY_DISC, skyDisc } from '../eye/fixation';
 import { magnitudeFromLux } from '../eye/crumey';
 import { DEFAULT_EYE_SETTINGS, type EyeSettings } from '../eye/settings';
 import { fitScatterKernel } from '../eye/glare';
-import { backgroundLevel, ownVeilPerPixel } from '../eye/points';
+import { backgroundLevel, erf, ownVeilExact, type PointSplat } from '../eye/points';
 import { DEG2_PER_SR, pupilDiameterMm } from '../eye/pupil';
 import { adaptationStatus, adaptationStatusText, trolands } from '../eye/bleaching';
 import { DARK_LIGHT_CONE, DARK_LIGHT_ROD, response } from '../eye/tonemap';
@@ -199,6 +199,7 @@ export class Renderer {
   private eyeUB: GPUBuffer;
   private sunUB: GPUBuffer;
   private clampUB: GPUBuffer;
+  private ownUB: GPUBuffer;
   private limbsUB: GPUBuffer;
   private reduceUB: GPUBuffer;
   private args: GPUBuffer;
@@ -273,6 +274,7 @@ export class Renderer {
     this.eyeUB = ub(17 * 16);  // 17 vec4 (struct Eye)
     this.sunUB = ub(11 * 16);
     this.clampUB = ub(16);
+    this.ownUB = ub(16 + 64);   // CULL_SHADER Own
     this.limbsUB = ub(LIMBS_UB_BYTES);
     this.reduceUB = ub(16);
     // Two indirect draws: the visible list at 0, the unseen list at 16 (CULL_SHADER).
@@ -528,7 +530,7 @@ export class Renderer {
     const d = this.device;
     const tex = (w: number, h: number, format: GPUTextureFormat, usage: number, label: string) => d.createTexture({ size: [w, h], format, usage, label });
     const RT = GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING;
-    const ST = GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING;
+    const ST = GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_SRC;   // COPY_SRC: readVeilLevel (test hook)
     const levels: Level[] = [];
     for (const [k, { w, h }] of plan.size.levels.entries()) {
       levels.push({
@@ -664,6 +666,26 @@ export class Renderer {
     buf.unmap();
     buf.destroy();
     return { frame, count, data, unseenCount, unseen };
+  }
+
+  /**
+   * Test hook (scripts/point-census.mjs --lone): the veil level a point's background is read at, as the shaders
+   * see it. Store units: divide by preExposure for cd/m².
+   */
+  async readVeilLevel(): Promise<{ level: number; width: number; height: number; preExposure: number; data: Float32Array }> {
+    const l = this.targets!.levels[this.pointOwn.kR];
+    const bpr = Math.ceil((l.w * 16) / 256) * 256;
+    const buf = this.device.createBuffer({ size: bpr * l.h, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ });
+    const enc = this.device.createCommandEncoder();
+    enc.copyTextureToBuffer({ texture: l.acc }, { buffer: buf, bytesPerRow: bpr }, { width: l.w, height: l.h });
+    this.device.queue.submit([enc.finish()]);
+    await buf.mapAsync(GPUMapMode.READ);
+    const raw = new Float32Array(buf.getMappedRange().slice(0));
+    buf.unmap();
+    buf.destroy();
+    const data = new Float32Array(l.w * l.h * 4);
+    for (let y = 0; y < l.h; y++) data.set(raw.subarray((y * bpr) / 4, (y * bpr) / 4 + l.w * 4), y * l.w * 4);
+    return { level: this.pointOwn.kR, width: l.w, height: l.h, preExposure: this.hdrPreExposure, data };
   }
 
   private destroyTargets(): void {
@@ -827,10 +849,18 @@ export class Renderer {
     const veilLevels = t.levels.map((_, k) => ({ weight: this.glareCache.weights[k] ?? 0, sigmaPx: pyramidSigma(k) }));
     const kR = backgroundLevel(veilLevels, omegaCentre, eye.riccoAreaSr);
     this.bgView = t.levels[kR].acc.createView();
-    // A source's own light in that background at its own position, per unit illuminance and per pixel
-    // solid angle: Σ_{k≥kR} w_k/(2π σ_k²). The shaders subtract it: the background excludes the source. The
-    // veil holds every point source in the frame, displayed or not (step 3), so the subtraction is always right.
-    this.selfVeilPx = ownVeilPerPixel(veilLevels, kR);
+    // A source's own light in that background at its own position is exactly what the pyramid holds of its
+    // splat there (eye/points.ts ownVeilExact): the cull computes it per source (CULL_SHADER ownAxis) from the
+    // level read and the levels' weights, and the body points get it here. The veil holds every point source in
+    // the frame, displayed or not (step 3), so taking it out is always right.
+    if (t.levels.length > 16) throw new Error(`${t.levels.length} veil levels: the own-light term holds 16`);
+    {
+      const o = new ArrayBuffer(16 + 64);
+      new Uint32Array(o, 0, 4).set([kR, t.levels.length, 0, 0]);
+      new Float32Array(o, 16, 16).set(veilLevels.map((l) => l.weight));
+      d.queue.writeBuffer(this.ownUB, 0, o);
+    }
+    this.pointOwn = { kR, weights: veilLevels.map((l) => Math.fround(l.weight)), splat: { sigmaPx: Math.fround(sigmaPx), extentPx: Math.fround(extentPx) }, tanX: g.tanX, tanY: g.tanY };
 
     this.writeUniforms(snapshot, eye, g, prep, sigmaPx, extentPx, wPt);
 
@@ -1019,11 +1049,12 @@ export class Renderer {
             { binding: 8, resource: { buffer: this.limbsUB } },
             { binding: 9, resource: { buffer: this.unseen } },
             { binding: 10, resource: t.ext.createView() },
+            { binding: 11, resource: { buffer: this.ownUB } },
           ],
         }));
         pass.dispatchWorkgroups(gx, gy);
       }
-      this.extraPts?.cull(pass, this.cullPipe, { frameUB: this.frameUB, eyeUB: this.eyeUB, visible: this.visible, unseen: this.unseen, args: this.args, bgView, srcs: this.srcs, limbs: this.limbsUB, maxVisible: this.maxVisible, maxUnseen: this.maxUnseen, extView: t.ext.createView() });
+      this.extraPts?.cull(pass, this.cullPipe, { frameUB: this.frameUB, eyeUB: this.eyeUB, visible: this.visible, unseen: this.unseen, args: this.args, bgView, srcs: this.srcs, limbs: this.limbsUB, maxVisible: this.maxVisible, maxUnseen: this.maxUnseen, extView: t.ext.createView(), own: this.ownUB });
       d.queue.writeBuffer(this.clampUB, 0, new Uint32Array([this.maxVisible, this.maxUnseen, 0, 0]));
       pass.setPipeline(this.clampPipe);
       pass.setBindGroup(0, d.createBindGroup({ layout: this.clampPipe.getBindGroupLayout(0), entries: [{ binding: 0, resource: { buffer: this.args } }, { binding: 1, resource: { buffer: this.clampUB } }] }));
@@ -1048,7 +1079,7 @@ export class Renderer {
     if (prep.points.length) {
       bodyPointsBuf = this.ensure('pointsBuf', prep.points.length * 32);
       const a = new Float32Array(prep.points.length * 8);
-      prep.points.forEach((p, i) => a.set([p.ndc[0], p.ndc[1], p.depth, 0, ...p.E], i * 8));
+      prep.points.forEach((p, i) => a.set(this.pointRecord(p, t.W, t.H, true), i * 8));
       d.queue.writeBuffer(bodyPointsBuf, 0, a);
     }
     const drawPoints = (pipe: GPURenderPipeline, bg: GPUTextureView) => (pass: GPURenderPassEncoder) => {
@@ -1094,7 +1125,8 @@ export class Renderer {
       }
       if (s.point) {
         // Into PT only for adaptation; its glare is analytic (PTEX is not read after the pyramid).
-        d.queue.writeBuffer(this.sunPointBuf, 0, new Float32Array([s.point.ndc[0], s.point.ndc[1], s.point.depth, 0, ...s.point.E]));
+        // The Sun's point is drawn after the pyramid: the veil holds none of it, so nothing of it is taken out.
+        d.queue.writeBuffer(this.sunPointBuf, 0, new Float32Array(this.pointRecord(s.point, t.W, t.H, false)));
         pointPass(this.pointPipe, [t.pt, t.ptEx], true, (pass) => {
           pass.setBindGroup(0, this.pointBindGroup(this.pointPipe, this.sunPointBuf, bgView));
           pass.draw(6, 1);
@@ -1368,7 +1400,25 @@ export class Renderer {
       this.stats.gpuFrameMs = total;
     }, () => { this.tsBusy = false; });
   }
-  private selfVeilPx = 0;
+  /** This frame's own-light term (step "local background"): the level read, the levels' weights, the splat. */
+  private pointOwn: { kR: number; weights: number[]; splat: PointSplat; tanX: number; tanY: number } = { kR: 0, weights: [], splat: { sigmaPx: 1, extentPx: 3 }, tanX: 1, tanY: 1 };
+  /**
+   * A CPU-written point as the point shader takes it (POINT_SHADER pts): its centre in pixels (float32, the number
+   * the splat is drawn about), its depth, its own light in its background (cd/m² per lux; 0 when the veil does not
+   * hold the point), and its illuminance.
+   */
+  private pointRecord(p: { ndc: readonly number[]; depth: number; E: readonly number[] }, W: number, H: number, inVeil: boolean): number[] {
+    const o = this.pointOwn;
+    const px = Math.fround((p.ndc[0] * 0.5 + 0.5) * W), py = Math.fround((p.ndc[1] * -0.5 + 0.5) * H);
+    let own = 0;
+    if (inVeil) {
+      const nx = (px / W) * 2 - 1, ny = 1 - (py / H) * 2;
+      const r2 = 1 + (nx * o.tanX) ** 2 + (ny * o.tanY) ** 2;
+      const omega = (((2 * o.tanX) / W) * ((2 * o.tanY) / H)) / (r2 * Math.sqrt(r2));
+      own = ownVeilExact(px, py, W, H, o.splat, o.kR, o.weights) / omega;
+    }
+    return [px, py, p.depth, own, ...p.E];
+  }
 
   private pointBindGroup(pipe: GPURenderPipeline, buf: GPUBuffer, bg: GPUTextureView): GPUBindGroup {
     return this.device.createBindGroup({
@@ -1410,7 +1460,7 @@ export class Renderer {
     const s = this.settings;
     const cosField = Math.cos(((s.adaptationFieldDeg / 2) * Math.PI) / 180);
     const nSrc = Math.min(prep.glare.length, MAX_GLARE_SOURCES);
-    const norm = 1 / (1 - Math.exp(-(SPLAT_EXTENT_SIGMA * SPLAT_EXTENT_SIGMA) / 2));
+    const norm = 1 / erf(SPLAT_EXTENT_SIGMA / Math.SQRT2) ** 2;   // the Gaussian cut at the extent on each axis (points.ts splatNorm)
     const c = eye.cat;
     // The resolved solar disk is never a fixation (brightness-weighted fixations, eye-model.md §2).
     const sp = prep.sun;
@@ -1432,7 +1482,7 @@ export class Renderer {
       1 / 255, cosField, sigmaPx, nSrc,
       extentPx, norm, Math.pow(10, Math.min(eye.dark.rodLogElevation, 30)), eye.dark.coneCatch,
       DARK_LIGHT_CONE, DARK_LIGHT_ROD, eye.darkResponse[0], eye.darkResponse[1],
-      response(PATTANAIK.coneBleachHalf, eye.display.sigma, eye.display.B), eye.displayRiccoSr, eye.coneSummationSr, this.selfVeilPx,
+      response(PATTANAIK.coneBleachHalf, eye.display.sigma, eye.display.B), eye.displayRiccoSr, eye.coneSummationSr, 2 ** -this.pointOwn.kR,
       ...sunFix,
       eye.display.blackRef, s.coneBleaching ? 1 : 0, s.fixation === 'centre' ? 0 : 1, eye.mode === 'eye' && !this.debugSkip.has('acuity') ? 1 : 0,
       eye.display.maxLd, eye.display.maxResponse, this.displayInfo.hdr ? 1 : 0, this.displayInfo.colorSpace === 'display-p3' ? 1 : 0,

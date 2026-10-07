@@ -30,6 +30,8 @@ export interface CullBindings {
   maxUnseen: number;
   /** The extended image (resolved bodies, sky), for the direct light at a source's pixel. */
   extView: GPUTextureView;
+  /** The veil level and the pyramid's weights, for a source's own light in its background (CULL_SHADER Own). */
+  own: GPUBuffer;
 }
 
 export class ExtraPointSources {
@@ -72,6 +74,7 @@ export class ExtraPointSources {
         { binding: 8, resource: { buffer: b.limbs } },
         { binding: 9, resource: { buffer: b.unseen } },
         { binding: 10, resource: b.extView },
+        { binding: 11, resource: { buffer: b.own } },
       ],
     }));
     pass.dispatchWorkgroups(gx, gy);
