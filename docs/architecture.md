@@ -88,7 +88,31 @@ Every dataset the pipeline touches gets a `SourceRecord` in `sources.json`. Ever
 
 ### 3.4 Apparent positions
 
-Objects are drawn where their light left them (NORTH_STAR 3.4): for each object, solve the light-time equation against the observer (iterate `τ = |r_obj(t−τ) − r_obs(t)| / c`, 2–3 iterations) using `c` from `constants.ts`. The observer is at rest in the SSB frame (no stellar aberration) unless and until that open question is decided otherwise.
+Objects are drawn where their light left them (NORTH_STAR 3.4), using `c` from `constants.ts`. The observer's SSB position is held at the reception epoch throughout the correction; there is no stellar aberration. The CPU path (`core/lighttime.ts`, including selected small bodies via `app/smallbodies.ts`) iterates `τ = |r_obj(t−τ) − r_obs(t)| / c` to a delay change below 10⁻⁹ s, with at most ten iterations (normally 2–3). Missing emission-time coverage or failure to converge gives an unknown position.
+
+**GPU population approximation.** The catalogue shade kernel and the synthetic-object kernel (`gpu/smallbodies/kernels.ts`) use a **first-order** correction, not an iterated emission-time orbit: with `R = r_obj(t) − r_obs(t)`, `D = |R|`, `n = R/D`, they compute `τ₀ = D/c` once and draw `R₁ = R − v_SSB(t) τ₀`. Catalogue heliocentric velocity adds the Sun's SSB velocity; synthetic irregular moons add their planet-system barycentre's SSB velocity. These centre velocities are evaluated by the CPU over ±1 s. The observer's velocity is not subtracted. The photometry geometry also uses a linear back-date of the heliocentric position. This approximation remains the population rendering contract.
+
+For a smooth target trajectory with SSB velocity `v` and acceleration `a`, expansion of the converged delay gives `τ = D/c − (n·v)D/c² + O(c⁻³)`. Thus the leading **first-order minus iterated** position error is
+
+```
+δR = −v (n·v) D/c² − a D²/(2c²) + O(c⁻³).
+δθ ≈ |δR − n(n·δR)|/D             (radians).
+```
+
+Both the uniterated delay and the omitted acceleration matter. In particular, nearest distance alone does not locate the largest angular error: `n·v` uses target SSB velocity, not target–observer relative radial speed. For bounds `|v| ≤ V < c` and `|a| ≤ A` throughout the reception-to-emission interval, Taylor's remainder and `τ ≤ D/(c−V)` give the conservative position bound `B = V²D/[c²(1−V/c)] + AD²/[2c²(1−V/c)²]`; when its argument is below one, the direction difference is at most `asin(B(1+V/c)/D)`.
+
+**Numerically checked domain and regression bounds.** For the built SBDB snapshot 2026-10-03, catalogue epoch 2026-10-04 TDB, and window 2025-04-04 to 2028-04-04, a float64 CPU twin of the shader correction was compared with the converged CPU light-time solve on the *same* orbit model:
+
+| Observer and objects | Largest checked position difference | Largest checked direction difference | Regression bound (position; direction) |
+|---|---:|---:|---:|
+| Earth centre, selected fast/close catalogue NEAs | 0.10693 km | 0.001750 arcsec | 0.12 km; 0.002 arcsec |
+| Host planet centre, all 458 built synthetic irregular moons | 0.06284 km | 0.0002950 arcsec | 0.07 km; 0.00035 arcsec |
+
+The NEA selection screened all 2,812 Earth approaches in the cached JPL CNEOS answer (within 0.05 au during this window), using solar two-body drift from `smallbodies/core.bin`. The union of the twelve largest screening position errors, direction errors, SSB speeds and CNEOS relative speeds, and the twelve nearest CNEOS distances contained 56 approaches. These were then integrated with the product's full `forceModel` and non-gravitational parameters and compared hourly within ±1 day of each approach, restricted to covered epochs (2,721 comparisons). The position maximum was 2025 HA at ET 797265986.9430139 (one day before its listed approach; D = 7,580,830 km, SSB speed 37.608 km/s); the angular maximum was 2025 WV13 at ET 817561808.5025758 (one hour after; D = 42,652 km, SSB speed 39.130 km/s).
+
+The synthetic moons used `synthetic/objects.bin` and `core/smallbodySynthetic.ts`'s fixed Kepler ellipses, adding their barycentre ephemerides. Each was checked from its host **planet centre** every fourteen days through the window; the twenty largest samples for each error metric were refined hourly within ±14 days (63,101 comparisons including repeated samples). Both maxima belonged to Jupiter's population: stream rows 2970041 at ET 817676528 (position) and 2969819 at ET 809256128 (direction). Sun and centre positions came from the built `ephem/de442s` and `ephem/centers` products. The bounds round upward from these measurements; `tests/smallbody-lighttime-bound.test.ts` retains the maxima and deep Earth encounters and guards the twin's correspondence with both generated shaders.
+
+These are bounds for the **checked samples**, not certified maxima over every catalogue object, every instant, synthetic heliocentric populations, or arbitrary observer locations. They isolate the light-time approximation: orbit-solution uncertainty, propagation error, neglected forces in synthetic orbits, float32 shading and GPU execution are separate error budgets. Recheck the numeric survey when the catalogue, window or correction changes.
 
 ## 4. Light
 
