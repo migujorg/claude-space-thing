@@ -209,3 +209,65 @@ def test_case_file(path: Path):
             assert all(v >= 0 for v in e["upperLimitXYZS"])
     ids = {s["id"] for s in c["sources"]}
     assert "naif-pck00011" in ids and "tsis1-hsrs-v2" in ids
+
+
+@pytest.mark.parametrize("ss", [None, 0, -1, 1.5, True, "4"])
+def test_report_rejects_unrecorded_or_invalid_sampling(tmp_path, monkeypatch, ss):
+    from pipeline.validation import report
+
+    run = {"options": {} if ss is None else {"ss": ss}, "cases": []}
+    dest = tmp_path / "report.md"
+    dest.write_text("previous report")
+    monkeypatch.setattr(report, "REPORT", dest)
+    with pytest.raises(ValueError, match="record.*sampling"):
+        report.write(run=run)
+    assert dest.read_text() == "previous report"
+
+
+def test_report_header_reads_sampling_from_run(tmp_path, monkeypatch):
+    from pipeline.validation import report
+
+    assert "3 × 3 = 9 samples per pixel" in report.sampling_header({"options": {"ss": 3}})
+    assert "unknown" in report.sampling_header(None)
+    dest = tmp_path / "report.md"
+    monkeypatch.setattr(report, "REPORT", dest)
+    monkeypatch.setattr(report, "CONVERGENCE_REPORT", tmp_path / "absent.json")
+    monkeypatch.setattr(report, "findings", lambda cases: "")
+    run = {"generatedAt": "2026-10-07T00:00:00Z", "options": {"ss": 3, "reality": "best"}, "cases": []}
+    report.write(run=run)
+    assert "3 × 3 = 9 samples per pixel" in dest.read_text().split("*Generated")[0]
+
+
+def test_report_sampling_table_from_fixture_file(tmp_path, monkeypatch):
+    from pipeline.validation import report
+
+    # Fixture file in the script's output shape. Four channels and a ratio: Y alone cannot establish convergence.
+    runs = []
+    for ss in [1, 2, 3, 4, 6]:
+        runs.append({"generatedAt": "2026-10-07T00:00:00Z", "git": "abc", "dataGeneratedAt": "data",
+                     "options": {"ss": ss, "reality": "best", "hdr": "auto"},
+                     "gpu": {"mode": "hardware", "adapter": {"vendor": "test"}},
+                     "cases": [{"id": "fixture", "rois": [{"id": "disk", "rendered": {"mean": [ss, 10, 20, 30]},
+                                                            "pass": True, "failing": []}],
+                                "ratios": [{"numerator": "disk", "denominator": "earth", "rendered": [1, 2, 3, 4],
+                                            "pass": False, "failing": ["X"]}]}]})
+    path = tmp_path / "sampling-convergence.json"
+    path.write_text(json.dumps({"schema": "validation-sampling-v1", "runs": runs}))
+    monkeypatch.setattr(report, "CONVERGENCE_REPORT", path)
+    section = report.convergence_section(runs[3])
+    assert "1 × 1 | 2 × 2 | 3 × 3 | 4 × 4 | 6 × 6" in section
+    assert "| `fixture` | disk | X | 1 | 2 | 3 | 4 | 6 | -33.3333 % |" in section
+    assert "| `fixture` | disk / earth | Y | 2 | 2 | 2 | 2 | 2 | +0 % |" in section
+    assert "fail (X)" in section
+    assert "not a proof" in section
+    dest = tmp_path / "report.md"
+    monkeypatch.setattr(report, "REPORT", dest)
+    monkeypatch.setattr(report, "findings", lambda cases: "")
+    # The summary and run section are unrelated to the convergence fixture's intentionally minimal ROI records.
+    monkeypatch.setattr(report, "run_section", lambda run, interpretation: "renderer run\n")
+    report.write(run=runs[3])
+    assert section in dest.read_text()
+    with pytest.raises(ValueError, match="same run"):
+        report.convergence_section({**runs[3], "git": "other"})
+    path.unlink()
+    assert report.convergence_section(runs[3]) == ""
