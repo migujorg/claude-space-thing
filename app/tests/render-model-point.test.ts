@@ -239,7 +239,7 @@ it.skipIf(!built)('requests only atmosphere tables that can contribute to canoni
       // Frame preparation only, using this process's CPU: generous versus the normal few ms.
       expect.soft((elapsed.user + elapsed.system) / 1000, sc.id).toBeLessThan(250);
     }
-    if (sc.id === 'pluto-charon') expect(requests.map((r) => r.name)).toEqual(['Pluto']);
+    if (['pluto-charon', 'pluto-narrow-field'].includes(sc.id)) expect(requests.map((r) => r.name)).toEqual(['Pluto']);
     if (sc.id === 'titan-haze') expect(requests.map((r) => r.name)).toEqual(['Titan']);
   }
 }, 120000);
