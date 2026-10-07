@@ -137,6 +137,7 @@ def test_product_is_bit_identical_to_excerpt_and_matches_spice(kernel, segments)
 
 
 @pytest.mark.parametrize("name", VERIFY_ORIGINALS)
+@pytest.mark.skip_group("missing-input")
 def test_excerpt_equals_original_in_spice(name, segments):
     original = RAW / "naif" / "spk-satellites-full" / f"{name}.bsp"
     if not original.exists():

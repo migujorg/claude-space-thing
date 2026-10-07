@@ -49,7 +49,11 @@ class _H(http.server.BaseHTTPRequestHandler):
 
 
 @pytest.fixture
-def served(monkeypatch):
+def served(monkeypatch, tmp_path):
+    from pipeline import download
+    monkeypatch.setattr(download, "RAW", tmp_path / "raw")
+    monkeypatch.setattr(download, "CACHE", tmp_path / "cache")
+    monkeypatch.setattr(download, "_LEDGER", tmp_path / "raw" / "_downloads.json")
     body, ids = _bulk_file(np.random.default_rng(5))
     _H.body = body
     srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), _H)
