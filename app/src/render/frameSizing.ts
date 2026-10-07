@@ -5,9 +5,13 @@ export type FrameLimits = Pick<GPUSupportedLimits, 'maxTextureDimension2D' | 'ma
 /** Rows of square aerial-perspective columns, with at least two pixels per column. */
 const AP_ROWS = 270;
 
-export function aerialPerspectiveSize(W: number, H: number, slices: number, K4: number, _limits: FrameLimits) {
-  const colPx = Math.max(2, Math.ceil(H / AP_ROWS));
-  return { colPx, nx: Math.ceil(W / colPx), ny: Math.ceil(H / colPx), depth: slices * (1 + K4) };
+export function aerialPerspectiveSize(W: number, H: number, slices: number, K4: number, limits: FrameLimits) {
+  const depth = slices * (1 + K4);
+  // Keep every spectral/altitude slice: null selects the existing per-pixel march instead.
+  if (depth > limits.maxTextureDimension3D) return null;
+  const maxColumns = Math.min(limits.maxTextureDimension3D, 8 * limits.maxComputeWorkgroupsPerDimension);
+  const colPx = Math.max(2, Math.ceil(H / AP_ROWS), Math.ceil(W / maxColumns), Math.ceil(H / maxColumns));
+  return { colPx, nx: Math.ceil(W / colPx), ny: Math.ceil(H / colPx), depth };
 }
 
 export type SizeResult<T> = { ok: true; size: T } | { ok: false; warning: string };
@@ -43,4 +47,15 @@ export function readbackSize(W: number, H: number, bytesPerPixel: number, storag
   if (!Number.isSafeInteger(bytes) || bytes > limit) return { ok: false, warning: `Readback needs ${bytes} bytes, exceeding ${storage ? 'storage/buffer' : 'buffer'} limit ${limit}; read a smaller region.` };
   if (storage && Math.max(Math.ceil(W / 8), Math.ceil(H / 8)) > limits.maxComputeWorkgroupsPerDimension) return { ok: false, warning: 'Readback exceeds maxComputeWorkgroupsPerDimension; read a smaller region.' };
   return { ok: true, size: { bytes, bytesPerRow } };
+}
+
+/** Request supported limits rather than guessed hardware capabilities. */
+export function requiredFrameLimits(limits: FrameLimits): FrameLimits {
+  return {
+    maxTextureDimension2D: limits.maxTextureDimension2D,
+    maxTextureDimension3D: limits.maxTextureDimension3D,
+    maxBufferSize: limits.maxBufferSize,
+    maxStorageBufferBindingSize: limits.maxStorageBufferBindingSize,
+    maxComputeWorkgroupsPerDimension: limits.maxComputeWorkgroupsPerDimension,
+  };
 }

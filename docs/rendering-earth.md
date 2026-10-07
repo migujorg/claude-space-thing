@@ -389,7 +389,10 @@ dust keep more contrast, and the disk renormalisation keeps the total.
 
 **Aerial-perspective columns (M5).** Marching every pixel is most of the cost (§7). Following Hillaire's
 (2020) aerial-perspective volume, a compute pass (`AP_COLUMNS_SHADER`) marches the view path once per
-column of c × c pixels, c = ⌈frame height / 270⌉ (at least 2), and the pixels interpolate. Hillaire slices the
+column of c × c pixels, c = ⌈frame height / 270⌉ (at least 2), and the pixels interpolate.
+The square-column spacing is increased only as needed to keep both grid axes within the device’s 3D texture
+and compute-dispatch limits; all altitude and spectral slices are retained (a depth that cannot fit uses the
+per-pixel march). Hillaire slices the
 camera frustum by distance, for views from inside the air. Seen from outside, what changes along a column's
 path toward the surface is the altitude, so the slices here are by altitude. For each slice altitude h_k the
 texture (rgba16float, 3D) holds the path radiance folded to XYZS and the δ-scaled transmittance per bin of
