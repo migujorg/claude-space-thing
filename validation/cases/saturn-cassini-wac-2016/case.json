@@ -50117,8 +50117,8 @@
   "criterion": "exact scientific JSON and float32 reference bytes",
   "inputs": {
    "products/rings.json": {
-    "sha256": "e7a2374193414e1e8627dec77ff5b5da1a388d45c7916333eeafacbea42d810e",
-    "bytes": 1240191
+    "sha256": "84582f6cb1ac6554993cebef320fcb99a5fd1563ea2901833bd2a8e0d4aa7627",
+    "bytes": 1240422
    },
    "raw/cie/CIE_sle_scotopic.csv": {
     "sha256": "6a75d3fdbcbf5e9e9a07478511933eefeda953f3e2cc14b74459e5a099ec3759",
@@ -50300,7 +50300,7 @@
    "photometry/report.py": "08740afbe7c3f82ebd3b981e010323247687fbf3b566d48fd759d9aef5bdd5aa",
    "photometry/ring_check.py": "83c1f8eb9a1a93b0c6202a962ce654dc93e3e611c458b4cca56febf2046cc7af",
    "photometry/ring_components.py": "9b3bcf46cbddb45977084e14598962d68ae062ae91e803a458e7c37e7ecc09be",
-   "photometry/ring_reflectance.py": "46ac48167ecd8b6f839e5555b3e5deb1ffcf71703d516ff99f7c2e70491ce3e5",
+   "photometry/ring_reflectance.py": "96bdd50b1d2a7464d1d6ab99c2dcfab214454b818b041258f9ff4fad879591aa",
    "photometry/rings.py": "66deebcaaab92879a1f10d5b1b3faef60af82c779f2f88cf8dc36aeec352bc27",
    "photometry/rings_jupiter.py": "d7184ecb6d4028665090cb96cce51b7db46ae0679ec0cca29004890dfec03cc2",
    "photometry/rings_neptune.py": "0444c50738f085dce76b06fbcf293908d61e5bd58bf4bf679f91d448d2714412",
