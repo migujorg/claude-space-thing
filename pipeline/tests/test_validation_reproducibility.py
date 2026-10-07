@@ -7,7 +7,7 @@ from pipeline.validation import build, geometry as g, register
 
 
 def target():
-    return g.Target(999, 'test', np.array([0., 0., -1e6]), np.eye(3),
+    return g.Target(999, 'test', np.array([0., 0., -1e6]), np.array([[1.,0.,0.],[0.,0.,1.],[0.,-1.,0.]]),
                     np.array([0., 0., 1e8]), np.array([1000., 1000., 1000.]))
 
 
@@ -84,3 +84,89 @@ def test_input_capture_checks_unregistered_files(tmp_path,monkeypatch):
     with pytest.raises(r.ReproductionError,match='geometry.txt'):
         with r.capture_inputs(inputs):
             f.read_text()
+
+
+def test_lock_refuses_environment_and_code_changes(monkeypatch):
+    from pipeline.validation import reproducibility as r
+    monkeypatch.setattr(r, 'runtime', lambda: {'numpy': 'new'})
+    monkeypatch.setattr(r, 'implementation', lambda: {'register.py': 'new'})
+    c={'reproducibility': {'schema':'validation-rebuild-v1', 'runtime':{'numpy':'old'},
+                           'implementation':{'register.py':'old'}, 'inputs':{}}}
+    with pytest.raises(r.ReproductionError,match='numerical environment'):
+        r.preflight(c)
+    c['reproducibility']['runtime']={'numpy':'new'}
+    with pytest.raises(r.ReproductionError,match='code/tables'):
+        r.preflight(c)
+
+
+def test_locked_build_refuses_new_input(tmp_path, monkeypatch):
+    from pipeline.validation import reproducibility as r
+    monkeypatch.setattr(r,'RAW',tmp_path)
+    f=tmp_path/'unrecorded.txt'; f.write_text('new')
+    with pytest.raises(r.ReproductionError,match='unrecorded rebuild input'):
+        with r.capture_inputs({}):
+            f.read_text()
+
+
+def test_himawari_rebuild_uses_recorded_kernel_without_directory_listing(monkeypatch,tmp_path):
+    from pipeline.validation import himawari, reproducibility as r
+    f=tmp_path/'earth_000101_261226_260929.bpc'; f.write_bytes(b'kernel fixture')
+    calls=[]
+    def fetch(url,subdir):
+        calls.append(url)
+        return f
+    monkeypatch.delenv('PIPELINE_VALIDATION_EARTH_PCK',raising=False)
+    monkeypatch.setattr(himawari.download,'fetch',fetch)
+    monkeypatch.setattr(himawari.download,'record',lambda p: {'url':calls[-1], 'retrieved':'2026-09-30',
+                                                            'sha256':r.file_record(p)['sha256']})
+    from pipeline.schema import BuildContext
+    src={'id':'naif-earth-pck-high-prec', 'version':f.name, 'sha256':r.file_record(f)['sha256']}
+    with r.expected_case({'sources':[src]}):
+        assert himawari._earth_pck(BuildContext(0.,0.))==f
+    assert calls==['https://naif.jpl.nasa.gov/pub/naif/generic_kernels/pck/'+f.name]
+
+
+def test_unlocked_cli_cannot_write_committed_cases():
+    from pipeline.validation.__main__ import main
+    with pytest.raises(SystemExit) as e:
+        main(['build','--unlocked'])
+    assert e.value.code==2
+
+
+def test_single_thread_requirement_is_explicit(monkeypatch):
+    from pipeline.validation import reproducibility as r
+    for key in r.THREAD_VARS:
+        monkeypatch.setenv(key,'1')
+    r.require_single_thread()
+    monkeypatch.setenv('OMP_NUM_THREADS','4')
+    with pytest.raises(r.ReproductionError,match='before Python starts'):
+        r.require_single_thread()
+
+
+def test_verify_reports_reference_difference_without_modifying_case(tmp_path,monkeypatch,capsys):
+    from pipeline.validation import __main__ as cli
+    monkeypatch.setitem(cli.CASES,'fixture-case',object())
+    monkeypatch.setattr(build,'preview',lambda path,*args: path.write_bytes(b'preview fixture'))
+    built={'json': {'schema':'validation-case-v1','id':'fixture-case','observation':{},'view':{},
+                    'reference':{'bands':[]},'rois':[]},
+           'refs':[np.array([[1.,2.],[3.,np.nan]])], 'rois':[]}
+    monkeypatch.setattr(build,'VALIDATION',tmp_path)
+    old_dir=build.write_case('fixture-case',built)
+    original={p.name:p.read_bytes() for p in old_dir.iterdir()}
+    monkeypatch.setattr(build,'build_case',lambda case,expected: built)
+    assert cli.main(['verify','--only','fixture-case','--cases-dir',str(tmp_path)])==0
+    built['refs'][0][0,0]=2.
+    assert cli.main(['verify','--only','fixture-case','--cases-dir',str(tmp_path)])==1
+    output=capsys.readouterr().out.strip().splitlines()
+    assert json.loads(output[-1])['reference']['maxAbsDifference']==1.
+    assert {p.name:p.read_bytes() for p in old_dir.iterdir()}==original
+    assert cli.main(['build','--only','fixture-case'])==1
+    assert {p.name:p.read_bytes() for p in old_dir.iterdir()}==original
+
+
+def test_unlocked_output_cannot_alias_committed_directory(tmp_path,monkeypatch):
+    from pipeline.validation.__main__ import main
+    monkeypatch.setattr(build,'VALIDATION',tmp_path)
+    with pytest.raises(SystemExit) as e:
+        main(['build','--unlocked','--output',str(tmp_path)])
+    assert e.value.code==2

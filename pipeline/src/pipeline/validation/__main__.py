@@ -70,6 +70,8 @@ def main(argv: list[str] | None = None) -> int:
         ap.error("--unlocked requires --output; committed cases are never unlocked in place")
     if args.cmd == "build" and args.earth_pck:
         os.environ["PIPELINE_VALIDATION_EARTH_PCK"] = args.earth_pck
+    if args.cmd == "build" and args.unlocked and args.output.resolve() == vb.VALIDATION.resolve():
+        ap.error("--unlocked output must differ from the committed validation directory")
     register.USE_CACHE = not args.fresh_fit
     committed = args.cases_dir if args.cmd == "verify" and args.cases_dir else vb.VALIDATION
     destination = args.output if args.cmd == "build" and args.output else vb.VALIDATION

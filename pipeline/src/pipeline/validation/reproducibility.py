@@ -105,7 +105,8 @@ def capture_inputs(expected=None):
         for key, path in sorted(state['seen'].items()):
             out[key] = file_record(path)
         if successful and expected is not None and out != expected:
-            raise ReproductionError('rebuild input set/bytes differ from recorded inputs')
+            changed = [k for k in sorted(set(out) | set(expected)) if out.get(k) != expected.get(k)]
+            raise ReproductionError(f'rebuild input set/bytes differ: {", ".join(changed)}')
 
 
 def runtime():
@@ -210,7 +211,16 @@ def compare_cases(old_dir, new_dir):
         else:
             row['oldType'], row['newType'] = x.get('type'), y.get('type')
         regions.append(row)
-    keys = ('observation','view','reference','rois','ratios','comparison','pixel')
+    # Earlier cases predate the unrounded optimizer trace. Its absence is a
+    # reported legacy gap, not a difference in their existing scientific values.
+    if 'reproducibility' not in a:
+        for image in b.get('observation', {}).get('images', []):
+            for key in ('fitInputs', 'fitResult', 'freeFitResult'):
+                image.pop(key, None)
+    keys = ('observation','view','reference','rois','ratios','comparison','pixel',
+            'appProducts','notes','title','summary')
+    if 'reproducibility' in a:
+        keys += ('reproducibility', 'sources')
     different = [k for k in keys if a.get(k) != b.get(k)]
     return {'reproduces': not different and refs['identical'], 'criterion': 'exact scientific JSON and reference bytes',
             'caseBytesIdentical': file_record(old_dir/'case.json') == file_record(new_dir/'case.json'),

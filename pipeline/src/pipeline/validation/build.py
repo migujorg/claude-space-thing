@@ -356,6 +356,7 @@ def prepare_frame_case(case: FrameCase, *, verbose: bool = True) -> Prepared:
                 flip = ft.flipped
             nat = a[: b.shape[0] * case.bin, : b.shape[1] * case.bin]
             nat = nat[:, ::-1] if flip else nat
+            free_fit_result = ft.exact_json()
             wcs_roll_note = None
             if case.reader == "lorri":        # roll from the mission's attitude (header WCS), translation refitted
                 ft, wcs_roll_note = _adopt_wcs_roll(case, path, nat, ft, tg, shift)
@@ -393,6 +394,7 @@ def prepare_frame_case(case: FrameCase, *, verbose: bool = True) -> Prepared:
                                                                imageSha256=download.sha256_file(path),
                                                                fitVersion=FIT_VERSION),
                              "fitResult": ft.exact_json(),
+                             "freeFitResult": free_fit_result,
                              "registrationSigmaPx": max(MIN_REGISTRATION_PX, 3 * ft.sigma_px),
                              "aberrationShiftRad": float(np.linalg.norm(shift)), "pointingChecks": pc,
                              "rollSigmaDeg": roll_sigma})
@@ -791,7 +793,7 @@ def build_case(case, *, expected: dict | None = None) -> dict:
     built["json"]["reproducibility"] = {
         "schema": "validation-rebuild-v1", "criterion": "exact scientific JSON and float32 reference bytes",
         "inputs": inputs, "implementation": repro.implementation(), "runtime": repro.runtime(),
-        "fits": [{"product": m["product"], "inputs": m.get("fitInputs"), "result": m.get("fitResult")}
+        "fits": [{"product": m["product"], "inputs": m.get("fitInputs"), "freeResult": m.get("freeFitResult"), "result": m.get("fitResult")}
                  for m in p.img_meta],
         "optimizer": "deterministic 3-degree exhaustive roll/FFT translation seed, explicit Nelder-Mead simplex; "
                      "no random seed or random draws; see hashed register.py for stopping criteria",
