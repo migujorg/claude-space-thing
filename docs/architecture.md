@@ -353,7 +353,7 @@ How the pieces were obtained (the product's `method` has the details):
 3. A(r): radial structure, fitted so that the model reproduces the Voyager 2 lit profile bin by bin at its geometry. Colour, phase and tilt behaviour away from the three HST regions (e.g. Cassini Division, outer B ring) are interpolated (assumption).
 4. τ_u, g_u: fitted so that the model reproduces the Voyager 1 unlit profile bin by bin. In the B ring τ_u ≈ 1 while τ⊥ ≈ 5: light reaches the unlit side by multiple scattering and between self-gravity wakes. The unlit face's colour and phase shape are assumed to follow the lit face's.
 
-Domain: `minPhaseDeg` ≤ α ≤ `maxPhaseDeg` (0.25-47°); outside, ring brightness is unknown (the renderer shows that, e.g. by marking the rings as unmeasured). Not modelled: the A ring's azimuthal wake asymmetry, spokes, the F ring (A null beyond 138 700 km). Independent check: the net light the rings add to Saturn matches Mallama & Hilton's (2018) ground photometry within 10 % for ring elevations 15-26° at α = 1-3° (docs/reports/planet-colors.md).
+Domain: `minPhaseDeg` ≤ α ≤ `maxPhaseDeg` (0.25-47°); outside, ring brightness is unknown in this product (the renderer hatches it). [Published high-phase measurements exist](sources/rings-high-phase.md) but are not yet included in the product. Not modelled: the A ring's azimuthal wake asymmetry, spokes, the F ring (A null beyond 138 700 km). Independent check: the net light the rings add to Saturn matches Mallama & Hilton's (2018) ground photometry within 10 % for ring elevations 15-26° at α = 1-3° (docs/reports/planet-colors.md).
 
 
 ### Ring components

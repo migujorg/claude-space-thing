@@ -313,7 +313,7 @@ W = ϖP comes from the region tables. It is bilinear in (α, Beff) with Beff cla
 between regions, and takes the nearest region's value outside them.
 
 The domain is the model's phase range (0.25–47°). Outside it, and wherever A is null (the F ring, beyond
-138 700 km), the ring material is hatched as "not measured" and gives no light. Where the effective
+138 700 km), the ring material is hatched as unknown in this product and gives no light. Where the effective
 elevation is below the calibrated 4.5° (Saturn near ring-plane crossing, 2025–26) or above 26.1°, the
 particle term is held at the table edge. The renderer then warns: "effective elevation … outside the
 calibrated … → particle term held at the table edge (estimated)". Systems without a model (Jupiter,
@@ -359,9 +359,10 @@ scattered between the planet and the rings, which lie in the same plane:
 - The rings light the globe (and its night side) at scattering angles that are, for most viewpoints,
   beyond the 47° phase limit of the reflectance model's particle phase function (`maxPhaseDeg`).
 
-Beyond 47° the model states that ring brightness is unknown (forward scattering by dust), so computing
-either term would mean inventing the particle phase function. The in-domain part alone would be a
-viewpoint-dependent patch. This is left for a model that covers the full phase range.
+Beyond 47° this product has no calibrated ring brightness. [Published high-phase measurements exist](sources/rings-high-phase.md),
+but using them requires qualified geometry, spectral support and scattering transport, including
+multiple scattering, packing and dust where applicable. Neither exchange-light term is implemented;
+the in-domain part alone would leave a viewpoint-dependent patch.
 
 ## 7. Best-estimate phase extrapolation
 
@@ -379,8 +380,7 @@ moons 0–3.1°.
 The result is labelled `estimated`: the provenance tint shows it, and `stats.warnings` says "phase
 extrapolated beyond measured range". Code: `photometry.ts extrapolatePhase`; test in
 `render-frame.test.ts`. Ring brightness is never extrapolated beyond its model's phase range. Beyond 47°
-it depends on forward-scattering dust that nothing measured, and below 0.25° the opposition surge keeps
-rising.
+this product has no admitted calibration; below 0.25° the opposition surge keeps rising.
 
 ## 8. GPU cost and timing
 
@@ -459,7 +459,7 @@ snapshot's per-body photometry and the frame preparation.
   without eclipses.
 - **Rings:** see §6. There are no wakes or spokes, and the unresolved-planet point omits ring shadows on
   the globe. Saturn-shine and ringshine are left out because they fall outside the particle phase
-  function's measured 0.25–47°.
+  function's calibrated 0.25–47° domain in this product (§6).
 - **Data:** Saturn's occultation profile has τ ≈ 0.03–0.10 at 145 000–151 700 km, beyond the F ring,
   where the rings are essentially empty. It is probably a background artefact of that occultation. The
   renderer shows it as material of unknown reflectance (a hatched outer band) and it slightly dims
