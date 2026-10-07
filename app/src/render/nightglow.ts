@@ -1,3 +1,4 @@
+import { sampledFrameSize } from './frameSizing';
 // Earth's own light at night: airglow and aurora (docs/reports/nightglow.md, docs/rendering-earth.md §9).
 //
 // The emission is an additional source term of the Earth's atmosphere: for every pixel the view ray is followed
@@ -1035,7 +1036,7 @@ export class NightglowGpu {
    * pass). `entries`: bindings 0, 1, 12–14 and those of prepare().
    */
   encodeEmission(enc: GPUCommandEncoder, entries: GPUBindGroupEntry[], index: number, W: number, H: number, timestampWrites?: GPURenderPassTimestampWrites, scale = NIGHTGLOW_SCALE): void {
-    const w = Math.max(1, Math.ceil(W / scale)), h = Math.max(1, Math.ceil(H / scale));
+    const { w, h } = sampledFrameSize(W, H, scale);
     if (!this.low || this.low.width !== w || this.low.height !== h) {
       this.low?.destroy();
       this.low = this.device.createTexture({ size: [w, h], format: 'rgba16float', usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING, label: 'nightglow (low resolution)' });

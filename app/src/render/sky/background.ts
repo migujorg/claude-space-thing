@@ -1,3 +1,4 @@
+import { readbackSize, sampledFrameSize } from '../frameSizing';
 // Sky background on the GPU: extended sky light added to the renderer's EXT target (absolute XYZS luminance,
 // cd/m² and scotopic cd/m²) wherever no body is in front, right after the bodies pass, so that it takes part in
 // the glare veil, the adaptation measurement and the local background of every point source like any other
@@ -489,7 +490,7 @@ export class SkyBackground implements SkyBackgroundHook {
     const sunDir = [-oI[0] / r, -oI[1] / r, -oI[2] / r];
     const T = s.et / (DAYS_PER_JULIAN_CENTURY * SECONDS_PER_DAY);
     const earthLon = ((((EARTH_MEAN_LONGITUDE.epochDeg + EARTH_MEAN_LONGITUDE.rateDegPerCentury * T) % 360) + 360) % 360) * (Math.PI / 180);
-    const gw = Math.ceil(t.W / ZODI_STEP) + 1, gh = Math.ceil(t.H / ZODI_STEP) + 1;
+    const { w: gw, h: gh } = sampledFrameSize(t.W, t.H, ZODI_STEP, 1);
     const o = s.camera.orient;
     const key = [...oE.map((x) => x.toPrecision(7)), earthLon.toFixed(3), ...o.map((x) => x.toFixed(6)), s.camera.fovY.toFixed(6), gw, gh].join(',');
     if (key === this.zodiKey && this.zodiTex && this.zodiTex.width === gw) return this.zodiOn;
@@ -566,8 +567,10 @@ export class SkyBackground implements SkyBackgroundHook {
     const tex = this.corTex;
     if (!tex || tex.width < 2) return null;
     const d = this.device;
-    const bpr = Math.ceil((tex.width * 8) / 256) * 256;
-    const buf = d.createBuffer({ size: bpr * tex.height, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ });
+    const plan = readbackSize(tex.width, tex.height, 8, false, d.limits);
+    if (!plan.ok) throw new RangeError(plan.warning);
+    const { bytesPerRow: bpr, bytes } = plan.size;
+    const buf = d.createBuffer({ size: bytes, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ });
     const enc = d.createCommandEncoder();
     enc.copyTextureToBuffer({ texture: tex }, { buffer: buf, bytesPerRow: bpr }, [tex.width, tex.height]);
     d.queue.submit([enc.finish()]);
@@ -588,8 +591,10 @@ export class SkyBackground implements SkyBackgroundHook {
     const tex = this.zodiTex;
     if (!tex || !this.zodiOn) return null;
     const d = this.device;
-    const bpr = Math.ceil((tex.width * 16) / 256) * 256;
-    const buf = d.createBuffer({ size: bpr * tex.height, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ });
+    const plan = readbackSize(tex.width, tex.height, 16, false, d.limits);
+    if (!plan.ok) throw new RangeError(plan.warning);
+    const { bytesPerRow: bpr, bytes } = plan.size;
+    const buf = d.createBuffer({ size: bytes, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ });
     const enc = d.createCommandEncoder();
     enc.copyTextureToBuffer({ texture: tex }, { buffer: buf, bytesPerRow: bpr }, [tex.width, tex.height]);
     d.queue.submit([enc.finish()]);
