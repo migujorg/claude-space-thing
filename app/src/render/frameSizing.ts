@@ -1,3 +1,5 @@
+import { fovealSumsSize } from '../eye/acuity';
+
 /** GPU allocation geometry only: these sampling choices do not describe the universe. */
 export type FrameLimits = Pick<GPUSupportedLimits, 'maxTextureDimension2D' | 'maxTextureDimension3D' |
   'maxBufferSize' | 'maxStorageBufferBindingSize' | 'maxComputeWorkgroupsPerDimension'>;
@@ -41,7 +43,13 @@ export function frameSize(W: number, H: number, limits: FrameLimits, adaptTilePx
   }
   const acuW = levels[1]?.w ?? 1, acuH = levels[1]?.h ?? 1;
   const acuMips = Math.max(1, Math.min(levels.length - 1, Math.floor(Math.log2(Math.max(acuW, acuH))) + 1));
-  return { ok: true as const, size: { W, H, levels, tilesX, tilesY, adaptationBytes, compute, acuW, acuH, acuMips } };
+  // The fovea's block sums for the acuity filter: one texel per adaptation invocation (8 × 8 per tile), sides
+  // rounded up to powers of two (eye/acuity.ts fovealSumsSize), mips down to 1 × 1.
+  const [fovW, fovH] = fovealSumsSize(tilesX * 8, tilesY * 8);
+  if (Math.max(fovW, fovH) > limits.maxTextureDimension2D) return refuse(`the fovea's block sums need ${fovW} × ${fovH} texels, exceeding maxTextureDimension2D ${limits.maxTextureDimension2D}`);
+  let fovMips = 1;
+  for (let n = Math.max(fovW, fovH); n > 1; n >>= 1) fovMips++;
+  return { ok: true as const, size: { W, H, levels, tilesX, tilesY, adaptationBytes, compute, acuW, acuH, acuMips, fovW, fovH, fovMips } };
 }
 
 /** Reject an optional diagnostic rather than invalidate the rendered frame. GPU row copies align to 256 bytes. */

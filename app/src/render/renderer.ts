@@ -44,7 +44,6 @@ import type { CometModelProduct } from '../data/schema';
 import { orbitVertices } from './overlays';
 import { AdaptationState, computeEyeFrame, localObserver, type EyeFrame } from '../eye/model';
 import { NO_SKY_DISC, skyDisc } from '../eye/fixation';
-import { fovealSumsSize } from '../eye/acuity';
 import { magnitudeFromLux } from '../eye/crumey';
 import { DEFAULT_EYE_SETTINGS, type EyeSettings } from '../eye/settings';
 import { fitScatterKernel } from '../eye/glare';
@@ -545,7 +544,7 @@ export class Renderer {
         ubR: d.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST }),
       });
     }
-    const { tilesX, tilesY, adaptationBytes, acuW, acuH, acuMips } = plan.size;
+    const { tilesX, tilesY, adaptationBytes, acuW, acuH, acuMips, fovW, fovH, fovMips } = plan.size;
     this.targets = {
       W, H,
       ext: tex(W, H, this.hdrFormat, RT, 'EXT'),
@@ -559,13 +558,10 @@ export class Renderer {
         size: [w1, h1], format: 'rgba32float', usage: ST, label: 'acuity mips',
         mipLevelCount: acuMips,
       }))(acuW, acuH),
-      // One texel per adaptation invocation (8 × 8 per workgroup), like `partials`.
-      // Sides are powers of two so that no level of the chain drops a row or column (eye/acuity.ts fovealSumsSize).
-      // Each side is under a quarter of the frame's plus 16, so it is within the limits the frame itself passed.
-      fov: ((size: [number, number]) => d.createTexture({
-        size, format: 'rgba32float', usage: ST, label: 'fovea sums',
-        mipLevelCount: Math.round(Math.log2(Math.max(size[0], size[1]))) + 1,
-      }))(fovealSumsSize(tilesX * 8, tilesY * 8)),
+      // One texel per adaptation invocation (8 × 8 per workgroup), like `partials`. Its sides are powers of two
+      // so that no level of the chain drops a row or column (eye/acuity.ts fovealSumsSize); sized and checked
+      // against the device's limits with the frame's other resources (frameSizing.ts).
+      fov: d.createTexture({ size: [fovW, fovH], format: 'rgba32float', usage: ST, label: 'fovea sums', mipLevelCount: fovMips }),
       zero: tex(1, 1, 'rgba32float', ST, 'zero'),
       zero2: tex(1, 1, 'rgba32float', ST, 'zero2'),
       // One partial per adaptation invocation (8 × 8 per workgroup).
