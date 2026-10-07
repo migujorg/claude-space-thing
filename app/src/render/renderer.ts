@@ -41,6 +41,7 @@ import { prepareBody, dot, len, mulMV, normalize } from './raycast';
 import type { CometModelProduct } from '../data/schema';
 import { orbitVertices } from './overlays';
 import { AdaptationState, computeEyeFrame, localObserver, type EyeFrame } from '../eye/model';
+import { NO_SKY_DISC, skyDisc } from '../eye/fixation';
 import { magnitudeFromLux } from '../eye/crumey';
 import { DEFAULT_EYE_SETTINGS, type EyeSettings } from '../eye/settings';
 import { fitScatterKernel } from '../eye/glare';
@@ -1308,7 +1309,7 @@ export class Renderer {
       t.W, t.H, 1 / t.W, 1 / t.H,
       g.tanX, g.tanY, g.pixelAngle, this.frameIndex,
       this.hdrFormat === 'rgba32float' ? 3.4e38 : 65504, 0, 0, 0,
-      ...(prep.sunShield ? [...prep.sunShield.dir, prep.sunShield.cosRadius] : [0, 0, 1, 2]),
+      ...(prep.sunShield ? skyDisc(prep.sunShield.dir, prep.sunShield.radius) : NO_SKY_DISC),
     ]));
     const s = this.settings;
     const cosField = Math.cos(((s.adaptationFieldDeg / 2) * Math.PI) / 180);
@@ -1319,10 +1320,10 @@ export class Renderer {
     const sp = prep.sun;
     // With the Sun shield on, its occulting disc takes that place (nothing behind it is seen: Frame.occ).
     const sunFix = prep.sunShield
-      ? [...prep.sunShield.dir, prep.sunShield.cosRadius]
+      ? skyDisc(prep.sunShield.dir, prep.sunShield.radius)
       : sp && sp.resolvedFraction > 0
-        ? [...sp.n, Math.cos(Math.min(Math.asin(Math.min(1, sp.radiusKm / sp.distKm)) + g.pixelAngle, Math.PI))]
-        : [0, 0, 1, 2];
+        ? skyDisc(sp.n, Math.asin(Math.min(1, sp.radiusKm / sp.distKm)) + g.pixelAngle)
+        : NO_SKY_DISC;
     d.queue.writeBuffer(this.eyeUB, 0, new Float32Array([
       eye.scene.sigmaCone, eye.scene.sigmaRod, eye.scene.Bcone, eye.scene.BrodAdapt,
       eye.map.gain, eye.map.offset, PATTANAIK.n, eye.exposure,

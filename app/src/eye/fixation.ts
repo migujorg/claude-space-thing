@@ -65,25 +65,33 @@ export function fixationAdaptation(samples: RetinalSample[], mode: 'brightness' 
   return { coneCdM2: Math.exp(sc / sw) - DARK_LIGHT_CONE, rodCdM2: Math.exp(sr / sw) - DARK_LIGHT_ROD };
 }
 
-// ── The disc that is never fixated ──────────────────────────────────────────────────────────────────────────
-// The resolved solar disk cannot be looked at, and with the Sun shield on its occulting disc takes that place
-// (docs/eye-model.md §2, §8b). ADAPT_SHADER gives the pixels inside it no fixation weight. This is the float32
-// reference of that comparison: the uniform (`Eye.fix`) and the test, with Math.fround where the shader computes.
+// ── A small disc on the sky, as the shaders test it ─────────────────────────────────────────────────────────
+// Two shader tests ask whether a view direction lies inside a disc around a given direction: the disc that is
+// never fixated (ADAPT_SHADER: the resolved solar disk cannot be looked at, and with the Sun shield on its occulting
+// disc takes that place; docs/eye-model.md §2, §8b), and the Sun shield's occulting disc itself (COMMON occulted()).
+// Both compare the chord between the two unit vectors with the chord of the disc's angular radius, 2·sin(r/2).
+// They used to compare dot(a, b) with cos(r). In float32 that cannot work for a small disc: one float32 step below
+// 1 is the cosine of 1.2′, so every angle under about an arcminute has the same cosine, and the dot product of two
+// float32 unit vectors is itself only good to that step. The chord is computed from the difference of the vectors
+// and keeps its relative precision down to their rounding (about 0.02″).
+// This is the float32 reference of that comparison (Math.fround where the shader computes) and the uniform's maker.
 
 type V3 = [number, number, number];
 const f32 = Math.fround;
 
-/** `Eye.fix`: unit direction to the disc's centre, and w = cos(angular radius) (2: no disc). */
-export type NeverFixated = [number, number, number, number];
-export const NEVER_FIXATED_NONE: NeverFixated = [0, 0, 1, 2];
+/** `Eye.fix` and `Frame.occ`: unit direction to the disc's centre, and w = 2·sin(angular radius / 2); w < 0: no disc. */
+export type SkyDisc = [number, number, number, number];
+export const NO_SKY_DISC: SkyDisc = [0, 0, 1, -1];
 
-/** The uniform for a disc of angular `radius` (rad) around the unit direction `dir`. */
-export function neverFixatedDisc(dir: V3, radius: number): NeverFixated {
-  return [dir[0], dir[1], dir[2], Math.cos(Math.min(radius, Math.PI))];
+/** The uniform for a disc of angular `radius` (rad, at most π) around the unit direction `dir`. */
+export function skyDisc(dir: V3, radius: number): SkyDisc {
+  return [dir[0], dir[1], dir[2], 2 * Math.sin(Math.min(Math.max(radius, 0), Math.PI) / 2)];
 }
 
-/** Whether a pixel looking along the unit direction `dir` lies in the disc, as the shader decides it. */
-export function isNeverFixated(dir: V3, fix: NeverFixated): boolean {
-  const d = f32(f32(f32(f32(dir[0]) * f32(fix[0])) + f32(f32(dir[1]) * f32(fix[1]))) + f32(f32(dir[2]) * f32(fix[2])));
-  return d >= f32(fix[3]);
+/** Whether the unit direction `dir` lies in the disc, as the shaders decide it: distance(dir, centre) <= w. */
+export function inSkyDisc(dir: V3, disc: SkyDisc): boolean {
+  if (!(disc[3] >= 0)) return false;
+  const dx = f32(f32(dir[0]) - f32(disc[0])), dy = f32(f32(dir[1]) - f32(disc[1])), dz = f32(f32(dir[2]) - f32(disc[2]));
+  const chord = f32(Math.sqrt(f32(f32(f32(dx * dx) + f32(dy * dy)) + f32(dz * dz))));
+  return chord <= f32(disc[3]);
 }

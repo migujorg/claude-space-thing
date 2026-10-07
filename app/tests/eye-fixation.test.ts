@@ -2,7 +2,7 @@
 // log-average of the retinal image (the eye looks at what is lit, never at the Sun's disk); point
 // sources are judged at their own fixation, adapted to their own background.
 import { describe, expect, it } from 'vitest';
-import { fixationAdaptation, isNeverFixated, NEVER_FIXATED_NONE, neverFixatedDisc, type RetinalSample } from '../src/eye/fixation';
+import { fixationAdaptation, inSkyDisc, NO_SKY_DISC, skyDisc, type RetinalSample } from '../src/eye/fixation';
 import { AdaptationState, computeEyeFrame } from '../src/eye/model';
 import { DEFAULT_EYE_SETTINGS } from '../src/eye/settings';
 import { pointAppearance } from '../src/eye/points';
@@ -129,6 +129,7 @@ describe('point sources are judged at their own fixation', () => {
   });
 });
 
+// The same comparison hides what lies behind the Sun shield's occulting disc (COMMON occulted()).
 describe('the solar disk is never fixated, whatever its angular size (ADAPT_SHADER\'s comparison in float32)', () => {
   const f = Math.fround;
   const W = 1280, H = 720;
@@ -163,11 +164,11 @@ describe('the solar disk is never fixated, whatever its angular size (ADAPT_SHAD
       // The Sun's centre between pixel centres, away from the view axis.
       const sun = dir64(700.3, 300.2, tanX, tanY);
       // As the renderer sets it: the disk's angular radius plus one pixel.
-      const fix = neverFixatedDisc(sun, radius + pixelAngle);
+      const fix = skyDisc(sun, radius + pixelAngle);
       let inside = 0, insideFixated = 0, outside = 0, outsideExcluded = 0;
       for (let y = 280; y <= 322; y++) for (let x = 680; x <= 722; x++) {
         const theta = angle(dir64(x, y, tanX, tanY), sun);
-        const excluded = isNeverFixated(dir32(x, y, tanX, tanY), fix);
+        const excluded = inSkyDisc(dir32(x, y, tanX, tanY), fix);
         if (theta <= radius) { inside++; if (!excluded) insideFixated++; }
         if (theta >= radius + 2 * pixelAngle) { outside++; if (excluded) outsideExcluded++; }
       }
@@ -177,7 +178,13 @@ describe('the solar disk is never fixated, whatever its angular size (ADAPT_SHAD
     });
   }
   it('no disc: every pixel may be fixated', () => {
-    expect(isNeverFixated([0, 0, 1], NEVER_FIXATED_NONE)).toBe(false);
-    expect(isNeverFixated(norm([0.2, -0.4, 0.1]), NEVER_FIXATED_NONE)).toBe(false);
+    expect(inSkyDisc([0, 0, 1], NO_SKY_DISC)).toBe(false);
+    expect(inSkyDisc(norm([0.2, -0.4, 0.1]), NO_SKY_DISC)).toBe(false);
+  });
+  it('a disc of radius π covers every direction, and one of radius 0 only its centre', () => {
+    const c = norm([0.2, -0.4, 0.1]);
+    expect(inSkyDisc([-c[0], -c[1], -c[2]], skyDisc(c, Math.PI))).toBe(true);
+    expect(inSkyDisc(c, skyDisc(c, 0))).toBe(true);
+    expect(inSkyDisc(norm([0.2, -0.4, 0.1001]), skyDisc(c, 0))).toBe(false);
   });
 });

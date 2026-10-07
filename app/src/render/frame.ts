@@ -164,7 +164,7 @@ export interface PreparedFrame {
    */
   offFrameFluxDeg2: number;
   /** Sun shield (viewing aid) on: the occulting disc's direction and cos(angular radius); null when off. */
-  sunShield: { dir: V3; cosRadius: number } | null;
+  sunShield: { dir: V3; cosRadius: number; radius: number } | null;
 }
 
 export function cameraGeom(snap: SceneSnapshot, W: number, H: number, near: number): CameraGeom {
@@ -309,7 +309,7 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
   const sunR = snap.sun?.radius ?? 0;
   let sun: SunPrep | null = null;
   let adaptedWhite: V3 | null = null;
-  let sunShield: { dir: V3; cosRadius: number } | null = null;
+  let sunShield: { dir: V3; cosRadius: number; radius: number } | null = null;
   if (snap.sun) {
     const s = snap.sun;
     const dist = len(s.pos);
@@ -323,7 +323,10 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
     // Sun shield (viewing aid, ViewSettings.sunShield): an occulting disc covers the solar disk (its
     // angular radius plus one pixel). The Sun's light never reaches the eye: no disk, no point, no veil.
     const shielded = snap.view.sunShield === true;
-    if (shielded) sunShield = { dir: n, cosRadius: Math.cos(Math.min(rho + g.pixelAngle, Math.PI)) };
+    if (shielded) {
+      const radius = Math.min(rho + g.pixelAngle, Math.PI);
+      sunShield = { dir: n, cosRadius: Math.cos(radius), radius };
+    }
     if (!s.limbDarkening && diamPx / splatScale > 1 && !shielded) warnings.push('Sun: limb darkening unknown → drawn as an unresolved point of the correct illuminance (no uniform disk assumed)');
     const c = toCam(g, s.pos);
     const sunInFrame = inFrame(c);

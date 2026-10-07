@@ -46,12 +46,16 @@ struct Frame {
   size: vec4f,     // W, H, 1/W, 1/H
   tanHalf: vec4f,  // tanX, tanY, pixel angle at centre (rad), frame index
   store: vec4f,    // x = largest value the HDR format can store (fp16 fallback), yzw unused
-  occ: vec4f,      // Sun shield (viewing aid): occulting disc direction (ICRF), w = cos(angular radius); w = 2: none
+  occ: vec4f,      // Sun shield (viewing aid): occulting disc direction (ICRF), w = chord 2·sin(angular radius / 2); w < 0: none
 };
 
-/** Behind the Sun shield's occulting disc (ViewSettings.sunShield): hidden from the eye. */
+/**
+ * Behind the Sun shield's occulting disc (ViewSettings.sunShield): hidden from the eye. The test is on the chord
+ * between the unit vectors, not on a cosine: in float32 a cosine cannot separate angles under about an arcminute
+ * (eye/fixation.ts inSkyDisc is the reference).
+ */
 fn occulted(F: Frame, dir: vec3f) -> bool {
-  return dot(normalize(dir), F.occ.xyz) >= F.occ.w;
+  return F.occ.w >= 0.0 && distance(normalize(dir), F.occ.xyz) <= F.occ.w;
 }
 
 /** Pre-expose a luminance for storage in the HDR targets (clamped so fp16 never overflows to inf). */
@@ -74,7 +78,7 @@ struct Eye {
   misc2: vec4f,    // star quad half-extent px, 1/(1-exp(-extent^2/2 sigma^2)), rod threshold elevation 10^(a·ΔB), cone photon catch (bleaching.ts)
   dark: vec4f,     // dark-light pedestal: L0 cone, L0 rod, R(L0) cone, R(L0) rod
   pts: vec4f,      // points (eye/points.ts): display response at the bleaching luminance, viewer's Ricco area (sr), cone summation area (sr), own veil in the background per lux per pixel solid angle
-  fix: vec4f,      // never fixated: unit direction to the resolved Sun (or the Sun shield's disc), w = cos(angular radius + 1 px) (2: none)
+  fix: vec4f,      // never fixated: unit direction to the resolved Sun (or the Sun shield's disc), w = chord 2·sin((angular radius + 1 px) / 2) (< 0: none)
   flags: vec4f,    // display black response, cone bleaching (1/0), fixation mode (1 brightness, 0 centre), 1 = low-light acuity (eye mode)
   hdr: vec4f,      // output: brightest displayable luminance (HDR peak, or white on SDR) cd/m², its display response, 1 = extended (HDR) encoding, 1 = Display P3
 };
@@ -1399,7 +1403,8 @@ fn adaptSample(p: vec2i) -> AdaptSample {
       let Ls = max(ext.y, 0.0);
       let Lr = max(ret.y, 0.0) + E.dark.x;
       let vis = clamp(Ls / (Lr * crumeyLargeContrast(E, Lr)) - 1.0, 0.0, 1.0);
-      let wgt = select((Ls * vis + E.dark.x) * om, 0.0, dot(dir, E.fix.xyz) >= E.fix.w);
+      // Inside the disc that is never fixated? By the chord, not a float32 cosine (eye/fixation.ts inSkyDisc).
+      let wgt = select((Ls * vis + E.dark.x) * om, 0.0, E.fix.w >= 0.0 && distance(dir, E.fix.xyz) <= E.fix.w);
       acc = vec4f(lc * wgt, lr * wgt, wgt, 0.0);
     } else if (dot(dir, -F.back.xyz) >= E.misc.y) {
       // One fixation at the view centre: log-average (geometric mean) over the adaptation field, offset by
