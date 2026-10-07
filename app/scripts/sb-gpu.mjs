@@ -5,7 +5,7 @@
 //   node scripts/sb-gpu.mjs --query "mode=timing" --json out/sb-timing.json
 //   node scripts/sb-gpu.mjs --query "mode=render&scene=above" --out ../docs/reports/img/smallbodies-above.png
 import { chromium } from 'playwright';
-import { createServer } from 'vite';
+import { startLocalServer } from './local-server.mjs';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -19,9 +19,7 @@ const height = Number(args.height ?? 720);
 const timeoutMs = Number(args.timeout ?? 3600000);
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
-const server = await createServer({ root, server: { port: 0, strictPort: false }, logLevel: 'error' });
-await server.listen();
-const base = `http://localhost:${server.httpServer.address().port}`;
+const { server, base } = await startLocalServer(root);
 const browser = await chromium.launch({
   headless: true,
   args: ['--enable-unsafe-webgpu', '--enable-features=Vulkan', '--use-webgpu-adapter=swiftshader', '--use-angle=swiftshader',
