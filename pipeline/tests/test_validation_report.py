@@ -90,3 +90,11 @@ def test_historical_sweep_is_dated_and_uses_finest_valid_frame(tmp_path):
     assert "| 3 × 3 | —" in text and "| 6 × 6 | —" in text
     assert "finest valid level is 4 × 4" in text
     assert "Current run sampling 4 × 4" in text
+
+
+def test_run_command_reproduces_recorded_sampling():
+    for ss in (3, 6):
+        run = stub_run(ss=ss)
+        run["gpu"] = {"mode": "hardware"}
+        text = report.run_section(run, "")
+        assert f"`cd app && npm run validate -- --ss {ss} --gpu hardware`" in text

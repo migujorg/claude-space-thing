@@ -26,8 +26,9 @@ latitudes, season and wavelengths they measure, and how directly. How a choice s
 - **Competing published laws:** when two exist, or a published law and an approximation of it, the better-supported
   one is used on that evidence. For example, Saturn uses the native Barkstrom law of Dones et al. (1993),
   rather than its Minnaert approximation. The terminator comparison also includes ringshine the app omits (§7).
-- **Sources must exclude the cases:** a source whose data include a validation frame is not used for the quantity
-  that frame tests (e.g. Belgacem's regional Europa fits).
+- **Independence must be stated:** an independent comparison must exclude sources that include the tested frame
+  (e.g. Belgacem's regional Europa fits are excluded). Pluto's map and law share flyby inputs with its case;
+  those rows do not provide an independent check (§7).
 - **No correction factors from the cases:** a factor derived from a case (e.g. the Galilean LORRI offset) is
   documented as a bound, not applied.
 
@@ -62,7 +63,8 @@ tested (the tolerances assume the most complete level that the data admit).
 Pixel (x, y) with y down has the ray right·(x+½−W/2)s + up·(H/2−y−½)s − back, s = `pixelPitchRad` = 2 tan(fovY/2)/H.
 The reference values are **area averages** over each pixel, so the harness should supersample; the recorded grid
 and, when supplied, the sampling sweep below describe the numerical evidence for that run.
-ROIs never contain pixels that straddle a limb, terminator, ring edge or shadow edge (§3.5).
+Local body and ring ROIs exclude pixels that straddle a limb, terminator, ring edge or shadow edge (§3.5).
+Disk-integrated rectangles deliberately include the entire disk.
 
 **Interface** (types in `app/src/data/schema.ts`: `ValidationCase`, `ValidationRoi`, `ValidationRatio`), implemented
 in the app (`cd app && npm run validate`; app/e2e/README.md "Validation against calibrated images"; results in
@@ -627,7 +629,8 @@ def run_section(run: dict, interpretation: str) -> str:
     recorded_sampling(run)
     validate_frame_verdicts(run)
     o = run["options"]
-    cmd = "cd app && npm run validate" + (" -- --gpu hardware" if (run.get("gpu") or {}).get("mode") == "hardware" else "")
+    cmd = f"cd app && npm run validate -- --ss {o['ss']}" + (
+        " --gpu hardware" if (run.get("gpu") or {}).get("mode") == "hardware" else "")
     L = ["## 7. The renderer against the cases\n",
          f"Run of {run['generatedAt'][:16].replace('T', ' ')} UTC (git {run.get('git')}, data built "
          f"{(run.get('dataGeneratedAt') or '?')[:16].replace('T', ' ')}), reality level {o['reality']}, "

@@ -161,14 +161,14 @@ def test_report_run_line_names_the_adapter_and_machine():
            "options": {"ss": 1, "reality": "best"}, "cases": []}
     line = report.run_section(run, "").split("\n")[2]
     # a run from before the option: no adapter in the report, the line as it always was
-    assert "1 × 1 samples per pixel: `cd app && npm run validate` (" in line and "rendered by" not in line
+    assert "1 × 1 samples per pixel: `cd app && npm run validate -- --ss 1` (" in line and "rendered by" not in line
     host = {"cpu": "A CPU", "threads": 32}
     soft = {**run, "host": host, "gpu": {"mode": "swiftshader", "adapter": {"vendor": "google", "architecture": "swiftshader"}}}
     assert ("1 × 1 samples per pixel, rendered by SwiftShader (software WebGPU), adapter `google swiftshader`, on A CPU "
-            "(32 threads): `cd app && npm run validate` (") in report.run_section(soft, "")
+            "(32 threads): `cd app && npm run validate -- --ss 1` (") in report.run_section(soft, "")
     hard = {**run, "host": host, "gpu": {"mode": "hardware", "adapter": {"vendor": "nvidia", "architecture": "blackwell"}}}
     assert ("rendered by the machine's GPU, adapter `nvidia blackwell`, on A CPU (32 threads): "
-            "`cd app && npm run validate -- --gpu hardware` (") in report.run_section(hard, "")
+            "`cd app && npm run validate -- --ss 1 --gpu hardware` (") in report.run_section(hard, "")
     assert report.rendered_by({**run, "gpu": {"mode": "swiftshader", "adapter": None}}) == \
         ", rendered by SwiftShader (software WebGPU), adapter `unnamed adapter`"
 
