@@ -436,7 +436,11 @@ def main() -> None:
         w(f"- Inside the range only {hi_a:g}° is a measurement (Karkoschka's 1995 albedo). The values below it are the "
           "phase function's assumed linear rise to García Muñoz et al.'s zero-phase factor, the same in every "
           "channel, so toward opposition the scaling replaces the model's own blue backscatter peak by that "
-          "assumption; which of the two is nearer to Titan is not decided by either.")
+          "assumption; which of the two is nearer to Titan is not decided by either. Known gap: the app's standing "
+          "rule elsewhere lets the model carry the phase dependence away from what is measured, anchored at the "
+          f"measurement; applied here it would anchor the scaling at the one measured phase, {hi_a:g}°, and keep the "
+          "model's backscatter peak below it as it keeps the model's phase dependence beyond it. That needs "
+          "`photometry.json` to say which phases of a phase function are measured, and is not done.")
         w("")
     w("")
     # ---------------------------------------------------------------- Venus

@@ -701,9 +701,11 @@ The twin's disk integral is taken on a polar grid (Gauss–Legendre in μ, unifo
 cell centres it replaced miscounted the disk's area by its edge cells (+3.5 % at 16 across, −1.0 % at 24, +1.0 % at
 32), and the integral of a nearly uniform disk followed: the numbers of this section were 0.6 % higher at small
 phase before 2026-10-07, and the thin crescent's disk part at 150° 8 % higher. `atmosphereDiskFactors` (the
-renormalisation of Mars, Venus and Pluto, above) still uses the square grid at 16 across: on Mars's tables the
-air's own light over the disk comes out 3.4–3.8 % too high, which draws Mars 1.1 % (Y) to 2.0 % (Z) darker than
-its photometry at opposition (measured with a Lambert surface; not changed here).
+renormalisation of Mars, Venus and Pluto, above) still uses the square grid at 16 across, which counts the disk's
+area 3.5 % too large and the air's own light over Mars's disk 3.4–3.8 % too high. Through `prepareFrame` with the
+real products (dust at L_s = 0°, scale 0.89) Mars's drawn disk is then from 0.2 % brighter (X) to 1.2 % darker (Z)
+than its photometry at opposition, 1.7–3.4 % darker at 36° and 2.5–4.8 % at 60°, and Pluto's 0.2–0.4 % brighter;
+Venus, whose disk keeps its photometry, is exact. Not changed here: it is a job of its own.
 
 **The shaders against the CPU twin, and the drawn disk against the measurement.** The disk-integrated light of
 rendered frames (the HDR buffer summed over a 512 × 512 view, Titan 330 px across, from 2 000 000 km; the
@@ -765,7 +767,11 @@ an input to the scaling: beyond 5.7° the picture is this model times the factor
 (planetshine lights the surface only), refraction, the methane bands at their 1 nm resolution, the detached
 haze and the north–south asymmetry, a point light from the model (the point stays the disk photometry, unknown
 beyond 5.7° at Strict), a phase function for Titan beyond 5.7° (the ISS curves above are a figure digitized in five
-filters, used only as a test; making them the photometry would end that test and is a separate decision).
+filters, used only as a test; making them the photometry would end that test and is a separate decision), and the
+scaling anchored at the one measured phase: only 5.7° is measured, so the standing rule (the model carries the
+phase dependence away from the measurement, anchored at it) would hold the factors of 5.7° below it too and keep
+the model's backscatter peak, instead of tying the blue channel to the photometry's assumed 2 % ramp. That needs
+photometry.json to say which phases of a phase function are measured (a follow-up; no code for it here).
 
 **Altitude reference.** The drawn ellipsoid (bodies.json radii) is taken as the profile's lower boundary.
 For Venus this puts the haze 60 km (1 %) lower than it is: the disk is drawn at the solid radius, as it
