@@ -64,3 +64,26 @@ export function fixationAdaptation(samples: RetinalSample[], mode: 'brightness' 
   if (!(sw > 0)) return { coneCdM2: 0, rodCdM2: 0 };
   return { coneCdM2: Math.exp(sc / sw) - DARK_LIGHT_CONE, rodCdM2: Math.exp(sr / sw) - DARK_LIGHT_ROD };
 }
+
+// ── The disc that is never fixated ──────────────────────────────────────────────────────────────────────────
+// The resolved solar disk cannot be looked at, and with the Sun shield on its occulting disc takes that place
+// (docs/eye-model.md §2, §8b). ADAPT_SHADER gives the pixels inside it no fixation weight. This is the float32
+// reference of that comparison: the uniform (`Eye.fix`) and the test, with Math.fround where the shader computes.
+
+type V3 = [number, number, number];
+const f32 = Math.fround;
+
+/** `Eye.fix`: unit direction to the disc's centre, and w = cos(angular radius) (2: no disc). */
+export type NeverFixated = [number, number, number, number];
+export const NEVER_FIXATED_NONE: NeverFixated = [0, 0, 1, 2];
+
+/** The uniform for a disc of angular `radius` (rad) around the unit direction `dir`. */
+export function neverFixatedDisc(dir: V3, radius: number): NeverFixated {
+  return [dir[0], dir[1], dir[2], Math.cos(Math.min(radius, Math.PI))];
+}
+
+/** Whether a pixel looking along the unit direction `dir` lies in the disc, as the shader decides it. */
+export function isNeverFixated(dir: V3, fix: NeverFixated): boolean {
+  const d = f32(f32(f32(f32(dir[0]) * f32(fix[0])) + f32(f32(dir[1]) * f32(fix[1]))) + f32(f32(dir[2]) * f32(fix[2])));
+  return d >= f32(fix[3]);
+}
