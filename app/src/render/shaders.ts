@@ -1743,12 +1743,15 @@ fn apStore(q: vec2i, k: i32, L: array<vec4f, 4>, Td: array<vec4f, 4>) {
   var Td: array<vec4f, 4>;
   var phR: array<vec4f, 4>;
   var phA: array<vec4f, 4>;
+  var phA2: array<vec4f, 4>;
+  let ord = A.ms.x > 0.5;
   let nu = dot(dirN, S);
   for (var j = 0; j < atmK4(); j++) {
     T[j] = vec4f(1.0);
     Td[j] = vec4f(1.0);
     phR[j] = atmRayleighPhase(nu, A.depol[j]);
     phA[j] = atmParticlePhase(nu, j);
+    phA2[j] = select(vec4f(0.0), atmParticlePhase2(nu, j), ord);
   }
   var next = ns - 1;
   let ds = sTop / f32(n);
@@ -1765,15 +1768,15 @@ fn apStore(q: vec2i, k: i32, L: array<vec4f, 4>, Td: array<vec4f, 4>) {
     let r = A.geo.x + h;
     let muS = dot(pp, S) / rp;
     for (var j = 0; j < atmK4(); j++) {
-      let ext = atmProfile(h, 0, j);
-      let sR = atmProfile(h, 1, j);
-      let sA = atmProfile(h, 2, j);
-      let src = (sR * phR[j] + sA * phA[j]) * atmTsun(r, muS, j) + (sR + sA) * atmMS(h, muS, j);
-      let tr = exp(-ext * ds);
-      let seg = src * select(vec4f(ds), (1.0 - tr) / max(ext, vec4f(1e-12)), ext > vec4f(1e-9));
-      L[j] += T[j] * seg;
+      let st = atmStep(h, r, muS, j, phR[j], phA[j], phA2[j], pp, -dirN, S);
+      let tr = exp(-st.ext * ds);
+      let trD = exp(-st.extD * ds);
+      let ee = select(st.ext, st.extD, ord);
+      let te = select(tr, trD, ord);
+      let seg = st.src * select(vec4f(ds), (1.0 - te) / max(ee, vec4f(1e-12)), ee > vec4f(1e-9));
+      L[j] += select(T[j], Td[j], ord) * seg;
       T[j] *= tr;
-      Td[j] *= exp(-(ext - A.delta[j] * sA) * ds);
+      Td[j] *= trD;
     }
   }
   for (var k = next; k >= 0; k--) { apStore(q, k, L, Td); }

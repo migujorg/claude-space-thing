@@ -1,23 +1,34 @@
 {
- "acceptedAt": "2026-10-01T02:04:20.913Z",
- "git": "48c7878",
+ "acceptedAt": "2026-10-07T11:07:29.033Z",
+ "git": "0ccd90f",
  "data": {
-  "manifestGeneratedAt": "2026-10-01T01:21:52+00:00",
-  "manifestSha256": "64e1da3bb8bff5250e646d17b2c5654c7bd70a0a134efcdda0f856b0990d4e8a"
+  "manifestGeneratedAt": "2026-10-07T11:04:06+00:00",
+  "manifestSha256": "9150581f09d62734360c2da516c2ee0e3589e068ab08f7009f6c24da931f3392"
  },
  "viewport": {
   "width": 1280,
   "height": 720
  },
+ "gpu": {
+  "mode": "hardware",
+  "adapter": {
+   "vendor": "nvidia",
+   "architecture": "blackwell",
+   "device": "",
+   "description": "",
+   "fallback": false,
+   "float32Blendable": true
+  }
+ },
  "scenes": {
   "earth-day": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=instant&target=399&dist=20000&az=0&el=0",
    "stats": {
-    "adaptationLuminance": 9612.567506130108,
-    "scotopicAdaptationLuminance": 26846.686592849353,
-    "pupilDiameterMm": 2.242060004415694,
+    "adaptationLuminance": 9613.710495094563,
+    "scotopicAdaptationLuminance": 26848.98481753853,
+    "pupilDiameterMm": 2.242048025966309,
     "mesopicM": 1,
-    "limitingMagnitude": -4.485157039186644,
+    "limitingMagnitude": -4.485273807749644,
     "starsDrawn": 0,
     "bodiesDrawn": 310,
     "bodies": [
@@ -350,33 +361,14 @@
     ]
    },
    "consoleErrors": [],
-   "readyMs": 9301,
-   "accepted": {
-    "acceptedAt": "2026-10-07T08:51:08.308Z",
-    "git": "a0b8da1",
-    "data": {
-     "manifestGeneratedAt": "2026-10-07T08:48:09+00:00",
-     "manifestSha256": "75ce3eb20e9eee81680f3767536e2b4b1938977397a8f49797cd71a6d513fd83"
-    },
-    "gpu": {
-     "mode": "hardware",
-     "adapter": {
-      "vendor": "nvidia",
-      "architecture": "blackwell",
-      "device": "",
-      "description": "",
-      "fallback": false,
-      "float32Blendable": true
-     }
-    }
-   }
+   "readyMs": 5410
   },
   "earth-day-strict": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=instant&target=399&dist=20000&az=0&el=0&exists=strict",
    "stats": {
     "adaptationLuminance": 0.00001,
     "scotopicAdaptationLuminance": 0.00001408,
-    "pupilDiameterMm": 7.892612754887529,
+    "pupilDiameterMm": 7.890004873339091,
     "mesopicM": 0,
     "limitingMagnitude": 7.601985293005745,
     "starsDrawn": 2163,
@@ -714,17 +706,17 @@
     ]
    },
    "consoleErrors": [],
-   "readyMs": 92033
+   "readyMs": 4190
   },
   "earth-night": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=instant&target=399&dist=20000&az=180&el=0",
    "stats": {
-    "adaptationLuminance": 0.0015611028942480439,
-    "scotopicAdaptationLuminance": 0.002732536963015018,
-    "pupilDiameterMm": 7.399714271063908,
+    "adaptationLuminance": 0.0016627947084362376,
+    "scotopicAdaptationLuminance": 0.0028087236097015566,
+    "pupilDiameterMm": 7.393990572518929,
     "mesopicM": 0,
-    "limitingMagnitude": 5.310523088491412,
-    "starsDrawn": 522,
+    "limitingMagnitude": 5.301683130943876,
+    "starsDrawn": 520,
     "bodiesDrawn": 4,
     "bodies": [
      {
@@ -754,35 +746,120 @@
     ]
    },
    "consoleErrors": [],
-   "readyMs": 6943,
-   "accepted": {
-    "acceptedAt": "2026-10-07T09:34:23.112Z",
-    "git": "1627c44",
-    "data": {
-     "manifestGeneratedAt": "2026-10-07T09:25:01+00:00",
-     "manifestSha256": "d1ed660314dbc54684916a2e10d9767f7bc9c19c47da25c2086503aa535d1713"
-    },
-    "gpu": {
-     "mode": "hardware",
-     "adapter": {
-      "vendor": "nvidia",
-      "architecture": "blackwell",
-      "device": "",
-      "description": "",
-      "fallback": false,
-      "float32Blendable": true
+   "readyMs": 4540
+  },
+  "night-limb-iss": {
+   "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=instant&target=399&dist=6771&az=180&el=0&look=0%2C-15&fov=30",
+   "stats": {
+    "adaptationLuminance": 0.0011848199495952247,
+    "scotopicAdaptationLuminance": 0.001423855914461676,
+    "pupilDiameterMm": 7.729786071127967,
+    "mesopicM": 0,
+    "limitingMagnitude": 5.535484356547915,
+    "starsDrawn": 581,
+    "bodiesDrawn": 0,
+    "bodies": [],
+    "points": [],
+    "bodiesInSnapshot": 75,
+    "sun": true,
+    "warnings": [
+     "Earth: phase extrapolated beyond measured range (0–170°) with the spatial law → estimated"
+    ],
+    "badge": [
+     "INSTANT ADAPTATION: eye always fully adapted"
+    ]
+   },
+   "consoleErrors": [],
+   "readyMs": 4542
+  },
+  "night-limb-iss-daylight-eye": {
+   "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=realtime&target=399&dist=6771&az=180&el=0&look=0%2C-15&fov=30&adaptfrom=10000%2C600%2C60",
+   "stats": {
+    "adaptationLuminance": 0.0011746069929407712,
+    "scotopicAdaptationLuminance": 0.0014193532561434185,
+    "pupilDiameterMm": 7.729786281976684,
+    "mesopicM": 0,
+    "limitingMagnitude": 4.555542242629192,
+    "starsDrawn": 37,
+    "bodiesDrawn": 0,
+    "bodies": [],
+    "points": [],
+    "bodiesInSnapshot": 75,
+    "sun": true,
+    "warnings": [
+     "Earth: phase extrapolated beyond measured range (0–170°) with the spatial law → estimated"
+    ],
+    "badge": []
+   },
+   "consoleErrors": [],
+   "readyMs": 4363
+  },
+  "aurora-2025-11-12": {
+   "query": "t=2025-11-12T01:00:00Z&smallbodies=0&adapt=instant&target=399&dist=6771&az=173.26110422279018&el=46.95923411082049&look=0%2C-89&fov=60",
+   "stats": {
+    "adaptationLuminance": 0.004550405561610023,
+    "scotopicAdaptationLuminance": 0.005598239033239343,
+    "pupilDiameterMm": 6.829632627521212,
+    "mesopicM": 0.015195116256507823,
+    "limitingMagnitude": 5.0999459315885565,
+    "starsDrawn": 0,
+    "bodiesDrawn": 1,
+    "bodies": [
+     {
+      "id": 399,
+      "name": "Earth",
+      "worstLabel": "estimated",
+      "surfaceUnknown": false
      }
-    }
-   }
+    ],
+    "points": [],
+    "bodiesInSnapshot": 75,
+    "sun": true,
+    "warnings": [],
+    "badge": [
+     "INSTANT ADAPTATION: eye always fully adapted"
+    ]
+   },
+   "consoleErrors": [],
+   "readyMs": 4192
+  },
+  "aurora-2025-11-14-quiet": {
+   "query": "t=2025-11-14T01:00:00Z&smallbodies=0&adapt=instant&target=399&dist=6771&az=173.2804022752983&el=46.43408307185946&look=0%2C-89&fov=60",
+   "stats": {
+    "adaptationLuminance": 0.0009604893148197737,
+    "scotopicAdaptationLuminance": 0.0009373048430433822,
+    "pupilDiameterMm": 7.171285150088395,
+    "mesopicM": 0,
+    "limitingMagnitude": 5.693210453879869,
+    "starsDrawn": 0,
+    "bodiesDrawn": 1,
+    "bodies": [
+     {
+      "id": 399,
+      "name": "Earth",
+      "worstLabel": "estimated",
+      "surfaceUnknown": false
+     }
+    ],
+    "points": [],
+    "bodiesInSnapshot": 75,
+    "sun": true,
+    "warnings": [],
+    "badge": [
+     "INSTANT ADAPTATION: eye always fully adapted"
+    ]
+   },
+   "consoleErrors": [],
+   "readyMs": 4245
   },
   "moon-quarter": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=instant&target=301&dist=6000&az=90&el=0",
    "stats": {
-    "adaptationLuminance": 1634.9759556269598,
-    "scotopicAdaptationLuminance": 3618.6080108559167,
-    "pupilDiameterMm": 2.045251069821935,
+    "adaptationLuminance": 1635.2770258530552,
+    "scotopicAdaptationLuminance": 3618.91753352757,
+    "pupilDiameterMm": 2.045251064177909,
     "mesopicM": 1,
-    "limitingMagnitude": -2.7814803930843075,
+    "limitingMagnitude": -2.7816534152109638,
     "starsDrawn": 1,
     "bodiesDrawn": 121,
     "bodies": [
@@ -923,16 +1000,16 @@
     ]
    },
    "consoleErrors": [],
-   "readyMs": 40559
+   "readyMs": 4417
   },
   "jupiter-galileans": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=instant&target=599&dist=4000000",
    "stats": {
-    "adaptationLuminance": 647.4040839269761,
-    "scotopicAdaptationLuminance": 1453.625199697549,
-    "pupilDiameterMm": 5.4880104161449355,
+    "adaptationLuminance": 647.4037203971527,
+    "scotopicAdaptationLuminance": 1453.6239121856581,
+    "pupilDiameterMm": 5.488010535957794,
     "mesopicM": 1,
-    "limitingMagnitude": -1.9228563637405753,
+    "limitingMagnitude": -1.9228558507729976,
     "starsDrawn": 179,
     "bodiesDrawn": 36,
     "bodies": [
@@ -995,33 +1072,14 @@
     ]
    },
    "consoleErrors": [],
-   "readyMs": 6786,
-   "accepted": {
-    "acceptedAt": "2026-10-07T09:34:23.112Z",
-    "git": "1627c44",
-    "data": {
-     "manifestGeneratedAt": "2026-10-07T09:25:01+00:00",
-     "manifestSha256": "d1ed660314dbc54684916a2e10d9767f7bc9c19c47da25c2086503aa535d1713"
-    },
-    "gpu": {
-     "mode": "hardware",
-     "adapter": {
-      "vendor": "nvidia",
-      "architecture": "blackwell",
-      "device": "",
-      "description": "",
-      "fallback": false,
-      "float32Blendable": true
-     }
-    }
-   }
+   "readyMs": 2842
   },
   "saturn-rings": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=instant&target=699&dist=400000&el=25",
    "stats": {
     "adaptationLuminance": 108.07726409393712,
     "scotopicAdaptationLuminance": 222.8223252154265,
-    "pupilDiameterMm": 3.990701111151025,
+    "pupilDiameterMm": 3.990700617307455,
     "mesopicM": 1,
     "limitingMagnitude": -0.33736358363730173,
     "starsDrawn": 95,
@@ -1117,36 +1175,41 @@
     ]
    },
    "consoleErrors": [],
-   "readyMs": 8105,
-   "accepted": {
-    "acceptedAt": "2026-10-07T08:51:08.308Z",
-    "git": "a0b8da1",
-    "data": {
-     "manifestGeneratedAt": "2026-10-07T08:48:09+00:00",
-     "manifestSha256": "75ce3eb20e9eee81680f3767536e2b4b1938977397a8f49797cd71a6d513fd83"
-    },
-    "gpu": {
-     "mode": "hardware",
-     "adapter": {
-      "vendor": "nvidia",
-      "architecture": "blackwell",
-      "device": "",
-      "description": "",
-      "fallback": false,
-      "float32Blendable": true
-     }
-    }
-   }
+   "readyMs": 10285
+  },
+  "uranus-epsilon-estimate": {
+   "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=instant&target=799&dist=100000&az=25&el=12&fov=1&look=-64.44491889269331%2C-63.83801785178568&exists=best&view=eye&labels=0&orbits=0&ui=0",
+   "stats": {
+    "adaptationLuminance": 0.9757370907523973,
+    "scotopicAdaptationLuminance": 2.350241656970162,
+    "pupilDiameterMm": 3.8749282021936273,
+    "mesopicM": 0.7826065275076567,
+    "limitingMagnitude": 3.2460220809478253,
+    "starsDrawn": 0,
+    "bodiesDrawn": 0,
+    "bodies": [],
+    "points": [],
+    "bodiesInSnapshot": 75,
+    "sun": true,
+    "warnings": [
+     "Ariel: phase extrapolated beyond measured range (0–3.1°) with the spatial law → estimated"
+    ],
+    "badge": [
+     "INSTANT ADAPTATION: eye always fully adapted"
+    ]
+   },
+   "consoleErrors": [],
+   "readyMs": 3779
   },
   "uranus": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=instant&target=799&dist=150000",
    "stats": {
-    "adaptationLuminance": 51.762059781610915,
-    "scotopicAdaptationLuminance": 138.18581026120054,
-    "pupilDiameterMm": 4.246717408792776,
+    "adaptationLuminance": 51.67212538586595,
+    "scotopicAdaptationLuminance": 137.942789596677,
+    "pupilDiameterMm": 4.246526576174232,
     "mesopicM": 1,
-    "limitingMagnitude": 0.28408679924563457,
-    "starsDrawn": 173,
+    "limitingMagnitude": 0.2855327606632695,
+    "starsDrawn": 172,
     "bodiesDrawn": 16,
     "bodies": [
      {
@@ -1176,33 +1239,15 @@
     "bodiesInSnapshot": 75,
     "sun": true,
     "warnings": [
-     "Uranus rings: geometry not measured at this time for ring 6, ring 5, ring 4, α ring, β ring, η ring, γ ring, δ ring, λ ring, ε ring → no light or extinction; radial annotation hatched as not measured"
+     "Uranus rings: geometry estimated from COR centreline fits with constant mean widths for ring 6, ring 5, ring 4, α ring, β ring, η ring, γ ring, δ ring, λ ring, ε ring; 20.07–30.51 years beyond last accepted data; fitted modes and width variation omitted; dynamical change is unbounded",
+     "Uranus rings: reflectance not measured for λ ring → absorption only where geometry is valid, covered material hatched as not measured"
     ],
     "badge": [
      "INSTANT ADAPTATION: eye always fully adapted"
     ]
    },
    "consoleErrors": [],
-   "readyMs": 6382,
-   "accepted": {
-    "acceptedAt": "2026-10-07T09:34:23.112Z",
-    "git": "1627c44",
-    "data": {
-     "manifestGeneratedAt": "2026-10-07T09:25:01+00:00",
-     "manifestSha256": "d1ed660314dbc54684916a2e10d9767f7bc9c19c47da25c2086503aa535d1713"
-    },
-    "gpu": {
-     "mode": "hardware",
-     "adapter": {
-      "vendor": "nvidia",
-      "architecture": "blackwell",
-      "device": "",
-      "description": "",
-      "fallback": false,
-      "float32Blendable": true
-     }
-    }
-   }
+   "readyMs": 5418
   },
   "neptune": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=instant&target=899&dist=150000",
@@ -1250,35 +1295,16 @@
     ]
    },
    "consoleErrors": [],
-   "readyMs": 5458,
-   "accepted": {
-    "acceptedAt": "2026-10-07T09:34:23.112Z",
-    "git": "1627c44",
-    "data": {
-     "manifestGeneratedAt": "2026-10-07T09:25:01+00:00",
-     "manifestSha256": "d1ed660314dbc54684916a2e10d9767f7bc9c19c47da25c2086503aa535d1713"
-    },
-    "gpu": {
-     "mode": "hardware",
-     "adapter": {
-      "vendor": "nvidia",
-      "architecture": "blackwell",
-      "device": "",
-      "description": "",
-      "fallback": false,
-      "float32Blendable": true
-     }
-    }
-   }
+   "readyMs": 2957
   },
   "pluto-charon": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=instant&target=999&dist=60000",
    "stats": {
-    "adaptationLuminance": 10.995995137785393,
-    "scotopicAdaptationLuminance": 23.203203252647953,
-    "pupilDiameterMm": 7.112773726933458,
+    "adaptationLuminance": 10.99582776115129,
+    "scotopicAdaptationLuminance": 23.202604542534544,
+    "pupilDiameterMm": 7.112780712636673,
     "mesopicM": 1,
-    "limitingMagnitude": 1.530407816341415,
+    "limitingMagnitude": 1.5304196494155136,
     "starsDrawn": 798,
     "bodiesDrawn": 3,
     "bodies": [
@@ -1309,26 +1335,7 @@
     ]
    },
    "consoleErrors": [],
-   "readyMs": 5763,
-   "accepted": {
-    "acceptedAt": "2026-10-07T09:34:23.112Z",
-    "git": "1627c44",
-    "data": {
-     "manifestGeneratedAt": "2026-10-07T09:25:01+00:00",
-     "manifestSha256": "d1ed660314dbc54684916a2e10d9767f7bc9c19c47da25c2086503aa535d1713"
-    },
-    "gpu": {
-     "mode": "hardware",
-     "adapter": {
-      "vendor": "nvidia",
-      "architecture": "blackwell",
-      "device": "",
-      "description": "",
-      "fallback": false,
-      "float32Blendable": true
-     }
-    }
-   }
+   "readyMs": 3589
   },
   "starfield": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=instant&target=999&dist=3000000000&labels=0",
@@ -1360,26 +1367,7 @@
     ]
    },
    "consoleErrors": [],
-   "readyMs": 5529,
-   "accepted": {
-    "acceptedAt": "2026-10-07T09:34:23.112Z",
-    "git": "1627c44",
-    "data": {
-     "manifestGeneratedAt": "2026-10-07T09:25:01+00:00",
-     "manifestSha256": "d1ed660314dbc54684916a2e10d9767f7bc9c19c47da25c2086503aa535d1713"
-    },
-    "gpu": {
-     "mode": "hardware",
-     "adapter": {
-      "vendor": "nvidia",
-      "architecture": "blackwell",
-      "device": "",
-      "description": "",
-      "fallback": false,
-      "float32Blendable": true
-     }
-    }
-   }
+   "readyMs": 3446
   },
   "starfield-enhanced": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=instant&target=999&dist=3000000000&labels=0&view=enhanced&boost=6",
@@ -1412,35 +1400,16 @@
     ]
    },
    "consoleErrors": [],
-   "readyMs": 9237,
-   "accepted": {
-    "acceptedAt": "2026-10-07T09:34:23.112Z",
-    "git": "1627c44",
-    "data": {
-     "manifestGeneratedAt": "2026-10-07T09:25:01+00:00",
-     "manifestSha256": "d1ed660314dbc54684916a2e10d9767f7bc9c19c47da25c2086503aa535d1713"
-    },
-    "gpu": {
-     "mode": "hardware",
-     "adapter": {
-      "vendor": "nvidia",
-      "architecture": "blackwell",
-      "device": "",
-      "description": "",
-      "fallback": false,
-      "float32Blendable": true
-     }
-    }
-   }
+   "readyMs": 5243
   },
   "sun-1au": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=instant&target=10&dist=149597871",
    "stats": {
-    "adaptationLuminance": 2265.972969249757,
-    "scotopicAdaptationLuminance": 5382.323483329766,
-    "pupilDiameterMm": 2.0460950046959727,
+    "adaptationLuminance": 2265.974478657677,
+    "scotopicAdaptationLuminance": 5382.330653869305,
+    "pupilDiameterMm": 2.0461160101500537,
     "mesopicM": 1,
-    "limitingMagnitude": -3.089582130173617,
+    "limitingMagnitude": -3.0895827618346914,
     "starsDrawn": 0,
     "bodiesDrawn": 3,
     "bodies": [
@@ -1463,14 +1432,14 @@
     ]
    },
    "consoleErrors": [],
-   "readyMs": 13529
+   "readyMs": 2833
   },
   "juno-closeup": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=1&adapt=instant&target=20000003",
    "stats": {
     "adaptationLuminance": 1392.608341460264,
     "scotopicAdaptationLuminance": 3104.9431460800156,
-    "pupilDiameterMm": 2.9154595393519096,
+    "pupilDiameterMm": 2.915459483277096,
     "mesopicM": 1,
     "limitingMagnitude": -2.6310550213201847,
     "starsDrawn": 14,
@@ -1520,26 +1489,34 @@
     ]
    },
    "consoleErrors": [],
-   "readyMs": 9611,
-   "accepted": {
-    "acceptedAt": "2026-10-07T08:51:08.308Z",
-    "git": "a0b8da1",
-    "data": {
-     "manifestGeneratedAt": "2026-10-07T08:48:09+00:00",
-     "manifestSha256": "75ce3eb20e9eee81680f3767536e2b4b1938977397a8f49797cd71a6d513fd83"
-    },
-    "gpu": {
-     "mode": "hardware",
-     "adapter": {
-      "vendor": "nvidia",
-      "architecture": "blackwell",
-      "device": "",
-      "description": "",
-      "fallback": false,
-      "float32Blendable": true
-     }
-    }
-   }
+   "readyMs": 8177
+  },
+  "comet-lemmon": {
+   "query": "t=2025-10-27T00:00:00Z&smallbodies=1&adapt=instant&target=1004054&sbfield=0&dist=40000000&az=90&el=20&shield=1",
+   "stats": {
+    "adaptationLuminance": 0.0005488477472025278,
+    "scotopicAdaptationLuminance": 0.0012532650135140264,
+    "pupilDiameterMm": 7.67610362940016,
+    "mesopicM": 0,
+    "limitingMagnitude": 5.582625593561213,
+    "starsDrawn": 2381,
+    "bodiesDrawn": 3,
+    "bodies": [],
+    "points": [
+     "-3995:derived:marker",
+     "301:estimated",
+     "399:estimated"
+    ],
+    "bodiesInSnapshot": 75,
+    "sun": true,
+    "warnings": [],
+    "badge": [
+     "SUN SHIELDED: occulting disc (viewing aid)",
+     "INSTANT ADAPTATION: eye always fully adapted"
+    ]
+   },
+   "consoleErrors": [],
+   "readyMs": 7157
   },
   "mars-map": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=instant&target=499&dist=15000&az=0&el=10",
@@ -1600,42 +1577,24 @@
     "bodiesInSnapshot": 75,
     "sun": true,
     "warnings": [
-     "Uranus rings: geometry not measured at this time for ring 6, ring 5, ring 4, α ring, β ring, η ring, γ ring, δ ring, λ ring, ε ring → no light or extinction; radial annotation hatched as not measured"
+     "Uranus rings: geometry estimated from COR centreline fits with constant mean widths for ring 6, ring 5, ring 4, α ring, β ring, η ring, γ ring, δ ring, λ ring, ε ring; 20.07–30.51 years beyond last accepted data; fitted modes and width variation omitted; dynamical change is unbounded",
+     "Uranus rings: reflectance not measured for λ ring → absorption only where geometry is valid, covered material hatched as not measured"
     ],
     "badge": [
      "INSTANT ADAPTATION: eye always fully adapted"
     ]
    },
    "consoleErrors": [],
-   "readyMs": 5195,
-   "accepted": {
-    "acceptedAt": "2026-10-07T08:51:08.308Z",
-    "git": "a0b8da1",
-    "data": {
-     "manifestGeneratedAt": "2026-10-07T08:48:09+00:00",
-     "manifestSha256": "75ce3eb20e9eee81680f3767536e2b4b1938977397a8f49797cd71a6d513fd83"
-    },
-    "gpu": {
-     "mode": "hardware",
-     "adapter": {
-      "vendor": "nvidia",
-      "architecture": "blackwell",
-      "device": "",
-      "description": "",
-      "fallback": false,
-      "float32Blendable": true
-     }
-    }
-   }
+   "readyMs": 4016
   },
   "mercury-map": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=instant&target=199&dist=8000&az=0&el=10",
    "stats": {
-    "adaptationLuminance": 22590.520830666606,
-    "scotopicAdaptationLuminance": 47827.5949503996,
-    "pupilDiameterMm": 2.1690155777066975,
+    "adaptationLuminance": 22590.750168925715,
+    "scotopicAdaptationLuminance": 47828.177608568134,
+    "pupilDiameterMm": 2.1690192904544316,
     "mesopicM": 1,
-    "limitingMagnitude": -5.3316427112067,
+    "limitingMagnitude": -5.33165285157936,
     "starsDrawn": 0,
     "bodiesDrawn": 7,
     "bodies": [
@@ -1662,16 +1621,16 @@
     ]
    },
    "consoleErrors": [],
-   "readyMs": 15881
+   "readyMs": 3982
   },
   "starfield-dark-2min": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=realtime&target=999&dist=3000000000&labels=0&adaptfrom=10000%2C600%2C120",
    "stats": {
-    "adaptationLuminance": 0.00006498327483977305,
-    "scotopicAdaptationLuminance": 0.00013964184890666838,
+    "adaptationLuminance": 0.00006498327483330773,
+    "scotopicAdaptationLuminance": 0.00013964160602904672,
     "pupilDiameterMm": 7.835258707605361,
     "mesopicM": 0,
-    "limitingMagnitude": 4.790907176369899,
+    "limitingMagnitude": 4.7904029039172045,
     "starsDrawn": 175,
     "bodiesDrawn": 6,
     "bodies": [],
@@ -1692,35 +1651,16 @@
     "badge": []
    },
    "consoleErrors": [],
-   "readyMs": 5446,
-   "accepted": {
-    "acceptedAt": "2026-10-07T09:34:23.112Z",
-    "git": "1627c44",
-    "data": {
-     "manifestGeneratedAt": "2026-10-07T09:25:01+00:00",
-     "manifestSha256": "d1ed660314dbc54684916a2e10d9767f7bc9c19c47da25c2086503aa535d1713"
-    },
-    "gpu": {
-     "mode": "hardware",
-     "adapter": {
-      "vendor": "nvidia",
-      "architecture": "blackwell",
-      "device": "",
-      "description": "",
-      "fallback": false,
-      "float32Blendable": true
-     }
-    }
-   }
+   "readyMs": 6299
   },
   "starfield-dark-12min": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=realtime&target=999&dist=3000000000&labels=0&adaptfrom=10000%2C600%2C720",
    "stats": {
-    "adaptationLuminance": 0.0000642402770793752,
-    "scotopicAdaptationLuminance": 0.00013792378329098795,
+    "adaptationLuminance": 0.00006424027879350501,
+    "scotopicAdaptationLuminance": 0.0001379326582566859,
     "pupilDiameterMm": 7.835260207339829,
     "mesopicM": 0,
-    "limitingMagnitude": 5.046111607616112,
+    "limitingMagnitude": 5.046116011226452,
     "starsDrawn": 235,
     "bodiesDrawn": 6,
     "bodies": [],
@@ -1741,35 +1681,16 @@
     "badge": []
    },
    "consoleErrors": [],
-   "readyMs": 4803,
-   "accepted": {
-    "acceptedAt": "2026-10-07T09:34:23.112Z",
-    "git": "1627c44",
-    "data": {
-     "manifestGeneratedAt": "2026-10-07T09:25:01+00:00",
-     "manifestSha256": "d1ed660314dbc54684916a2e10d9767f7bc9c19c47da25c2086503aa535d1713"
-    },
-    "gpu": {
-     "mode": "hardware",
-     "adapter": {
-      "vendor": "nvidia",
-      "architecture": "blackwell",
-      "device": "",
-      "description": "",
-      "fallback": false,
-      "float32Blendable": true
-     }
-    }
-   }
+   "readyMs": 5767
   },
   "starfield-dark-30min": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=realtime&target=999&dist=3000000000&labels=0&adaptfrom=10000%2C600%2C1800",
    "stats": {
-    "adaptationLuminance": 0.000057259348388928324,
-    "scotopicAdaptationLuminance": 0.0001222165825209724,
+    "adaptationLuminance": 0.00005725934306641134,
+    "scotopicAdaptationLuminance": 0.00012220218203516292,
     "pupilDiameterMm": 7.8352711442251,
     "mesopicM": 0,
-    "limitingMagnitude": 6.309046297282547,
+    "limitingMagnitude": 6.308550621400812,
     "starsDrawn": 2624,
     "bodiesDrawn": 6,
     "bodies": [],
@@ -1790,79 +1711,14 @@
     "badge": []
    },
    "consoleErrors": [],
-   "readyMs": 4878,
-   "accepted": {
-    "acceptedAt": "2026-10-07T09:34:23.112Z",
-    "git": "1627c44",
-    "data": {
-     "manifestGeneratedAt": "2026-10-07T09:25:01+00:00",
-     "manifestSha256": "d1ed660314dbc54684916a2e10d9767f7bc9c19c47da25c2086503aa535d1713"
-    },
-    "gpu": {
-     "mode": "hardware",
-     "adapter": {
-      "vendor": "nvidia",
-      "architecture": "blackwell",
-      "device": "",
-      "description": "",
-      "fallback": false,
-      "float32Blendable": true
-     }
-    }
-   }
-  },
-  "comet-lemmon": {
-   "query": "t=2025-10-27T00:00:00Z&smallbodies=1&adapt=instant&target=1004054&sbfield=0&dist=40000000&az=90&el=20&shield=1",
-   "stats": {
-    "adaptationLuminance": 0.0005488477472025278,
-    "scotopicAdaptationLuminance": 0.0012532650135140264,
-    "pupilDiameterMm": 7.67610362940016,
-    "mesopicM": 0,
-    "limitingMagnitude": 5.582625593561213,
-    "starsDrawn": 2381,
-    "bodiesDrawn": 3,
-    "bodies": [],
-    "points": [
-     "-3995:derived:marker",
-     "301:estimated",
-     "399:estimated"
-    ],
-    "bodiesInSnapshot": 75,
-    "sun": true,
-    "warnings": [],
-    "badge": [
-     "SUN SHIELDED: occulting disc (viewing aid)",
-     "INSTANT ADAPTATION: eye always fully adapted"
-    ]
-   },
-   "consoleErrors": [],
-   "readyMs": 12805,
-   "accepted": {
-    "acceptedAt": "2026-10-07T09:34:23.112Z",
-    "git": "1627c44",
-    "data": {
-     "manifestGeneratedAt": "2026-10-07T09:25:01+00:00",
-     "manifestSha256": "d1ed660314dbc54684916a2e10d9767f7bc9c19c47da25c2086503aa535d1713"
-    },
-    "gpu": {
-     "mode": "hardware",
-     "adapter": {
-      "vendor": "nvidia",
-      "architecture": "blackwell",
-      "device": "",
-      "description": "",
-      "fallback": false,
-      "float32Blendable": true
-     }
-    }
-   }
+   "readyMs": 3842
   },
   "phobos-stickney": {
    "query": "t=2026-10-15T05:20:00Z&smallbodies=0&adapt=instant&target=401&dist=45&az=-21&el=5",
    "stats": {
     "adaptationLuminance": 451.926141462671,
     "scotopicAdaptationLuminance": 1012.6928422174205,
-    "pupilDiameterMm": 2.9348385456374855,
+    "pupilDiameterMm": 2.934838485074702,
     "mesopicM": 1,
     "limitingMagnitude": -1.5964176424396728,
     "starsDrawn": 37,
@@ -1910,33 +1766,317 @@
     "bodiesInSnapshot": 75,
     "sun": true,
     "warnings": [
-     "Uranus rings: geometry not measured at this time for ring 6, ring 5, ring 4, α ring, β ring, η ring, γ ring, δ ring, λ ring, ε ring → no light or extinction; radial annotation hatched as not measured"
+     "Uranus rings: geometry estimated from COR centreline fits with constant mean widths for ring 6, ring 5, ring 4, α ring, β ring, η ring, γ ring, δ ring, λ ring, ε ring; 20.07–30.51 years beyond last accepted data; fitted modes and width variation omitted; dynamical change is unbounded",
+     "Uranus rings: reflectance not measured for λ ring → absorption only where geometry is valid, covered material hatched as not measured"
     ],
     "badge": [
      "INSTANT ADAPTATION: eye always fully adapted"
     ]
    },
    "consoleErrors": [],
-   "readyMs": 5647,
-   "accepted": {
-    "acceptedAt": "2026-10-07T08:51:08.308Z",
-    "git": "a0b8da1",
-    "data": {
-     "manifestGeneratedAt": "2026-10-07T08:48:09+00:00",
-     "manifestSha256": "75ce3eb20e9eee81680f3767536e2b4b1938977397a8f49797cd71a6d513fd83"
-    },
-    "gpu": {
-     "mode": "hardware",
-     "adapter": {
-      "vendor": "nvidia",
-      "architecture": "blackwell",
-      "device": "",
-      "description": "",
-      "fallback": false,
-      "float32Blendable": true
+   "readyMs": 4544
+  },
+  "titan-haze": {
+   "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=instant&target=606&dist=12000&az=60&el=10",
+   "stats": {
+    "adaptationLuminance": 61.33065835165088,
+    "scotopicAdaptationLuminance": 112.52642545654214,
+    "pupilDiameterMm": 3.8569328094302233,
+    "mesopicM": 1,
+    "limitingMagnitude": 0.14254388440234628,
+    "starsDrawn": 128,
+    "bodiesDrawn": 29,
+    "bodies": [
+     {
+      "id": 606,
+      "name": "Titan",
+      "worstLabel": "estimated",
+      "surfaceUnknown": false
      }
-    }
-   }
+    ],
+    "points": [
+     "607:derived",
+     "622:derived:marker",
+     "641:derived:marker",
+     "643:derived:marker",
+     "651:derived:marker",
+     "65085:derived:marker",
+     "65086:derived:marker",
+     "65087:derived:marker",
+     "65089:derived:marker",
+     "65096:derived:marker",
+     "65108:derived:marker",
+     "65109:derived:marker",
+     "65123:derived:marker",
+     "65125:derived:marker",
+     "65129:derived:marker",
+     "65149:derived:marker",
+     "65172:derived:marker",
+     "65189:derived:marker",
+     "65194:derived:marker",
+     "65203:derived:marker",
+     "65207:derived:marker",
+     "65244:derived:marker",
+     "65247:derived:marker",
+     "65281:derived:marker",
+     "65282:derived:marker",
+     "65287:derived:marker",
+     "65289:derived:marker",
+     "65297:derived:marker"
+    ],
+    "bodiesInSnapshot": 75,
+    "sun": true,
+    "warnings": [
+     "Titan: atmosphere model scaled to the disk photometry as at 5.7°, ×0.99 X, 0.99 Y, 0.89 Z, 0.95 S: phase 60.5° is beyond the measured range (0–5.7°) and the factors of its edge are held → estimated"
+    ],
+    "badge": [
+     "INSTANT ADAPTATION: eye always fully adapted"
+    ]
+   },
+   "consoleErrors": [],
+   "readyMs": 8351
+  },
+  "titan-haze-ring": {
+   "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=instant&target=606&dist=12000&az=170&el=0",
+   "stats": {
+    "adaptationLuminance": 918.9953530997409,
+    "scotopicAdaptationLuminance": 1670.4748102230767,
+    "pupilDiameterMm": 3.7363951844179373,
+    "mesopicM": 1,
+    "limitingMagnitude": -2.244672598257382,
+    "starsDrawn": 66,
+    "bodiesDrawn": 192,
+    "bodies": [
+     {
+      "id": 606,
+      "name": "Titan",
+      "worstLabel": "estimated",
+      "surfaceUnknown": false
+     },
+     {
+      "id": 699,
+      "name": "Saturn",
+      "worstLabel": "estimated",
+      "surfaceUnknown": false
+     }
+    ],
+    "points": [
+     "10:n/a",
+     "199:estimated",
+     "299:estimated",
+     "301:estimated",
+     "399:estimated",
+     "401:estimated",
+     "402:derived",
+     "499:estimated",
+     "501:estimated",
+     "502:estimated",
+     "503:estimated",
+     "504:estimated",
+     "505:derived",
+     "506:estimated",
+     "507:estimated",
+     "508:estimated",
+     "509:estimated",
+     "510:estimated",
+     "511:estimated",
+     "512:estimated",
+     "513:estimated",
+     "514:derived",
+     "515:derived",
+     "516:derived",
+     "517:derived:marker",
+     "518:derived:marker",
+     "519:derived:marker",
+     "520:derived:marker",
+     "521:derived:marker",
+     "522:derived:marker",
+     "523:derived:marker",
+     "524:derived:marker",
+     "525:derived:marker",
+     "526:derived:marker",
+     "527:derived:marker",
+     "528:derived:marker",
+     "529:derived:marker",
+     "530:derived:marker",
+     "531:derived:marker",
+     "532:derived:marker",
+     "533:derived:marker",
+     "534:derived:marker",
+     "535:derived:marker",
+     "536:derived:marker",
+     "537:derived:marker",
+     "538:derived:marker",
+     "539:derived:marker",
+     "540:derived:marker",
+     "541:derived:marker",
+     "542:derived:marker",
+     "543:derived:marker",
+     "544:derived:marker",
+     "545:derived:marker",
+     "546:derived:marker",
+     "547:derived:marker",
+     "548:derived:marker",
+     "549:derived:marker",
+     "550:derived:marker",
+     "551:derived:marker",
+     "552:derived:marker",
+     "553:derived:marker",
+     "554:derived:marker",
+     "555:derived:marker",
+     "556:derived:marker",
+     "557:derived:marker",
+     "558:derived:marker",
+     "559:derived:marker",
+     "560:derived:marker",
+     "561:derived:marker",
+     "562:derived:marker",
+     "563:derived:marker",
+     "564:derived:marker",
+     "565:derived:marker",
+     "566:derived:marker",
+     "567:derived:marker",
+     "568:derived:marker",
+     "569:derived:marker",
+     "570:derived:marker",
+     "571:derived:marker",
+     "572:derived:marker",
+     "599:estimated",
+     "601:estimated",
+     "602:estimated",
+     "603:estimated",
+     "604:estimated",
+     "610:derived",
+     "611:derived",
+     "612:derived",
+     "613:derived",
+     "614:derived",
+     "615:derived",
+     "616:derived",
+     "617:derived",
+     "618:derived",
+     "624:derived:marker",
+     "632:derived",
+     "633:derived",
+     "634:derived",
+     "642:derived:marker",
+     "646:derived:marker",
+     "649:derived",
+     "653:derived",
+     "655:derived:marker",
+     "657:derived:marker",
+     "665:derived:marker",
+     "55501:derived:marker",
+     "55502:derived:marker",
+     "55503:derived:marker",
+     "55504:derived:marker",
+     "55505:derived:marker",
+     "55506:derived:marker",
+     "55507:derived:marker",
+     "55508:derived:marker",
+     "55509:derived:marker",
+     "55510:derived:marker",
+     "55511:derived:marker",
+     "55512:derived:marker",
+     "55513:derived:marker",
+     "55514:derived:marker",
+     "55515:derived:marker",
+     "55516:derived:marker",
+     "55517:derived:marker",
+     "55518:derived:marker",
+     "55519:derived:marker",
+     "55520:derived:marker",
+     "55521:derived:marker",
+     "55522:derived:marker",
+     "55523:derived:marker",
+     "55524:derived:marker",
+     "55525:derived:marker",
+     "55526:derived:marker",
+     "55527:derived:marker",
+     "55528:derived:marker",
+     "55529:derived:marker",
+     "55530:derived:marker",
+     "55531:derived:marker",
+     "55532:derived:marker",
+     "55533:derived:marker",
+     "55534:derived:marker",
+     "55535:derived:marker",
+     "55536:derived:marker",
+     "55537:derived:marker",
+     "55538:derived:marker",
+     "55539:derived:marker",
+     "55540:derived:marker",
+     "55541:derived:marker",
+     "55542:derived:marker",
+     "55543:derived:marker",
+     "55544:derived:marker",
+     "65077:derived:marker",
+     "65088:derived:marker",
+     "65106:derived:marker",
+     "65107:derived:marker",
+     "65116:derived:marker",
+     "65117:derived:marker",
+     "65121:derived:marker",
+     "65122:derived:marker",
+     "65128:derived:marker",
+     "65130:derived:marker",
+     "65136:derived:marker",
+     "65140:derived:marker",
+     "65175:derived:marker",
+     "65181:derived:marker",
+     "65182:derived:marker",
+     "65186:derived:marker",
+     "65187:derived:marker",
+     "65193:derived:marker",
+     "65196:derived:marker",
+     "65197:derived:marker",
+     "65205:derived:marker",
+     "65209:derived:marker",
+     "65225:derived:marker",
+     "65227:derived:marker",
+     "65230:derived:marker",
+     "65233:derived:marker",
+     "65250:derived:marker",
+     "65251:derived:marker",
+     "65259:derived:marker",
+     "65261:derived:marker",
+     "65263:derived:marker",
+     "65266:derived:marker",
+     "65269:derived:marker",
+     "65270:derived:marker",
+     "65272:derived:marker",
+     "65279:derived:marker",
+     "65283:derived:marker",
+     "65296:derived:marker",
+     "65299:derived:marker",
+     "65303:derived:marker",
+     "65304:derived:marker"
+    ],
+    "bodiesInSnapshot": 75,
+    "sun": true,
+    "warnings": [
+     "Ananke: phase extrapolated beyond measured range (0–12°) with the spatial law → estimated",
+     "Carme: phase extrapolated beyond measured range (0–12°) with the spatial law → estimated",
+     "Dione: phase extrapolated beyond measured range (0–120°) with the spatial law → estimated",
+     "Elara: phase extrapolated beyond measured range (0–12°) with the spatial law → estimated",
+     "Enceladus: phase extrapolated beyond measured range (0–120°) with the spatial law → estimated",
+     "Himalia: phase extrapolated beyond measured range (0–12°) with the spatial law → estimated",
+     "Leda: phase extrapolated beyond measured range (0–12°) with the spatial law → estimated",
+     "Lysithea: phase extrapolated beyond measured range (0–12°) with the spatial law → estimated",
+     "Mimas: phase extrapolated beyond measured range (0–120°) with the spatial law → estimated",
+     "Moon: phase extrapolated beyond measured range (1.55–120°) with the spatial law → estimated",
+     "Pasiphae: phase extrapolated beyond measured range (0–12°) with the spatial law → estimated",
+     "Saturn rings: phase angle 147.75° outside the reflectance model's 0.25–47° → ring brightness not measured (hatched)",
+     "Sinope: phase extrapolated beyond measured range (0–12°) with the spatial law → estimated",
+     "Tethys: phase extrapolated beyond measured range (0–120°) with the spatial law → estimated",
+     "Titan: atmosphere model scaled to the disk photometry as at 5.7°, ×0.99 X, 0.99 Y, 0.89 Z, 0.95 S: phase 170° is beyond the measured range (0–5.7°) and the factors of its edge are held → estimated"
+    ],
+    "badge": [
+     "INSTANT ADAPTATION: eye always fully adapted"
+    ]
+   },
+   "consoleErrors": [],
+   "readyMs": 9444
   },
   "hyperion-fallback": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=instant&target=607&dist=900&az=30&el=10",
@@ -2001,35 +2141,16 @@
     ]
    },
    "consoleErrors": [],
-   "readyMs": 5229,
-   "accepted": {
-    "acceptedAt": "2026-10-07T09:34:23.112Z",
-    "git": "1627c44",
-    "data": {
-     "manifestGeneratedAt": "2026-10-07T09:25:01+00:00",
-     "manifestSha256": "d1ed660314dbc54684916a2e10d9767f7bc9c19c47da25c2086503aa535d1713"
-    },
-    "gpu": {
-     "mode": "hardware",
-     "adapter": {
-      "vendor": "nvidia",
-      "architecture": "blackwell",
-      "device": "",
-      "description": "",
-      "fallback": false,
-      "float32Blendable": true
-     }
-    }
-   }
+   "readyMs": 9785
   },
   "bennu-closeup": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=1&adapt=instant&target=20101955&dist=1.5&az=40&el=10",
    "stats": {
-    "adaptationLuminance": 918.6239063173458,
-    "scotopicAdaptationLuminance": 2161.7705824323775,
-    "pupilDiameterMm": 3.012672615969917,
+    "adaptationLuminance": 918.8742986354064,
+    "scotopicAdaptationLuminance": 2162.3609062982005,
+    "pupilDiameterMm": 3.012638318642954,
     "mesopicM": 1,
-    "limitingMagnitude": -2.244299166127433,
+    "limitingMagnitude": -2.2445509128375716,
     "starsDrawn": 43,
     "bodiesDrawn": 7,
     "bodies": [
@@ -2059,16 +2180,16 @@
     ]
    },
    "consoleErrors": [],
-   "readyMs": 429491
+   "readyMs": 11410
   },
   "earth-moon-first-run": {
    "query": "t=2026-09-30T17:00:00Z&smallbodies=0&adapt=instant&target=399&dist=45828.8&az=32.84&el=-17.26",
    "stats": {
-    "adaptationLuminance": 8907.387503691429,
-    "scotopicAdaptationLuminance": 23875.718895078655,
-    "pupilDiameterMm": 2.500380914338339,
+    "adaptationLuminance": 8905.637749160076,
+    "scotopicAdaptationLuminance": 23872.09449960865,
+    "pupilDiameterMm": 2.500401431865332,
     "mesopicM": 1,
-    "limitingMagnitude": -4.410392954498227,
+    "limitingMagnitude": -4.410200333271373,
     "starsDrawn": 7,
     "bodiesDrawn": 341,
     "bodies": [
@@ -2431,42 +2552,24 @@
     "warnings": [
      "Neptune rings: geometry not measured at this time for Adams ring arcs (Fraternité, Égalité) → no light or extinction; radial annotation hatched as not measured",
      "Neptune rings: reflectance not measured for Galle ring → absorption only where geometry is valid, covered material hatched as not measured",
-     "Uranus rings: geometry not measured at this time for ring 6, ring 5, ring 4, α ring, β ring, η ring, γ ring, δ ring, λ ring, ε ring → no light or extinction; radial annotation hatched as not measured"
+     "Uranus rings: geometry estimated from COR centreline fits with constant mean widths for ring 6, ring 5, ring 4, α ring, β ring, η ring, γ ring, δ ring, λ ring, ε ring; 20.03–30.47 years beyond last accepted data; fitted modes and width variation omitted; dynamical change is unbounded",
+     "Uranus rings: reflectance not measured for λ ring → absorption only where geometry is valid, covered material hatched as not measured"
     ],
     "badge": [
      "INSTANT ADAPTATION: eye always fully adapted"
     ]
    },
    "consoleErrors": [],
-   "readyMs": 4789,
-   "accepted": {
-    "acceptedAt": "2026-10-07T08:51:08.308Z",
-    "git": "a0b8da1",
-    "data": {
-     "manifestGeneratedAt": "2026-10-07T08:48:09+00:00",
-     "manifestSha256": "75ce3eb20e9eee81680f3767536e2b4b1938977397a8f49797cd71a6d513fd83"
-    },
-    "gpu": {
-     "mode": "hardware",
-     "adapter": {
-      "vendor": "nvidia",
-      "architecture": "blackwell",
-      "device": "",
-      "description": "",
-      "fallback": false,
-      "float32Blendable": true
-     }
-    }
-   }
+   "readyMs": 3888
   },
   "eclipse-2027-above": {
    "query": "t=2027-08-02T10:06:41.000Z&smallbodies=0&adapt=instant&target=399&dist=28715.92&az=0.65&el=1.69",
    "stats": {
-    "adaptationLuminance": 8102.488120190335,
-    "scotopicAdaptationLuminance": 21467.01303262547,
-    "pupilDiameterMm": 2.3445570823113364,
+    "adaptationLuminance": 8234.212704570129,
+    "scotopicAdaptationLuminance": 21943.10562057161,
+    "pupilDiameterMm": 2.341886667843318,
     "mesopicM": 1,
-    "limitingMagnitude": -4.317628404913305,
+    "limitingMagnitude": -4.333410149985208,
     "starsDrawn": 2,
     "bodiesDrawn": 7,
     "bodies": [
@@ -2493,16 +2596,16 @@
     ]
    },
    "consoleErrors": [],
-   "readyMs": 79197
+   "readyMs": 4430
   },
   "eclipse-2027-totality": {
    "query": "t=2027-08-02T10:06:41.000Z&smallbodies=0&adapt=instant&target=301&dist=350939.1&az=179.99&el=0&fov=6",
    "stats": {
-    "adaptationLuminance": 203.4880974773421,
-    "scotopicAdaptationLuminance": 479.5009761038194,
-    "pupilDiameterMm": 6.569558537086447,
+    "adaptationLuminance": 203.9233051309432,
+    "scotopicAdaptationLuminance": 480.52622665888487,
+    "pupilDiameterMm": 6.569166783483561,
     "mesopicM": 1,
-    "limitingMagnitude": -0.8860676943840289,
+    "limitingMagnitude": -0.8879426206199127,
     "starsDrawn": 0,
     "bodiesDrawn": 3,
     "bodies": [
@@ -2532,16 +2635,16 @@
     ]
    },
    "consoleErrors": [],
-   "readyMs": 17767
+   "readyMs": 3678
   },
   "jupiter-double-shadow": {
    "query": "t=2027-01-30T15:12:07.461Z&smallbodies=0&adapt=instant&target=599&dist=300266.4&az=2.32&el=0.58",
    "stats": {
-    "adaptationLuminance": 902.0858269389762,
-    "scotopicAdaptationLuminance": 2031.6995801105402,
-    "pupilDiameterMm": 2.7445898150206087,
+    "adaptationLuminance": 902.0156262139536,
+    "scotopicAdaptationLuminance": 2031.5422131033727,
+    "pupilDiameterMm": 2.7445714415279037,
     "mesopicM": 1,
-    "limitingMagnitude": -2.227522640298141,
+    "limitingMagnitude": -2.2274507941370274,
     "starsDrawn": 8,
     "bodiesDrawn": 28,
     "bodies": [
@@ -2592,7 +2695,7 @@
     ]
    },
    "consoleErrors": [],
-   "readyMs": 63051
+   "readyMs": 3011
   }
  }
 }

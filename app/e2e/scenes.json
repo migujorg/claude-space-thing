@@ -293,6 +293,26 @@
    }
   },
   {
+   "id": "titan-haze",
+   "title": "Titan at 61° phase, drawn from its atmosphere model (Huygens DISR haze over the surface reflectance, multiple scattering by orders of scattering), scaled per channel to its disk photometry with the factors of 5.7°, the edge of the photometry's range",
+   "params": {
+    "target": "606",
+    "dist": "12000",
+    "az": "60",
+    "el": "10"
+   }
+  },
+  {
+   "id": "titan-haze-ring",
+   "title": "Titan at 170° phase from inside its shadow (the Sun 10° from the disk centre, behind the solid limb): the crescent of forward-scattering haze beyond the limb, brightest where the line of sight passes closest to the Sun",
+   "params": {
+    "target": "606",
+    "dist": "12000",
+    "az": "170",
+    "el": "0"
+   }
+  },
+  {
    "id": "hyperion-fallback",
    "title": "Hyperion: shape model known, orientation unknown (chaotic rotation) \u2192 ellipsoid, and the inspector says why",
    "params": {

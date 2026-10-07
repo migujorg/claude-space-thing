@@ -392,6 +392,11 @@ export interface BodyAtmosphere {
   /** Pluto: measured haze I/F versus phase angle. */
   hazeMeasurements?: Sourced<{ phaseDeg: number[]; peakIoverF: number[]; IoverFat45km: number[];
                                wavelengthNm: number }>;
+  /** Titan: Lambert reflectance of the surface below the atmosphere, at wavelengthsNm, and its X, Y, Z, S
+   *  (sunlight × observer weighted) equivalents. A body with it is drawn from its atmosphere alone (no disk
+   *  photometry renormalization; docs/rendering-earth.md §8 "Titan"). */
+  surfaceReflectance?: Sourced<{ wavelengthsNm: number[]; reflectance: number[];
+                                 channelEquivalents: [number, number, number, number] }>;
   /** Giant planets: near the 1 bar level. */
   temperatureAt1barK?: Sourced<number>;
   densityAt1barKgM3?: Sourced<number>;
@@ -418,6 +423,11 @@ export interface AtmosphereComponent {
   separable?: Sourced<{ numberDensityPerM3: number[]; crossSectionM2: number[] }>;
   /** Asymmetry parameter per wavelength, for reference where the phase function is tabulated or fixed. */
   asymmetry?: Sourced<number[]>;
+  /** Titan 'methane': the measured mole-fraction profile (altitude km, mole fraction). */
+  methaneMoleFraction?: Sourced<{ altitudeKm: number[]; moleFraction: number[] }>;
+  /** Titan 'methane': the absorption coefficient at 1 nm resolution (per km-amagat), for renderers that resolve
+   *  the bands (extinctionPerKm holds 10 nm box averages). */
+  absorptionCoefficient?: Sourced<{ wavelengthNm: number[]; perKmAmagat: number[] }>;
 }
 
 /** All normalized to a mean of 1 over the sphere (∫P dΩ = 4π); Θ is the scattering angle. */
