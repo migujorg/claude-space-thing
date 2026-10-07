@@ -1,10 +1,11 @@
 """Panchromatic 8-bit global mosaics (USGS Astrogeology): the Galilean moons (Pluto and Charon: see surf_nh).
 
 These mosaics are calibrated and photometrically normalized by their producers (Lunar-Lambert or similar), matched
-across image boundaries, and delivered as 8-bit DN whose scaling to reflectance is not documented. We use DN as
-proportional to normalized reflectance (DN 0 = no data) — an assumption — so the brightness pattern is labelled
+across image boundaries, and delivered as 8-bit pixels. GeoTIFF GDAL scale/offset metadata are decoded before use
+(also documented by the ISIS labels). The decoded, tone-matched values are assumed proportional to relative
+reflectance (DN 0 = no data), including unresolved topographic shading, so the brightness pattern is labelled
 `estimated`; with a single band the local colour is the disk colour, so the colour is `estimated` too
-(docs/architecture.md §4.4). The texel is DN / ⟨DN⟩ (cos²φ disk weighting) in all four channels.
+(docs/architecture.md §4.4). The texel is decoded value / ⟨decoded value⟩ (cos²φ disk weighting) in all four channels.
 
 Excluded on purpose: colour composites ('ClrMosaic', 'ClrMerge', 'FalseColor' — filter composites with contrast
 enhancement, not calibrated colour), high-pass-filtered mosaics ('HPF'), and gap-filled products ('GlobalFill')
@@ -17,7 +18,9 @@ catches a west/east longitude mix-up.
 
 from __future__ import annotations
 
+import json
 import math
+import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -71,8 +74,9 @@ MAPS = [
            "Astrogeology, Io_GalileoSSI-Voyager_Global_Mosaic_1km.tif.",
            3, Feature("Loki Patera", 13.01, 51.21, 90, "dark", GAZ + ": 13.0083°N, 51.2136°E"),
            "Voyager 1979; Galileo 1996-2001",
-           ("Mostly clear-filter SSI images (green and 756 nm substituted where sharper); resolutions 1.3-10 km/px, "
-            "poorest on the Jupiter-facing side; images empirically matched in brightness and contrast (metadata).",
+           ("Combined Galileo SSI moderate-resolution / Voyager II high-resolution monochrome morphology mosaic "
+            "(Becker & Geissler 2005); topographic shading remains. The 32-image grayscale description in the "
+            "USGS metadata describes the Galileo-only sibling, not this combined product.",
             "Io's surface changes with volcanic activity: this is a 1979-2001 composite.")),
     PanMap(502, "Europa", "Europa_Voyager_GalileoSSI_global_mosaic_500m.tif", "usgs-europa-voyager-galileo-500m",
            "Europa Voyager / Galileo SSI global mosaic, 500 m/px (USGS)",
@@ -141,6 +145,24 @@ def geotiff_grid(path: Path) -> tuple[sg.EquirectGrid, float, dict]:
         nodata = float(nd.value) if nd is not None else 0.0
         info = {"shape": list(p.shape), "dtype": str(p.dtype), "ascii": str(p.tags["GeoAsciiParamsTag"].value)
                 if "GeoAsciiParamsTag" in p.tags else ""}
+        metadata = p.tags.get("GDAL_METADATA")
+        encoding = {"scale": 1.0, "offset": 0.0, "documented": False}
+        if metadata is not None:
+            # GDAL's band scale/offset: value = stored pixel * scale + offset. The USGS
+            # detached ISIS labels repeat these as Pixels.Multiplier and Pixels.Base.
+            # https://gdal.org/en/stable/drivers/raster/gtiff.html#metadata
+            items = ET.fromstring(metadata.value).findall("Item")
+            for key in ("scale", "offset"):
+                matches = [e for e in items if e.get("sample") == "0" and e.get("role") == key]
+                if len(matches) > 1:
+                    raise ValueError(f"{path.name}: duplicate GDAL band {key}")
+                if matches:
+                    encoding[key] = float(matches[0].text)
+                    encoding["documented"] = True
+        if not (math.isfinite(encoding["scale"]) and encoding["scale"] > 0
+                and math.isfinite(encoding["offset"])):
+            raise ValueError(f"{path.name}: invalid GDAL pixel encoding {encoding}")
+        info["pixelEncoding"] = encoding
     r = geo[5]
     clon = geo[1]
     mpd = r * math.pi / 180.0
@@ -177,6 +199,42 @@ def hemisphere_ratio(v: np.ndarray, known: np.ndarray, level: int, lon_a: float,
     return mean(lon_a) / mean(lon_b)
 
 
+def leading_trailing_diagnostic(ratio: float, model: dict | None) -> dict:
+    """Map-only projected-area contrast, compared like-for-like with the fitted slices.
+
+    Not a test with published sigma: Mayorga Table 4 has no numerical slice errors or
+    covariance. Table 7 reports peak-to-trough modulation errors, a different statistic.
+    The renderer's Lambert slice kernel and viewing-geometry map normalization also
+    differ from the map-only projected-area diagnostic; report both explicitly.
+    """
+    d = {"ratio": round(ratio, 4), "magnitudes": round(2.5 * math.log10(ratio), 3),
+         "label": "estimated",
+         "what": "map-only zero-phase projected-area mean over leading (270°E) / trailing (90°E); "
+                 "weights cos²(latitude) max(cos(longitude - centre), 0), known texels only, "
+                 "no limb darkening, before viewing-geometry normalization",
+         "comparisonStatus": "unknown", "ratioUncertainty": None,
+         "uncertainty": "Mayorga et al. (2020) Table 4 publishes no numerical slice errors or covariance; "
+                        "Table 7 modulation errors are not errors on this hemisphere ratio. "
+                        "Agreement within slice uncertainty cannot be assessed."}
+    if model is not None and model.get("value", {}).get("kind") == "rotation-slices-v1":
+        from .photometry.moons import slice_factor
+        m = model["value"]
+        a = m["relativeAlbedo"]
+        projected = (0.5 * a[0] + a[1] + 0.5 * a[2]) / (0.5 * a[3] + a[4] + 0.5 * a[5])
+        lead, trail = math.radians(270), math.radians(90)
+        rendered = (slice_factor(m["sliceEdgesEastLonDeg"], a, lead, lead)
+                    / slice_factor(m["sliceEdgesEastLonDeg"], a, trail, trail))
+        d["rotationSlices"] = {
+            "sources": model["sources"], "label": model["label"],
+            "value": {"projectedAreaRatio": round(projected, 6), "mapOverSlices": round(ratio / projected, 6),
+                      "renderedZeroPhaseDiskRatio": round(rendered, 6)},
+            "method": "Projected-area slice weights [0.5, 1, 0.5] on each hemisphere; "
+                      "rendered disk ratio uses the Lambert slice_factor kernel cos²(longitude - centre). "
+                      "frame.ts normalizes law × map at each viewing geometry, leaving disk brightness "
+                      "to these slices; the map-only ratio is not the rendered disk ratio."}
+    return d
+
+
 def feature_check(v: np.ndarray, known: np.ndarray, level: int, f: Feature, radius_km: float) -> dict:
     """Contrast of the feature against its surroundings at the east-longitude position and at the mirrored
     (west-read-as-east) position."""
@@ -205,10 +263,14 @@ def build_one(ctx: BuildContext, pm: PanMap) -> dict:
     h, w = st.level_shape(level)
     num = np.zeros((h, w), np.float32)
     den = np.zeros((h, w), np.float32)
+    encoding = info["pixelEncoding"]
     if pm.stretch:
         d0, d1, v0, v1 = pm.stretch
         slope = (v1 - v0) / (d1 - d0)
         transform = lambda b: (np.float32(v0) + (b.astype(np.float32) - np.float32(d0)) * np.float32(slope))  # noqa: E731
+    elif encoding["documented"]:
+        transform = lambda b: (b.astype(np.float32) * np.float32(encoding["scale"])
+                               + np.float32(encoding["offset"]))  # noqa: E731
     else:
         transform = None
     c = sg.accumulate_chunked(num, den, data, grid, level, lambda b: b != nodata, transform)
@@ -217,6 +279,8 @@ def build_one(ctx: BuildContext, pm: PanMap) -> dict:
     if not pm.keep_raw:
         discard(path)
     v, known = sg.finish(num, den, 0.5)
+    if np.any(v[known] <= 0):
+        raise ValueError(f"{pm.file}: decoded known pixels must have positive relative reflectance")
     m = float(st.disk_mean(v, known, level)[0])
     ratio = v / np.float32(m)
     top = np.repeat(ratio[..., None], 4, axis=2)
@@ -229,6 +293,10 @@ def build_one(ctx: BuildContext, pm: PanMap) -> dict:
         check = {"passed": None, "note": "no named albedo feature with enough contrast was selected for this body; "
                                          "orientation relies on the producer's GeoTIFF georeferencing"}
     lead_trail = hemisphere_ratio(ratio, known, level, 270.0, 90.0) if pm.naif < 900 else None
+    from .paths import OUT
+    photometry_path = OUT / "photometry.json"
+    model = (json.loads(photometry_path.read_text()).get(str(pm.naif), {}).get("diskReflectanceModel")
+             if lead_trail is not None and photometry_path.exists() else None)
     pos = np.nonzero(hist[1:])[0] + 1
     cdf = np.cumsum(hist[1:]) / hist[1:].sum()
     dn = {"min": int(pos.min()), "p1": int(np.searchsorted(cdf, 0.01) + 1), "median": int(np.searchsorted(cdf, 0.5) + 1),
@@ -251,11 +319,16 @@ def build_one(ctx: BuildContext, pm: PanMap) -> dict:
                                   f"{level} and divided by their disk mean. The underlying mosaic mixes images of very "
                                   "different resolution and photometric geometry; values beyond the stretch limits are "
                                   "clipped." if pm.stretch else
-                                  "Texel = DN / disk-mean DN of the producer's photometrically normalized, "
+                                  f"Texel = decoded value / disk-mean decoded value, with value = DN × "
+                                  f"{encoding['scale']:.10g} + ({encoding['offset']:.10g}) "
+                                  + ("from GeoTIFF GDAL_METADATA (also ISIS Pixels.Multiplier/Base). "
+                                     if encoding["documented"] else "(identity; no GDAL scale/offset supplied). ")
+                                  + "Producer's photometrically normalized, "
                                   "overlap-matched 8-bit mosaic, box-averaged to level "
-                                  f"{level}. Assumes DN ∝ normalized reflectance (the DN scaling is not documented)."),
+                                  f"{level}. Assumes tone-matched values ∝ relative reflectance at all spatial scales; "
+                                  "mixed filters and topographic shading prevent a measured albedo label."),
                                  (f"stretch limits clip {dn['fractionAt255'] * 100:.2f} % of pixels at DN 255; "
-                                  if pm.stretch else "unknown DN offset/stretch; ")
+                                  if pm.stretch else "per-image tone corrections and reference geometry unavailable; ")
                                  + f"DN distribution p1 {dn['p1']}, median {dn['median']}, p99 {dn['p99']}; seams and "
                                    "resolution changes between source images remain"),
         color=sl.Provenance("estimated", [pm.src_id],
@@ -265,14 +338,14 @@ def build_one(ctx: BuildContext, pm: PanMap) -> dict:
                            note="Pixels with DN 0 (no data) are unknown.")],
         epoch={"observed": pm.observed},
         normalization={"weighting": "cos²(lat) projected area at zero phase, equatorial observer, rotation-averaged; "
-                                    "known texels only", "diskMeanDN": round(m, 4),
+                                    "known texels only", "diskMeanDN": round(
+                                        (m - encoding["offset"]) / encoding["scale"] if not pm.stretch else m, 4),
+                       "pixelEncoding": encoding,
+                       "diskMeanDecodedValue": m,
                        "texelDiskMeanCheck": [round(float(x), 5) for x in st.disk_mean(top, known, level)]},
         diagnostics={"georeferencing": check, "dnStatistics": dn,
-                     **({"leadingOverTrailing": {
-                         "ratio": round(lead_trail, 4), "magnitudes": round(2.5 * math.log10(lead_trail), 3),
-                         "what": "zero-phase projected-area mean of the map over the leading (centred 270°E) vs the "
-                                 "trailing (90°E) hemisphere, no limb darkening; to be compared with the measured "
-                                 "orbital light curve (open issue)"}} if lead_trail else {}),
+                     **({"leadingOverTrailing": leading_trailing_diagnostic(lead_trail, model)}
+                        if lead_trail is not None else {}),
                      "sourceValidFraction": c["validPixels"] / c["totalPixels"]},
         notes=list(pm.notes),
     )

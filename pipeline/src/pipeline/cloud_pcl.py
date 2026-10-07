@@ -1,10 +1,12 @@
-"""Optical thickness of partly cloudy pixels: a measured population statistic for cloud without its own retrieval.
+"""Optical thickness of partly cloudy pixels: an observed population applied to cloud without its own retrieval.
 
 The Earth cloud layer (surf_earth.py) knows, per texel, the share of samples with a cloud top but no standard
-optical-thickness retrieval (cloudFraction − tauRetrievedFraction of `cloudTau`). In the MODIS/VIIRS continuity
-algorithm these are mostly pixels that the clear-sky restoral flags as partly cloudy or cloud edge (CSR = 1, 3),
-whose retrievals are reported only in separate `_PCL` fields that GIBS does not serve (Platnick et al. 2017;
-2021), plus failed retrievals.
+optical-thickness retrieval (cloudFraction − tauRetrievedFraction of `cloudTau`). A sample with a height and no
+thickness counts as cloud. These two VIIRS GIBS layers cannot distinguish partly cloudy pixels from pixels
+restored to clear sky by the optical algorithm or failed optical retrievals. VIIRS GIBS does not serve CLDPROP's
+separate `_PCL` fields; GIBS does serve MODIS Aqua and Terra PCL optical-thickness layers (MYD06/MOD06), from
+different instruments and observations. CSR = 1, 3 describes the MOD06 population behind this statistic;
+CLDPROP v1.1 omits CSR = 3 (Platnick et al. 2017; 2021).
 
 The published statistic used here is the global, area-weighted mean joint histogram of cloud optical thickness
 and cloud-top pressure for partly cloudy pixels, from the MODIS C6.1 Level-3 COSP product (MCD06COSP_M3, Terra +
@@ -210,10 +212,12 @@ def table(ctx) -> tuple[dict, str]:
         "label": "estimated",
         "sources": [sid, sid17],
         "what": "Optical thickness of MODIS partly cloudy pixels (clear-sky restoral CSR = 1, 3: cloud edges and "
-                "250 m-heterogeneous pixels), whose retrievals CLDPROP reports only in _PCL fields that GIBS does not "
-                "serve: global area-weighted means of July 2021 (MODIS C6.1 MCD06COSP_M3, Terra + Aqua), read from "
-                "Pincus et al. (2023) Fig. 7. A measured population statistic; using it for the samples of this "
-                "layer without a retrieval is an assumption, hence 'estimated'.",
+                "250 m-heterogeneous pixels): global area-weighted means of July 2021 (MODIS C6.1 MCD06COSP_M3, "
+                "Terra + Aqua), read from Pincus et al. (2023) Fig. 7. GIBS serves MODIS Aqua/Terra PCL thickness, "
+                "but not the separate CLDPROP _PCL fields for the VIIRS inputs of this layer. CLDPROP v1.1 omits "
+                "CSR = 3. The distribution is derived from an observed population histogram; assigning it to "
+                "samples without their own retrieval is an assumption, hence 'estimated'. A mixture of the "
+                "retrieved cloud and this assumed population is also estimated.",
         "tauBinEdges": TAU_EDGES,
         "tauBinLnCentre": [round(float(x), 3) for x in m],
         "cloudTopPressureEdgesHpa": PC_EDGES_HPA,
