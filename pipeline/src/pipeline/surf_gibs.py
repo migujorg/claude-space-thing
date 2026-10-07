@@ -14,7 +14,7 @@ in testing) are counted and treated as no data.
 
 from __future__ import annotations
 
-import datetime as _dt
+import hashlib
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -27,12 +27,24 @@ from .download import fetch, record
 CAPS = "https://gibs.earthdata.nasa.gov/wmts/epsg4326/best/1.0.0/WMTSCapabilities.xml"
 WMS = "https://gibs.earthdata.nasa.gov/wms/epsg4326/best/wms.cgi"
 SUBDIR = "surfaces/earth/gibs"
+# Snapshot used by the built Earth layers, not the day the pipeline runs. Its periods include
+# the cloud (2026-09-28), night/sea-ice (2026-10-02) and MOD44W (2015-01-01) pins.
+# Keep the existing raw filename; changing this pin is an explicit input update.
+CAPS_SNAPSHOT = "2026-10-04"
+CAPS_SHA256 = "0864c3c59ebde119b6efe10fe2fb66cd430e0b0d27f5b82eb8b1e4e6a2599127"
 
 
-def capabilities(day: str | None = None) -> Path:
-    """The WMTS capabilities document (5 MB), cached per UTC day (it changes daily)."""
-    day = day or _dt.datetime.now(_dt.timezone.utc).date().isoformat()
-    return fetch(CAPS, SUBDIR, f"WMTSCapabilities-{day}.xml", timeout=300)
+def capabilities() -> Path:
+    """Reuse the pinned WMTS snapshot (5 MB), independent of the build clock.
+
+    The remote endpoint is mutable: if the snapshot is absent and today's document differs,
+    fail rather than silently replacing the layer definitions. Restore the recorded raw copy
+    or deliberately update the snapshot and digest together after checking the layer pins.
+    """
+    path = fetch(CAPS, SUBDIR, f"WMTSCapabilities-{CAPS_SNAPSHOT}.xml", timeout=300)
+    if hashlib.sha256(path.read_bytes()).hexdigest() != CAPS_SHA256:
+        raise ValueError(f"GIBS capabilities snapshot pin {CAPS_SNAPSHOT}: sha256 mismatch")
+    return path
 
 
 def layer_info(caps: Path, layer: str) -> dict:
