@@ -126,6 +126,11 @@ interface Targets {
   levels: Level[];
   /** The extended image alone as a mip chain (mip j: 2^(j+1) px per texel), for the low-light acuity (eye/acuity.ts). */
   acu: GPUTexture;
+  /**
+   * The adaptation pass's sums per block of ADAPT_BLOCK² px, (Σ w·ln(L_ret + L₀), Σ w) with the light-weighted
+   * fixation weights, as a mip chain: the fovea's adaptation at every pixel, for the acuity (eye/acuity.ts).
+   */
+  fov: GPUTexture;
   zero: GPUTexture;
   zero2: GPUTexture;
   partials: GPUBuffer;
@@ -548,6 +553,11 @@ export class Renderer {
         size: [w1, h1], format: 'rgba32float', usage: ST, label: 'acuity mips',
         mipLevelCount: Math.max(1, Math.min(levels.length - 1, Math.floor(Math.log2(Math.max(w1, h1))) + 1)),
       }))(levels[1]?.w ?? 1, levels[1]?.h ?? 1),
+      // One texel per adaptation invocation (8 × 8 per workgroup), like `partials`.
+      fov: d.createTexture({
+        size: [tilesX * 8, tilesY * 8], format: 'rgba32float', usage: ST, label: 'fovea sums',
+        mipLevelCount: Math.floor(Math.log2(Math.max(tilesX * 8, tilesY * 8))) + 1,
+      }),
       zero: tex(1, 1, 'rgba32float', ST, 'zero'),
       zero2: tex(1, 1, 'rgba32float', ST, 'zero2'),
       // One partial per adaptation invocation (8 × 8 per workgroup).
@@ -646,7 +656,7 @@ export class Renderer {
   private destroyTargets(): void {
     const t = this.targets;
     if (!t) return;
-    for (const x of [t.ext, t.pt, t.ptEx, t.ptDisp, t.w, t.mask, t.depth, t.acu, t.zero, t.zero2]) x.destroy();
+    for (const x of [t.ext, t.pt, t.ptEx, t.ptDisp, t.w, t.mask, t.depth, t.acu, t.fov, t.zero, t.zero2]) x.destroy();
     for (const l of t.levels) { l.lvl.destroy(); l.tmp.destroy(); l.blur.destroy(); l.acc.destroy(); l.accR.destroy(); l.ub.destroy(); l.ubR.destroy(); }
     t.partials.destroy();
     t.darkest.destroy();
@@ -1088,6 +1098,7 @@ export class Renderer {
           { binding: 5, resource: { buffer: t.partials } },
           { binding: 6, resource: { buffer: this.srcs } },
           { binding: 7, resource: { buffer: t.darkest } },
+          { binding: 8, resource: t.fov.createView({ baseMipLevel: 0, mipLevelCount: 1 }) },
         ],
       }));
       pass.dispatchWorkgroups(t.tilesX, t.tilesY);
@@ -1132,6 +1143,17 @@ export class Renderer {
         pass.dispatchWorkgroups(Math.ceil(Math.max(1, t.acu.width >> j) / 8), Math.ceil(Math.max(1, t.acu.height >> j) / 8));
       }
       pass.end();
+      // The fovea's adaptation at every pixel: the adaptation pass's block sums pooled up to the 1° field.
+      const fpass = enc.beginComputePass({ label: 'fovea mips', timestampWrites: this.tsw('fovea mips') });
+      fpass.setPipeline(this.pyr.down);
+      for (let j = 1; j < t.fov.mipLevelCount; j++) {
+        fpass.setBindGroup(0, d.createBindGroup({
+          layout: this.pyr.down.getBindGroupLayout(0),
+          entries: [{ binding: 0, resource: t.fov.createView({ baseMipLevel: j - 1, mipLevelCount: 1 }) }, { binding: 2, resource: t.fov.createView({ baseMipLevel: j, mipLevelCount: 1 }) }],
+        }));
+        fpass.dispatchWorkgroups(Math.ceil(Math.max(1, t.fov.width >> j) / 8), Math.ceil(Math.max(1, t.fov.height >> j) / 8));
+      }
+      fpass.end();
     }
 
     // 7. Composite (eye model) into the canvas.
@@ -1150,7 +1172,7 @@ export class Renderer {
           { binding: 5, resource: paintView },
           { binding: 6, resource: { buffer: this.srcs } },
           { binding: 7, resource: t.acu.createView() },
-          { binding: 8, resource: veilView },
+          { binding: 8, resource: t.fov.createView() },
         ],
       }));
       pass.draw(3);

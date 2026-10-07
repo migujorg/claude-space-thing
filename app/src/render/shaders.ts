@@ -1426,17 +1426,22 @@ export const ADAPT_SHADER = COMMON + /* wgsl */ `
 @group(0) @binding(5) var<storage, read_write> partials: array<vec4f>;
 ${SRCS(0, 6)}
 @group(0) @binding(7) var<storage, read_write> darkest: array<vec4f>;
+// Per block: (Σ w · log cone, Σ w) with the light-weighted fixation weights, whatever the fixation mode. Its mip
+// chain gives the composite the fovea's adaptation at every pixel, for the acuity (eye/acuity.ts fovealAdaptation).
+@group(0) @binding(8) var foveaOut: texture_storage_2d<rgba32float, write>;
 ${VEIL}
 
-struct AdaptSample { acc: vec4f, ret: vec4f };
+struct AdaptSample { acc: vec4f, ret: vec4f, fov: vec2f };
 
 /**
- * One pixel's contribution: (log cone · w, log rod · w, w, flux) (eye-model.md §2), and its retinal
- * luminance (object + veil), for the darkest background in the frame.
+ * One pixel's contribution: (log cone · w, log rod · w, w, flux) (eye-model.md §2), its retinal
+ * luminance (object + veil), for the darkest background in the frame, and (log cone · w, w) with the
+ * light-weighted weight, for the fovea's adaptation at each pixel (§5b).
  */
 fn adaptSample(p: vec2i) -> AdaptSample {
   var acc = vec4f(0.0);
   var ret = vec4f(0.0);
+  var fov = vec2f(0.0);
   {
     let ndc = ndcFromFrag(F, vec2f(p) + 0.5);
     let dir = normalize(worldDirNdc(F, ndc));
@@ -1446,18 +1451,22 @@ fn adaptSample(p: vec2i) -> AdaptSample {
     ret = E.glare.x * ext + textureLoad(veilTex, p, 0) / F.proj.w + analyticVeil(E, dir);
     let lc = log(max(ret.y, 0.0) + E.dark.x);
     let lr = log(max(ret.w, 0.0) + E.dark.y);
+    // Fixations drawn to the objects in proportion to their light (the unscattered scene, not the glare
+    // haze); at each the eye adapts to the retinal image (object plus veil). The solar disk is never
+    // fixated; its veil still counts where the eye looks.
+    // Only light the eye can see draws fixations (eye/fixation.ts fixationWeight): the scene luminance as an
+    // increment on the retinal image, full weight from twice the large-target threshold contrast C∞ at that
+    // luminance, none below C∞. Light buried in a far brighter veil attracts nothing, like the veil itself.
+    let Ls = max(ext.y, 0.0);
+    let Lr = max(ret.y, 0.0) + E.dark.x;
+    let vis = clamp(Ls / (Lr * crumeyLargeContrast(E, Lr)) - 1.0, 0.0, 1.0);
+    // Inside the disc that is never fixated? By the chord, not a float32 cosine (eye/fixation.ts inSkyDisc).
+    let wgt = select((Ls * vis + E.dark.x) * om, 0.0, E.fix.w >= 0.0 && distance(dir, E.fix.xyz) <= E.fix.w);
+    // The fovea's adaptation at a pixel uses these weights over its 1° field in either fixation mode: the
+    // acuity filter treats every pixel as looked at in turn.
+    fov = vec2f(lc * wgt, wgt);
     if (E.flags.z > 0.5) {
-      // Fixations over the whole frame, drawn to the objects there in proportion to their light (the
-      // unscattered scene, not the glare haze); at each the eye adapts to the retinal image (object plus
-      // veil). The solar disk is never fixated; its veil still counts where the eye looks.
-      // Only light the eye can see draws fixations (eye/fixation.ts fixationWeight): the scene luminance as an
-      // increment on the retinal image, full weight from twice the large-target threshold contrast C∞ at that
-      // luminance, none below C∞. Light buried in a far brighter veil attracts nothing, like the veil itself.
-      let Ls = max(ext.y, 0.0);
-      let Lr = max(ret.y, 0.0) + E.dark.x;
-      let vis = clamp(Ls / (Lr * crumeyLargeContrast(E, Lr)) - 1.0, 0.0, 1.0);
-      // Inside the disc that is never fixated? By the chord, not a float32 cosine (eye/fixation.ts inSkyDisc).
-      let wgt = select((Ls * vis + E.dark.x) * om, 0.0, E.fix.w >= 0.0 && distance(dir, E.fix.xyz) <= E.fix.w);
+      // Fixations over the whole frame.
       acc = vec4f(lc * wgt, lr * wgt, wgt, 0.0);
     } else if (dot(dir, -F.back.xyz) >= E.misc.y) {
       // One fixation at the view centre: log-average (geometric mean) over the adaptation field, offset by
@@ -1466,7 +1475,7 @@ fn adaptSample(p: vec2i) -> AdaptSample {
     }
     acc.w = (ext.y + pt.y) * om;
   }
-  return AdaptSample(acc, ret);
+  return AdaptSample(acc, ret, fov);
 }
 
 // Each invocation sums an ADAPT_BLOCK² block of pixels into its own partial: no workgroup barriers or
@@ -1474,6 +1483,7 @@ fn adaptSample(p: vec2i) -> AdaptSample {
 // GPUs), and the partials are few enough for the single-workgroup reduction below.
 @compute @workgroup_size(8, 8) fn tiles(@builtin(global_invocation_id) g: vec3u, @builtin(num_workgroups) nw: vec3u) {
   var acc = vec4f(0.0);
+  var fov = vec2f(0.0);
   var lo = vec2f(3.0e38);
   let o = vec2i(g.xy) * ${ADAPT_BLOCK};
   for (var j = 0; j < ${ADAPT_BLOCK}; j++) {
@@ -1482,12 +1492,14 @@ fn adaptSample(p: vec2i) -> AdaptSample {
       if (f32(p.x) < F.size.x && f32(p.y) < F.size.y) {
         let s = adaptSample(p);
         acc += s.acc;
+        fov += s.fov;
         lo = min(lo, max(s.ret.yw, vec2f(0.0)));
       }
     }
   }
   partials[g.x + g.y * nw.x * 8u] = acc;
   darkest[g.x + g.y * nw.x * 8u] = vec4f(lo, 0.0, 0.0);
+  textureStore(foveaOut, vec2i(g.xy), vec4f(fov, 0.0, 0.0));
 }
 `;
 
@@ -1530,7 +1542,7 @@ export const COMPOSITE_SHADER = COMMON + TONE + /* wgsl */ `
 @group(0) @binding(5) var paintTex: texture_2d<f32>;    // painted glare: the viewer's veil of the overflow (display XYZ, cd/m²)
 ${SRCS(0, 6)}
 @group(0) @binding(7) var acuTex: texture_2d<f32>;      // EXT as a mip chain: mip j has 2^(j+1) px per texel (pre-exposed)
-@group(0) @binding(8) var veilTex: texture_2d<f32>;     // the in-frame veil on the retina (retina pyramid, pre-exposed)
+@group(0) @binding(8) var fovTex: texture_2d<f32>;      // the adaptation pass's block sums (Σ w·ln(L_ret + L₀), Σ w) as a mip chain: mip m has ${ADAPT_BLOCK}·2^m px per texel
 
 /** EXT at pyramid level m (0 = full resolution), bilinear at full-resolution position q (px). */
 fn acuAt(m: i32, q: vec2f) -> vec4f {
@@ -1553,6 +1565,32 @@ fn acuSample(k: f32, q: vec2f) -> vec4f {
   return mix(acuAt(k0, q), acuAt(k1, q), kk - f32(k0));
 }
 ${VEIL}
+
+/** The adaptation pass's block sums at pyramid level m, bilinear at full-resolution position q (px). */
+fn fovAt(m: i32, q: vec2f) -> vec2f {
+  let d = vec2i(textureDimensions(fovTex, m));
+  let c = q / f32(${ADAPT_BLOCK} << u32(m)) - 0.5;
+  let i0 = vec2i(floor(c));
+  let fr = c - vec2f(i0);
+  let h = d - 1;
+  let a = mix(textureLoad(fovTex, clamp(i0, vec2i(0), h), m).xy, textureLoad(fovTex, clamp(i0 + vec2i(1, 0), vec2i(0), h), m).xy, fr.x);
+  let b = mix(textureLoad(fovTex, clamp(i0 + vec2i(0, 1), vec2i(0), h), m).xy, textureLoad(fovTex, clamp(i0 + vec2i(1, 1), vec2i(0), h), m).xy, fr.x);
+  return mix(a, b, fr.y);
+}
+/**
+ * The adaptation luminance of the fovea looking at a pixel (eye/acuity.ts fovealAdaptation): the frame's own
+ * statistic, the log-average of the retinal image weighted by the light that can be seen, over the 1° field
+ * around the pixel (the level whose texel is 1°, linear between levels; eye/acuity.ts fovealFieldLevel).
+ */
+fn foveaAdaptation(q: vec2f, pixDeg: f32) -> f32 {
+  let top = f32(textureNumLevels(fovTex) - 1);
+  let kk = clamp(log2(1.0 / (${ADAPT_BLOCK}.0 * pixDeg)), 0.0, top);
+  let k0 = i32(floor(kk));
+  let k1 = min(k0 + 1, i32(top));
+  let s = mix(fovAt(k0, q), fovAt(k1, q), kk - f32(k0));
+  if (!(s.y > 0.0)) { return 0.0; }
+  return exp(s.x / s.y) - E.dark.x;
+}
 
 const XYZ2RGB = mat3x3f(
   vec3f(${f(SRGB.xyzToRgb[0])}, ${f(SRGB.xyzToRgb[3])}, ${f(SRGB.xyzToRgb[6])}),
@@ -1602,11 +1640,11 @@ fn hash(p: vec2u) -> f32 {
   var extRaw = textureLoad(extTex, p, 0);
   if (E.flags.w > 0.5) {
     // Low-light acuity (eye/acuity.ts): Ward Larson et al. (1997) Eq. 15, the fit to Shlaer (1937), from the
-    // luminance of the ~1° foveal field around the pixel plus the veil; the image is resolved only down to
-    // the pyramid level whose texel is half a cycle at that acuity.
+    // adaptation of the fovea looking at the pixel; the image is resolved only down to the pyramid level whose
+    // texel is half a cycle at that acuity. The fovea's adaptation is this model's (§2), not their 1° mean: the
+    // eye adapts to what it looks at by its light, so it is the frame's statistic over the 1° field (§5b).
     let pixDeg = F.tanHalf.z * ${f(180 / Math.PI)};
-    let fovea = acuSample(log2(1.0 / pixDeg), pos.xy) / F.proj.w;
-    let La = max(fovea.y * E.glare.x + textureLoad(veilTex, p, 0).y / F.proj.w + analyticVeil(E, dir).y, E.cr1.y);
+    let La = max(foveaAdaptation(pos.xy, pixDeg), E.cr1.y);
     let R = ${f(WARD1997_ACUITY.scale)} * atan(${f(WARD1997_ACUITY.logSlope)} * log2(La) * ${f(Math.LOG10E / Math.LOG2E)} + ${f(WARD1997_ACUITY.logOffset)}) + ${f(WARD1997_ACUITY.offset)};
     let kR = log2(1.0 / (2.0 * max(R, 1e-6) * pixDeg));
     if (kR > 0.0) { extRaw = acuSample(kR, pos.xy); }
