@@ -569,7 +569,7 @@ function zonalSpectrum(z: ZonalProfile): ZonalSpectrum {
     }
   }
   cuts.push(Math.PI / 2);
-  const gl = gaussLegendre(12), vals = [0, 0, 0, 0];
+  const gl = gaussLegendre(24), vals = [0, 0, 0, 0];
   for (let j = 1; j < cuts.length; j++) for (let q = 0; q < gl.x.length; q++) {
     const lat = cuts[j - 1] + (gl.x[q] + 1) * (cuts[j] - cuts[j - 1]) / 2, y = Math.sin(lat);
     const w = Math.cos(lat) * gl.w[q] * (cuts[j] - cuts[j - 1]) / 4;
@@ -657,13 +657,13 @@ function longitudeMoments(law: ResolvedLaw, a: number, degree: number) {
  * |I-I_L| <= sqrt(4pi (E[M²]-sum c_l²/(2l+1)) (||K||²-||K_L||²))/pi.
  * The small positive roundoff reserve prevents a negative subtraction from certifying zero error.
  * Barkstrom's omitted floor has an independent positive upper bound, checked before acceptance. */
-function spectralIntegral(law: ResolvedLaw, a: number, pole: V3, spectrum: ZonalSpectrum, R: Float64Array, degree: number, correction?: { value: XYZS; error: XYZS }): { value: XYZS; relativeBound: number; extraRelativeBound: number } {
+function spectralIntegral(law: ResolvedLaw, a: number, pole: V3, spectrum: ZonalSpectrum, R: Float64Array, degree: number, levels: number[], correction?: { value: XYZS; error: XYZS }) {
   const { Q, square } = longitudeMoments(law, a, degree), s = law.kind === LAW.minnaert ? law.p : law.p / 2;
   const norm = latitudeBeta(2 * s) * square, length = Math.hypot(...pole), y = pole[1] / length;
   const st = Math.sqrt(Math.max(0, 1 - y * y)), az = Math.atan2(pole[0], pole[2]) - a / 2;
-  const value: XYZS = [0, 0, 0, 0], used: XYZS = [0, 0, 0, 0];
+  const byDegree = new Float64Array(degree + 1), norms = new Float64Array(degree + 1);
   const cos = Array.from({ length: degree + 1 }, (_, m) => Math.cos(m * az));
-  let diag = 1, projectedNorm = 0;
+  let diag = 1;
   const width = SPECTRAL_MAX + 1, f = factors();
   for (let m = 0; m <= degree; m++) {
     if (m > 0) diag *= -f.diag[m] * st;
@@ -674,25 +674,37 @@ function spectralIntegral(law: ResolvedLaw, a: number, pole: V3, spectrum: Zonal
       if (l > m) { prev = cur; cur = p; }
       if ((l - m) % 2 !== 0) continue;
       const r = R[l * width + m], contribution = (m === 0 ? 1 : 2) * r * Q[m] * p * cos[m] / Math.PI;
-      for (let c = 0; c < 4; c++) value[c] += spectrum.coeff[4 * l + c] * contribution;
-      projectedNorm += (2 * l + 1) / (4 * Math.PI) * r * r * Q[m] * Q[m] * (m === 0 ? 1 : 2);
+      byDegree[l] += contribution;
+      norms[l] += (2 * l + 1) / (4 * Math.PI) * r * r * Q[m] * Q[m] * (m === 0 ? 1 : 2);
     }
   }
-  for (let l = 0; l <= degree; l++) for (let c = 0; c < 4; c++) used[c] += spectrum.coeff[4 * l + c] ** 2 / (2 * l + 1);
-  const tail = Math.max(0, norm - projectedNorm) + norm * 1e-12;
-  // In the strip 0<mu<f, K=(mu0*mu/(mu0+mu))^B <= mu^B, dOmega=dmu*dphi.
-  // The omitted part is <= 2 f^(B+1)/((B+1)(B+2)), after division by pi.
+  // The profile coefficient depends on degree, not harmonic order. Sum the scalar
+  // kernel first, then apply all four channels once per degree.
+  // All lower truncations share these exact moments: sum each degree once, rather than
+  // recomputing the entire rotation for every convergence check.
+  const results: { degree: number; value: XYZS; relativeBound: number; extraRelativeBound: number }[] = [];
+  const sum: XYZS = [0, 0, 0, 0], used: XYZS = [0, 0, 0, 0];
   const floor = law.kind === LAW.barkstrom && !correction ? 2 * Math.pow(1e-3, law.p + 1) / ((law.p + 1) * (law.p + 2)) : 0;
-  let relativeBound = 0, extraRelativeBound = 0;
-  for (let c = 0; c < 4; c++) {
-    const residual = Math.max(0, spectrum.energy[c] - used[c]) + spectrum.energy[c] * 1e-12;
-    if (correction) value[c] -= correction.value[c];
-    const extra = floor * spectrum.max[c] + (correction?.error[c] ?? 0);
-    const bound = Math.sqrt(4 * Math.PI * residual * tail) / Math.PI + extra;
-    extraRelativeBound = Math.max(extraRelativeBound, extra / Math.max(value[c] - extra, Number.MIN_VALUE));
-    relativeBound = Math.max(relativeBound, bound / Math.max(value[c] - bound, Number.MIN_VALUE));
+  let projectedNorm = 0, next = 0;
+  for (let l = 0; l <= degree; l++) {
+    projectedNorm += norms[l];
+    for (let c = 0; c < 4; c++) { sum[c] += byDegree[l] * spectrum.coeff[4 * l + c]; used[c] += spectrum.coeff[4 * l + c] ** 2 / (2 * l + 1); }
+    if (l !== levels[next]) continue;
+    next++;
+    const value = sum.map((v, c) => v - (correction?.value[c] ?? 0)) as XYZS;
+    const tail = Math.max(0, norm - projectedNorm) + norm * 1e-12;
+    let relativeBound = 0, extraRelativeBound = 0;
+    for (let c = 0; c < 4; c++) {
+      const residual = Math.max(0, spectrum.energy[c] - used[c]) + spectrum.energy[c] * 1e-12;
+      // K <= mu^B in the omitted strip, dOmega=dmu*dphi. This is a positive bound.
+      const extra = floor * spectrum.max[c] + (correction?.error[c] ?? 0);
+      const bound = Math.sqrt(4 * Math.PI * residual * tail) / Math.PI + extra;
+      extraRelativeBound = Math.max(extraRelativeBound, extra / Math.max(value[c] - extra, Number.MIN_VALUE));
+      relativeBound = Math.max(relativeBound, bound / Math.max(value[c] - bound, Number.MIN_VALUE));
+    }
+    results.push({ degree: l, value, relativeBound, extraRelativeBound });
   }
-  return { value, relativeBound, extraRelativeBound };
+  return results;
 }
 
 /** Near a crescent the harmonic remainder bound is intentionally conservative. Instead integrate
@@ -725,10 +737,10 @@ function crescentIntegral(law: ResolvedLaw, a: number, pole: V3, z: ZonalProfile
     }
   }
   if (law.kind === LAW.barkstrom) addLambda(Math.acos(1e-3));
-  lonCuts.sort((x, y) => x - y);
-  for (let segment = 1; segment < lonCuts.length; segment++) for (let p = 0; p < n; p++) {
-    const du = (lonCuts[segment] - lonCuts[segment - 1]) / 2;
-    const u = lonCuts[segment - 1] + (lg.x[p] + 1) * du, eps = delta * (1 + Math.sin(u)) / 2;
+  const uniqueLongitudes = lonCuts.sort((x, y) => x - y).filter((v, j, all) => j === 0 || v - all[j - 1] > 32 * Number.EPSILON);
+  for (let segment = 1; segment < uniqueLongitudes.length; segment++) for (let p = 0; p < n; p++) {
+    const du = (uniqueLongitudes[segment] - uniqueLongitudes[segment - 1]) / 2;
+    const u = uniqueLongitudes[segment - 1] + (lg.x[p] + 1) * du, eps = delta * (1 + Math.sin(u)) / 2;
     const lam = Math.PI / 2 - eps, cl = Math.sin(eps), ci = Math.sin(delta - eps);
     const wl = lg.w[p] * delta / 2 * du * Math.cos(u) / Math.PI;
     const lon = Math.pow(law.kind === LAW.minnaert ? ci * cl : ci * cl / (ci + cl), law.p);
@@ -744,19 +756,19 @@ function crescentIntegral(law: ResolvedLaw, a: number, pole: V3, z: ZonalProfile
       }
     }
     if (law.kind === LAW.barkstrom && cl > 1e-3) { const b = Math.acos(1e-3 / cl); cuts.push(-b, b); }
-    cuts.sort((x, y) => x - y);
-    for (let j = 1; j < cuts.length; j++) {
-      const db = (cuts[j] - cuts[j - 1]) / 2;
+    const uniqueLatitudes = cuts.sort((x, y) => x - y).filter((v, j, all) => j === 0 || v - all[j - 1] > 32 * Number.EPSILON);
+    for (let j = 1; j < uniqueLatitudes.length; j++) {
+      const db = (uniqueLatitudes[j] - uniqueLatitudes[j - 1]) / 2;
       // Empty equatorial knot spans at a thin crescent can cover the whole latitude range.
       // Resolve those wide intervals too; longitude convergence alone cannot certify latitude.
       const bg = gaussLegendre(Math.max(nb, nb * Math.ceil(8 * db)));
-      const mid = (cuts[j] + cuts[j - 1]) / 2;
+      const mid = (uniqueLatitudes[j] + uniqueLatitudes[j - 1]) / 2;
       const midLat = Math.asin(Math.max(-1, Math.min(1, A * Math.cos(mid) + P[1] * Math.sin(mid))));
       const rawRow = Math.floor((0.5 - midLat / Math.PI) * z.rows - 0.5);
       const row = Math.max(0, Math.min(z.rows - 1, rawRow)), next = Math.min(row + 1, z.rows - 1);
       let weight = 0, latitudeMoment = 0;
       for (let q = 0; q < bg.x.length; q++) {
-        const b = cuts[j - 1] + (bg.x[q] + 1) * db, cb = Math.cos(b);
+        const b = uniqueLatitudes[j - 1] + (bg.x[q] + 1) * db, cb = Math.cos(b);
         const lat = Math.asin(Math.max(-1, Math.min(1, A * cb + P[1] * Math.sin(b))));
         let f = Math.pow(cb, s + 1) * bg.w[q] * db * wl * lon;
         if (law.kind === LAW.barkstrom) f *= Math.min(1, cb * cl / 1e-3);
@@ -824,9 +836,16 @@ export class MotionNormalization {
     if (!(delta > 0)) return [0, 0, 0, 0];
     if (zonal && (law.kind === LAW.minnaert || law.kind === LAW.barkstrom) && law.p > 0) {
       let spectrum = this.spectra.get(zonal.profile);
-      if (!spectrum) { spectrum = zonalSpectrum(zonal.profile); this.spectra.set(zonal.profile, spectrum); }
-      // Numerical workload crossover: the floored Barkstrom crescent is cheaper in row coordinates.
-      if (a < (law.kind === LAW.barkstrom ? 2.9 : 3.07)) {
+      if (!spectrum) {
+        spectrum = zonalSpectrum(zonal.profile); this.spectra.set(zonal.profile, spectrum);
+        const s = law.kind === LAW.minnaert ? law.p : law.p / 2;
+        const R = latitudeMoments(s, SPECTRAL_MAX);
+        if (law.kind === LAW.barkstrom) {
+          this.variableMoments = R; this.variableExponent = s; this.variableDegree = SPECTRAL_MAX;
+        } else this.moments.set(`${s}:${SPECTRAL_MAX}`, R);
+      }
+      // Numerical workload crossover: the narrowest crescents are cheaper in row coordinates.
+      if (a < 3.07) {
         let correction: { value: XYZS; error: XYZS } | undefined;
         if (law.kind === LAW.barkstrom && a > 2.8) {
           const bare = latitudeBeta(law.p / 2) * longitudeMoments(law, a, 0).Q[0] / Math.PI;
@@ -841,9 +860,7 @@ export class MotionNormalization {
         const s = law.kind === LAW.minnaert ? law.p : law.p / 2;
         const choices = [64, 96, 128, 192, 256, 384, SPECTRAL_MAX];
         const previous = this.degrees.get(zonal.profile);
-        let start = previous?.degree ?? 64;
-        start = choices[Math.max(0, choices.indexOf(start) - 2)];
-        const recent: XYZS[] = [];
+        const start = previous?.degree ?? 64;
         for (const degree of choices.filter(d => d >= start)) {
           const key = `${s}:${degree}`;
           let R: Float64Array;
@@ -855,21 +872,26 @@ export class MotionNormalization {
             }
             R = this.variableMoments;
           } else {
-            const cached = this.moments.get(key);
+            const cached = this.moments.get(`${s}:${SPECTRAL_MAX}`) ?? this.moments.get(key);
             R = cached ?? latitudeMoments(s, degree);
             if (!cached) {
               if (this.moments.size > 8) this.moments.clear();
               this.moments.set(key, R);
             }
           }
-          const result = spectralIntegral(law, a, zonal.pole, spectrum, R, degree, correction);
-          recent.push(result.value);
-          const correctionResolved = result.extraRelativeBound <= 1e-5;
-          const converged = correctionResolved && recent.length >= 3 && recent.slice(-3).every(value => value.every((v, c) => Math.abs(v - result.value[c]) <= 1e-6 * Math.abs(result.value[c])));
-          // When the analytic Cauchy bound is too conservative, three increasing orders must
-          // agree. Like the general quadrature, this is a convergence estimate; the independent
-          // real-map scans below bound its observed error to 2e-5, not a certificate for all maps.
-          if (result.relativeBound <= MOTION_RELATIVE_BUDGET || converged) { this.degrees.set(zonal.profile, { degree, alpha: a }); return result.value; }
+          const results = spectralIntegral(law, a, zonal.pole, spectrum, R, degree, choices.filter(d => d <= degree), correction);
+          const recent: XYZS[] = [];
+          for (const result of results) {
+            recent.push(result.value);
+            const correctionResolved = result.extraRelativeBound <= 1e-5;
+            const converged = correctionResolved && recent.length >= 3 && recent.slice(-3).every(value => value.every((v, c) => Math.abs(v - result.value[c]) <= 4e-6 * Math.abs(result.value[c])));
+            // With a loose analytic bound, three increasing orders must agree. This is a
+            // convergence estimate, like the general quadrature; real-map scans test its
+            // 2e-5 relative bound. It is not a continuous certificate for arbitrary maps.
+            if (result.relativeBound <= MOTION_RELATIVE_BUDGET || converged) {
+              this.degrees.set(zonal.profile, { degree: result.degree, alpha: a }); return result.value;
+            }
+          }
         }
       }
       let n = 4;

@@ -104,10 +104,11 @@ describe('disk quadrature: relative accuracy across 0–179.9°, including thin 
 // Motion uses this same entry point; the accepted quadrature above stays its independent oracle.
 const motionPhases = env.LAW_MOTION_REPORT ? [...new Set([...sparsePhases, ...Array.from({ length: 180 }, (_, i) => i)])] : [0, 0.00001, 0.01, 0.1, 1, 3, 17, 41, 73, 91, 119, 135, 150, 170, 175, 179, 179.5, 179.9];
 describe('motion normalization: bounded approximation, independent of image scores', () => {
-  it('interpolated bare laws stay within 2e-5 relative, including opposition and crescents', () => {
+  it.skipIf(!built)('interpolated bare laws stay within 2e-5 relative, including opposition and crescents', async () => {
     const cache = new MotionNormalization();
     for (const id of ['499', '501', '502', '503', '504', '601', '801', '901', '999']) {
       for (const deg of motionPhases) {
+        if (env.LAW_MOTION_REPORT) await new Promise(resolve => setTimeout(resolve, 0));
         const a = deg * Math.PI / 180, r = resolveLaw(photometry[id].spatialModel!.value, a);
         if ('error' in r) continue;
         const value = cache.get(r.law, a), exact = lawDiskIntegral(r.law, a, undefined, 24);
@@ -115,7 +116,7 @@ describe('motion normalization: bounded approximation, independent of image scor
       }
     }
   }, 60000);
-  for (const id of ['599', '699', '799', '899']) it(`${id}: moving pole and phase stay within 2e-5 of converged row quadrature`, () => {
+  for (const id of ['599', '699', '799', '899']) it.skipIf(![0, 1].every(t => fs.existsSync(new URL(`../public/data/surfaces/${id}/albedo/0/0/${t}.bin`, import.meta.url))))(`${id}: moving pole and phase stay within 2e-5 of converged row quadrature`, async () => {
     const tiles = [0, 1].map(t => {
       const b = fs.readFileSync(new URL(`../public/data/surfaces/${id}/albedo/0/0/${t}.bin`, import.meta.url));
       return b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) as ArrayBuffer;
@@ -123,6 +124,7 @@ describe('motion normalization: bounded approximation, independent of image scor
     const profile = zonalMeanOfLevel0(tiles), cache = new MotionNormalization();
     let maxRelative = 0, comparisons = 0;
     for (const deg of motionPhases) {
+        if (env.LAW_MOTION_REPORT) await new Promise(resolve => setTimeout(resolve, 0));
       const a = deg * Math.PI / 180, r = resolveLaw(photometry[id].spatialModel!.value, a);
       if ('error' in r) throw new Error(r.error);
       for (const pole of [[0.3, 0.7, Math.sqrt(0.42)], [0, 1, 0], [0, 0, 1]] as [number, number, number][]) {
