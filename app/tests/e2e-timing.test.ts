@@ -20,12 +20,26 @@ describe('scene frame cost measurements', () => {
     const result = await lib.pageFrameSamples({ frames: 60, starFrames: 16, timeoutMs: 1000 });
     expect(frame).toBe(60);
     expect(result.starsDrawnFrames).toEqual([0, 1]);
+    expect(result.starsDrawnVaried).toBe(true);
     const timings = lib.summarizeFrameTimings(result.samples);
     expect(timings.frames).toBe(60);
     expect(timings.cpuPrepMs).toEqual({ samples: 60, median: 30.5, max: 60 });
     expect(timings.cpuFrameMs).toEqual({ samples: 60, median: 61, max: 120 });
     expect(timings.frameMs).toEqual({ samples: 60, median: 91.5, max: 180 });
     expect(timings.gpuFrameMs).toEqual({ samples: 60, median: 15.25, max: 30 });
+  });
+
+  it('distinguishes a stable star census from unavailable counts', async () => {
+    const stats = { starsDrawn: 7 };
+    vi.stubGlobal('window', { __app: { debugState: () => ({ renderer: stats }) } });
+    vi.stubGlobal('requestAnimationFrame', (cb: (t: number) => void) => { cb(0); return 0; });
+    const stable = await lib.pageFrameSamples({ frames: 60, starFrames: 16, timeoutMs: 1000 });
+    expect(stable.starsDrawnFrames).toEqual([7]);
+    expect(stable.starsDrawnVaried).toBe(false);
+    stats.starsDrawn = NaN;
+    const missing = await lib.pageFrameSamples({ frames: 60, starFrames: 16, timeoutMs: 1000 });
+    expect(missing.starsDrawnFrames).toEqual([]);
+    expect(missing.starsDrawnVaried).toBeNull();
   });
 
   it('reports unavailable GPU time as null and ignores invalid samples without inventing zero', () => {

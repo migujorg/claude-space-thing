@@ -33,6 +33,10 @@ export class AdaptationState {
   rodCdM2 = 1;
   cornealFlux = 0;
   timeDependent = false;
+  /** Defined history sampled at this elapsed time (s), held through loading, settling and readback.
+   * The renderer forwards ViewSettings.adaptation.heldElapsedS; undefined preserves its real-time clock. */
+  heldElapsedS?: number;
+  private heldHistory: { coneTd: number; rodTd: number; exposureS: number } | null = null;
   /** Bleached pigment fractions (null before the first measurement: then set to steady state). */
   pigment: PigmentState | null = null;
   /** Steady-state bleach for the last goal. */
@@ -51,7 +55,8 @@ export class AdaptationState {
     const floorR = CRUMEY.zeroBackgroundB * CRUMEY.spRatioBlackwell;
     const gc = Math.max(goal.coneCdM2, floorC);
     const gr = Math.max(goal.rodCdM2, floorR);
-    const timed = this.timeDependent && dt > 0;
+    const held = this.timeDependent && this.heldElapsedS !== undefined;
+    const timed = this.timeDependent && dt > 0 && !held;
     if (!timed) {
       this.coneCdM2 = gc;
       this.rodCdM2 = gr;
@@ -67,6 +72,7 @@ export class AdaptationState {
     this.steady = steadyPigment(this.td.cone, this.td.rod);
     if (!this.pigment || !this.timeDependent) this.pigment = this.steady;
     else if (timed) this.pigment = stepPigment(this.pigment, this.td.cone, this.td.rod, dt);
+    if (held) this.sampleHeldHistory();
   }
 
   /**
@@ -74,9 +80,22 @@ export class AdaptationState {
    * starting from the current state (or full regeneration), then `elapsedS` under the current light.
    */
   applyHistory(coneTd: number, rodTd: number, exposureS: number, elapsedS: number): void {
+    if (this.timeDependent && this.heldElapsedS !== undefined) {
+      this.heldHistory = { coneTd, rodTd, exposureS };
+      this.sampleHeldHistory();
+      return;
+    }
     let p = stepPigment(this.pigment ?? { cone: 0, rod: 0 }, coneTd, rodTd, exposureS);
     p = stepPigment(p, this.td.cone, this.td.rod, elapsedS);
     this.pigment = p;
+  }
+
+  /** Evaluate from the same regenerated start each time; changing measurements never compound the history. */
+  private sampleHeldHistory(): void {
+    if (!this.heldHistory || this.heldElapsedS === undefined) return;
+    const h = this.heldHistory;
+    const pre = stepPigment({ cone: 0, rod: 0 }, h.coneTd, h.rodTd, h.exposureS);
+    this.pigment = stepPigment(pre, this.td.cone, this.td.rod, this.heldElapsedS);
   }
 
   /** The eye's sensitivity beyond steady adaptation to the current light. */

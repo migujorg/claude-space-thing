@@ -1474,6 +1474,7 @@ export class AppModel {
     if (v.shield !== undefined) patch.sunShield = v.shield;
     if (v.adapt !== undefined) patch.instantAdaptation = v.adapt === 'instant';
     if (v.adaptFrom !== undefined) patch.adaptationHistory = v.adaptFrom;
+    if (v.adaptTimeS !== undefined) patch.adaptationTimeS = v.adaptTimeS;
     this.setReality(patch);
     if (v.ui === false) this.uiHidden = true;
 
@@ -1607,6 +1608,7 @@ export class AppModel {
     if (!!r.sunShield !== !!d.sunShield) v.shield = !!r.sunShield;
     if (!!r.instantAdaptation !== !!d.instantAdaptation) v.adapt = r.instantAdaptation ? 'instant' : 'realtime';
     if (r.adaptationHistory) v.adaptFrom = r.adaptationHistory;
+    if (r.adaptationTimeS !== undefined) v.adaptTimeS = r.adaptationTimeS;
     return v;
   }
 

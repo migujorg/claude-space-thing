@@ -28,6 +28,17 @@ describe('URL parameters', () => {
     expect(bad.view).toEqual({});
     expect(bad.errors).toHaveLength(2);
   });
+  it('parses and round-trips a held eye instant, including zero', () => {
+    for (const adaptTimeS of [0, 60, 120, 720, 1800]) {
+      const v = { adapt: 'realtime' as const, adaptFrom: { luminanceCdM2: 10000, exposureS: 600, elapsedS: 300 }, adaptTimeS };
+      expect(parseUrlParams(formatUrlParams(v))).toEqual({ view: v, errors: [] });
+    }
+    for (const query of ['adapttime=-1', 'adapttime=Infinity', 'adapttime=oops', 'adapttime=60', 'adapt=instant&adaptfrom=10000,600,60&adapttime=60']) {
+      const parsed = parseUrlParams(query);
+      expect(parsed.view).not.toHaveProperty('adaptTimeS');
+      expect(parsed.errors).toHaveLength(1);
+    }
+  });
   it('look: local azimuth and elevation at the camera place', () => {
     expect(parseUrlParams('target=399&dist=6771&look=0,-15').view).toEqual({ target: 399, dist: 6771, look: { azDeg: 0, elDeg: -15 } });
     const v = { target: 399, dist: 6771, az: 180, el: 0, look: { azDeg: 90.5, elDeg: -17.25 } };
@@ -49,7 +60,7 @@ describe('the regression scenes (e2e/scenes.json)', () => {
   // Every parameter url.ts reads. None of them reaches the eye settings: the observer of a scene is the app's,
   // an eye with its optical point spread (EyeSettings.opticalCore). Only the validation runner turns that off.
   const KNOWN = ['t', 'target', 'dist', 'az', 'el', 'look', 'exists', 'view', 'boost', 'fov', 'labels', 'orbits', 'tint', 'ui', 'system',
-    'smallbodies', 'sbfield', 'shield', 'adapt', 'adaptfrom'];
+    'smallbodies', 'sbfield', 'shield', 'adapt', 'adaptfrom', 'adapttime'];
   it('are URL queries of documented parameters only, and all of them parse', () => {
     expect(suite.scenes.length).toBeGreaterThan(20);
     for (const scene of suite.scenes) {

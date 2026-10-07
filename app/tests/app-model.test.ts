@@ -70,6 +70,16 @@ describe('AppModel', () => {
     expect(v.dist).toBeCloseTo(50000, 6);
   });
 
+  it('carries the held eye instant from the URL into every snapshot and back', () => {
+    const { model } = setup();
+    const history = { luminanceCdM2: 10000, exposureS: 600, elapsedS: 60 };
+    model.applyUrl({ adapt: 'realtime', adaptFrom: history, adaptTimeS: 60 });
+    for (const dt of [0, 0.016, 2, 18]) {
+      expect(model.frame(dt).view.adaptation).toEqual({ mode: 'realtime', history, heldElapsedS: 60 });
+    }
+    expect(model.currentUrlView()).toMatchObject({ adaptFrom: history, adaptTimeS: 60 });
+  });
+
   it('without t starts at now and plays in real time; default target and sunlit view', () => {
     const { model } = setup(FAKE_J2000_MS + (T0 + DAY) * 1000);
     model.applyUrl({});

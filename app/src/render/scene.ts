@@ -338,11 +338,13 @@ export interface ViewSettings {
  */
 export interface AdaptationSettings {
   mode: 'instant' | 'realtime';
+  /** Sample history at exactly these elapsed seconds; the eye clock does not advance between measurements. */
+  heldElapsedS?: number;
   /**
    * A defined past, for tests and demonstrations: the eye was adapted to a uniform field of
    * `luminanceCdM2` (photopic; scotopic from sunlight's S/P) filling the view for `exposureS`, then has
    * looked at the current view for `elapsedS`. Applied until the adaptation to the view has settled, then
-   * the eye goes on in real time.
+   * the eye goes on in real time unless heldElapsedS fixes its elapsed time.
    */
   history?: { luminanceCdM2: number; exposureS: number; elapsedS: number };
 }
