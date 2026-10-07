@@ -466,6 +466,7 @@ def test_earth_cloud_tau_layer():
     # the population statistic for the share without a retrieval (cloud_pcl.py), estimated, with its sources
     u = h["constants"]["unmeasuredTau"]
     assert u["label"] == "estimated" and "pincus2023-modis-cosp" in u["sources"] and "pincus2023-modis-cosp" in h["sources"]
+    u = u["value"]
     p = u["statistics"]["floorCellsZero"]["partlyCloudyAllHeights"]
     assert sum(p["binProbability"]) == pytest.approx(1, abs=1e-3) and len(p["binProbability"]) == len(u["tauBinEdges"]) - 1
     rows = u["planeAlbedoLiquid"]["rows"]

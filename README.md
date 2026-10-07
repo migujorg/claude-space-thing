@@ -76,6 +76,26 @@ cd app && npm run e2e                         # rendered-scene regression suite 
 
 CI (`.github/workflows/ci.yml`) runs the first two on every push, offline and without data, on Linux and (informational for now) on Windows. On Windows, run pytest with `PYTHONUTF8=1`; the pipeline CLI switches to UTF-8 mode by itself.
 
+### Tests and references
+
+The data are rebuilt on another day, with another time window, another SBDB snapshot and newer Earth orientation kernels, and the tests must not care. So the tests use two kinds of reference and never mix them:
+
+- **Committed references** (`app/tests/fixtures/`, `pipeline/tests/fixtures/`) hold values for stated inputs: orbit solutions with their orbit id, Horizons vectors with their query URL, SPICE values with the kernel files they came from (sha256; fixed kernel files only, so nothing from the Earth orientation kernels, which NAIF reissues). Each has its own epoch and, for small bodies, its own force model, and a test uses it with those, not with the epoch of the data under test. A build never writes them, and rebuilding the data never requires regenerating them.
+- **Build records** (`verification/<stage>.json` in the built data, listed in the manifest) are written by a stage in the same run as its products and name their sha256: the states the `smallbodies` stage put in `core.bin` with its integrator's positions and Horizons' through the window, the CNEOS close approaches of this window on the orbit solutions the catalogue holds, and SPICE's own evaluation of the kernels the `bodies` stage copied the orientation products from. A test of "the app reads this product as the pipeline wrote it" compares with the record of the build it runs against.
+
+A comparison that cannot be made is not dropped: it is a skipped test whose name starts with `NOT COMPARED:` and says what and why (a reference epoch outside the built ephemeris, a product copied from another kernel file, a published eclipse outside the window, a build made before its stage wrote a record). The number of skipped tests in the summary of `npm test` on a full build is the number of comparisons that build could not make; `npm test -- --reporter=verbose | grep "NOT COMPARED"` lists them.
+
+Regenerate a committed reference only when what it describes changes (the force model, the integrator, the verification set, the planetary kernel), or when the window has moved so far that most of its epochs are reported as not compared:
+
+```sh
+cd pipeline
+uv run python -m pipeline.sb_fixtures                 # small bodies; needs the smallbodies stage built
+uv run python -m pipeline.ephem_fixtures              # ephemeris, time, rotation, lunar orientation; queries Horizons
+uv run python -m pipeline.ephem_fixtures orientation  # only the lunar orientation reference, from data/raw, no network
+```
+
+`TEST_DATA_DIR=<built data> npm test` and `TEST_FIXTURE_DIR=<references> npm test` run the app suite against another build or another set of references.
+
 ## Layout
 
 - `pipeline/`: Python. Raw downloads become processed, provenance-tagged data products.
