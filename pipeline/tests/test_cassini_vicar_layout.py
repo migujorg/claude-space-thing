@@ -88,6 +88,7 @@ def test_cassini_refuses_truncated_pixel_records(tmp_path):
 
 
 @pytest.mark.parametrize("image", SATURN.images, ids=lambda im: im.product)
+@pytest.mark.skip_group("missing-input")
 def test_cassini_real_image_has_real_first_and_last_rows(image):
     img = RAW / "validation" / SATURN.id / image.data_url.rsplit("/", 1)[-1]
     lbl = img.with_suffix(".LBL")

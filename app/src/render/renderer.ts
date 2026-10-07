@@ -20,6 +20,7 @@
 
 import type { RendererStats, SceneBody, SceneSnapshot, StarCatalog } from './scene';
 import { requestRenderingAdapter } from './adapter';
+import { aerialPerspectiveSize, frameSize, readbackSize, requiredFrameLimits } from './frameSizing';
 import {
   ADAPT_REDUCE_SHADER, ADAPT_SHADER, ADAPT_TILE_PX, AP_COLUMNS_SHADER, ATM_BODY_SHADER, ATMOSPHERE_SHELL_SHADER, BODY_OVERLAY_SHADER, BODY_SHADER, CLAMP_ARGS_SHADER, COMPOSITE_SHADER, EARTH_BODY_SHADER,
   CULL_SHADER, LINE_SHADER, MASK_HATCH_SHADER, OVERFLOW_SHADER, POINT_SHADER, PYRAMID_BLUR_SIGMA, PYRAMID_SHADER,
@@ -106,8 +107,6 @@ interface Level {
   ubR: GPUBuffer;
 }
 
-/** Rows of aerial-perspective columns across the frame (column size = ⌈H / AP_ROWS⌉ px, at least 2). A sampling choice. */
-const AP_ROWS = 270;
 /** Altitude slices of Earth's columns, km: the range of the cloud-top heights the view path is split at. A sampling choice. */
 const AP_SLICES_EARTH_KM = [0, 1, 2, 3, 4, 6, 8, 10, 13, 16];
 
@@ -156,6 +155,7 @@ export class Renderer {
   private readonly adaptation = new AdaptationState();
   private settings: EyeSettings = { ...DEFAULT_EYE_SETTINGS };
   private targets: Targets | null = null;
+  private frameRefusal: string | null = null;
   private stars: StarChunk[] = [];
   private starStride = 7;
   private starCount = 0;
@@ -421,12 +421,8 @@ export class Renderer {
     const blend32 = adapter.features.has('float32-blendable') && options.hdr !== 'f16';
     const device = await adapter.requestDevice({
       requiredFeatures: [...(blend32 ? ['float32-blendable' as const] : []), ...(adapter.features.has('timestamp-query') ? ['timestamp-query' as const] : [])],
-      requiredLimits: {
-        maxStorageBufferBindingSize: adapter.limits.maxStorageBufferBindingSize,
-        maxBufferSize: adapter.limits.maxBufferSize,
-      },
+      requiredLimits: requiredFrameLimits(adapter.limits),
     });
-    device.addEventListener('uncapturederror', (e) => console.error('WebGPU error:', (e as GPUUncapturedErrorEvent).error.message));
     const offscreen = options.presentation === 'offscreen';
     const ctx = offscreen ? null : canvas.getContext('webgpu');
     if (!offscreen && !ctx) throw new Error('Could not get a WebGPU canvas context');
@@ -434,6 +430,13 @@ export class Renderer {
     const format = out.format;
     device.pushErrorScope('validation');
     const r = new Renderer(device, canvas, ctx, format, blend32 ? 'rgba32float' : 'rgba16float');
+    device.addEventListener('uncapturederror', (e) => {
+      const warning = `WebGPU error: ${(e as GPUUncapturedErrorEvent).error.message}`;
+      console.error(warning);
+      // Cascading invalid bind groups can report hundreds of errors: keep the latest visible diagnostic.
+      r.persistentWarnings = [...r.persistentWarnings.filter((w) => !w.startsWith('WebGPU error:')), warning];
+      r.stats.warnings = [...(r.stats.warnings ?? []).filter((w) => !w.startsWith('WebGPU error:')), warning];
+    });
     r.displayInfo = { hdr: out.hdr, colorSpace: out.colorSpace, format };
     const err = await device.popErrorScope();
     if (err) throw new Error(`Renderer pipeline creation failed: ${err.message}`);
@@ -511,6 +514,16 @@ export class Renderer {
   resize(width: number, height: number, devicePixelRatio: number): void {
     const W = Math.max(1, Math.round(width * devicePixelRatio));
     const H = Math.max(1, Math.round(height * devicePixelRatio));
+    const plan = frameSize(W, H, this.device.limits, ADAPT_TILE_PX);
+    this.frameRefusal = plan.ok ? null : plan.warning;
+    this.stats.warnings = [...this.persistentWarnings, ...(this.frameRefusal ? [this.frameRefusal] : [])];
+    if (!plan.ok) {
+      this.destroyTargets();
+      // Clear stale presentation without requesting an oversized canvas texture. Startup's existing fatal
+      // path displays this error; resize callers must display it too (UI wiring is outside this lane).
+      this.canvas.width = this.canvas.height = 1;
+      throw new RangeError(plan.warning);
+    }
     this.canvas.width = W;
     this.canvas.height = H;
     if (this.targets && this.targets.W === W && this.targets.H === H) return;
@@ -520,8 +533,7 @@ export class Renderer {
     const RT = GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING;
     const ST = GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING;
     const levels: Level[] = [];
-    let w = W, h = H;
-    for (let k = 0; ; k++) {
+    for (const [k, { w, h }] of plan.size.levels.entries()) {
       levels.push({
         w, h,
         lvl: tex(w, h, 'rgba32float', ST, `pyr lvl ${k}`),
@@ -532,11 +544,8 @@ export class Renderer {
         ub: d.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST }),
         ubR: d.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST }),
       });
-      if (w === 1 && h === 1) break;
-      w = Math.max(1, Math.ceil(w / 2));
-      h = Math.max(1, Math.ceil(h / 2));
     }
-    const tilesX = Math.ceil(W / ADAPT_TILE_PX), tilesY = Math.ceil(H / ADAPT_TILE_PX);
+    const { tilesX, tilesY, adaptationBytes, acuW, acuH, acuMips } = plan.size;
     this.targets = {
       W, H,
       ext: tex(W, H, this.hdrFormat, RT, 'EXT'),
@@ -548,10 +557,11 @@ export class Renderer {
       levels,
       acu: ((w1: number, h1: number) => d.createTexture({
         size: [w1, h1], format: 'rgba32float', usage: ST, label: 'acuity mips',
-        mipLevelCount: Math.max(1, Math.min(levels.length - 1, Math.floor(Math.log2(Math.max(w1, h1))) + 1)),
-      }))(levels[1]?.w ?? 1, levels[1]?.h ?? 1),
+        mipLevelCount: acuMips,
+      }))(acuW, acuH),
       // One texel per adaptation invocation (8 × 8 per workgroup), like `partials`.
       // Sides are powers of two so that no level of the chain drops a row or column (eye/acuity.ts fovealSumsSize).
+      // Each side is under a quarter of the frame's plus 16, so it is within the limits the frame itself passed.
       fov: ((size: [number, number]) => d.createTexture({
         size, format: 'rgba32float', usage: ST, label: 'fovea sums',
         mipLevelCount: Math.round(Math.log2(Math.max(size[0], size[1]))) + 1,
@@ -559,8 +569,8 @@ export class Renderer {
       zero: tex(1, 1, 'rgba32float', ST, 'zero'),
       zero2: tex(1, 1, 'rgba32float', ST, 'zero2'),
       // One partial per adaptation invocation (8 × 8 per workgroup).
-      partials: d.createBuffer({ size: tilesX * tilesY * 64 * 16, usage: GPUBufferUsage.STORAGE }),
-      darkest: d.createBuffer({ size: tilesX * tilesY * 64 * 16, usage: GPUBufferUsage.STORAGE }),
+      partials: d.createBuffer({ size: adaptationBytes, usage: GPUBufferUsage.STORAGE }),
+      darkest: d.createBuffer({ size: adaptationBytes, usage: GPUBufferUsage.STORAGE }),
       tilesX, tilesY,
     };
     this.glareCache.key = '';
@@ -570,6 +580,7 @@ export class Renderer {
 
   private displayTexture(): GPUTexture {
     const t = this.targets!;
+    if (!t) throw new RangeError(this.frameRefusal ?? 'No render targets');
     if (!this.display || this.display.width !== t.W || this.display.height !== t.H) {
       this.display?.destroy();
       this.display = this.device.createTexture({ size: [t.W, t.H], format: this.format, usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC, label: 'display (offscreen)' });
@@ -582,8 +593,10 @@ export class Renderer {
     if (this.ctx) throw new Error('readPixels() is only available with presentation: "offscreen"');
     const tex = this.displayTexture();
     const { width, height } = tex;
-    const bpr = Math.ceil((width * 4) / 256) * 256;
-    const buf = this.device.createBuffer({ size: bpr * height, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ });
+    const plan = readbackSize(width, height, 4, false, this.device.limits);
+    if (!plan.ok) throw new RangeError(plan.warning);
+    const { bytesPerRow: bpr, bytes } = plan.size;
+    const buf = this.device.createBuffer({ size: bytes, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ });
     const enc = this.device.createCommandEncoder();
     enc.copyTextureToBuffer({ texture: tex }, { buffer: buf, bytesPerRow: bpr }, [width, height]);
     this.device.queue.submit([enc.finish()]);
@@ -600,25 +613,36 @@ export class Renderer {
   // The HDR XYZS target (EXT) of the last rendered frame in absolute units, before the eye model: resolved
   // bodies, rings, atmospheres, sky background, solar disk; not the point sources. Read-only, outside render().
   private hdrReadback: HdrReadback | null = null;
+  private checkHdrReadback(t: GPUTexture, rect: HdrRect): void {
+    const x0 = Math.max(0, Math.min(t.width, Math.floor(rect[0])));
+    const y0 = Math.max(0, Math.min(t.height, Math.floor(rect[1])));
+    const x1 = Math.max(x0, Math.min(t.width, Math.ceil(rect[2])));
+    const y1 = Math.max(y0, Math.min(t.height, Math.ceil(rect[3])));
+    const plan = readbackSize(x1 - x0, y1 - y0, 16, true, this.device.limits);
+    if (!plan.ok) throw new RangeError(plan.warning);
+  }
   /** Pre-exposure the last frame's HDR targets were written with (1 for rgba32float); set in writeUniforms. */
   private hdrPreExposure = 1;
 
   /** Mean, standard deviation and pixel count of EXT over [x0, x1) × [y0, y1) (x right, y down). */
-  readHdrRegion(rect: HdrRect): Promise<HdrRegionStats> {
+  async readHdrRegion(rect: HdrRect): Promise<HdrRegionStats> {
     if (!this.targets) return Promise.reject(new Error('readHdrRegion: no render targets'));
+    this.checkHdrReadback(this.targets.ext, rect);
     return (this.hdrReadback ??= new HdrReadback(this.device)).region(this.targets.ext, rect, 1 / this.hdrPreExposure);
   }
 
   /** The whole EXT target, width × height × 4 float32 (X, Y, Z, S). */
-  readHdr(): Promise<HdrImage> {
+  async readHdr(): Promise<HdrImage> {
     if (!this.targets) return Promise.reject(new Error('readHdr: no render targets'));
     const t = this.targets;
+    this.checkHdrReadback(t.ext, [0, 0, t.W, t.H]);
     return (this.hdrReadback ??= new HdrReadback(this.device)).read(t.ext, [0, 0, t.W, t.H], 1 / this.hdrPreExposure);
   }
   /** Diagnostic: physical XYZS in the emission target, before upsampling and depth-tested composition. */
-  readNightglow(): Promise<HdrImage | null> {
+  async readNightglow(): Promise<HdrImage | null> {
     const t = this.nightglow?.emissionTexture;
     if (!t) return Promise.resolve(null);
+    this.checkHdrReadback(t, [0, 0, t.width, t.height]);
     return (this.hdrReadback ??= new HdrReadback(this.device)).read(t, [0, 0, t.width, t.height], 1 / this.hdrPreExposure);
   }
   // ── end of the validation hook ─────────────────────────────────────────────────────────────────────────────
@@ -666,6 +690,7 @@ export class Renderer {
    * view needs is loaded (drives frames itself; tile loading gives up after ~90 s).
    */
   settled(): Promise<void> {
+    if (this.frameRefusal) return Promise.reject(new RangeError(this.frameRefusal));
     // A lost device never answers the readbacks the adaptation waits for: fail instead of hanging.
     const lost = this.deviceLost.then((i) => { throw new Error(`WebGPU device lost (${i.reason}): ${i.message}`); });
     return Promise.race([this.settle(), lost]);
@@ -700,6 +725,7 @@ export class Renderer {
 
   /** Resolves when the GPU has finished the last submitted frame (frame pacing; no extra frames). */
   frameDone(): Promise<void> {
+    if (this.frameRefusal) return Promise.reject(new RangeError(this.frameRefusal));
     return this.device.queue.onSubmittedWorkDone();
   }
 
@@ -770,10 +796,13 @@ export class Renderer {
       atmOf.set(i, b);
       let ap: ApColumns | null = null;
       if (r.atmosphere.onDisk && !b.unmeasured && !this.debugSkip.has('ap')) {
-        const colPx = Math.max(2, Math.ceil(t.H / AP_ROWS));
         const slices = r.earth ? AP_SLICES_EARTH_KM : [0];
-        ap = { colPx, nx: Math.ceil(t.W / colPx), ny: Math.ceil(t.H / colPx), slices, body: i };
-        apOf.set(i, { cols: ap, tex: this.apTexture(b.key, ap, Math.ceil(b.model.wavelengthsNm.length / 4)) });
+        const K4 = Math.ceil(b.model.wavelengthsNm.length / 4);
+        const size = aerialPerspectiveSize(t.W, t.H, slices.length, K4, d.limits);
+        if (size) {
+          ap = { colPx: size.colPx, nx: size.nx, ny: size.ny, slices, body: i };
+          apOf.set(i, { cols: ap, tex: this.apTexture(b.key, ap, K4) });
+        }
       }
       this.atm.writeUniform(b, r.atmosphere.sunE, r.atmosphere.sunAngularRadius, r.atmosphere.shellBeta, r.frame.near, ATM_STEPS, ap);
     });

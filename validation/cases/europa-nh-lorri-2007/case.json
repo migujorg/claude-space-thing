@@ -3,7 +3,7 @@
  "id": "europa-nh-lorri-2007",
  "title": "Europa, New Horizons LORRI, 2007-02-27",
  "summary": "Europa from 3.20 million km at phase 28.3°, 15.9 km per pixel.",
- "generated": "2026-09-30T18:52:29+00:00",
+ "generated": "2026-10-07T00:00:00+00:00",
  "observation": {
   "observer": "New Horizons",
   "observerHorizonsId": "@-98",
@@ -43,6 +43,372 @@
      ],
      "freeRollDeg": 258.9591,
      "rollNote": "roll from the header WCS (reconstructed C-kernel attitude); the free fit's roll differed by +11.14° (a nearly spherical body at low phase fixes the roll only weakly); target position refitted with the roll held"
+    },
+    "fitInputs": {
+     "pixels": {
+      "sha256": "f5f03241312ae596f84881bdec926e9d4ff2c50c8228e229c34d079ff3689895",
+      "shape": [
+       512,
+       512
+      ],
+      "dtype": "float64-le"
+     },
+     "targets": [
+      {
+       "naif": 502,
+       "pos": [
+        269103.9,
+        -3037723.0,
+        -974977.7
+       ],
+       "orient": [
+        [
+         0.8849377,
+         -0.4656691,
+         -0.006131446
+        ],
+        [
+         0.4181922,
+         0.8003706,
+         -0.4295604
+        ],
+        [
+         0.2049405,
+         0.3775701,
+         0.9030173
+        ]
+       ],
+       "toSun": [
+        312659300.0,
+        679841400.0,
+        283788600.0
+       ],
+       "radii": [
+        1562.6,
+        1560.3,
+        1559.5
+       ],
+       "rings": null
+      }
+     ],
+     "primary": 0,
+     "pitch": 9.926e-06,
+     "controls": {
+      "operation": "pointing",
+      "flips": [
+       true
+      ],
+      "imageSha256": "f8260e9f94bd0b81b9946e1366aa7804b6c4c293478ed35ea4984146d3a8854b",
+      "fitVersion": 2
+     },
+     "runtime": {
+      "python": "3.11.15",
+      "machine": "x86_64",
+      "libc": [
+       "glibc",
+       "2.43"
+      ],
+      "floatRounds": 1,
+      "spiceToolkit": "CSPICE_N0067",
+      "pngCompression": {
+       "pythonZlib": "1.3.1",
+       "pillowZlib": "1.3.1.zlib-ng"
+      },
+      "system": "Linux",
+      "libraries": {
+       "numpy": "2.4.6",
+       "scipy": "1.17.1",
+       "spiceypy": "8.2.0",
+       "astropy": "8.0.1",
+       "colour-science": "0.4.7",
+       "pillow": "12.3.0"
+      },
+      "numpyConfig": {
+       "Compilers": {
+        "c": {
+         "name": "gcc",
+         "linker": "ld.bfd",
+         "version": "14.2.1",
+         "commands": "cc"
+        },
+        "cython": {
+         "name": "cython",
+         "linker": "cython",
+         "version": "3.2.4",
+         "commands": "cython"
+        },
+        "c++": {
+         "name": "gcc",
+         "linker": "ld.bfd",
+         "version": "14.2.1",
+         "commands": "c++"
+        }
+       },
+       "Machine Information": {
+        "host": {
+         "cpu": "x86_64",
+         "family": "x86_64",
+         "endian": "little",
+         "system": "linux"
+        },
+        "build": {
+         "cpu": "x86_64",
+         "family": "x86_64",
+         "endian": "little",
+         "system": "linux"
+        }
+       },
+       "Build Dependencies": {
+        "blas": {
+         "name": "scipy-openblas",
+         "found": true,
+         "version": "0.3.31.188.0",
+         "detection method": "pkgconfig",
+         "include directory": "/opt/_internal/cpython-3.11.14/lib/python3.11/site-packages/scipy_openblas64/include",
+         "lib directory": "/opt/_internal/cpython-3.11.14/lib/python3.11/site-packages/scipy_openblas64/lib",
+         "openblas configuration": "OpenBLAS 0.3.31.188.0  USE64BITINT DYNAMIC_ARCH NO_AFFINITY Haswell MAX_THREADS=64",
+         "pc file directory": "/project/.openblas"
+        },
+        "lapack": {
+         "name": "scipy-openblas",
+         "found": true,
+         "version": "0.3.31.188.0",
+         "detection method": "pkgconfig",
+         "include directory": "/opt/_internal/cpython-3.11.14/lib/python3.11/site-packages/scipy_openblas64/include",
+         "lib directory": "/opt/_internal/cpython-3.11.14/lib/python3.11/site-packages/scipy_openblas64/lib",
+         "openblas configuration": "OpenBLAS 0.3.31.188.0  USE64BITINT DYNAMIC_ARCH NO_AFFINITY Haswell MAX_THREADS=64",
+         "pc file directory": "/project/.openblas"
+        }
+       },
+       "Python Information": {
+        "path": "/tmp/build-env-gjolnpt6/bin/python",
+        "version": "3.11"
+       },
+       "SIMD Extensions": {
+        "baseline": [
+         "X86_V2"
+        ],
+        "found": [
+         "X86_V3",
+         "X86_V4",
+         "AVX512_ICL"
+        ],
+        "not found": [
+         "AVX512_SPR"
+        ]
+       }
+      },
+      "scipyConfig": {
+       "Compilers": {
+        "c": {
+         "name": "gcc",
+         "linker": "ld.bfd",
+         "version": "14.2.1",
+         "commands": "cc"
+        },
+        "cython": {
+         "name": "cython",
+         "linker": "cython",
+         "version": "3.2.4",
+         "commands": "cython"
+        },
+        "c++": {
+         "name": "gcc",
+         "linker": "ld.bfd",
+         "version": "14.2.1",
+         "commands": "c++"
+        },
+        "fortran": {
+         "name": "gcc",
+         "linker": "ld.bfd",
+         "version": "14.2.1",
+         "commands": "gfortran"
+        },
+        "pythran": {
+         "version": "0.18.1",
+         "include directory": "../../tmp/build-env-vm5wde73/lib/python3.11/site-packages/pythran"
+        }
+       },
+       "Machine Information": {
+        "host": {
+         "cpu": "x86_64",
+         "family": "x86_64",
+         "endian": "little",
+         "system": "linux"
+        },
+        "build": {
+         "cpu": "x86_64",
+         "family": "x86_64",
+         "endian": "little",
+         "system": "linux"
+        },
+        "cross-compiled": false
+       },
+       "Build Dependencies": {
+        "blas": {
+         "name": "scipy-openblas",
+         "found": true,
+         "version": "0.3.30",
+         "detection method": "pkgconfig",
+         "include directory": "/opt/_internal/cpython-3.11.13/lib/python3.11/site-packages/scipy_openblas32/include",
+         "lib directory": "/opt/_internal/cpython-3.11.13/lib/python3.11/site-packages/scipy_openblas32/lib",
+         "openblas configuration": "OpenBLAS 0.3.30 DYNAMIC_ARCH NO_AFFINITY Haswell MAX_THREADS=64",
+         "pc file directory": "/project/",
+         "has ilp64": false
+        },
+        "lapack": {
+         "name": "scipy-openblas",
+         "found": true,
+         "version": "0.3.30",
+         "detection method": "pkgconfig",
+         "include directory": "/opt/_internal/cpython-3.11.13/lib/python3.11/site-packages/scipy_openblas32/include",
+         "lib directory": "/opt/_internal/cpython-3.11.13/lib/python3.11/site-packages/scipy_openblas32/lib",
+         "openblas configuration": "OpenBLAS 0.3.30 DYNAMIC_ARCH NO_AFFINITY Haswell MAX_THREADS=64",
+         "pc file directory": "/project/",
+         "has ilp64": false
+        },
+        "pybind11": {
+         "name": "pybind11",
+         "version": "3.0.2",
+         "detection method": "config-tool",
+         "include directory": "unknown"
+        }
+       },
+       "Python Information": {
+        "path": "/tmp/build-env-vm5wde73/bin/python",
+        "version": "3.11"
+       }
+      },
+      "cpuFeatures": {
+       "MMX": true,
+       "SSE": true,
+       "SSE2": true,
+       "SSE3": true,
+       "SSSE3": true,
+       "SSE41": true,
+       "POPCNT": true,
+       "SSE42": true,
+       "X86_V2": true,
+       "AVX": true,
+       "F16C": true,
+       "XOP": false,
+       "FMA4": false,
+       "FMA3": true,
+       "AVX2": true,
+       "LAHF": true,
+       "CX16": true,
+       "MOVBE": true,
+       "BMI": true,
+       "BMI2": true,
+       "LZCNT": true,
+       "GFNI": true,
+       "VPCLMULQDQ": true,
+       "VAES": true,
+       "X86_V3": true,
+       "AVX512F": true,
+       "AVX512CD": true,
+       "AVX512ER": false,
+       "AVX512PF": false,
+       "AVX5124FMAPS": false,
+       "AVX5124VNNIW": false,
+       "AVX512VPOPCNTDQ": true,
+       "AVX512VL": true,
+       "AVX512BW": true,
+       "AVX512DQ": true,
+       "AVX512VNNI": true,
+       "AVX512IFMA": true,
+       "AVX512VBMI": true,
+       "AVX512VBMI2": true,
+       "AVX512BITALG": true,
+       "AVX512FP16": false,
+       "AVX512BF16": true,
+       "AVX512_KNL": false,
+       "AVX512_KNM": false,
+       "AVX512_SKX": true,
+       "X86_V4": true,
+       "AVX512_CLX": true,
+       "AVX512_CNL": true,
+       "AVX512_ICL": true,
+       "AVX512_SPR": false,
+       "VSX": false,
+       "VSX2": false,
+       "VSX3": false,
+       "VSX4": false,
+       "VX": false,
+       "VXE": false,
+       "VXE2": false,
+       "NEON": false,
+       "NEON_FP16": false,
+       "NEON_VFPV4": false,
+       "ASIMD": false,
+       "FPHP": false,
+       "ASIMDHP": false,
+       "ASIMDDP": false,
+       "ASIMDFHM": false,
+       "SVE": false,
+       "RVV": false,
+       "LSX": false
+      },
+      "threads": {
+       "OPENBLAS_NUM_THREADS": "1",
+       "OMP_NUM_THREADS": "1",
+       "MKL_NUM_THREADS": "1"
+      }
+     },
+     "code": {
+      "register.py": "a0ff6e331124d934cef23cafe644cd3f5006aaadb4dcc7c95644ba2e6502f6cb",
+      "geometry.py": "fd02da9796633f7aa9a69823b0534162cf0c00f8bce63cba6fd80e3d3bbf8db7"
+     }
+    },
+    "fitResult": {
+     "cx": 276.309,
+     "cy": 226.5216,
+     "rollDeg": 270.1022,
+     "flipped": true,
+     "rss": 90.48847,
+     "rssOtherParity": null,
+     "centreSigmaPx": 0.00589991,
+     "residualRmsIoverF": 0.01805806,
+     "modelAmplitudes": [
+      0.7086256,
+      0.001028399
+     ],
+     "cameraOrient": [
+      0.01562267,
+      -0.9963146,
+      -0.08433921,
+      0.3066266,
+      -0.07551152,
+      0.9488299,
+      -0.9517017,
+      -0.0406839,
+      0.3043168
+     ]
+    },
+    "freeFitResult": {
+     "cx": 275.775,
+     "cy": 226.6316,
+     "rollDeg": 258.9591,
+     "flipped": true,
+     "rss": 85.48346,
+     "rssOtherParity": null,
+     "centreSigmaPx": 0.00589991,
+     "residualRmsIoverF": 0.01805806,
+     "modelAmplitudes": [
+      0.7086256,
+      0.001028399
+     ],
+     "cameraOrient": [
+      0.2078811,
+      -0.9745152,
+      -0.08429411,
+      0.3153871,
+      -0.01479634,
+      0.9488478,
+      -0.9259138,
+      -0.2238328,
+      0.3042736
+     ]
     },
     "registrationSigmaPx": 0.5,
     "aberrationShiftRad": 8.348454e-06,
@@ -843,7 +1209,7 @@
    "title": "NAIF generic leapseconds kernel naif0012.tls",
    "citation": "NAIF leapseconds kernel naif0012.tls (NAIF/JPL, 2016-07-14), leap seconds through 2017-01-01 as announced in IERS Bulletin C; TDB-TT formula and constants from Moyer, T. D. (1981), Transformation from proper time on Earth to coordinate time in solar system barycentric space-time frame of reference, Celestial Mechanics 23, 33-56 and 57-68. Acton, C. H. (1996). Ancillary data services of NASA's Navigation and Ancillary Information Facility. Planetary and Space Science 44(1), 65-70. DOI:10.1016/0032-0633(95)00107-7",
    "url": "https://naif.jpl.nasa.gov/pub/naif/generic_kernels/lsk/naif0012.tls",
-   "retrieved": "2026-09-30",
+   "retrieved": "2026-10-03",
    "sha256": "678e32bdb5a744117a467cd9601cd6b373f0e9bc9bbde1371d5eee39600a039b",
    "version": "naif0012",
    "license": "NAIF/JPL public data (U.S. Government work); see https://naif.jpl.nasa.gov/naif/rules.html",
@@ -854,7 +1220,7 @@
    "title": "NAIF generic text PCK pck00011.tpc (IAU WGCCRE 2015 body shapes and rotation)",
    "citation": "Acton, C. H. (1996). Ancillary data services of NASA's Navigation and Ancillary Information Facility. Planetary and Space Science 44, 65-70. Kernel content: Archinal, B. A. et al. (2018). Report of the IAU Working Group on Cartographic Coordinates and Rotational Elements: 2015. Celestial Mechanics and Dynamical Astronomy 130, 22. DOI:10.1007/s10569-017-9805-5.",
    "url": "https://naif.jpl.nasa.gov/pub/naif/generic_kernels/pck/pck00011.tpc",
-   "retrieved": "2026-09-30",
+   "retrieved": "2026-10-03",
    "sha256": "3dff7b1dbeceaa01f25467767d3fa25816051c85d162d1edf04acb310ee28bb1",
    "version": "pck00011"
   },
@@ -863,18 +1229,18 @@
    "title": "JPL planetary and lunar ephemeris DE442 (short-span SPK de442s.bsp)",
    "citation": "JPL planetary and lunar ephemeris DE442 (integrated 13 May 2024): an update of DE440 adding Uranus occultation data and four more years of Mars-orbiter and Juno ranging. JPL, de442_tech-comments.txt, https://naif.jpl.nasa.gov/pub/naif/generic_kernels/spk/planets/de442_tech-comments.txt. Based on and documented by Park, R. S., Folkner, W. M., Williams, J. G., Boggs, D. H. (2021). The JPL Planetary and Lunar Ephemerides DE440 and DE441. The Astronomical Journal 161(3), 105. DOI:10.3847/1538-3881/abd414. SPK file de442s.bsp distributed by NAIF (2025-02-06). Acton, C. H. (1996). Ancillary data services of NASA's Navigation and Ancillary Information Facility. Planetary and Space Science 44(1), 65-70. DOI:10.1016/0032-0633(95)00107-7",
    "url": "https://naif.jpl.nasa.gov/pub/naif/generic_kernels/spk/planets/de442s.bsp",
-   "retrieved": "2026-09-30",
+   "retrieved": "2026-10-03",
    "sha256": "54d97562a5b094d298b1b8eafa5a2e17e3e010ce85e1a366d07f003ad159323c",
    "version": "DE442 (de442s.bsp, 1849-2150)",
    "license": "NAIF/JPL public data (U.S. Government work); see https://naif.jpl.nasa.gov/naif/rules.html",
-   "notes": "Contains barycenters 1-9 and the Sun (10) wrt the SSB, Mercury 199 wrt 1, Venus 299 wrt 2, Moon 301 and Earth 399 wrt the Earth-Moon barycenter 3. Planet centers 499-999 wrt their system barycenters are NOT in this file (see jpl-horizons-center-*)."
+   "notes": "Contains barycenters 1-9 and the Sun (10) wrt the SSB, Mercury 199 wrt 1, Venus 299 wrt 2, Moon 301 and Earth 399 wrt the Earth-Moon barycenter 3. Planet centers 499-999 wrt their system barycenters come from satellite kernels (ephem/centers), not this file."
   },
   {
    "id": "nh-soc-inst-icd-2017",
    "title": "New Horizons SOC to Instrument Pipeline ICD (05310-SOCINST-01), September 2017",
    "citation": "Southwest Research Institute, New Horizons SOC to Instrument Pipeline ICD, Document No. 05310-SOCINST-01, Rev 0 Chg 0, September 2017 (PDS data set NH-P-LORRI-3-PLUTO-V3.0, document/soc_inst_icd.pdf). Distributed by the PDS Ring-Moon Systems Node (SETI Institute), https://pds-rings.seti.org, through its OPUS holdings.",
    "url": "https://opus.pds-rings.seti.org/holdings/volumes/NHxxLO_xxxx/NHPELO_2001/document/soc_inst_icd.pdf",
-   "retrieved": "2026-09-30",
+   "retrieved": "2026-10-07",
    "sha256": "037fc81341f10e8624eb251b203caff9d736323ebb3e40273643c1371c0b6890",
    "notes": "§9.3.9 (LORRI): radiance at the pivot wavelength I = C/TEXP/RSOLAR for a solar-type spectrum [(DN/s/pixel)/(erg cm⁻² s⁻¹ sr⁻¹ Å⁻¹)]; I/F = π I r² / F_solar with F_solar = 176 erg cm⁻² s⁻¹ Å⁻¹ at 1 AU at the pivot wavelength 6076.2 Å."
   },
@@ -883,7 +1249,7 @@
    "title": "In-Flight Performance and Calibration of LORRI for the New Horizons Mission",
    "citation": "Weaver, H. A., Cheng, A. F., Morgan, F., et al. (2020). In-flight performance and calibration of the LOng Range Reconnaissance Imager (LORRI) for the New Horizons mission. Accepted for publication in the Publications of the Astronomical Society of the Pacific (January 2020); arXiv:2001.03524v1.",
    "url": "https://arxiv.org/pdf/2001.03524v1",
-   "retrieved": "2026-09-30",
+   "retrieved": "2026-10-07",
    "sha256": "db6aa6d3b5522898e2ecd09dc8ab008f37d5e5a9072ef3852aa6546c4226cf63",
    "notes": "Absolute calibration tied to the solar analog HD 37962: 'LORRI's absolute sensitivity is accurate to ~2% (1σ) for targets with solar-type SEDs'; '≤10% (1σ) absolute for non-solar-type SEDs' unless synthetic photometry is used. Pixel scale 4.96 µrad (1×1)."
   },
@@ -892,7 +1258,7 @@
    "title": "Determination of the True Exposure Time of New Horizons LORRI Images (February 2020)",
    "citation": "Spencer, J. and Weaver, H. (2020). Determination of the True Exposure Time of New Horizons LORRI Images. New Horizons archive documentation, February 2020 (NHxxLO_xxxx/LORRI-True-Exposure-Times.pdf). Distributed by the PDS Ring-Moon Systems Node (SETI Institute), https://pds-rings.seti.org, through its OPUS holdings.",
    "url": "https://opus.pds-rings.seti.org/holdings/documents/NHxxLO_xxxx/LORRI-True-Exposure-Times.pdf",
-   "retrieved": "2026-09-30",
+   "retrieved": "2026-10-07",
    "sha256": "cfdb73e28cd085b858fb3d0d2972cdec0f6dc9e9fb38f5991be8cdc2fc13d8fe",
    "notes": "True exposure = commanded + 0.6 ms; the pipeline added it to EXPTIME from 2020 on."
   },
@@ -901,7 +1267,7 @@
    "title": "New Horizons LORRI panchromatic system QE, SVO NewHorizons/LORRI.Pan",
    "citation": "Cheng, A. F. et al. (2008). Long-Range Reconnaissance Imager on New Horizons. Space Science Reviews 140, 189-215. DOI:10.1007/s11214-007-9271-6. Curve as distributed by the SVO Filter Profile Service (profile reference: PDS nh-x-lorri-3-launch-v3.0, calib/). Machine-readable curve from the SVO Filter Profile Service (Rodrigo, C., Solano, E. & Bayo, A. 2012, SVO Filter Profile Service Version 1.0, IVOA Working Draft, ADS 2012ivoa.rept.1015R; Rodrigo, C. & Solano, E. 2020, XIV.0 Scientific Meeting of the Spanish Astronomical Society, 182).",
    "url": "https://svo2.cab.inta-csic.es/theory/fps/getdata.php?format=ascii&id=NewHorizons/LORRI.Pan",
-   "retrieved": "2026-09-30",
+   "retrieved": "2026-10-07",
    "sha256": "1f9f13756e7979bcbf019f0251d5dcc1856faf65316cdbce5b7550b5becd8963",
    "notes": "System quantum efficiency (filter + CCD), photon counter (SVO DetectorType 1); pivot wavelength 607.6 nm, as used by the LORRI calibration keywords."
   },
@@ -910,7 +1276,7 @@
    "title": "CIE 1931 colour-matching functions, 2 degree observer (x̄, ȳ, z̄), 360–830 nm, 1 nm",
    "citation": "CIE (2019). Colour-matching functions of CIE 1931 standard colorimetric observer. International Commission on Illumination (CIE), Vienna. Data table, DOI:10.25039/CIE.DS.xvudnb9b. Original source: CIE 018:2019 The Basis of Physical Photometry, 3rd ed., Table 6 (DOI:10.25039/TR.018.2019); standard: ISO/CIE 11664-1:2019.",
    "url": "https://files.cie.co.at/Publications-datasets/CIE_xyz_1931_2deg.csv",
-   "retrieved": "2026-09-30",
+   "retrieved": "2026-10-03",
    "sha256": "fa663e3535a7e0763a745993a1f0a192eb0275ac46ad2d1befd7626841e713c1",
    "version": "CIE 018:2019 data table (2019)",
    "license": "CC BY-SA 4.0",
@@ -921,7 +1287,7 @@
    "title": "CIE spectral luminous efficiency for scotopic vision V′(λ), 380–780 nm, 1 nm",
    "citation": "CIE (2019). CIE spectral luminous efficiency for scotopic vision. International Commission on Illumination (CIE), Vienna. Data table, DOI:10.25039/CIE.DS.gr6w4b5g. Original source: CIE 018:2019 The Basis of Physical Photometry, 3rd ed., Table 2 (DOI:10.25039/TR.018.2019).",
    "url": "https://files.cie.co.at/Publications-datasets/CIE_sle_scotopic.csv",
-   "retrieved": "2026-09-30",
+   "retrieved": "2026-10-03",
    "sha256": "6a75d3fdbcbf5e9e9a07478511933eefeda953f3e2cc14b74459e5a099ec3759",
    "version": "CIE 018:2019 data table (2019)",
    "license": "CC BY-SA 4.0",
@@ -932,7 +1298,7 @@
    "title": "TSIS-1 Hybrid Solar Reference Spectrum (HSRS), Version 2, 0.1 nm resolution, with uncertainties",
    "citation": "Coddington, O. M., Richard, E. C., Harber, D., Pilewskie, P., Woods, T. N., Snow, M., Chance, K., Liu, X. & Sun, K. (2023). Version 2 of the TSIS-1 Hybrid Solar Reference Spectrum and extension to the full spectrum. Earth and Space Science 10, e2022EA002637. DOI:10.1029/2022EA002637. Method: Coddington, O. M. et al. (2021), The TSIS-1 Hybrid Solar Reference Spectrum, Geophysical Research Letters 48, e2020GL091709, DOI:10.1029/2020GL091709. Distributed by LASP LISIRD.",
    "url": "https://lasp.colorado.edu/lisird/resources/lasp/hsrs/v2/hybrid_reference_spectrum_p1nm_resolution_c2022-11-30_with_unc.nc",
-   "retrieved": "2026-09-30",
+   "retrieved": "2026-10-03",
    "sha256": "7255573e45e41dda651a760188d5f4275dfb5139c76bc514a72ab3ae400e9bf4",
    "version": "v2, file id final-v2_hybrid_reference_spectrum_p1nm_resolution_c2022-11-30_with_unc.nc",
    "notes": "Spectral solar irradiance at 1 AU, 202-2730 nm, vacuum wavelengths, 0.1 nm resolution sampled every 0.025 nm, normalized to TSIS-1 SIM (average of 2019 Dec 1-7, solar minimum) and scaled by 0.999061 to TIM TSI. Stated uncertainty 0.3 % (460-2365 nm), 1.3 % elsewhere. Landing page https://lasp.colorado.edu/lisird/data/tsis1_hsrs_p1nm/"
@@ -942,7 +1308,7 @@
    "title": "IAU 2015 Resolution B3 on recommended nominal conversion constants for selected solar and planetary properties",
    "citation": "Prša, A., Harmanec, P., Torres, G., Mamajek, E., Asplund, M., Capitaine, N., Christensen-Dalsgaard, J., Depagne, É., Haberreiter, M., Hekker, S., Hilton, J., Kopp, G., Kostov, V., Kurtz, D. W., Laskar, J., Mason, B. D., Milone, E. F., Montgomery, M., Richards, M., Schmutz, W., Schou, J. & Stewart, S. G. (2016). Nominal values for selected solar and planetary quantities: IAU 2015 Resolution B3. Astronomical Journal 152, 41. DOI:10.3847/0004-6256/152/2/41 (text of the resolution: arXiv:1510.07674).",
    "url": "https://arxiv.org/pdf/1510.07674v1",
-   "retrieved": "2026-09-30",
+   "retrieved": "2026-10-03",
    "sha256": "a4a38ecf4ab6ac71a38780456beffbc43c17c98ed320e82585a127057e498417",
    "notes": "Nominal solar radius R_sun^N = 6.957e8 m (exact by definition), chosen to match the photospheric radius (tau_Ross = 2/3) of Haberreiter, Schmutz & Kosovichev (2008, ApJ 675, L53): 695 658 +/- 140 km. Also the nominal total solar irradiance S_sun^N = 1361 W m^-2 (cycle-23 mean TSI 1361 +/- 1 W m^-2), used here only as a sanity check of the spectrum integral."
   },
@@ -951,7 +1317,7 @@
    "title": "Solar limb darkening 1986-1990 (303 to 1099 nm): Table I, fifth-order polynomial coefficients",
    "citation": "Neckel, H. & Labs, D. (1994). Solar limb darkening 1986-1990 (λλ303 to 1099 nm). Solar Physics 153, 91-114. DOI:10.1007/BF00712494.",
    "url": "https://articles.adsabs.harvard.edu/pdf/1994SoPh..153...91N",
-   "retrieved": "2026-09-30",
+   "retrieved": "2026-10-03",
    "sha256": "3a0d1708622e7fae1bd4e35ac04514167f08706d808644d556ee0b636e590975",
    "notes": "Table I (p. 98), 30 continuum wavelengths, transcribed to pipeline/src/pipeline/photometry/tables/neckel_labs_1994_table1.csv from this ADS scan (see docs/sources/neckel-labs-1994.md). The printed row at 365.875 nm violates the paper's own Eq. 5 (sum A = 0.998) and Eq. 6 (F/I); A2 = 0.17682 instead of the printed 0.17482 restores both exactly and is used (a presumed typesetting error)."
   },
@@ -960,7 +1326,7 @@
    "title": "Dispersion formula for the refractive index of standard air",
    "citation": "Edlén, B. (1966). The refractive index of air. Metrologia 2, 71-80. DOI:10.1088/0026-1394/2/2/002.",
    "url": "https://doi.org/10.1088/0026-1394/2/2/002",
-   "retrieved": "2026-09-30",
+   "retrieved": "2026-10-07",
    "notes": "Formula only (Eq. 1, standard air: dry, 15 degC, 101 325 Pa, 0.03 % CO2, the same 'standard air' in which the CIE tables are given); no data file is downloaded. Used to convert vacuum wavelengths (TSIS-1 HSRS) to standard-air wavelengths; the shift is about 0.15 nm at 550 nm."
   },
   {
@@ -968,16 +1334,16 @@
    "title": "Cassini ISS disk-integrated phase curves of the Galilean satellites (Table 5 polynomials)",
    "citation": "Mayorga, L. C., Charbonneau, D. & Thorngren, D. P. (2020). Reflected light observations of the Galilean satellites from Cassini: a test bed for cold terrestrial exoplanets. Astronomical Journal 160, 238. DOI:10.3847/1538-3881/abb8df (accepted manuscript arXiv:2009.05467v1).",
    "url": "https://arxiv.org/pdf/2009.05467v1",
-   "retrieved": "2026-09-30",
+   "retrieved": "2026-10-03",
    "sha256": "9c2e120d771c216836601a4fdd33286ac678aebc456dc58da96f3b1059015471",
-   "notes": "Cassini ISS WAC (3299 images) and NAC photometry of Io, Europa, Ganymede and Callisto during the 2000-2001 Jupiter flyby, 0-135 deg phase, CISSCAL 3.9 calibration. Table 5 transcribed to photometry/tables/mayorga_2020_table5.csv (docs/sources/mayorga-2020.md)."
+   "notes": "Cassini ISS WAC (3299 images) and NAC photometry of Io, Europa, Ganymede and Callisto during the 2000-2001 Jupiter flyby; machine-readable Table 3 spans 1.025-140.582 deg phase, CISSCAL 3.9 calibration. Table 5 transcribed to photometry/tables/mayorga_2020_table5.csv (docs/sources/mayorga-2020.md)."
   },
   {
    "id": "svo-cassini-iss-wac-vio",
    "title": "Cassini ISS wide-angle camera VIO system response, SVO Cassini/ISS_WAC.VIO",
    "citation": "Porco, C. C. et al. (2004). Cassini Imaging Science: instrument characteristics and anticipated scientific investigations at Saturn. Space Science Reviews 115, 363-497. DOI:10.1007/s11214-004-1456-7. Curve as distributed by the SVO Filter Profile Service (profile reference: Cassini ISS Data User's Guide, 2016-09-29). Machine-readable curve from the SVO Filter Profile Service (Rodrigo, C., Solano, E. & Bayo, A. 2012, SVO Filter Profile Service Version 1.0, IVOA Working Draft, ADS 2012ivoa.rept.1015R; Rodrigo, C. & Solano, E. 2020, XIV.0 Scientific Meeting of the Spanish Astronomical Society, 182).",
    "url": "https://svo2.cab.inta-csic.es/theory/fps/getdata.php?format=ascii&id=Cassini/ISS_WAC.VIO",
-   "retrieved": "2026-09-30",
+   "retrieved": "2026-10-03",
    "sha256": "04c72e0c1e1bcfe889f6929cce43dc9cf11ea2b635dd60332513ac4b7b7750ca",
    "notes": "Full system response (filter + CCD + optics), photon counter (SVO DetectorType 1): band averages weight by T(λ)·E(λ)·λ. The WAC filter combination is CL1/<band> for VIO, GRN, RED and <band>/CL2 for CB2, CB3."
   },
@@ -986,7 +1352,7 @@
    "title": "Cassini ISS wide-angle camera GRN system response, SVO Cassini/ISS_WAC.GRN",
    "citation": "Porco, C. C. et al. (2004). Cassini Imaging Science: instrument characteristics and anticipated scientific investigations at Saturn. Space Science Reviews 115, 363-497. DOI:10.1007/s11214-004-1456-7. Curve as distributed by the SVO Filter Profile Service (profile reference: Cassini ISS Data User's Guide, 2016-09-29). Machine-readable curve from the SVO Filter Profile Service (Rodrigo, C., Solano, E. & Bayo, A. 2012, SVO Filter Profile Service Version 1.0, IVOA Working Draft, ADS 2012ivoa.rept.1015R; Rodrigo, C. & Solano, E. 2020, XIV.0 Scientific Meeting of the Spanish Astronomical Society, 182).",
    "url": "https://svo2.cab.inta-csic.es/theory/fps/getdata.php?format=ascii&id=Cassini/ISS_WAC.GRN",
-   "retrieved": "2026-09-30",
+   "retrieved": "2026-10-03",
    "sha256": "c92d88c7eac796786aa732d8e370c31a18cb9a2e81217ec64afa776e71ddeb36",
    "notes": "Full system response (filter + CCD + optics), photon counter (SVO DetectorType 1): band averages weight by T(λ)·E(λ)·λ. The WAC filter combination is CL1/<band> for VIO, GRN, RED and <band>/CL2 for CB2, CB3."
   },
@@ -995,7 +1361,7 @@
    "title": "Cassini ISS wide-angle camera RED system response, SVO Cassini/ISS_WAC.RED",
    "citation": "Porco, C. C. et al. (2004). Cassini Imaging Science: instrument characteristics and anticipated scientific investigations at Saturn. Space Science Reviews 115, 363-497. DOI:10.1007/s11214-004-1456-7. Curve as distributed by the SVO Filter Profile Service (profile reference: Cassini ISS Data User's Guide, 2016-09-29). Machine-readable curve from the SVO Filter Profile Service (Rodrigo, C., Solano, E. & Bayo, A. 2012, SVO Filter Profile Service Version 1.0, IVOA Working Draft, ADS 2012ivoa.rept.1015R; Rodrigo, C. & Solano, E. 2020, XIV.0 Scientific Meeting of the Spanish Astronomical Society, 182).",
    "url": "https://svo2.cab.inta-csic.es/theory/fps/getdata.php?format=ascii&id=Cassini/ISS_WAC.RED",
-   "retrieved": "2026-09-30",
+   "retrieved": "2026-10-03",
    "sha256": "14b9858f41bbfc8f69a98cbc7ecd30d0a4ba67b89631a6e11819ea2cc57dc90c",
    "notes": "Full system response (filter + CCD + optics), photon counter (SVO DetectorType 1): band averages weight by T(λ)·E(λ)·λ. The WAC filter combination is CL1/<band> for VIO, GRN, RED and <band>/CL2 for CB2, CB3."
   },
@@ -1004,7 +1370,7 @@
    "title": "Cassini ISS wide-angle camera CB2 system response, SVO Cassini/ISS_WAC.CB2",
    "citation": "Porco, C. C. et al. (2004). Cassini Imaging Science: instrument characteristics and anticipated scientific investigations at Saturn. Space Science Reviews 115, 363-497. DOI:10.1007/s11214-004-1456-7. Curve as distributed by the SVO Filter Profile Service (profile reference: Cassini ISS Data User's Guide, 2016-09-29). Machine-readable curve from the SVO Filter Profile Service (Rodrigo, C., Solano, E. & Bayo, A. 2012, SVO Filter Profile Service Version 1.0, IVOA Working Draft, ADS 2012ivoa.rept.1015R; Rodrigo, C. & Solano, E. 2020, XIV.0 Scientific Meeting of the Spanish Astronomical Society, 182).",
    "url": "https://svo2.cab.inta-csic.es/theory/fps/getdata.php?format=ascii&id=Cassini/ISS_WAC.CB2",
-   "retrieved": "2026-09-30",
+   "retrieved": "2026-10-03",
    "sha256": "9681699c422e752370c2541758ad90c8181f4213032aff098e7898d80b38753e",
    "notes": "Full system response (filter + CCD + optics), photon counter (SVO DetectorType 1): band averages weight by T(λ)·E(λ)·λ. The WAC filter combination is CL1/<band> for VIO, GRN, RED and <band>/CL2 for CB2, CB3."
   },
@@ -1013,7 +1379,7 @@
    "title": "New Horizons LORRI (1×1) calibrated image LOR_0034849319 (lorri.Pan)",
    "citation": "New Horizons LORRI calibrated (Level 2) images of the Jupiter encounter, PDS data set NH-J-LORRI-3-JUPITER, volume NHJULO_2001 as distributed by the PDS Ring-Moon Systems Node (instrument: Cheng, A. F. et al. 2008, Space Science Reviews 140, 189-215, DOI:10.1007/s11214-007-9271-6).",
    "url": "https://opus.pds-rings.seti.org/holdings/volumes/NHxxLO_xxxx/NHJULO_2001/data/20070227_003484/lor_0034849319_0x630_sci.fit",
-   "retrieved": "2026-09-30",
+   "retrieved": "2026-10-07",
    "sha256": "f8260e9f94bd0b81b9946e1366aa7804b6c4c293478ed35ea4984146d3a8854b"
   },
   {
@@ -1021,9 +1387,935 @@
    "title": "JPL Horizons vector table: NAIF 502 from New Horizons (@-98) at 2007-02-27T02:30:01.366 UTC",
    "citation": "Giorgini, J. D., Yeomans, D. K., Chamberlin, A. B., Chodas, P. W., Jacobson, R. A., Keesey, M. S., Lieske, J. H., Ostro, S. J., Standish, E. M., Wimberly, R. N. (1996). JPL's On-Line Solar System Data Service. Bulletin of the American Astronomical Society 28(3), 1158. JPL Horizons API: https://ssd-api.jpl.nasa.gov/doc/horizons.html",
    "url": "https://ssd.jpl.nasa.gov/api/horizons.api?format=text&COMMAND=%27502%27&OBJ_DATA=%27NO%27&MAKE_EPHEM=%27YES%27&EPHEM_TYPE=%27VECTORS%27&CENTER=%27%40-98%27&TIME_TYPE=%27TDB%27&REF_SYSTEM=%27ICRF%27&REF_PLANE=%27FRAME%27&OUT_UNITS=%27KM-S%27&VEC_TABLE=%272%27&VEC_CORR=%27LT%27&VEC_LABELS=%27NO%27&CSV_FORMAT=%27YES%27&TLIST_TYPE=%27JD%27&TLIST=%272454158.604936937%27",
-   "retrieved": "2026-09-30",
-   "sha256": "6b85e450bd8888390c5953e0a28629306be3bd8f5fa83646ed79e8905e2b8acc",
+   "retrieved": "2026-10-07",
+   "sha256": "d7fef80309b0f6be6d01715b6aeb08bc078e567815c4320f266a0598ac4ee7fd",
    "notes": "ICRF, km; VEC_CORR='LT' (target at t − light time as seen from the observer at t); reconstructed trajectory as served by Horizons (source named in the file header)."
   }
- ]
+ ],
+ "reproducibility": {
+  "schema": "validation-rebuild-v1",
+  "artifactCreated": "2026-10-07T00:00:00+00:00",
+  "criterion": "exact scientific JSON and float32 reference bytes",
+  "inputs": {
+   "products/photometry.json": {
+    "sha256": "cfd9e7f1091ad66a186a78f5c590889b3918f096541da4cea028bc3b66559981",
+    "bytes": 302515
+   },
+   "raw/cie/CIE_sle_scotopic.csv": {
+    "sha256": "6a75d3fdbcbf5e9e9a07478511933eefeda953f3e2cc14b74459e5a099ec3759",
+    "bytes": 7218
+   },
+   "raw/cie/CIE_sle_scotopic.csv_metadata.json": {
+    "sha256": "7addeeca8c7e4fb9594fc87c92e37caa9e5ca4f71de7fe23cb1251abdddbfeee",
+    "bytes": 2820
+   },
+   "raw/cie/CIE_xyz_1931_2deg.csv": {
+    "sha256": "fa663e3535a7e0763a745993a1f0a192eb0275ac46ad2d1befd7626841e713c1",
+    "bytes": 24021
+   },
+   "raw/cie/CIE_xyz_1931_2deg.csv_metadata.json": {
+    "sha256": "03abcaecf4e63d77045ef57c4514b52c8bb1a46dd18e1f93a50044a0f4f481c8",
+    "bytes": 3787
+   },
+   "raw/filters/Cassini_ISS_WAC.CB2.dat": {
+    "sha256": "9681699c422e752370c2541758ad90c8181f4213032aff098e7898d80b38753e",
+    "bytes": 4587
+   },
+   "raw/filters/Cassini_ISS_WAC.GRN.dat": {
+    "sha256": "c92d88c7eac796786aa732d8e370c31a18cb9a2e81217ec64afa776e71ddeb36",
+    "bytes": 30486
+   },
+   "raw/filters/Cassini_ISS_WAC.RED.dat": {
+    "sha256": "14b9858f41bbfc8f69a98cbc7ecd30d0a4ba67b89631a6e11819ea2cc57dc90c",
+    "bytes": 33849
+   },
+   "raw/filters/Cassini_ISS_WAC.VIO.dat": {
+    "sha256": "04c72e0c1e1bcfe889f6929cce43dc9cf11ea2b635dd60332513ac4b7b7750ca",
+    "bytes": 10679
+   },
+   "raw/filters/NewHorizons_LORRI.Pan.dat": {
+    "sha256": "1f9f13756e7979bcbf019f0251d5dcc1856faf65316cdbce5b7550b5becd8963",
+    "bytes": 138911
+   },
+   "raw/naif/lsk/naif0012.tls": {
+    "sha256": "678e32bdb5a744117a467cd9601cd6b373f0e9bc9bbde1371d5eee39600a039b",
+    "bytes": 5257
+   },
+   "raw/naif/pck/pck00011.tpc": {
+    "sha256": "3dff7b1dbeceaa01f25467767d3fa25816051c85d162d1edf04acb310ee28bb1",
+    "bytes": 131226
+   },
+   "raw/naif/pck00011.tpc": {
+    "sha256": "3dff7b1dbeceaa01f25467767d3fa25816051c85d162d1edf04acb310ee28bb1",
+    "bytes": 131226
+   },
+   "raw/naif/spk/de442s.bsp": {
+    "sha256": "54d97562a5b094d298b1b8eafa5a2e17e3e010ce85e1a366d07f003ad159323c",
+    "bytes": 32701440
+   },
+   "raw/papers/1994SoPh..153...91N.pdf": {
+    "sha256": "3a0d1708622e7fae1bd4e35ac04514167f08706d808644d556ee0b636e590975",
+    "bytes": 427757
+   },
+   "raw/papers/arXiv-1510.07674v1.pdf": {
+    "sha256": "a4a38ecf4ab6ac71a38780456beffbc43c17c98ed320e82585a127057e498417",
+    "bytes": 39218
+   },
+   "raw/papers/arXiv-2009.05467v1.pdf": {
+    "sha256": "9c2e120d771c216836601a4fdd33286ac678aebc456dc58da96f3b1059015471",
+    "bytes": 10233840
+   },
+   "raw/solar/hybrid_reference_spectrum_p1nm_resolution_c2022-11-30_with_unc.nc": {
+    "sha256": "7255573e45e41dda651a760188d5f4275dfb5139c76bc514a72ab3ae400e9bf4",
+    "bytes": 2442585
+   },
+   "raw/validation/docs/LORRI-True-Exposure-Times.pdf": {
+    "sha256": "cfdb73e28cd085b858fb3d0d2972cdec0f6dc9e9fb38f5991be8cdc2fc13d8fe",
+    "bytes": 3431545
+   },
+   "raw/validation/docs/nh_soc_inst_icd.pdf": {
+    "sha256": "037fc81341f10e8624eb251b203caff9d736323ebb3e40273643c1371c0b6890",
+    "bytes": 11168072
+   },
+   "raw/validation/docs/weaver2020_lorri.pdf": {
+    "sha256": "db6aa6d3b5522898e2ecd09dc8ab008f37d5e5a9072ef3852aa6546c4226cf63",
+    "bytes": 8831132
+   },
+   "raw/validation/europa-nh-lorri-2007/lor_0034849319_0x630_sci.fit": {
+    "sha256": "f8260e9f94bd0b81b9946e1366aa7804b6c4c293478ed35ea4984146d3a8854b",
+    "bytes": 10535040
+   },
+   "raw/validation/europa-nh-lorri-2007/opus_nh-lorri-lor_0034849319.json": {
+    "sha256": "029b51bfd9cff6fa2735cd4ea3b696a998dc03417192db7076a95d582071dae1",
+    "bytes": 11527
+   },
+   "raw/validation/horizons/europa-nh-lorri-2007_LOR_0034849319_502_from_-98.txt": {
+    "sha256": "d7fef80309b0f6be6d01715b6aeb08bc078e567815c4320f266a0598ac4ee7fd",
+    "bytes": 4908
+   },
+   "raw/validation/horizons/europa-nh-lorri-2007_LOR_0034849319_502_from_-98_lts.txt": {
+    "sha256": "7450ed6d856f470b842ddf1284088208bf866c5ac197ed46a1c7a0baa43542b9",
+    "bytes": 4947
+   }
+  },
+  "implementation": {
+   "__init__.py": "5258905a044f90342740b8687ccbb81d01832673712022458b710460aa3aa03d",
+   "__main__.py": "f2a9d114190c7c27787746b74233420f9323a5cd0bdb049990a6329c04550d34",
+   "build.py": "cd3c20598a320e666f747bd7a14ee58e9779043e2db7bdbb6733d356db11609d",
+   "cie.py": "3d7bd52c4014802cf6c0b91b17c96230f4f96f4d63090311582ff6078420703b",
+   "cloud_pcl.py": "cb394557240e2f830dc00b5aa035fa433c82913999b0ece78fc01d8ffa0073c2",
+   "comet_model.py": "56acf2fc9bdc36524d07f83b0ccfc1a6a9e08c780a9a64fcdbd27eb2e61ad8e8",
+   "comet_sources.py": "8be869f6b91a31bf02c123ee7c7f754624c48e07072d45f3127129a48cafcd05",
+   "comet_tables/activity.json": "6db671d67ed15e080194f0d55226e4386356bcff6fd6ed8432da3e7eb3563c42",
+   "comet_window.py": "31d13f59eb1376ed92d599c2669e11581e36e6b90ed30802f45f524098e642ba",
+   "config.py": "79297e0a81cdf5b103e57c0093c871841e6bb5f6b81bd286a0bbfbe906648e9b",
+   "doctor.py": "659bec1f7d7e2dbd82870f7b9e150d871e85eb1c63099a2e1a7b298bb4a3b2bc",
+   "download.py": "26991a21d5ad79ab970dae8af533961ffa351ca02f3121a24b6300c33206110a",
+   "ephem_fixtures.py": "07e0e71ae004d3252ef71ba19b5025fad2fe0cb2efbc003a3186bcb641d9e535",
+   "ephem_horizons.py": "82e664d6d2211e580472cf99064c204a389e1473edce14fbe398eaa569ba6472",
+   "ephem_kernels.py": "10047487c7c42547430c718baa4d60de0eeb725b4a2391912feb6a1cea764f8b",
+   "ephem_orient.py": "6864a5007226ef0e250e271f00f7dead163e66d8209c6d3df3b99b12f86a60ba",
+   "ephem_satellites.py": "571dc8742e39b265f724028b4afdd5e57fb1a8baaa31f7897ea2eb72b32932e8",
+   "ephem_spk.py": "5e9b9e3d2fa935f3e011b886d30aa286c9315efa9c3d849c07ee0c7bca5e0632",
+   "nightglow_airglow.py": "0785c9179ecdb999c9255b292086e4f7e4da6d15aa2c837dee393ec3344843f8",
+   "nightglow_aurora.py": "fd3a7baf59f004db5f60552ab65dd7d412c6493d10f0fec1bd511c9d95d598b6",
+   "nightglow_tables/airglow.json": "4b8664c6f0085ccd84a2e8979afa2869f7da209ebad8376e66b68d50870639ff",
+   "nightglow_tables/aurora.json": "1ac6d86b26cb2e7a27a1eca64f885f05d6a3d0b517758a18694561038acbb0ff",
+   "output.py": "78a033945915c86502b17e2998b1699b42d047c56ca294c2c8b5c2f2b4bc5e26",
+   "paths.py": "601017cc13501b056e1a005a031323174e76d10d9ed72b9701e568babdd7251c",
+   "photometry/__init__.py": "13a29d40b3d9dd2935d1b228a2b40bc1a72c71a9fa3791a74e16cffa8659d50a",
+   "photometry/albedo.py": "4c05ebd2ac10ffb0b769235bb3fc8f027d340ffb1c6f606f524ff460ed3548f9",
+   "photometry/atmo.py": "8e8a9fec811787d264c8975f6e77de4786127cccc4989dfc9d1dc601c9b6d4f7",
+   "photometry/atmo_bodies.py": "445d4f7b520b7dd4f3c2547904fc84091cc884dcb5f1e66fa10a43ffafce8983",
+   "photometry/atmo_checks.py": "bd883ba5447527675030d4e1b6252e064d3773829fb023229245bb05430fa4d6",
+   "photometry/atmo_earth.py": "4b48d98e28ff8b5a3d5b6fb6e3026e773387b704e2f157bc3b7fb5474f2f5ad3",
+   "photometry/atmo_mars.py": "ba37d4c3ad821e21485c03ffbac33474b763f639a3910b5d7dc695bf73777d00",
+   "photometry/atmo_report.py": "ce4512cbc6845e58e7c247eaad286af824d0758ff35e54272fb520a8eba8ca9e",
+   "photometry/atmo_sources.py": "4a5b529f7a1ebb9075bf9bbb490035a37e7b9a5f7bf4f694f4bafab108817440",
+   "photometry/atmospheres.py": "0698274b84aafc643800a495c91c25fa2a7420b9e12e61d45bb1ae885a2aa2d4",
+   "photometry/bodies.py": "ac3ef1344444c46f7a5fd47b6a6fcd115fc59ac5235604f1f6f5180f064e9c99",
+   "photometry/common.py": "8868c3cfde14fd5cc9c02856180466e799e7af1a1304deaf0bf4010d5f0af9c5",
+   "photometry/diskint.py": "70cd7e36dd6f2503080e5e176a7df53e3c6f8b242f2b454a3fb1a454a7235f99",
+   "photometry/earth.py": "2ce0018b54483e00410a89e043482bd579f5af617945bc3e7412cccef410cb12",
+   "photometry/earth_data.py": "c39f836e3b7144a3bd288a66f876d15aa89dd4886ba29f2c73927d20d0a4136b",
+   "photometry/filters.py": "0bd6a9aa5d356572d21248973fa0e97717ce6b82f34f324674c6aaba336c0d7c",
+   "photometry/horizons.py": "8680cb2628fcee2283b06a307d4bcec6e466e8b1d2516e86e616bd770bb09613",
+   "photometry/moons.py": "95f2b4318fd3c8e060f131ae0c1d079e68bf83f2a580fec3334ae987118bfcfa",
+   "photometry/phase.py": "b9c1bd25d35fa338eb2ec33681af65f8ef2bb03bafed2df63ffb572e98de49d5",
+   "photometry/report.py": "08740afbe7c3f82ebd3b981e010323247687fbf3b566d48fd759d9aef5bdd5aa",
+   "photometry/ring_check.py": "83c1f8eb9a1a93b0c6202a962ce654dc93e3e611c458b4cca56febf2046cc7af",
+   "photometry/ring_components.py": "9b3bcf46cbddb45977084e14598962d68ae062ae91e803a458e7c37e7ecc09be",
+   "photometry/ring_reflectance.py": "46ac48167ecd8b6f839e5555b3e5deb1ffcf71703d516ff99f7c2e70491ce3e5",
+   "photometry/rings.py": "66deebcaaab92879a1f10d5b1b3faef60af82c779f2f88cf8dc36aeec352bc27",
+   "photometry/rings_jupiter.py": "d7184ecb6d4028665090cb96cce51b7db46ae0679ec0cca29004890dfec03cc2",
+   "photometry/rings_neptune.py": "0444c50738f085dce76b06fbcf293908d61e5bd58bf4bf679f91d448d2714412",
+   "photometry/rings_uranus.py": "79c48774d82bec055a1b68305e1db36605a30519f9ff3b13d2d3b8e6dd541978",
+   "photometry/rolo.py": "2a198b0e595e85b08697bef186b15a43848577436820af6f7070ec989081a727",
+   "photometry/smallbody_colors.py": "1bb3a049ca1b94a42966d257a73a563c0cff67c1dd2288e3e544ef03ae4ac1a9",
+   "photometry/solar.py": "f3011a872979c913acbc9a599aae526becece68d8a36608ba1c4781038d0724c",
+   "photometry/spatial.py": "bd15be699c48b48cc27164bb8325e4ea6c9782143e4fbe428bb78c53f53b98ed",
+   "photometry/tables/bodhaine_1999_rayleigh.json": "8dfb095393afd9768970cdd3aa0f7d4f6b55578c94efdbf439f921dafe0c9c3c",
+   "photometry/tables/buie_2010a_pluto.json": "556b2a2afe4b94f05f8ba0ac6a0c09fe148bc05df3c5a9b980e55e4fb9a9f101",
+   "photometry/tables/domingue_verbiscer_1997_hapke.csv": "39fcb8d14721c945376a59c9ba5a902c1b8aecc8b2ef94e1714a9d9507fe6945",
+   "photometry/tables/dones_1993_saturn_barkstrom.csv": "615df35e1e6472f5272a5aa84fea7cff2d97b5f614e1ff14ac2f0dc9a6a852b1",
+   "photometry/tables/filacchione_2022_tables.csv": "219df2be3e067b304453804c34770080d51a3dec884d6acaeb6bac5447640975",
+   "photometry/tables/fornasier_2024_phobos.json": "41de905f50e21d8f0d3893fabffd399eff5e55b3dbb86838098f995a066c381f",
+   "photometry/tables/french_2024_uranus_ring_modes.csv": "3d561b601cd0b83e61b719347deabaf13df25ad7a66617495a922b7c1a8d4371",
+   "photometry/tables/french_2024_uranus_ring_orbits.csv": "b16855ad779089a11c59aa7eff31ff19b3e245fd0fce56a6e299989694c31b21",
+   "photometry/tables/french_2024_uranus_ring_support_widths.csv": "7c4f1eaa807d00d47513ea622b3c641b0c2c637e4cad0c81b11832041af01a7d",
+   "photometry/tables/garcia_munoz_2017_titan.json": "257e407db23bb37a9114e948ef0feec6faac8cca8355a3ee8bb5f2e3ab9c50b3",
+   "photometry/tables/grav_2015_irregulars.json": "c10da490e416a135b3fbb0b016d4e9707ffb6326f662fc5874f388460657d911",
+   "photometry/tables/hedman_2023_zeta_ring_146deg.csv": "99c1f35c392135f6e442183044655df5f76d53cb2409fd1b6478ee654ae62639",
+   "photometry/tables/hedman_2025_jwst_ring_new.csv": "f0ddd0a9543522913e8edafbb33301df2a6ba176c5bb10ebfc219b0ec7378844",
+   "photometry/tables/hedman_chancia_2021_table3.csv": "f5c5c3489c14147c58bb5622fb65d1369502b0f329299c4558d8cb6ef7b86e44",
+   "photometry/tables/karkoschka_2001_uranian_phase.json": "db7eddd4b37ebabaeba19a6d7d7ba546b2c5392a51dcdfc76f808ca63e43d040",
+   "photometry/tables/karkoschka_disk_radii.json": "ecfa1112d80caa2c0622a751bd3281daea956660c618cb6a3df8662945a41975",
+   "photometry/tables/kieffer_stone_2005_rolo.json": "bdd36e43792ed1593f801bdd9bc8ebc245b5c46b85734439a529d1962d3938aa",
+   "photometry/tables/kinne_2019_macv2.json": "5add35571918eb11e0d5d933edb872801447b58fabf11c99f0d251d1bc31b7be",
+   "photometry/tables/lane_irvine_1973.csv": "cfc2d930c78d8f150f632cf078ad19b4eec3ab5d08afe7e2ba0816b1c4a9e989",
+   "photometry/tables/lane_irvine_1973_phase.csv": "007e9afb67b0369d48393ba0c28c8fe2266eb1269c70b4c9e98755c052d5a96d",
+   "photometry/tables/mallama_2017_table7.csv": "57c0d88ac4d398c0ef212713498bf93ead384138222ea82f823f4752551c6b60",
+   "photometry/tables/mallama_hilton_2018.json": "bb6bd5294803986d4ae2db15840c1711a9a8d5c40cfb94ec84680530ad34b996",
+   "photometry/tables/mars_dust.json": "dc36dc50dea678559450553b70dc763b588bf7eb17843031e32520c7134bd267",
+   "photometry/tables/mayorga_2020_table4.csv": "189fdc67457c557a1dd49b45f7edd596ab3cd8e2b2003b065b539dccf42cd922",
+   "photometry/tables/mayorga_2020_table5.csv": "2150366fac948e4a41b9c2eb77bdf743bda07cb18e07aa86733a60eeabf21d98",
+   "photometry/tables/neckel_labs_1994_table1.csv": "1f4a08d3aabe615f6cf70135dabe56124cae4006b867b2dec75c9efcbd76c943",
+   "photometry/tables/pluto_haze.json": "47f396f204a2f99fdd3830f80accf230cdebbf7447d6209e2432a63dee3824e6",
+   "photometry/tables/salo_french_2010_table4.csv": "9a1514f96d06c6b0630a84e461160bee3fd250f401118cfcd8d0cc65f9041402",
+   "photometry/tables/saturnian_opposition.json": "936fc17aa5b4de6203a7d9eb625ebde1ede7c2b08f6fabf427fdc53b26b232ab",
+   "photometry/tables/simonelli_veverka_io_hapke.csv": "5513e425a7a8a74c73f06975b590f067a4d2a1996bc95c7279e9f3728000a73c",
+   "photometry/tables/souami_2022_fig3b_arcs.csv": "a61d6c20179ac6e1ce8fe50382f3fc4bec681311246818b2b857b2853dbec852",
+   "photometry/tables/throop_2004_fig4_data.csv": "cb71ab2e5bedf6f59cf390f8526341c72c3229e900c39e1251c0fb889f2d02ac",
+   "photometry/tables/throop_2004_fig4_phase_curve.csv": "d65b4023838fffad79b68deb0524596560ea496053a8565bef05d6f0d56aaf3f",
+   "photometry/tables/throop_2004_fig6_spectrum.csv": "4168e6c6b86de427415d47fea000425c5dcf25d1168265343946c1e662944a57",
+   "photometry/tables/throop_2004_fig7_profiles.csv": "71423d7ce7652da01b24940fb3ba72ef92f1e2011b769614535dad65f511f9ed",
+   "photometry/tables/titan_disr_haze.json": "f415105cf8da270ef680ea8b1334fa2f58cba9200ade97f867853675aea6bfec",
+   "photometry/tables/titan_doose_2016_ssa.csv": "b65c28267d55cc2a48bedcee7ed0febd32e4c5afd9a814484413806735385402",
+   "photometry/tables/titan_garcia_munoz_2017_iss.csv": "13dcc06aaf8c514f6bbb6c5bbe70fd3104e225ee58bad2bbd2dd49aba83f284a",
+   "photometry/tables/us_standard_atmosphere_1976.json": "3e121e965021c6f85491c0e35a9ba9dfb36041d12186261b4184f58fe281942e",
+   "photometry/tables/venus_clouds.json": "bb52e9c9e70f7831afaa5a84b653d3a44be718c9ea7f042aeab2401fc0729029",
+   "photometry/tables/verbiscer_2022.json": "00c422c8ab5acdd58520fe1d897992e0060f31f12ab0a506e8f875ebcbe2cf18",
+   "photometry/tables/verbiscer_2022_table14.csv": "1faa79ba232ba914a059d6d2347aa7e0a82d733e74f19c44e4941ae0e6a8c36c",
+   "photometry/tables/wang_2024_saturn_fig7.csv": "f7d544869c9e715e2ffde44905c578fe46a319b0ee0c457251fed8a507ba39da",
+   "photometry/tables/wargnier_2025_deimos.json": "f35d9eabdc954d40813698e20d0b7ada764713843da63a33465bcd4cd8ab14e1",
+   "photometry/tables/willmer_2018_sun.json": "b1caea1ef1a40d73dad74c1c62aabcd011155f11dfeec5119d8ca9dc926990f1",
+   "photometry/titan_check.py": "82e868457d58769f7901b64d2ecdbfd419abe0940b91af5c14dcd292bab878a3",
+   "photometry/titan_digitize.py": "dad4c491fa23100458a9299cd2bc007d47c2dfba6684f65c67c56f73c2264e62",
+   "photometry/titan_rt.py": "8c97ab0ff30c41ae7876b448f1fcface0c9d9121989dd786b416e4cda066f3d6",
+   "sb_catalog.py": "9b8aae065c9f1e1541dde59d939f6c073ed96eecbe48a31d58e3bdeaf073a976",
+   "sb_class_colours.py": "0d01fa7337e97b7fd6842075af4678b05edf32b650e21a7023fb9264a839bc8b",
+   "sb_dynamics.py": "e7fcbf92c1d245ba73000e6038eea278c0f52549c254cb7714aa977078c53cdc",
+   "sb_fixtures.py": "1e9c7e4b353cb785c316fa3071e14c22d02e3264f6f7a8f4e7bf95c7843ae5f3",
+   "sb_model.py": "613e801cec38c24b105f2193e62931eeb173148df505b29988cf36b5a555e05d",
+   "sb_physical.py": "58a3bf11b0fc3c8fa9ead9f1d158afad70c078662432772fa971e047e6b100aa",
+   "sb_physical_sources.py": "4afd30cc999013c18ea9dec533ee9aa46668682a780ad37e2472a9fc73e27788",
+   "sb_report.py": "86268e6b69eb5ba9f8bd0805c499b50ba336afaef1311edc02e7197fe5e45dbd",
+   "sb_sbdb.py": "d81ee43463a2bb47e8d0c9bebc63983f3298f21465da463079b685f9a5706975",
+   "sb_table.py": "dfdd3e59409e6623fc2931c6aeaea5a28141b5c33f664df4f9467bda1028bf6a",
+   "sb_verify.py": "982c19262c704ac30c2e911432aca33cacc1c0412030b89b6401dc3e9082c222",
+   "schema.py": "6694d90ccede50d9e9f96600bad70bcc377096bd8bd1cf37e925aed99e72b6a8",
+   "shape_build.py": "0a5fec5054db7a228febd3c970fbfb33839ceb4163df3314a4b5992aa48eacc0",
+   "shape_catalog.py": "48298655986588a4cfc80756d8db515752f9eeb71e6d8cf431aa91aead9165c4",
+   "shape_damit.py": "8962f39a5e737ddecbb06882ee6f98de57c977341430a668b3ff518719a54335",
+   "shape_fixtures.py": "e7cd17266bb898d30a3cd5a5c2a6edc9ca5b01b0875cd043944f5600689593b5",
+   "shape_mesh.py": "7f93bead06a230b6ecddbb785ec62802bfd211c51ea418eb3c252499514d3ed3",
+   "shape_orient.py": "0c6cfa7397de48fc6848b4fb0640490869bf6bfbf74b16cc1f7dd884858c934b",
+   "shape_report.py": "b1cd587aa5fab6f7d6d5819cfd493f5c98c8895c615fd37bbc7a0b9b02f3a132",
+   "sky_corona.py": "f58eb9d1a06a7de20f244c8bdab08c966e84b677293374e2eb716d2da4bc9a6b",
+   "sky_diffuse.py": "8c35f0c3759d61ce3d677af35d3757467cf4abeb8751fabd85982f2f4a813143",
+   "sky_healpix.py": "cb44f952411d2d3b2593d4c6289614ecc6d2b9f75c76ae412d51a050908a9322",
+   "sky_tables/kelsall_1998.json": "249b708f7683b86d0618ab4da8fe9892a224a36c78d6f7de615359eb1176cd9e",
+   "sky_tables/lamy_2022_table5.json": "134ea694c5734a60b60bba14c840caa00c38fa994c486ad340e1e7de033c3985",
+   "sky_tables/leinert_1998.json": "eca60531a6be98bd44ccea21d3dfb655c86770755c70145ac5ed802d190c5b34",
+   "sky_tables/leinert_1998_table16.csv": "d5299c48f864a8e05894625ffca8b787be34240ab7b59b81fa6c2961da83ed82",
+   "sky_tables/leinert_1998_table17.csv": "c32caaae4f2d61cbb0eaa1ef3d7bd4ceddd0575e57c0d354032467e805538bb6",
+   "sky_tables/saito_1977.json": "6ff3753ad04a92d54d59e9fe4e63ea2575d4302eae01a64d652868cf3c98ac23",
+   "sky_tables/vandehulst_1950.json": "1e5d3c890e97ae2b5179380765da89306f09f9ffe80ff780dac0e25776c1457d",
+   "sky_zodi.py": "99b0ec3bc3ab09e134eebf8a2def0a465ad8e72b7caee1179a520346e9a2305e",
+   "stages/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "stages/bodies.py": "08afdadba6efac3e0002a32c8ddf2355cd703a3a1d4319d682894d8d67c03cd7",
+   "stages/comets.py": "972c951f2d897eedef04dca7b818208ca388dbc6d84691ebf174331fa786e011",
+   "stages/deepstars.py": "fa718471a2e83c3efb3db5819780c2eef6d0626d9cbc436811b8752b69f9a399",
+   "stages/ephemeris.py": "7cd4b68442ddbfe59de10fe724035f1aa7ae4226abacc4fdbfe291702a4b56cf",
+   "stages/light.py": "6bf1ad2878abfbc990a559bb90b49647d9e12115b40e8b83f2b8e3138e2ddae4",
+   "stages/nightglow.py": "6f1d176bfb37cbe9031bdbd94e1261939898ace953e11866ee1a6d370adf546b",
+   "stages/sbphotometry.py": "3917c72894b5b7ed9d0618a605cdc1e8fa1a310b2abe11b965c00d332c5e99b4",
+   "stages/shapes.py": "a5f710b4c41c01b1c643913844fd6654a0070a486cf1f5ea1af81073d61ff72b",
+   "stages/sky.py": "6dd514699b3093fe975ee2bee5df280eac653652d724eb6089583a34e2c48c07",
+   "stages/smallbodies.py": "223dfef9537b20b01461382d1ee11f65d91d58eb7bcffcd6e75241fb5465ca9c",
+   "stages/stars.py": "163c8b8cfbd7b782e2dd4fbd405ea60c85fb344cbf1da784d0c27dcc6e46cdca",
+   "stages/surfaces.py": "6f77f809f8d360ecb522a6621b6e83bc2757e60a9330d3cd07a2ad32eb7019bf",
+   "stages/synthetic.py": "2fb3797882549a3506fdc9a0f50e49fd9f031f37793a295b1149db89a436e475",
+   "stages/time.py": "29b6b90f66af1025e8728fe37a627e6cb9b1a96c3675f7eb012d490f3cf8fed6",
+   "stars_astrometry.py": "7126f3eb0a836761d0a5a40b93a9a0d0b2debf00ccc985b61beec3c852c90e4b",
+   "stars_catalogs.py": "cfcf32bb6cb1ca0beded3a4508dda59ebaa527dd55860358c59db27077a75d10",
+   "stars_deep.py": "56e2cb1f86137ec12e511edb19608eed4882fe149235eaceb09641dc8c2e0fe3",
+   "stars_format.py": "e7d81315d9148056d45c0179451bcb10367e8da7b097f772c83e4a19f33804c9",
+   "stars_gaia.py": "c363afe8b6ae704a1f75a0f64ffd17097c91a2c08702a64d9a1c7e77c31fe520",
+   "stars_light.py": "cb91490e506aa0b9e9d19b2dc3f47864078c10dc82e0a29abc47fa8c9d0a8805",
+   "surf_cog.py": "d5228ca48dbd0e2b424108efa6165e0be5415114af51fa48403154b09375c07c",
+   "surf_color.py": "307a7810f16975b1406c5b9b46453c40e7962eec537dbea1e37e38cd01c97fb5",
+   "surf_earth.py": "fd40c99d6a4360a8add98d57145fc9bea900d5151e5023ea0f6fd9c315df1034",
+   "surf_fetch.py": "9aee158db2fa23f221f3ce1d7e8b969a5a2def5d4018df128b9a5acf083a7325",
+   "surf_giants.py": "73fb36589f8e5fdf193c1cdb4e34e4196c89e76532261fdd927c1762cb8642bc",
+   "surf_gibs.py": "95533e78764ddd106d0a222a3d84af14ed57103c40bb0c030ba4370bcdc55c8f",
+   "surf_grid.py": "9b86ca3ec2dbbce32ddc5a351cdfb49609a30c98ca4753237a4a2a4a89b4fdd3",
+   "surf_hapke.py": "c92c6dbcd79c6b1cf869c20861d893878f270be07ae2d63135b3a23019bb03da",
+   "surf_layers.py": "bf19cfbec7af838c1c532a63b665f0f61dda1e3a333c42587791023dfbf90262",
+   "surf_mars.py": "1bc46fe5f3c4ad0089c07f1d7ce42a810b52e9a98fd8ec0a9bb8baa085ca775d",
+   "surf_mercury.py": "b3175f3306c504a5c33ba76780ac21dc6d04ae512d4d1cf1c54a1b22dc56bc9b",
+   "surf_moon.py": "2449ec52121485da2793261291a255cb26ca998c961469678351634cfc6398c7",
+   "surf_nh.py": "363d141326405e8f15633b945d8d68068de7719ac06068ee59e61e44926b153e",
+   "surf_pan.py": "d1ddd49a37f88e3150b1d79253c3e5089d2e915c1d961aecc9ec640230173037",
+   "surf_pds.py": "a6f16eb1b12ccba13572d85021244608f3cfa6de2c2ba2ad438ca919cae61b52",
+   "surf_preview.py": "0dd0e3bf41893fe042cfa85fd49506e03f5cf490599f701040b30bd455aa4eb6",
+   "surf_report.py": "f0c56f9e74acce3c799cb18207c59eb341c7fa3eab0501c3a4a20a685df4a90f",
+   "surf_tiles.py": "06f5fee5cce3e333d0983dfe71a8c6310b283823d0db1b6118556a7641e7c2fe",
+   "syn_model.py": "61b73c1ca68822c092827293fca997acb53edb95daa18c5ee5826862b7425a64",
+   "syn_outer.py": "4721105936eb994ab890d8e8927acc3177d852c6d06eae3c88ee826ad6d407e6",
+   "syn_sources.py": "cecfb59887b121160e7b14c73da178342307b495077db9a46cd74246c17d3a96",
+   "syn_tables/populations.json": "eae5ae475719970ea8d382470dec4c3cb9bdf984827127f2930b01e75165e32d",
+   "us76_upper.py": "a415447d38d04623d36356342aaac9679cb495e0f409a518342fef7dcfb94a0a",
+   "validation/__init__.py": "0624a235c97b37ed0a6f00a7425b92251faa28e9cf70930e6981c098f482b05b",
+   "validation/__main__.py": "dee8ccf4c32626dbb5bf94342063977a93d04a2992fdec4bbb3be941cb67abf5",
+   "validation/build.py": "3984f0c5d7073a9cdd9a652a758d35ecc6ac4d1fed6b05cf059b2848b3e14c3f",
+   "validation/cases.py": "4606e31fd8add5d8bda5d5c0e9d53a59d6c33a1aa917856d062d538c4d4e2805",
+   "validation/checks.py": "591f3cc261753ddfd3ca5975cd8d3c03d72bbb936f475f625162a2349ef67c29",
+   "validation/geometry.py": "fd02da9796633f7aa9a69823b0534162cf0c00f8bce63cba6fd80e3d3bbf8db7",
+   "validation/himawari.py": "8e802d56b3eed0f18e681ad6c58390b05346b71ac3943968c2c875ead3d4aff5",
+   "validation/photometry.py": "356ede5cc53bc52a3b785cb2c098ddf0f18b6189c7f93796c79a1ec6c73e2421",
+   "validation/readers.py": "6749c00ab2a576a88f4de3699208453ee05a7bf8edefd2ca4274181daf3d7968",
+   "validation/register.py": "a0ff6e331124d934cef23cafe644cd3f5006aaadb4dcc7c95644ba2e6502f6cb",
+   "validation/reproducibility.py": "df4e3af26cd05cef74271003decc443bafd03192325ca7beeec59b966e668aa6",
+   "validation/roi.py": "31aee0aa13d8298342baf6481604a28cd8e927423d79874ce8461d21c523dca0",
+   "validation/sources.py": "8f694035817ea9a98135de43e466f36e4f02631aa37a32663c3f075ad5cb9045"
+  },
+  "runtime": {
+   "python": "3.11.15",
+   "machine": "x86_64",
+   "libc": [
+    "glibc",
+    "2.43"
+   ],
+   "floatRounds": 1,
+   "spiceToolkit": "CSPICE_N0067",
+   "pngCompression": {
+    "pythonZlib": "1.3.1",
+    "pillowZlib": "1.3.1.zlib-ng"
+   },
+   "system": "Linux",
+   "libraries": {
+    "numpy": "2.4.6",
+    "scipy": "1.17.1",
+    "spiceypy": "8.2.0",
+    "astropy": "8.0.1",
+    "colour-science": "0.4.7",
+    "pillow": "12.3.0"
+   },
+   "numpyConfig": {
+    "Compilers": {
+     "c": {
+      "name": "gcc",
+      "linker": "ld.bfd",
+      "version": "14.2.1",
+      "commands": "cc"
+     },
+     "cython": {
+      "name": "cython",
+      "linker": "cython",
+      "version": "3.2.4",
+      "commands": "cython"
+     },
+     "c++": {
+      "name": "gcc",
+      "linker": "ld.bfd",
+      "version": "14.2.1",
+      "commands": "c++"
+     }
+    },
+    "Machine Information": {
+     "host": {
+      "cpu": "x86_64",
+      "family": "x86_64",
+      "endian": "little",
+      "system": "linux"
+     },
+     "build": {
+      "cpu": "x86_64",
+      "family": "x86_64",
+      "endian": "little",
+      "system": "linux"
+     }
+    },
+    "Build Dependencies": {
+     "blas": {
+      "name": "scipy-openblas",
+      "found": true,
+      "version": "0.3.31.188.0",
+      "detection method": "pkgconfig",
+      "include directory": "/opt/_internal/cpython-3.11.14/lib/python3.11/site-packages/scipy_openblas64/include",
+      "lib directory": "/opt/_internal/cpython-3.11.14/lib/python3.11/site-packages/scipy_openblas64/lib",
+      "openblas configuration": "OpenBLAS 0.3.31.188.0  USE64BITINT DYNAMIC_ARCH NO_AFFINITY Haswell MAX_THREADS=64",
+      "pc file directory": "/project/.openblas"
+     },
+     "lapack": {
+      "name": "scipy-openblas",
+      "found": true,
+      "version": "0.3.31.188.0",
+      "detection method": "pkgconfig",
+      "include directory": "/opt/_internal/cpython-3.11.14/lib/python3.11/site-packages/scipy_openblas64/include",
+      "lib directory": "/opt/_internal/cpython-3.11.14/lib/python3.11/site-packages/scipy_openblas64/lib",
+      "openblas configuration": "OpenBLAS 0.3.31.188.0  USE64BITINT DYNAMIC_ARCH NO_AFFINITY Haswell MAX_THREADS=64",
+      "pc file directory": "/project/.openblas"
+     }
+    },
+    "Python Information": {
+     "path": "/tmp/build-env-gjolnpt6/bin/python",
+     "version": "3.11"
+    },
+    "SIMD Extensions": {
+     "baseline": [
+      "X86_V2"
+     ],
+     "found": [
+      "X86_V3",
+      "X86_V4",
+      "AVX512_ICL"
+     ],
+     "not found": [
+      "AVX512_SPR"
+     ]
+    }
+   },
+   "scipyConfig": {
+    "Compilers": {
+     "c": {
+      "name": "gcc",
+      "linker": "ld.bfd",
+      "version": "14.2.1",
+      "commands": "cc"
+     },
+     "cython": {
+      "name": "cython",
+      "linker": "cython",
+      "version": "3.2.4",
+      "commands": "cython"
+     },
+     "c++": {
+      "name": "gcc",
+      "linker": "ld.bfd",
+      "version": "14.2.1",
+      "commands": "c++"
+     },
+     "fortran": {
+      "name": "gcc",
+      "linker": "ld.bfd",
+      "version": "14.2.1",
+      "commands": "gfortran"
+     },
+     "pythran": {
+      "version": "0.18.1",
+      "include directory": "../../tmp/build-env-vm5wde73/lib/python3.11/site-packages/pythran"
+     }
+    },
+    "Machine Information": {
+     "host": {
+      "cpu": "x86_64",
+      "family": "x86_64",
+      "endian": "little",
+      "system": "linux"
+     },
+     "build": {
+      "cpu": "x86_64",
+      "family": "x86_64",
+      "endian": "little",
+      "system": "linux"
+     },
+     "cross-compiled": false
+    },
+    "Build Dependencies": {
+     "blas": {
+      "name": "scipy-openblas",
+      "found": true,
+      "version": "0.3.30",
+      "detection method": "pkgconfig",
+      "include directory": "/opt/_internal/cpython-3.11.13/lib/python3.11/site-packages/scipy_openblas32/include",
+      "lib directory": "/opt/_internal/cpython-3.11.13/lib/python3.11/site-packages/scipy_openblas32/lib",
+      "openblas configuration": "OpenBLAS 0.3.30 DYNAMIC_ARCH NO_AFFINITY Haswell MAX_THREADS=64",
+      "pc file directory": "/project/",
+      "has ilp64": false
+     },
+     "lapack": {
+      "name": "scipy-openblas",
+      "found": true,
+      "version": "0.3.30",
+      "detection method": "pkgconfig",
+      "include directory": "/opt/_internal/cpython-3.11.13/lib/python3.11/site-packages/scipy_openblas32/include",
+      "lib directory": "/opt/_internal/cpython-3.11.13/lib/python3.11/site-packages/scipy_openblas32/lib",
+      "openblas configuration": "OpenBLAS 0.3.30 DYNAMIC_ARCH NO_AFFINITY Haswell MAX_THREADS=64",
+      "pc file directory": "/project/",
+      "has ilp64": false
+     },
+     "pybind11": {
+      "name": "pybind11",
+      "version": "3.0.2",
+      "detection method": "config-tool",
+      "include directory": "unknown"
+     }
+    },
+    "Python Information": {
+     "path": "/tmp/build-env-vm5wde73/bin/python",
+     "version": "3.11"
+    }
+   },
+   "cpuFeatures": {
+    "MMX": true,
+    "SSE": true,
+    "SSE2": true,
+    "SSE3": true,
+    "SSSE3": true,
+    "SSE41": true,
+    "POPCNT": true,
+    "SSE42": true,
+    "X86_V2": true,
+    "AVX": true,
+    "F16C": true,
+    "XOP": false,
+    "FMA4": false,
+    "FMA3": true,
+    "AVX2": true,
+    "LAHF": true,
+    "CX16": true,
+    "MOVBE": true,
+    "BMI": true,
+    "BMI2": true,
+    "LZCNT": true,
+    "GFNI": true,
+    "VPCLMULQDQ": true,
+    "VAES": true,
+    "X86_V3": true,
+    "AVX512F": true,
+    "AVX512CD": true,
+    "AVX512ER": false,
+    "AVX512PF": false,
+    "AVX5124FMAPS": false,
+    "AVX5124VNNIW": false,
+    "AVX512VPOPCNTDQ": true,
+    "AVX512VL": true,
+    "AVX512BW": true,
+    "AVX512DQ": true,
+    "AVX512VNNI": true,
+    "AVX512IFMA": true,
+    "AVX512VBMI": true,
+    "AVX512VBMI2": true,
+    "AVX512BITALG": true,
+    "AVX512FP16": false,
+    "AVX512BF16": true,
+    "AVX512_KNL": false,
+    "AVX512_KNM": false,
+    "AVX512_SKX": true,
+    "X86_V4": true,
+    "AVX512_CLX": true,
+    "AVX512_CNL": true,
+    "AVX512_ICL": true,
+    "AVX512_SPR": false,
+    "VSX": false,
+    "VSX2": false,
+    "VSX3": false,
+    "VSX4": false,
+    "VX": false,
+    "VXE": false,
+    "VXE2": false,
+    "NEON": false,
+    "NEON_FP16": false,
+    "NEON_VFPV4": false,
+    "ASIMD": false,
+    "FPHP": false,
+    "ASIMDHP": false,
+    "ASIMDDP": false,
+    "ASIMDFHM": false,
+    "SVE": false,
+    "RVV": false,
+    "LSX": false
+   },
+   "threads": {
+    "OPENBLAS_NUM_THREADS": "1",
+    "OMP_NUM_THREADS": "1",
+    "MKL_NUM_THREADS": "1"
+   }
+  },
+  "fits": [
+   {
+    "product": "LOR_0034849319",
+    "inputs": {
+     "pixels": {
+      "sha256": "f5f03241312ae596f84881bdec926e9d4ff2c50c8228e229c34d079ff3689895",
+      "shape": [
+       512,
+       512
+      ],
+      "dtype": "float64-le"
+     },
+     "targets": [
+      {
+       "naif": 502,
+       "pos": [
+        269103.9089801311,
+        -3037722.959716201,
+        -974977.6658241153
+       ],
+       "orient": [
+        [
+         0.8849376721276813,
+         -0.46566911193920657,
+         -0.006131446402855456
+        ],
+        [
+         0.41819221049163824,
+         0.8003706033295841,
+         -0.4295604409276472
+        ],
+        [
+         0.20494045850772794,
+         0.37757009350793136,
+         0.903017293829445
+        ]
+       ],
+       "toSun": [
+        312659320.78358513,
+        679841382.5213205,
+        283788613.89048153
+       ],
+       "radii": [
+        1562.6,
+        1560.3,
+        1559.5
+       ],
+       "rings": null
+      }
+     ],
+     "primary": 0,
+     "pitch": 9.926e-06,
+     "controls": {
+      "operation": "pointing",
+      "flips": [
+       true
+      ],
+      "imageSha256": "f8260e9f94bd0b81b9946e1366aa7804b6c4c293478ed35ea4984146d3a8854b",
+      "fitVersion": 2
+     },
+     "runtime": {
+      "python": "3.11.15",
+      "machine": "x86_64",
+      "libc": [
+       "glibc",
+       "2.43"
+      ],
+      "floatRounds": 1,
+      "spiceToolkit": "CSPICE_N0067",
+      "pngCompression": {
+       "pythonZlib": "1.3.1",
+       "pillowZlib": "1.3.1.zlib-ng"
+      },
+      "system": "Linux",
+      "libraries": {
+       "numpy": "2.4.6",
+       "scipy": "1.17.1",
+       "spiceypy": "8.2.0",
+       "astropy": "8.0.1",
+       "colour-science": "0.4.7",
+       "pillow": "12.3.0"
+      },
+      "numpyConfig": {
+       "Compilers": {
+        "c": {
+         "name": "gcc",
+         "linker": "ld.bfd",
+         "version": "14.2.1",
+         "commands": "cc"
+        },
+        "cython": {
+         "name": "cython",
+         "linker": "cython",
+         "version": "3.2.4",
+         "commands": "cython"
+        },
+        "c++": {
+         "name": "gcc",
+         "linker": "ld.bfd",
+         "version": "14.2.1",
+         "commands": "c++"
+        }
+       },
+       "Machine Information": {
+        "host": {
+         "cpu": "x86_64",
+         "family": "x86_64",
+         "endian": "little",
+         "system": "linux"
+        },
+        "build": {
+         "cpu": "x86_64",
+         "family": "x86_64",
+         "endian": "little",
+         "system": "linux"
+        }
+       },
+       "Build Dependencies": {
+        "blas": {
+         "name": "scipy-openblas",
+         "found": true,
+         "version": "0.3.31.188.0",
+         "detection method": "pkgconfig",
+         "include directory": "/opt/_internal/cpython-3.11.14/lib/python3.11/site-packages/scipy_openblas64/include",
+         "lib directory": "/opt/_internal/cpython-3.11.14/lib/python3.11/site-packages/scipy_openblas64/lib",
+         "openblas configuration": "OpenBLAS 0.3.31.188.0  USE64BITINT DYNAMIC_ARCH NO_AFFINITY Haswell MAX_THREADS=64",
+         "pc file directory": "/project/.openblas"
+        },
+        "lapack": {
+         "name": "scipy-openblas",
+         "found": true,
+         "version": "0.3.31.188.0",
+         "detection method": "pkgconfig",
+         "include directory": "/opt/_internal/cpython-3.11.14/lib/python3.11/site-packages/scipy_openblas64/include",
+         "lib directory": "/opt/_internal/cpython-3.11.14/lib/python3.11/site-packages/scipy_openblas64/lib",
+         "openblas configuration": "OpenBLAS 0.3.31.188.0  USE64BITINT DYNAMIC_ARCH NO_AFFINITY Haswell MAX_THREADS=64",
+         "pc file directory": "/project/.openblas"
+        }
+       },
+       "Python Information": {
+        "path": "/tmp/build-env-gjolnpt6/bin/python",
+        "version": "3.11"
+       },
+       "SIMD Extensions": {
+        "baseline": [
+         "X86_V2"
+        ],
+        "found": [
+         "X86_V3",
+         "X86_V4",
+         "AVX512_ICL"
+        ],
+        "not found": [
+         "AVX512_SPR"
+        ]
+       }
+      },
+      "scipyConfig": {
+       "Compilers": {
+        "c": {
+         "name": "gcc",
+         "linker": "ld.bfd",
+         "version": "14.2.1",
+         "commands": "cc"
+        },
+        "cython": {
+         "name": "cython",
+         "linker": "cython",
+         "version": "3.2.4",
+         "commands": "cython"
+        },
+        "c++": {
+         "name": "gcc",
+         "linker": "ld.bfd",
+         "version": "14.2.1",
+         "commands": "c++"
+        },
+        "fortran": {
+         "name": "gcc",
+         "linker": "ld.bfd",
+         "version": "14.2.1",
+         "commands": "gfortran"
+        },
+        "pythran": {
+         "version": "0.18.1",
+         "include directory": "../../tmp/build-env-vm5wde73/lib/python3.11/site-packages/pythran"
+        }
+       },
+       "Machine Information": {
+        "host": {
+         "cpu": "x86_64",
+         "family": "x86_64",
+         "endian": "little",
+         "system": "linux"
+        },
+        "build": {
+         "cpu": "x86_64",
+         "family": "x86_64",
+         "endian": "little",
+         "system": "linux"
+        },
+        "cross-compiled": false
+       },
+       "Build Dependencies": {
+        "blas": {
+         "name": "scipy-openblas",
+         "found": true,
+         "version": "0.3.30",
+         "detection method": "pkgconfig",
+         "include directory": "/opt/_internal/cpython-3.11.13/lib/python3.11/site-packages/scipy_openblas32/include",
+         "lib directory": "/opt/_internal/cpython-3.11.13/lib/python3.11/site-packages/scipy_openblas32/lib",
+         "openblas configuration": "OpenBLAS 0.3.30 DYNAMIC_ARCH NO_AFFINITY Haswell MAX_THREADS=64",
+         "pc file directory": "/project/",
+         "has ilp64": false
+        },
+        "lapack": {
+         "name": "scipy-openblas",
+         "found": true,
+         "version": "0.3.30",
+         "detection method": "pkgconfig",
+         "include directory": "/opt/_internal/cpython-3.11.13/lib/python3.11/site-packages/scipy_openblas32/include",
+         "lib directory": "/opt/_internal/cpython-3.11.13/lib/python3.11/site-packages/scipy_openblas32/lib",
+         "openblas configuration": "OpenBLAS 0.3.30 DYNAMIC_ARCH NO_AFFINITY Haswell MAX_THREADS=64",
+         "pc file directory": "/project/",
+         "has ilp64": false
+        },
+        "pybind11": {
+         "name": "pybind11",
+         "version": "3.0.2",
+         "detection method": "config-tool",
+         "include directory": "unknown"
+        }
+       },
+       "Python Information": {
+        "path": "/tmp/build-env-vm5wde73/bin/python",
+        "version": "3.11"
+       }
+      },
+      "cpuFeatures": {
+       "MMX": true,
+       "SSE": true,
+       "SSE2": true,
+       "SSE3": true,
+       "SSSE3": true,
+       "SSE41": true,
+       "POPCNT": true,
+       "SSE42": true,
+       "X86_V2": true,
+       "AVX": true,
+       "F16C": true,
+       "XOP": false,
+       "FMA4": false,
+       "FMA3": true,
+       "AVX2": true,
+       "LAHF": true,
+       "CX16": true,
+       "MOVBE": true,
+       "BMI": true,
+       "BMI2": true,
+       "LZCNT": true,
+       "GFNI": true,
+       "VPCLMULQDQ": true,
+       "VAES": true,
+       "X86_V3": true,
+       "AVX512F": true,
+       "AVX512CD": true,
+       "AVX512ER": false,
+       "AVX512PF": false,
+       "AVX5124FMAPS": false,
+       "AVX5124VNNIW": false,
+       "AVX512VPOPCNTDQ": true,
+       "AVX512VL": true,
+       "AVX512BW": true,
+       "AVX512DQ": true,
+       "AVX512VNNI": true,
+       "AVX512IFMA": true,
+       "AVX512VBMI": true,
+       "AVX512VBMI2": true,
+       "AVX512BITALG": true,
+       "AVX512FP16": false,
+       "AVX512BF16": true,
+       "AVX512_KNL": false,
+       "AVX512_KNM": false,
+       "AVX512_SKX": true,
+       "X86_V4": true,
+       "AVX512_CLX": true,
+       "AVX512_CNL": true,
+       "AVX512_ICL": true,
+       "AVX512_SPR": false,
+       "VSX": false,
+       "VSX2": false,
+       "VSX3": false,
+       "VSX4": false,
+       "VX": false,
+       "VXE": false,
+       "VXE2": false,
+       "NEON": false,
+       "NEON_FP16": false,
+       "NEON_VFPV4": false,
+       "ASIMD": false,
+       "FPHP": false,
+       "ASIMDHP": false,
+       "ASIMDDP": false,
+       "ASIMDFHM": false,
+       "SVE": false,
+       "RVV": false,
+       "LSX": false
+      },
+      "threads": {
+       "OPENBLAS_NUM_THREADS": "1",
+       "OMP_NUM_THREADS": "1",
+       "MKL_NUM_THREADS": "1"
+      }
+     },
+     "code": {
+      "register.py": "a0ff6e331124d934cef23cafe644cd3f5006aaadb4dcc7c95644ba2e6502f6cb",
+      "geometry.py": "fd02da9796633f7aa9a69823b0534162cf0c00f8bce63cba6fd80e3d3bbf8db7"
+     }
+    },
+    "freeResult": {
+     "cx": 275.7749939011974,
+     "cy": 226.6315982470917,
+     "rollDeg": 258.95910229496576,
+     "flipped": true,
+     "rss": 85.4834598686362,
+     "rssOtherParity": null,
+     "centreSigmaPx": 0.005899909896429181,
+     "residualRmsIoverF": 0.01805805971351992,
+     "modelAmplitudes": [
+      0.7086255908416169,
+      0.00102839854420361
+     ],
+     "cameraOrient": [
+      0.207881142459018,
+      -0.974515230088492,
+      -0.08429410973198247,
+      0.3153870537679998,
+      -0.014796337539695729,
+      0.948847761609286,
+      -0.9259138388238263,
+      -0.22383282762138673,
+      0.3042736077176927
+     ]
+    },
+    "result": {
+     "cx": 276.30896053987914,
+     "cy": 226.5216157765455,
+     "rollDeg": 270.1022330125114,
+     "flipped": true,
+     "rss": 90.48847114340717,
+     "rssOtherParity": null,
+     "centreSigmaPx": 0.005899909896429181,
+     "residualRmsIoverF": 0.01805805971351992,
+     "modelAmplitudes": [
+      0.7086255908416169,
+      0.00102839854420361
+     ],
+     "cameraOrient": [
+      0.015622674548038607,
+      -0.9963146240845481,
+      -0.08433920722435115,
+      0.30662657374978164,
+      -0.07551152162990613,
+      0.9488298869510835,
+      -0.9517016740084235,
+      -0.04068390266926463,
+      0.3043168476327955
+     ]
+    }
+   }
+  ],
+  "optimizer": "deterministic 3-degree exhaustive roll/FFT translation seed, explicit Nelder-Mead simplex; no random seed or random draws; see hashed register.py for stopping criteria",
+  "uncertaintyCriterion": "no relaxed byte criterion: centreSigmaPx is centre-only, registrationSigmaPx includes the stated systematic floor, and no roll covariance is available"
+ }
 }
