@@ -2,9 +2,10 @@
 // seven float32 are the star layout [dirX, dirY, dirZ, X, Y, Z, S] (ICRF unit vector from the camera, illuminance at
 // the eye in lux), `strideFloats` floats per record (e.g. the small-body field's 8: the 8th holds its object index).
 // The buffer is produced on the GPU each frame by its owner; the renderer only reads it. The records go through the
-// same cull (visibility threshold against the local background, eye model) and point rendering as the stars, with
-// the same limitations: points are drawn at infinite depth, so a resolved body occludes them even when they are in
-// front of it.
+// same cull (visibility threshold against the local background, eye model) and point rendering as the stars (every
+// record in the frame adds its light to the physical point image; the cull decides which are displayed as points),
+// with the same limitations: points are drawn at infinite depth, so a resolved body occludes them even when they
+// are in front of it.
 
 export interface PointSourceBuffer {
   buffer: GPUBuffer;
@@ -17,6 +18,8 @@ export interface CullBindings {
   frameUB: GPUBuffer;
   eyeUB: GPUBuffer;
   visible: GPUBuffer;
+  /** The records in the frame that fail the visibility test (light in the point image, not displayed). */
+  unseen: GPUBuffer;
   args: GPUBuffer;
   bgView: GPUTextureView;
   srcs: GPUBuffer;
@@ -63,6 +66,7 @@ export class ExtraPointSources {
         { binding: 6, resource: { buffer: this.info } },
         { binding: 7, resource: { buffer: b.srcs } },
         { binding: 8, resource: { buffer: b.limbs } },
+        { binding: 9, resource: { buffer: b.unseen } },
       ],
     }));
     pass.dispatchWorkgroups(gx, gy);
