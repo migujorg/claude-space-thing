@@ -47,6 +47,16 @@ def runner(tmp_path, monkeypatch):
 
     monkeypatch.setattr(build, "load_stage", module)
 
+    outcomes = {}
+    summary = build.print_summary
+
+    def capture_summary(rows, *args):
+        outcomes.clear()
+        outcomes.update(rows)
+        summary(rows, *args)
+
+    monkeypatch.setattr(build, "print_summary", capture_summary)
+
     def invoke(stage, sets=None, dry_run=False, adopt=False):
         params = config.resolve("full", sets or {}, environ={})
         plan = build.Plan([stage], set(), {}, "full", False)
@@ -55,7 +65,7 @@ def runner(tmp_path, monkeypatch):
         assert rc == (1 if adopt else 0)
         return build.read_manifest()
 
-    return types.SimpleNamespace(invoke=invoke, source=source, out=tmp_path)
+    return types.SimpleNamespace(invoke=invoke, source=source, out=tmp_path, outcomes=outcomes)
 
 
 def changed_partial(runner, stage, filters):
@@ -81,7 +91,7 @@ def test_full_build_after_changed_code_and_partial_run_is_stale(runner, stage, f
     changed_partial(runner, stage, filters)
     capsys.readouterr()
     runner.invoke(stage, dry_run=True)
-    assert "would run" in capsys.readouterr().out
+    assert runner.outcomes[stage].status == "would run"
 
 
 @pytest.mark.parametrize("stage,filters", FILTERS)
@@ -93,7 +103,7 @@ def test_filtered_run_never_resumes_carried_over_products(runner, stage, filters
     (runner.out / "manifest.json").write_text(json.dumps(partial))
     capsys.readouterr()
     runner.invoke(stage, filters, dry_run=True)
-    assert "would run" in capsys.readouterr().out
+    assert runner.outcomes[stage].status == "would run"
 
 
 @pytest.mark.parametrize("stage,filters", FILTERS)
@@ -113,9 +123,9 @@ def test_complete_profile_output_resumes_and_full_output_is_stale(runner, stage,
     assert record["status"] == "built" and "partialParams" not in record
     capsys.readouterr()
     runner.invoke(stage, sets, dry_run=True)
-    assert "up to date" in capsys.readouterr().out
+    assert runner.outcomes[stage].status == "up to date"
     runner.invoke(stage, dry_run=True)
-    assert "would run" in capsys.readouterr().out
+    assert runner.outcomes[stage].status == "would run"
 
 
 def test_full_rebuild_replaces_partial_record_and_resumes(runner, capsys):
@@ -125,4 +135,4 @@ def test_full_rebuild_replaces_partial_record_and_resumes(runner, capsys):
     assert (runner.out / "surfaces/301/albedo.json").read_text() == "# version 2\n"
     capsys.readouterr()
     runner.invoke("surfaces", dry_run=True)
-    assert "up to date" in capsys.readouterr().out
+    assert runner.outcomes["surfaces"].status == "up to date"
