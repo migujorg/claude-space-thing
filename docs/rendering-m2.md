@@ -134,17 +134,29 @@ These are per-body constant parameter sets. Per-texel parameters (the Moon's `ha
   I(α) = (1/πR²) ∫ r(μ0, μ, α) · M̄(lat) dA_proj,
 
 computed per channel. Here pΦ is albedoXYZS·Φ(α), or the disk model's value (§4), and M̄ is the map's
-zonal (rotation-averaged) mean. I is integrated in float64 by Gauss–Legendre quadrature over the lit
-and visible lune in photometric longitude and latitude, and cached per geometry. The disk integral of
-the rendered body then reproduces the measured pΦ·(1/d²)(R/Δ)²:
+zonal (rotation-averaged) mean. For a sphere, the float64 `MotionNormalization` uses analytic bare laws,
+Hapke phase interpolation, and converged quadrature/harmonic sums for zonal maps, with actual phase/pole.
+The sphere's rendered integral reproduces pΦ·(1/d²)(R/Δ)², exactly for zonal maps and on average over
+rotation for maps with longitude structure. Relief is omitted.
 
-- exactly, for any model and any map without longitude structure;
-- on average over the rotation, for any map. Real rotational light curves survive rather than being
-  normalized away.
+For an unequal-radii ellipsoid, I is the **reference-view ellipsoid integral**, as declared by
+`photometry.json` `albedoMeasurementView` (architecture §4.3). The denominator depends on the phase,
+radii, law, map and that fixed reference, never on the current frame's latitude. Jupiter and Saturn use
+the equator-on reference of their 1995 albedo; other unstated views use the explicitly estimated uniform
+orientation mean. No per-body flux factors are stored. At another latitude, keep this radiance scale and
+let the projected area and law change the flux; the point/glare receives `I_current/I_ref` times the
+contract value. An in-domain disk model gives its current-geometry photometry directly.
 
-Tests check this by brute-force integration over the sphere (Lambert and Hapke, a banded map and a
-spotted map, < 0.5 %). For plain Lambert without a map, I = (2/3)Φ_L(α) exactly (the M1 formula). The
-normalization ignores relief (height maps).
+`EllipsoidNormalization` changes variables to surface normals n. The law cosines are n·s and n·o;
+projected area is μ·(abc)²/(n·D²n)² dΩ_n. The zonal profile evaluated here is that exact Jacobian divided
+by R², multiplied by M̄ at the **position's planetocentric latitude**, x = D²n/|Dn|. Thus it integrates
+law × map over the projected ellipsoid, rather than multiplying a sphere integral by a projected area.
+Map interpolation knots are transformed exactly into normal latitude. Smooth integration cuts introduce
+no resampling or replacement of the map. The existing motion quadrature caches each transformed profile;
+equator-on Minnaert separates into a cached latitude moment and a longitude moment. The orientation-mean
+fallback averages the Jacobian/map first, then multiplies the bare-law integral. The sphere path is unchanged.
+Tests independently sum the original parameterized ellipsoid surface, including Jupiter at 6.8° and Saturn
+at 5.7°, and test that a pole-on point and disk agree within 0.5%.
 
 **Verification of the models.**
 
@@ -435,7 +447,7 @@ snapshot's per-body photometry and the frame preparation.
     Lambert-distributed, normalized to its measured disk photometry: no body has a `spatialModel` in the
     current products. Only one per-texel layer is bound per frame.
   - The normalization uses the zonal mean of level 0 (512 × 256), and ignores relief and the
-    ellipsoid's departure from a sphere.
+    higher-level longitude structure; it includes the ellipsoid’s normals and area measure (§2).
   - Pyramid levels above 10 are not addressed.
 - **Geometry:** silhouettes are ellipsoids (no displacement), and terrain does not occlude terrain along
   the view ray.

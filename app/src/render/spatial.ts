@@ -8,10 +8,10 @@
 //
 // r is the model's radiance factor (I/F), M the surface map's relative reflectance and M̄ its zonal
 // (rotation-averaged) mean. Then ∫ L dΩ at a distant observer, averaged over the body's rotation, is
-// exactly albedoXYZS·(1/d²)(R/Δ)²·Φ(α) for any model and any map. For a map without longitude
+// exactly albedoXYZS·(1/d²)(R/Δ)²·Φ(α) for spheres (ellipsoids use their fixed albedo reference below). For a map without longitude
 // structure it holds at every instant. This file is the float64 reference; shaders.ts mirrors lawRadf.
 
-import type { PhaseDependent, SpatialPhotometricModel } from '../data/schema';
+import type { AlbedoMeasurementView, PhaseDependent, SpatialPhotometricModel } from '../data/schema';
 import type { V3 } from './raycast';
 
 export type XYZS = [number, number, number, number];
@@ -257,9 +257,16 @@ export interface ZonalProfile {
   rows: number;
   /** rows × 4 values (XYZS interleaved). */
   mean: Float64Array;
+  /** Internal Gauss-map profiles: exact sampler and its interpolation/geometry cuts, in radians. */
+  sample?: (sinLat: number, out: number[]) => void;
+  cuts?: number[];
+  slopeBound?: XYZS;
+  maxBound?: XYZS;
+  minBound?: XYZS;
 }
 
 function zonalAt(z: ZonalProfile, sinLat: number, out: number[]): void {
+  if (z.sample) { z.sample(sinLat, out); return; }
   const lat = Math.asin(Math.max(-1, Math.min(1, sinLat)));
   const v = ((Math.PI / 2 - lat) / Math.PI) * z.rows - 0.5;
   const j0 = Math.max(0, Math.min(z.rows - 1, Math.floor(v)));
@@ -282,7 +289,7 @@ function zonalDiskIntegral(law: ResolvedLaw, a: number, zonal: { profile: ZonalP
   const incidence = (v: V3) => sa * v[0] + ca * v[2];
   const pv = P[2], ps = incidence(P), ev = E[2], es = incidence(E), fv = F[2], fs = incidence(F);
   const cuts = [-Math.PI / 2, Math.PI / 2];
-  for (let j = 0; j < zonal.profile.rows; j++) cuts.push(Math.PI * (0.5 - (j + 0.5) / zonal.profile.rows));
+  cuts.push(...profileCuts(zonal.profile));
   // Latitudes where a circle becomes tangent to the limb, terminator, or i=e great circle.
   const sd = Math.hypot(sa, ca - 1);
   for (const pd of [pv, ps, ...(sd > 1e-12 ? [(ps - pv) / sd] : [])]) {
@@ -427,6 +434,7 @@ export function mapDiskIntegral(
   f: (lat: number, lon: number, mu0: number, mu: number, g: number) => XYZS,
   n = 20,
   rotations = 1,
+  radii?: V3,
 ): XYZS {
   const a = Math.min(Math.max(alpha, 0), Math.PI);
   const lam0 = a - Math.PI / 2, lam1 = Math.PI / 2;
@@ -434,6 +442,8 @@ export function mapDiskIntegral(
   const { x, w } = gaussLegendre(n);
   const sa = Math.sin(a), ca = Math.cos(a);
   const [X, Y, Z] = frame;
+  const R = radii ? Math.cbrt(radii[0]*radii[1]*radii[2]) : 1;
+  const d = radii ? radii.map(v=>(v/R)**2) : [1,1,1];
   const acc = [0, 0, 0, 0];
   for (let p = 0; p < n; p++) {
     const lam = lam0 + ((x[p] + 1) / 2) * (lam1 - lam0);
@@ -450,9 +460,12 @@ export function mapDiskIntegral(
       const bx = px * X[0] + py * Y[0] + pz * Z[0];
       const by = px * X[1] + py * Y[1] + pz * Z[1];
       const bz = px * X[2] + py * Y[2] + pz * Z[2];
-      const lat = Math.asin(Math.max(-1, Math.min(1, bz)));
-      const lon0 = Math.atan2(by, bx);
-      const wt = (mu * cb * wl * wb) / rotations;
+      const den=d[0]*bx*bx+d[1]*by*by+d[2]*bz*bz;
+      const jac=radii?d[0]*d[1]*d[2]/den**2:1;
+      const position=radii?[d[0]*bx,d[1]*by,d[2]*bz]:[bx,by,bz];
+      const lat = Math.asin(Math.max(-1, Math.min(1, radii?position[2]/Math.hypot(...position):bz)));
+      const lon0 = Math.atan2(position[1],position[0]);
+      const wt = (mu * cb * wl * wb * jac) / rotations;
       for (let k = 0; k < rotations; k++) {
         let lon = lon0 + (2 * Math.PI * k) / rotations;
         if (lon > Math.PI) lon -= 2 * Math.PI;
@@ -552,6 +565,10 @@ function cubic(c: PhaseCell, t: number): number {
     + 4.5 * u * (u - 1 / 3) * (u - 2 / 3) * e;
 }
 
+function profileCuts(z: ZonalProfile): number[] {
+  return z.cuts ?? Array.from({ length: z.rows }, (_, j) => Math.PI * (0.5 - (j + 0.5) / z.rows));
+}
+
 interface ZonalSpectrum { coeff: Float64Array; energy: XYZS; min: XYZS; max: XYZS; slope: XYZS; knots: Float64Array }
 const SPECTRAL_MAX = 512;
 /** M(y)=sum c_l P_l(y). Composite GL at the actual row knots integrates the input,
@@ -559,16 +576,20 @@ const SPECTRAL_MAX = 512;
 function zonalSpectrum(z: ZonalProfile): ZonalSpectrum {
   const coeff = new Float64Array((SPECTRAL_MAX + 1) * 4), energy: XYZS = [0, 0, 0, 0];
   const min: XYZS = [Infinity, Infinity, Infinity, Infinity], max: XYZS = [0, 0, 0, 0], slope: XYZS = [0, 0, 0, 0];
-  const knots = new Float64Array(z.rows), cuts = [-Math.PI / 2];
+  const innerCuts = profileCuts(z).sort((a, b) => a - b);
+  const knots = Float64Array.from(innerCuts, Math.sin), cuts = [-Math.PI / 2, ...innerCuts, Math.PI / 2];
   for (let j = 0; j < z.rows; j++) {
-    const lat = Math.PI * ((j + 0.5) / z.rows - 0.5);
-    cuts.push(lat); knots[j] = Math.sin(lat);
+
     for (let c = 0; c < 4; c++) {
       min[c] = Math.min(min[c], z.mean[4 * j + c]); max[c] = Math.max(max[c], z.mean[4 * j + c]);
       if (j > 0) slope[c] = Math.max(slope[c], Math.abs(z.mean[4 * j + c] - z.mean[4 * (j - 1) + c]) * z.rows / Math.PI);
     }
   }
-  cuts.push(Math.PI / 2);
+  for (let c = 0; c < 4; c++) {
+    if (z.slopeBound) slope[c] = z.slopeBound[c];
+    if (z.maxBound) max[c] = z.maxBound[c];
+    if (z.minBound) min[c] = z.minBound[c];
+  }
   const gl = gaussLegendre(24), vals = [0, 0, 0, 0];
   for (let j = 1; j < cuts.length; j++) for (let q = 0; q < gl.x.length; q++) {
     const lat = cuts[j - 1] + (gl.x[q] + 1) * (cuts[j] - cuts[j - 1]) / 2, y = Math.sin(lat);
@@ -767,12 +788,16 @@ function crescentIntegral(law: ResolvedLaw, a: number, pole: V3, z: ZonalProfile
       const rawRow = Math.floor((0.5 - midLat / Math.PI) * z.rows - 0.5);
       const row = Math.max(0, Math.min(z.rows - 1, rawRow)), next = Math.min(row + 1, z.rows - 1);
       let weight = 0, latitudeMoment = 0;
+      const sampled = [0, 0, 0, 0];
       for (let q = 0; q < bg.x.length; q++) {
         const b = uniqueLatitudes[j - 1] + (bg.x[q] + 1) * db, cb = Math.cos(b);
         const lat = Math.asin(Math.max(-1, Math.min(1, A * cb + P[1] * Math.sin(b))));
         let f = Math.pow(cb, s + 1) * bg.w[q] * db * wl * lon;
         if (law.kind === LAW.barkstrom) f *= Math.min(1, cb * cl / 1e-3);
-        weight += f; latitudeMoment += f * lat;
+        if (z.sample) {
+          zonalAt(z, Math.sin(lat), sampled);
+          for (let c = 0; c < 4; c++) acc[c] += f * sampled[c];
+        } else { weight += f; latitudeMoment += f * lat; }
       }
       const tMoment = rawRow < 0 || row === z.rows - 1 ? 0 : (z.rows / 2 - 0.5 - row) * weight - z.rows / Math.PI * latitudeMoment;
       for (let c = 0; c < 4; c++) acc[c] += z.mean[row * 4 + c] * weight + (z.mean[next * 4 + c] - z.mean[row * 4 + c]) * tMoment;
@@ -927,6 +952,195 @@ export class MotionNormalization {
       return scalarXYZS(Math.exp(cubic(cells[lo], t)) * hapkePhaseFactor(law, a));
     }
     return lawDiskIntegral(law, a, undefined, law.kind === LAW.hapke ? 24 : 32);
+  }
+}
+
+/** Ellipsoid axes in km; optional photometric axes expressed in the body frame for triaxial bodies. */
+export interface EllipsoidGeometry {
+  radii: V3;
+  pole: V3;
+  axes?: [V3, V3, V3];
+}
+
+/** Normal-space change of variables (Gauss map), not an area-only correction.
+ * x=D²n/|Dn|, dA=(abc)²/(n·D²n)² dΩ_n. Cosines are n·s and n·o;
+ * maps use the latitude of x, NOT that of n. Radii are divided by the volumetric mean.
+ * Oblate bodies have a zonal Jacobian, so the existing moving integral can integrate
+ * the exact Jacobian times the exact piecewise-linear map, without resampling the map. */
+export class EllipsoidNormalization {
+  private motion = new MotionNormalization();
+  private bare = new MotionNormalization();
+  private profiles = new WeakMap<ZonalProfile, Map<string, ZonalProfile>>();
+  private plain = new Map<string, ZonalProfile>();
+  private means = new WeakMap<ZonalProfile, XYZS>();
+  private equatorMoments = new WeakMap<ZonalProfile, Map<string, XYZS>>();
+  private exact = new Map<string, XYZS>();
+
+  private profile(radii: V3, map?: ZonalProfile): ZonalProfile {
+    const R = Math.cbrt(radii[0] * radii[1] * radii[2]);
+    const a = radii[0] / R, c = radii[2] / R, a2 = a*a, c2 = c*c;
+    const key = `${a}:${c}`;
+    let cache = this.plain;
+    if (map) { let found = this.profiles.get(map); if (!found) this.profiles.set(map, found = new Map()); cache = found; }
+    const previous = cache.get(key); if (previous) return previous;
+    const sample = (t: number, out: number[]) => {
+      const positionZ = c2 * t / Math.hypot(a2 * Math.sqrt(Math.max(0, 1-t*t)), c2*t);
+      if (map) zonalAt(map, positionZ, out); else out.fill(1);
+      const jac = a2*a2*c2 / (a2 + (c2-a2)*t*t)**2;
+      for (let k=0;k<4;k++) out[k] *= jac;
+    };
+    // Map kinks transform exactly to normal latitude. Extra smooth cuts resolve the
+    // Jacobian on bare ellipsoids; they are integration cuts, never interpolation nodes.
+    const cuts = Array.from({length:31},(_,j) => Math.PI*((j+1)/32-0.5));
+    if (map) for (const lat of profileCuts(map)) cuts.push(Math.atan2(a2*Math.sin(lat),c2*Math.cos(lat)));
+    cuts.sort((x,y)=>x-y);
+    const unique = cuts.filter((v,j)=>j===0 || v-cuts[j-1]>1e-14);
+    const rows = 1024, mean = new Float64Array(rows*4), values = [0,0,0,0];
+    for (let j=0;j<rows;j++) { sample(Math.sin(Math.PI*(0.5-(j+0.5)/rows)),values); mean.set(values,4*j); }
+    // Conservative analytic slope of W(t) M(lat_position(t)) in normal latitude.
+    const low=Math.min(a2,c2), high=Math.max(a2,c2), wMax=a2*a2*c2/low**2;
+    const wSlope=4*a2*a2*c2*Math.abs(c2-a2)/low**3;
+    const slopeBound: XYZS=[0,0,0,0];
+    for (let k=0;k<4;k++) {
+      let max=1, slope=0;
+      if (map) for (let j=0;j<map.rows;j++) { max=Math.max(max,map.mean[4*j+k]); if(j>0) slope=Math.max(slope,Math.abs(map.mean[4*j+k]-map.mean[4*(j-1)+k])*map.rows/Math.PI); }
+      slopeBound[k]=wSlope*max+wMax*slope*high/low;
+    }
+    const maxBound: XYZS = [1,1,1,1], minBound: XYZS = [1,1,1,1];
+    if (map) for(let k=0;k<4;k++) {
+      maxBound[k]=0; minBound[k]=Infinity;
+      for(let j=0;j<map.rows;j++) {maxBound[k]=Math.max(maxBound[k],map.mean[4*j+k]);minBound[k]=Math.min(minBound[k],map.mean[4*j+k]);}
+    }
+    for(let k=0;k<4;k++) {maxBound[k]*=wMax;minBound[k]*=a2*a2*c2/high**2;}
+    const profile={rows,mean,sample,cuts:unique,slopeBound,maxBound,minBound}; cache.set(key,profile); return profile;
+  }
+
+  get(law: ResolvedLaw, alpha: number, geometry: EllipsoidGeometry, map?: ZonalProfile): XYZS {
+    const [a,b,c]=geometry.radii;
+    if(a===b && b===c) return this.bare.get(law,alpha,map?{profile:map,pole:geometry.pole}:undefined);
+    if(a===b) {
+      const profile = this.profile(geometry.radii,map);
+      if ((law.kind === LAW.minnaert || law.kind === LAW.barkstrom) && geometry.pole[0] === 0 && geometry.pole[2] === 0) {
+        // At the equator-on reference the law separates in photometric latitude and
+        // longitude. Integrate the exact profile only once per exponent, not per frame.
+        let moments = this.equatorMoments.get(profile);
+        if (!moments) this.equatorMoments.set(profile, moments = new Map());
+        const momentKey = `${law.kind}:${law.p}:${Math.sign(geometry.pole[1])}`;
+        let latitude = moments.get(momentKey);
+        if (!latitude) {
+          const gl = gaussLegendre(16), vals = [0,0,0,0], cuts = [-Math.PI/2,...profile.cuts!,Math.PI/2];
+          latitude = [0,0,0,0];
+          for(let j=1;j<cuts.length;j++)for(let i=0;i<gl.x.length;i++) {
+            const half=(cuts[j]-cuts[j-1])/2,beta=cuts[j-1]+(gl.x[i]+1)*half;
+            profile.sample!(Math.sin(beta)*Math.sign(geometry.pole[1]),vals);
+            const exponent = law.kind === LAW.minnaert ? 2*law.p+1 : law.p+1;
+            const weight=Math.cos(beta)**exponent*gl.w[i]*half;
+            for(let k=0;k<4;k++)latitude[k]+=weight*vals[k];
+          }
+          if(moments.size>64)moments.clear(); moments.set(momentKey,latitude);
+        }
+        const longitude=longitudeMoments(law,alpha,0).Q[0]/Math.PI;
+        const value = latitude.map(v=>v*longitude) as XYZS;
+        if (law.kind === LAW.minnaert) return value;
+        const max = profile.maxBound!;
+        const floorBound=2*Math.pow(1e-3,law.p+1)/((law.p+1)*(law.p+2));
+        if(value.every((v,k)=>floorBound*max[k]<1e-6*v))return value;
+        // The only nonseparable term is Barkstrom's emission-cosine floor.
+        // Here its material strip is integrated exactly, including the Jacobian/map,
+        // rather than substituting a limb map value at the narrowest crescents.
+        const correction=(order:number):XYZS=>{
+          const gl=gaussLegendre(order),acc:XYZS=[0,0,0,0],vals=[0,0,0,0],sa=Math.sin(alpha),ca=Math.cos(alpha);
+          if(ca>=0)throw new Error('Barkstrom equator floor bound unexpectedly unresolved before quadrature domain');
+          const threshold=-ca*1e-3/(sa*Math.sqrt(1-1e-6));
+          const cuts=[-Math.PI/2,...profile.cuts!,Math.PI/2];
+          if(threshold<1) {const cut=Math.acos(threshold);cuts.push(-cut,cut);cuts.sort((x,y)=>x-y);}
+          for(let segment=1;segment<cuts.length;segment++)for(let j=0;j<order;j++) {
+            const half=(cuts[segment]-cuts[segment-1])/2,u=gl.x[j]*Math.PI/2;
+            const phi=(cuts[segment]+cuts[segment-1])/2+half*Math.sin(u),cp=Math.cos(phi),sp=Math.sin(phi);
+            const upper=Math.min(1e-3,sa*cp/Math.hypot(ca,sa*cp));
+            for(let i=0;i<order;i++) {
+              const mu=(gl.x[i]+1)*upper/2,root=Math.sqrt(1-mu*mu),mu0=sa*root*cp+ca*mu;
+              if(mu0<=0)continue;
+              profile.sample!(root*sp*Math.sign(geometry.pole[1]),vals);
+              const w=Math.pow(mu*mu0/(mu+mu0),law.p)*(1-mu/1e-3)*gl.w[i]*upper/2*gl.w[j]*half/2*Math.cos(u);
+              for(let k=0;k<4;k++)acc[k]+=w*vals[k];
+            }
+          }
+          return acc;
+        };
+        let previous=correction(4);
+        for(let order=8;order<=64;order*=2) {
+          const next=correction(order);
+          if(next.every((v,k)=>Math.abs(v-previous[k])<1e-6*value[k]))return value.map((v,k)=>v-next[k]) as XYZS;
+          previous=next;
+        }
+        throw new Error('Barkstrom equator floor correction did not converge');
+      }
+      return this.motion.get(law,alpha,{profile,pole:geometry.pole});
+    }
+    // Triaxial fallback: integrate in normal-space photometric coordinates with the
+    // full Jacobian. This is only needed for the instantaneous point/glare flux.
+    if (!geometry.axes) throw new Error('Triaxial ellipsoid needs body-frame photometric axes');
+    const R=Math.cbrt(a*b*c), d=geometry.radii.map(v=>(v/R)**2), axes=geometry.axes;
+    const key=JSON.stringify([law,alpha,d,axes]);
+    if (!map) {const hit=this.exact.get(key);if(hit)return hit;}
+    const delta=Math.PI-alpha;
+    if (!(delta>0)) return [0,0,0,0];
+    const evaluate=(n:number):XYZS=>{
+      const gl=gaussLegendre(n),acc:XYZS=[0,0,0,0],values=[1,1,1,1];
+      for(let j=0;j<n;j++) for(let i=0;i<n;i++) {
+        const beta=gl.x[j]*Math.PI/2, cb=Math.cos(beta), sb=Math.sin(beta);
+        const u=gl.x[i]*Math.PI/2,eps=delta*(1+Math.sin(u))/2,mu=cb*Math.sin(eps),mu0=cb*Math.sin(delta-eps);
+        const nv=[cb*Math.cos(eps),sb,mu];
+        const bf=axes[0].map((v,k)=>v*nv[0]+axes[1][k]*nv[1]+axes[2][k]*nv[2]);
+        const den=bf.reduce((s,v,k)=>s+d[k]*v*v,0),jac=d[0]*d[1]*d[2]/den**2;
+        if(map) zonalAt(map,d[2]*bf[2]/Math.hypot(...bf.map((v,k)=>d[k]*v)),values);
+        const weight=lawRadf(law,mu0,mu,alpha)*mu*cb*jac*gl.w[j]*gl.w[i]*delta*Math.PI/8*Math.cos(u);
+        for(let k=0;k<4;k++)acc[k]+=weight*values[k];
+      }
+      return acc;
+    };
+    let old=evaluate(32);
+    for(let n=64;n<=512;n*=2) {const value=evaluate(n);if(value.every((v,k)=>Math.abs(v-old[k])<1e-5*Math.abs(v))) {if(!map){if(this.exact.size>512)this.exact.clear();this.exact.set(key,value);}return value;}old=value;}
+    throw new Error('Triaxial normal-space integral did not converge');
+  }
+
+  reference(law: ResolvedLaw, alpha: number, radii: V3, view: AlbedoMeasurementView, map?: ZonalProfile): XYZS {
+    if (view.kind === 'latitude') {
+      const lat=view.latitudeDeg*Math.PI/180;
+      // Sun displacement is eastward at the measured latitude. Longitude is rotation-averaged.
+      const o:V3=[Math.cos(lat),0,Math.sin(lat)],s:V3=[o[0]*Math.cos(alpha),Math.sin(alpha),o[2]*Math.cos(alpha)];
+      const axes=photometricFrame(o,s),pole:V3=[axes[0][2],axes[1][2],axes[2][2]];
+      return this.get(law,alpha,{radii,pole,axes},map);
+    }
+    // Average ALL orientations of the normal-space Jacobian (Cauchy's mean area),
+    // with the zonal map when present. The average commutes with the law integral.
+    let average:XYZS;
+    if(radii[0]===radii[1]) {
+      const profile=this.profile(radii,map),cached=this.means.get(profile);
+      if(cached)average=cached;else{
+        average=[0,0,0,0];const gl=gaussLegendre(16),vals=[0,0,0,0],cuts=[-Math.PI/2,...profile.cuts!,Math.PI/2];
+        for(let j=1;j<cuts.length;j++)for(let i=0;i<gl.x.length;i++){
+          const half=(cuts[j]-cuts[j-1])/2,lat=cuts[j-1]+(gl.x[i]+1)*half;
+          profile.sample!(Math.sin(lat),vals);
+          for(let k=0;k<4;k++)average[k]+=vals[k]*Math.cos(lat)*gl.w[i]*half/2;
+        }
+        this.means.set(profile,average);
+      }
+    } else {
+      const key='mean:'+radii.join(',');const hit=!map?this.exact.get(key):null;
+      if(hit)average=hit;else {
+        const R=Math.cbrt(radii[0]*radii[1]*radii[2]),d=radii.map(v=>(v/R)**2),gl=gaussLegendre(48),vals=[1,1,1,1];average=[0,0,0,0];
+        for(let j=0;j<48;j++)for(let i=0;i<96;i++){
+          const z=gl.x[j],rho=Math.sqrt(1-z*z),phi=2*Math.PI*(i+0.5)/96,nv=[rho*Math.cos(phi),rho*Math.sin(phi),z];
+          const den=nv.reduce((s,v,k)=>s+d[k]*v*v,0),jac=d[0]*d[1]*d[2]/den**2;
+          if(map)zonalAt(map,d[2]*z/Math.hypot(...nv.map((v,k)=>d[k]*v)),vals);
+          for(let k=0;k<4;k++)average[k]+=jac*vals[k]*gl.w[j]/192;
+        }
+        if(!map)this.exact.set(key,average);
+      }
+    }
+    return this.bare.get(law,alpha).map((v,k)=>v*average[k]) as XYZS;
   }
 }
 

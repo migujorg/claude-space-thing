@@ -1,3 +1,4 @@
+import type { AlbedoMeasurementView } from '../data/schema';
 // CPU-side (float64) preparation of one frame: which bodies are resolved disks and which are points,
 // their photometry per docs/architecture.md §4.3, eclipse occluders, the Sun, analytic glare sources
 // and display-space overlays. No GPU calls here; renderer.ts packs the result into buffers.
@@ -5,7 +6,7 @@
 import type { SceneAtmosphere, SceneBody, SceneSnapshot } from './scene';
 import { AU_KM } from './constants';
 import { diskIlluminance, diskModelPPhi, evalPhase, extrapolatePhase, LAMBERT_ALBEDO_PER_GEOMETRIC_ALBEDO, limbDarkenedI0, meanRadius, phaseRangeDeg, type XYZS } from './photometry';
-import { LAMBERT_LAW, lawRadf, MotionNormalization, mapDiskIntegral, NormalizationCache, photometricFrame, resolveLaw, TEXEL_LAW, type ResolvedLaw, type ZonalProfile } from './spatial';
+import { LAMBERT_LAW, lawRadf, MotionNormalization, EllipsoidNormalization, mapDiskIntegral, NormalizationCache, photometricFrame, resolveLaw, TEXEL_LAW, type ResolvedLaw, type ZonalProfile } from './spatial';
 import { sampleLevel0, type Level0Map } from './surface';
 import { MAX_POPULATION_NODES, NIGHT_LAMP, type CloudPopulation } from './earth';
 import { ATM_DISK_NODES, atmosphereDiskFactors, marsDustScale, modelDiskXYZS } from './atmosphere';
@@ -228,6 +229,9 @@ const normCache = new NormalizationCache();
 const ATM_FACTOR_BIN_DEG = 1;
 const atmCache = new Map<string, number[]>();
 const motionNormalization = new MotionNormalization();
+const ellipsoidNormalization = new EllipsoidNormalization();
+/** Scene wiring is supplied by the shell; see the outside-lease diff in this lane handoff. */
+type CalibratedSceneBody = SceneBody & { albedoMeasurementView?: AlbedoMeasurementView | null };
 const lawKey = (l: ResolvedLaw) => `${l.kind}:${l.p}:${l.b}:${l.c}:${l.bs0}:${l.hs}:${l.bc0}:${l.hc}:${l.thetaBar}:${l.K}:${l.hFn}`;
 
 /**
@@ -448,6 +452,13 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
     // domain, else albedoXYZS·Φ(α) (architecture §4.3).
     // The measured phase range's edge when α lies beyond it (the photometry is then the law's extrapolation).
     let phaseEdge: number | null = null;
+    const ellipsoid = b.orient && b.radii && !b.shape && !earth && !physical
+      && !(b.radii[0] === b.radii[1] && b.radii[1] === b.radii[2]);
+    const measurementView = (b as CalibratedSceneBody).albedoMeasurementView ?? { kind: 'orientation-mean' as const };
+    const profile = surface?.albedo?.zonal ?? undefined;
+    const referenceIntegral = (lawAt: ResolvedLaw, a: number): XYZS => ellipsoid
+      ? ellipsoidNormalization.reference(lawAt, a, b.radii!, measurementView, profile)
+      : lawIntegral(lawAt, a);
     let pPhi: XYZS | null = b.surfaceUnknown ? null
       : diskModelPPhi(b.diskReflectanceModel, b.orient, R, b.toSun, scale(b.pos, -1), irr);
     // Photometry measured at this very geometry (ROLO): normalize the maps at this geometry, not on a
@@ -468,7 +479,7 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
         const x = b.allowPhaseExtrapolation
           ? extrapolatePhase(b.phase, alpha, (a) => {
             const la = resolveLaw(b.spatialModel, a);
-            return lawIntegral('error' in la ? LAMBERT_LAW : la.law, a)[1];
+            return referenceIntegral('error' in la ? LAMBERT_LAW : la.law, a)[1];
           })
           : null;
         if (x) {
@@ -502,7 +513,25 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
       let zonal: { profile: ZonalProfile; pole: V3 } | undefined;
       let I: XYZS;
       const map0 = surface?.albedo?.map0 ?? null;
-      if (b.orient && (texel || ((atThisGeometry || atReferenceView) && map0))) {
+      if (ellipsoid && !texel && !(atThisGeometry && map0)) {
+        // Denominator is pinned to the albedo reference, never the frame's latitude.
+        I = referenceIntegral(law, alpha);
+        if (!atThisGeometry && measurementView.kind === 'orientation-mean') {
+          label = worse(label, 'estimated');
+          warnings.push(`${b.name}: albedo measurement latitude unstated → uniform-orientation mean ellipsoid normalization (estimated)`);
+        }
+        // A point/glare carries its actual disk's rotation-mean flux at this view.
+        if (atThisGeometry || resolvedShare((2 * angR) / g.pixelAngle) < 1 || !inFrame(c)) {
+          const [px, py, pz] = photometricFrame(normalize(scale(b.pos, -1)), sunDir);
+          const Rm = b.orient!;
+          const toBf = (v: V3): V3 => [Rm[0]*v[0]+Rm[3]*v[1]+Rm[6]*v[2], Rm[1]*v[0]+Rm[4]*v[1]+Rm[7]*v[2], Rm[2]*v[0]+Rm[5]*v[1]+Rm[8]*v[2]];
+          const axes: [V3,V3,V3] = [toBf(px),toBf(py),toBf(pz)];
+          const pole: V3 = [axes[0][2],axes[1][2],axes[2][2]];
+          const current = ellipsoidNormalization.get(law, alpha, { radii: b.radii!, pole, axes }, profile);
+          if (atThisGeometry) I = current;
+          else E = E!.map((v,k) => I[k] > 0 ? v*current[k]/I[k] : 0) as XYZS;
+        }
+      } else if (b.orient && (texel || ((atThisGeometry || atReferenceView) && map0))) {
         const Rm = b.orient;
         const [px, py, pz] = photometricFrame(normalize(scale(b.pos, -1)), sunDir);
         const toBf = (v: V3): V3 => [Rm[0] * v[0] + Rm[3] * v[1] + Rm[6] * v[2], Rm[1] * v[0] + Rm[4] * v[1] + Rm[7] * v[2], Rm[2] * v[0] + Rm[5] * v[1] + Rm[8] * v[2]];
@@ -529,7 +558,7 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
           });
         } else {
           const key = `map|${b.id}|${texel ? 't' : ''}${map0 ? 'm' : ''}|${alpha.toFixed(3)}|` + (atThisGeometry ? `${q(axes[0])}|${q(axes[2])}` : q([axes[0][2], axes[1][2], axes[2][2]]));
-          I = normCache.get(key, () => mapDiskIntegral(alpha, axes, fMap, n, rotations));
+          I = normCache.get(key, () => mapDiskIntegral(alpha, axes, fMap, n, rotations, b.orient && !b.shape ? b.radii! : undefined));
         }
       } else {
         if (surface?.albedo?.zonal && b.orient) {

@@ -167,6 +167,26 @@ with A_c from the model's `formula`. The inputs are the phase angle g, the Sun's
 
 Shape models ([rendering-shapes.md](rendering-shapes.md)): an irregular body drawn from its mesh (`SceneBody.shape`) keeps this contract on average. The radiance prefactor is scaled by πR² / ⟨A_proj⟩, where ⟨A_proj⟩ is the mesh's rotation-mean projected area, so the rotation-averaged illuminance at small phase is still `geometricAlbedoXYZS · Φ(α) · (1/d²) · (R/Δ)²`. The instantaneous brightness then varies with the shape as it rotates (a lightcurve); that variation is `derived`.
 
+Ellipsoids with unequal radii retain their own normals and projected-area measure. Their per-channel
+radiance scale is pinned to `albedoMeasurementView`: at its stated latitude (rotation-averaged longitude,
+Sun displaced eastward by α), `I_ref,c = ∫ r(n·s,n·o,α) M̄_c(lat_position) dA_proj / (πR²)` over the
+**ellipsoid**, and `L_c = p_c Φ(α) r M_c / (π d² I_ref,c)`. Thus the contract's illuminance holds at that
+reference view. At other latitudes the same scale is retained; the ellipsoid's area, normals and map determine
+its light. A point and off-frame glare carry the light that disk would emit at the current view, namely the
+contract's value times `I_current,c / I_ref,c` (rotation mean for zonal maps). An in-domain disk model that
+already measures the current geometry retains its own value, with the map/law integral at that geometry.
+Spheres keep their existing normalization. Relief remains omitted.
+
+When the albedo source states no single calibration latitude, `albedoMeasurementView` explicitly declares
+an `estimated` uniform mean over **all orientations**, rather than inventing a latitude. Averaging commutes
+with the law integral: the bare-law integral is multiplied by the ellipsoid's surface area over `4πR²`
+(Cauchy's mean projected area over `πR²`); with a zonal map use its surface-area-weighted mean instead.
+For an axisymmetric ellipsoid the exact normal-space Jacobian is `(abc)²/(n·diag(a²,b²,c²)n)²`, and its
+map latitude comes from `x = diag(a²,b²,c²)n / sqrt(n·diag(a²,b²,c²)n)`, not from the normal.
+This is the mesh mean-area fallback applied to ellipsoids, with the spatial law treated consistently.
+The albedo measurement view, its epoch and its assumptions are independent of the surface law's fit and of
+validation-case geometry; validation rows never select a view, law or factor.
+
 Kind `rotation-slices-v1` (the Galilean moons) adds a measured rotational (orbital-longitude) variation to `geometricAlbedoXYZS · Φ(α)`: a factor F from six longitude slices (Mayorga et al. 2020 Table 4), evaluated at the sub-observer and sub-solar longitudes (the formula is in `schema.ts` `RotationSlicesDiskModel`). F averages to 1 over a rotation, so the albedo and phase function remain the longitude average. As with ROLO, the renderer normalizes a body's surface maps at the viewing geometry when the model applies, so a map's own longitude contrast is not counted twice.
 
 ### 4.4 Surface maps (M2)
@@ -268,6 +288,16 @@ Stages (`config.STAGES`): `time`, `ephemeris`, `light`, `surfaces`, `shapes`, `b
 | `shapes/<id>.json` + `shapes/<id>.bin` | `shapes` | `ShapeModelHeader`: triangle mesh of an irregular body in its own body-fixed frame (km), 1-4 levels of detail (quadric decimation, finest ≤ 2 M triangles), float32 positions, int16 snorm vertex normals, uint16/32 indices. The header states the frame, the rotation model it assumes and its angle to the app's pck00011 frame (or the radar spin state), provenance (spacecraft SPC/SPG/SfM/altimetry and radar → measured; hand-fitted limb models → estimated), integrity and topology (watertight per LOD, components, genus) and a scale check (volume-equivalent radius vs pck00011 or SBDB). id = NAIF id for planetary satellites, SBDB SPK-ID otherwise |
 | `shapes/damit-index.json` + `.bin` + `shapes/damit.bin` | `shapes` | `DamitIndexHeader`: every DAMIT lightcurve-inversion model (label derived), one table row per model keyed by SPK-ID with spin state (λ, β, P, t0, φ0, YORP and the IAU form), quality flag, closure and a preferred-model flag; meshes as int16 vertices + uint16 indices, dimensionless unless size-calibrated |
 | `shapes/index.json` | `shapes` | `ShapeIndex`: id → name, file, kind, labels, sizes |
+
+`BodyPhotometry.albedoMeasurementView` is a `Sourced<AlbedoMeasurementView>` emitted by `light`:
+`{kind: 'latitude', latitudeDeg, epoch?}` or `{kind: 'orientation-mean', epoch?}`. Degrees are an I/O unit;
+`epoch` is a source-stated UTC date or observation-date range, never an inferred current epoch. The latter
+kind is labelled `estimated` and its method says the source did not specify one calibration latitude.
+Unknown albedo has an unknown view. Jupiter's equator-on reference is explicitly an approximation of the
+ground-based 1995 view (`estimated`); Saturn's zero-ring-tilt view is `measured`. Uranus/Neptune's 1995
+spectra carry their dated, estimated orientation-mean fallback. The shell passes the admitted view and
+propagates its label with the body's photometry; an unadmitted calibration assumption cannot emit strict light.
+
 
 Headers (`*.json` next to a `*.bin`) define byte layout explicitly (field name, type, count, stride) so the loader is generic.
 

@@ -191,11 +191,18 @@ export interface Body {
 /** photometry.json: NAIF id (as string) → photometry. */
 export type PhotometryFile = Record<string, BodyPhotometry>;
 
+/** Reference of the disk albedo, not the frame currently being rendered.
+ * An unstated latitude uses an estimated uniform-orientation mean, never a guessed view. */
+export type AlbedoMeasurementView =
+  | { kind: 'latitude'; latitudeDeg: number; epoch?: string }
+  | { kind: 'orientation-mean'; epoch?: string };
+
 export interface BodyPhotometry {
   /** See docs/architecture.md §4.3. Four numbers (X, Y, Z, scotopic) in "lux at 1 AU". */
   geometricAlbedoXYZS: Sourced<[number, number, number, number]>;
   /** Visual geometric albedo, for display. */
   geometricAlbedoV: Sourced<number>;
+  albedoMeasurementView?: Sourced<AlbedoMeasurementView>;
   /** Disk-integrated phase function. */
   phaseFunction: Sourced<PhaseFunction>;
   /**

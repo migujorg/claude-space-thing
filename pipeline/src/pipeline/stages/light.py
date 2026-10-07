@@ -23,9 +23,45 @@ import numpy as np
 
 from ..output import write_json
 from ..photometry import atmospheres, bodies, phase, rings, smallbody_colors, solar
-from ..schema import BuildContext
+from ..schema import BuildContext, sourced, unknown
 
 DEPENDS: tuple[str, ...] = ()
+
+
+def with_measurement_views(photometry: dict) -> dict:
+    """Declare the albedo's calibration view, separately from the surface-law fit.
+
+    No source-stated view is silently inferred from a validation case. For an unstated
+    view, the renderer uses the explicitly estimated uniform-orientation mean (§4.3).
+    Jupiter's equal-area radius is an equator-on reference approximation; it is not
+    a claim that the actual 1995 sub-observer latitude was exactly zero.
+    """
+    for key, entry in photometry.items():
+        albedo = entry["geometricAlbedoXYZS"]
+        if albedo["value"] is None:
+            entry["albedoMeasurementView"] = unknown("No disk albedo is available to calibrate a measurement view.")
+            continue
+        if key in ("599", "699"):
+            entry["albedoMeasurementView"] = sourced(
+                {"kind": "latitude", "latitudeDeg": 0.0, "epoch": "1995-07-06/1995-07-10"},
+                "estimated" if key == "599" else "measured", ["karkoschka-1998-pds"],
+                method=("Karkoschka 1998/PDS 1995LOW: 1995 July 6–10 full-disk spectrum. "
+                        + ("Equator-on calibration reference, as represented by the equal-area disk radius "
+                           "69140 km (Karkoschka 1994 Table III); this is an approximation of Jupiter's "
+                           "ground-based view, not a measured sub-observer latitude of exactly zero."
+                           if key == "599" else
+                           "Saturn globe at zero ring tilt (rings edge-on), hence equator-on. "
+                           "Reference Sun displacement is eastward at the reference latitude; longitude averaged.")))
+        else:
+            entry["albedoMeasurementView"] = sourced(
+                {"kind": "orientation-mean", **({"epoch": "1995-07-06/1995-07-10"}
+                 if key in ("799", "899", "606") else {})},
+                "estimated", albedo["sources"],
+                method="The adopted albedo source does not specify one calibration sub-observer latitude. "
+                       "Explicit fallback: uniform mean over all orientations, using the ellipsoid's "
+                       "projected-area measure and the surface law (and zonal map if drawn), architecture §4.3. "
+                       "This is a normalization assumption, not a measurement of viewing latitude.")
+    return photometry
 
 
 def run(ctx: BuildContext) -> None:
@@ -46,7 +82,7 @@ def run(ctx: BuildContext) -> None:
           + ", ".join(f"{v:.4f}" for v in diag["limb"]["F_over_I"]))
 
     results = bodies.build_all(ctx)
-    write_json(ctx, "photometry.json", bodies.photometry_json(results), "light")
+    write_json(ctx, "photometry.json", with_measurement_views(bodies.photometry_json(results)), "light")
     for n, r in results.items():
         labels = (f"albedo:{r.entry['geometricAlbedoXYZS']['label']} phase:{r.entry['phaseFunction']['label']}")
         if r.xyzs is None:

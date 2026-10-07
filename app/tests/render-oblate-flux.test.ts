@@ -6,7 +6,7 @@ import { AdaptationState, computeEyeFrame } from '../src/eye/model';
 import { DEFAULT_EYE_SETTINGS } from '../src/eye/settings';
 import { AU_KM } from '../src/render/constants';
 import type { SceneBody, SceneSnapshot } from '../src/render/scene';
-const fs = await import('node:fs');
+const fs: {readFileSync(p:URL,enc:'utf8'):string} = await import(/* @vite-ignore */ 'node:fs' as string);
 const photo = JSON.parse(fs.readFileSync(new URL('../public/data/photometry.json', import.meta.url), 'utf8'));
 const bodies = JSON.parse(fs.readFileSync(new URL('../public/data/bodies.json', import.meta.url), 'utf8'));
 type V3 = [number, number, number];
@@ -57,5 +57,61 @@ describe('ellipsoid flux pinned at the albedo measurement view',()=>{
     const predicted=disk.p.resolved[0].K[1]*Math.PI*(disk.R/disk.D)**2*surfaceSum(radii,disk.law,alpha,Math.PI/2);
     expect(Math.abs((point.p.points[0].E[1]/point.contract)/(predicted/disk.contract)-1)).toBeLessThan(0.005);
     expect(predicted/disk.contract).toBeGreaterThan(1.1);
+  });
+});
+
+// Original-position parametrization, with quadrature cut at source map rows. This
+// does not use the production normal-space Jacobian/profile transformation.
+import { EllipsoidNormalization, gaussLegendre, LAW, type ZonalProfile } from '../src/render/spatial';
+import { zonalMeanOfLevel0 } from '../src/render/surface';
+const fileBytes: {readFileSync(p:URL):Uint8Array} = await import(/* @vite-ignore */ 'node:fs' as string);
+function mapAt(z:ZonalProfile,lat:number,k:number) {
+  const row=(0.5-lat/Math.PI)*z.rows-0.5,j=Math.max(0,Math.min(z.rows-1,Math.floor(row))),t=Math.max(0,Math.min(1,row-j));
+  return z.mean[4*j+k]*(1-t)+z.mean[4*Math.min(j+1,z.rows-1)+k]*t;
+}
+function positionQuadrature(radii:V3,law:ResolvedLaw,alpha:number,z?:ZonalProfile):number[] {
+  const [a,,c]=radii,R=Math.cbrt(a*a*c),sa=Math.sin(alpha),ca=Math.cos(alpha),delta=Math.PI-alpha;
+  const cuts=[-Math.PI/2,Math.PI/2];
+  if(z)for(let j=0;j<z.rows;j++) {
+    const lat=Math.PI*(0.5-(j+0.5)/z.rows);
+    cuts.push(Math.atan2(a*Math.sin(lat),c*Math.cos(lat)));
+  }
+  cuts.sort((x,y)=>x-y);
+  const bg=gaussLegendre(z?12:64),lg=gaussLegendre(96),sum=[0,0,0,0];
+  for(let j=1;j<cuts.length;j++)for(let q=0;q<bg.x.length;q++) {
+    const half=(cuts[j]-cuts[j-1])/2,beta=cuts[j-1]+(bg.x[q]+1)*half,cb=Math.cos(beta),sb=Math.sin(beta);
+    const lat=Math.atan2(c*sb,a*cb);
+    for(let p=0;p<lg.x.length;p++) {
+      const u=lg.x[p]*Math.PI/2,eps=delta*(1+Math.sin(u))/2,lon=Math.PI/2-eps;
+      const nx=cb*Math.cos(lon)/a,ny=cb*Math.sin(lon)/a,nz=sb/c,nlen=Math.hypot(nx,ny,nz);
+      const mu=nx/nlen,mu0=(ca*nx+sa*ny)/nlen;
+      const weight=lawRadf(law,mu0,mu,alpha)*a*a*c*nx*cb*bg.w[q]*half*lg.w[p]*delta/4*Math.cos(u)/(R*R);
+      for(let k=0;k<4;k++)sum[k]+=weight*(z?mapAt(z,lat,k):1);
+    }
+  }
+  return sum;
+}
+describe('ellipsoid law and zonal-map quadrature',()=>{
+  for(const id of [599,699,799,899])it(`${id} exact source rows and position latitude`,()=>{
+    const radii=bodies.find((b:any)=>b.id===id).radii.value as V3;
+    const tiles=[0,1].map(t=>{const v=fileBytes.readFileSync(new URL(`../public/data/surfaces/${id}/albedo/0/0/${t}.bin`,import.meta.url));return v.buffer.slice(v.byteOffset,v.byteOffset+v.byteLength) as ArrayBuffer;});
+    const z=zonalMeanOfLevel0(tiles),norm=new EllipsoidNormalization();
+    for(const phase of [0,60,150,179]) {
+      const alpha=phase*Math.PI/180,lr=resolveLaw(photo[id].spatialModel.value,alpha),law='error' in lr?LAMBERT_LAW:lr.law;
+      const ref=positionQuadrature(radii,law,alpha,z),got=norm.reference(law,alpha,radii,{kind:'latitude',latitudeDeg:0},z);
+      for(let k=0;k<4;k++)expect(Math.abs(got[k]/ref[k]-1),`${phase}° channel ${k}`).toBeLessThan(1e-4);
+    }
+  },30000);
+  it('orientation mean is the mean projected area, not an equator-on guess',()=>{
+    const radii:V3=[2,2,1.7],R=Math.cbrt(2*2*1.7),e=Math.sqrt(1-(1.7/2)**2);
+    const surfaceArea=2*Math.PI*4*(1+(1-e*e)/e*Math.atanh(e));
+    const got=new EllipsoidNormalization().reference(LAMBERT_LAW,0,radii,{kind:'orientation-mean'});
+    expect(got[1]/(2/3)).toBeCloseTo(surfaceArea/(4*Math.PI*R*R),12);
+  });
+  it('a triaxial instantaneous integral matches an independent surface sum',()=>{
+    const radii:V3=[3,2,1],alpha=0.4,law={...LAMBERT_LAW,kind:LAW.minnaert,p:0.7};
+    const axes: [V3,V3,V3]=[[0,1,0],[0,0,1],[1,0,0]];
+    const got=new EllipsoidNormalization().get(law,alpha,{radii,pole:[0,1,0],axes});
+    expect(Math.abs(got[1]/surfaceSum(radii,law,alpha)-1)).toBeLessThan(5e-4);
   });
 });
