@@ -22,8 +22,13 @@ export interface BodySurfaces {
   photometry?: LayerRef;
   /** Earth's dated layers (render/earth.ts): 'cloud-properties', 'surface-water', 'emitted-radiance', 'surface-wind'. */
   clouds?: LayerRef;
-  /** 'cloud-optical-thickness-moments' (render/earth.ts cloudLogNormal). */
+  /** 'cloud-optical-thickness-moments' (render/earth.ts cloudLogNormal): the cloud with a measured thickness. */
   cloudTau?: LayerRef;
+  /**
+   * The same kind, layer 'cloudTauEstimated': the cloud with a measured or an estimated thickness (the provider's
+   * estimates added; label estimated). Bound in place of `cloudTau` where the reality level admits it.
+   */
+  cloudTauEstimated?: LayerRef;
   water?: LayerRef;
   night?: LayerRef;
   wind?: LayerRef;
@@ -59,7 +64,10 @@ export function surfaceRefs(layers: SurfaceLayer[], dataRoot: string): Map<numbe
     else if (l.layer === 'height') e.height = { ref, label: headerLabel(h, 'brightness') };
     else if (h.kind === 'photometric-parameters') e.photometry = { ref, label: headerLabel(h, 'brightness') };
     else if (h.kind === 'cloud-properties') e.clouds = { ref, label: headerLabel(h, 'brightness') };
-    else if (h.kind === 'cloud-optical-thickness-moments') e.cloudTau = { ref, label: headerLabel(h, 'brightness') };
+    else if (h.kind === 'cloud-optical-thickness-moments') {
+      if (l.layer === 'cloudTauEstimated') e.cloudTauEstimated = { ref, label: headerLabel(h, 'brightness') };
+      else e.cloudTau = { ref, label: headerLabel(h, 'brightness') };
+    }
     else if (h.kind === 'surface-water') e.water = { ref, label: headerLabel(h, 'brightness') };
     else if (h.kind === 'emitted-radiance') e.night = { ref, label: worstOf([headerLabel(h, 'brightness'), headerLabel(h, 'color')]) };
     else if (h.kind === 'surface-wind') e.wind = { ref, label: headerLabel(h, 'brightness') };
@@ -171,14 +179,19 @@ export function applyExtras(
         sb.atmosphere = atm;
         used.push(atm!.worstLabel);
         for (const k of ['clouds', 'cloudTau', 'water', 'night', 'wind'] as const) {
-          const l = s[k];
+          // The cloud's thickness: the layer that also holds the provider's estimated values where the level admits
+          // it (Best, Complete), else the measured thickness alone (Strict). Cloud outside the layer in use has no
+          // thickness at that level and is drawn as not measured (render/earth.ts earthParts).
+          const est = k === 'cloudTau' && s.cloudTauEstimated && labelAllowed(s.cloudTauEstimated.label, level) ? s.cloudTauEstimated : undefined;
+          const l = est ?? s[k];
           if (l && labelAllowed(l.label, level)) {
             surface[k] = l.ref;
             used.push(l.label);
           }
         }
-        // The cloud without a retrieval: the partly-cloudy τ population of cloudTau's header (estimated) where the
-        // level admits it (Best, Complete); at Strict it stays unknown (render/earth.ts unmeasuredTauPopulation).
+        // A header may carry a τ population for the cloud without a thickness (render/earth.ts
+        // unmeasuredTauPopulation; estimated, never at Strict). The present cloud layers carry none: that cloud stays
+        // unknown at every level.
         const un = surface.cloudTau ? unmeasuredTauPopulation(surface.cloudTau.header) : null;
         const unLabel = un && (LABELS.includes(un.label) ? (un.label as Label) : 'unknown');
         if (un && unLabel && labelAllowed(unLabel, level)) {

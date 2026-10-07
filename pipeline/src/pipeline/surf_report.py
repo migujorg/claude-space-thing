@@ -184,7 +184,7 @@ def earth_numbers(hs: dict) -> str:
              f"{d['diskWeightShare']['modisWater'] * 100:.1f} %; {h['coverage']['diskWeightFraction'] * 100:.1f} % of "
              f"the disk weight is known ({d['mcd43Tiles']} MODIS tiles; negative texels clipped: "
              f"{d['negativeTexelsClipped']})."]
-    for layer in ("clouds", "cloudTau", "night", "water"):
+    for layer in ("clouds", "cloudTau", "cloudTauEstimated", "night", "water"):
         if (399, layer) in hs:
             x = hs[(399, layer)]
             ep = x.get("epoch", {})
@@ -206,7 +206,7 @@ BODY_NOTES = {
 
 **What the renderer does with it.** Surface = albedo × absoluteDiskMean (diffuse; NBAR is the nadir-view reflectance with the Sun at local noon, and land BRDF effects must come from the photometric model). Water adds Fresnel reflection and sun glint on waterFraction × (1 − seaIceFraction). Clouds are shaded from optical thickness, phase and top height at that day's overpass; the cloud layer is unknown in polar night. Rayleigh scattering and aerosols belong to the atmosphere model, not to these maps. Night side: radiance × `toXYZS` for an assumed lamp spectrum (colour `estimated`).
 
-**Known issues.** Sea ice has no reflectance (neither product retrieves it) and is unknown in the albedo. The land colour is estimated from three MODIS bands, and the flat hold beyond 645 nm misses vegetation's red edge. Clouds are one day, each place seen once; cloud-top heights ≥ 12 km are recorded as 12 km (open top bin). Night-light radiances ≥ 38.2 nW cm⁻² sr⁻¹ are lower bounds (censoredFraction). The lamp-spectrum factors are upper limits, because the CIE tables stop at 780 nm while the Day/Night Band reaches ~900 nm.""",
+**Known issues.** Sea ice has no reflectance (neither product retrieves it) and is unknown in the albedo. The land colour is estimated from three MODIS bands, and the flat hold beyond 645 nm misses vegetation's red edge. The clouds are a mosaic of one UTC day's 13:30 local hours (SatCORPS composite: 24 strips of 15° cut one hour apart, a 24-hour seam at 150° W; the cuts are real discontinuities in the weather shown), and cloud without a thickness retrieved from sunlight is drawn as not measured at Strict (docs/rendering-earth.md §2). Night-light radiances ≥ 38.2 nW cm⁻² sr⁻¹ are lower bounds (censoredFraction). The lamp-spectrum factors are upper limits, because the CIE tables stop at 780 nm while the Day/Night Band reaches ~900 nm.""",
     999: """**Source.** New Horizons MVIC global colour map (PDS SBN `nh_derived:plutosystem_composition`). Calibrated MVIC scans were converted to normal albedo with a lunar-Lambert function (L(15°) = 0.65), registered to the LORRI base map, and merged with it to full resolution. Blue 475, Red 625 and NIR 870 nm are used; CH4 895 nm is not. This replaces the USGS 8-bit panchromatic mosaic, whose brightness was an inverted display stretch and whose colour was the disk colour. The brightness is now `measured` and the colour varies per texel (`estimated`: two visible bands 150 nm apart). The MVIC map covers less than the panchromatic mosaic did (area 0.72 vs 0.77); the rest is unknown.""",
     901: """**Source.** New Horizons MVIC global colour map, as for Pluto (1 km/px cube). Brightness `measured`, colour `estimated`. Coverage 0.60 of the area, against 0.74 for the USGS panchromatic mosaic it replaces: the sub-Pluto hemisphere is well covered, and the far side and the dark south are unknown.""",
     301: """**Source.** LROC WAC Hapke-normalized 7-band mosaic (Sato et al. 2017) for 70°S–70°N; LROC WAC empirically normalized polar mosaics (Boyd et al. 2012) poleward, tied to the Hapke product per band in the 62–69.5° ring; LOLA LDEM_64 for height; the LROC per-cell Hapke parameter maps (Sato et al. 2014) exported as the `hapke` layer. Notes: `docs/sources/lroc-wac-hapke-7band.md`, `lroc-wac-hapke-parameters.md`, `lroc-wac-emp-polar.md`, `lola-ldem-64.md`.
@@ -313,9 +313,10 @@ def generate() -> str:
         "- **height** (float32, metres above the pck00011 reference ellipsoid named in the header; NaN = unknown).",
         "- **hapke** (Moon only; float16 × 35: w, b, c, B_S0, h_s per LROC band; constants and the model in the header).",
         "- **Earth only** (float16, NaN = unknown per channel, all dated): **clouds** (cloudFraction, opticalThickness, "
-        "cloudTopHeightM, iceFraction), **cloudTau** (from the same samples: the share with an optical-thickness "
-        "retrieval and the ln τ moments and ice share of those retrievals, per-sample averages exact at every level; "
-        "docs/rendering-earth.md §2), **night** (Day/Night-Band radiance in nW cm⁻² sr⁻¹ and the censored share; "
+        "cloudTopHeightM, iceFraction), **cloudTau** and **cloudTauEstimated** (from the same cells: the share of "
+        "cloud with a thickness and the ln τ sums and ice share of it, for the cloud with a measured thickness and "
+        "for that with a measured or an estimated one; area-weighted, exact at every level; docs/rendering-earth.md "
+        "§2), **night** (Day/Night-Band radiance in nW cm⁻² sr⁻¹ and the censored share; "
         "`constants.toXYZS` converts to luminance for two lamp spectra), **water** (waterFraction, seaIceFraction). "
         "Earth's **albedo** is absolute-calibrated: `normalization.absoluteDiskMean` × texel = surface reflectance, "
         "because Earth's disk photometry includes clouds and atmosphere.",
@@ -417,10 +418,10 @@ def generate() -> str:
               "exported.",
               "- Not built: Triton, Uranian moons (no calibrated product), Ceres/Vesta (M3), Earth height (ETOPO 2022 "
               "would need lake surfaces; optional).",
-              "- Earth: the cloud layer is one daytime overpass (the night side and polar night are unknown); a "
-              "renderer at another time should label clouds `estimated`. Geostationary cloud products (GOES/Himawari/"
-              "Meteosat L2) could give hourly clouds for most of the disk; not used yet (the Meteosat L2 archive needs "
-              "a login). The albedo has no sea-ice reflectance (unknown). The MCD43A4 fill share over the 315 tiles "
+              "- Earth: the cloud layers are a mosaic of one day's 13:30 local hours, not an instant (hard cuts every "
+              "15° of longitude, one hour apart; a 24-hour seam at 150° W); a renderer at another time should label "
+              "clouds `estimated`. The provider's values at night and twilight, and in the geostationary imagers' "
+              "sun-glint cone, are admitted only as estimates (the cloudTauEstimated layer). The albedo has no sea-ice reflectance (unknown). The MCD43A4 fill share over the 315 tiles "
               "includes their ocean pixels.",
               "- Giant planets: maps are one rotation at their epoch; advecting clouds with measured zonal wind profiles "
               "(research note 1c) is left to the renderer/M2 follow-up and would be `estimated`.",
