@@ -150,8 +150,18 @@ def products_digest(products: dict[str, dict], stage: str) -> str:
 def fingerprint(stage: str, depends: tuple[str, ...], params: dict, window: tuple[float, float],
                 products: dict[str, dict], code: tuple[list[Path], bool] | None = None) -> dict:
     files, uses_window = code or code_closure(stage)
+    module = load_stage(stage)
+    digest = code_hash(files)
+    extra = getattr(module, "CODE_INPUTS", ())
+    if extra:
+        repo = PKG_ROOT.parents[2]
+        digest = hashlib.sha256(json.dumps({
+            "python": digest,
+            "other": {p: hashlib.sha256((repo / p).read_bytes().replace(b"\r\n", b"\n")).hexdigest()
+                      for p in sorted(extra)},
+        }, sort_keys=True).encode()).hexdigest()
     parts = {
-        "code": code_hash(files),
+        "code": digest,
         "params": config.stage_params(params, stage),
         "window": list(window) if uses_window else None,
         "inputs": {d: products_digest(products, d) for d in depends},
