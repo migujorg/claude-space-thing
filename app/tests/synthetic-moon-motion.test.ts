@@ -37,14 +37,14 @@ describe.skipIf(!eph)('synthetic moon reference at both build-window edges', () 
       }
     });
     it(`CPU twin in the translated host frame at row ${o.row}, ${target.et}`, () => {
-      const model: SmallBodyForceModel = { ...fm, sun: { ...fm.sun, naifId: o.center.naifId, gm: o.center.gm }, perturbers: [{ ...fm.perturbers[0], naifId: 10, gm: fm.sun.gm, radius: fm.sun.radius }], relativity: { ...fm.relativity, enabled: false }, zonal: { ...fm.zonal, perturber: null } };
+      const model: SmallBodyForceModel = { ...fm, sun: { ...fm.sun, naifId: o.center.naifId, gm: o.center.gm, radius: fm.perturbers.find(p => p.naifId === o.center.naifId)!.radius }, perturbers: [{ ...fm.perturbers[0], naifId: 10, gm: fm.sun.gm, radius: fm.sun.radius }], relativity: { ...fm.relativity, enabled: false }, zonal: { ...fm.zonal, perturber: null } };
       const prop = new SmallBodyPropagator(model, eph!);
       const state = Float64Array.from(o.initial);
       const stats = { substeps: 0, maxLevel: 0, encounterSubsteps: 0 };
       expect(prop.propagateOne(state, 0, ref.epochEt, target.et, ref.epochEt, null, stats)).toBe(SB_OK);
       const error = Math.hypot(...[0,1,2].map(k=>state[k]-target.state[k]));
       console.log(JSON.stringify({row:o.row, et:target.et, translatedCpuKm:error, stats}));
-      expect(error).toBeLessThan(1);
+      expect(error).toBeLessThan(0.1);
     });
   }
 });

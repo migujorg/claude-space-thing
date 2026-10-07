@@ -4,13 +4,13 @@
     "startEt": 796998128,
     "endEt": 891692528
   },
-  "method": "Scalar DOP853 as audit motion_audit.py: rtol=1e-12, max_step=43200s, atol=1e-7",
   "sources": {
     "synthetic/objects.json": "00bb56d1da667bd3018914305009787796513e3b4a257e53ce7a41906b9d2b7f",
     "synthetic/objects.bin": "c10046f33f7c34eaadca74f4121027b8aeb1dbcc4099897eb4d3d96eccd798de",
     "ephem/de442s.bin": "d518f978775a651cb89c3209142c7fc786d5d15cc9e166df26acebef73f89d40",
     "ephem/centers.bin": "2706c6d3b6fbef4f2d678909264139f9a79bab28dfb1ff8b2c33a2e4db4f0e1b"
   },
+  "method": "DOP853 independent scalar audit equations; rtol=1e-12, max_step=43200 s, atol=1e-7",
   "objects": [
     {
       "row": 2969859,
