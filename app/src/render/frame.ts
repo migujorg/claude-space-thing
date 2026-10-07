@@ -436,7 +436,19 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
     const physical = !earth && b.atmosphere?.surface && b.orient && irr && opts.atmospheres ? b.atmosphere.surface : null;
     // An in-range point is the disk photometry directly: it needs neither the model tables nor an integral.
     // A disk needs the model's spatial pattern; beyond the range, a point also needs its phase dependence.
-    const resolvedDisk = (2 * angR) / g.pixelAngle > 1;
+    const resolvedDisk = resolvedShare((2 * angR) / g.pixelAngle) > 0;
+    // A model point outside the frame can still supply off-frame glare and corneal flux. Beyond the eye's
+    // existing field cut it supplies neither; do not make settled() wait for an unused atmosphere table.
+    // Use the shell's extent so that a limb overlapping the frame still requests its spatial model.
+    const modelInView = !!b.atmosphere && inView(b.pos, atmTop(b));
+    const behindShield = sunShield !== null && dot(normalize(b.pos), sunShield.dir) >= sunShield.cosRadius;
+    const modelInField = !behindShield && angle(b.pos, fwd) * 180 / Math.PI <= CIE146.maxDeg;
+    // Every resolved binding consumer: disk/shell shading and normalization, aerial perspective,
+    // recipient planetshine/night-light attenuation, and star/sky limb dimming need the shell in view.
+    // The nightglow pass instead selects a resolved emitter even off frame (renderer.prepareNightglow),
+    // so its lower-atmosphere attenuation must retain the binding there as well. Bodies rejected by
+    // `behind` never enter the resolved list. A planetshine *source* uses disk photometry, not its binding.
+    const resolvedAtmosphere = resolvedDisk && (modelInView || (!behind && !!b.nightglow));
     /** The scale of the model to the disk photometry, per channel, once it is drawn. */
     let modelScale: XYZS | null = null;
     // Disk-integrated p·Φ per channel: from the body's disk reflectance model (the Moon: ROLO) inside its
@@ -477,7 +489,7 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
       if (phi !== null) pPhi = b.albedoXYZS.map((a) => a * phi!) as XYZS;
     }
     let physB: AtmosphereBinding | null = null;
-    if (physical && pPhi && (resolvedDisk || phaseEdge !== null)) {
+    if (physical && pPhi && (resolvedAtmosphere || (phaseEdge !== null && (modelInView || modelInField)))) {
       const got = opts.atmospheres!(b, [0, 0, 0, 0], null);
       if (got && 'error' in got) warnings.push(got.error);
       else if (got?.tables && got.grid) physB = got;
@@ -589,7 +601,7 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
       warnings.push(edge?.ok
         ? `${b.name}: atmosphere model scaled to the disk photometry as at ${deg(aRef)}°, ${by}: phase ${deg(alpha)}° is beyond the measured range (${range?.[0]}–${range?.[1]}°) and the factors of its edge are held → estimated`
         : `${b.name}: atmosphere model scaled to the disk photometry at ${deg(alpha)}°, ${by} (measured p·Φ over the model's disk integral)`);
-    } else if (!physical && b.atmosphere && b.orient && irr && lit && opts.atmospheres && (earth || pPhi) && resolvedDisk) {
+    } else if (!physical && b.atmosphere && b.orient && irr && opts.atmospheres && ((lit && (earth || pPhi)) || b.nightglow) && resolvedAtmosphere) {
       const dust = b.atmosphere.body.dustColumn ? marsDustScale(b.atmosphere.body, snap.et) : null;
       const got = opts.atmospheres(b, groundAlbedo, dust ? { scale: dust.scale, bin: dust.bin } : null);
       if (got && 'error' in got) {
@@ -687,7 +699,6 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
     const fRes = resolvedShare(diamPx);
 
     // Behind the Sun shield's occulting disc: hidden (its resolved part is cut out on the GPU).
-    const behindShield = sunShield !== null && dot(normalize(b.pos), sunShield.dir) >= sunShield.cosRadius;
     // Off-frame bright bodies still veil the view (analytic glare).
     if (E && !inFrame(c) && !behindShield) glare.push({ dir: normalize(b.pos), minDeg: (angR * 180) / Math.PI, E, inFrame: false });
 
