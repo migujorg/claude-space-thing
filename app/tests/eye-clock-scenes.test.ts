@@ -1,6 +1,6 @@
 // CPU predictions for GPU re-acceptance. Baseline neural light/pupil values are held as measured inputs;
 // this does not claim the sky cut's new GPU measurement is identical. No curve is fitted to these scenes.
-const { readFileSync } = await import(/* @vite-ignore */ 'node:fs' as string);
+const { readFileSync, existsSync } = await import(/* @vite-ignore */ 'node:fs' as string);
 import { describe, expect, it } from 'vitest';
 import scenes from '../e2e/scenes.json';
 import baseline from '../e2e/baseline/stats.json';
@@ -11,7 +11,7 @@ import { DEG2_PER_SR, pupilDiameterMm } from '../src/eye/pupil';
 const { sceneQuery } = await import(/* @vite-ignore */ '../scripts/e2e-lib.mjs' as string);
 
 describe('held scene clock CPU predictions', () => {
-  it('reports the exact history instants against recorded baseline light and magnitude', () => {
+  it.skipIf(!existsSync(new URL('../public/data/light.json', import.meta.url)))('reports the exact history instants against recorded baseline light and magnitude', () => {
     const light = JSON.parse(readFileSync(new URL('../public/data/light.json', import.meta.url), 'utf8'));
     const sunlight = light.sun.irradianceXYZS_1AU;
     expect(sunlight.label).toBe('derived');
