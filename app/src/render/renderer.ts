@@ -1,7 +1,7 @@
 // WebGPU renderer: light in absolute photometric units → human-eye model → display.
 //
 // Frame outline (docs/eye-model.md has the physics; this file the plumbing):
-//   1. bodies   → EXT (XYZS luminance, additive), W (written as 1, unread), MASK (not-measured map gaps and
+//   1. bodies   → EXT (XYZS luminance, additive), MASK (not-measured map gaps and
 //                 ring regions), depth (reversed-Z, ∞ far); surface maps are virtual-textured (surfaceGpu.ts);
 //                 then rings (ray–plane, lit/unlit faces, planet shadow), depth-tested, not depth-writing
 //   1b. comets  → EXT: comae (enclosed-light tables; below the Ricco area → body points) and dust/ion-tail
@@ -122,7 +122,6 @@ interface Targets {
   ptEx: GPUTexture;
   /** Point sources as displayed (display-linear XYZ, cd/m²). */
   ptDisp: GPUTexture;
-  w: GPUTexture;
   depth: GPUTexture;
   levels: Level[];
   /** The extended image alone as a mip chain (mip j: 2^(j+1) px per texel), for the low-light acuity (eye/acuity.ts). */
@@ -267,7 +266,6 @@ export class Renderer {
     private readonly ctx: GPUCanvasContext | null,
     private readonly format: GPUTextureFormat,
     private readonly hdrFormat: GPUTextureFormat,
-    private readonly weightFormat: GPUTextureFormat,
   ) {
     const d = device;
     this.deviceLost = new Promise((res) => device.lost.then((info) => {
@@ -296,7 +294,6 @@ export class Renderer {
     const mod = (code: string, label: string) => d.createShaderModule({ code, label });
     const bodyMod = mod(BODY_SHADER, 'bodies');
     const add: GPUBlendState = { color: { operation: 'add', srcFactor: 'one', dstFactor: 'one' }, alpha: { operation: 'add', srcFactor: 'one', dstFactor: 'one' } };
-    const min: GPUBlendState = { color: { operation: 'min', srcFactor: 'one', dstFactor: 'one' }, alpha: { operation: 'min', srcFactor: 'one', dstFactor: 'one' } };
     const max: GPUBlendState = { color: { operation: 'max', srcFactor: 'one', dstFactor: 'one' }, alpha: { operation: 'max', srcFactor: 'one', dstFactor: 'one' } };
     const over: GPUBlendState = { color: { operation: 'add', srcFactor: 'one', dstFactor: 'one-minus-src-alpha' }, alpha: { operation: 'add', srcFactor: 'one', dstFactor: 'one-minus-src-alpha' } };
     this.makeBodyPipe = (code: string, label: string) => {
@@ -304,7 +301,7 @@ export class Renderer {
       return d.createRenderPipeline({
         label, layout: 'auto',
         vertex: { module: m, entryPoint: 'vs' },
-        fragment: { module: m, entryPoint: 'fs', targets: [{ format: hdrFormat, blend: add }, { format: weightFormat, blend: min }, { format: 'r8unorm', blend: max }] },
+        fragment: { module: m, entryPoint: 'fs', targets: [{ format: hdrFormat, blend: add }, { format: 'r8unorm', blend: max }] },
         primitive: { topology: 'triangle-list' },
         depthStencil: { format: 'depth32float', depthWriteEnabled: true, depthCompare: 'greater' },
       });
@@ -315,7 +312,7 @@ export class Renderer {
       return d.createRenderPipeline({
         label: 'atmosphere shell', layout: 'auto',
         vertex: { module: m, entryPoint: 'vsShell' },
-        fragment: { module: m, entryPoint: 'fsShell', targets: [{ format: hdrFormat, blend: add }, { format: weightFormat, blend: min }, { format: 'r8unorm', blend: max }] },
+        fragment: { module: m, entryPoint: 'fsShell', targets: [{ format: hdrFormat, blend: add }, { format: 'r8unorm', blend: max }] },
         primitive: { topology: 'triangle-list' },
         depthStencil: { format: 'depth32float', depthWriteEnabled: false, depthCompare: 'greater' },
       });
@@ -324,7 +321,7 @@ export class Renderer {
     this.ringPipe = d.createRenderPipeline({
       label: 'rings', layout: 'auto',
       vertex: { module: ringMod, entryPoint: 'vs' },
-      fragment: { module: ringMod, entryPoint: 'fs', targets: [{ format: hdrFormat, blend: add }, { format: weightFormat, blend: min }, { format: 'r8unorm', blend: max }] },
+      fragment: { module: ringMod, entryPoint: 'fs', targets: [{ format: hdrFormat, blend: add }, { format: 'r8unorm', blend: max }] },
       primitive: { topology: 'triangle-list' },
       depthStencil: { format: 'depth32float', depthWriteEnabled: false, depthCompare: 'greater' },
     });
@@ -436,7 +433,7 @@ export class Renderer {
     const out = ctx ? configureOutput(device, ctx, options.display ?? 'auto', options.colorSpace ?? 'auto') : { format: 'rgba8unorm' as GPUTextureFormat, hdr: false, colorSpace: 'srgb' as const };
     const format = out.format;
     device.pushErrorScope('validation');
-    const r = new Renderer(device, canvas, ctx, format, blend32 ? 'rgba32float' : 'rgba16float', blend32 ? 'r32float' : 'r16float');
+    const r = new Renderer(device, canvas, ctx, format, blend32 ? 'rgba32float' : 'rgba16float');
     r.displayInfo = { hdr: out.hdr, colorSpace: out.colorSpace, format };
     const err = await device.popErrorScope();
     if (err) throw new Error(`Renderer pipeline creation failed: ${err.message}`);
@@ -546,7 +543,6 @@ export class Renderer {
       pt: tex(W, H, this.hdrFormat, RT, 'PT'),
       ptEx: tex(W, H, this.hdrFormat, RT, 'PTEX'),
       ptDisp: tex(W, H, 'rgba16float', RT, 'PTDISP'),
-      w: tex(W, H, this.weightFormat, RT, 'W'),
       mask: tex(W, H, 'r8unorm', RT, 'MASK'),
       depth: tex(W, H, 'depth32float', RT, 'depth'),
       levels,
@@ -658,7 +654,7 @@ export class Renderer {
   private destroyTargets(): void {
     const t = this.targets;
     if (!t) return;
-    for (const x of [t.ext, t.pt, t.ptEx, t.ptDisp, t.w, t.mask, t.depth, t.acu, t.fov, t.zero, t.zero2]) x.destroy();
+    for (const x of [t.ext, t.pt, t.ptEx, t.ptDisp, t.mask, t.depth, t.acu, t.fov, t.zero, t.zero2]) x.destroy();
     for (const l of t.levels) { l.lvl.destroy(); l.tmp.destroy(); l.blur.destroy(); l.acc.destroy(); l.accR.destroy(); l.ub.destroy(); l.ubR.destroy(); }
     t.partials.destroy();
     t.darkest.destroy();
@@ -749,7 +745,6 @@ export class Renderer {
     const extentPx = SPLAT_EXTENT_SIGMA * sigmaPx;
     const omegaCentre = ((2 * g.tanX) / t.W) * ((2 * g.tanY) / t.H);
     const footprintSr = 2 * Math.PI * sigmaPx * sigmaPx * omegaCentre;
-    const wPt = Math.min(1, footprintSr / eye.riccoAreaSr);
     if (!this.surf && snapshot.bodies.some((b) => b.surface && (b.surface.albedo || b.surface.height || b.surface.clouds || b.surface.night || b.surface.water))) {
       this.surf = new SurfaceGpu(d, this.surfaceCacheMiB);
     }
@@ -784,7 +779,7 @@ export class Renderer {
     });
     this.atmOf = atmOf;
     // Shape meshes (meshes/meshBodies.ts): bodies whose mesh is resident are drawn from it, not as ellipsoids.
-    if (!this.meshes && prep.resolved.some((r) => r.body.shape)) this.meshes = new MeshBodies(d, this.hdrFormat, this.weightFormat, this.meshCacheMiB);
+    if (!this.meshes && prep.resolved.some((r) => r.body.shape)) this.meshes = new MeshBodies(d, this.hdrFormat, this.meshCacheMiB);
     const meshSet = this.meshes ? this.meshes.prepare(prep, g, { selfShadow: !this.debugSkip.has('meshShadow') }) : null;
     if (this.meshes) this.stats.meshes = this.meshes.stats();
     this.apOf = apOf;
@@ -816,7 +811,7 @@ export class Renderer {
     // veil holds every point source in the frame, displayed or not (step 3), so the subtraction is always right.
     this.selfVeilPx = ownVeilPerPixel(veilLevels, kR);
 
-    this.writeUniforms(snapshot, eye, g, prep, sigmaPx, extentPx, wPt);
+    this.writeUniforms(snapshot, eye, g, prep, sigmaPx, extentPx);
 
     const enc = d.createCommandEncoder({ label: 'frame' });
     this.tsLabels = [];
@@ -852,7 +847,7 @@ export class Renderer {
       const ng = { ...r.body.nightglow!,
         airglow: skip.has('airglow') ? null : r.body.nightglow!.airglow,
         aurora: skip.has('aurora') ? null : r.body.nightglow!.aurora };
-      this.nightglow ??= new NightglowGpu(d, this.hdrFormat, this.weightFormat);
+      this.nightglow ??= new NightglowGpu(d, this.hdrFormat);
       const atmB = atmOf.get(ngI);
       if (!atmB || atmB.unmeasured) prep.warnings.push(`${r.body.name}: airglow and aurora drawn without the lower atmosphere's attenuation (atmosphere not drawn)`);
       const top = Math.max(...r.radiiKm) + shellTopKm(ng);
@@ -871,7 +866,6 @@ export class Renderer {
         timestampWrites: this.tsw('bodies+rings'),
         colorAttachments: [
           { view: t.ext.createView(), loadOp: 'clear', storeOp: 'store', clearValue: [0, 0, 0, 0] },
-          { view: t.w.createView(), loadOp: 'clear', storeOp: 'store', clearValue: [1, 1, 1, 1] },
           { view: t.mask.createView(), loadOp: 'clear', storeOp: 'store', clearValue: [0, 0, 0, 0] },
         ],
         depthStencilAttachment: { view: t.depth.createView(), depthClearValue: 0, depthLoadOp: 'clear', depthStoreOp: 'store' },
@@ -1389,7 +1383,7 @@ export class Renderer {
     return b;
   }
 
-  private writeUniforms(snap: SceneSnapshot, eye: EyeFrame, g: ReturnType<typeof cameraGeom>, prep: PreparedFrame, sigmaPx: number, extentPx: number, wPt: number): void {
+  private writeUniforms(snap: SceneSnapshot, eye: EyeFrame, g: ReturnType<typeof cameraGeom>, prep: PreparedFrame, sigmaPx: number, extentPx: number): void {
     const d = this.device;
     const t = this.targets!;
     const preExposure = this.hdrFormat === 'rgba32float' ? 1 : 1 / Math.max(eye.Acone, 1e-6);
@@ -1422,7 +1416,7 @@ export class Renderer {
       eye.mesopic.m, CIE191.vPrimeLambda0, CRUMEY.spRatioBlackwell, s.fieldFactor,
       CRUMEY.a1, CRUMEY.a2, CRUMEY.a3, CRUMEY.a4,
       CRUMEY.a5, CRUMEY.zeroBackgroundB, eye.adaptBw, eye.riccoAreaSr,
-      this.glareCache.unscattered, s.ageYears, s.pigmentation, wPt,
+      this.glareCache.unscattered, s.ageYears, s.pigmentation, 0,
       c[0], c[1], c[2], 0, c[3], c[4], c[5], 0, c[6], c[7], c[8], 0,
       1 / 255, cosField, sigmaPx, nSrc,
       extentPx, norm, Math.pow(10, Math.min(eye.dark.rodLogElevation, 30)), eye.dark.coneCatch,
@@ -1538,7 +1532,7 @@ export class Renderer {
       a.set([...f.n, f.D, ...f.e1, f.beta, ...f.e2, f.near ? 1 : 0, ...f.ns, 0, ...f.E1, 0, ...f.E2, 0], o);
       a.set([M[0], M[1], M[2], 0, M[3], M[4], M[5], 0, M[6], M[7], M[8], 0], o + 24);
       a.set([Mi[0], Mi[1], Mi[2], 0, Mi[3], Mi[4], Mi[5], 0, Mi[6], Mi[7], Mi[8], 0], o + 36);
-      a.set([...f.o, f.c, ...r.sunDir, r.sunDistKm, ...r.K, r.riccoWeight, r.sunRadiusKm, r.occluders.length, r.lit ? 1 : 0], o + 48);
+      a.set([...f.o, f.c, ...r.sunDir, r.sunDistKm, ...r.K, 0, r.sunRadiusKm, r.occluders.length, r.lit ? 1 : 0], o + 48);
       r.occluders.forEach(([p, rad], k) => a.set([...p, rad], o + 64 + k * 4));
       const R = r.bodyToWorld, rr = r.radiiKm;
       a.set([R[0], R[1], R[2], rr[0], R[3], R[4], R[5], rr[1], R[6], R[7], R[8], rr[2]], o + 80);

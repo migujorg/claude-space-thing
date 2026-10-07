@@ -70,7 +70,7 @@ struct Eye {
   mes: vec4f,      // m (CIE 191), V'(lambda0), rho2850, field factor F
   cr0: vec4f,      // Crumey a1..a4
   cr1: vec4f,      // a5, zero-background B, adaptation (Blackwell units), Ricco area (sr)
-  glare: vec4f,    // unscattered fraction, age, pigmentation, point Ricco weight
+  glare: vec4f,    // unscattered fraction, age, pigmentation, unused
   cat0: vec4f,
   cat1: vec4f,
   cat2: vec4f,     // chromatic adaptation matrix rows
@@ -346,7 +346,7 @@ struct Body {
   o: vec4f,     // NEAR: camera in unit-sphere frame, w = |o|^2 - 1
   sun: vec4f,   // unit direction to the Sun from the body centre, w = distance (km)
   rad: vec4f,   // radiance prefactor (cd/m2 per unit radiance factor of the law), XYZS
-  misc: vec4f,  // x = 1 (written to the W target, which nothing reads), y = Sun radius (km), z = occluder count, w = 1 lit / 0 dark
+  misc: vec4f,  // x unused, y = Sun radius (km), z = occluder count, w = 1 lit / 0 dark
   occ: array<vec4f, 4>,  // occluders: centre relative to this body (km), w = radius
   rot0: vec4f, rot1: vec4f, rot2: vec4f,  // body-fixed → world rows; w = radii a, b, c (km)
   surfA: vec4f, // albedo map: page-table base (u32 bits), max level, enabled, mean radius (km)
@@ -601,8 +601,7 @@ fn texelRadf(uv: vec2f, mu0: f32, mu: f32, g: f32) -> vec4f {
 ${BODY_LIGHT_WGSL}
 struct FOut {
   @location(0) ext: vec4f,
-  @location(1) w: f32,
-  @location(2) mask: f32,
+  @location(1) mask: f32,
   @builtin(frag_depth) depth: f32,
 };
 
@@ -727,7 +726,6 @@ struct FOut {
   }
   var o: FOut;
   o.ext = toStore(F, L * cov);
-  o.w = b.misc.x;
   o.mask = select(0.0, cov, gap > 0.5);
   o.depth = depthOf(hit.t, hit.dir);
   return o;
@@ -912,8 +910,7 @@ export const ATMOSPHERE_SHELL_SHADER = COMMON + BODY_COMMON + ATMOSPHERE_WGSL + 
 
 struct SOut {
   @location(0) ext: vec4f,
-  @location(1) w: f32,
-  @location(2) mask: f32,
+  @location(1) mask: f32,
   @builtin(frag_depth) depth: f32,
 };
 
@@ -947,7 +944,6 @@ struct SOut {
   let sNearQ = max(-chord, -tCam);
   if (chord <= sNearQ) { discard; }
   var o: SOut;
-  o.w = 1.0;
   if (A.quad.w > 0.5) {
     // Scattering not measured (Titan's haze): no light; the air beyond the disk is marked "not measured".
     o.ext = vec4f(0.0);
