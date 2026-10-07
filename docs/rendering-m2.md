@@ -105,7 +105,12 @@ Available models (`schema.ts` `SpatialPhotometricModel`; float64 reference in `s
 - Lambert.
 - Lommel–Seeliger.
 - lunar-Lambert (McEwen 1991), with L constant or tabulated vs α.
-- Minnaert (1941), with k constant or tabulated vs α.
+- Minnaert (1941), with k constant or tabulated vs α. In the shader μ is bounded below at 10⁻³: with k < 1
+  the law is integrable over the disk but unbounded at a point, and the body pass evaluates it on limb
+  fragments of partial coverage, whose μ is zero up to rounding. The disk integral that pins the flux uses
+  the law without the bound; the two agree within 10⁻⁴ up to a phase of 170° and within 2.5·10⁻³ on thinner
+  crescents (2.2·10⁻³ for Uranus at 179°; `render-law-twins.test.ts`). The bound is a property of how limb
+  fragments are sampled, not of the law.
 - Hapke (2012): the IMSA form with SHOE, CBOE, double Henyey–Greenstein p(g) (b, c), porosity K,
   Hapke's (1984) macroscopic roughness θ̄, and the Hapke (2002) or (1981) H function.
 - Akimov (M5), parameter-free: the disk function of Shkuratov et al. (1999), as Filacchione et al.
