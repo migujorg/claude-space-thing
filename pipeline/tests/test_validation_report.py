@@ -98,3 +98,10 @@ def test_run_command_reproduces_recorded_sampling():
         run["gpu"] = {"mode": "hardware"}
         text = report.run_section(run, "")
         assert f"`cd app && npm run validate -- --ss {ss} --gpu hardware`" in text
+
+
+def test_ring_domain_distinguishes_product_coverage_from_published_measurements():
+    text = report.run_section(stub_run(), report.RUN_FINDINGS)
+    assert "product's calibrated 0.25–47° domain" in text
+    assert "[published measurements beyond 47° exist](../sources/rings-high-phase.md)" in text
+    assert "and are not yet included" in text

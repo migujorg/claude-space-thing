@@ -82,7 +82,7 @@ describe('a body with a surface reflectance under its air (fixture)', () => {
     const warnings = [
       'Titan: atmosphere model scaled to the disk photometry at 3°, ×0.99 X, 0.99 Y, 0.88 Z, 0.95 S (measured p·Φ over the model\'s disk integral)',
       'Titania: phase extrapolated beyond measured range (0–35°) with the spatial law → estimated',
-      'Saturn rings: phase angle 147.75° outside the reflectance model\'s 0.25–47° → ring brightness not measured (hatched)',
+      'Saturn rings: phase angle 147.75° outside the reflectance model\'s 0.25–47° → ring brightness unknown in this product (hatched)',
       'Saturn: Barkstrom law outside its fitted range → Lambert spatial distribution',
     ];
     expect(rendererLines(warnings, 'Titan')).toEqual([warnings[0].slice('Titan: '.length)]);
