@@ -173,14 +173,18 @@ export function starsFramesNote(values, compared) {
 }
 
 /**
- * The same as a failure, for a scene whose eye is always adapted (`adapt=instant` in its URL): nothing in such a
- * scene changes between frames, so a count that does means a verdict depends on an earlier frame again. Null for a
- * steady count and for a scene whose adaptation runs in real time.
+ * A changing count fails an instant or held-clock scene: its settled frame must be independent of earlier frames.
+ * Unheld real-time scenes can gain stars as pigments recover. Held-clock scenes also require a sampled count.
  */
 export function starsFramesFailure(values, compared, query) {
-  if (!/(^|&)adapt=instant(&|$)/.test(query ?? '')) return null;
+  const q = new URLSearchParams(query ?? '');
+  const instant = q.get('adapt') === 'instant';
+  const time = q.get('adapttime');
+  const held = time !== null && time !== '' && Number.isFinite(Number(time)) && Number(time) >= 0 && q.has('adaptfrom') && !instant;
+  if (!instant && !held) return null;
+  if (held && !values?.length) return 'starsDrawn samples unavailable for a scene with its eye clock held';
   const note = starsFramesNote(values, compared);
-  return note ? `${note} (the eye is always adapted in this scene: the settled frame must be one frame)` : null;
+  return note ? `${note} (${held ? `eye clock held at ${Number(time)} s` : 'the eye is always adapted in this scene'}: the settled frame must be one frame)` : null;
 }
 
 // ---- timings (operational budgets, independent of the scientific model and baseline tolerances) -------------
@@ -201,7 +205,7 @@ export const TIMING_POLICY = Object.freeze({ frames: 60, cpuPrepMedianCeilingMs:
  * timing scalars each rAF. With GPU backpressure several rAFs may observe the same last completed render;
  * these are animation-frame observations, not a claim of 60 distinct GPU submissions. GPU timestamps and
  * frameMs (CPU start to GPU completion) arrive asynchronously and may be a frame or two old.
- * Keep the existing hardware star census over its first 16 frames in the same sampling window.
+ * Keep a star census over the first 16 frames on either adapter in the same sampling window.
  */
 export async function pageFrameSamples({ frames, starFrames = 0, timeoutMs }) {
   const samples = [], seen = new Set();
@@ -218,7 +222,7 @@ export async function pageFrameSamples({ frames, starFrames = 0, timeoutMs }) {
         samples.push({ cpuPrepMs: stats?.cpuPrepMs, cpuFrameMs: stats?.cpuFrameMs, frameMs: stats?.frameMs, gpuFrameMs: stats?.gpuFrameMs });
         if (i < starFrames && typeof stats?.starsDrawn === 'number') seen.add(stats.starsDrawn);
       }
-      return { samples, starsDrawnFrames: [...seen].sort((a, b) => a - b) };
+      return { samples, starsDrawnFrames: [...seen].sort((a, b) => a - b), starsDrawnVaried: seen.size > 1 };
     })()]);
   } finally {
     clearTimeout(timer);
@@ -526,7 +530,7 @@ function fmt(x) {
 
 /** A plain-text table of the scenes' stats (for the console and the report). */
 export function statsTable(results) {
-  const head = ['scene', 'ready ms', 'CPU prep med ms', 'CPU prep max ms', 'CPU frame med ms', 'CPU frame max ms', 'GPU med ms', 'GPU max ms', 'L_adapt cd/m²', 'pupil mm', 'lim mag', 'stars', 'bodies (resolved)', 'worst labels', 'warnings', 'mean L', 'result'];
+  const head = ['scene', 'ready ms', 'CPU prep med ms', 'CPU prep max ms', 'CPU frame med ms', 'CPU frame max ms', 'GPU med ms', 'GPU max ms', 'L_adapt cd/m²', 'pupil mm', 'lim mag', 'stars', 'stars varied', 'bodies (resolved)', 'worst labels', 'warnings', 'mean L', 'result'];
   const rows = results.map((r) => {
     const s = r.stats ?? {};
     const labels = {};
@@ -539,6 +543,7 @@ export function statsTable(results) {
       s.pupilDiameterMm !== null && s.pupilDiameterMm !== undefined ? s.pupilDiameterMm.toFixed(2) : 'none',
       s.limitingMagnitude !== null && s.limitingMagnitude !== undefined ? s.limitingMagnitude.toFixed(2) : 'none',
       String(s.starsDrawn ?? ''),
+      r.starsDrawnVaried === undefined ? 'none' : r.starsDrawnVaried ? 'yes' : 'no',
       s.bodies ? `${s.bodiesDrawn} (${s.bodies.length})` : '',
       Object.entries(labels).map(([l, n]) => `${n} ${l}`).join(', '),
       String(s.warnings?.length ?? 0),

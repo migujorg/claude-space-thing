@@ -188,7 +188,8 @@ export interface RendererPort {
   readonly stats: RendererStats;
   /**
    * Resolves once the view is fully settled: surface tiles loaded and the eye's adaptation converged (the renderer
-   * drives extra frames of the last snapshot to get there). For screenshots (__frameReady, __app.nextFrame()) —
+   * drives extra frames of the last snapshot to get there). A held eye clock converges the measurement at its
+   * stated history instant, without adding elapsed adaptation time. For screenshots (__frameReady, __app.nextFrame()) —
    * not for pacing the interactive loop.
    */
   settled(): Promise<void>;

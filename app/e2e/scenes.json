@@ -64,7 +64,8 @@
     "look": "0,-15",
     "fov": "30",
     "adapt": "realtime",
-    "adaptfrom": "10000,600,60"
+    "adaptfrom": "10000,600,60",
+    "adapttime": "60"
    }
   },
   {
@@ -256,6 +257,7 @@
     "dist": "3000000000",
     "labels": "0",
     "adaptfrom": "10000,600,120",
+    "adapttime": "120",
     "adapt": "realtime"
    }
   },
@@ -267,6 +269,7 @@
     "dist": "3000000000",
     "labels": "0",
     "adaptfrom": "10000,600,720",
+    "adapttime": "720",
     "adapt": "realtime"
    }
   },
@@ -278,6 +281,7 @@
     "dist": "3000000000",
     "labels": "0",
     "adaptfrom": "10000,600,1800",
+    "adapttime": "1800",
     "adapt": "realtime"
    }
   },

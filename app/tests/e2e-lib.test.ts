@@ -1,3 +1,4 @@
+import scenesJson from '../e2e/scenes.json';
 // The pure parts of the scene regression suite (scripts/e2e-lib.mjs): scene URLs, PNG thumbnails, the lightness
 // grid, the comparison rules against a baseline, and the --gpu option's browser arguments and adapter checks.
 
@@ -87,6 +88,19 @@ describe('scene suite helpers', () => {
     expect(lib.sceneQuery(suite, { params: { smallbodies: null } })).toBe('t=2026-10-15T00:00:00Z');
   });
 
+  it('passes the exact held instant for all four time-dependent scenes', () => {
+    const expected = { 'night-limb-iss-daylight-eye': '60', 'starfield-dark-2min': '120', 'starfield-dark-12min': '720', 'starfield-dark-30min': '1800' };
+    for (const [id, elapsed] of Object.entries(expected)) {
+      const scene = scenesJson.scenes.find((s) => s.id === id)!;
+      const q = new URLSearchParams(lib.sceneQuery(scenesJson, scene));
+      expect(q.get('adapttime'), id).toBe(elapsed);
+      expect(q.get('adapt'), id).toBe('realtime');
+      expect(q.get('adaptfrom')?.split(',')[2], id).toBe(elapsed);
+      expect(scene).not.toHaveProperty('tolerance');
+      expect(scene).not.toHaveProperty('toleranceWhy');
+    }
+  });
+
   it('round-trips PNG thumbnails and averages lightness in linear light', () => {
     const w = 128, h = 72;
     const px = image(w, h, (x) => (x < w / 2 ? 0 : 255)); // left half black, right half white
@@ -135,7 +149,7 @@ describe('scene suite helpers', () => {
     expect(lib.compareScene(scene(debug(), g), null)).toMatchObject({ pass: true, notes: ['no baseline for this scene'] });
     // Per-scene tolerance overrides.
     expect(lib.compareScene(scene(debug({ adapt: 300, warnings: ['Sun: limb darkening unknown'] }), g), base, { adaptationLog10: 0.5 }).pass).toBe(true);
-    expect(lib.statsTable([{ id: 'x', readyMs: 1000, ...scene(debug(), g), compare: { pass: true, failures: [] } }])).toMatch(/x\s+1000\s+(?:none\s+){6}100\s+3\.00\s+2\.50\s+1000\s+2 \(1\)\s+1 measured, 1 derived\s+0\s+0\.300\s+pass/);
+    expect(lib.statsTable([{ id: 'x', readyMs: 1000, ...scene(debug(), g), compare: { pass: true, failures: [] } }])).toMatch(/x\s+1000\s+(?:none\s+){6}100\s+3\.00\s+2\.50\s+1000\s+none\s+2 \(1\)\s+1 measured, 1 derived\s+0\s+0\.300\s+pass/);
   });
 });
 
@@ -263,5 +277,11 @@ describe('the --gpu option', () => {
     expect(lib.starsFramesNote([2624, 2626, 2629], 2626)).not.toBeNull();
     expect(lib.starsFramesFailure([1, 2], 1, 'target=999&adapt=instantly')).toBeNull();
     expect(lib.starsFramesFailure([1, 2], 1, undefined)).toBeNull();
+    for (const t of [0, 60, 1800]) {
+      expect(lib.starsFramesFailure([1, 2], 1, realtime + '&adapttime=' + t)).toMatch(/clock held/);
+      expect(lib.starsFramesFailure([1], 1, realtime + '&adapttime=' + t)).toBeNull();
+      expect(lib.starsFramesFailure(undefined, 1, realtime + '&adapttime=' + t)).toMatch(/unavailable/);
+    }
+    expect(lib.starsFramesFailure([1, 2], 1, realtime + '&adapttime=-1')).toBeNull();
   });
 });

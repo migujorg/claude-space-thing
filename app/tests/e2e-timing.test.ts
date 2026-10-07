@@ -20,6 +20,7 @@ describe('scene frame cost measurements', () => {
     const result = await lib.pageFrameSamples({ frames: 60, starFrames: 16, timeoutMs: 1000 });
     expect(frame).toBe(60);
     expect(result.starsDrawnFrames).toEqual([0, 1]);
+    expect(result.starsDrawnVaried).toBe(true);
     const timings = lib.summarizeFrameTimings(result.samples);
     expect(timings.frames).toBe(60);
     expect(timings.cpuPrepMs).toEqual({ samples: 60, median: 30.5, max: 60 });
