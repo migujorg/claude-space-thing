@@ -117,7 +117,7 @@ Available models (`schema.ts` `SpatialPhotometricModel`; float64 reference in `s
     equals sin(kε)/sin ε exactly (k = π/(π − g)), which is how it is evaluated; its limit is k.
   - g is clamped below 180°.
 - Barkstrom (1973) (M5): I/F ∝ (1/μ)·(μ0μ/(μ0 + μ))^B, with B constant or tabulated vs α (the form of
-  Dones et al.'s fits for Saturn). B = 1 is Lommel–Seeliger. μ is floored at 10⁻³ as for Minnaert, since
+  Dones et al.'s fits for Saturn). B = 1 is Lommel–Seeliger. μ is floored at 10⁻³, since
   B < 1 diverges at the limb.
 
 These are per-body constant parameter sets. Per-texel parameters (the Moon's `hapke` layer, Sato et al.
