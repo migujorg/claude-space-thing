@@ -7,6 +7,7 @@
 // window.__frameReady is set once the renderer and the data are ready (window.__frameError on failure).
 
 import { loadAll } from '../data/load';
+import { assessCase, frameLimitReason } from './results.mjs';
 import { validationSampling } from './sampling.mjs';
 
 import type { ValidationCase } from '../data/schema';
@@ -17,20 +18,23 @@ import { compareRatios, compareRoi, scaledRect, validationScene, type RatioResul
 
 export interface RunResult {
   id: string;
+  status: 'rendered' | 'not rendered';
+  reason?: string;
+  errors?: string[];
   width: number;
   height: number;
   ss: number;
-  reality: string;
-  hdrFormat: string;
-  scene: Pick<ValidationScene, 'notes' | 'bodies'>;
+  reality?: string;
+  hdrFormat?: string;
+  scene?: Pick<ValidationScene, 'notes' | 'bodies'>;
   rois: RoiResult[];
   ratios: RatioResult[];
-  stats: Renderer['stats'];
-  renderMs: number;
+  stats?: Renderer['stats'];
+  renderMs?: number;
   /** Rendered HDR Y (cd/m²), width × height float32 little-endian, base64 (box-averaged when ss > 1). */
-  hdrY: string;
+  hdrY?: string;
   /** The eye-model display image, RGBA8 at the rendered size (ss × width, ss × height), base64. */
-  display: string;
+  display?: string;
 }
 
 declare global {
@@ -38,6 +42,7 @@ declare global {
     __validation?: {
       run(c: ValidationCase, opts?: ValidationOptions): Promise<RunResult>;
       data: { missing: string[] };
+      limits: { maxTextureDimension2D: number };
       /** For scripted experiments (a variant scene, a changed body): the renderer and the app data used. */
       debug: { renderer: Renderer; data: ValidationData };
     };
@@ -60,7 +65,17 @@ async function main(): Promise<void> {
     hdr: params.get('hdr') === 'f16' ? 'f16' : 'auto',
     surfaceCacheMiB: Number(params.get('cache') ?? 512),
   });
-  renderer.deviceLost.then((i) => { window.__frameError = `WebGPU device lost (${i.reason}): ${i.message}`; });
+  let deviceLoss: string | null = null;
+  renderer.deviceLost.then((i) => {
+    deviceLoss = `WebGPU device lost (${i.reason}): ${i.message}`;
+    window.__frameError = deviceLoss;
+  });
+  const device = renderer.gpuDevice;
+  let caseErrors: string[] = [];
+  device.addEventListener('uncapturederror', (e) => {
+    caseErrors.push(`WebGPU error: ${(e as GPUUncapturedErrorEvent).error.message}`);
+  });
+  const limits = { maxTextureDimension2D: device.limits.maxTextureDimension2D };
   const base = `${import.meta.env.BASE_URL}data/`;
   const loaded = await loadAll({ fetch: (u: string) => fetch(u), base, verifyHashes: false, eagerEphemeris: () => false });
   const data: ValidationData = {
@@ -72,38 +87,57 @@ async function main(): Promise<void> {
 
   async function run(c: ValidationCase, opts: ValidationOptions = {}): Promise<RunResult> {
     const ss = validationSampling(opts.ss);
-    const scene = validationScene(c, data, opts);
-    const W = c.view.camera.width, H = c.view.camera.height;
-    renderer.resize(W * ss, H * ss, 1);
-    const t0 = performance.now();
-    renderer.render(scene.snapshot);
-    await renderer.settled();
-    const renderMs = performance.now() - t0;
-    // The renderer warns when its HDR targets are the rgba16float fallback (no float32-blendable).
-    const hdrFormat = renderer.stats.warnings?.some((w) => w.includes('rgba16float')) ? 'rgba16float' : 'rgba32float';
-    const rois: RoiResult[] = [];
-    for (const roi of c.rois) rois.push(compareRoi(roi, await renderer.readHdrRegion(scaledRect(roi.rect, ss))));
-    const full = await renderer.readHdr();
-    const y = new Float32Array(W * H);
-    for (let j = 0; j < H; j++) {
-      for (let i = 0; i < W; i++) {
-        let s = 0;
-        for (let dy = 0; dy < ss; dy++) for (let dx = 0; dx < ss; dx++) s += full.data[4 * ((j * ss + dy) * full.width + i * ss + dx) + 1];
-        y[j * W + i] = s / (ss * ss);
+    const refusal = deviceLoss ?? frameLimitReason(c, ss, limits);
+    if (refusal) return assessCase(c, null, { ss, reason: refusal });
+    caseErrors = [];
+    for (const filter of ['validation', 'out-of-memory', 'internal'] as const) device.pushErrorScope(filter);
+    let result: RunResult | null = null;
+    try {
+      const scene = validationScene(c, data, opts);
+      const W = c.view.camera.width, H = c.view.camera.height;
+      renderer.resize(W * ss, H * ss, 1);
+      const t0 = performance.now();
+      renderer.render(scene.snapshot);
+      await renderer.settled();
+      const renderMs = performance.now() - t0;
+      // The renderer warns when its HDR targets are the rgba16float fallback (no float32-blendable).
+      const hdrFormat = renderer.stats.warnings?.some((w) => w.includes('rgba16float')) ? 'rgba16float' : 'rgba32float';
+      const rois: RoiResult[] = [];
+      for (const roi of c.rois) rois.push(compareRoi(roi, await renderer.readHdrRegion(scaledRect(roi.rect, ss))));
+      const full = await renderer.readHdr();
+      if (full.width !== W * ss || full.height !== H * ss) {
+        throw new Error(`requested HDR frame ${W * ss}×${H * ss}, read back ${full.width}×${full.height}`);
+      }
+      const y = new Float32Array(W * H);
+      for (let j = 0; j < H; j++) {
+        for (let i = 0; i < W; i++) {
+          let s = 0;
+          for (let dy = 0; dy < ss; dy++) for (let dx = 0; dx < ss; dx++) s += full.data[4 * ((j * ss + dy) * full.width + i * ss + dx) + 1];
+          y[j * W + i] = s / (ss * ss);
+        }
+      }
+      const display = await renderer.readPixels();
+      // The whole frame's statistics are not a test; they make a blank render obvious in the report.
+      const frame = regionStats(full);
+      result = {
+        status: 'rendered', id: c.id, width: W, height: H, ss, reality: opts.reality ?? 'best', hdrFormat,
+        scene: { notes: [...scene.notes, ...(frame.mean[1] > 0 ? [] : ['the HDR frame is black'])], bodies: scene.bodies },
+        rois, ratios: compareRatios(c, rois), stats: structuredClone(renderer.stats), renderMs,
+        hdrY: b64(new Uint8Array(y.buffer)), display: b64(new Uint8Array(display.data.buffer)),
+      };
+    } catch (e) {
+      caseErrors.push(String(e instanceof Error ? e.message : e));
+    } finally {
+      for (let i = 0; i < 3; i++) {
+        const error = await device.popErrorScope();
+        if (error) caseErrors.push(`WebGPU ${error.constructor.name}: ${error.message}`);
       }
     }
-    const display = await renderer.readPixels();
-    // The whole frame's statistics are not a test; they make a blank render obvious in the report.
-    const frame = regionStats(full);
-    return {
-      id: c.id, width: W, height: H, ss, reality: opts.reality ?? 'best', hdrFormat,
-      scene: { notes: [...scene.notes, ...(frame.mean[1] > 0 ? [] : ['the HDR frame is black'])], bodies: scene.bodies },
-      rois, ratios: compareRatios(c, rois), stats: structuredClone(renderer.stats), renderMs,
-      hdrY: b64(new Uint8Array(y.buffer)), display: b64(new Uint8Array(display.data.buffer)),
-    };
+    if (deviceLoss) caseErrors.push(deviceLoss);
+    return assessCase(c, result, { ss, errors: caseErrors });
   }
 
-  window.__validation = { run, data: { missing }, debug: { renderer, data } };
+  window.__validation = { run, limits, data: { missing }, debug: { renderer, data } };
   window.__frameReady = true;
 }
 

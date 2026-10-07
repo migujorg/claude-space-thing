@@ -9,7 +9,7 @@
 //   npm run validate -- --only io-nh-lorri-2007,saturn-cassini-wac-2016
 //   options: --ss N (N × N samples per pixel, default DEFAULT_VALIDATION_SS in src/validation/sampling.mjs)  --reality strict|best|complete (default best)
 //            --hdr f16 (rgba16float fallback targets)  --timeout <s per case, default 900>
-//            --base http://127.0.0.1:5173 (use a running server)  --strict (exit 1 when an ROI fails)
+//            --base http://127.0.0.1:5173 (use a running server)  --strict (exit 1 when an ROI/ratio fails or any case was not rendered)
 //            --gpu swiftshader|hardware (default swiftshader; hardware = the machine's GPU through Vulkan, and the
 //            run stops if the browser gave a software adapter instead)
 // Not part of CI (no data, no WebGPU there). A failing ROI is a finding, reported with its numbers.
@@ -17,12 +17,13 @@
 import { chromium } from 'playwright';
 import { startLocalServer } from './local-server.mjs';
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { cpus } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { adapterLabel, encodePng, gpuLaunchArgs, gpuMismatch, pageAdapterInfo, runServerOptions } from './e2e-lib.mjs';
-import { markdownReport } from './validate-lib.mjs';
+import { assessCase, frameLimitReason, tally, validationExitCode } from '../src/validation/results.mjs';
+import { markdownReport } from '../src/validation/report.mjs';
 import { parseSamplingOption } from '../src/validation/sampling.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -92,33 +93,55 @@ if (wrongGpu) {
   throw new Error(wrongGpu);
 }
 process.stdout.write(`gpu: ${gpu.mode}, adapter ${adapterLabel(gpu.adapter)}\n`);
+const limits = await page.evaluate(() => window.__validation.limits);
 const dataMissing = await page.evaluate(() => window.__validation.data.missing);
 
 const results = [];
+let pageUnavailable = null;
 for (const entry of cases) {
   const c = JSON.parse(readFileSync(resolve(VALIDATION, entry.path), 'utf8'));
   process.stdout.write(`… ${c.id} (${c.view.camera.width}×${c.view.camera.height}, ss ${ss})\n`);
   const t0 = Date.now();
+  consoleErrors.length = 0; // listeners now collect only this case, including readback errors
   try {
-    const r = await Promise.race([
-      page.evaluate(({ c, opts }) => window.__validation.run(c, opts), { c, opts: { ss, reality } }),
-      new Promise((_, rej) => setTimeout(() => rej(new Error(`timeout after ${timeoutMs / 1000} s`)), timeoutMs)),
-    ]);
+    const refusal = pageUnavailable ?? frameLimitReason(c, ss, limits);
+    let timer;
+    let r;
+    try {
+      r = refusal ? assessCase(c, null, { ss, reason: refusal }) : await Promise.race([
+        page.evaluate(({ c, opts }) => window.__validation.run(c, opts), { c, opts: { ss, reality } }),
+        new Promise((_, rej) => { timer = setTimeout(() => {
+          pageUnavailable = `previous case ${c.id} timed out; page may still be rendering`;
+          rej(new Error(`timeout after ${timeoutMs / 1000} s`));
+        }, timeoutMs); }),
+      ]);
+    } finally { clearTimeout(timer); }
+    // Flush browser events delivered with the evaluation before accepting any measurement.
+    const loss = pageUnavailable ?? await page.evaluate(() => window.__frameError ?? null);
+    r = assessCase(c, r, { ss, errors: [...consoleErrors, ...(loss ? [loss] : [])] });
+    r.consoleErrors = [...consoleErrors];
     if (r.ss !== ss) throw new Error(`requested ss ${ss}, renderer recorded ${r.ss}`);
-    const y = new Float32Array(Buffer.from(r.hdrY, 'base64').buffer.slice(0));
-    const disp = new Uint8Array(Buffer.from(r.display, 'base64'));
-    const peak = Math.max(1e-30, ...r.rois.filter((q) => q.expected).map((q) => q.expected[1]), ...r.rois.map((q) => q.rendered.mean[1]).filter(Number.isFinite));
-    writeFileSync(resolve(OUT, `${c.id}.hdr.png`), yPng(y, r.width, r.height, 1.5 * peak));
-    writeFileSync(resolve(OUT, `${c.id}.display.png`), encodePng(disp, r.width * r.ss, r.height * r.ss));
+    if (r.status === 'rendered') {
+      const yBytes = Buffer.from(r.hdrY, 'base64');
+      const y = new Float32Array(yBytes.buffer, yBytes.byteOffset, yBytes.byteLength / 4);
+      const disp = new Uint8Array(Buffer.from(r.display, 'base64'));
+      const peak = Math.max(1e-30, ...r.rois.filter((q) => q.expected).map((q) => q.expected[1]), ...r.rois.map((q) => q.rendered.mean[1]).filter(Number.isFinite));
+      writeFileSync(resolve(OUT, `${c.id}.hdr.png`), yPng(y, r.width, r.height, 1.5 * peak));
+      writeFileSync(resolve(OUT, `${c.id}.display.png`), encodePng(disp, r.width * r.ss, r.height * r.ss));
+    } else {
+      for (const suffix of ['hdr', 'display']) rmSync(resolve(OUT, `${c.id}.${suffix}.png`), { force: true });
+    }
     delete r.hdrY;
     delete r.display;
     r.title = c.title;
     r.wallMs = Date.now() - t0;
     results.push(r);
-    const failed = r.rois.filter((q) => q.pass === false).length, passed = r.rois.filter((q) => q.pass === true).length;
-    process.stdout.write(`✓ ${c.id}: ${passed} pass, ${failed} fail (${(r.wallMs / 1000).toFixed(0)} s)\n`);
+    const n = tally([r]);
+    process.stdout.write(`${r.status === 'not rendered' ? '✗' : '✓'} ${c.id}: ${n.pass} pass, ${n.fail} fail, ${n.notRendered} not rendered` +
+      (r.reason ? `: ${r.reason}` : '') + ` (${(r.wallMs / 1000).toFixed(0)} s)\n`);
   } catch (e) {
-    results.push({ id: c.id, title: c.title, error: String(e?.message ?? e).slice(0, 1000), wallMs: Date.now() - t0 });
+    for (const suffix of ['hdr', 'display']) rmSync(resolve(OUT, `${c.id}.${suffix}.png`), { force: true });
+    results.push({ ...assessCase(c, null, { ss, errors: consoleErrors, reason: String(e?.message ?? e).slice(0, 1000) }), consoleErrors: [...consoleErrors], wallMs: Date.now() - t0 });
     process.stdout.write(`✗ ${c.id}: ${String(e?.message ?? e).slice(0, 200)}\n`);
   }
 }
@@ -134,7 +157,8 @@ const report = {
   // The machine that rendered: docs/reports/validation.md §7 names it in its run line (SwiftShader runs on the CPU).
   host: { cpu: cpus()[0]?.model ?? null, threads: cpus().length },
   dataMissing,
-  consoleErrors,
+  limits,
+  consoleErrors: results.flatMap((r) => r.consoleErrors ?? []),
   doc: 'docs/reports/validation.md (the cases), app/e2e/README.md (this runner)',
   cases: results,
 };
@@ -143,6 +167,4 @@ const md = markdownReport(report);
 writeFileSync(resolve(OUT, 'report.md'), md);
 console.log('\n' + md);
 console.log(`report: ${resolve(OUT, 'report.json')}  images: ${OUT}`);
-const errors = results.filter((r) => r.error).length;
-const fails = results.flatMap((r) => r.rois ?? []).filter((q) => q.pass === false).length;
-process.exit(errors || (flag('strict') && fails) ? 1 : 0);
+process.exit(validationExitCode(results, flag('strict')));
