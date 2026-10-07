@@ -6,7 +6,8 @@
 //                 then rings (ray–plane, lit/unlit faces, planet shadow), depth-tested, not depth-writing
 //   1b. comets  → EXT: comae (enclosed-light tables; below the Ricco area → body points) and dust/ion-tail
 //                 packets of the comets the shell draws extended (SceneSnapshot.comets; ./comets/model.ts)
-//   2. cull     → stars above the Crumey threshold → compact list + indirect draw args (compute)
+//   2. cull     → every point source in the frame, sorted by the Crumey threshold into the visible and the unseen
+//                  list + indirect draw args (compute)
 //   3. points   → PT (stars, unresolved bodies): physical energy-conserving splats, depth-tested vs
 //                 bodies, and PTEX: the part of their light the display cannot convey (eye/points.ts)
 //   4. glare    → pyramid convolution with the CIE 146 scatter kernel, twice: of EXT+PT (the physical
@@ -44,6 +45,7 @@ import { AdaptationState, computeEyeFrame, localObserver, type EyeFrame } from '
 import { magnitudeFromLux } from '../eye/crumey';
 import { DEFAULT_EYE_SETTINGS, type EyeSettings } from '../eye/settings';
 import { fitScatterKernel } from '../eye/glare';
+import { backgroundLevel, ownVeilPerPixel } from '../eye/points';
 import { DEG2_PER_SR, pupilDiameterMm } from '../eye/pupil';
 import { adaptationStatus, adaptationStatusText, trolands } from '../eye/bleaching';
 import { DARK_LIGHT_CONE, DARK_LIGHT_ROD, response } from '../eye/tonemap';
@@ -165,7 +167,10 @@ export class Renderer {
   /** GPU memory budget for shape-mesh levels (MiB). */
   meshCacheMiB = 512;
   private visible: GPUBuffer;
+  /** The point sources in the frame that the eye does not pick out: in the point image (PT), not displayed. */
+  private unseen: GPUBuffer;
   private maxVisible = 1;
+  private maxUnseen = 1;
   private frameIndex = 0;
   private lastSnapshot: SceneSnapshot | null = null;
   private readbackBusy = false;
@@ -187,7 +192,7 @@ export class Renderer {
   private sunSP = 1;
   private fieldDeg2 = 0;
   private persistentWarnings: string[] = [];
-  /** Debug: names of passes to skip ('bodies', 'background', 'cull', 'points', 'pyramid', 'sun', 'adapt', 'composite', 'overlays', 'meshShadow'). */
+  /** Debug: names of passes to skip ('bodies', 'background', 'cull', 'points', 'unseen' (the point sources the eye does not pick out, in the point image), 'pyramid', 'sun', 'adapt', 'composite', 'overlays', 'meshShadow'). */
   debugSkip = new Set<string>();
   /** Extended sky light behind the bodies (render/sky/background.ts), drawn into EXT after the bodies pass. */
   private background: { encode(enc: GPUCommandEncoder, t: BackgroundTargets): void } | null = null;
@@ -229,6 +234,7 @@ export class Renderer {
   private cullPipe: GPUComputePipeline;
   private clampPipe: GPUComputePipeline;
   private pointPipe: GPURenderPipeline;
+  private pointLightPipe: GPURenderPipeline;
   private pointDispPipe: GPURenderPipeline;
   private ringPipe: GPURenderPipeline;
   private maskHatchPipe: GPURenderPipeline;
@@ -274,12 +280,14 @@ export class Renderer {
     this.clampUB = ub(16);
     this.limbsUB = ub(LIMBS_UB_BYTES);
     this.reduceUB = ub(16);
-    this.args = d.createBuffer({ size: 16, usage: GPUBufferUsage.INDIRECT | GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
+    // Two indirect draws: the visible list at 0, the unseen list at 16 (CULL_SHADER).
+    this.args = d.createBuffer({ size: 32, usage: GPUBufferUsage.INDIRECT | GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC });
     this.srcs = d.createBuffer({ size: MAX_GLARE_SOURCES * 32, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
     this.result = d.createBuffer({ size: 32, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC });
     this.readback = d.createBuffer({ size: 32, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
     this.sunPointBuf = d.createBuffer({ size: 32, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
-    this.visible = d.createBuffer({ size: 32, usage: GPUBufferUsage.STORAGE });
+    this.visible = d.createBuffer({ size: 32, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC });
+    this.unseen = d.createBuffer({ size: 32, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC });
     this.surfUB = ub(32);
     this.texelUB = ub(6 * 16);
     this.dummyStorage = d.createBuffer({ size: 256, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
@@ -340,6 +348,14 @@ export class Renderer {
       label: 'points (retina)', layout: 'auto',
       vertex: { module: ptMod, entryPoint: 'vs' },
       fragment: { module: ptMod, entryPoint: 'fsPhys', targets: [{ format: hdrFormat, blend: add }, { format: hdrFormat, blend: add }] },
+      primitive: { topology: 'triangle-list' },
+      depthStencil: { format: 'depth32float', depthWriteEnabled: false, depthCompare: 'greater-equal' },
+    });
+    // Sources the eye does not pick out: their light into PT, nothing into PTEX (same pass, so both targets).
+    this.pointLightPipe = d.createRenderPipeline({
+      label: 'points (retina, unseen)', layout: 'auto',
+      vertex: { module: ptMod, entryPoint: 'vsLight' },
+      fragment: { module: ptMod, entryPoint: 'fsLight', targets: [{ format: hdrFormat, blend: add }, { format: hdrFormat, writeMask: 0 }] },
       primitive: { topology: 'triangle-list' },
       depthStencil: { format: 'depth32float', depthWriteEnabled: false, depthCompare: 'greater-equal' },
     });
@@ -447,12 +463,27 @@ export class Renderer {
       const data = catalog.data.subarray(first * catalog.stride, (first + count) * catalog.stride);
       const buffer = this.device.createBuffer({ size: Math.max(16, data.byteLength), usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
       this.device.queue.writeBuffer(buffer, 0, data.buffer as ArrayBuffer, data.byteOffset, data.byteLength);
-      const info = this.device.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+      const info = this.device.createBuffer({ size: 32, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
       this.stars.push({ buffer, count, info });
     }
-    this.maxVisible = Math.max(1, Math.min(catalog.count + (this.extraPts?.count ?? 0), MAX_VISIBLE_STARS));
+    this.allocPointLists();
+  }
+
+  /**
+   * The cull's two lists. The visible list holds up to MAX_VISIBLE_STARS sources, as before. The unseen list holds
+   * every record (as many as one storage binding can): which records a full list drops is a race between the
+   * cull's invocations, so a list that could fill would put a different set of faint sources into the point image
+   * on every frame.
+   */
+  private allocPointLists(): void {
+    const records = this.starCount + (this.extraPts?.count ?? 0);
+    const perBinding = Math.floor(Math.min(this.device.limits.maxStorageBufferBindingSize, this.device.limits.maxBufferSize) / 32);
+    this.maxVisible = Math.max(1, Math.min(records, MAX_VISIBLE_STARS));
+    this.maxUnseen = Math.max(1, Math.min(records, perBinding));
     this.visible.destroy();
-    this.visible = this.device.createBuffer({ size: this.maxVisible * 32, usage: GPUBufferUsage.STORAGE });
+    this.unseen.destroy();
+    this.visible = this.device.createBuffer({ size: this.maxVisible * 32, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC });
+    this.unseen = this.device.createBuffer({ size: this.maxUnseen * 32, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC });
   }
 
   /**
@@ -470,9 +501,7 @@ export class Renderer {
   /** Extra point sources (star-layout records produced on the GPU, e.g. small bodies) drawn through the star path; null removes them. See ./extraPoints.ts. */
   setExtraPointSources(src: PointSourceBuffer | null): void {
     (this.extraPts ??= new ExtraPointSources(this.device)).set(src);
-    this.maxVisible = Math.max(1, Math.min(this.starCount + this.extraPts.count, MAX_VISIBLE_STARS));
-    this.visible.destroy();
-    this.visible = this.device.createBuffer({ size: this.maxVisible * 32, usage: GPUBufferUsage.STORAGE });
+    this.allocPointLists();
   }
 
   /** The physical model of comets (comets/model.json); null removes it. See ./comets. */
@@ -590,6 +619,34 @@ export class Renderer {
     return (this.hdrReadback ??= new HdrReadback(this.device)).read(t, [0, 0, t.width, t.height], 1 / this.hdrPreExposure);
   }
   // ── end of the validation hook ─────────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Test hook (the frame-to-frame census of the scene suite, app/e2e/README.md): the stars and extra point sources
+   * the last rendered frame's cull found visible, 8 float32 per point (ndc.x, ndc.y, 0, 0, then X, Y, Z, S in lux),
+   * in no particular order, with that frame's index; and the same for the sources in the frame that it found not
+   * visible (`unseen`: in the point image, not displayed). Read-only, outside render().
+   */
+  async readPointList(): Promise<{ frame: number; count: number; data: Float32Array; unseenCount: number; unseen: Float32Array }> {
+    const d = this.device;
+    const frame = this.frameIndex;
+    const bytes = this.visible.size, bytesU = this.unseen.size;
+    const buf = d.createBuffer({ size: 32 + bytes + bytesU, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ });
+    const enc = d.createCommandEncoder();
+    enc.copyBufferToBuffer(this.args, 0, buf, 0, 32);
+    enc.copyBufferToBuffer(this.visible, 0, buf, 32, bytes);
+    enc.copyBufferToBuffer(this.unseen, 0, buf, 32 + bytes, bytesU);
+    d.queue.submit([enc.finish()]);
+    await buf.mapAsync(GPUMapMode.READ);
+    const raw = buf.getMappedRange();
+    const head = new Uint32Array(raw, 0, 8);
+    const count = Math.min(head[1], bytes / 32);
+    const unseenCount = Math.min(head[5], bytesU / 32);
+    const data = new Float32Array(raw.slice(32, 32 + count * 32));
+    const unseen = new Float32Array(raw.slice(32 + bytes, 32 + bytes + unseenCount * 32));
+    buf.unmap();
+    buf.destroy();
+    return { frame, count, data, unseenCount, unseen };
+  }
 
   private destroyTargets(): void {
     const t = this.targets;
@@ -742,22 +799,21 @@ export class Renderer {
       d.queue.writeBuffer(l.ub, 0, new Float32Array([wk, 0, 0, 0]));
       d.queue.writeBuffer(l.ubR, 0, new Float32Array([wk * Math.min(1, Ak / eye.displayRiccoSr), 0, 0, 0]));
     });
-    // Local background of point sources: the physical veil at scales >= the Ricco area (the level whose
-    // Gaussian's equivalent area first reaches A_R), so a star's own core glare does not mask it.
-    let kR = 0;
-    while (kR < t.levels.length - 1 && 2 * Math.PI * pyramidSigma(kR) ** 2 * omegaCentre < eye.riccoAreaSr) kR++;
+    // Local background of point sources (eye/points.ts): the physical veil at scales >= the Ricco area (the
+    // level whose Gaussian's equivalent area first reaches A_R), so a star's own core glare does not mask it.
+    const veilLevels = t.levels.map((_, k) => ({ weight: this.glareCache.weights[k] ?? 0, sigmaPx: pyramidSigma(k) }));
+    const kR = backgroundLevel(veilLevels, omegaCentre, eye.riccoAreaSr);
     this.bgView = t.levels[kR].acc.createView();
     // A source's own light in that background at its own position, per unit illuminance and per pixel
-    // solid angle: Σ_{k≥kR} w_k/(2π σ_k²). The shaders subtract it: the background excludes the source.
-    let selfVeilPx = 0;
-    for (let k = kR; k < t.levels.length; k++) selfVeilPx += (this.glareCache.weights[k] ?? 0) / (2 * Math.PI * pyramidSigma(k) ** 2);
-    this.selfVeilPx = selfVeilPx;
+    // solid angle: Σ_{k≥kR} w_k/(2π σ_k²). The shaders subtract it: the background excludes the source. The
+    // veil holds every point source in the frame, displayed or not (step 3), so the subtraction is always right.
+    this.selfVeilPx = ownVeilPerPixel(veilLevels, kR);
 
     this.writeUniforms(snapshot, eye, g, prep, sigmaPx, extentPx, wPt);
 
     const enc = d.createCommandEncoder({ label: 'frame' });
     this.tsLabels = [];
-    d.queue.writeBuffer(this.args, 0, new Uint32Array([6, 0, 0, 0]));
+    d.queue.writeBuffer(this.args, 0, new Uint32Array([6, 0, 0, 0, 6, 0, 0, 0]));
 
     // 1. Resolved bodies, then rings.
     const nRes = prep.resolved.length;
@@ -914,7 +970,7 @@ export class Renderer {
       this.stats.comets = { comae: this.comets.stats.comae, packets: this.comets.stats.packets };
     } else if (this.stats.comets) this.stats.comets = { comae: 0, packets: 0 };
 
-    // 2. Star visibility culling (reads last frame's veil for the local background).
+    // 2. Star visibility test (reads last frame's veil for the local background): the visible and the unseen list.
     const veilView = t.levels[0].acc.createView();
     const paintView = t.levels[0].accR.createView();
     const bgView = this.bgView!;
@@ -925,7 +981,7 @@ export class Renderer {
         const groups = Math.ceil(c.count / 256);
         const gx = Math.min(groups, 65535);
         const gy = Math.ceil(groups / gx);
-        d.queue.writeBuffer(c.info, 0, new Uint32Array([c.count, this.starStride, this.maxVisible, gx]));
+        d.queue.writeBuffer(c.info, 0, new Uint32Array([c.count, this.starStride, this.maxVisible, gx, this.maxUnseen, 0, 0, 0]));
         pass.setBindGroup(0, d.createBindGroup({
           layout: this.cullPipe.getBindGroupLayout(0),
           entries: [
@@ -938,19 +994,21 @@ export class Renderer {
             { binding: 6, resource: { buffer: c.info } },
             { binding: 7, resource: { buffer: this.srcs } },
             { binding: 8, resource: { buffer: this.limbsUB } },
+            { binding: 9, resource: { buffer: this.unseen } },
           ],
         }));
         pass.dispatchWorkgroups(gx, gy);
       }
-      this.extraPts?.cull(pass, this.cullPipe, { frameUB: this.frameUB, eyeUB: this.eyeUB, visible: this.visible, args: this.args, bgView, srcs: this.srcs, limbs: this.limbsUB, maxVisible: this.maxVisible });
-      d.queue.writeBuffer(this.clampUB, 0, new Uint32Array([this.maxVisible, 0, 0, 0]));
+      this.extraPts?.cull(pass, this.cullPipe, { frameUB: this.frameUB, eyeUB: this.eyeUB, visible: this.visible, unseen: this.unseen, args: this.args, bgView, srcs: this.srcs, limbs: this.limbsUB, maxVisible: this.maxVisible, maxUnseen: this.maxUnseen });
+      d.queue.writeBuffer(this.clampUB, 0, new Uint32Array([this.maxVisible, this.maxUnseen, 0, 0]));
       pass.setPipeline(this.clampPipe);
       pass.setBindGroup(0, d.createBindGroup({ layout: this.clampPipe.getBindGroupLayout(0), entries: [{ binding: 0, resource: { buffer: this.args } }, { binding: 1, resource: { buffer: this.clampUB } }] }));
       pass.dispatchWorkgroups(1);
       pass.end();
     }
 
-    // 3. Point sources on the retina (PT) and their excess (PTEX).
+    // 3. Point sources on the retina (PT) and their excess (PTEX). PT takes every source in the frame, the ones
+    //    the eye does not pick out included: the veil and the adaptation are those of all the light there is.
     const pointPass = (pipe: GPURenderPipeline, targets: GPUTexture[], load: boolean, draw: (pass: GPURenderPassEncoder) => void) => {
       const pass = enc.beginRenderPass({
         label: pipe.label,
@@ -973,6 +1031,15 @@ export class Renderer {
       if ((this.starCount > 0 || (this.extraPts?.count ?? 0) > 0) && !skip.has('points')) {
         pass.setBindGroup(0, this.pointBindGroup(pipe, this.visible, bg));
         pass.drawIndirect(this.args, 0);
+        if (pipe === this.pointPipe && !skip.has('unseen')) {
+          pass.setPipeline(this.pointLightPipe);
+          pass.setBindGroup(0, d.createBindGroup({
+            layout: this.pointLightPipe.getBindGroupLayout(0),
+            entries: [{ binding: 0, resource: { buffer: this.frameUB } }, { binding: 1, resource: { buffer: this.eyeUB } }, { binding: 2, resource: { buffer: this.unseen } }],
+          }));
+          pass.drawIndirect(this.args, 16);
+          pass.setPipeline(pipe);
+        }
       }
       if (bodyPointsBuf) {
         pass.setBindGroup(0, this.pointBindGroup(pipe, bodyPointsBuf, bg));

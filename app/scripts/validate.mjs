@@ -18,9 +18,10 @@ import { chromium } from 'playwright';
 import { startLocalServer } from './local-server.mjs';
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { cpus } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { adapterLabel, encodePng, gpuLaunchArgs, gpuMismatch, pageAdapterInfo } from './e2e-lib.mjs';
+import { adapterLabel, encodePng, gpuLaunchArgs, gpuMismatch, pageAdapterInfo, runServerOptions } from './e2e-lib.mjs';
 import { markdownReport } from './validate-lib.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -59,7 +60,7 @@ mkdirSync(OUT, { recursive: true });
 let server;
 let base = opt('base');
 if (!base) {
-  ({ server, base } = await startLocalServer(ROOT));
+  ({ server, base } = await startLocalServer(ROOT, runServerOptions()));
 }
 const browser = await chromium.launch({ headless: true, args: launchArgs });
 
@@ -128,6 +129,8 @@ const report = {
   dataGeneratedAt,
   options: { ss, reality, hdr: opt('hdr') ?? 'auto' },
   gpu,
+  // The machine that rendered: docs/reports/validation.md §7 names it in its run line (SwiftShader runs on the CPU).
+  host: { cpu: cpus()[0]?.model ?? null, threads: cpus().length },
   dataMissing,
   consoleErrors,
   doc: 'docs/reports/validation.md (the cases), app/e2e/README.md (this runner)',

@@ -139,7 +139,7 @@ angle *without* rendering: it tells in advance whether a disagreement is in the 
 | `jupiter-nh-lorri-2007` | Jupiter | New Horizons LORRI (1×1) | 2007-01-22T01:42:01 | 1 | 6 | 2% | 7.96, 2.48 |
 | `neptune-voyager2-1989` | Neptune | Voyager 2 ISS NAC | 1989-08-15T05:02:16 | 3 | 6 | 10% | 90.99, 129.46, 65.35 |
 | `pluto-nh-lorri-2015` | Pluto | New Horizons LORRI (1×1) | 2015-07-13T14:36:30 | 1 | 6 | 2% | 19.35, 15.7 |
-| `saturn-cassini-wac-2016` | Saturn | Cassini ISS WAC | 2016-04-25T05:55:23 | 3 | 8 | 10% | 10.33, 8.07, 9.31 |
+| `saturn-cassini-wac-2016` | Saturn | Cassini ISS WAC | 2016-04-25T05:55:23 | 3 | 8 | 10% | 9.8, 7.3, 8.79 |
 | `uranus-voyager2-1986` | Uranus | Voyager 2 ISS NAC | 1986-01-14T15:53:28 | 4 | 6 | 10% | 35.01, 47.52, 42.74, 46.92 |
 
 Sizes: `validation/` holds only case.json, reference.bin (float32 I/F on the view grid) and preview.png per case; the downloaded images are fetched into `data/raw/validation/` (git-ignored) and may be deleted after the build (`clean`).
@@ -239,7 +239,7 @@ The Earth (phase 75°) and the Moon beside it, 11 hours before the Moon crossed 
 | moon-disk-integrated | disk-integrated | [116, 212, 154, 251] | i 78.5°, e 45.0°, α 75.2°, lat 2.6° | 0.00234, 0.00311, 0.00389, 0.0046, 0.00528 | 164.1 ± 16.57 | 162.3, 134.3, 344.3 | estimated |
 | earth-centre | disk-centre | [123, 121, 128, 126] | i 72.8°, e 4.0°, α 75.0°, lat -0.2° | 0.121, 0.0992, 0.0782, 0.0729, 0.0757 | 3260 ± 482.6 | 3205, 4304, 8629 | estimated |
 | sky-near | sky-near | [120, 75, 125, 80] |  | 0.0037, 7.865e-04, 1.504e-04, 8.490e-04, 0.00121 | ≤ 183.6 | ≤ 177.8, 191.5, 436.1 | derived |
-| sky-far | sky-far | [250, 1, 255, 6] |  | 5.512e-04, 7.155e-04, 0.0045, 6.831e-04, 4.475e-04 | — | — | unknown |
+| sky-far | sky-far | [248, 3, 253, 8] |  | 3.449e-04, 8.642e-05, -7.505e-06, 7.405e-06, -3.159e-07 | ≤ 63.8 | ≤ 61.79, 66.56, 151.5 | derived |
 
 App data preview (informational, no rendering: `photometry.json` disk brightness at this phase):
 
@@ -411,7 +411,7 @@ The whole disk of Neptune from 14.5 million km at phase 15.1°, in the VIOLET, G
 | terminator | terminator | [201, 147, 204, 150] | i 79.8°, e 65.4°, α 15.0°, lat -11.2° | 0.201, 0.184, 0.157 | 8.404 ± 6.505 | 7.258, 10.37, 23.13 | estimated |
 | disk-integrated | disk-integrated | [93, 83, 214, 203] | i 46.6°, e 45.1°, α 15.1°, lat -21.7° | 0.309, 0.255, 0.21 | 11.69 ± 2.368 | 10.09, 15.42, 33.34 | estimated |
 | sky-near | sky-near | [143, 80, 148, 85] |  | -0.00107, -2.675e-04, -5.395e-04 | ≤ 0.164 | ≤ 0.159, 0.171, 0.39 | derived |
-| sky-far | sky-far | [1, 1, 6, 6] |  | —, —, — | — | — | unknown |
+| sky-far | sky-far | [25, 13, 30, 18] |  | -0.00233, -5.125e-04, -0.00628 | ≤ 0.106 | ≤ 0.102, 0.11, 0.251 | derived |
 
 App data preview (informational, no rendering: `photometry.json` disk brightness at this phase):
 
@@ -470,20 +470,20 @@ Saturn's northern hemisphere, the lit north face of the main rings and the plane
 
 | image | filter | mid-time (UTC) | fit: centre (px), roll | residual rms (I/F) | other parity rss / rss | registration δ (px) | pointing check |
 |---|---|---|---|---|---|---|---|
-| W1840258828_1 | cassini.wac.RED | 2016-04-25T05:55:23.254 | (2.55, 128.81), 182.860° | 0.023 | 5.89 | 0.5 | 10.33 native px (inside footprint) |
-| W1840258865_1 | cassini.wac.GRN | 2016-04-25T05:56:00.241 | (2.11, 128.50), 182.898° | 0.0216 | — | 0.5 | 8.07 native px (inside footprint) |
-| W1840258902_1 | cassini.wac.BL1 | 2016-04-25T05:56:37.148 | (2.64, 128.26), 182.804° | 0.0153 | — | 0.5 | 9.31 native px (inside footprint) |
+| W1840258828_1 | cassini.wac.RED | 2016-04-25T05:55:23.254 | (2.56, 128.63), 182.827° | 0.0232 | 5.73 | 0.5 | 9.8 native px (inside footprint) |
+| W1840258865_1 | cassini.wac.GRN | 2016-04-25T05:56:00.241 | (2.10, 128.27), 182.865° | 0.0215 | — | 0.5 | 7.3 native px (inside footprint) |
+| W1840258902_1 | cassini.wac.BL1 | 2016-04-25T05:56:37.148 | (2.61, 127.81), 182.886° | 0.0152 | — | 0.5 | 8.79 native px (inside footprint) |
 
 | ROI | kind | rect | geometry | I/F per band | expected Y (cd/m²) ± 2σ | X, Z, S | label |
 |---|---|---|---|---|---|---|---|
-| disk-centre | disk-centre | [1, 120, 6, 125] | i 54.9°, e 1.4°, α 54.5°, lat 24.4° | 0.322, 0.285, 0.19 | 118.3 ± 23.73 | 115.9, 81.65, 232.2 | estimated |
-| limb | limb | [1, 196, 5, 200] | i 66.9°, e 64.3°, α 54.7°, lat 85.8° | 0.246, 0.244, 0.165 | 99.82 ± 20.27 | 95.86, 70.87, 200.3 | estimated |
-| terminator | terminator | [48, 135, 52, 139] | i 85.4°, e 34.8°, α 54.0°, lat 27.0° | 0.0496, 0.0483, 0.04 | 20.61 ± 4.623 | 19.67, 16.99, 44.74 | estimated |
-| ring-c | ring | [116, 117, 120, 121] | i 63.9°, e 61.1°, α 53.0°, r 84.3 Mm | 0.0222, 0.0202, 0.0171 | 8.478 ± 1.786 | 8.343, 7.709, 18.6 | estimated |
-| ring-b | ring | [159, 128, 163, 132] | i 63.9°, e 61.3°, α 52.4°, r 112.7 Mm | 0.224, 0.207, 0.15 | 84.36 ± 17.08 | 82.91, 68.09, 174.5 | estimated |
-| ring-a | ring | [184, 135, 188, 139] | i 63.9°, e 61.3°, α 52.1°, r 130.6 Mm | 0.106, 0.0987, 0.0733 | 40.33 ± 8.146 | 39.59, 33.26, 84.35 | estimated |
-| sky-near | sky-near | [91, 142, 96, 147] |  | 0.00272, 0.00216, 0.00163 | ≤ 1.194 | ≤ 1.156, 1.246, 2.836 | derived |
-| sky-far | sky-far | [250, 1, 255, 6] |  | 5.185e-04, 2.188e-04, 3.514e-04 | — | — | unknown |
+| disk-centre | disk-centre | [1, 119, 6, 124] | i 55.0°, e 1.4°, α 54.5°, lat 23.8° | 0.321, 0.284, 0.189 | 117.7 ± 23.6 | 115.4, 81.16, 230.9 | estimated |
+| limb | limb | [1, 196, 5, 200] | i 67.0°, e 64.6°, α 54.7°, lat 85.7° | 0.246, 0.244, 0.165 | 99.66 ± 20.21 | 95.67, 71.13, 200.6 | estimated |
+| terminator | terminator | [48, 134, 52, 138] | i 85.5°, e 34.6°, α 54.0°, lat 26.5° | 0.0493, 0.0481, 0.0399 | 20.55 ± 4.608 | 19.61, 16.96, 44.65 | estimated |
+| ring-c | ring | [116, 117, 120, 121] | i 63.9°, e 61.1°, α 53.0°, r 84.2 Mm | 0.0221, 0.0202, 0.0171 | 8.449 ± 1.781 | 8.312, 7.677, 18.53 | estimated |
+| ring-b | ring | [159, 128, 163, 132] | i 63.9°, e 61.3°, α 52.4°, r 112.7 Mm | 0.224, 0.207, 0.15 | 84.35 ± 17.08 | 82.9, 68.05, 174.4 | estimated |
+| ring-a | ring | [184, 135, 188, 139] | i 63.9°, e 61.3°, α 52.1°, r 130.6 Mm | 0.106, 0.0988, 0.0733 | 40.35 ± 8.148 | 39.6, 33.26, 84.37 | estimated |
+| sky-near | sky-near | [91, 141, 96, 146] |  | 0.00272, 0.00216, 0.00164 | ≤ 1.2 | ≤ 1.162, 1.252, 2.85 | derived |
+| sky-far | sky-far | [250, 1, 255, 6] |  | 5.334e-04, 2.238e-04, 3.872e-04 | ≤ 0.407 | ≤ 0.395, 0.425, 0.968 | derived |
 
 Notes:
 
@@ -514,8 +514,8 @@ The whole, nearly featureless disk of Uranus (south pole towards the Sun) from 1
 | limb | limb | [121, 155, 124, 158] | i 53.1°, e 67.0°, α 13.9°, lat -36.7° | 0.469, 0.501, 0.473, 0.431 | 54.33 ± 11.54 | 47.93, 60.78, 140.4 | estimated |
 | terminator | terminator | [226, 110, 229, 113] | i 79.4°, e 66.6°, α 13.7°, lat -10.8° | 0.222, 0.224, 0.22, 0.195 | 24.86 ± 8.466 | 21.89, 27.84, 64.04 | estimated |
 | disk-integrated | disk-integrated | [102, 56, 241, 195] | i 45.7°, e 44.6°, α 13.8°, lat -42.6° | 0.294, 0.321, 0.305, 0.269 | 34.63 ± 6.938 | 30.27, 38.67, 90.02 | estimated |
-| sky-near | sky-near | [239, 132, 244, 137] |  | 0.00241, 0.0017, 0.0045, 0.00385 | — | — | unknown |
-| sky-far | sky-far | [1, 1, 6, 6] |  | —, —, —, — | — | — | unknown |
+| sky-near | sky-near | [160, 193, 165, 198] |  | 0.00394, 0.00256, 0.00374, 0.00468 | ≤ 0.794 | ≤ 0.769, 0.829, 1.887 | derived |
+| sky-far | sky-far | [46, 236, 51, 241] |  | 5.074e-04, -0.00152, -8.368e-04, -0.00141 | ≤ 0.233 | ≤ 0.226, 0.243, 0.554 | derived |
 
 App data preview (informational, no rendering: `photometry.json` disk brightness at this phase):
 
@@ -542,7 +542,7 @@ App data preview (informational, no rendering: `photometry.json` disk brightness
   Roll: common roll of the 3 frames (circular mean of the free fits); their circular spread 4.59° is the roll uncertainty.
 * `pluto-nh-lorri-2015`: mirrored — header WCS: det(CD) = -8.088e-08 deg², i.e. standard sky orientation with FITS rows running upwards, so the archive order read top-down is mirrored.
   Roll: roll from the header WCS (reconstructed C-kernel attitude); the free fit's roll differed by -20.74° (a nearly spherical body at low phase fixes the roll only weakly); target position refitted with the roll held.
-* `saturn-cassini-wac-2016`: direct — image fit: the other parity's residual sum of squares is 5.888 × the chosen one's.
+* `saturn-cassini-wac-2016`: direct — image fit: the other parity's residual sum of squares is 5.734 × the chosen one's.
 * `uranus-voyager2-1986`: direct — from the reference frame C4220129 (1981-06-27T00:05:34.040 UTC; NAIF 699, whose fit fixes the roll, with NAIF 601, 603, 604, 605 in the field): the moons' light at their predicted places sums to 9.069 (I/F × pixels, background-subtracted) with the direct archive order and 0.0335 with the other (per moon: {601: 0.414, 603: 1.6037, 604: 2.879, 605: 4.17215} vs {601: -0.0066, 603: 0.0036, 604: -0.0012, 605: 0.0377}); the primary's own fit residuals differ by a factor 1.563.
   Roll: common roll of the 4 frames (circular mean of the free fits); their circular spread 1.95° is the roll uncertainty.
 
@@ -555,7 +555,7 @@ App data preview (informational, no rendering: `photometry.json` disk brightness
 * `jupiter-nh-lorri-2007`: LOR_0031736039 OPUS boresight 7.96; LOR_0031736039 WCS target 2.48, roll +0.00° from the WCS.
 * `neptune-voyager2-1989`: C1109146 OPUS boresight 90.99; C1109140 OPUS boresight 129.46; C1109104 OPUS boresight 65.35.
 * `pluto-nh-lorri-2015`: LOR_0299104109 OPUS boresight 19.35; LOR_0299104109 WCS target 15.7, roll -0.00° from the WCS.
-* `saturn-cassini-wac-2016`: W1840258828_1 OPUS boresight 10.33; W1840258865_1 OPUS boresight 8.07; W1840258902_1 OPUS boresight 9.31.
+* `saturn-cassini-wac-2016`: W1840258828_1 OPUS boresight 9.8; W1840258865_1 OPUS boresight 7.3; W1840258902_1 OPUS boresight 8.79.
 * `uranus-voyager2-1986`: C2654450 OPUS boresight 35.01; C2654456 OPUS boresight 47.52; C2654514 OPUS boresight 42.74; C2654502 OPUS boresight 46.92.
 
 These offsets are the missions' attitude-knowledge errors plus ours; the fits themselves are tied to the target's own limb and terminator, which is what the renderer comparison needs. The three Saturn frames agree with one another to 0.5 binned pixel.
@@ -573,7 +573,7 @@ These offsets are the missions' attitude-knowledge errors plus ours; the fits th
 * `pluto-nh-lorri-2015` disk-integrated: phase angle 15.82° is outside the app's phase function range: the app has no measured disk brightness here (the renderer hatches or extrapolates, by reality level).
 * `uranus-voyager2-1986` disk-integrated (phase 13.8°, sub-observer -72.5° 105.0° E): app/observed Y = 0.980 (-0.2 σ), X 0.998, Z 1.062; phase function measured.
 
-**Sizes:** `validation/` 13.4 MB (committed); downloaded inputs 194.9 MB (download ledger), git-ignored in `data/raw/validation/` (27.5 MB present now: `python -m pipeline.validation clean` deletes the images after a build; `build` fetches them again, and the pointing-fit cache is keyed by each image's sha256, so a changed archive file is refitted).
+**Sizes:** `validation/` 13.4 MB (committed); the downloaded inputs are not on this machine (its download ledger has no entry under `validation/`, and the git-ignored `data/raw/validation/` holds 0.0 MB: `python -m pipeline.validation clean` deletes the images after a build; `build` fetches them again, and the pointing-fit cache is keyed by each image's sha256, so a changed archive file is refitted).
 
 **Unit tests** (`pipeline/tests/test_validation.py`): the camera puts the target at the requested pixel with the pole up; ray casting reproduces a sphere's projected area to 1 % and face-on emission; ring classes and radii; the pointing fit recovers a synthetic pose to 0.15 px and 2°; grey closure (I/F = 1 in every band gives exactly the XYZS of sunlight / π d²); band radiance definition; PDS3 label parsing; the Himawari grid mapping round trip; the companion parity test; and every committed case.json (orthonormal camera and body matrices, fovY/pitch consistency, reference.bin size, ROI rectangles inside the view, tolerance = 2σ, fitted target centre = the view's projection of the target).
 
@@ -618,86 +618,86 @@ These offsets are the missions' attitude-knowledge errors plus ours; the fits th
 
 ## 7. The renderer against the cases
 
-Run of 2026-09-30 22:03 UTC (git 228cc84, data built 2026-09-30 22:01), reality level best, 1 × 1 samples per pixel: `cd app && npm run validate` (the full table, with X, Z, S, is in `app/shots/validation/report.md`). Y in cd/m²; the verdict covers X, Y, Z and S (failing channels named).
+Run of 2026-10-07 10:45 UTC (git cae3826, data built 2026-10-07 10:41), reality level best, 1 × 1 samples per pixel, rendered by the machine's GPU, adapter `nvidia blackwell`, on AMD Ryzen 9 9950X3D 16-Core Processor (32 threads): `cd app && npm run validate -- --gpu hardware` (the full table, with X, Z, S, is in `app/shots/validation/report.md`). Y in cd/m²; the verdict covers X, Y, Z and S (failing channels named).
 
 | case | ROI | expected Y ± 2σ | rendered Y | rendered / expected | σ | verdict |
 |---|---|---|---|---|---|---|
-| `callisto-nh-lorri-2007` | disk-centre | 87.57 ± 6.3 | 71.21 | 0.813 | -5.2 | **fail** (XYS) |
-| `callisto-nh-lorri-2007` | limb | 222.5 ± 14 | 236.9 | 1.065 | +2.1 | **fail** (XY) |
-| `callisto-nh-lorri-2007` | terminator | 31.22 ± 4.7 | 21.22 | 0.680 | -4.3 | **fail** (XYZS) |
-| `callisto-nh-lorri-2007` | disk-integrated | 64.85 ± 3.8 | 52.6 | 0.811 | -6.4 | **fail** (XYS) |
+| `callisto-nh-lorri-2007` | disk-centre | 87.57 ± 6.3 | 71.16 | 0.813 | -5.2 | **fail** (XYS) |
+| `callisto-nh-lorri-2007` | limb | 222.5 ± 14 | 237.5 | 1.067 | +2.2 | **fail** (XY) |
+| `callisto-nh-lorri-2007` | terminator | 31.22 ± 4.7 | 21.2 | 0.679 | -4.3 | **fail** (XYZS) |
+| `callisto-nh-lorri-2007` | disk-integrated | 64.85 ± 3.8 | 52.57 | 0.811 | -6.4 | **fail** (XYS) |
 | `callisto-nh-lorri-2007` | sky-near | ≤ 1.197 | 0 | — | — | pass |
 | `callisto-nh-lorri-2007` | sky-far | ≤ 0.2372 | 0 | — | — | pass |
-| `earth-himawari9-2026` | disk-centre | 4678 ± 6e+02 | 9707 | 2.075 | +16.9 | **fail** (XYZS) |
-| `earth-himawari9-2026` | limb | 6411 ± 7.7e+02 | 6347 | 0.990 | -0.2 | pass |
-| `earth-himawari9-2026` | terminator | 2169 ± 2.3e+02 | 1228 | 0.566 | -8.2 | **fail** (XYZS) |
-| `earth-himawari9-2026` | near-centre-130E | 6032 ± 6.3e+02 | 7544 | 1.251 | +4.8 | **fail** (XYZS) |
-| `earth-himawari9-2026` | near-centre-150E | 2.274e+04 ± 2.5e+03 | 2.758e+04 | 1.213 | +3.8 | **fail** (XYS) |
-| `earth-himawari9-2026` | near-centre-141E-12S | 4779 ± 6.2e+02 | 5770 | 1.207 | +3.2 | **fail** (XYZS) |
-| `earth-himawari9-2026` | sky-near | ≤ 12.88 | 0.0006613 | — | — | pass |
+| `earth-himawari9-2026` | disk-centre | 4678 ± 6e+02 | 7011 | 1.499 | +7.8 | **fail** (XYZS) |
+| `earth-himawari9-2026` | limb | 6411 ± 7.7e+02 | 6411 | 1.000 | -0.0 | **fail** (Z) |
+| `earth-himawari9-2026` | terminator | 2169 ± 2.3e+02 | 1386 | 0.639 | -6.8 | **fail** (XYZS) |
+| `earth-himawari9-2026` | near-centre-130E | 6032 ± 6.3e+02 | 8322 | 1.380 | +7.3 | **fail** (XYZS) |
+| `earth-himawari9-2026` | near-centre-150E | 2.274e+04 ± 2.5e+03 | 2.314e+04 | 1.017 | +0.3 | pass |
+| `earth-himawari9-2026` | near-centre-141E-12S | 4779 ± 6.2e+02 | 6586 | 1.378 | +5.9 | **fail** (XYZS) |
+| `earth-himawari9-2026` | sky-near | ≤ 12.88 | 0.0006606 | — | — | pass |
 | `earth-himawari9-2026` | sky-far | ≤ 43.94 | 0 | — | — | pass |
-| `earth-moon-epoxi-2008` | earth-disk-integrated | 1616 ± 1.6e+02 | 1726 | 1.068 | +1.4 | pass |
-| `earth-moon-epoxi-2008` | moon-disk-integrated | 164.1 ± 17 | 153 | 0.933 | -1.3 | pass |
-| `earth-moon-epoxi-2008` | earth-centre | 3260 ± 4.8e+02 | 3296 | 1.011 | +0.1 | pass |
+| `earth-moon-epoxi-2008` | earth-disk-integrated | 1616 ± 1.6e+02 | 1555 | 0.962 | -0.8 | pass |
+| `earth-moon-epoxi-2008` | moon-disk-integrated | 164.1 ± 17 | 152.5 | 0.929 | -1.4 | pass |
+| `earth-moon-epoxi-2008` | earth-centre | 3260 ± 4.8e+02 | 3194 | 0.980 | -0.3 | pass |
 | `earth-moon-epoxi-2008` | sky-near | ≤ 183.6 | 0 | — | — | pass |
-| `earth-moon-epoxi-2008` | sky-far | — | 0 | — | — | not compared |
-| `earth-moon-epoxi-2008` | moon-disk-integrated / earth-disk-integrated | 0.1016 ± 0.0014 | 0.08865 | — | — | **fail** (XYS) |
-| `europa-nh-lorri-2007` | disk-centre | 721.1 ± 43 | 651.6 | 0.904 | -3.2 | **fail** (XY) |
-| `europa-nh-lorri-2007` | limb | 843.4 ± 48 | 754 | 0.894 | -3.8 | **fail** (XY) |
-| `europa-nh-lorri-2007` | terminator | 219.9 ± 44 | 166.3 | 0.756 | -2.4 | **fail** (XY) |
-| `europa-nh-lorri-2007` | disk-integrated | 407.4 ± 23 | 361.5 | 0.887 | -4.0 | **fail** (XY) |
+| `earth-moon-epoxi-2008` | sky-far | ≤ 63.8 | 0 | — | — | pass |
+| `earth-moon-epoxi-2008` | moon-disk-integrated / earth-disk-integrated | 0.1016 ± 0.0014 | 0.09807 | — | — | **fail** (XY) |
+| `europa-nh-lorri-2007` | disk-centre | 721.1 ± 43 | 651.3 | 0.903 | -3.2 | **fail** (XY) |
+| `europa-nh-lorri-2007` | limb | 843.4 ± 48 | 754.1 | 0.894 | -3.8 | **fail** (XY) |
+| `europa-nh-lorri-2007` | terminator | 219.9 ± 44 | 167.1 | 0.760 | -2.4 | **fail** (XY) |
+| `europa-nh-lorri-2007` | disk-integrated | 407.4 ± 23 | 361.6 | 0.888 | -4.0 | **fail** (XY) |
 | `europa-nh-lorri-2007` | sky-near | ≤ 5.058 | 0 | — | — | pass |
 | `europa-nh-lorri-2007` | sky-far | ≤ 0.7535 | 0 | — | — | pass |
-| `ganymede-nh-lorri-2007` | disk-centre | 529.3 ± 41 | 427.8 | 0.808 | -5.0 | **fail** (XYS) |
-| `ganymede-nh-lorri-2007` | limb | 802.1 ± 35 | 700.3 | 0.873 | -5.9 | **fail** (XYS) |
-| `ganymede-nh-lorri-2007` | terminator | 155.7 ± 24 | 91.45 | 0.587 | -5.4 | **fail** (XYZS) |
+| `ganymede-nh-lorri-2007` | disk-centre | 529.3 ± 41 | 427 | 0.807 | -5.0 | **fail** (XYS) |
+| `ganymede-nh-lorri-2007` | limb | 802.1 ± 35 | 699.8 | 0.872 | -5.9 | **fail** (XYS) |
+| `ganymede-nh-lorri-2007` | terminator | 155.7 ± 24 | 91.29 | 0.586 | -5.4 | **fail** (XYZS) |
 | `ganymede-nh-lorri-2007` | disk-integrated | 299.2 ± 12 | 266.9 | 0.892 | -5.3 | **fail** (XY) |
 | `ganymede-nh-lorri-2007` | sky-near | ≤ 4.09 | 0 | — | — | pass |
 | `ganymede-nh-lorri-2007` | sky-far | ≤ 0.8382 | 0 | — | — | pass |
 | `io-nh-lorri-2007` | disk-centre | 673.7 ± 53 | 571.4 | 0.848 | -3.8 | **fail** (XY) |
-| `io-nh-lorri-2007` | limb | 839.7 ± 63 | 750.9 | 0.894 | -2.8 | **fail** (XY) |
-| `io-nh-lorri-2007` | terminator | 146.4 ± 32 | 127.9 | 0.874 | -1.2 | pass |
-| `io-nh-lorri-2007` | disk-integrated | 348.2 ± 26 | 308.2 | 0.885 | -3.1 | **fail** (XY) |
+| `io-nh-lorri-2007` | limb | 839.7 ± 63 | 750.7 | 0.894 | -2.8 | **fail** (XY) |
+| `io-nh-lorri-2007` | terminator | 146.4 ± 32 | 128.4 | 0.877 | -1.1 | pass |
+| `io-nh-lorri-2007` | disk-integrated | 348.2 ± 26 | 308.3 | 0.885 | -3.1 | **fail** (XY) |
 | `io-nh-lorri-2007` | sky-near | ≤ 6.166 | 0 | — | — | pass |
 | `io-nh-lorri-2007` | sky-far | ≤ 1.127 | 0 | — | — | pass |
 | `jupiter-nh-lorri-2007` | disk-centre | 1063 ± 2e+02 | 1289 | 1.212 | +2.2 | **fail** (XYZS) |
-| `jupiter-nh-lorri-2007` | limb | 698 ± 1.5e+02 | 727.1 | 1.042 | +0.4 | pass |
-| `jupiter-nh-lorri-2007` | terminator | 311 ± 87 | 304 | 0.978 | -0.2 | pass |
-| `jupiter-nh-lorri-2007` | disk-integrated | 500.1 ± 95 | 468.1 | 0.936 | -0.7 | pass |
+| `jupiter-nh-lorri-2007` | limb | 698 ± 1.5e+02 | 727.7 | 1.043 | +0.4 | pass |
+| `jupiter-nh-lorri-2007` | terminator | 311 ± 87 | 303 | 0.974 | -0.2 | pass |
+| `jupiter-nh-lorri-2007` | disk-integrated | 500.1 ± 95 | 468.2 | 0.936 | -0.7 | pass |
 | `jupiter-nh-lorri-2007` | sky-near | ≤ 4.339 | 0 | — | — | pass |
 | `jupiter-nh-lorri-2007` | sky-far | ≤ 0.4903 | 0 | — | — | pass |
 | `neptune-voyager2-1989` | disk-centre | 23.12 ± 4.7 | 23.17 | 1.002 | +0.0 | pass |
-| `neptune-voyager2-1989` | limb | 19.93 ± 4.7 | 19.09 | 0.958 | -0.4 | pass |
-| `neptune-voyager2-1989` | terminator | 8.404 ± 6.5 | 7.035 | 0.837 | -0.4 | pass |
-| `neptune-voyager2-1989` | disk-integrated | 11.69 ± 2.4 | 11.15 | 0.954 | -0.5 | pass |
+| `neptune-voyager2-1989` | limb | 19.93 ± 4.7 | 19.08 | 0.957 | -0.4 | pass |
+| `neptune-voyager2-1989` | terminator | 8.404 ± 6.5 | 7.02 | 0.835 | -0.4 | pass |
+| `neptune-voyager2-1989` | disk-integrated | 11.69 ± 2.4 | 11.15 | 0.953 | -0.5 | pass |
 | `neptune-voyager2-1989` | sky-near | ≤ 0.164 | 0 | — | — | pass |
-| `neptune-voyager2-1989` | sky-far | — | 0 | — | — | not compared |
-| `pluto-nh-lorri-2015` | disk-centre | 19.49 ± 6.6 | 20.78 | 1.066 | +0.4 | pass |
-| `pluto-nh-lorri-2015` | limb | 19.32 ± 6.6 | 19.27 | 0.998 | -0.0 | pass |
-| `pluto-nh-lorri-2015` | terminator | 6.802 ± 2.7 | 6.244 | 0.918 | -0.4 | pass |
+| `neptune-voyager2-1989` | sky-far | ≤ 0.1058 | 0 | — | — | pass |
+| `pluto-nh-lorri-2015` | disk-centre | 19.49 ± 6.6 | 20.8 | 1.067 | +0.4 | pass |
+| `pluto-nh-lorri-2015` | limb | 19.32 ± 6.6 | 19.24 | 0.996 | -0.0 | pass |
+| `pluto-nh-lorri-2015` | terminator | 6.802 ± 2.7 | 6.238 | 0.917 | -0.4 | pass |
 | `pluto-nh-lorri-2015` | disk-integrated | 11.47 ± 3.9 | 11.44 | 0.997 | -0.0 | pass |
-| `pluto-nh-lorri-2015` | sky-near | ≤ 0.231 | 0.01232 | — | — | pass |
+| `pluto-nh-lorri-2015` | sky-near | ≤ 0.231 | 0.01224 | — | — | pass |
 | `pluto-nh-lorri-2015` | sky-far | ≤ 0.01838 | 0 | — | — | pass |
-| `saturn-cassini-wac-2016` | disk-centre | 118.3 ± 24 | 104.4 | 0.882 | -1.2 | pass |
-| `saturn-cassini-wac-2016` | limb | 99.82 ± 20 | 108.9 | 1.091 | +0.9 | pass |
-| `saturn-cassini-wac-2016` | terminator | 20.61 ± 4.6 | 14.53 | 0.705 | -2.6 | **fail** (XYZS) |
-| `saturn-cassini-wac-2016` | ring-c | 8.478 ± 1.8 | 0 | 0.000 | -9.5 | **fail** (XYZS) |
-| `saturn-cassini-wac-2016` | ring-b | 84.36 ± 17 | 0 | 0.000 | -9.9 | **fail** (XYZS) |
-| `saturn-cassini-wac-2016` | ring-a | 40.33 ± 8.1 | 0 | 0.000 | -9.9 | **fail** (XYZS) |
-| `saturn-cassini-wac-2016` | sky-near | ≤ 1.194 | 0 | — | — | pass |
-| `saturn-cassini-wac-2016` | sky-far | — | 0 | — | — | not compared |
-| `uranus-voyager2-1986` | disk-centre | 69.51 ± 14 | 69.3 | 0.997 | -0.0 | pass |
-| `uranus-voyager2-1986` | limb | 54.33 ± 12 | 57.9 | 1.066 | +0.6 | pass |
+| `saturn-cassini-wac-2016` | disk-centre | 117.7 ± 24 | 104.1 | 0.885 | -1.2 | pass |
+| `saturn-cassini-wac-2016` | limb | 99.66 ± 20 | 109 | 1.093 | +0.9 | pass |
+| `saturn-cassini-wac-2016` | terminator | 20.55 ± 4.6 | 14.41 | 0.701 | -2.7 | **fail** (XYZS) |
+| `saturn-cassini-wac-2016` | ring-c | 8.449 ± 1.8 | 0 | 0.000 | -9.5 | **fail** (XYZS) |
+| `saturn-cassini-wac-2016` | ring-b | 84.35 ± 17 | 0 | 0.000 | -9.9 | **fail** (XYZS) |
+| `saturn-cassini-wac-2016` | ring-a | 40.35 ± 8.1 | 0 | 0.000 | -9.9 | **fail** (XYZS) |
+| `saturn-cassini-wac-2016` | sky-near | ≤ 1.2 | 0 | — | — | pass |
+| `saturn-cassini-wac-2016` | sky-far | ≤ 0.4074 | 0 | — | — | pass |
+| `uranus-voyager2-1986` | disk-centre | 69.51 ± 14 | 69.29 | 0.997 | -0.0 | pass |
+| `uranus-voyager2-1986` | limb | 54.33 ± 12 | 57.92 | 1.066 | +0.6 | pass |
 | `uranus-voyager2-1986` | terminator | 24.86 ± 8.5 | 22.55 | 0.907 | -0.5 | pass |
-| `uranus-voyager2-1986` | disk-integrated | 34.63 ± 6.9 | 34.64 | 1.000 | +0.0 | pass |
-| `uranus-voyager2-1986` | sky-near | — | 0 | — | — | not compared |
-| `uranus-voyager2-1986` | sky-far | — | 0 | — | — | not compared |
+| `uranus-voyager2-1986` | disk-integrated | 34.63 ± 6.9 | 34.67 | 1.001 | +0.0 | pass |
+| `uranus-voyager2-1986` | sky-near | ≤ 0.7942 | 0 | — | — | pass |
+| `uranus-voyager2-1986` | sky-far | ≤ 0.2333 | 0 | — | — | pass |
 
-**39 pass, 25 fail, 5 not compared.** How each body was drawn:
+**44 pass, 25 fail, 0 not compared.** How each body was drawn:
 
 * `callisto-nh-lorri-2007`: Callisto: disk photometry, disk model rotation-slices-v1, spatial model, map albedo.
-* `earth-himawari9-2026`: Earth: disk photometry, map albedo, map clouds, map water, map night, map wind, atmosphere.
-* `earth-moon-epoxi-2008`: Earth: disk photometry, map albedo, map clouds, map water, map night, map wind, atmosphere; Moon: disk photometry, disk model rolo-v1, map albedo, map height, map photometry.
+* `earth-himawari9-2026`: Earth: disk photometry, map albedo, map clouds, map cloudTau, map water, map night, map wind, partly-cloudy τ statistic for the cloud without a retrieval (estimated), atmosphere.
+* `earth-moon-epoxi-2008`: Earth: disk photometry, map albedo, map clouds, map cloudTau, map water, map night, map wind, partly-cloudy τ statistic for the cloud without a retrieval (estimated), atmosphere; Moon: disk photometry, disk model rolo-v1, map albedo, map height, map photometry.
 * `europa-nh-lorri-2007`: Europa: disk photometry, disk model rotation-slices-v1, spatial model, map albedo.
 * `ganymede-nh-lorri-2007`: Ganymede: disk photometry, disk model rotation-slices-v1, spatial model, map albedo.
 * `io-nh-lorri-2007`: Io: disk photometry, disk model rotation-slices-v1, spatial model, map albedo.
@@ -707,8 +707,13 @@ Run of 2026-09-30 22:03 UTC (git 228cc84, data built 2026-09-30 22:01), reality 
 * `saturn-cassini-wac-2016`: Saturn: disk photometry, spatial model, map albedo, rings. Renderer warnings: Saturn rings: phase angle 54.58° outside the reflectance model's 0.25–47° → ring brightness not measured (hatched).
 * `uranus-voyager2-1986`: Uranus: disk photometry, spatial model, map albedo.
 
-**What the failures say** (numbers from the run above; checks of the runner itself: 2 × 2 samples per pixel
-change no ROI by more than 0.3 %, and the rgba16float fallback targets give the same means as rgba32float):
+**What the failures say.** The numbers in items 5 and 6 are those of the run above. Those in items 1 to 4 were
+measured when each change was made, on the software renderer and, for Saturn, against the case as it was before
+its regions were rebuilt; they differ from the table above in the third digit (by up to 1 %). Two checks of the
+runner itself, made on the same tree and data as the run above. With 2 × 2 samples per pixel, 14 of the 47 body regions change by more than 0.3 % and six by more than
+1 % (Pluto's limb +3.5 %, the EPOXI Moon's disk +2.8 %, the EPOXI Earth's centre +1.6 %, Europa's and Callisto's
+limbs and Europa's terminator about 1 %), and one verdict changes: the Himawari limb's Z is +2.06σ with one sample
+and +1.99σ with four. The rgba16float fallback targets give the same means as rgba32float within 0.06 %.
 
 *In the data (photometry.json, rings.json):*
 
@@ -793,14 +798,21 @@ change no ROI by more than 0.3 %, and the rgba16float fallback targets give the 
 
 *In the renderer (for the renderer engineer):*
 
-5. **The Moon's far side (EPOXI): fixed in the renderer.** It now renders 153.0 cd/m² against 164.1 ± 17 (0.933,
-   −1.3σ). Before the fix it rendered 130.1 (0.793, −4.1σ), with the Moon's maps normalized over a rotation rather
-   than at ROLO's reference view. The Moon/Earth ratio still fails: 0.089 against 0.1016 ± 0.0014, since the Earth
-   renders 1.068 there.
-6. **Earth (Himawari-9, 2026-09-28 04:05 UTC):** the disk centre (cloud-time offset 0.03 h, so the app's clouds
-   are those of this very time) renders 9707 against 4678 ± 600 cd/m² (2.1×). The three near-centre points render
-   1.21–1.25×. The limb passes (0.99). The terminator renders 0.57, but its clouds are 4.2 h older, so that one is
+5. **The Moon's far side (EPOXI): fixed in the renderer.** It renders 152.5 cd/m² against 164.1 ± 17 (0.929,
+   −1.4σ). Before the fix it rendered 130.1 (0.793, −4.1σ), with the Moon's maps normalized over a rotation rather
+   than at ROLO's reference view. The Moon/Earth ratio fails in X and Y: 0.0981 against 0.1016 ± 0.0014, with the
+   Moon at 0.929 and the Earth at 0.962 of the observed. The ratio's tolerance is 1.4 %, far tighter than either
+   disk's (10 %), so it follows the Earth's rendering closely: it failed at 0.089 when the Earth rendered 1.068 (the
+   clouds layer's mean τ), passed at 0.101 when the Earth rendered 0.938 (the cloudTau clouds of item 6), and fails
+   again now that the light of the air below a cloud comes through the cloud (docs/rendering-earth.md §4), which
+   raised seven of the Earth's eight body regions by 0.8–13 % (the Himawari limb by 0.04 %).
+6. **Earth (Himawari-9, 2026-09-28 04:05 UTC):** the clouds are drawn from the cloudTau layer
+   (docs/rendering-earth.md §2): the share with a retrieval as a log-normal in τ, the rest with the partly-cloudy τ
+   statistic (estimated). The disk centre (cloud-time offset 0.03 h, so the app's clouds are those of this very
+   time) renders 7011 against 4678 ± 600 cd/m² (1.50×, +7.8σ). The three near-centre points render 1.38×, 1.02×
+   (pass) and 1.38×. The limb passes in X, Y and S (Y 1.000) and fails in Z (1.112, +2.1σ; with four samples per
+   pixel it passes, +2.0σ). The terminator renders 0.64, but its clouds are 4.2 h older, so that one is
    inconclusive. The rendered image shows 8-pixel blocks in the ocean/cloud field around the disk centre
-   (`app/shots/validation/earth-himawari9-2026.hdr.png`). To check: the cloud layer's optical thickness and
-   fraction there, and the sun glint (the specular point is near 130° E). The EPOXI Earth of 2008, seen whole at
-   75° phase, passes: disk-integrated 1.068, centre 1.011.
+   (`app/shots/validation/earth-himawari9-2026.hdr.png`). To check: the cloud without a retrieval at the centre
+   (its thickness is a global statistic), and the sun glint (the specular point is near 130° E). The EPOXI Earth of
+   2008, seen whole at 75° phase, passes: disk-integrated 0.962, centre 0.980.

@@ -421,8 +421,15 @@ fixation (§2). Crumey's thresholds are measured this way. The local background 
 - plus the analytic veil;
 - plus, in the point shader, the extended image at the point.
 
+That veil is made from the extended image and the physical point image, and the point image holds every
+point source in the frame, whether the eye can pick it out or not: a star's light reaches the eye either
+way. So the veil follows from the scene alone, and no source's verdict depends on a verdict of an earlier
+frame, its own or a neighbour's (`eye/points.ts` is the tested CPU twin). Until October 2026 only the
+sources that had passed the test were in the point image. A star at threshold was then judged against a
+veil that held its light only on the frames after it had passed, and was drawn every other frame.
+
 The source's own light in it (Σ_{k≥k_R} w_k/(2πσ_k²) per unit illuminance) is subtracted, so a source
-never masks itself.
+never masks itself. This term is approximate (§10).
 
 The mesopic state m, the Ricco area, the cone summation area and the tone response (Pattanaik's
 observer with Hunt's rods, reference white and black, appearance rules) are all evaluated at that
@@ -439,7 +446,11 @@ Galactic light, unresolved stars) the regression suite's star field beyond Pluto
 6·10⁻⁵ cd/m² and a limit of V ≈ 6.5.
 
 **Culling.** On the GPU, each star whose Blackwell-equivalent illuminance is below F·ΔI(B) (÷ the
-enhanced boost) at its own background is not drawn. Unresolved bodies are tested in the point shader.
+enhanced boost) at its own background is not displayed as a point. Its light still goes into the physical
+point image, and so into the veil and the adaptation (the cull writes two lists, the visible and the
+unseen sources; both are splatted into it). The cull's background has no extended-image term, so it keeps
+more stars than are displayed; the point shader applies the full test. Unresolved bodies are tested in
+the point shader.
 The renderer also reports `pointLimitingMagnitude`: the limit for the eye looking at the darkest
 background in the frame (the minimum retinal luminance, reduced on the GPU with the adaptation
 measurement), with the current pigment state. It bounds which catalogue stars can be drawn at all, and
@@ -618,6 +629,19 @@ checks that the Sun's light on the bodies is unaffected.
   shows the Sun's veil from just outside the frame). Starlight outside the frame does not scatter
   into it, so the veil darkens slightly within the pyramid's reach of the frame edges (visible only in
   dense star fields with enhanced mode). A guard band would fix it.
+- **A point's own light in its background is one number per frame**, the sum of the veil levels' Gaussians
+  at their peaks. What the background texture really holds of a source at its own position (the pyramid's
+  arithmetic run on the CPU, `tests/eye-points.test.ts`) is less by a third when the background is read at
+  level 0 (a light-adapted eye at an ordinary field of view), because the term leaves out the splat's own
+  width and the bilinear read; from level 1 up the term is right in the mean within 6 %; and at any level
+  the texture's value moves by up to a quarter with the source's place in the texels. Consequences: read
+  at level 0, every point's background comes out too dark (stars somewhat below their threshold are
+  drawn, and the glare of a planet at its moon is not counted); elsewhere a point's background is off by
+  up to a quarter of its own light either way, which is small for a star at threshold and large for a
+  bright point. An exact term (the pyramid's response to the splat, per source) is the fix.
+- **The veil level of a point's background** comes from the Ricco area of the frame's adaptation, not of
+  the point's own background. In a frame adapted to a sunlit body, a star in the dark sky beside it is
+  judged against a much finer veil than its own Ricco area, in which its own light dominates.
 - **Rod hue shift** (Cao et al. 2008 / Kirk & O'Brien 2011) not implemented; mesopic scenes lose colour
   toward white rather than shifting toward blue.
 - **Cone desensitisation after a bleach** is only the loss of photon catch (§2 "Time"). The cone
