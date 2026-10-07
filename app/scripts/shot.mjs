@@ -3,10 +3,10 @@
 // --gpu hardware, the machine's GPU through Vulkan), waits for window.__frameReady, and saves a PNG. Prints console
 // errors and the adapter that rendered.
 //
-//   node scripts/shot.mjs --url "/?t=2026-09-30T00:00:00Z" --out shots/x.png [--width 1280 --height 720] [--wait 0] [--base http://localhost:5173]
+//   node scripts/shot.mjs --url "/?t=2026-09-30T00:00:00Z" --out shots/x.png [--width 1280 --height 720] [--wait 0] [--base http://127.0.0.1:5173]
 //                         [--gpu swiftshader|hardware] (default swiftshader; with hardware a software adapter is an error)
 import { chromium } from 'playwright';
-import { createServer } from 'vite';
+import { startLocalServer } from './local-server.mjs';
 import { mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -30,10 +30,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 let server;
 let base = args.base;
 if (!base) {
-  server = await createServer({ root, server: { port: 0, strictPort: false }, logLevel: 'error' });
-  await server.listen();
-  const addr = server.httpServer.address();
-  base = `http://localhost:${addr.port}`;
+  ({ server, base } = await startLocalServer(root));
 }
 
 const browser = await chromium.launch({ headless: true, args: launchArgs });

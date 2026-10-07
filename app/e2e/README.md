@@ -75,9 +75,13 @@ npm run e2e                                   # all scenes, compared with the ba
 npm run e2e -- --only earth-day,saturn-rings  # some scenes
 npm run e2e -- --no-compare                   # render and report only
 npm run e2e -- --jobs 1 --timeout 900         # one scene at a time, 15 min per scene (default 2 and 600 s)
-npm run e2e -- --base http://localhost:5173   # use a running dev server
+npm run e2e -- --base http://127.0.0.1:5173   # use a running dev server
 npm run e2e -- --gpu hardware                 # on the machine's GPU instead of SwiftShader (see below)
 ```
+
+## The scripts' own server
+
+Without `--base`, `e2e.mjs`, `validate.mjs`, `shot.mjs`, `sb-gpu.mjs`, `sky-shots.mjs` and `corona-shots.mjs` start their own Vite server through `scripts/local-server.mjs`: on `127.0.0.1`, at a free port the operating system assigns, and Vite must take exactly that port. They never use 5173. (Asking Vite for port 0 does not give a free port: Vite then takes its default, 5173, on `localhost`, which is `[::1]` where IPv6 comes first. A script run would sit on `[::1]:5173` beside a dev server on `127.0.0.1:5173`, and a browser that opens `http://localhost:5173` would be served the script's tree.)
 
 ## On the GPU (`--gpu hardware`)
 
