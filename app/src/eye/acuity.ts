@@ -60,3 +60,63 @@ export function fovealSumsSize(blocksX: number, blocksY: number): [number, numbe
   const pow2 = (n: number) => { let p = 1; while (p < n) p *= 2; return p; };
   return [pow2(blocksX), pow2(blocksY)];
 }
+
+// ── The filter's image chain (PYRAMID_SHADER downTiling; COMPOSITE_SHADER acuAt) ─────────────────────────────
+// The extended image as a chain of levels, each about half the one above. It is one texture with mips: its base is
+// the frame's rounded-up half, and every further mip the rounded-down half of the one above (WebGPU's rule). Each
+// level tiles the frame: a texel is the mean of the interval of the level above that it covers, and the read maps a
+// position onto a level by the level's size. Until October 2026 the chain was made with the veil pyramid's `down`
+// (rows 2p and 2p+1, zero beyond): at an odd side the last row or column of the level above was never read, and at
+// an odd frame size the base's last texel was averaged with zero (a dark last line on the screen).
+// The functions below are the float reference of that shader code and of its sizes.
+
+/**
+ * Sides of the chain's levels along one axis: `base` (the frame's rounded-up half, frameSizing.ts acuW or acuH),
+ * then each mip the rounded-down half of the one above, `mips` levels in all.
+ */
+export function acuityChainSides(base: number, mips: number): number[] {
+  const s = [base];
+  while (s.length < mips) s.push(Math.max(1, Math.floor(s[s.length - 1] / 2)));
+  return s;
+}
+
+/**
+ * How texel p of a level with `nDst` texels takes the texels of the level above, which has `nSrc`: p covers the
+ * interval [p·nSrc/nDst, (p+1)·nSrc/nDst) of it, and each texel there counts by the share of the interval it fills.
+ * In integers, as the shader has it (units of 1/nDst of a source texel), so the weights are exact: two of one half
+ * where nSrc = 2·nDst, three where nSrc is odd.
+ */
+export function tilingTaps(p: number, nSrc: number, nDst: number): { first: number; weights: number[] } {
+  const a = p * nSrc, first = Math.floor(a / nDst), weights: number[] = [];
+  for (let i = first; i < first + 3; i++) {
+    const w = Math.min(a + nSrc, (i + 1) * nDst) - Math.max(a, i * nDst);
+    if (w > 0) weights.push(w / nSrc);
+  }
+  return { first, weights };
+}
+
+/** PYRAMID_SHADER `downTiling` in single precision: the level (wd × hd) below an image of w × h. */
+export function downTiling(src: Float32Array, w: number, h: number, wd: number, hd: number): Float32Array {
+  const f = Math.fround, o = new Float32Array(wd * hd);
+  const tx = Array.from({ length: wd }, (_, x) => tilingTaps(x, w, wd)), ty = Array.from({ length: hd }, (_, y) => tilingTaps(y, h, hd));
+  for (let y = 0; y < hd; y++) for (let x = 0; x < wd; x++) {
+    const X = tx[x], Y = ty[y];
+    let s = 0;
+    // Rows outside, columns inside, as the shader sums: where both sides are even this is `down` to the bit.
+    for (let j = 0; j < Y.weights.length; j++) for (let i = 0; i < X.weights.length; i++) {
+      s = f(s + f(src[(Y.first + j) * w + X.first + i] * f(f(X.weights[i]) * f(Y.weights[j]))));
+    }
+    o[y * wd + x] = s;
+  }
+  return o;
+}
+
+/**
+ * Where COMPOSITE_SHADER `acuAt` reads a level along one axis for the frame position q (pixels, at pixel centres
+ * i + ½): in the level's texel units with texel centres at whole numbers. The level's texels tile the frame, so the
+ * frame maps onto the level by the level's size. Single precision, as the shader computes it.
+ */
+export function acuityReadPos(q: number, frameSide: number, levelSide: number): number {
+  const f = Math.fround;
+  return f(f(q * f(levelSide / frameSide)) - 0.5);
+}
