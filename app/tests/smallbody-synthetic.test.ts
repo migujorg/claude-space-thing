@@ -8,7 +8,7 @@ import { sbId } from '../src/app/smallbodies';
 import { filterBody } from '../src/app/reality';
 import { centerStateFrom, diameterFromH, keplerE, readSynthetic, syntheticMu, syntheticPeriod, syntheticRelativeState, syntheticState } from '../src/core/smallbodySynthetic';
 import type { LoadedData } from '../src/data/load';
-import type { Manifest, SmallBodyCoreHeader, SyntheticCellsHeader, SyntheticObjectsHeader } from '../src/data/schema';
+import type { Manifest, SmallBodyCoreHeader, SyntheticCellsHeader, SyntheticObjectsHeader, SyntheticPopulation } from '../src/data/schema';
 import type { SmallBodyProducts, SmallBodyTables } from '../src/data/smallbodies';
 import { BinaryTable } from '../src/data/binaryTable';
 import { syntheticFacts, syntheticPopulationFacts, syntheticWhy } from '../src/ui/syntheticInspect';
@@ -426,8 +426,28 @@ describe('synthetic statement limits', () => {
       expect(f.what).toMatch(/aggregate/);
       const population = f.rows.find((r) => r.key === 'syn:population')!;
       expect(population.uncertainty).toBe(p.model.uncertainty);
-      if (p.name === 'centaur') expect(population.uncertainty).toMatch(/44.*comet-flagged.*18.*suitability/);
+      if (p.name === 'centaur') {
+        expect(population.uncertainty).toMatch(/43.*comet-flagged.*18.*suitability/);
+        const nuclei = f.rows.find(r => r.key === 'syn:nuclei')!;
+        expect(nuclei.value).toBe('1 conditioned; 43 unconditioned');
+        expect(nuclei.method).toContain('Conditioned: C/2014 OG392.');
+      }
       if (p.center) expect(f.what).not.toMatch(/the debiased population|complete down to/);
     }
   });
+});
+
+it('names comet nuclei whose nuclear H cannot condition the Centaur population', () => {
+  const p = { name: 'centaur', sources: ['paper'], model: { method: 'qualified nuclear H_V', cometNuclei: {
+    rule: 'Only qualified point nuclear H_V counts; M1 and lower bounds do not count.', objects: [
+      { designation: 'P/qualified', status: 'conditioned' },
+      { designation: 'P/unknown', status: 'unknown-model-band' },
+      { designation: 'P/bound', status: 'unqualified' },
+    ],
+  } } } as unknown as SyntheticPopulation;
+  const row = syntheticPopulationFacts(p, 'complete').find(r => r.key === 'syn:nuclei');
+  expect(row?.value).toContain('1 conditioned');
+  expect(row?.method).toContain('P/unknown: unknown-model-band');
+  expect(row?.method).toContain('P/bound: unqualified');
+  expect(row?.method).toContain('M1 and lower bounds do not count');
 });
