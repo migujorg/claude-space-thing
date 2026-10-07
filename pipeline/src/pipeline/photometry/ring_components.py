@@ -173,6 +173,8 @@ class Component:
     arcs: dict | None = None
     vertical: dict | None = None
     geometry_validity: dict | None = None  # observation-supported interval; not an extrapolation warranty
+    outside_support_estimate: dict | None = None  # Sourced alternative component, admitted only at Best/Complete
+    centreline_estimate: dict | None = None
     notes: dict = field(default_factory=dict)
 
     def json(self) -> dict:
@@ -188,7 +190,11 @@ class Component:
             d["vertical"] = self.vertical
         if self.geometry_validity:
             d["geometryValidity"] = self.geometry_validity
-        geometry = {k: d[k] for k in ("kind", "inner", "outer", "vertical", "geometryValidity") if k in d}
+        if self.centreline_estimate:
+            d["centrelineEstimate"] = self.centreline_estimate
+        if self.outside_support_estimate:
+            d["outsideSupportEstimate"] = self.outside_support_estimate
+        geometry = {k: d[k] for k in ("kind", "inner", "outer", "vertical", "geometryValidity", "centrelineEstimate") if k in d}
         reflectance = {"layer": self.layer, "thin": self.thin}
         if self.arcs:
             geometry["arcs"] = {k: v for k, v in self.arcs.items() if k != "factor"}
@@ -217,7 +223,8 @@ FORMULA = ("Per component: r_in(λ,t), r_out(λ,t) from the edge ellipses (r = a
            "α); radiance = I/F_c·E☉,c(d)/π. Components with opticalDepthKnown false scatter (thin) but do not "
            "absorb. Torus components (vertical) spread τ over height with the stated law and are integrated along "
            "the line of sight (single scattering). Outside geometryValidity or where W <= 0, geometry is unknown: "
-           "no light or extinction, only a not-measured annotation over the component's radial bounds. No width floor.")
+           "no light or extinction, only a not-measured annotation over the component's radial bounds. Best/Complete may "
+           "select a sourced outsideSupportEstimate component instead, only outside support. No width floor.")
 
 
 def worst_label(*labels: str) -> str:
@@ -243,6 +250,8 @@ def components_label(components: list[Component], tables: dict[str, dict]) -> st
     labels = []
     for c in components:
         labels += [c.geometry.label, c.optical_depth.label, c.reflectance.label]
+        if c.outside_support_estimate:
+            labels.append(c.outside_support_estimate["label"])
     labels += [t["label"] for t in tables.values()]
     known = [x for x in labels if x != "unknown"]
     return worst_label(*known) if known else "unknown"
