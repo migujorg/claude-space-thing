@@ -203,29 +203,6 @@ const normCache = new NormalizationCache();
 /** Disk renormalization factors under an atmosphere (I0, Iatm, Apath, Ashell per channel), by phase bin. */
 const ATM_FACTOR_BIN_DEG = 1;
 const atmCache = new Map<string, number[]>();
-/**
- * Disk integrals of a body drawn from its atmosphere model (modelDiskXYZS: the air's light per channel, then the
- * surface term per unit reflectance) at phase angle a, from the same 1° bins, linear between them. A new bin costs
- * one integral (about 30 ms for Titan's 12 bins); inside a measured range of a few degrees there are few.
- */
-function modelDisk(bind: AtmosphereBinding, a: number): number[] {
-  const binning = (Math.PI / 180) * ATM_FACTOR_BIN_DEG;
-  const i0 = Math.min(Math.floor(a / binning), Math.round(Math.PI / binning) - 1);
-  const at = (i: number): number[] => {
-    const key = `model|${bind.key}|${i}`;
-    let f = atmCache.get(key);
-    if (!f) {
-      const d = modelDiskXYZS(bind.model, bind.tables!, bind.grid!, [Math.sin(i * binning), 0, Math.cos(i * binning)], [0, 0, 1]);
-      f = [...d.air, ...d.surface];
-      if (atmCache.size > 4096) atmCache.clear();
-      atmCache.set(key, f);
-    }
-    return f;
-  };
-  const f0 = at(i0), f1 = at(i0 + 1);
-  const tt = Math.min(Math.max(a / binning - i0, 0), 1);
-  return f0.map((v, k) => v + (f1[k] - v) * tt);
-}
 const zonalIds = new WeakMap<ZonalProfile, number>();
 let nextZonalId = 1;
 const lawKey = (l: ResolvedLaw) => `${l.kind}:${l.p}:${l.b}:${l.c}:${l.bs0}:${l.hs}:${l.bc0}:${l.hc}:${l.thetaBar}:${l.K}:${l.hFn}`;
@@ -827,6 +804,30 @@ function extentOf(b: SceneBody, radii: [number, number, number]): number {
 function atmTop(b: SceneBody): number {
   const a = b.atmosphere!.body;
   return Math.max(...b.radii!) + (a.topAltitudeKm ?? 0) - (a.altitudesKm[0] ?? 0);
+}
+
+/**
+ * Disk integrals of a body drawn from its atmosphere model (modelDiskXYZS: the air's light per channel, then the
+ * surface term per unit reflectance) at phase angle a, from the same 1° bins, linear between them. A new bin costs
+ * one integral (about 30 ms for Titan's 12 bins); inside a measured range of a few degrees there are few.
+ */
+function modelDisk(bind: AtmosphereBinding, a: number): number[] {
+  const binning = (Math.PI / 180) * ATM_FACTOR_BIN_DEG;
+  const i0 = Math.min(Math.floor(a / binning), Math.round(Math.PI / binning) - 1);
+  const at = (i: number): number[] => {
+    const key = `model|${bind.key}|${i}`;
+    let f = atmCache.get(key);
+    if (!f) {
+      const d = modelDiskXYZS(bind.model, bind.tables!, bind.grid!, [Math.sin(i * binning), 0, Math.cos(i * binning)], [0, 0, 1]);
+      f = [...d.air, ...d.surface];
+      if (atmCache.size > 4096) atmCache.clear();
+      atmCache.set(key, f);
+    }
+    return f;
+  };
+  const f0 = at(i0), f1 = at(i0 + 1);
+  const tt = Math.min(Math.max(a / binning - i0, 0), 1);
+  return f0.map((v, k) => v + (f1[k] - v) * tt);
 }
 
 function tangent(n: V3): [V3, V3] {
