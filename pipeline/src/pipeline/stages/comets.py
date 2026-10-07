@@ -9,8 +9,9 @@ Products
                       (propagated with the smallbodies force model), and the comets brighter than NOTABLE_MAG at peak
                       (the app evaluates those every frame for extended rendering), with measured composition where
                       A'Hearn et al. (1995) observed them.
-Report: docs/reports/comets.json (+ img/comets-window-magnitudes.svg). Test fixture: app/tests/fixtures/
-comet_reference.json (our state of the showcase comet next to JPL Horizons' r, Delta, T-mag, PsAng, PsAMV).
+Report: docs/reports/comets.json (+ img/comets-window-magnitudes.svg). Committed test reference:
+app/tests/fixtures/comet_reference.json (our state of the showcase comet next to JPL Horizons' r, Delta, T-mag,
+PsAng, PsAMV). Builds preserve it; regenerate explicitly with `python -m pipeline.stages.comets --write-fixture`.
 """
 
 from __future__ import annotations
@@ -116,12 +117,14 @@ def horizons_fixture(best: dict, cat: dict, cur: dict) -> dict:
                      "m1": float(cur["m"][i, j]), "rAu": float(cur["r"][i, j]), "deltaAu": float(cur["d"][i, j])})
     rec = record(path)
     return {
-        "generatedBy": "uv run python -m pipeline build --only comets",
+        "generatedBy": "python -m pipeline.stages.comets --write-fixture",
         "comet": {"row": best["row"], "designation": full, "name": name, "M1": best["M1"], "K1": best["K1"]},
         "horizons": {"url": rec["url"], "sha256": rec["sha256"], "retrieved": rec["retrieved"],
                      "M1": float(m1.group(1)) if m1 else None, "K1": float(m1.group(2)) if m1 else None, "rows": rows},
         "ours": ours,
-        "description": "Horizons (geocentric, light-time aberrated, ICRF): T-mag = M1 + 5 log Delta + K1 log r; PsAng = "
+        "description": "Committed reference, evaluated with its own model and states at ours[].et (TDB seconds past "
+                       "J2000); comet.row identifies only the catalogue snapshot used to generate it, never a row in "
+                       "another build. Horizons (geocentric, light-time aberrated, ICRF): T-mag = M1 + 5 log Delta + K1 log r; PsAng = "
                        "position angle of the extended Sun-to-comet radius vector (anti-sunward, gas-tail indicator); "
                        "PsAMV = position angle of the negative heliocentric velocity (dust-tail indicator). ours: the "
                        "smallbodies state propagated by the comets stage (geometric, no light time) and DE442s Earth, "
@@ -317,10 +320,9 @@ def run(ctx: BuildContext) -> None:
     fx = None
     if best is not None:
         fx = horizons_fixture(best, cat, cur)
-        # The model itself travels with the fixture, so the app's comet tests do not need built data.
-        fx["measured"] = meas_out.get(str(best["row"]))
-        fx["model"] = model
-        FIXTURE.write_text(json.dumps(fx, indent=None, separators=(",", ":")), encoding="utf-8", newline="\n")
+        # Today's Horizons check is for the report. Only the explicit writer replaces the committed reference.
+        print(f"[comets] committed reference {FIXTURE.name} retained; regenerate explicitly with "
+              "python -m pipeline.stages.comets --write-fixture")
     else:
         # Keep the last real reference case: fixture consumers require a comet and its Horizons observations.
         print(f"[comets] test fixture {FIXTURE.name} not refreshed (no showcase qualifies; previous reference retained)")
@@ -342,3 +344,46 @@ def run(ctx: BuildContext) -> None:
         "products": {k: v for k, v in ctx.products.items() if v["stage"] == STAGE},
     }
     REPORT.write_text(json.dumps(report, indent=1, allow_nan=False), encoding="utf-8", newline="\n")
+
+
+def write_fixture() -> None:
+    """Explicitly capture a reference from built comets products, using that build's showcase and window.
+
+    The reference carries its model, measured composition, states and observation epochs; app tests need no built
+    data. Refuse a stale list/catalogue pairing before fetching Horizons or replacing the previous reference.
+    """
+    lst = json.loads((OUT / DIR / "list.json").read_text(encoding="utf-8"))
+    if lst["showcase"] is None:
+        raise ValueError("no showcase qualifies; previous comet reference retained")
+    best = next(n for n in lst["notable"] if n["row"] == lst["showcase"]["row"])
+    cat = cw.load_comets(OUT / "smallbodies")
+    rows = np.flatnonzero(cat["rows"] == best["row"])
+    if lst["window"] != cat["header"]["window"] or rows.size != 1:
+        raise ValueError("comets list and smallbodies catalogue differ: rebuild comets before writing its reference")
+    j = int(rows[0])
+    des, _, prefix = _designation(cat["names"][j])
+    if (_full(des, prefix) != best["designation"] or float(cat["M1"][j]) != best["M1"]
+            or float(cat["K1"][j]) != best["K1"]):
+        raise ValueError("showcase row or magnitude law changed: rebuild comets before writing its reference")
+    # Only the showcase is propagated. It uses the same daily grid and peak as the stage's report.
+    cat = {key: value if key == "header" else value[j:j + 1] for key, value in cat.items()}
+    w = lst["window"]
+    cur = cw.window_curves(cat, w["startEt"], w["endEt"])
+    fx = horizons_fixture({**best, "index": 0}, cat, cur)
+    fx["model"] = json.loads((OUT / DIR / "model.json").read_text(encoding="utf-8"))
+    fx["measured"] = lst["measured"].get(str(best["row"]))
+    FIXTURE.write_text(json.dumps(fx, separators=(",", ":"), allow_nan=False), encoding="utf-8", newline="\n")
+    print(f"[comets] wrote committed reference {FIXTURE}")
+
+
+def main() -> None:
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Explicitly regenerate the committed comet test reference from built data.")
+    parser.add_argument("--write-fixture", action="store_true", required=True)
+    parser.parse_args()
+    write_fixture()
+
+
+if __name__ == "__main__":
+    main()
