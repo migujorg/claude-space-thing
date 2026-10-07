@@ -975,6 +975,7 @@ export class EllipsoidNormalization {
   private means = new WeakMap<ZonalProfile, XYZS>();
   private equatorMoments = new WeakMap<ZonalProfile, Map<string, XYZS>>();
   private equatorNodes = new WeakMap<ZonalProfile, Map<number, { logCos: number; values: XYZS }[]>>();
+  private floorNodes = new WeakMap<ZonalProfile, Map<string, { lo: number; hi: number; nodes: { cp: number; sp: number; weight: number; map: XYZS }[] }[]>>();
   private exact = new Map<string, XYZS>();
 
   private profile(radii: V3, map?: ZonalProfile): ZonalProfile {
@@ -1067,6 +1068,7 @@ export class EllipsoidNormalization {
         const phiBound=2*(tangent<=1e-3 ? tangent**power/power
           : Math.pow(1e-3,power)*(1/power+Math.log(tangent/1e-3)));
         const latitudeBound=phiBound/(Math.PI*(1+Math.sqrt(1-1e-6))*power);
+        if(Math.cos(alpha)>=0)return this.motion.get(law,alpha,{profile,pole:geometry.pole});
         let reuseLimb=true;
         const correction=(order:number):XYZS=>{
           const gl=gaussLegendre(order),acc:XYZS=[0,0,0,0],vals=[0,0,0,0],sa=Math.sin(alpha),ca=Math.cos(alpha);
@@ -1075,19 +1077,45 @@ export class EllipsoidNormalization {
           const muNodes=Array.from(gl.x,x=>(1+Math.sin(x*Math.PI/2))/2);
           const muWeights=Array.from(gl.x,(x,i)=>gl.w[i]*Math.PI/4*Math.cos(x*Math.PI/2));
           const threshold=-ca*1e-3/(sa*Math.sqrt(1-1e-6));
-          const cuts=[-Math.PI/2,...profile.cuts!,Math.PI/2];
-          if(threshold<1) {const cut=Math.acos(threshold);cuts.push(-cut,cut);cuts.sort((x,y)=>x-y);}
-          for(let segment=1;segment<cuts.length;segment++)for(let j=0;j<phiGL.x.length;j++) {
-            const half=(cuts[segment]-cuts[segment-1])/2,u=phiGL.x[j]*Math.PI/2;
-            const phi=(cuts[segment]+cuts[segment-1])/2+half*Math.sin(u),cp=Math.cos(phi),sp=Math.sin(phi);
-            const upper=Math.min(1e-3,sa*cp/Math.hypot(ca,sa*cp));
-            if(reuseLimb)profile.sample!(sp*Math.sign(geometry.pole[1]),vals);
-            for(let i=0;i<order;i++) {
-              const mu=muNodes[i]*upper,root=Math.sqrt(1-mu*mu),mu0=sa*root*cp+ca*mu;
-              if(mu0<=0)continue;
-              if(!reuseLimb)profile.sample!(root*sp*Math.sign(geometry.pole[1]),vals);
-              const w=Math.pow(mu*mu0/(mu+mu0),law.p)*(1-mu/1e-3)*muWeights[i]*upper*phiGL.w[j]*half/2*Math.cos(u);
-              for(let k=0;k<4;k++)acc[k]+=w*vals[k];
+          const split=threshold<1?Math.acos(threshold):null;
+          const sign=Math.sign(geometry.pole[1]);
+          const nodesFor=(lo:number,hi:number)=>Array.from(phiGL.x,(x,j)=>{
+            const half=(hi-lo)/2,u=x*Math.PI/2,phi=(hi+lo)/2+half*Math.sin(u),cp=Math.cos(phi),sp=Math.sin(phi);
+            const values=[0,0,0,0];profile.sample!(sp*sign,values);
+            return {cp,sp,weight:phiGL.w[j]*half/2*Math.cos(u),map:values as XYZS};
+          });
+          let cache=this.floorNodes.get(profile);
+          if(!cache)this.floorNodes.set(profile,cache=new Map());
+          const nodeKey=`${phiGL.x.length}:${sign}`;
+          let segments=cache.get(nodeKey);
+          if(!segments) {
+            const cuts=[-Math.PI/2,...profile.cuts!,Math.PI/2];
+            segments=cuts.slice(1).map((hi,j)=>({lo:cuts[j],hi,nodes:nodesFor(cuts[j],hi)}));
+            cache.set(nodeKey,segments);
+          }
+          for(const segment of segments) {
+            // Only the two segments intersecting the moving mu=f boundary need new
+            // longitude nodes; every unchanged node samples the same exact profile.
+            let crossing: number | undefined;
+            if(split!==null) {
+              if(split>segment.lo && split<segment.hi)crossing=split;
+              else if(-split>segment.lo && -split<segment.hi)crossing=-split;
+            }
+            const nodes=crossing===undefined?segment.nodes:[...nodesFor(segment.lo,crossing),...nodesFor(crossing,segment.hi)];
+            for(const node of nodes) {
+              const {cp,sp}=node,upper=Math.min(1e-3,sa*cp/Math.hypot(ca,sa*cp));
+              let scalar=0;
+              for(let i=0;i<order;i++) {
+                const mu=muNodes[i]*upper,root=Math.sqrt(1-mu*mu),mu0=sa*root*cp+ca*mu;
+                if(mu0<=0)continue;
+                const w=Math.pow(mu*mu0/(mu+mu0),law.p)*(1-mu/1e-3)*muWeights[i]*upper*node.weight;
+                if(reuseLimb)scalar+=w;
+                else {
+                  profile.sample!(root*sp*sign,vals);
+                  for(let k=0;k<4;k++)acc[k]+=w*vals[k];
+                }
+              }
+              if(reuseLimb)for(let k=0;k<4;k++)acc[k]+=scalar*node.map[k];
             }
           }
           return acc;
