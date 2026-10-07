@@ -213,10 +213,11 @@ export interface CalibrationNormalizationTable {
   sphereFloor: number;
   radiiKm: [number,number,number];
   view: AlbedoMeasurementView;
-  quadratureMaxChange: number;
+  sourceCodeSha256: string;
+  quadrature: string;
   cells: {lo: number; hi: number; sphere: number[]; bare: number[][]; mapped?: number[][]}[];
   zonalRows?: number[];
-  mapTileSha256?: string[];
+  mapTileSha256?: (string | null)[];
 }
 
 /** Positive-weight all-phase envelope for an unknown calibration orientation. */

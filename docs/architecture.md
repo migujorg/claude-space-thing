@@ -302,7 +302,7 @@ the source spectrum's label is unchanged. The reference integral averages the no
 not their latitudes, and at each source phase reconstructs its solar latitude. The separately sourced
 `albedoReferenceNormalization` precomputes the fixed integral and factored sphere response; it inherits
 the worst law/map label and sources. Cubic interpolation in log crescent width is checked at seven interlaced points
-to 1e-5. The product records quadrature refinement changes, exact radii, view and map
+to 1e-5. The product records the pure TypeScript numerical implementation hash, exact radii, view and map
 rows; a mismatch falls back to the direct integral. Below crescent width 1e-8 rad the limiting ratio
 is held while the law's vanishing power remains explicit, a numerical endpoint approximation.
 
@@ -319,7 +319,9 @@ an unadmitted estimated disk scale receives the same hatched known-shape treatme
 unadmitted phase function, with albedo and phase light withheld. Absolute Earth layers, physical
 atmosphere models and resident meshes retain their existing normalization rules.
 
-Mapped envelopes and calibration tables record the exact level-0 tile hashes. A fresh build that has no surface product
+Mapped envelopes and calibration tables record the exact level-0 tile hashes. The light stage uses the
+existing Node/esbuild app toolchain to run the pure exact-row reference implementation offline; its
+source files are explicit code inputs, requiring the build fingerprint hook in the lane handoff. A fresh build that has no surface product
 cannot certify a mapped correction; rebuild `light` after surfaces to emit that envelope.
 
 

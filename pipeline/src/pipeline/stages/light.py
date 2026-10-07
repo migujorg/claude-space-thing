@@ -30,6 +30,8 @@ from ..schema import BuildContext, sourced, unknown, worst
 DEPENDS: tuple[str, ...] = ()
 # Optional cache/product inputs; no scheduling dependency (surfaces depends on light).
 OPTIONAL_INPUTS = ("surfaces",)
+# Pure numerical implementation shared with the renderer; fingerprint hook is in the handoff.
+CODE_INPUTS = ("app/src/render/spatial.ts", "app/src/render/surface.ts")
 
 
 # These dates and observer are from Karkoschka 1998 / PDS 1995LOW (source note).
@@ -163,126 +165,71 @@ def view_spread(naif: int, entry: dict, ctx: BuildContext | None = None) -> dict
 
 
 def reference_table(naif: int, entry: dict) -> dict | None:
-    """Precompute fixed dated calibration integrals, never a frame's geometry.
+    """Precompute the accepted exact-row integral; no calibration work belongs in a frame.
 
-    Independent NumPy normal-space quadrature; actual map rows are evaluated
-    piecewise-linearly at the position latitude. Refinement resolves their kinks.
-    Ratios to the bare spherical law remove the vanishing crescent power law.
+    The pure TypeScript physics implementation is also the app's reference. Node
+    and esbuild are the existing app toolchain, not an observational input.
     """
     import hashlib
     import inspect
     import json
+    import subprocess
+    from pathlib import Path
     from ..paths import OUT, CACHE
     model = entry.get("spatialModel", {}).get("value")
     view = entry["albedoMeasurementView"]["value"]
     if naif not in (599,699,799,899) or not model or view["kind"] != "latitude":
         return None
-    d = (np.asarray(pck_radii()[naif])/np.cbrt(np.prod(pck_radii()[naif])))**2
-    paths = [OUT/f"surfaces/{naif}/albedo/0/0/{i}.bin" for i in (0,1)]
-    rows = None
-    if all(p.exists() for p in paths):
-        texels=np.concatenate([np.frombuffer(p.read_bytes(),dtype="<f2").reshape(256,256,4) for p in paths],axis=1).astype(float)
-        texels[np.all(texels==0,axis=2)] = 1
-        rows=texels.mean(axis=1)
-    cache_key = hashlib.sha256(json.dumps({"algorithm":inspect.getsource(reference_table),
-        "radii":list(pck_radii()[naif]), "view":view,"model":model,
-        "map":[hashlib.sha256(p.read_bytes()).hexdigest() for p in paths] if rows is not None else None},
-        sort_keys=True).encode()).hexdigest()
-    cached = CACHE/"light-calibration"/f"{naif}-{cache_key}.json"
-    if cached.exists():
-        return json.loads(cached.read_text())
-    grids = {}
-    def integral(alpha, n):
-        if n not in grids:
-            x,w=np.polynomial.legendre.leggauss(n)
-            u=x*np.pi/2; beta=u[:,None]; cb=np.cos(beta); sb=np.sin(beta)
-            grids[n]=(x,w,u,cb,sb)
-        x,w,u,cb,sb=grids[n]
-        delta=np.pi-alpha; eps=delta*(1+np.sin(u))/2
-        measure=cb*w[:,None]*w[None,:]*delta*np.pi/8*np.cos(u)
-        if model["kind"]=="barkstrom":
-            # Resolve the documented emission-cosine floor exactly in longitude.
-            # Each latitude ring has its own mu=f crossing(s).
-            ef=np.arcsin(np.minimum(1,1e-3/cb))
-            cuts=[np.zeros_like(cb),np.minimum(ef,delta),np.minimum(np.pi-ef,delta),np.full_like(cb,delta)]
-            segments=[];weights=[]
-            for lo,hi in zip(cuts,cuts[1:]):
-                width=np.maximum(0,hi-lo)
-                segments.append(lo+width*(1+np.sin(u))/2)
-                weights.append(cb*w[:,None]*w[None,:]*width*np.pi/8*np.cos(u))
-            eps=np.concatenate(segments,axis=1);measure=np.concatenate(weights,axis=1)
-        mu=cb*np.sin(eps); mu0=cb*np.sin(delta-eps)
-        nv=np.stack(np.broadcast_arrays(cb*np.cos(eps),sb,mu),axis=-1)
-        power=model["k"] if model["kind"]=="minnaert" else float(np.interp(np.degrees(alpha),model["B"]["alphaDeg"],model["B"]["values"]))
-        weighted=(mu0**power*mu**power if model["kind"]=="minnaert" else
-                  (mu0*mu/(mu0+mu))**power * mu/np.maximum(mu,1e-3))
-        weighted*=measure
-        bare=weighted.sum()
-        result=np.zeros(9)
-        factor=delta**(2*power+1) if model["kind"]=="minnaert" else delta**(power+1)*min(1,delta/1e-3)
-        result[8]=bare/factor
-        for at in view["views"]:
-            lat=np.radians(at["latitudeDeg"]);o=np.array([np.cos(lat),0,np.sin(lat)])
-            xx=np.asarray(at["solarTangent"]); yy=np.cross(o,xx)
-            # Photometric basis is the source solar tangent, cross product, observer.
-            bf=nv @ np.stack([xx,yy,o])
-            jac=np.prod(d)/np.sum(bf**2*d,axis=-1)**2
-            ww=weighted*jac/bare*at["weight"]
-            result[:4]+=ww.sum()
-            if rows is not None:
-                z=d[2]*bf[:,:,2]/np.linalg.norm(bf*d,axis=-1)
-                rr=np.clip((.5-np.arcsin(np.clip(z,-1,1))/np.pi)*256-.5,0,255)
-                j=np.floor(rr).astype(int);t=rr-j
-                for c in range(4):
-                    values=rows[j,c]*(1-t)+rows[np.minimum(j+1,255),c]*t
-                    result[c+4]+=np.sum(ww*values)
-        return result
-    print(f"[light] {naif} dated reference: computing fixed calibration table", flush=True)
-    cache={}; max_quadrature_change=0.0
-    def value(t):
-        nonlocal max_quadrature_change
-        if t not in cache:
-            alpha=np.pi*(-np.expm1(-t));prev=integral(alpha,64)
-            for n in (128,256,512):
-                v=integral(alpha,n)
-                rel=np.max(abs(v[:4]/prev[:4]-1))
-                if rows is not None: rel=max(rel,float(np.max(abs(v[4:8]/prev[4:8]-1))))
-                rel=max(rel,float(abs(v[8]/prev[8]-1)))
-                if rel<3e-5: break
-                prev=v
-            max_quadrature_change=max(max_quadrature_change,float(rel));cache[t]=v
-        return cache[t]
-    end=float(np.log(np.pi/1e-8)); cells=[]
-    def visit(lo,hi,depth=0):
-        values=[value(lo+u*(hi-lo)) for u in (0,1/3,2/3,1)]
-        def interp(u):
-            a,b,c,d=values
-            return (-4.5*(u-1/3)*(u-2/3)*(u-1)*a
-                    +13.5*u*(u-2/3)*(u-1)*b
-                    -13.5*u*(u-1/3)*(u-1)*c
-                    +4.5*u*(u-1/3)*(u-2/3)*d)
-        used=[0,1,2,3,8]+(list(range(4,8)) if rows is not None else [])
-        error=max(float(np.max(abs(interp(u)[used]/value(lo+u*(hi-lo))[used]-1)))
-                  for u in (1/12,1/6,1/4,1/2,3/4,5/6,11/12))
-        if error>1e-5 and depth<12:
-            visit(lo,(lo+hi)/2,depth+1);visit((lo+hi)/2,hi,depth+1)
-        else:
-            cells.append({"lo":lo,"hi":hi,"sphere":[float(v[8]) for v in values],
-                          "bare":[v[:4].tolist() for v in values],
-                          **({"mapped":[v[4:8].tolist() for v in values]} if rows is not None else {})})
-    cuts=list(np.linspace(0,end,17))
-    if model["kind"]=="barkstrom":
-        cuts += [float(np.log(np.pi/1e-3))]
-        cuts += [float(-np.log1p(-a/180)) for a in model["B"]["alphaDeg"] if 0<a<180]
-    cuts=sorted(set(cuts))
-    for lo,hi in zip(cuts,cuts[1:]):visit(lo,hi)
-    table = {"model": model,"sphereFloor":1e-3,"cells": cells,"endLogCrescent":end,
-            "quadratureMaxChange":max_quadrature_change,"radiiKm":list(pck_radii()[naif]),"view":view,
-            **({"zonalRows":rows.reshape(-1).tolist(),"mapTileSha256":[hashlib.sha256(p.read_bytes()).hexdigest() for p in paths]} if rows is not None else {})}
+    repo=Path(__file__).resolve().parents[4]
+    code_files=[repo/p for p in CODE_INPUTS]
+    source_hash=hashlib.sha256(b"".join(p.read_bytes() for p in code_files)).hexdigest()
+    paths=[OUT/f"surfaces/{naif}/albedo/0/0/{i}.bin" for i in (0,1)]
+    tiles=[str(p) if p.exists() else None for p in paths]
+    request={"model":model,"view":view,"radii":list(pck_radii()[naif]),"tiles":tiles,
+             "hasMap":any(p is not None for p in tiles)}
+    cache_key=hashlib.sha256(json.dumps({"inputs":request,"source":source_hash,
+        "algorithm":inspect.getsource(reference_table),
+        "tiles":[hashlib.sha256(p.read_bytes()).hexdigest() if p.exists() else None for p in paths]},sort_keys=True).encode()).hexdigest()
+    cached=CACHE/"light-calibration"/f"{naif}-{cache_key}.json"
+    if cached.exists():return json.loads(cached.read_text())
     cached.parent.mkdir(parents=True,exist_ok=True)
+    request["bundle"]=str(cached.parent/f"integrator-{source_hash}.mjs")
+    script=r"""
+import fs from 'node:fs';import {createRequire} from 'node:module';
+const p=JSON.parse(fs.readFileSync(0,'utf8'));
+const {build}=createRequire(process.cwd()+'/package.json')('esbuild');
+if(!fs.existsSync(p.bundle)) await build({stdin:{contents:"export * from './src/render/spatial.ts';export {zonalMeanOfLevel0} from './src/render/surface.ts';",resolveDir:process.cwd(),loader:'ts'},outfile:p.bundle,bundle:true,platform:'node',format:'esm',logLevel:'silent'});
+const lib=await import(p.bundle),norm=new lib.EllipsoidNormalization();
+const map=p.hasMap?lib.zonalMeanOfLevel0(p.tiles.map(path=>{if(!path)return null;const b=fs.readFileSync(path);return b.buffer.slice(b.byteOffset,b.byteOffset+b.byteLength);})):undefined;
+const end=Math.log(Math.PI/1e-8),cache=new Map();
+function value(t){
+ if(cache.has(t))return cache.get(t);
+ const a=Math.PI*-Math.expm1(-t),r=lib.resolveLaw(p.model,a);if('error' in r)throw Error(r.error);
+ const bare=lib.lawDiskIntegral(r.law,a)[0],b=norm.reference(r.law,a,p.radii,p.view),m=map?norm.reference(r.law,a,p.radii,p.view,map):null;
+ const delta=Math.PI-a,factor=p.model.kind==='minnaert'?delta**(2*r.law.p+1):delta**(r.law.p+1)*Math.min(1,delta/1e-3);
+ const v=[...b.map(x=>x/bare),...(m?m.map(x=>x/bare):[]),bare/factor];cache.set(t,v);return v;
+}
+const cells=[];
+function visit(lo,hi,depth=0){
+ const values=[0,1/3,2/3,1].map(u=>value(lo+u*(hi-lo)));
+ const interp=u=>values[0].map((_,k)=>-4.5*(u-1/3)*(u-2/3)*(u-1)*values[0][k]+13.5*u*(u-2/3)*(u-1)*values[1][k]-13.5*u*(u-1/3)*(u-1)*values[2][k]+4.5*u*(u-1/3)*(u-2/3)*values[3][k]);
+ let error=0;
+ for(const u of [1/12,1/6,1/4,1/2,3/4,5/6,11/12]){const exact=value(lo+u*(hi-lo)),got=interp(u);error=Math.max(error,...got.map((v,k)=>Math.abs(v/exact[k]-1)));}
+ if(error>1e-5){if(depth>=16)throw Error('Calibration interpolation did not converge');const mid=(lo+hi)/2;visit(lo,mid,depth+1);visit(mid,hi,depth+1);}
+ else cells.push({lo,hi,sphere:values.map(v=>v.at(-1)),bare:values.map(v=>v.slice(0,4)),...(map?{mapped:values.map(v=>v.slice(4,8))}:{})});
+}
+let cuts=Array.from({length:17},(_,i)=>end*i/16);
+if(p.model.kind==='barkstrom')cuts.push(Math.log(Math.PI/1e-3),...p.model.B.alphaDeg.filter(a=>a>0&&a<180).map(a=>-Math.log1p(-a/180)));
+cuts=[...new Set(cuts)].sort((a,b)=>a-b);for(let i=1;i<cuts.length;i++)visit(cuts[i-1],cuts[i]);
+console.log(JSON.stringify({model:p.model,view:p.view,radiiKm:p.radii,cells,endLogCrescent:end,sphereFloor:1e-3,sourceCodeSha256:p.sourceHash,quadrature:'exact-row converged TypeScript reference',...(map?{zonalRows:Array.from(map.mean),mapTileSha256:p.tiles.map(path=>path?createRequire(process.cwd()+'/package.json')('node:crypto').createHash('sha256').update(fs.readFileSync(path)).digest('hex'):null)}:{})}));
+"""
+    request["sourceHash"]=source_hash
+    print(f"[light] {naif} dated reference: computing fixed calibration table",flush=True)
+    result=subprocess.run(["node","--input-type=module","-e",script],input=json.dumps(request),
+                          cwd=repo/"app",capture_output=True,text=True,check=True)
+    table=json.loads(result.stdout)
     cached.write_text(json.dumps(table)+"\n")
     return table
-
 
 
 def with_measurement_views(photometry: dict, ctx: BuildContext | None = None) -> dict:
@@ -370,15 +317,15 @@ def run(ctx: BuildContext) -> None:
             entry["albedoReferenceNormalization"] = sourced(table,
                 worst(entry["spatialModel"]["label"], h.get("color",{}).get("label","derived"),
                       h.get("provenance",{}).get("label","derived"), "derived"), sources,
-                method="Fixed dated-view integral and its bare-sphere factor, precomputed with NumPy "
+                method="Fixed dated-view integral and its bare-sphere factor, precomputed with the pure TypeScript "
                        "normal-space quadrature. Binary16 map rows are evaluated exactly piecewise-linearly "
-                       "at position latitude, with order refinement. Cubic interpolation in log crescent "
-                       "width is checked at seven interlaced points to 1e-5; quadrature maximum "
-                       "successive-order change is recorded. Tables retain the law, radii, views and "
+                       "at position latitude by the accepted exact-row, converged reference integral. Cubic interpolation in log crescent "
+                       "width is checked at seven interlaced points to 1e-5; the numerical implementation hash "
+                       "is recorded. Tables retain the law, radii, views and "
                        "exact zonal rows; mismatched frame inputs cannot reuse a table. "
                        "The law's crescent power is factored analytically; below delta=1e-8 the limiting "
                        "ratio is held (a numerical endpoint approximation).")
-            print(f"[light] {key} dated reference: {len(table['cells'])} cells, quadrature change {table['quadratureMaxChange']:.3g}", flush=True)
+            print(f"[light] {key} dated reference: {len(table['cells'])} cells, exact-row reference", flush=True)
     write_json(ctx, "photometry.json", photometry, "light")
     for n, r in results.items():
         labels = (f"albedo:{r.entry['geometricAlbedoXYZS']['label']} phase:{r.entry['phaseFunction']['label']}")

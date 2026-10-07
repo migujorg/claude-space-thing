@@ -133,9 +133,11 @@ describe('ellipsoid frame entry points, first use included', () => {
             expect(value.every(Number.isFinite)).toBe(true);
             return ms;
           };
-          expect(at(0),`${body.id} ${entry} ${deg}° map=${!!map}, first use`).toBeLessThan(FIRST_LOOKUP_BUDGET_MS);
+          const first=at(0);
+          expect(first,`${body.id} ${entry} ${deg}° map=${!!map}, first use`).toBeLessThan(FIRST_LOOKUP_BUDGET_MS);
           const moving=[1,2,3,4,5].map(at);
           expect(median(moving),`${body.id} ${entry} ${deg}° map=${!!map}, moving`).toBeLessThan(MOVING_LOOKUP_BUDGET_MS);
+          if(env.ELLIPSOID_COST_REPORT)console.log(JSON.stringify({id:body.id,entry,deg,map:!!map,firstCpuMs:first,movingMedianCpuMs:median(moving)}));
         }
       }
     }
