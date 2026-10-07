@@ -126,6 +126,16 @@
    "toleranceWhy": "The disk is 43 px across and covers about a tenth of two grid cells. Drawn black (the defect found on 2026-10-07: a Ricco weight on its luminance and none on the adaptation, docs/eye-model.md \u00a76.3) it changes those cells by 0.13 and 0.11 (rendered with the code of both sides on the GPU), which the suite's default gridMaxAbs of 0.35 does not see; no counter differs."
   },
   {
+   "id": "pluto-narrow-field",
+   "title": "Pluto 3\u2032 across, alone in a 1\u00b0 field: a dim disk resolved with the acuity of an eye adapted to it",
+   "params": {
+    "t": "2026-10-07T08:00:00Z",
+    "target": "999",
+    "dist": "2720000",
+    "fov": "1"
+   }
+  },
+  {
    "id": "saturn-rings",
    "title": "Saturn and its rings from 400,000 km",
    "params": {
