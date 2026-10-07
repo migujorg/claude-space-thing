@@ -163,7 +163,7 @@ def fingerprint(stage: str, depends: tuple[str, ...], params: dict, window: tupl
 # ------------------------------------------------------------------------------------------------ manifest state
 
 
-def _partial_params(stage: str, params: dict) -> dict:
+def _partial_params(stage: str, ctx: BuildContext) -> dict:
     """Operations that retain products built by an earlier run, not complete profile output.
 
     Level caps and DAMIT omission define complete output for their fingerprinted configuration. Body/layer
@@ -173,7 +173,7 @@ def _partial_params(stage: str, params: dict) -> dict:
         "surfaces": ("surfaces.bodies", "surfaces.earthLayers"),
         "shapes": ("shapes.only", "shapes.reorient"),
     }.get(stage, ())
-    return {k: params[k] for k in keys if params.get(k)}
+    return {k: v for k in keys if (v := ctx.param(k))}
 
 
 def read_manifest() -> dict:
@@ -483,7 +483,7 @@ def adopt(ctx: BuildContext, plan: Plan) -> int:
         rec = records.get(name, {})
         code = code_closure(name)
         fp = fingerprint(name, deps, ctx.params, window, products, code)
-        partial = _partial_params(name, ctx.params)
+        partial = _partial_params(name, ctx)
         if partial:
             rows.append((name, "NOT ADOPTABLE", f"partial build parameter(s) set ({', '.join(partial)}): "
                          "adopt without them"))
@@ -638,7 +638,7 @@ def run(ctx: BuildContext, plan: Plan, *, keep_going: bool = True, dry_run: bool
                 outcomes[name] = Outcome("would run", f"after {', '.join(after)}")
             continue
         fp = fingerprint(name, deps, ctx.params, window, products)
-        partial = _partial_params(name, ctx.params)
+        partial = _partial_params(name, ctx)
         rec = records.get(name, {})
         present, why_not = products_present(products, name)
         if name not in plan.forced:

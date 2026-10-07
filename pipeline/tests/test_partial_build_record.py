@@ -57,8 +57,8 @@ def runner(tmp_path, monkeypatch):
 
     monkeypatch.setattr(build, "print_summary", capture_summary)
 
-    def invoke(stage, sets=None, dry_run=False, adopt=False):
-        params = config.resolve("full", sets or {}, environ={})
+    def invoke(stage, sets=None, dry_run=False, adopt=False, unresolved=False):
+        params = (sets or {}) if unresolved else config.resolve("full", sets or {}, environ={})
         plan = build.Plan([stage], set(), {}, "full", False)
         ctx = BuildContext(0, 10, params=params, plan=(stage,))
         rc = build.adopt(ctx, plan) if adopt else build.run(ctx, plan, dry_run=dry_run)
@@ -120,6 +120,20 @@ def test_adopt_cannot_certify_unrecorded_filtered_products(runner, stage, filter
     manifest.pop("stages")
     (runner.out / "manifest.json").write_text(json.dumps(manifest))
     assert "stages" not in runner.invoke(stage, filters, adopt=True)
+
+
+@pytest.mark.parametrize("stage,filters", FILTERS)
+def test_context_environment_fallback_cannot_certify_skipped_products(runner, stage, filters, monkeypatch):
+    runner.invoke(stage)
+    runner.source.write_text("# version 2\n")
+    for key, value in filters.items():
+        monkeypatch.setenv(config.PARAMS[key].env, config._text(value))
+    record = runner.invoke(stage, unresolved=True)["stages"][stage]
+    assert record["status"] == "partial" and record["partialParams"] == filters
+    for key in filters:
+        monkeypatch.delenv(config.PARAMS[key].env)
+    runner.invoke(stage, dry_run=True)
+    assert runner.outcomes[stage].status == "would run"
 
 
 @pytest.mark.parametrize("stage,sets", [
