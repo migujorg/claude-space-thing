@@ -2,6 +2,8 @@
 and checks on the built Earth products (skipped when they have not been built)."""
 
 import http.server
+import datetime as dt
+import hashlib
 import json
 import threading
 
@@ -15,6 +17,111 @@ from pipeline import surf_earth as se
 from pipeline import surf_gibs as gb
 from pipeline import surf_tiles as st
 from pipeline.paths import OUT
+
+
+def _clock(monkeypatch, day):
+    class Clock(dt.datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return cls.fromisoformat(day).replace(tzinfo=tz)
+    monkeypatch.setattr(dt, "datetime", Clock)
+
+
+@pytest.mark.parametrize("build_day", ["2026-10-04", "2027-01-15"])
+def test_capabilities_reuses_the_pinned_snapshot(tmp_path, monkeypatch, build_day):
+    _clock(monkeypatch, build_day)
+    p = tmp_path / "caps.xml"
+    p.write_text("cached capabilities")
+    monkeypatch.setattr(gb, "CAPS_SHA256", hashlib.sha256(p.read_bytes()).hexdigest(), raising=False)
+    calls = []
+    def fetch(url, subdir, name, **kwargs):
+        calls.append((url, subdir, name))
+        return p
+    monkeypatch.setattr(gb, "fetch", fetch)
+    assert gb.capabilities() == p
+    assert calls == [(gb.CAPS, gb.SUBDIR, "WMTSCapabilities-2026-10-04.xml")]
+    p.write_text("a different remote capabilities document")
+    with pytest.raises(ValueError, match="snapshot pin.*sha256 mismatch"):
+        gb.capabilities()
+
+
+@pytest.mark.parametrize("build_day", ["2026-10-04", "2027-01-15"])
+@pytest.mark.parametrize("drift", ["id", "band_url", "day"])
+def test_mcd43_search_uses_the_pinned_day_and_granules(tmp_path, monkeypatch, build_day, drift):
+    _clock(monkeypatch, build_day)
+    items = [{"id": f"MCD43A4.A2026257.h{i:03d}.061.processing",
+              "properties": {"datetime": "2026-09-14T00:00:00Z"},
+              "assets": {b: {"href": f"https://example.org/{i}-{b}.tif"} for b, _ in se.MCD_BANDS}}
+             for i in range(250)]
+    identity = [(f["id"], [f["assets"][b]["href"] for b, _ in se.MCD_BANDS]) for f in items]
+    digest = hashlib.sha256(json.dumps(identity, separators=(",", ":")).encode()).hexdigest()
+    monkeypatch.setattr(se, "MCD_GRANULES_SHA256", digest, raising=False)
+    # A service may change pagination and ordering without changing the granule selection.
+    p, second = tmp_path / "items.json", tmp_path / "items-2.json"
+    p.write_text(json.dumps({"features": list(reversed(items[:125])),
+                            "links": [{"rel": "next", "href": "https://example.org/page2"}]}))
+    second.write_text(json.dumps({"features": list(reversed(items[125:])), "links": []}))
+    calls = []
+    def fetch(url, subdir, name, **kwargs):
+        calls.append((url, name, kwargs.get("params")))
+        return second if url == "https://example.org/page2" else p
+    monkeypatch.setattr(se, "fetch", fetch)
+    doy, selected, paths = se.mcd43_items()
+    assert doy == "A2026257" and selected == items and paths == [p, second]
+    assert calls == [(se.PC_STAC, "stac-A2026257-0.json", {"collections": se.MCD_COLLECTION,
+                     "datetime": "2026-09-14T00:00:00Z", "limit": "1000"}),
+                     ("https://example.org/page2", "stac-A2026257-1.json", None)]
+    # A different processing stamp, asset, or observation day must fail closed.
+    if drift == "id":
+        items[0]["id"] += "-reprocessed"
+    elif drift == "band_url":
+        items[0]["assets"][se.MCD_BANDS[0][0]]["href"] += "-reprocessed"
+    else:
+        items[0]["properties"]["datetime"] = "2026-09-15T00:00:00Z"
+    p.write_text(json.dumps({"features": items[:125],
+                            "links": [{"rel": "next", "href": "https://example.org/page2"}]}))
+    with pytest.raises(ValueError, match="granule pin"):
+        se.mcd43_items()
+
+
+@pytest.mark.parametrize("build_day", ["2026-10-04", "2027-01-15"])
+def test_night_and_water_ignore_service_defaults(tmp_path, monkeypatch, build_day):
+    _clock(monkeypatch, build_day)
+    p = tmp_path / "raw"
+    monkeypatch.setattr(gb, "capabilities", lambda: p)
+    monkeypatch.setattr(gb, "layer_info", lambda caps, layer: {
+        "layer": layer, "default": "2027-01-14", "colormap": "test",
+        "periods": ["2000-01-01/2027-01-14/P1D"]})
+    monkeypatch.setattr(gb, "colormap", lambda url: gb.parse_colormap(url, _cmap_file(tmp_path)))
+    monkeypatch.setattr(st, "level_shape", lambda level: (4, 8))
+    monkeypatch.setattr(se, "centric_rows", lambda level: np.arange(4))
+    calls = []
+    def blocks(layer, day):
+        calls.append((layer, day))
+        return []
+    monkeypatch.setattr(se, "_fetch_blocks", blocks)
+    monkeypatch.setattr(se, "etopo_south", lambda: (np.zeros((1, 1)), p))
+    monkeypatch.setattr(se, "dnb_rsr", lambda: (np.ones(1), p))
+    monkeypatch.setattr(se, "cie_lamp", lambda *args: (np.ones(1), p))
+    monkeypatch.setattr(se, "luminance_factors", lambda *args: [1.0] * 4)
+    monkeypatch.setattr(se, "record", lambda path: {})
+    monkeypatch.setattr(se, "_register_gibs", lambda ctx: se.SRC_GIBS)
+    monkeypatch.setattr(se.sl, "register_dataset", lambda ctx, sid, *args, **kwargs: sid)
+    monkeypatch.setattr(se.sl, "write_layer", lambda ctx, spec, *args: spec)
+    night = se.build_night(None)
+    mask = se.WaterMask()
+    assert calls == [(se.L_DNB, "2026-10-02"), (se.L_WATER, "2015-01-01"),
+                     (se.L_SEAICE, "2026-10-02")]
+    assert night.constants["sourceDate"] == "2026-10-02"
+    water = se.build_water(None, mask)
+    assert water.constants["seaIceDate"] == "2026-10-02"
+    assert water.constants["waterMaskYear"] == "2015"
+
+
+def _cmap_file(tmp_path):
+    p = tmp_path / "map.xml"
+    p.write_text(CMAP)
+    return p
 
 # ------------------------------------------------------------------------------------------------ geometry
 

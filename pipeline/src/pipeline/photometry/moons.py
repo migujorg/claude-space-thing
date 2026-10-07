@@ -243,8 +243,13 @@ def galilean_phase(naif: int, ctx: BuildContext | None = None) -> Phase:
     return Phase(
         _tab(lambda a: -2.5 * math.log10(_poly(c, a) / f0), 130.0),
         "measured", [_src(ctx, MAYORGA)],
-        "Mayorga et al. (2020) Table 5 CL1GRN (568 nm) disk-integrated phase curve from Cassini ISS WAC photometry, "
-        "f(α)/f(0), tabulated every 0.5° over 0-130° (the paper's stated validity; no data 30-60° and beyond 135°). "
+        "Mayorga et al. (2020) Table 5 CL1GRN (568 nm) disk-integrated phase curve from Cassini ISS photometry, "
+        "f(α)/f(0), tabulated every 0.5° over 0-130° (the adopted fit domain; Table 5 footnote a reports the "
+        "tabulated fits' accuracy over this range). Measurement coverage "
+        "is separate: machine-readable Table 3 includes 17 Ganymede WAC GRN points near 52-53° and one NAC GRN "
+        "point each for Ganymede (52.935°) and Callisto (45.570°); Io and Europa have no GRN data at 30-60°. "
+        "NAC GRN data for Io, Europa and Ganymede extend beyond 135°, up to 140.582°; coverage remains sparse "
+        "and moon-dependent (docs/sources/mayorga-2020.md). "
         f"The same curve is applied at all wavelengths (the paper's VIO and RED curves differ from GRN by up to "
         f"{_filter_spread(naif):.2f} mag within 0-130°). Rotational (orbital-longitude) variations, fitted "
         "separately in the paper (Table 4), are in diskReflectanceModel: this curve is their longitude average.",
