@@ -198,7 +198,7 @@ describe('the frame of a body drawn from its atmosphere model (fixture)', () => 
         // The factors are said, per channel, and nothing else is warned.
         const line = scaleLine(f);
         expect(line).toHaveLength(1);
-        expect(line[0]).toContain(`×${fac[0].toFixed(3)} X, ${fac[1].toFixed(3)} Y, ${fac[2].toFixed(3)} Z, ${fac[3].toFixed(3)} S`);
+        expect(line[0]).toContain(`×${fac[0].toFixed(2)} X, ${fac[1].toFixed(2)} Y, ${fac[2].toFixed(2)} Z, ${fac[3].toFixed(2)} S`);
         expect(line[0]).not.toContain('estimated');
         expect(f.warnings.filter((w) => w.startsWith('Fixture'))).toHaveLength(1);
       }
@@ -234,7 +234,7 @@ describe('the frame of a body drawn from its atmosphere model (fixture)', () => 
       const line = scaleLine(f);
       expect(line).toHaveLength(1);
       expect(line[0]).toContain('beyond the measured range (0–5.7°)');
-      expect(line[0]).toContain(`×${facEdge[0].toFixed(3)} X`);
+      expect(line[0]).toContain(`×${facEdge[0].toFixed(2)} X`);
       expect(line[0]).toContain('→ estimated');
       // Fully resolved: no point part, so the spatial law's continuation is not in the picture and is not announced.
       expect(f.points).toHaveLength(0);

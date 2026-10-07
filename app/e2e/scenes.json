@@ -208,7 +208,7 @@
   },
   {
    "id": "titan-haze",
-   "title": "Titan at 61° phase, drawn from its atmosphere model (Huygens DISR haze over the surface reflectance, multiple scattering by orders of scattering; not renormalized to the disk photometry)",
+   "title": "Titan at 61° phase, drawn from its atmosphere model (Huygens DISR haze over the surface reflectance, multiple scattering by orders of scattering), scaled per channel to its disk photometry with the factors of 5.7°, the edge of the photometry's range",
    "params": {
     "target": "606",
     "dist": "12000",

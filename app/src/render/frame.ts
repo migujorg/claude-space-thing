@@ -574,7 +574,8 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
       law = LAMBERT_LAW;
       lit = true;
       onDisk = true;
-      const by = `×${scaleC[0].toFixed(3)} X, ${scaleC[1].toFixed(3)} Y, ${scaleC[2].toFixed(3)} Z, ${scaleC[3].toFixed(3)} S`;
+      // Two decimals: the photometry behind the factors is good to a few percent (the exact values are in the tests).
+      const by = `×${scaleC[0].toFixed(2)} X, ${scaleC[1].toFixed(2)} Y, ${scaleC[2].toFixed(2)} Z, ${scaleC[3].toFixed(2)} S`;
       const deg = (a: number) => Number(((a * 180) / Math.PI).toFixed(1));
       const range = b.phase ? phaseRangeDeg(b.phase) : null;
       warnings.push(edge?.ok
