@@ -67,6 +67,7 @@ export function prepareRendererFrame(...args: Parameters<typeof prepareFrame>): 
     if (cs >= 0) return true;
     const perp = len([C[0] - cs * S[0], C[1] - cs * S[1], C[2] - cs * S[2]]);
     const a = Math.min(1, (r.sunRadiusKm / r.sunDistKm) * r.frame.rMax / Math.min(...r.radiiKm));
+    if (cs >= -a * len(C)) return true;
     const support = -cs * a + perp * Math.sqrt(1 - a * a);
     if (support > 1) return true;
     prep.offFrameFluxDeg2 -= gs.E[1] * DEG2_PER_SR;
@@ -790,7 +791,7 @@ export class Renderer {
         atm: skip.has('nightglowAttenuation') ? undefined : atmB, atmSamplesNm: r.body.atmosphere?.wavelengthsNm ?? null,
       });
       const base: GPUBindGroupEntry[] = [{ binding: 0, resource: { buffer: this.frameUB } }, { binding: 1, resource: { buffer: this.bodiesBuf } }];
-      this.nightglow.encodeEmission(enc, [...base, ...this.atmEntries(atmB), ...own], ngI, t.W, t.H, this.tsw('nightglow'));
+      this.nightglow.encodeEmission(enc, [...base, ...this.atmEntries(atmB), ...own], ngI, t.W, t.H, this.tsw('nightglow'), skip.has('nightglowHalfResolution') ? 1 : undefined);
       ngDraw = { entries: [...base, ...own], index: ngI };
     }
     {

@@ -69,13 +69,28 @@
   },
   {
    "id": "aurora-2025-11-12",
-   "title": "Aurora at a measured storm hour (2025-11-12 01 UT, OMNI coupling 19 400): the northern oval from 9600 km above the night side",
+   "title": "Storm-hour northern oval segment over dark ground from 400 km: pale green/grey band, brighter than the quiet-hour control; no sunlit crescent",
    "params": {
     "t": "2025-11-12T01:00:00Z",
     "target": "399",
-    "dist": "16000",
-    "az": "180",
-    "el": "55"
+    "dist": "6771",
+    "az": "173.26110422279018",
+    "el": "46.95923411082049",
+    "look": "0,-89",
+    "fov": "60"
+   }
+  },
+  {
+   "id": "aurora-2025-11-14-quiet",
+   "title": "Quiet-hour control at the same geographic place: a weaker oval segment, with its bright part farther poleward than the storm band",
+   "params": {
+    "t": "2025-11-14T01:00:00Z",
+    "target": "399",
+    "dist": "6771",
+    "az": "173.2804022752983",
+    "el": "46.43408307185946",
+    "look": "0,-89",
+    "fov": "60"
    }
   },
   {

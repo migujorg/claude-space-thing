@@ -29,7 +29,7 @@ import { ATMOSPHERE_WGSL, ATM_K4_MAX } from './shaders-atmosphere';
 import { BODY_COMMON, COMMON } from './shaders';
 import { numberToF16 } from './surface';
 import type { SceneNightglow } from './scene';
-import type { M3, V3 } from './raycast';
+import { add, dot, len, mulMV, nearHit, normalize, prepareBody, scale, type M3, type V3 } from './raycast';
 
 /** Gauss–Legendre nodes and weights on [−1, 1] (8 points). */
 export const GL8_X = [-0.9602898564975363, -0.7966664774136267, -0.525532409916329, -0.1834346424956498, 0.1834346424956498, 0.525532409916329, 0.7966664774136267, 0.9602898564975363];
@@ -214,6 +214,140 @@ export function toF16Array(src: ArrayLike<number>, out: Uint16Array<ArrayBuffer>
 /** Body-fixed vector of a world vector (rows of R map body-fixed → world). */
 const toBodyFixed = (R: M3, w: V3): V3 => [R[0] * w[0] + R[3] * w[1] + R[6] * w[2], R[1] * w[0] + R[4] * w[1] + R[7] * w[2], R[2] * w[0] + R[5] * w[1] + R[8] * w[2]];
 const toWorld = (R: M3, b: V3): V3 => [R[0] * b[0] + R[1] * b[1] + R[2] * b[2], R[3] * b[0] + R[4] * b[1] + R[5] * b[2], R[6] * b[0] + R[7] * b[1] + R[8] * b[2]];
+
+/**
+ * CPU ray twin for diagnostics: separate airglow and aurora XYZS before lower-atmosphere attenuation.
+ * These are upper bounds when a far-side ray crosses the lower atmosphere; exact unattenuated terms
+ * otherwise. Mirrors the shader's ground stop, quadrature, cap/shell subdivision and cumulative march.
+ * No GPU resource creation. camera and direction are Earth-relative world km and a unit direction.
+ */
+export function nightglowRay(ng: SceneNightglow, camera: V3, direction: V3, radii: V3, rotation: M3, sun: V3): {
+  airglow: number[]; aurora: number[]; ground: boolean; tangentAltitudeKm: number;
+} {
+  const b = prepareBody(scale(camera, -1), radii, rotation);
+  const d = normalize(direction), tc = -dot(camera, d), q = add(camera, scale(d, tc)), rt = len(q);
+  const ellR = (p: V3) => len(p) / len(mulMV(b.M, p));
+  const out = { airglow: [0, 0, 0, 0], aurora: [0, 0, 0, 0], ground: false, tangentAltitudeKm: rt - ellR(rt > 1 ? q : d) };
+  const top = Math.max(...radii) + shellTopKm(ng);
+  if (rt >= top) return out;
+  const chord = Math.sqrt((top - rt) * (top + rt));
+  const lo = Math.max(-tc, -chord);
+  const hit = nearHit(b, d);
+  out.ground = hit.t > 0 && hit.disc > 0;
+  const hi = out.ground ? Math.min(hit.t - tc, chord) : chord;
+  if (hi <= lo) return out;
+  const ag = ng.airglow;
+  if (ag) for (const L of ag.layers) for (const sign of [-1, 1]) {
+    const u0 = sign < 0 ? Math.max(-Math.min(hi, 0), 0) : Math.max(lo, 0);
+    const u1 = sign < 0 ? -lo : hi;
+    if (u1 <= u0) continue;
+    const ref = ellR(add(q, scale(d, sign * (u0 + u1) / 2)));
+    const rLo = ref + L.centreKm - LAYER_EXTENT_SIGMA * L.sigmaKm;
+    const rHi = ref + L.centreKm + LAYER_EXTENT_SIGMA * L.sigmaKm;
+    if (rt >= rHi) continue;
+    const ul = Math.max(u0, Math.sqrt(Math.max((rLo - rt) * (rLo + rt), 0)));
+    const uh = Math.min(u1, Math.sqrt((rHi - rt) * (rHi + rt)));
+    if (uh <= ul) continue;
+    const pa = add(q, scale(d, sign * ul)), pz = add(q, scale(d, sign * uh));
+    const localTime = (p: V3) => {
+      const f = toBodyFixed(rotation, p);
+      const t = ng.utHours + Math.atan2(f[1], f[0]) * 12 / Math.PI;
+      return t - 24 * Math.floor((t + 12) / 24);
+    };
+    const Ra = ellR(pa), Rz = ellR(pz), lta = localTime(pa);
+    let dlt = localTime(pz) - lta; dlt -= 24 * Math.round(dlt / 24);
+    const xOf = (u: number) => u / Math.sqrt(Math.sqrt(rt * rt + u * u) + rt);
+    const xm = (xOf(ul) + xOf(uh)) / 2, xr = (xOf(uh) - xOf(ul)) / 2;
+    for (let i = 0; i < 8; i++) {
+      const x = xm + xr * GL8_X[i], r = rt + x * x, u = x * Math.sqrt(2 * rt + x * x);
+      const p = add(q, scale(d, sign * u));
+      if (dot(p, sun) / r >= Math.cos(ag.nightMinSzaDeg * Math.PI / 180)) continue;
+      const fu = (u - ul) / (uh - ul), h = r - (Ra * (1 - fu) + Rz * fu);
+      const w = GL8_W[i] * xr * 2 * r / Math.sqrt(2 * rt + x * x) * Math.exp(-0.5 * ((h - L.centreKm) / L.sigmaKm) ** 2) / (Math.sqrt(2 * Math.PI) * L.sigmaKm);
+      const nodes = ag.ltNodesH;
+      const t = Math.max(0, Math.min(nodes.length - 1, (lta + dlt * fu - nodes[0]) / (nodes[1] - nodes[0])));
+      const j = Math.min(Math.floor(t), nodes.length - 2), f = t - j;
+      for (let k = 0; k < ng.samplesNm.length; k++) for (let c = 0; c < 4; c++) {
+        out.airglow[c] += w * (L.xyzsBySample[(j * ng.samplesNm.length + k) * 4 + c] * (1 - f) + L.xyzsBySample[((j + 1) * ng.samplesNm.length + k) * 4 + c] * f);
+      }
+    }
+  }
+  const au = ng.aurora;
+  if (!au) return out;
+  // Linear texture sampling, periodic longitude/MLT and clamped latitude (texel-centre coordinates).
+  const sample = (data: Float32Array, nx: number, ny: number, stride: number, x: number, y: number, valid = false): number[] => {
+    const ix = Math.floor(x), iy = Math.floor(y), fx = x - ix, fy = y - iy;
+    const v = new Array(valid ? 4 : stride).fill(0);
+    for (let a = 0; a < 2; a++) for (let z = 0; z < 2; z++) {
+      const k = (Math.min(ny - 1, Math.max(0, iy + z)) * nx + ((ix + a) % nx + nx) % nx) * stride;
+      const w = (a ? fx : 1 - fx) * (z ? fy : 1 - fy);
+      if (valid && !Number.isFinite(data[k])) continue;
+      for (let c = 0; c < stride; c++) v[c] += w * data[k + c];
+      if (valid) v[3] += w;
+    }
+    return v;
+  };
+  const sunB = toBodyFixed(rotation, sun), D = au.dipoleFrameRows;
+  const lonSun = Math.atan2(dot(D[1] as V3, sunB), dot(D[0] as V3, sunB)) * 180 / Math.PI;
+  const precip = (p: V3): [number, number] => {
+    const f = toBodyFixed(rotation, p);
+    const lat = Math.asin(f[2] / len(f)) * 180 / Math.PI, lon = Math.atan2(f[1], f[0]) * 180 / Math.PI;
+    const m = sample(au.magnetic.data, au.magnetic.lonDeg[2], au.magnetic.latDeg[2], 3,
+      (lon - au.magnetic.lonDeg[0]) / au.magnetic.lonDeg[1], (lat - au.magnetic.latDeg[0]) / au.magnetic.latDeg[1], true);
+    if (m[3] < 0.5) return [0, 0];
+    const mlat = m[0] / m[3];
+    if (Math.abs(mlat) < au.mlatDeg[0]) return [0, 0];
+    const mlon = Math.atan2(m[2], m[1]) * 180 / Math.PI;
+    let mlt = 12 + (mlon - lonSun) / 15; mlt -= 24 * Math.floor(mlt / 24);
+    const o = sample(au.grid, au.mltHours.length, au.mlatDeg.length, 4,
+      (mlt - au.mltHours[0]) / (au.mltHours[1] - au.mltHours[0]), (Math.abs(mlat) - au.mlatDeg[0]) / (au.mlatDeg[1] - au.mlatDeg[0]));
+    const ef = o[mlat >= 0 ? 0 : 2], nf = o[mlat >= 0 ? 1 : 3];
+    return ef <= 1e-5 || nf <= 1e-9 ? [0, 0] : [ef, Math.max(0, Math.min(au.emission.energiesKeV.length - 1,
+      Math.log(KEV_PER_ERG_PER_1E8 * ef / nf / au.emission.energiesKeV[0]) / Math.log(au.emission.energiesKeV[1] / au.emission.energiesKeV[0])))];
+  };
+  const axis = toWorld(rotation, D[2] as V3), cap2 = Math.sin(AURORA_CAP_DIPOLE_LAT_DEG * Math.PI / 180) ** 2;
+  const al = dot(axis, q), be = dot(axis, d);
+  const aa = be * be - cap2, bb = 2 * al * be, cc = al * al - cap2 * rt * rt;
+  const cuts = [lo, hi, 0];
+  const rb = Math.min(...radii) + au.emission.altitudesKm[0] - 2;
+  if (rt < rb) { const c = Math.sqrt((rb - rt) * (rb + rt)); cuts.push(-c, c); }
+  const disc = bb * bb - 4 * aa * cc;
+  if (Math.abs(aa) < 1e-9) { if (Math.abs(bb) > 1e-12) cuts.push(-cc / bb); }
+  else if (disc > 0) cuts.push((-bb - Math.sqrt(disc)) / (2 * aa), (-bb + Math.sqrt(disc)) / (2 * aa));
+  const nodes = cuts.filter((x) => x >= lo && x <= hi).sort((a, b) => a - b);
+  const pieces: [number, number][] = [];
+  for (let i = 1; i < nodes.length; i++) {
+    const a = nodes[i - 1], z = nodes[i], mid = (a + z) / 2;
+    if (z > a && Math.hypot(rt, mid) >= rb && aa * mid * mid + bb * mid + cc >= 0) pieces.push([a, z]);
+  }
+  const total = pieces.reduce((a, p) => a + p[1] - p[0], 0);
+  const e = au.emission, nA = e.altitudesKm.length;
+  const tables = emissionTables(e.data, e.energiesKeV.length, e.altitudesKm);
+  const emAt = (table: Float32Array, ie: number, h: number, g: number) => {
+    let ia = (h - e.altitudesKm[0]) / (e.altitudesKm[1] - e.altitudesKm[0]);
+    if (table === tables.rate && (ia < 0 || ia > nA - 1)) return 0;
+    ia = Math.max(0, Math.min(nA - 1, ia));
+    const a = Math.min(Math.floor(ia), nA - 2), f = ia - a;
+    const ei = Math.min(Math.floor(ie), e.energiesKeV.length - 2), fe = ie - ei;
+    const row = (en: number) => table[(en * nA + a) * 4 + g] * (1 - f) + table[(en * nA + a + 1) * 4 + g] * f;
+    return row(ei) * (1 - fe) + row(ei + 1) * fe;
+  };
+  for (const [a, z] of pieces) {
+    const n = Math.max(4, Math.ceil(AURORA_STEPS * (z - a) / total)), ds = (z - a) / n;
+    const alt = (s: number) => { const p = add(q, scale(d, s)); return len(p) - ellR(p); };
+    let h0 = alt(a);
+    for (let i = 0; i < n; i++) {
+      const s1 = a + (i + 1) * ds, h1 = alt(s1), dh = h1 - h0;
+      const [ef, ie] = precip(add(q, scale(d, s1 - ds / 2)));
+      for (let g = 0; g < 3; g++) {
+        const integral = Math.abs(dh) > 0.05 ? (emAt(tables.cum, ie, h1, g) - emAt(tables.cum, ie, h0, g)) * ds / dh : emAt(tables.rate, ie, (h0 + h1) / 2, g) * ds;
+        for (const line of au.groupsBySample[g]) for (let c = 0; c < 4; c++) out.aurora[c] += ef * integral * line[c];
+      }
+      h0 = h1;
+    }
+  }
+  return out;
+}
 
 // ── WGSL ───────────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -890,8 +1024,8 @@ export class NightglowGpu {
    * The emission at 1/NIGHTGLOW_SCALE resolution into its own target (a render pass of its own, before the bodies
    * pass). `entries`: bindings 0, 1, 12–14 and those of prepare().
    */
-  encodeEmission(enc: GPUCommandEncoder, entries: GPUBindGroupEntry[], index: number, W: number, H: number, timestampWrites?: GPURenderPassTimestampWrites): void {
-    const w = Math.max(1, Math.ceil(W / NIGHTGLOW_SCALE)), h = Math.max(1, Math.ceil(H / NIGHTGLOW_SCALE));
+  encodeEmission(enc: GPUCommandEncoder, entries: GPUBindGroupEntry[], index: number, W: number, H: number, timestampWrites?: GPURenderPassTimestampWrites, scale = NIGHTGLOW_SCALE): void {
+    const w = Math.max(1, Math.ceil(W / scale)), h = Math.max(1, Math.ceil(H / scale));
     if (!this.low || this.low.width !== w || this.low.height !== h) {
       this.low?.destroy();
       this.low = this.device.createTexture({ size: [w, h], format: 'rgba16float', usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING, label: 'nightglow (low resolution)' });

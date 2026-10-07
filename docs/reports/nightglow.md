@@ -229,3 +229,83 @@ occlusion, attenuation, adaptation and the three rendered scenes remain unverifi
 - The task brief's rule of thumb of ~1 kR of 427.8 nm per erg cm⁻² s⁻¹ is not reproduced: the model gives 0.19–0.26
   kR per erg for ⟨E⟩ 1.7–30 keV (and 1.7–1.9 kR of 557.7 nm). The model is built from the cross sections and transport
   ratios above and was not adjusted; the difference is left open.
+
+## 8. GPU report investigation (2026-10-07)
+
+Root's horizontal views from 400 km produced several cd/m² without a limb, increasing with angle from the
+anti-solar point. The existing renderer's **analytic off-frame body glare** explains this quantitatively. A body
+whose centre is outside the frame is represented there by its distant-observer disk photometry, even when its
+nearby disk intersects the frame. That photometry includes a sunlit crescent behind a close observer's horizon.
+At `dist=6771, az=180, look=0,-15`, elevations 10°, 30°, 50°, 55° give a CPU analytic veil of 0.407, 1.340,
+3.790, 4.800 cd/m² (root: 0.42, 1.43, 3.83, 4.93). The Earth spans 70.2° in angular radius, so the CIE glare
+kernel is held at that radius across these frames: a nearly flat field. Looking down puts the centre in the
+frame and removes this analytic source. This is a renderer geometry bug; the emission law is unchanged.
+
+`renderer.ts prepareRendererFrame` rejects this reflected-light source when the finite-distance ellipsoid has
+no visible sunlit point. If h is a point on its unit sphere, C = M·camera and S = normalize(M·sun), visibility is
+C·h > 1 and illumination is S·h > 0. For C·S < 0, the illuminated hemisphere's maximum support along C is
+|C − (C·S)S|. A conservative cone includes the solar disk's measured radius, expanded by the ellipsoid's
+condition number. If even that support is ≤ 1, the crescent cannot send light to the eye. Actual surface,
+atmosphere, night-light and emission rays in HDR still feed the glare pyramid. No radiance is scaled.
+This targeted correction does not replace the distant-disk approximation for partially visible sunlit bodies,
+or integrate extended light outside the frame.
+
+The new `nightglowRay` CPU twin separates airglow and aurora before lower-atmosphere attenuation, mirrors the
+shader's ground stop, cap/shell segments, 8-node quadrature and cumulative emission march, and tests a complete
+uniform vertical aurora against its column. The reported centre rays have tangent altitudes 165–183 km, above
+the lower atmosphere; the ground rays end on the near side. Their emission therefore needs no lower-air
+attenuation. Across the eight reported rows, airglow Y is 0.00009–0.00034 and aurora Y is 0–0.00231 cd/m².
+The atmosphere CPU twin gives zero in-scatter; ground-point normals receive no direct sunlight. Stored night
+light samples before clouds/attenuation are 0.00026–0.00171 cd/m². These surface samples are nearest texels,
+not a full CPU rendering of bilinear surface/cloud transport. Planetshine is bounded separately using the
+source photometry and unit diffuse reflectance. None of these evaluated terms explains the several-cd/m² field.
+CPU diagnostics are printed by `tests/nightglow.test.ts`; GPU compositing, half-resolution reconstruction,
+depth and the retinal glare/adaptation passes still require root's GPU readback.
+
+### Diagnostic
+
+From `app/`, `node scripts/nightglow-diagnostic.mjs --gpu hardware --url '<app URL path and query>'`
+starts its own ephemeral-port Vite server, captures the real renderer before its first frame, and renders a
+fresh page for each omission. It prints settled adaptation plus pre-eye HDR XYZS at centre, upper sky and lower
+ground probes, their Earth-intersection flags, and the maximum HDR Y. Names describe probe positions; in a
+nadir view all three probes hit ground. `--reported` runs all eight reported URLs. `--scenes` runs the four
+nightglow scenes. `--out DIR` saves JSON and each display image. No test fixtures enter these renders.
+
+Variants remove nightglow, airglow, aurora, lower-air attenuation of emission, atmosphere (including over the
+surface), AP columns, limb extinction, bodies, glare pyramid, analytic glare, Sun disk, sky background and
+points. `fullResolutionNightglow` removes the half-resolution calculation; `emissionOnly` isolates emission.
+`legacyGeometry` skips the new glare-visibility correction, and `legacyWithoutGlare` also removes analytic
+glare. `--only` limits variants by these names. The old haze should return only with `legacyGeometry`:
+physical HDR remains faint while adaptation rises. HDR by itself cannot measure analytic retinal glare.
+
+### Storm/quiet scene geometry and expectations
+
+The storm scene now views an **oval segment over night-side ground from 400 km**, rather than the old distant
+crescent. OP2010's northern midnight energy-flux maximum at the storm hour is MLAT 65.696°. Inverting the
+built magnetic grid on the midnight meridian gives geographic 64.5° N, 29.5° W. The precise Earth orientation
+and ephemeris give the Sun-frame camera coordinates in `e2e/scenes.json`; each date has its own az/el so the
+geographic place is the same. `look=0,-89, fov=60` keeps the entire frame on the night-side ground. The CPU
+checks its ray grid for ground hits and shadow. The quiet control uses measured coupling 972.4 at
+2025-11-14 01 UTC, compared with 19445.9 at 2025-11-12 01 UTC. Selection of the view tests the fixed model;
+it does not select or change a physical law.
+
+| CPU emission (cd/m²; before the surface and the eye) | Storm | Quiet |
+|---|---:|---:|
+| Centre aurora Y | 0.002280 | 0.0004935 |
+| Maximum aurora Y on a 49 × 29 ray grid | 0.005297 | 0.0008896 |
+| At the storm's bright lower-left point (normalized x=0, y=25/28) | 0.005297 | 0.0005146 |
+| Airglow Y at each date's sampled aurora maximum | 0.0002427 | 0.0002597 |
+
+The storm bright point's aurora XYZS is (0.003567, 0.005297, 0.001197, 0.005182). The 557.7-nm group supplies
+the dominant photopic colour. At this low adaptation the oval should be pale/mostly grey, with weak green
+colour, not a saturated green photograph. The storm band is brightest toward the lower left of this view;
+the quiet band's maximum lies farther poleward, toward the upper right, and the same lower-left point has
+about one tenth the storm emission. The nadir scenes contain no limb or stars: every ray meets ground.
+The sampled maxima are numerical probes, not continuum maxima; pixels just inside the image edges differ
+slightly. Root can add `--pixel oval:0,0.8928571428571429` and compare `emissionOnly` with these numbers.
+
+The two existing ISS limb scenes retain their geometry. The green mesopause band lies below the centre
+(about 55–60% of image height), above the ground horizon (about 65–70%); the fainter higher red layer lies
+above it, near/above the centre. Stars appear above the dark limb. With the daylight eye history the same
+physical HDR emission remains, but the band and faint stars should disappear or become much harder to see.
+All appearance statements here are GPU checks for root, not observations made in this lane.
