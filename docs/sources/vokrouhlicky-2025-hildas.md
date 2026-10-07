@@ -65,6 +65,13 @@ numerical orbital coefficients**. It also does not give all Hilda/Potomac
 magnitude coefficients or explicit cubic-spline end conditions. Those fields
 are null/unknown in the research input. Fig. 7's curves have preliminarily
 guessed coefficients, explicitly unsuitable as the final fitted parameters.
+Eq. 4 also omits absolute-value bars for `(p-cBar)^beta`, while Table 2
+has cBar=0.12 and beta=3.87 for e_p. The written expression is not a real
+density below e_p=0.12. The downloaded PDF and independently retrieved
+[arXiv HTML equation](https://arxiv.org/html/2503.04403v1#S3.E4) agree. No
+absolute value or other correction is inferred in the input; the convention
+needs clarification before a draw.
+
 Public HCM lists supply observed membership and Appendix C elements, not
 those missing fitted coefficients. The paper does not supply debiased albedo,
 colour or rotation distributions or a reliable faint population past its limit.
@@ -108,6 +115,7 @@ was checked **before** downloading any catalogue/list; all are below 200 MB.
 
 | URL | Time UTC | Bytes | Read |
 |---|---|---:|---|
+| https://arxiv.org/html/2503.04403v1 | 15:31:52.072000 | 650,808 | Eq. 4 MathML/TeX signed-power check |
 | https://arxiv.org/pdf/2503.04403 | 15:25:24.390569 | 4,668,546 | Sections/tables specified above |
 | https://sirrah.troja.mff.cuni.cz/~mira/tmp/hildas/ | 15:25:54.894938 | 81 | Entire index, archive link only |
 | https://zenodo.org/api/records/14959239 | 15:25:56.824863 | 8,205 | Entire metadata/file sizes; resolved version 14959240 |

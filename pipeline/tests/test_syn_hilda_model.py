@@ -66,3 +66,12 @@ def test_hilda_mapping_requires_resonant_hamiltonian_and_frame():
     assert t['catalogue']['modelParameters'] is False
     assert t['catalogue']['sizeBytes'] == 7978464
     assert t['source']['sha256'] == 'cd6aaf6d785f0840c7089265258ae88a47347dc6849e458006f38d24c0d28ce9'
+
+
+def test_hilda_eccentricity_density_does_not_invent_a_signed_power_convention():
+    t = ss.hilda_model()
+    # Eq.4 has no absolute-value bars, yet Table2 beta=3.87 and cBar=0.12.
+    # A real density below cBar requires clarification, not an unlabelled mathematical repair.
+    assert t['background']['signedPowerConvention'] is None
+    assert t['background']['eProper']['median'][1] > t['domain']['eProper'][0]
+    assert not float(t['background']['eProper']['median'][-1]).is_integer()

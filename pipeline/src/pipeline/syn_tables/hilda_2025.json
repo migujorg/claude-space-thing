@@ -135,7 +135,9 @@
       "form": "cubic splines of log10 N(<H); slopes are segment means of the cumulative distribution",
       "interpolation": null,
       "missing": "Explicit spline boundary conditions / implementation not supplied in this paper."
-    }
+    },
+    "signedPowerConvention": null,
+    "densityWarning": "Eq.4 lacks absolute-value bars around p-cBar; Table2 eProper cBar=0.12 and beta=3.87 make the written expression non-real for eProper<0.12. No convention or correction inferred here; clarify before activation."
   },
   "familyTotalAtH16": {
     "value": 1451,
