@@ -1,0 +1,48 @@
+# Throop, H. B. et al. (2004). Icarus 172, 59-77. DOI:10.1016/j.icarus.2003.12.020. Digitized from Fig. 7 (radial
+# profiles of Jupiter's main ring from Cassini ISS, azimuthally averaged): I/F (1e-6) vs orbital radius in Jupiter
+# radii (R_J = 71,492 km, the paper's: 1.79 R_J = 127,970 km) at alpha ~ 1 deg ("0 deg", solid; backscatter: large
+# bodies and dust) and alpha = 120 deg (dash-dot; forward scatter: dust). Radial uncertainty about +-0.02 R_J (their
+# caption); the zero level is uncertain (both profiles fall below zero away from the ring: background subtraction).
+# Digitization: pixel trace (axes on the tick marks: 4578 px/R_J, 162.7 px per 1e-6), every 0.005 R_J; the
+# dash-dot and dashed (75 deg) curves are separated by their dash pattern; about +-0.1e-6.
+radius_rj,iof_1deg_1e6,iof_120deg_1e6
+1.650,,-0.60
+1.655,,-0.22
+1.660,,0.06
+1.665,,0.24
+1.670,,0.30
+1.675,,0.30
+1.680,,0.30
+1.685,,0.46
+1.690,,0.52
+1.695,,0.55
+1.700,-0.43,0.56
+1.705,-0.26,0.58
+1.710,0.02,0.60
+1.715,0.28,0.70
+1.720,0.56,0.77
+1.725,0.77,0.80
+1.730,0.96,0.89
+1.735,1.12,0.81
+1.740,1.25,0.78
+1.745,1.47,0.81
+1.750,1.66,0.82
+1.755,1.88,0.83
+1.760,2.15,0.76
+1.765,2.44,0.69
+1.770,2.74,0.69
+1.775,3.06,0.73
+1.780,3.40,0.87
+1.785,3.90,0.93
+1.790,4.15,1.00
+1.795,3.60,1.15
+1.800,2.20,1.30
+1.805,1.00,1.54
+1.810,0.31,1.46
+1.815,-0.09,1.10
+1.820,-0.39,0.62
+1.825,-0.61,0.45
+1.830,-0.76,0.28
+1.835,,0.10
+1.840,,0.00
+1.845,,-0.24

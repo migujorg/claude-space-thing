@@ -102,11 +102,17 @@ describe.skipIf(!built)('label rules on the catalogue', () => {
       physical: bin('smallbodies/physical.bin'), physicalHeader: hdr('physical') as SmallBodyPhysicalHeader,
       comets: bin('smallbodies/comets.bin'), cometsHeader: hdr('comets') as SmallBodyTableHeader,
     });
+    // The fixture's coreRow is the row in the SBDB snapshot it was made from. Rows shift with every snapshot (a new
+    // comet moves every asteroid), so the object is found in this build by its SPK-ID (names.txt, one line per row).
+    const names = new TextDecoder().decode(fs.readFileSync(DATA_DIR + 'smallbodies/names.txt')).split('\n');
+    const rowOf = new Map(names.map((l, i) => [l.slice(0, l.indexOf('\t')), i]));
     for (const o of fx.objects) {
-      const p = light.params(o.coreRow);
+      const row = rowOf.get(String(o.spkid));
+      expect(row, `${o.target} (SPK-ID ${o.spkid}) in this build's catalogue`).toBeDefined();
+      const p = light.params(row!);
       const r = o.rows[1];
-      const strict = light.apparent(o.coreRow, r.rAu, r.deltaAu, rad(r.phaseDeg), 'strict', p);
-      const best = light.apparent(o.coreRow, r.rAu, r.deltaAu, rad(r.phaseDeg), 'best', p);
+      const strict = light.apparent(row!, r.rAu, r.deltaAu, rad(r.phaseDeg), 'strict', p);
+      const best = light.apparent(row!, r.rAu, r.deltaAu, rad(r.phaseDeg), 'best', p);
       expect(best, o.target).not.toBeNull();
       if (p.model === MODEL_HG) {
         // H-G path: strict only with a fitted G.
