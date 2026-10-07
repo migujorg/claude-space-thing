@@ -22,6 +22,17 @@ export interface EyeSettings {
   fieldFactor: number;
   /** 2 = binocular viewing (Watson & Yellott 2012 M(e)). */
   eyes: 1 | 2;
+  /**
+   * Whether the observer has the eye's optical point spread (Watson 2013; docs/eye-model.md §3). True: an eye.
+   * False: an imager at the frame's own sampling, with no optics of its own. It changes two things and nothing
+   * else in the model: a point splat is then the reconstruction minimum at every field, and the switch from
+   * point to disk (§6.3) is 1 to 2 pixels at every field. The validation against spacecraft images runs with it
+   * off: it compares the HDR buffer, before the eye model, with a camera's image, so a body belongs in that
+   * buffer whenever the frame resolves it. With it on, a body under the eye's point spread is a point and is not
+   * in that buffer (the Earth and the Moon of the EPOXI case, 0.9′ and 0.24′ across in a view 3.5′ wide, read
+   * zero). The app and the scene suite never turn it off.
+   */
+  opticalCore: boolean;
   /** Diameter of the adaptation field around the fixation point, degrees (Ward Larson et al. 1997 foveal 1°). */
   adaptationFieldDeg: number;
   /**
@@ -57,6 +68,7 @@ export const DEFAULT_EYE_SETTINGS: EyeSettings = {
   pigmentation: 0.5,
   fieldFactor: CRUMEY.typicalFieldFactor,
   eyes: 2,
+  opticalCore: true,
   adaptationFieldDeg: 1,
   fixation: 'brightness',
   displayPeakCdM2: 200,

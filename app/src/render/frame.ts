@@ -4,8 +4,8 @@
 
 import type { SceneAtmosphere, SceneBody, SceneSnapshot } from './scene';
 import { AU_KM } from './constants';
-import { diskIlluminance, diskModelPPhi, evalPhase, extrapolatePhase, LAMBERT_ALBEDO_PER_GEOMETRIC_ALBEDO, lambertPhase, limbDarkenedI0, meanRadius, phaseRangeDeg, type XYZS } from './photometry';
-import { LAMBERT_LAW, LAW, lawDiskIntegral, lawRadf, mapDiskIntegral, NormalizationCache, photometricFrame, resolveLaw, TEXEL_LAW, type ResolvedLaw, type ZonalProfile } from './spatial';
+import { diskIlluminance, diskModelPPhi, evalPhase, extrapolatePhase, LAMBERT_ALBEDO_PER_GEOMETRIC_ALBEDO, limbDarkenedI0, meanRadius, phaseRangeDeg, type XYZS } from './photometry';
+import { LAMBERT_LAW, lawRadf, MotionNormalization, mapDiskIntegral, NormalizationCache, photometricFrame, resolveLaw, TEXEL_LAW, type ResolvedLaw, type ZonalProfile } from './spatial';
 import { sampleLevel0, type Level0Map } from './surface';
 import { MAX_POPULATION_NODES, NIGHT_LAMP, type CloudPopulation } from './earth';
 import { ATM_DISK_NODES, atmosphereDiskFactors, marsDustScale, modelDiskXYZS } from './atmosphere';
@@ -63,6 +63,10 @@ export interface ResolvedBody {
   sunDir: V3;
   sunDistKm: number;
   sunRadiusKm: number;
+  /**
+   * Always 1. Written to the W target, which nothing reads: a resolved body carries no Ricco weight
+   * (docs/eye-model.md §6.3). The field, the target and their plumbing are to be removed together.
+   */
   riccoWeight: number;
   occluders: [V3, number][];
   hatch: boolean;
@@ -160,7 +164,7 @@ export interface PreparedFrame {
    */
   offFrameFluxDeg2: number;
   /** Sun shield (viewing aid) on: the occulting disc's direction and cos(angular radius); null when off. */
-  sunShield: { dir: V3; cosRadius: number } | null;
+  sunShield: { dir: V3; cosRadius: number; radius: number } | null;
 }
 
 export function cameraGeom(snap: SceneSnapshot, W: number, H: number, near: number): CameraGeom {
@@ -197,14 +201,33 @@ export function diskOverlapFraction(rs: number, ro: number, d: number): number {
 const angle = (a: V3, b: V3) => 2 * Math.asin(Math.min(1, 0.5 * len(sub(normalize(a), normalize(b)))));
 
 /**
- * @param pointFootprintSr equivalent solid angle of a point splat's footprint (for the Ricco weight)
+ * Smallest σ (pixels) of a point-source splat. A reconstruction-filter choice, not an eye constant:
+ * at σ ≥ 0.6 px the discrete sum of the Gaussian over the pixel grid equals its integral to 2·10⁻³
+ * for every sub-pixel position (Poisson summation: 2·exp(−2π²σ²)), so splats conserve energy.
  */
+export const SIGMA_MIN_PX = 0.6;
+/**
+ * σ of a point splat in pixels: the observer's optical point spread, never narrower than SIGMA_MIN_PX.
+ * @param coreSigmaDeg equivalent σ of the eye's optical core (EyeFrame.coreSigmaDeg)
+ * @param pixelAngle angle of a pixel at the view centre, rad
+ * @param opticalCore EyeSettings.opticalCore: false for an imager at the frame's own sampling, whose point spread
+ *   is the reconstruction minimum at every field
+ */
+export function splatSigmaPx(coreSigmaDeg: number, pixelAngle: number, opticalCore: boolean): number {
+  return Math.max(opticalCore ? ((coreSigmaDeg * Math.PI) / 180) / pixelAngle : 0, SIGMA_MIN_PX);
+}
+/**
+ * Relative margin by which a body's own point is drawn nearer than the nearest point of its disk. A numerical
+ * tolerance, not a property of anything: the disk's depth is computed per fragment in float32 (2⁻²⁴ ≈ 6·10⁻⁸
+ * relative), the point's here in float64.
+ */
+const OWN_POINT_DEPTH_MARGIN = 1e-6;
+
 const normCache = new NormalizationCache();
 /** Disk renormalization factors under an atmosphere (I0, Iatm, Apath, Ashell per channel), by phase bin. */
 const ATM_FACTOR_BIN_DEG = 1;
 const atmCache = new Map<string, number[]>();
-const zonalIds = new WeakMap<ZonalProfile, number>();
-let nextZonalId = 1;
+const motionNormalization = new MotionNormalization();
 const lawKey = (l: ResolvedLaw) => `${l.kind}:${l.p}:${l.b}:${l.c}:${l.bs0}:${l.hs}:${l.bc0}:${l.hc}:${l.thetaBar}:${l.K}:${l.hFn}`;
 
 /**
@@ -224,19 +247,9 @@ function lawBond(law: ResolvedLaw): XYZS {
   });
 }
 
-/** Disk integral I(α) of a law, optionally weighted by a map's zonal mean (cached; exact for plain Lambert). */
-function lawIntegral(law: ResolvedLaw, alpha: number, zonal?: { profile: ZonalProfile; pole: V3 }): XYZS {
-  if (law.kind === LAW.lambert && !zonal) {
-    const v = (2 / 3) * lambertPhase(alpha);
-    return [v, v, v, v];
-  }
-  let key = `${lawKey(law)}|${alpha.toFixed(5)}`;
-  if (zonal) {
-    let id = zonalIds.get(zonal.profile);
-    if (!id) zonalIds.set(zonal.profile, (id = nextZonalId++));
-    key += `|${id}|${zonal.pole.map((v) => v.toFixed(3)).join(',')}`;
-  }
-  return normCache.get(key, () => lawDiskIntegral(law, alpha, zonal, law.kind === LAW.hapke ? 24 : 32));
+/** The same motion-normalization entry point used by prepareFrame and the opt-in benchmark. */
+export function lawIntegral(law: ResolvedLaw, alpha: number, zonal?: { profile: ZonalProfile; pole: V3 }): XYZS {
+  return motionNormalization.get(law, alpha, zonal);
 }
 
 const worse = (a: Label, b: Label): Label => (LABEL_ORDER.indexOf(a) >= LABEL_ORDER.indexOf(b) ? a : b);
@@ -251,6 +264,10 @@ export interface PrepareOptions {
   atmospheres?: (b: SceneBody, groundAlbedo: number[], dust: { scale: number; bin: number } | null) => AtmosphereBinding | { error: string; unmeasured?: AtmosphereBinding } | null;
 }
 
+/**
+ * @param pointFootprintSr equivalent solid angle 2πσ² of a point splat as the renderer draws it: the eye's optical
+ *   core (Watson 2013), never narrower than SIGMA_MIN_PX. It decides which bodies are points (below).
+ */
 export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, pointFootprintSr: number, opts: PrepareOptions = {}): PreparedFrame {
   const warnings: string[] = [];
   const resolved: ResolvedBody[] = [];
@@ -259,8 +276,13 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
   const overlay: number[] = [];
   const tintOn = snap.view.overlays.provenanceTint;
   const fwd: V3 = [-g.back[0], -g.back[1], -g.back[2]];
-  const AR = eye.riccoAreaSr;
   const zeroBg = pointObserver(eye, { Y: 0, S: 0 });
+  // Point or disk (docs/eye-model.md §6.3). A body is a point to the eye while its disk is smaller than the eye's
+  // point spread, and the splat is that point spread as drawn. So the switch is made on the disk's diameter in
+  // units of the splat: 1 to 2 px for the reconstruction-minimum splat (σ = SIGMA_MIN_PX), and the same multiple of
+  // σ (1.67 to 3.33) when the screen resolves the eye's optical core. `splatScale` is the splat's σ over the minimum.
+  const splatScale = Math.max(1, Math.sqrt(pointFootprintSr / (2 * Math.PI)) / g.pixelAngle / SIGMA_MIN_PX);
+  const resolvedShare = (diamPx: number) => smooth(1, 2, diamPx / splatScale);
 
   const inFrame = (c: V3) => {
     if (c[2] >= 0) return false;
@@ -286,7 +308,7 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
   const sunR = snap.sun?.radius ?? 0;
   let sun: SunPrep | null = null;
   let adaptedWhite: V3 | null = null;
-  let sunShield: { dir: V3; cosRadius: number } | null = null;
+  let sunShield: { dir: V3; cosRadius: number; radius: number } | null = null;
   if (snap.sun) {
     const s = snap.sun;
     const dist = len(s.pos);
@@ -296,12 +318,15 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
     const n = scale(s.pos, 1 / dist);
     const rho = Math.asin(Math.min(1, s.radius / dist));
     const diamPx = (2 * rho) / g.pixelAngle;
-    let fRes = s.limbDarkening ? smooth(1, 2, diamPx) : 0;
+    let fRes = s.limbDarkening ? resolvedShare(diamPx) : 0;
     // Sun shield (viewing aid, ViewSettings.sunShield): an occulting disc covers the solar disk (its
     // angular radius plus one pixel). The Sun's light never reaches the eye: no disk, no point, no veil.
     const shielded = snap.view.sunShield === true;
-    if (shielded) sunShield = { dir: n, cosRadius: Math.cos(Math.min(rho + g.pixelAngle, Math.PI)) };
-    if (!s.limbDarkening && diamPx > 1 && !shielded) warnings.push('Sun: limb darkening unknown → drawn as an unresolved point of the correct illuminance (no uniform disk assumed)');
+    if (shielded) {
+      const radius = Math.min(rho + g.pixelAngle, Math.PI);
+      sunShield = { dir: n, cosRadius: Math.cos(radius), radius };
+    }
+    if (!s.limbDarkening && diamPx / splatScale > 1 && !shielded) warnings.push('Sun: limb darkening unknown → drawn as an unresolved point of the correct illuminance (no uniform disk assumed)');
     const c = toCam(g, s.pos);
     const sunInFrame = inFrame(c);
     // Visible fraction of the disk (bodies in front), for the analytic glare veil.
@@ -664,9 +689,7 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
     const tint = tintOn ? ([...PROVENANCE_TINT[label], PROVENANCE_TINT_ALPHA] as [number, number, number, number]) : null;
     const hatch = !lit && !(E && E[1] > 0);
     const diamPx = (2 * angR) / g.pixelAngle;
-    const fRes = smooth(1, 2, diamPx);
-    const At = 2 * Math.PI * (1 - Math.cos(angR));
-    const ricco = Math.min(1, Math.max(At, pointFootprintSr) / AR);
+    const fRes = resolvedShare(diamPx);
 
     // Behind the Sun shield's occulting disc: hidden (its resolved part is cut out on the GPU).
     const behindShield = sunShield !== null && dot(normalize(b.pos), sunShield.dir) >= sunShield.cosRadius;
@@ -711,7 +734,7 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
         bodyToWorld: orient ?? [1, 0, 0, 0, 1, 0, 0, 0, 1], radiiKm: radii,
         planetshine, ring: ringFor(b),
         sunDir, sunDistKm: toSunLen, sunRadiusKm: sunR,
-        riccoWeight: ricco, occluders, hatch, tint,
+        riccoWeight: 1, occluders, hatch, tint,
         earth: orient ? earth : null,
         atmosphere: orient && atmB && b.atmosphere && irr
           ? {
@@ -740,7 +763,11 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
         // Visibility is judged on the GPU at the point's own background (eye-model.md §2 "Fixations");
         // here only points invisible even against a zero background are dropped.
         if (blackwellEquivalent(Ep[1], Ep[3], zeroBg.mesopic.m) >= zeroBg.thresholdBwLux) {
-          points.push({ ndc, depth: g.near / -c[2], E: Ep });
+          // In the switch the body is part disk, part point. The point is drawn at the depth of the body's nearest
+          // point, not of its centre: the centre lies behind the disk's surface, and the disk would hide the core
+          // of the body's own splat. Anything nearer than the body still hides the point.
+          const nearest = Math.max((-c[2] - extentOf(b, b.radii)) * (1 - OWN_POINT_DEPTH_MARGIN), g.near);
+          points.push({ ndc, depth: g.near / nearest, E: Ep });
         }
         if (tintOn && fRes < 0.5) ringVertices(ndc, 7, 1.5, [...PROVENANCE_TINT[ptLabel], PROVENANCE_TINT_ALPHA] as [number, number, number, number], g, overlay);
       }
