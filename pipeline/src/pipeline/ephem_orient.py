@@ -68,7 +68,7 @@ class OrientSeg:
 def _pinned_earth(name: str, digest: str) -> Path:
     """Check the raw bytes AND ledger before using a pin; never refetch a different cached file."""
     instruction = (f"Earth orientation pin {name} (sha256 {digest}). Restore the pinned raw file in "
-                   f"{RAW / 'naif/pck'} and its downloads.json ledger entry from a kept copy, or deliberately "
+                   f"{RAW / 'naif/pck'} and its _downloads.json ledger entry from a kept copy, or deliberately "
                    "update the name and SHA256 constants in pipeline.ephem_orient after running "
                    "python -m pipeline.ephem_orient inspect-earth-pins and recording why. NAIF removes "
                    "superseded high-precision files; a newer kernel is never substituted.")
@@ -96,6 +96,64 @@ def _datum_utc(name: str, comments: str) -> str:
     if not m:
         raise ValueError(f"{name}: no 'UTC Epoch of last datum' in the comments")
     return m.group(1)
+
+
+def inspect_earth_pins() -> dict:
+    """List and fetch current candidates into temporary files; change no pins, raw ledger or products.
+
+    Requires the current pin's retained raw file, the cached naif0012 LSK and a built manifest window.
+    Print with `python -m pipeline.ephem_orient inspect-earth-pins`; any update is a separate code edit.
+    """
+    old = RAW / "naif/pck" / EARTH_HP
+    if not old.exists() or sha256_file(old) != EARTH_HP_SHA256:
+        raise ValueError(f"Restore the pinned raw file {old} (sha256 {EARTH_HP_SHA256}) to compare EOP epochs.")
+    old_utc = _datum_utc(EARTH_HP, _comments(old))
+    window = json.loads((OUT / "manifest.json").read_text(encoding="utf-8"))["window"]
+    listing = download.request("GET", f"{NAIF}/pck/", timeout=60).text
+    listed, candidates = {}, {}
+    with TemporaryDirectory(prefix="earth-pin-review-") as tmp:
+        for role, pattern, key in (
+            ("HP", r"earth_000101_\d{6}_\d{6}\.bpc", lambda n: n[-10:-4]),
+            ("PRED", r"earth_\d{4}_\d{6}_\d{4}_predict\.bpc", lambda n: n.split("_")[2]),
+        ):
+            names = sorted(set(re.findall(pattern, listing)), key=key)
+            if not names:
+                raise ValueError(f"no file matching {pattern} in {NAIF}/pck/")
+            listed[role] = names
+            name = names[-1]
+            path = Path(tmp) / name
+            # Use the pipeline's retry and host limits, but keep the candidate outside the raw ledger.
+            with download.request("GET", f"{NAIF}/pck/{name}", stream=True, timeout=120) as response:
+                with path.open("wb") as f:
+                    for chunk in response.iter_content(1 << 20):
+                        f.write(chunk)
+                length = response.headers.get("Content-Length")
+                if length and path.stat().st_size != int(length):
+                    raise ValueError(f"{name}: short candidate download")
+            comments = _comments(path)
+            candidates[role] = {"name": name, "sha256": sha256_file(path), "bytes": path.stat().st_size,
+                                "lastDatumUtc": _datum_utc(name, comments)}
+            if role == "HP":
+                hp_segments = read_pck(path)
+            else:
+                predicts = re.search(r"\$\s+Predicts to\s+([^\n]+)", comments)
+                candidates[role]["sourceEopPredictsTo"] = predicts.group(1).strip() if predicts else None
+    lsk_path = RAW / "naif/lsk/naif0012.tls"
+    sp.furnsh(str(lsk_path))
+    try:
+        old_et = sp.str2et(old_utc + " UTC")
+        new_et = sp.str2et(candidates["HP"]["lastDatumUtc"] + " UTC")
+        lo = max(window["startEt"], old_et, min(s.start for s in hp_segments))
+        hi = min(window["endEt"], new_et, max(s.end for s in hp_segments))
+        newly_measured = [sp.et2utc(e, "ISOC", 3) + "Z" for e in (lo, hi)] if lo < hi else None
+        candidates["HP"]["coverageEndUtc"] = sp.et2utc(max(s.end for s in hp_segments), "ISOC", 3) + "Z"
+    finally:
+        sp.unload(str(lsk_path))
+    return {"listedKernels": listed, "candidates": candidates, "pinnedMeasuredThroughUtc": old_utc,
+            "newlyMeasuredWindowUtc": newly_measured,
+            "nextStep": "Deliberately edit EARTH_HP/EARTH_PRED and their SHA256 constants together, explain "
+                        "why in the comments/commit, retain the raw files and ledger, then rebuild bodies. "
+                        "New kernels may also revise orientation on already measured dates."}
 
 
 def _overlap(seg: Segment, a: float, b: float) -> Segment | None:
@@ -240,3 +298,12 @@ def body_to_j2000(header: dict, data: np.ndarray, body: int, et: float) -> np.nd
         b2p = np.array(header["bodies"][str(body)]["bodyToPck"]).reshape(3, 3)
         return ref @ tipm.T @ b2p
     return None
+
+
+if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Review current NAIF Earth kernels without changing the build.")
+    parser.add_argument("command", choices=["inspect-earth-pins"])
+    parser.parse_args()
+    print(json.dumps(inspect_earth_pins(), indent=2))

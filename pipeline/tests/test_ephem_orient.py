@@ -33,7 +33,8 @@ def coverage(header) -> tuple[float, float]:
 @pytest.fixture(scope="module")
 def kernels():
     pck = RAW / "naif" / "pck"
-    ks = [sorted(pck.glob("earth_*_predict.bpc"))[-1], sorted(pck.glob("earth_000101_*.bpc"))[-1],
+    sources = {s["id"]: s for s in json.loads((OUT / "sources.json").read_text(encoding="utf-8"))}
+    ks = [pck / sources[orient.SRC_EARTH_PRED]["version"], pck / sources[orient.SRC_EARTH_HP]["version"],
           pck / "moon_pa_de440_200625.bpc", RAW / "naif" / "fk-satellites" / "moon_de440_250416.tf"]
     for k in ks:  # high-precision after the predict file: it takes priority, as in orient/earth
         sp.furnsh(str(k))
@@ -70,7 +71,7 @@ def test_coverage_and_labels():
 
 
 @pytest.mark.parametrize("role", ["HP", "PRED"])
-@pytest.mark.parametrize("problem", ["different", "absent", "ledger"])
+@pytest.mark.parametrize("problem", ["different", "selection", "cached", "absent", "ledger"])
 def test_earth_rejects_unpinned_input_with_recovery_instruction(tmp_path, monkeypatch, role, problem):
     """Neither a newer selection nor a bad raw/ledger copy may enter an orientation product."""
     names = {"HP": "earth_000101_270102_261006.bpc", "PRED": "earth_2026_260806_2126_predict.bpc"}
@@ -79,12 +80,18 @@ def test_earth_rejects_unpinned_input_with_recovery_instruction(tmp_path, monkey
         monkeypatch.setattr(orient, f"EARTH_{key}", name, raising=False)
         monkeypatch.setattr(orient, f"EARTH_{key}_SHA256", digest, raising=False)
     monkeypatch.setattr(orient, "RAW", tmp_path, raising=False)
+    if problem == "cached":
+        cached = tmp_path / "naif/pck" / names[role]
+        cached.parent.mkdir(parents=True)
+        cached.write_bytes(b"different cached kernel")
 
     def fetch_input(url, subdir):
         name = url.rsplit("/", 1)[-1]
         if name == names[role] and problem == "absent":
             raise FileNotFoundError("pinned kernel no longer available")
         path = tmp_path / name
+        if name == names[role] and problem == "selection":
+            path = tmp_path / "different_selection.bpc"
         path.write_bytes(b"newer kernel" if name == names[role] and problem == "different" else b"pinned")
         return path
 
@@ -94,3 +101,54 @@ def test_earth_rejects_unpinned_input_with_recovery_instruction(tmp_path, monkey
     monkeypatch.setattr(orient, "_comments", lambda path: "")
     with pytest.raises(ValueError, match="Restore the pinned raw file.*deliberately update"):
         orient.earth(BuildContext(0, 1), 0, 1, tmp_path / "lsk")
+
+
+@products_required
+def test_earth_source_records_use_pins_without_a_directory_lookup(monkeypatch):
+    def no_network(*args, **kwargs):
+        pytest.fail("cached pinned Earth inputs must not consult NAIF's live directory")
+
+    monkeypatch.setattr(orient.download, "request", no_network)
+    ctx = BuildContext(*coverage(_load(EARTH)[0]))
+    orient.earth(ctx, ctx.start_et, ctx.end_et, RAW / "naif/lsk/naif0012.tls")
+    for sid, name, digest in ((orient.SRC_EARTH_HP, orient.EARTH_HP, orient.EARTH_HP_SHA256),
+                              (orient.SRC_EARTH_PRED, orient.EARTH_PRED, orient.EARTH_PRED_SHA256)):
+        src = ctx.sources[sid]
+        assert src.version == name and src.sha256 == digest
+        assert src.url == f"{orient.NAIF}/pck/{name}"
+
+
+@products_required
+def test_pin_review_reports_newly_measured_interval_without_changing_files(monkeypatch):
+    old = RAW / "naif/pck/earth_000101_261230_261003.bpc"
+    if not old.exists():
+        pytest.skip("retained 3 October kernel absent: cannot compare the measured interval")
+    current_hp = orient.EARTH_HP
+    monkeypatch.setattr(orient, "EARTH_HP", old.name)
+    monkeypatch.setattr(orient, "EARTH_HP_SHA256", orient.sha256_file(old))
+
+    class Response:
+        def __init__(self, url):
+            self.path = RAW / "naif/pck" / url.rsplit("/", 1)[-1]
+            self.text = f"{current_hp} {orient.EARTH_PRED}"
+            self.headers = {"Content-Length": str(self.path.stat().st_size)} if self.path.is_file() else {}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+        def iter_content(self, size):
+            with self.path.open("rb") as f:
+                yield from iter(lambda: f.read(size), b"")
+
+    monkeypatch.setattr(orient.download, "request", lambda method, url, **kwargs: Response(url))
+    files = [RAW / "_downloads.json", OUT / "manifest.json", old, RAW / "naif/pck" / current_hp,
+             RAW / "naif/pck" / orient.EARTH_PRED]
+    before = [orient.sha256_file(p) for p in files]
+    review = orient.inspect_earth_pins()
+    assert review["newlyMeasuredWindowUtc"] == ["2026-10-03T00:00:00.000Z", "2026-10-06T00:00:00.000Z"]
+    assert review["candidates"]["HP"]["name"] == current_hp
+    assert review["candidates"]["HP"]["sha256"] == orient.sha256_file(RAW / "naif/pck" / current_hp)
+    assert before == [orient.sha256_file(p) for p in files]
