@@ -66,6 +66,7 @@ def stage_env(tmp_path, monkeypatch):
     monkeypatch.setattr(comets.cie, "register_sources", lambda ctx: [])
     monkeypatch.setattr(comets.filters, "register", lambda ctx, **kwargs: [])
     cat = {"names": ["test-spkid\t1P\tTest Comet\tP"], "rows": np.array([0]),
+           "M1": np.array([1.0]), "K1": np.array([1.0]),
            "header": {"window": {"startEt": 0, "endEt": comets.DAY},
                       "forceModel": {"sun": {"gm": 1, "sources": ["test-gm"]}}}}
     peaks = [{"index": 0, "row": 0, "M1": 1, "K1": 1, "peakMag": 1, "peakEt": 0, "rAu": 1,
@@ -95,6 +96,52 @@ def test_stage_never_writes_committed_reference(stage_env, existing):
         assert not paths[2].exists()
 
 
+def test_explicit_writer_captures_built_model_and_reference_inputs(stage_env, tmp_path):
+    ctx, paths, cat, peaks, horizons = stage_env
+    cat["names"][:] = ["id\t2P\tFaint Comet\tP", "test-spkid\t1P\tTest Comet\tP"]
+    cat["rows"] = np.array([2, 7])
+    cat["M1"] = np.array([15.0, 1.0])
+    cat["K1"] = np.array([4.0, 1.0])
+    peaks[0].update(index=1, row=7)
+    ctx.params["build.writeRepoFiles"] = False
+    comets.run(ctx)
+    assert paths[2].read_bytes() == b"previous repository file\n"
+    comets.write_fixture()
+    fx = json.loads(paths[2].read_text(encoding="utf-8"))
+    assert fx["model"] == json.loads((tmp_path / "comets/model.json").read_text(encoding="utf-8"))
+    assert fx["measured"] is None
+    horizons.assert_called_once()
+    best, subset, _ = horizons.call_args.args
+    assert best["row"] == 7 and best["index"] == 0 and best["M1"] == best["K1"] == 1
+    assert subset["names"] == [cat["names"][1]]
+    assert subset["rows"].tolist() == [7]
+    assert subset["header"] == cat["header"]
+
+
+@pytest.mark.parametrize("changed", ["window", "row", "designation", "M1", "K1", "no-showcase"])
+def test_explicit_writer_rejects_stale_inputs_without_replacing_reference(stage_env, tmp_path, changed):
+    ctx, paths, cat, _, horizons = stage_env
+    ctx.params["build.writeRepoFiles"] = False
+    comets.run(ctx)
+    if changed == "window":
+        cat["header"]["window"]["endEt"] += comets.DAY
+    elif changed == "row":
+        cat["rows"][0] = 1
+    elif changed == "designation":
+        cat["names"][0] = "test-spkid\t2P\tAnother Comet\tP"
+    elif changed in ("M1", "K1"):
+        cat[changed][0] += 1
+    else:
+        path = tmp_path / "comets/list.json"
+        lst = json.loads(path.read_text(encoding="utf-8"))
+        lst["showcase"] = None
+        path.write_text(json.dumps(lst), encoding="utf-8")
+    with pytest.raises(ValueError, match="rebuild comets|no showcase"):
+        comets.write_fixture()
+    assert paths[2].read_bytes() == b"previous repository file\n"
+    horizons.assert_not_called()
+
+
 def test_stage_preserves_repo_files_when_disabled(stage_env, tmp_path, capsys):
     ctx, paths, _, _, horizons = stage_env
     ctx.params["build.writeRepoFiles"] = False
@@ -122,6 +169,8 @@ def test_stage_repo_writes_use_utf8_and_lf(stage_env, monkeypatch):
 
     monkeypatch.setattr(Path, "write_text", checked_write)
     comets.run(ctx)
+    assert set(writes) == set(paths[:2])
+    comets.write_fixture()
     assert set(writes) == set(paths)
     for kwargs in writes.values():
         assert kwargs.get("encoding") == "utf-8"
