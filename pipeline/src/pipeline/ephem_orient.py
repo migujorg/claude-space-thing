@@ -65,6 +65,16 @@ class OrientSeg:
     uncertainty: str | None = None
 
 
+def _latest(pattern: str, key, *, listing: str | None = None) -> str:
+    """Select a candidate for deliberate pin review only; earth() never consults this selector."""
+    if listing is None:
+        listing = download.request("GET", f"{NAIF}/pck/", timeout=60).text
+    names = sorted(set(re.findall(pattern, listing)), key=key)
+    if not names:
+        raise ValueError(f"no file matching {pattern} in {NAIF}/pck/")
+    return names[-1]
+
+
 def _pinned_earth(name: str, digest: str) -> Path:
     """Check the raw bytes AND ledger before using a pin; never refetch a different cached file."""
     instruction = (f"Earth orientation pin {name} (sha256 {digest}). Restore the pinned raw file in "
@@ -120,7 +130,7 @@ def inspect_earth_pins() -> dict:
             if not names:
                 raise ValueError(f"no file matching {pattern} in {NAIF}/pck/")
             listed[role] = names
-            name = names[-1]
+            name = _latest(pattern, key, listing=listing)
             path = Path(tmp) / name
             # Use the pipeline's retry and host limits, but keep the candidate outside the raw ledger.
             with download.request("GET", f"{NAIF}/pck/{name}", stream=True, timeout=120) as response:
