@@ -90,7 +90,7 @@ describe.skipIf(!af)('Titan drawn from its atmosphere model', () => {
     console.log('[render-titan] renderer / Monte Carlo\n  ' + rows.join('\n  '));
   }, 300000);
 
-  it('the frame scales the model to the disk photometry: the drawn disk reflects the measured p·Φ(α) per channel inside 0–5.7°, and keeps the factors of 5.7° beyond', () => {
+  it('the frame scales the model to photometry and carries the same integrated disk light in its point at every phase', () => {
     const ph = (JSON.parse(fs.readFileSync(DATA_DIR + 'photometry.json', 'utf8')) as Record<string, BodyPhotometry>)['606'];
     const irr = (JSON.parse(fs.readFileSync(DATA_DIR + 'light.json', 'utf8')) as LightData).sun.irradianceXYZS_1AU.value as [number, number, number, number];
     const albedo = ph.geometricAlbedoXYZS.value as [number, number, number, number];
@@ -132,6 +132,14 @@ describe.skipIf(!af)('Titan drawn from its atmosphere model', () => {
       r.K.forEach((v, c) => expect(v / (sunOverPi[c] * rho[c]), `α ${phaseDeg}°`).toBeCloseTo(fac[c], 10));
       return { fac, line: f.warnings.filter((w) => w.startsWith('Titan: atmosphere model scaled')) };
     };
+    // Same geometry, under a pixel across: change sampling only, so the point and disk have the same R/Δ.
+    const dotGeom = { ...g, pixelAngle: 4 * Math.asin(R / dist) };
+    const coldStart = performance.now();
+    prepareFrame(scene(150), dotGeom, eye, 1e-9, { atmospheres: () => bind });
+    const coldMs = performance.now() - coldStart;
+    const warmStart = performance.now();
+    for (let i = 0; i < 100; i++) prepareFrame(scene(150), dotGeom, eye, 1e-9, { atmospheres: () => bind });
+    console.log(`[render-titan] point at 150°: cold frame ${coldMs.toFixed(2)} ms; warm ${( (performance.now() - warmStart) / 100).toFixed(3)} ms/frame (tables already ready)`);
     const rows: string[] = [];
     let worst = 0;
     for (const phaseDeg of [0, 0.5, 1, 1.5, 2.5, 3.5, 4.5, 5.6]) {
@@ -155,6 +163,32 @@ describe.skipIf(!af)('Titan drawn from its atmosphere model', () => {
       expect(line).toHaveLength(1);
       expect(line[0]).toContain('→ estimated');
       if (phaseDeg === 61) rows.push(line[0]);
+    }
+    // The point and off-frame glare must carry the model's integrated light with the disk's own factors.
+    // 0.1 % is the frame quadrature/phase-bin tolerance used above; this checks all four absolute-light channels.
+    for (const a of [0, 3, 5.7, 30, 90, 150, 166]) {
+      const s = scene(a);
+      const disk = prepareFrame(s, g, eye, 1e-9, { atmospheres: () => bind }).resolved[0];
+      const d = modelDiskXYZS(m, tab, G, dir(a), [0, 0, 1], 64);
+      const integrated = [0, 1, 2, 3].map((c) => Math.PI * (R / dist) ** 2 *
+        (disk.atmosphere!.sunE[c] * d.air[c] + disk.K[c] * d.surface[c]));
+      const point = prepareFrame(s, dotGeom, eye, 1e-9, { atmospheres: () => bind });
+      expect(point.resolved).toHaveLength(0);
+      expect(point.points).toHaveLength(1);
+      const ratio = point.points[0].E.map((v, c) => v / integrated[c]);
+      const old = prepareFrame(s, dotGeom, eye, 1e-9).points[0].E;
+      rows.push(`${a}°: point / disk ${ratio.map((v) => v.toFixed(6)).join(' ')}; model / old point ${integrated.map((v, c) => (v / old[c]).toFixed(4)).join(' ')}`);
+      ratio.forEach((v, c) => expect.soft(Math.abs(v - 1), `point/disk α ${a}°, channel ${c}`).toBeLessThanOrEqual(0.001));
+      // Turn the camera 5°: Titan is outside the frame, inside the glare field. Its physical geometry is unchanged.
+      const theta = 5 * Math.PI / 180;
+      const offGeom = { ...dotGeom, back: [Math.sin(theta), 0, Math.cos(theta)] as [number, number, number],
+        right: [Math.cos(theta), 0, -Math.sin(theta)] as [number, number, number] };
+      const off = prepareFrame(s, offGeom, eye, 1e-9, { atmospheres: () => bind });
+      const glare = off.glare.find((v) => v.dir[2] === -1)!;
+      expect(glare?.inFrame).toBe(false);
+      expect(glare.E).toEqual(point.points[0].E);
+      expect.soft(point.warnings.filter((w) => w.startsWith('Titan:'))).toEqual(
+        prepareFrame(s, g, eye, 1e-9, { atmospheres: () => bind }).warnings.filter((w) => w.startsWith('Titan:')));
     }
     rows.push(`edge (5.7°) factors ${edge.fac.map((x) => x.toFixed(4)).join(' ')}; largest |drawn / measured − 1| in range ${(100 * worst).toFixed(2)} %`);
     console.log('[render-titan] the model scaled to the disk photometry (X, Y, Z, S)\n  ' + rows.join('\n  '));

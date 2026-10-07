@@ -288,6 +288,18 @@ describe('the frame of a body drawn from its atmosphere model (fixture)', () => 
     expect(far.warnings.some((w) => w.includes('sunlit part drawn as not measured'))).toBe(true);
   });
 
+  it('a body without a model-drawn disk keeps the point photometry bit for bit, with no table request', () => {
+    const atmosphere = { ...scene(0, 40000).bodies[0].atmosphere!, surface: undefined };
+    for (const a of [0, 3, 5.7, 30, 90, 150, 166]) {
+      const s = scene(a, 2e7, 0.2, { atmosphere });
+      const baseline = prepareFrame(s, g, eye, 1e-9);
+      let requests = 0;
+      const actual = prepareFrame(s, g, eye, 1e-9, { atmospheres: () => { requests++; return binding(); } });
+      expect(actual).toEqual(baseline);
+      expect(requests).toBe(0);
+    }
+  });
+
   it('under a pixel across it is the point of its disk photometry', () => {
     const s = scene(3, 4e8);
     const f = prepareFrame(s, cameraGeom(s, W, H, 1e-7), eye, 1e-9, { atmospheres: () => binding() });
@@ -321,6 +333,21 @@ describe('the Earth drawn with its layers is not scaled to its disk photometry (
   } as unknown as SceneBody['surface'];
   const surfaces = () => ({ albedo: { base: 0, maxLevel: 0, zonal: null }, clouds: { base: 0, maxLevel: 0 } });
   const air = { wavelengthsNm: m.wavelengthsNm, foldWeights: [], body: { altitudesKm: [0], topAltitudeKm: 100 } as never, worstLabel: 'estimated' as const };
+
+  it('its point is unchanged bit for bit even if its atmosphere carries a surface: Earth mode wins', () => {
+    for (const a of [0, 3, 5.7, 30, 90, 150, 166]) {
+      const s = scene(a, 2e7, 0.2, { surface: earthLayers, atmosphere: air });
+      const baseline = prepareFrame(s, g, eye, 1e-9, { atmospheres: () => binding(), surfaces });
+      s.bodies[0].atmosphere = { ...air, surface: { reflectance: m.wavelengthsNm.map(() => 0.1), xyzs: rho } };
+      let requests = 0;
+      const actual = prepareFrame(s, g, eye, 1e-9, { atmospheres: () => { requests++; return binding(); }, surfaces });
+      // Object identity in the resolved body is absent here: this is a pure point.
+      expect(actual.resolved).toHaveLength(0);
+      expect(actual.points).toHaveLength(1);
+      expect(actual).toEqual(baseline);
+      expect(requests).toBe(0);
+    }
+  });
 
   it('its surface and its air keep the absolute scale E☉/(π d²) at every phase, whatever the disk photometry says', () => {
     for (const atmosphere of [air, { ...air, surface: { reflectance: m.wavelengthsNm.map(() => 0.1), xyzs: rho } }]) {
