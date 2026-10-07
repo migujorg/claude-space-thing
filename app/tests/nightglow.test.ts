@@ -16,7 +16,17 @@ import { airglowLayers, auroraGrid, couplingAt, dayOfYear, monthWeights, Nightgl
 import { emissionTables, layerBranchIntegral, limbFactor, nightDomainWeight, packTables, PHOTON_RADIANCE_PER_R, sampleBins, slabIntegral, toF16Array } from '../src/render/nightglow';
 import { numberToF16 } from '../src/render/surface';
 import { nightglowRows } from '../src/ui/inspectModel';
-import { DATA_DIR } from './core-data';
+import { DATA_DIR, loadBodies, loadTimeData, loadEphemerisSet, loadOrientation } from './core-data';
+import type { LightData, BodyPhotometry } from '../src/data/schema';
+import type { SceneSnapshot } from '../src/render/scene';
+import { TimeScale } from '../src/core/time';
+import { sunFrame, dirFromAzEl, lookRotation } from '../src/app/camera';
+import { add, sub, scale, dot, normalize, type V3 } from '../src/render/raycast';
+import { cameraGeom, prepareFrame } from '../src/render/frame';
+import { prepareRendererFrame } from '../src/render/renderer';
+import { AdaptationState, computeEyeFrame } from '../src/eye/model';
+import { DEFAULT_EYE_SETTINGS } from '../src/eye/settings';
+import { cie146 } from '../src/eye/glare';
 
 interface Fs { existsSync(p: string): boolean; readFileSync(p: string): Uint8Array; readFileSync(p: string, enc: 'utf8'): string }
 const fs: Fs = await import(/* @vite-ignore */ 'node:fs' as string);
@@ -279,5 +289,38 @@ describe.skipIf(!built)('nightglow products (nightglow/*.json)', () => {
     expect(info.aurora?.drawn).toBe(false);
     expect(info.aurora?.coupling.measured).toBe(false);
     expect(dayOfYear(Date.parse('2026-01-01T12:00:00Z'))).toBeCloseTo(1.5, 9);
+  });
+});
+
+// A far-observer disk law must not create a crescent behind a close observer's horizon.
+describe.skipIf(!built)('night-side horizon glare', () => {
+  it('has no reflected Earth glare when the entire visible surface is in shadow', () => {
+    const b = loadBodies()!.find((b) => b.id === 399)!;
+    const t = new TimeScale(loadTimeData()!);
+    const eph = loadEphemerisSet(['ephem/de442s'])!;
+    const orient = loadOrientation('orient/earth')!;
+    const earth = json<Record<string, BodyPhotometry>>('photometry.json')['399'];
+    const light = json<LightData>('light.json');
+    const eye = computeEyeFrame(DEFAULT_EYE_SETTINGS, new AdaptationState(), 'eye', 0, null);
+    for (const el of [0, 10, 30, 50, 55]) {
+      const et = t.utcMsToEt(Date.parse('2026-10-15T00:00:00Z'));
+      const S = sub(eph.positionSSB(10, et)!, eph.positionSSB(399, et)!);
+      const up = dirFromAzEl(sunFrame(S), Math.PI, el * Math.PI / 180);
+      const R = orient.bodyToIcrf(399, et)!;
+      const pole: V3 = [R[2], R[5], R[8]];
+      const north = normalize(sub(pole, scale(up, dot(pole, up))));
+      const fwd = add(scale(north, Math.cos(-15 * Math.PI / 180)), scale(up, Math.sin(-15 * Math.PI / 180)));
+      const snap: SceneSnapshot = { et, camera: { orient: lookRotation(fwd, up), width: 1280, height: 720, fovY: Math.PI / 3 },
+        sun: { pos: sub(S, scale(up, 6771)), radius: light.sun.radius.value!, irradianceXYZS_1AU: light.sun.irradianceXYZS_1AU.value!, limbDarkening: null },
+        bodies: [{ id: 399, name: 'Earth', pos: scale(up, -6771), toSun: S, orient: R, radii: b.radii!.value! as V3,
+          albedoXYZS: earth.geometricAlbedoXYZS.value!, phase: earth.phaseFunction.value!, surfaceUnknown: false, worstLabel: 'estimated', selected: false, allowPhaseExtrapolation: true }],
+        view: { mode: 'eye', exposureBoostStops: 0, overlays: { provenanceTint: false } }, orbits: [] };
+      const g = cameraGeom(snap, 1280, 720, 1e-7);
+      const old = prepareFrame(snap, g, eye, 1e-8);
+      const veil = old.glare.reduce((v, s) => v + s.E[1] * cie146(Math.max(s.minDeg, Math.acos(Math.min(1, dot(s.dir, fwd))) * 180 / Math.PI), 25, 0.5), 0);
+      console.log('old Earth analytic veil', el, veil);
+      const prep = prepareRendererFrame(snap, g, eye, 1e-8);
+      expect(prep.glare.filter((s) => s.E[1] > 0)).toEqual([]);
+    }
   });
 });
