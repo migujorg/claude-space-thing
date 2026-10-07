@@ -271,3 +271,53 @@ def test_jupiter_main_ring_vs_measured_phase_curve(built):
             assert abs(ratio - 1) < 0.35, (a, ratio)
         else:
             assert 0.35 < ratio < 0.7, (a, ratio)
+
+# -------------------------------------------------------------------------------- centreline extrapolation
+
+def test_supported_uranus_numerical_payload_is_bit_for_bit_unchanged(built):
+    import hashlib
+    import json
+    # Captured at ff7db88 before adding the estimate: only the historical numerical payload, not support/method text.
+    values = [{k: c[k] for k in ('id', 'inner', 'outer', 'profile', 'layer', 'thin')}
+              for c in _model(built[1], '799')['components'][:10]]
+    assert hashlib.sha256(json.dumps(values, sort_keys=True).encode()).hexdigest() == \
+        'eafebb86146e93eaf27f756d4d8eefbe760302c23c0d3dcd895b3ba1709f622c'
+
+
+@pytest.mark.parametrize('ring,width', zip(rings_uranus.RINGS,
+    [2.316, 2.684, 3.231, 7.277, 8.516, 2.227, 3.258, 4.977, 2.3, 58.574]))
+def test_uranus_estimate_has_published_constant_width_and_cor_ellipse(built, ring, width):
+    c = next(c for c in _model(built[1], '799')['components'] if c['id'] == f'uranus-{ring}')
+    alt = c['outsideSupportEstimate']
+    assert alt['label'] == 'estimated'
+    e = alt['value']
+    assert e['provenance']['geometry']['label'] == 'estimated'
+    assert e['layer'] == c['layer'] and e['thin'] == c['thin']
+    assert e['provenance']['reflectance'] == c['provenance']['reflectance']
+    cor = dict(rings_uranus.orbits()[ring]['COR'], modes=[])
+    et = rc.et_of_tdb_calendar(2026, 10, 1)
+    dt = (et - rings_uranus.EPOCH_ET) / rc.DAY
+    lam = np.arange(0., 360., .25)
+    ri, ro = (rc.edge_radius(e[k], lam, dt) for k in ('inner', 'outer'))
+    assert np.allclose(ro-ri, width, rtol=0, atol=1e-10)
+    assert np.allclose((ro+ri)/2, rc.edge_radius(cor, lam, dt), rtol=0, atol=1e-10)
+    assert e['profile']['widthScaling'] is False
+    integral = sum(e['profile']['values']) * e['profile']['uStep'] * width
+    old_integral = sum(c['profile']['values']) * c['profile']['uStep'] * c['profile']['widthRefKm']
+    assert integral == pytest.approx(old_integral, rel=6e-5)
+    assert all(s in built[0].sources for s in alt['sources'])
+
+
+def test_uranus_estimate_uncertainties_are_computed_from_the_transcription():
+    ctx = BuildContext(796998128., 891692528.)
+    method = rings_uranus.estimate_method('epsilon', ctx)
+    # Report's independently worked apse phase displacement at the actual window endpoints.
+    for et, expected in [(ctx.start_et, .430801), (ctx.end_et, .463077)]:
+        dt = (et - rings_uranus.EPOCH_ET) / rc.DAY
+        disp = 405.894 * math.sin(math.radians(math.hypot(.009, dt * .0000042)))
+        assert disp == pytest.approx(expected, abs=5e-7)
+        assert f'{disp:.6f} km' in method
+    assert 'not dynamical change' in method and '20 to 97 km' in method
+    assert '2050' in method and 'not a measurement' in method
+    assert 'undefined' in method
+    assert '5.509 km' in rings_uranus.estimate_method('gamma', ctx)

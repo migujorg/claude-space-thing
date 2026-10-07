@@ -5,7 +5,7 @@ import type { SceneBody } from '../src/render/scene';
 import { prepareRings } from '../src/render/rings';
 import { DATA_DIR } from './core-data';
 import {
-  CMP_RECORD_VEC4, DAY_S, arcFactor, bandAt, componentBounds, componentTable, componentsIF, componentsTransmission,
+  CMP_RECORD_VEC4, DAY_S, arcFactor, bandAt, componentsAt, componentBounds, componentTable, componentsIF, componentsTransmission,
   edgeRadius, gAt, gExact, modeArgument, packComponentRecords, packComponents, phaseValue, ringLongitude,
   tableSegment, torusHalfThickness,
 } from '../src/render/ringComponents';
@@ -89,6 +89,30 @@ describe('ring components: geometry', () => {
       expect(light.unknownCoverage).toBe(1);
       expect(componentsTransmission(m, ts, 1050, 0, et, 10, 0.5)).toBe(1);
       expect(packComponentRecords(packComponents(m), et)[15] & 16).toBe(16);
+    }
+  });
+
+  it('selects a sourced estimate only outside support, preserving supported calculations bit for bit', () => {
+    const c = comp({ values: [1, 2] });
+    c.geometryValidity = { startEt: -10, endEt: 10, basis: 'test' };
+    const est = comp({ values: [0.5, 0.5], inner: edge(1040), outer: edge(1060) });
+    c.outsideSupportEstimate = { value: est, label: 'estimated', sources: [], method: 'test' };
+    const m = model([c]);
+    for (const et of [-10, 0, 10]) {
+      expect(componentsAt(m, et)).toBe(m);
+      const selected = componentsAt(m, et);
+      expect(bandAt(selected, selected.components[0], 0, et)).toEqual(bandAt(m, c, 0, et));
+      expect(packComponentRecords(packComponents(selected), et)).toEqual(packComponentRecords(packComponents(m), et));
+    }
+    // Unsupported edge fits must never be evaluated: property access would throw.
+    Object.defineProperty(c, 'inner', { get: () => { throw new Error('unsupported edge evaluated'); } });
+    for (const et of [-11, 11]) {
+      const best = componentsAt(m, et);
+      expect(best.components[0]).toBe(est);
+      expect(bandAt(best, est, 0, et)?.W).toBe(20);
+      expect(packComponentRecords(packComponents(best), et)[15] & 16).toBe(0);
+      expect(componentsAt(m, et, false)).toBe(m);
+      expect(bandAt(m, c, 0, et)).toBeNull();
     }
   });
 
