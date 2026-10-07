@@ -196,9 +196,16 @@ export function diskOverlapFraction(rs: number, ro: number, d: number): number {
 const angle = (a: V3, b: V3) => 2 * Math.asin(Math.min(1, 0.5 * len(sub(normalize(a), normalize(b)))));
 
 /**
- * Smallest σ (pixels) of a point-source splat. A reconstruction-filter choice, not an eye constant:
- * at σ ≥ 0.6 px the discrete sum of the Gaussian over the pixel grid equals its integral to 2·10⁻³
- * for every sub-pixel position (Poisson summation: 2·exp(−2π²σ²)), so splats conserve energy.
+ * Smallest σ (pixels) of a point-source splat. A reconstruction-filter choice, not an eye constant.
+ *
+ * The splat is a Gaussian along each axis, sampled at the pixel centres and cut at ±3σ (POINT_SHADER splatAt). It
+ * is normalised by the cut Gaussian's integral over that square (eye/points.ts splatNorm), one number per frame,
+ * and not by each splat's own sum. So one splat's samples sum to 1 only on average over where the source sits in
+ * the pixels (to 10⁻³ over 400 positions); for a single splat at σ = 0.6 px the sum lies between 0.990 and
+ * 1.005, because the cut-off is hard and a pixel centre crossing it carries e^−4.5 of the peak
+ * (tests/eye-points.test.ts states the range). A point's light in the point image is right to that percent. The
+ * pixel grid alone, without the cut-off, would leave 2·exp(−2π²σ²) = 1.6·10⁻³ at 0.6 px (Poisson summation):
+ * that, not the cut-off, is why the minimum is 0.6 px and not less.
  */
 export const SIGMA_MIN_PX = 0.6;
 /**

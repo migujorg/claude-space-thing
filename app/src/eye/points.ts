@@ -212,6 +212,34 @@ export function pointVisible(eye: EyeFrame, E: { Y: number; S: number }, bg: { Y
 /** The retina pyramid's blur: a discrete Gaussian of σ = 1 texel, seven taps (shaders.ts PYRAMID_SHADER W0..W3). */
 export const VEIL_BLUR_TAPS: readonly number[] = [0.39905027, 0.24203623, 0.05400558, 0.00443305];
 
+// The veil pyramid's grid and its edge rule, each in ONE named place (CULL_SHADER has the same four functions by
+// the same names). A change of what a texel covers, or of what a level holds beyond its edge, is an edit there
+// and here, and the lone-source check (scripts/point-census.mjs --lone) tells whether the term still matches
+// the texture.
+
+/** Texels of level k along an axis of n0 pixels: the levels' sizes round up (renderer.ts resize). */
+export function veilLevelSize(n0: number, k: number): number {
+  return Math.max(1, Math.ceil(n0 / 2 ** k));
+}
+
+/** The texel of level k that holds pixel i: texel t covers the pixels [t·2^k, (t+1)·2^k). */
+export function veilTexelOfPixel(i: number, k: number): number {
+  return i >> k;
+}
+
+/** A full-resolution position (px) in level k's texel coordinates: texel t's centre is at (t + ½)·2^k px. */
+export function veilTexelCoord(px: number, k: number): number {
+  return px / 2 ** k - 0.5;
+}
+
+/**
+ * Zero beyond the edge: a texel outside its level holds nothing. This is the rule of `down`, of the blur and of
+ * the accumulation's upsample (PYRAMID_SHADER load); the read alone clamps instead (BG bgAt).
+ */
+export function veilTexelEmpty(t: number, n: number): boolean {
+  return t < 0 || t >= n;
+}
+
 /** A point source's splat: a Gaussian of sigmaPx sampled at pixel centres, cut where |dx| or |dy| exceeds extentPx. */
 export interface PointSplat {
   sigmaPx: number;
@@ -269,9 +297,9 @@ export function ownVeilAxis(c: number, n0: number, splat: PointSplat, kR: number
     const d = i + 0.5 - c;
     g.push(Math.abs(d) <= splat.extentPx ? Math.exp(-(d * d) / (2 * splat.sigmaPx * splat.sigmaPx)) : 0);
   }
-  // The read: two texels of level kR.
-  let n = Math.max(1, Math.ceil(n0 / 2 ** kR));
-  const cc = c / 2 ** kR - 0.5;
+  // The read: two texels of level kR, indices clamped (the read's own edge rule).
+  let n = veilLevelSize(n0, kR);
+  const cc = veilTexelCoord(c, kR);
   const i0 = Math.floor(cc), fr = cc - i0;
   const clampTexel = (t: number) => Math.min(Math.max(t, 0), n - 1);
   let a = clampTexel(i0);
@@ -281,15 +309,15 @@ export function ownVeilAxis(c: number, n0: number, splat: PointSplat, kR: number
     if (k > kR) {
       // One more upsampling of the accumulation: texel t reads its parent t >> 1 (3/4) and the parent's neighbour
       // on t's side (1/4); a texel beyond the level's edge holds nothing.
-      n = Math.max(1, Math.ceil(n / 2));
+      n = veilLevelSize(n0, k);
       const b = (a - 1) >> 1;
       const m = [0, 0, 0];
       for (let j = 0; j < 3; j++) {
         if (l[j] === 0) continue;
         const t = a + j;
         const parent = t >> 1, neighbour = t & 1 ? parent + 1 : parent - 1;
-        if (parent >= 0 && parent < n) m[parent - b] += 0.75 * l[j];
-        if (neighbour >= 0 && neighbour < n) m[neighbour - b] += 0.25 * l[j];
+        if (!veilTexelEmpty(parent, n)) m[parent - b] += 0.75 * l[j];
+        if (!veilTexelEmpty(neighbour, n)) m[neighbour - b] += 0.25 * l[j];
       }
       a = b;
       l = m;
@@ -297,7 +325,9 @@ export function ownVeilAxis(c: number, n0: number, splat: PointSplat, kR: number
     if (!(weights[k] > 0)) continue;
     let r = 0;
     for (let i = 0; i < g.length; i++) {
-      const o = ((p0 + i) >> k) - a;
+      const texel = veilTexelOfPixel(p0 + i, k);
+      if (veilTexelEmpty(texel, n)) continue;   // the blur's source: nothing beyond the edge (never met: the splat's pixels are in the frame)
+      const o = texel - a;
       if (o < -3 || o > 5) continue;
       let q = 0;
       for (let j = 0; j < 3; j++) {

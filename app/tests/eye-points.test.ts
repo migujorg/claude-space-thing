@@ -3,9 +3,10 @@
 import { describe, expect, it } from 'vitest';
 import { AdaptationState, computeEyeFrame } from '../src/eye/model';
 import { DEFAULT_EYE_SETTINGS } from '../src/eye/settings';
-import { VEIL_BLUR_TAPS, backgroundLevel, erf, intendedDisplayLd, ownVeilAxis, ownVeilExact, ownVeilPerPixel, pointAppearance, pointBackground, pointHidden, pointObserver, pointVeil, pointVisible, splatNorm, veilKernelPerPixel, type PointSource, type PointSplat, type VeilLevel } from '../src/eye/points';
+import { VEIL_BLUR_TAPS, backgroundLevel, erf, intendedDisplayLd, ownVeilAxis, ownVeilExact, ownVeilPerPixel, pointAppearance, pointBackground, pointHidden, pointObserver, pointVeil, pointVisible, splatNorm, veilKernelPerPixel, veilLevelSize, veilTexelCoord, veilTexelEmpty, veilTexelOfPixel, type PointSource, type PointSplat, type VeilLevel } from '../src/eye/points';
 import { luxFromMagnitude, riccoArea } from '../src/eye/crumey';
 import { fitScatterKernel } from '../src/eye/glare';
+import { SIGMA_MIN_PX } from '../src/render/frame';
 import { CRUMEY, HECHT1947, PATTANAIK } from '../src/eye/constants';
 import { inverseDisplay, lumResponse } from '../src/eye/tonemap';
 
@@ -640,12 +641,35 @@ describe('a point source\'s own light in its background, exactly: the product fo
     expect(half).toBeLessThan(0.8 * inside);
   });
 
+  it('the pyramid\'s grid in one place: level sizes round up, a texel covers 2^k pixels, nothing lies beyond a level\'s edge', () => {
+    // the sizes the renderer allocates (resize: halve and round up until 1 × 1), against the one function
+    for (const n0 of [1280, 720, 1283, 723, 1375, 138, 250, 256, 512, 97, 61, 3, 1]) {
+      let n = n0;
+      for (let k = 0; k < 14; k++) {
+        expect(veilLevelSize(n0, k), `${n0} px, level ${k}`).toBe(n);
+        n = Math.max(1, Math.ceil(n / 2));
+      }
+    }
+    // texel t of level k covers the pixels [t·2^k, (t+1)·2^k); its centre is at (t + ½)·2^k px
+    expect([0, 7, 8, 15, 16].map((i) => veilTexelOfPixel(i, 3))).toEqual([0, 0, 1, 1, 2]);
+    expect(veilTexelCoord(12, 3)).toBe(1);
+    expect(veilTexelCoord(4, 3)).toBe(0);
+    // every pixel of the frame lies in a texel of every level, and the texel after the last holds nothing
+    for (const n0 of [1283, 723, 97]) for (let k = 0; k < 12; k++) {
+      expect(veilTexelEmpty(veilTexelOfPixel(n0 - 1, k), veilLevelSize(n0, k))).toBe(false);
+      expect(veilTexelEmpty(veilLevelSize(n0, k), veilLevelSize(n0, k))).toBe(true);
+      expect(veilTexelEmpty(-1, veilLevelSize(n0, k))).toBe(true);
+    }
+  });
+
   it('one splat\'s samples sum to between 0.99 and 1.005 at the smallest splat, to one on average; and erf is erf', () => {
     expect(erf(0.5)).toBeCloseTo(0.5204998778130465, 14);
     expect(erf(3 / Math.SQRT2)).toBeCloseTo(0.9973002039367398, 14);
     expect(erf(-1)).toBeCloseTo(-0.8427007929497149, 14);
     expect(Math.abs(erf(2.5 - 1e-9) - erf(2.5 + 1e-9))).toBeLessThan(1e-11);   // the two branches meet
     const splat = cases[0].splat;
+    expect(splat.sigmaPx).toBe(SIGMA_MIN_PX);   // the renderer's smallest splat (render/frame.ts, whose comment this test proves)
+    expect(splat.extentPx).toBeCloseTo(3 * SIGMA_MIN_PX, 12);
     // The normalisation is the integral's, not each splat's sum: a pixel centre crossing the hard cut-off at 3σ
     // carries e^−4.5 of the peak, so the sum steps with the sub-pixel position. A point's light in the point image
     // is therefore right to a percent, not to the 2·10⁻³ of an uncut Gaussian on the pixel grid.

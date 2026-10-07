@@ -320,9 +320,13 @@ fn displayChroma(xyz: vec3f, k: f32) -> vec3f {
  * and a read scaled by the texture's size would be displaced in a frame that is not a multiple of 2^k. inv = 2^-k.
  */
 const BG = /* wgsl */ `
+/** A full-resolution position (px) in a level's texel coordinates; inv = 2^-k (eye/points.ts veilTexelCoord). */
+fn veilTexelCoord(px: f32, inv: f32) -> f32 {
+  return px * inv - 0.5;
+}
 fn bgAt(t: texture_2d<f32>, px: vec2f, inv: f32) -> vec4f {
   let d = vec2i(textureDimensions(t));
-  let c = px * inv - 0.5;
+  let c = vec2f(veilTexelCoord(px.x, inv), veilTexelCoord(px.y, inv));
   let i0 = vec2i(floor(c));
   let fr = c - vec2f(i0);
   let l = vec2i(0);
@@ -1092,6 +1096,21 @@ ${LIMB_WGSL(8)}
 struct Own { kR: u32, levels: u32, pad0: u32, pad1: u32, w: array<vec4f, 4> };   // the veil level read; the pyramid's level count and weights
 @group(0) @binding(11) var<uniform> own: Own;
 
+// The veil pyramid's grid and its edge rule, each in ONE named place, as in eye/points.ts (the same names): a
+// change of what a texel covers or of what a level holds beyond its edge is an edit here and there.
+/** Texels of level k along an axis of n0 pixels: the levels' sizes round up. */
+fn veilLevelSize(n0: i32, k: i32) -> i32 {
+  return max(1, (n0 + (1 << u32(k)) - 1) >> u32(k));
+}
+/** The texel of level k that holds pixel i: texel t covers the pixels [t·2^k, (t+1)·2^k). */
+fn veilTexelOfPixel(i: i32, k: i32) -> i32 {
+  return i >> u32(k);
+}
+/** Zero beyond the edge: a texel outside its level holds nothing (PYRAMID_SHADER load). The read clamps instead. */
+fn veilTexelEmpty(t: i32, n: i32) -> bool {
+  return t < 0 || t >= n;
+}
+
 /**
  * One axis of what the level-kR veil texture holds of a splat centred at c (px), read back at c: rho[k] for each
  * level k >= kR with weight. Every stage from the splat to the read is the same operation along x and along y, so
@@ -1118,8 +1137,8 @@ fn ownAxis(c: f32, n0: i32) -> array<f32, 16> {
   let K = i32(own.levels);
   let kR = i32(own.kR);
   // The read (bgAt): two texels of level kR. l holds the read's weights on texels a, a+1, a+2 of the current level.
-  var n = (n0 + (1 << u32(kR)) - 1) >> u32(kR);
-  let cc = c * E.pts.w - 0.5;
+  var n = veilLevelSize(n0, kR);
+  let cc = veilTexelCoord(c, E.pts.w);
   let i0 = i32(floor(cc));
   let fr = cc - f32(i0);
   let t0 = clamp(i0, 0, n - 1);
@@ -1131,7 +1150,7 @@ fn ownAxis(c: f32, n0: i32) -> array<f32, 16> {
     if (k > kR) {
       // One more upsampling of the accumulation: a texel takes 3/4 of its parent and 1/4 of the parent's neighbour
       // on its side; a texel beyond the level's edge holds nothing.
-      n = max(1, (n + 1) >> 1u);
+      n = veilLevelSize(n0, k);
       let b = (a - 1) >> 1u;
       var m = vec3f(0.0);
       for (var j = 0; j < 3; j++) {
@@ -1140,8 +1159,8 @@ fn ownAxis(c: f32, n0: i32) -> array<f32, 16> {
         let t = a + j;
         let par = t >> 1u;
         let nb = select(par - 1, par + 1, (t & 1) == 1);
-        if (par >= 0 && par < n) { m[par - b] += 0.75 * wt; }
-        if (nb >= 0 && nb < n) { m[nb - b] += 0.25 * wt; }
+        if (!veilTexelEmpty(par, n)) { m[par - b] += 0.75 * wt; }
+        if (!veilTexelEmpty(nb, n)) { m[nb - b] += 0.25 * wt; }
       }
       a = b;
       l = m;
@@ -1150,7 +1169,9 @@ fn ownAxis(c: f32, n0: i32) -> array<f32, 16> {
     if (own.w[k / 4][k % 4] <= 0.0) { continue; }
     var r = 0.0;
     for (var i = 0; i < cnt; i++) {
-      let o = ((p0 + i) >> u32(k)) - a;   // this pixel's texel, counted from a: the blur brings it to a+j by |j - o|
+      let texel = veilTexelOfPixel(p0 + i, k);
+      if (veilTexelEmpty(texel, n)) { continue; }   // the blur's source: nothing beyond the edge
+      let o = texel - a;   // this pixel's texel, counted from a: the blur brings it to a+j by |j - o|
       if (o < -3 || o > 5) { continue; }
       var gi = g[min(i, 7)];
       if (!few) {
