@@ -117,7 +117,9 @@ export function validationScene(c: ValidationCase, data: ValidationData, opts: V
     camera: { orient: v.camera.orient, fovY: v.camera.fovY, width: v.camera.width * ss, height: v.camera.height * ss },
     sun: sunOf(data.light, v.sun.pos, level),
     bodies,
-    view: { mode: 'eye', exposureBoostStops: 0, overlays: { provenanceTint: false } },
+    // The observer is an imager at the frame's own sampling, not an eye (EyeSettings.opticalCore): the case's
+    // regions are read from the HDR buffer, and a body must be in it whenever the frame resolves it.
+    view: { mode: 'eye', exposureBoostStops: 0, overlays: { provenanceTint: false }, eye: { opticalCore: false } },
     orbits: [],
   };
   if (!snapshot.sun) notes.push(`the Sun is not admitted at level ${level} (light.json)`);

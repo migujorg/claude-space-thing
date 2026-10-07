@@ -59,6 +59,11 @@ describe('validationScene', () => {
       height: c.view.camera.height * DEFAULT_VALIDATION_SS,
     });
   });
+  it('its observer is an imager at the frame\'s sampling, not an eye: no optical core', () => {
+    // The regions are read from the HDR buffer, so a body must be in it whenever the frame resolves it; with the
+    // eye's point spread the Earth and the Moon of the EPOXI case (0.9′ and 0.24′ in a view 3.5′ wide) are points.
+    expect(validationScene(testCase(), data()).snapshot.view.eye).toEqual({ opticalCore: false });
+  });
   it('renders at ss times the size', () => {
     const s = validationScene(testCase(), data(), { ss: 3 });
     expect(s.snapshot.camera).toMatchObject({ width: 192, height: 144 });
