@@ -426,7 +426,12 @@ describe('synthetic statement limits', () => {
       expect(f.what).toMatch(/aggregate/);
       const population = f.rows.find((r) => r.key === 'syn:population')!;
       expect(population.uncertainty).toBe(p.model.uncertainty);
-      if (p.name === 'centaur') expect(population.uncertainty).toMatch(/44.*comet-flagged.*18.*suitability/);
+      if (p.name === 'centaur') {
+        expect(population.uncertainty).toMatch(/43.*comet-flagged.*18.*suitability/);
+        const nuclei = f.rows.find(r => r.key === 'syn:nuclei')!;
+        expect(nuclei.value).toBe('1 conditioned; 43 unconditioned');
+        expect(nuclei.method).toContain('Conditioned: C/2014 OG392.');
+      }
       if (p.center) expect(f.what).not.toMatch(/the debiased population|complete down to/);
     }
   });

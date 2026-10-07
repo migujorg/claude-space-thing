@@ -385,14 +385,15 @@ def test_product_statements_disclose_limits_and_motion():
             if p["objects"]:
                 assert "normalization" in p["model"]["uncertainty"]
     centaur = next(p for p in h["populations"] if p["name"] == "centaur")
-    assert centaur["model"]["cataloguedCometsNotCounted"] == 44
-    assert "44" in centaur["model"]["uncertainty"]
+    assert centaur["model"]["cataloguedCometsNotCounted"] == 43
+    assert centaur["model"]["cataloguedCometsCounted"] == 1
+    assert "43" in centaur["model"]["uncertainty"]
     assert "comet-flagged" in centaur["model"]["uncertainty"]
     nuclei = centaur["model"]["cometNuclei"]
     assert len(nuclei["objects"]) == 44
     assert "M1" in nuclei["rule"] and "lower bounds" in nuclei["rule"]
     assert sum("nuclearLaw" in r["photometry"] for r in nuclei["objects"]) == 18
-    assert all(r["status"] != "conditioned" for r in nuclei["objects"])
+    assert [r["designation"] for r in nuclei["objects"] if r["status"] == "conditioned"] == ["C/2014 OG392"]
     assert next(r for r in nuclei["objects"] if r["designation"] == "39P")["H_V"]["label"] == "unknown"
     assert "rejects their joint distribution" in centaur["model"]["uncertainty"]
 
@@ -479,3 +480,16 @@ def test_centaur_selection_changes_with_orbital_phase_at_equal_magnitude():
     assert ss.centaur_selection(classifier, states)['status'].tolist() == [1, 0]
     states[0, 6] = 21.; states[1, 6] = 23.5
     assert ss.centaur_selection(classifier, states)['status'].tolist() == [-1, -1]
+
+
+def test_og392_nuclear_h_reproduces_published_photometry_reduction():
+    """Chandler §7 Eq.9–10: quoted H=11.3 is inconsistent with its V=22.4 and geometry.
+    Use the published photometry, G and equations, independent of population counts/validation scenes.
+    """
+    from pipeline import syn_sources as ss
+    r = next(r for r in ss.centaur_nuclei()['objects'] if r['designation'] == 'C/2014 OG392')
+    t = math.tan(math.radians(5.58) / 2)
+    phi = .85 * math.exp(-3.33 * t**.63) + .15 * math.exp(-1.87 * t**1.22)
+    expected = 22.4 - 5 * math.log10(10.10 * 10.01) + 2.5 * math.log10(phi)
+    assert math.isclose(r['H_V']['value'], expected, abs_tol=5e-5)
+    assert r['H_V']['label'] == 'estimated'

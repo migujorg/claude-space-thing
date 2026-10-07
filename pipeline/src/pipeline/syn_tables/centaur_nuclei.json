@@ -1082,28 +1082,60 @@
       "kind": "coma-separated",
       "band": "V",
       "H": {
-        "value": 11.3,
+        "value": 11.92603,
         "label": "estimated",
         "sources": [
           "chandler-2020-og392"
         ],
         "unit": "mag",
-        "method": "Section 7 Eq.9\u201310: published coma-subtracted H_V approximately 11.3; author converts own nuclear g/r to V with Jester et al. (2005); G=0.15 assumed.",
-        "uncertainty": "Approximate PSF decomposition; uncertainty not quantified; nucleus colours require coma-free measurements."
+        "method": "Recomputed Chandler \u00a77 Eq.9\u201310 from the authors' coma-separated Johnson V=22.4 (their own nuclear g/r-to-V conversion via Jester et al. 2005), R=10.10 au, delta=10.01 au, alpha=5.58 deg, assumed G=0.15, A1=3.33, A2=1.87, B1=0.63, B2=1.22. H_V = V - 5 log10(R delta) + 2.5 log10[(1-G)Phi1 + G Phi2], Phi_i=exp[-Ai tan(alpha/2)^Bi]. The paper's reported H_V=11.3 is retained separately; it does not reproduce these inputs.",
+        "uncertainty": "Approximate PSF decomposition, rounded published photometry/geometry and assumed G; systematic uncertainty not quantified. Computation precision is not measurement precision."
       },
       "H_V": {
-        "value": 11.3,
+        "value": 11.92603,
         "label": "estimated",
         "sources": [
           "chandler-2020-og392"
         ],
         "unit": "mag",
-        "method": "Section 7 Eq.9\u201310: published coma-subtracted H_V approximately 11.3; author converts own nuclear g/r to V with Jester et al. (2005); G=0.15 assumed.",
-        "uncertainty": "Approximate PSF decomposition; uncertainty not quantified; nucleus colours require coma-free measurements."
+        "method": "Recomputed Chandler \u00a77 Eq.9\u201310 from the authors' coma-separated Johnson V=22.4 (their own nuclear g/r-to-V conversion via Jester et al. 2005), R=10.10 au, delta=10.01 au, alpha=5.58 deg, assumed G=0.15, A1=3.33, A2=1.87, B1=0.63, B2=1.22. H_V = V - 5 log10(R delta) + 2.5 log10[(1-G)Phi1 + G Phi2], Phi_i=exp[-Ai tan(alpha/2)^Bi]. The paper's reported H_V=11.3 is retained separately; it does not reproduce these inputs.",
+        "uncertainty": "Approximate PSF decomposition, rounded published photometry/geometry and assumed G; systematic uncertainty not quantified. Computation precision is not measurement precision."
       },
       "evidence": [
         "chandler-2020-og392"
-      ]
+      ],
+      "reportedH_V": {
+        "value": 11.3,
+        "label": "estimated",
+        "sources": [
+          "chandler-2020-og392"
+        ],
+        "unit": "mag",
+        "method": "Chandler \u00a77 reports H_V approximately 11.3; this does not reproduce the same section's published V, geometry and Eq.9\u201310.",
+        "uncertainty": "Approximate PSF decomposition; uncertainty not quantified; nucleus colours require coma-free measurements."
+      },
+      "reductionInputs": {
+        "value": {
+          "V": 22.4,
+          "rAu": 10.1,
+          "deltaAu": 10.01,
+          "phaseDeg": 5.58,
+          "G": 0.15,
+          "A": [
+            3.33,
+            1.87
+          ],
+          "B": [
+            0.63,
+            1.22
+          ]
+        },
+        "label": "estimated",
+        "sources": [
+          "chandler-2020-og392"
+        ],
+        "method": "Published rounded inputs to Eq.9\u201310, including an assumed G; the computation introduces no factor selected by population counts."
+      }
     },
     {
       "spkid": 1003743,
