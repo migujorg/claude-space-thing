@@ -1,10 +1,12 @@
-"""Optical thickness of partly cloudy pixels: a measured population statistic for cloud without its own retrieval.
+"""Optical thickness of partly cloudy pixels: an observed population applied to cloud without its own retrieval.
 
 The Earth cloud layer (surf_earth.py) knows, per texel, the share of samples with a cloud top but no standard
-optical-thickness retrieval (cloudFraction − tauRetrievedFraction of `cloudTau`). In the MODIS/VIIRS continuity
-algorithm these are mostly pixels that the clear-sky restoral flags as partly cloudy or cloud edge (CSR = 1, 3),
-whose retrievals are reported only in separate `_PCL` fields that GIBS does not serve (Platnick et al. 2017;
-2021), plus failed retrievals.
+optical-thickness retrieval (cloudFraction − tauRetrievedFraction of `cloudTau`). A sample with a height and no
+thickness counts as cloud. These two VIIRS GIBS layers cannot distinguish partly cloudy pixels from pixels
+restored to clear sky by the optical algorithm or failed optical retrievals. VIIRS GIBS does not serve CLDPROP's
+separate `_PCL` fields; GIBS does serve MODIS Aqua and Terra PCL optical-thickness layers (MYD06/MOD06), from
+different instruments and observations. CSR = 1, 3 describes the MOD06 population behind this statistic;
+CLDPROP v1.1 omits CSR = 3 (Platnick et al. 2017; 2021).
 
 The published statistic used here is the global, area-weighted mean joint histogram of cloud optical thickness
 and cloud-top pressure for partly cloudy pixels, from the MODIS C6.1 Level-3 COSP product (MCD06COSP_M3, Terra +
@@ -50,6 +52,12 @@ P17_CITATION = ("Platnick, S., Meyer, K. G., King, M. D., Wind, G., Amarasinghe,
                 "Z., Hubanks, P. A., Holz, R. E., Yang, P., Ridgway, W. L. & Riedi, J. (2017). The MODIS cloud optical "
                 "and microphysical products: Collection 6 updates and examples from Terra and Aqua. IEEE Transactions "
                 "on Geoscience and Remote Sensing 55, 502-525. doi:10.1109/TGRS.2016.2610522.")
+
+# Platnick et al., MODIS C6/C6.1 Cloud Optical Properties User Guide, §1.1.2, p. 5: θ0 < 81.36°.
+# https://atmosphere-imager.gsfc.nasa.gov/sites/default/files/ModAtmo/MODISCloudOpticalPropertyUserGuideFinal_v1.1_1.pdf
+# Pincus et al. (2023) §2.1/Table 1 reports 81.3731° for COSP. Neither guide value filters this
+# already-aggregated histogram; this MODIS guide value is not the VIIRS layer's day limit.
+MODIS_COP_DAY_SZA_MAX_DEG = 81.36
 
 IMAGE_SIZE = (2067, 2518)              # width, height of Fig. 7's raster
 TAU_EDGES = [0.0, 0.3, 1.3, 3.6, 9.4, 23.0, 60.0, 150.0]
@@ -210,10 +218,12 @@ def table(ctx) -> tuple[dict, str]:
         "label": "estimated",
         "sources": [sid, sid17],
         "what": "Optical thickness of MODIS partly cloudy pixels (clear-sky restoral CSR = 1, 3: cloud edges and "
-                "250 m-heterogeneous pixels), whose retrievals CLDPROP reports only in _PCL fields that GIBS does not "
-                "serve: global area-weighted means of July 2021 (MODIS C6.1 MCD06COSP_M3, Terra + Aqua), read from "
-                "Pincus et al. (2023) Fig. 7. A measured population statistic; using it for the samples of this "
-                "layer without a retrieval is an assumption, hence 'estimated'.",
+                "250 m-heterogeneous pixels): global area-weighted means of July 2021 (MODIS C6.1 MCD06COSP_M3, "
+                "Terra + Aqua), read from Pincus et al. (2023) Fig. 7. GIBS serves MODIS Aqua/Terra PCL thickness, "
+                "but not the separate CLDPROP _PCL fields for the VIIRS inputs of this layer. CLDPROP v1.1 omits "
+                "CSR = 3. The distribution is derived from an observed population histogram; assigning it to "
+                "samples without their own retrieval is an assumption, hence 'estimated'. A mixture of the "
+                "retrieved cloud and this assumed population is also estimated.",
         "tauBinEdges": TAU_EDGES,
         "tauBinLnCentre": [round(float(x), 3) for x in m],
         "cloudTopPressureEdgesHpa": PC_EDGES_HPA,
@@ -231,6 +241,10 @@ def table(ctx) -> tuple[dict, str]:
                     "distribution is assumed for them.",
                     "One month (July 2021), global, MODIS rather than VIIRS (the continuity algorithm is designed to "
                     "match); no regional dependence.",
+                    f"The heritage MODIS optical guide states SZA < {MODIS_COP_DAY_SZA_MAX_DEG}° "
+                    "(MODIS C6/C6.1 Cloud Optical Properties User Guide §1.1.2, p. 5); Pincus et al. (2023) "
+                    "§2.1/Table 1 reports 81.3731° for COSP. The histogram is transcribed as published; "
+                    "the VIIRS CLDPROP layer's separate day limit does not refilter it.",
                     "A partly cloudy pixel's τ is retrieved as if the pixel were overcast, so it is the plane-parallel "
                     "τ that reproduces the pixel's mean reflectance: the right quantity to spread over the whole "
                     "sample."],

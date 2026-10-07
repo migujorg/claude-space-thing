@@ -35,7 +35,7 @@ VALIDATION = REPO / "validation"
 TOLERANCE_K = 2.0
 MIN_REGISTRATION_PX = 0.5
 SCHEMA = "validation-case-v1"
-FIT_VERSION = 1            # bump when the pointing model changes (invalidates cached fits)
+FIT_VERSION = 2            # corrected VICAR pixel layout changes pointing inputs; invalidate cached fits
 BG_WIDTH = 5               # pixels: sky frame around a disk-integrated rectangle for its background level
 PARITY_RATIO_MIN = 1.10    # other parity's residual / chosen one below this: the image alone does not decide
 
@@ -464,7 +464,7 @@ def _rel(x: float, ref: float) -> float:
 def measure(p: Prepared, sub: int = 4) -> dict:
     tref = p.targets[0]
     res = g.cast(p.view, p.targets, sub=sub)
-    rois = roi.select(p.roi_specs, res, sub)
+    rois = roi.select(p.roi_specs, res, sub, refs=p.refs)
     cls_pix, _ = g.uniform_class(res["cls"], res["tgt"], sub)
     with g.kernels():
         sub_pts = [(t.sub_point(-t.pos), t.sub_point(t.to_sun)) for t in p.targets]

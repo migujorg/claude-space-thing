@@ -28,6 +28,7 @@ import { LIMB_N, limbChordTable } from './atmosphere';
 import { SurfaceGpu } from './surfaceGpu';
 import { AtmosphereGpu, ATM_UB_BYTES, type ApColumns, type AtmosphereBinding } from './atmosphereGpu';
 import type { RingPrep } from './rings';
+import { CMP_RECORD_VEC4 } from './ringComponents';
 import type { BackgroundTargets } from './sky/background';
 import { LAW } from './spatial';
 import { cameraGeom, prepareFrame, SIGMA_MIN_PX, type PreparedFrame } from './frame';
@@ -35,6 +36,8 @@ import { ExtraPointSources, type PointSourceBuffer } from './extraPoints';
 import { MeshBodies } from './meshes/meshBodies';
 import { HdrReadback, type HdrImage, type HdrRect, type HdrRegionStats } from './hdrReadback';  // validation hook
 import { CometLayer } from './comets/layer';
+import { NightglowGpu, shellTopKm } from './nightglow';
+import { prepareBody, dot, len, mulMV, normalize } from './raycast';
 import type { CometModelProduct } from '../data/schema';
 import { orbitVertices } from './overlays';
 import { AdaptationState, computeEyeFrame, localObserver, type EyeFrame } from '../eye/model';
@@ -45,6 +48,35 @@ import { DEG2_PER_SR, pupilDiameterMm } from '../eye/pupil';
 import { adaptationStatus, adaptationStatusText, trolands } from '../eye/bleaching';
 import { DARK_LIGHT_CONE, DARK_LIGHT_ROD, response } from '../eye/tonemap';
 import { CIE191, CRUMEY, PATTANAIK } from '../eye/constants';
+
+/**
+ * Distant-observer disk photometry can describe a crescent hidden behind a close observer's horizon.
+ * Reject that reflected-light glare only when no sunlit ellipsoid point can be visible. In unit-sphere
+ * coordinates h, visibility is C·h > 1, illumination is S·h > 0 (C = M camera, S = M sun).
+ * For C·S < 0, the maximum visible support on the illuminated hemisphere is |C perpendicular S|.
+ * Include a conservative cone for the finite solar disk, expanded by the ellipsoid's condition number.
+ * This changes no HDR surface/emission light; their actual visible rays still supply the glare pyramid.
+ */
+export function prepareRendererFrame(...args: Parameters<typeof prepareFrame>): PreparedFrame {
+  const prep = prepareFrame(...args);
+  prep.glare = prep.glare.filter((gs) => {
+    if (gs.inFrame) return true;
+    const r = prep.resolved.find((r) => r.frame.near && dot(r.frame.n, gs.dir) > 1 - 1e-12);
+    if (!r) return true;
+    const C = r.frame.o, S = normalize(mulMV(r.frame.M, r.sunDir));
+    const cs = dot(C, S);
+    if (cs >= 0) return true;
+    const perp = len([C[0] - cs * S[0], C[1] - cs * S[1], C[2] - cs * S[2]]);
+    const a = Math.min(1, (r.sunRadiusKm / r.sunDistKm) * r.frame.rMax / Math.min(...r.radiiKm));
+    if (cs >= -a * len(C)) return true;
+    const support = -cs * a + perp * Math.sqrt(1 - a * a);
+    if (support > 1) return true;
+    prep.offFrameFluxDeg2 -= gs.E[1] * DEG2_PER_SR;
+    return false;
+  });
+  prep.offFrameFluxDeg2 = Math.max(0, prep.offFrameFluxDeg2);
+  return prep;
+}
 
 /** Near plane of the reversed-Z infinite projection, km (0.1 mm). */
 const NEAR_KM = 1e-7;
@@ -185,6 +217,8 @@ export class Renderer {
   private shellPipe: GPURenderPipeline | null = null;
   private makeShellPipe!: () => GPURenderPipeline;
   private atmDummy: { uniform: GPUBuffer; texture: GPUTexture; sampler: GPUSampler } | null = null;
+  /** Earth's airglow and aurora (nightglow.ts), created when the Earth first brings them. */
+  private nightglow: NightglowGpu | null = null;
   private bodyOverlayPipe: GPURenderPipeline;
   private cullPipe: GPUComputePipeline;
   private clampPipe: GPUComputePipeline;
@@ -201,6 +235,7 @@ export class Renderer {
   private ringProfBuf: GPUBuffer | null = null;
   private ringProfKey: unknown[] = [];
   private ringProfOffsets: number[] = [];
+  private ringCmpOffsets: number[] = [];
   private dummyStorage: GPUBuffer;
   /** Surface-map page cache budget (MiB), albedo 2/3 and height 1/3. */
   surfaceCacheMiB = 1024;
@@ -542,6 +577,12 @@ export class Renderer {
     const t = this.targets;
     return (this.hdrReadback ??= new HdrReadback(this.device)).read(t.ext, [0, 0, t.W, t.H], 1 / this.hdrPreExposure);
   }
+  /** Diagnostic: physical XYZS in the emission target, before upsampling and depth-tested composition. */
+  readNightglow(): Promise<HdrImage | null> {
+    const t = this.nightglow?.emissionTexture;
+    if (!t) return Promise.resolve(null);
+    return (this.hdrReadback ??= new HdrReadback(this.device)).read(t, [0, 0, t.width, t.height], 1 / this.hdrPreExposure);
+  }
   // ── end of the validation hook ─────────────────────────────────────────────────────────────────────────────
 
   private destroyTargets(): void {
@@ -644,10 +685,11 @@ export class Renderer {
     }
     const surf = this.surf;
     surf?.beginFrame();
-    const prep = prepareFrame(snapshot, g, eye, footprintSr, {
+    const prep = (this.debugSkip.has('glareGeometry') ? prepareFrame : prepareRendererFrame)(snapshot, g, eye, footprintSr, {
       ...(surf ? { surfaces: (b: SceneBody) => surf.binding(b) } : {}),
       atmospheres: (b, groundAlbedo, dust) => (this.atm ??= new AtmosphereGpu(d)).binding(b.atmosphere!, groundAlbedo, b.name, dust),
     });
+    if (this.debugSkip.has('glare')) { prep.glare = []; prep.offFrameFluxDeg2 = 0; }
     if (surf) {
       surf.request(prep, g);
       surf.flush();
@@ -731,6 +773,28 @@ export class Renderer {
         cp.dispatchWorkgroups(Math.ceil(a.cols.nx / 8), Math.ceil(a.cols.ny / 8));
       }
       cp.end();
+    }
+    // 1b. Earth's airglow and aurora (nightglow.ts): the emission along the view rays at reduced resolution, in a
+    //     pass of its own; it is composited into the bodies pass below.
+    let ngDraw: { entries: GPUBindGroupEntry[]; index: number } | null = null;
+    const ngI = prep.resolved.findIndex((r) => !!r.body.nightglow);
+    if (ngI >= 0 && this.bodiesBuf && !skip.has('nightglow')) {
+      const r = prep.resolved[ngI];
+      const ng = { ...r.body.nightglow!,
+        airglow: skip.has('airglow') ? null : r.body.nightglow!.airglow,
+        aurora: skip.has('aurora') ? null : r.body.nightglow!.aurora };
+      this.nightglow ??= new NightglowGpu(d, this.hdrFormat, this.weightFormat);
+      const atmB = atmOf.get(ngI);
+      if (!atmB || atmB.unmeasured) prep.warnings.push(`${r.body.name}: airglow and aurora drawn without the lower atmosphere's attenuation (atmosphere not drawn)`);
+      const top = Math.max(...r.radiiKm) + shellTopKm(ng);
+      const own = this.nightglow.prepare({
+        index: ngI, ng, bodyToWorld: r.bodyToWorld, sunDir: r.sunDir, rMaxKm: Math.max(...r.radiiKm),
+        shellBeta: prepareBody(r.frame.pos, [top, top, top], null, 3 * g.pixelAngle).beta,
+        atm: skip.has('nightglowAttenuation') ? undefined : atmB, atmSamplesNm: r.body.atmosphere?.wavelengthsNm ?? null,
+      });
+      const base: GPUBindGroupEntry[] = [{ binding: 0, resource: { buffer: this.frameUB } }, { binding: 1, resource: { buffer: this.bodiesBuf } }];
+      this.nightglow.encodeEmission(enc, [...base, ...this.atmEntries(atmB), ...own], ngI, t.W, t.H, this.tsw('nightglow'), skip.has('nightglowHalfResolution') ? 1 : undefined);
+      ngDraw = { entries: [...base, ...own], index: ngI };
     }
     {
       const pass = enc.beginRenderPass({
@@ -818,6 +882,8 @@ export class Renderer {
           pass.draw(6, 1, 0, i);
         }
       }
+      // Earth's airglow and aurora (nightglow.ts): the emission computed above, depth-tested like the shells.
+      if (ngDraw && this.bodiesBuf && !skip.has('nightglowComposite')) this.nightglow!.drawComposite(pass, ngDraw.entries, ngDraw.index);
       if (nRings && !skip.has('rings')) {
         pass.setPipeline(this.ringPipe);
         pass.setBindGroup(0, d.createBindGroup({
@@ -1405,7 +1471,7 @@ export class Renderer {
       layer(140, e ? s?.night : undefined, 0);
       a.set(e ? [...e.absR, ...e.nightK] : [0, 0, 0, 0, 0, 0, 0, 0], o + 144);
       // x: the atmosphere is drawn (the shell beyond the disk), z: over the disk too.
-      a.set([this.atmOf.has(i) ? 1 : 0, ATM_STEPS, this.atmOf.has(i) && r.atmosphere?.onDisk ? 1 : 0, 0], o + 152);
+      a.set([this.atmOf.has(i) && !this.debugSkip.has('atmosphere') ? 1 : 0, ATM_STEPS, this.atmOf.has(i) && !this.debugSkip.has('atmosphere') && r.atmosphere?.onDisk ? 1 : 0, 0], o + 152);
       // w: the cloud without a retrieval takes the partly-cloudy population (up to 8 τ nodes, earth.ts).
       const un = e && s?.cloudTau ? e.unmeasuredTau : null;
       layer(156, e ? s?.cloudTau : undefined, un ? 1 : 0);
@@ -1425,32 +1491,44 @@ export class Renderer {
     return t.createView({ dimension: '2d-array' });
   }
 
-  /** Ring records (14 vec4 each, struct Ring) and their cumulative radial profiles. Returns the ring count. */
+  /**
+   * Ring records (15 vec4 each, struct Ring) and the ring-profile buffer: per system its classic cumulative profile
+   * and reflectance tables, then its component block (ringComponents.ts: per-frame records, rewritten every frame,
+   * then static tables). Returns the ring count.
+   */
   private writeRings(rings: RingPrep[]): number {
     const d = this.device;
     if (!rings.length) return 0;
     // Profiles: re-upload only when the set of ring systems changes.
-    const key = rings.map((r) => r.profile);
+    const key = rings.flatMap((r) => [r.profile, r.cmp?.packed ?? null]);
     if (key.length !== this.ringProfKey.length || key.some((k, i) => k !== this.ringProfKey[i])) {
-      // Per ring system: cumulative profile (stride vec4 per bin edge), then the reflectance tables.
       const offsets: number[] = [];
+      const cmpOffsets: number[] = [];
       let total = 0;
       for (const r of rings) {
         offsets.push(total);
         total += r.profile.cumulative.length / 4 + (r.profile.tables ? r.profile.tables.length / 4 : 0);
+        cmpOffsets.push(r.cmp ? total : -1);
+        if (r.cmp) total += r.cmp.packed.sizeVec4;
       }
       const data = new Float32Array(Math.max(total * 4, 64));
       rings.forEach((r, i) => {
         data.set(r.profile.cumulative, offsets[i] * 4);
         if (r.profile.tables) data.set(r.profile.tables, offsets[i] * 4 + r.profile.cumulative.length);
+        if (r.cmp) data.set(r.cmp.packed.staticData, (cmpOffsets[i] + r.cmp.packed.count * CMP_RECORD_VEC4) * 4);
       });
       this.ringProfBuf?.destroy();
       this.ringProfBuf = d.createBuffer({ size: data.byteLength, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST, label: 'ring profiles' });
       d.queue.writeBuffer(this.ringProfBuf, 0, data);
       this.ringProfKey = key;
       this.ringProfOffsets = offsets;
+      this.ringCmpOffsets = cmpOffsets;
     }
-    const STRIDE = 56;
+    // Component records at this frame's time.
+    rings.forEach((r, i) => {
+      if (r.cmp && this.ringCmpOffsets[i] >= 0) d.queue.writeBuffer(this.ringProfBuf!, this.ringCmpOffsets[i] * 16, r.cmp.records);
+    });
+    const STRIDE = 60;
     const a = new Float32Array(rings.length * STRIDE);
     rings.forEach((r, i) => {
       const o = i * STRIDE;
@@ -1458,10 +1536,11 @@ export class Renderer {
       const base = this.ringProfOffsets[i];
       const tabBase = p.tables ? base + p.cumulative.length / 4 : -1;
       a.set([...r.n, r.D, ...r.e1, r.beta, ...r.e2, r.near ? 1 : 0, ...r.E1, 0, ...r.E2, 0, ...r.o, 0], o);
-      a.set([...r.normal, p.rMin, p.rMax, p.bins, base, p.stride], o + 24);
+      a.set([...r.normal, r.rIn, r.rOut, p.bins, base, p.stride], o + 24);
       a.set([...r.sunDir, r.sunDistKm, ...r.esun, tabBase, r.sunRadiusKm, 0, 0], o + 32);
       const M = r.M;
       a.set([M[0], M[1], M[2], 0, M[3], M[4], M[5], 0, M[6], M[7], M[8], 0], o + 44);
+      a.set(r.cmp ? [this.ringCmpOffsets[i], r.cmp.packed.count, r.cmp.poleSense, r.cmp.packed.zMax] : [0, 0, 1, 0], o + 56);
     });
     if (!this.ringsBuf || this.ringsBuf.size < a.byteLength) {
       this.ringsBuf?.destroy();

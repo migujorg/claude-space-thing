@@ -365,7 +365,7 @@ struct Body {
 };
 `;
 
-const BODY_COMMON = BODY_STRUCT + /* wgsl */ `
+export const BODY_COMMON = BODY_STRUCT + /* wgsl */ `
 @group(0) @binding(0) var<uniform> F: Frame;
 @group(0) @binding(1) var<storage, read> bodies: array<Body>;
 
@@ -467,6 +467,7 @@ fn ringShadowT(b: Body, p: vec3f) -> f32 {
   if (u <= 0.0) { return 1.0; }
   let r = length(X + u * s);
   let delta = u * asin(min(b.misc.y / b.sun.w, 1.0)) / abs(sN);
+  if (R.cmp.y > 0.5) { return cmpTransmission(R, X + u * s, max(2.0 * delta, 1e-3), abs(sN)); }
   let a = ringAvg(R, r - delta, r + delta);
   return exp(-a.tau / abs(sN));
 }
@@ -483,6 +484,7 @@ fn ringViewT(b: Body, p: vec3f, dirN: vec3f, range: f32) -> f32 {
   if (u <= 0.0 || u >= range) { return 1.0; }
   let r = length(X - u * dirN);
   let fw = F.tanHalf.z * (range - u) / abs(dN);
+  if (R.cmp.y > 0.5) { return cmpTransmission(R, X - u * dirN, max(fw, 1e-3), abs(dN)); }
   let a = ringAvg(R, r - 0.5 * fw, r + 0.5 * fw);
   return exp(-a.tau / abs(dN));
 }

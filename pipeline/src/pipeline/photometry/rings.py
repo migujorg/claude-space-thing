@@ -115,17 +115,12 @@ def photon_sigma(sig, bg, i0, n, mu) -> np.ndarray:
 
 
 def clean_saturn_tau(r, tau, sigma) -> tuple[np.ndarray, dict]:
-    """Bins consistent with τ⊥ = 0 within their photon noise are set to 0; genuine structure is kept.
+    """Reconstruct a nonnegative profile with author-selected thresholds and baseline removal.
 
-    * Inside the main rings (from the C ring inner edge, the first run of ≥ 3 bins above 5σ, to the A ring outer
-      edge, the end of the last run of ≥ 200 km with τ⊥ > 0.2) only negative values change: -1 < τ⊥ < 0 (noise, or unmodelled light near sharp edges;
-      τ⊥ cannot be negative) -> 0.
-    * Outside them (the D ring region inside, the F ring region and beyond outside) a smooth baseline — the
-      2010 km running median of these bins — is removed first. Beyond the F ring this occultation's τ⊥ rises
-      smoothly to 0.10 at its outer end while the region is empty (other occultations at the same geometry show
-      different ramps: an unmodelled instrumental trend, not ring material). A bin whose baseline-removed τ⊥ is
-      within 3σ, or an isolated bin above 3σ, is set to 0; runs of ≥ 2 bins above 3σ are structure (the F ring
-      and its strands) and keep τ⊥ − baseline (≥ 0)."""
+    Smooth opacity outside the detected main rings is assumed instrumental; nondetections
+    and isolated positive bins are assumed zero. These assumptions require `estimated`.
+    The full algorithm and parameters are recorded in `saturn_estimate_method`.
+    """
     out = tau.copy()
     stats = {"negative_in_rings": 0, "zeroed_outside": 0, "kept_outside": 0}
     def runs(mask, min_len):
@@ -170,7 +165,42 @@ def clean_saturn_tau(r, tau, sigma) -> tuple[np.ndarray, dict]:
     return out, stats
 
 
+def saturn_estimate_method(prof: Profile) -> str:
+    c = prof.cleaning
+    return (
+        "Cleaned reconstruction of the Cassini UVIS β Cen 2008-231 archived normal optical depth; "
+        "author-selected thresholds, not measured ring boundaries. Main-ring inner boundary: the first bin "
+        f"of the first run of at least {EDGE_BINS} bins with archived τ > {EDGE_SIGMAS:g}σ; outer boundary: "
+        f"the last bin of the last run of at least {A_RING_MIN_BINS} bins with τ > {A_RING_MIN_TAU:g} "
+        f"(detected bin centres {c['main_rings_km'][0]:.2f}-{c['main_rings_km'][1]:.2f} km). "
+        "σ = |sin B| sqrt(max(S,0)/max(N,1))/[(I0-Bg) max(T,0.001)], T=(S-Bg)/(I0-Bg), "
+        "from archived signal S, sample count N, star model I0 and background Bg; B is the archived elevation. "
+        "Inside the inclusive main-ring interval, all -1 < τ < 0 are clamped to zero regardless of σ; "
+        f"nonnegative values are unchanged ({c['negative_in_rings']} clamps, "
+        f"{c['negative_beyond_3sigma']} below -{NOISE_SIGMAS:g}σ). Outside, inner and outer segments are "
+        "processed separately: subtract the running median of archived τ, SciPy mode=nearest, window "
+        f"min({BASELINE_BINS}, segment_length | 1) bins (nominally {BASELINE_BINS * 10} km). "
+        f"Only runs of at least two adjacent residuals strictly > {NOISE_SIGMAS:g}σ survive as max(residual,0); "
+        "all other outside bins are assigned exact zero, including isolated significant positives and "
+        f"negative residuals ({c['kept_outside']} retained, {c['zeroed_outside']} zeroed). "
+        "The smooth rise beyond the F ring is assumed instrumental rather than extended ring opacity; "
+        "no independent calibration or source supporting that interpretation is supplied. The median includes "
+        "the F ring and may remove real smooth opacity. Assigning nondetections zero and these thresholds/window "
+        "are assumptions, not measurements. Archive τ=-1 or note-flag bit 64 remains null in both profiles; "
+        "maxTau and observation geometry are unchanged. Output is rounded to the archive's four decimal places.")
+
+
 def saturn_profile(ctx: BuildContext | None) -> tuple[dict, list[str], Profile]:
+    """Cleaned reconstruction retained as the input of the fitted reflectance model."""
+    return _saturn_profile(ctx, reconstruct=True)
+
+
+def saturn_measured_profile(ctx: BuildContext | None) -> tuple[dict, list[str], Profile]:
+    """Archive optical depths unchanged, except archive-declared missing bins become null."""
+    return _saturn_profile(ctx, reconstruct=False)
+
+
+def _saturn_profile(ctx: BuildContext | None, *, reconstruct: bool) -> tuple[dict, list[str], Profile]:
     lbl, tab = UVIS
     meta = _label(lbl)
     d = np.loadtxt(tab.fetch(), delimiter=",")
@@ -179,8 +209,9 @@ def saturn_profile(ctx: BuildContext | None) -> tuple[dict, list[str], Profile]:
     mu = abs(math.sin(math.radians(float(meta["OBSERVED_RING_ELEVATION"]))))
     sigma = photon_sigma(d[:, 3], d[:, 9], d[:, 8], d[:, 10], mu)
     missing = (tau == -1) | ((flag & 64) != 0)
-    clean, stats = clean_saturn_tau(r, np.where(missing, np.nan, tau), sigma)
-    tau = np.where(missing, -1.0, clean)
+    stats = None
+    if reconstruct:
+        tau, stats = clean_saturn_tau(r, np.where(missing, np.nan, tau), sigma)
     tau_out = [None if m else round(float(v), 4) for v, m in zip(tau, missing)]
     tmax_out = [None if t < 0 else round(float(t), 3) for t in tmax]
     js = {
@@ -205,10 +236,12 @@ def voyager_profile(pair, name: str, ctx: BuildContext | None, step: float) -> t
     meta = _label(lbl)
     d = np.loadtxt(tab.fetch(), delimiter=",")
     r, tau, lo, hi = d[:, 0], d[:, 3], d[:, 4], d[:, 5]
+    # PDS VG_2801 labels: mean signal 0 or opacity lower limit -9 denotes unconstrained data.
+    missing = (d[:, 1] == 0) | (lo == -9)
     js = {
         "name": name,
         "radiusKm": _radii(r, step),
-        "normalTau": [round(float(t), 4) for t in tau],
+        "normalTau": [None if m else round(float(t), 4) for t, m in zip(tau, missing)],
         "observation": {
             "instrument": "Voyager 2 PPS", "star": meta["STAR_NAME"].title(),
             "direction": meta["RING_OCCULTATION_DIRECTION"].lower(),
@@ -218,7 +251,7 @@ def voyager_profile(pair, name: str, ctx: BuildContext | None, step: float) -> t
         },
     }
     srcs = [lbl.register(ctx) if ctx else lbl.id, tab.register(ctx) if ctx else tab.id]
-    return js, srcs, Profile(js, r, tau, float(np.median(0.5 * (hi - lo))))
+    return js, srcs, Profile(js, r, np.where(missing, np.nan, tau), float(np.median(0.5 * (hi[~missing] - lo[~missing]))))
 
 
 URANUS_REFLECTANCE_UNKNOWN = (
@@ -227,9 +260,18 @@ URANUS_REFLECTANCE_UNKNOWN = (
     "only, and Karkoschka's (2001, Icarus 151, 51) HST ring photometry is not openly accessible here.")
 
 
+COMPONENTS_METHOD = (
+    "Ring components (schema RingComponentModel, docs/reports/rings.md): each ring a band between precessing "
+    "keplerian edges with normal modes, or a vertically extended dust torus; normal optical depth vs the fractional "
+    "position across the band, with the provenance of geometry, optical depth and reflectance kept per component. "
+    "Brightness: a classical single-scattering layer for macroscopic particles plus a thin dust term, each with a "
+    "tabulated phase function (phaseFunctions). The label is the worst of the components' labels.")
+
+
 def rings_json(ctx: BuildContext | None = None) -> tuple[dict, dict]:
     out, diag = {}, {}
-    js, srcs, prof = saturn_profile(ctx)
+    js, srcs, prof = saturn_measured_profile(ctx)
+    estimate_js, _, estimate = saturn_profile(ctx)
     ob = js["observation"]
     out["699"] = {
         "planet": 699,
@@ -243,28 +285,18 @@ def rings_json(ctx: BuildContext | None = None) -> tuple[dict, dict]:
                    "line of sight (least affected by self-gravity wakes and the highest maximum detectable τ, 7-8 in "
                    "the B ring) and complete C-to-F ring coverage. null = unconstrained or corrupted bin. Values at "
                    "or above maxTau are lower limits. Extinction by the (≫ λ) ring particles is taken to be the same "
-                   "at 110-190 nm and in the visible. Bins consistent with τ⊥ = 0 are set to 0 (criterion: 1σ photon "
-                   "noise from the archived mean signal, background and unocculted-star models and samples per bin — "
-                   f"{prof.cleaning['outer_sigma_median']:.4f} in the empty regions, where it matches the observed "
-                   f"scatter): {prof.cleaning['negative_in_rings']} "
-                   f"negative values inside the main rings ({prof.cleaning['main_rings_km'][0]:.0f}-"
-                   f"{prof.cleaning['main_rings_km'][1]:.0f} km; {prof.cleaning['negative_beyond_3sigma']} of them "
-                   "below -3σ, near sharp edges) -> 0; outside them, after removing a smooth 2010 km running-median "
-                   "baseline, bins within 3σ and isolated single bins above it -> 0 "
-                   f"({prof.cleaning['zeroed_outside']} bins), runs of ≥ 2 bins above 3σ kept as structure "
-                   f"({prof.cleaning['kept_outside']} bins, the F ring and its strands) with the baseline removed. "
-                   "Beyond the F ring this occultation's archived τ⊥ rises smoothly to "
-                   f"{prof.cleaning['outer_baseline_max']:.2f} at its outer end (151 675 km) where the ring plane is "
-                   "empty to far below this detection limit; the other β Cen occultation at the same elevation "
-                   "(2008-343) shows a ramp of half that size and θ Car (2013-141) a steeper one: an unmodelled "
-                   "instrumental trend, which the baseline removes (residual scatter "
-                   f"{prof.cleaning['outer_residual_rms_sigma']:.2f}σ). Inside the C ring (72 833-"
-                   f"{prof.cleaning['main_rings_km'][0]:.0f} km) the archived values are already consistent with 0 "
-                   f"(scatter {prof.cleaning['inner_residual_rms_sigma']:.2f}σ).",
+                   "at 110-190 nm and in the visible. The archived array is unchanged: signed noisy values and "
+                   "the smooth outer rise are retained, with no clamping, baseline removal or nondetection zeroing.",
             uncertainty="photon noise: 25 % at maxTau, much smaller where τ⊥ is well below it; in the A and B rings "
                         "the line-of-sight optical depth varies with viewing azimuth and elevation by tens of percent "
                         "(self-gravity wakes), which a single τ⊥ profile does not capture"),
     }
+    out["699"]["opticalDepthEstimate"] = sourced(
+        [estimate_js], "estimated", srcs, method=saturn_estimate_method(estimate),
+        uncertainty="Conditional Poisson photon noise only; unocculted-star/background model systematics and "
+                    "baseline/run-selection uncertainty are not included. Exact zeros are assumed nondetections, "
+                    "not measured absence of material. Self-gravity-wake azimuth/elevation dependence is not modelled.")
+    diag["699-estimate"] = estimate
     from . import ring_reflectance
     refl, model = ring_reflectance.model_json(ctx)
     out["699"].update(refl)
@@ -279,7 +311,8 @@ def rings_json(ctx: BuildContext | None = None) -> tuple[dict, dict]:
             [js], "measured", srcs,
             method=f"Normal optical depth per 1 km bin from the Voyager 2 PPS occultation of {ob['star']} "
                    f"({ob['direction']}, {ob['start'][:10]}; 264 nm; ring-plane elevation {ob['ringElevationDeg']}°), "
-                   "as resampled in the PDS archive (boxcar). The narrow rings are unresolved or barely resolved at "
+                   "as resampled in the PDS archive (boxcar), with the raw optical-depth array unchanged. "
+                   "The narrow rings are unresolved or barely resolved at "
                    "1 km except ε; their optical depths vary around each ring (eccentric, width-varying rings), so "
                    "this is one cut.",
             uncertainty=f"median half-width of the archived 68 % confidence interval ±{prof.noise:.3f} in τ⊥ per "
@@ -287,6 +320,9 @@ def rings_json(ctx: BuildContext | None = None) -> tuple[dict, dict]:
         "reflectance": unknown(URANUS_REFLECTANCE_UNKNOWN),
     }
     diag["799"] = prof
+    from . import rings_uranus
+    comp, diag["799-components"] = rings_uranus.build(ctx)
+    out["799"]["components"] = sourced(comp["model"], comp["label"], comp["sources"], method=COMPONENTS_METHOD)
     js, srcs, prof = voyager_profile(VG_NEPTUNE, "ring system", ctx, 5.0)
     ob = js["observation"]
     out["899"] = {
@@ -295,13 +331,18 @@ def rings_json(ctx: BuildContext | None = None) -> tuple[dict, dict]:
             [js], "measured", srcs,
             method=f"Normal optical depth per 5 km bin from the Voyager 2 PPS occultation of {ob['star']} "
                    f"({ob['direction']}, {ob['start'][:10]}; 264 nm; ring-plane elevation {ob['ringElevationDeg']}°), "
-                   "as resampled in the PDS archive (boxcar). The Adams ring arcs and the other faint rings vary "
+                   "as resampled in the PDS archive (boxcar); mean signal 0 or lower limit -9 denotes an "
+                   "unconstrained bin and becomes null, never measured zero. Other archived values are unchanged. "
+                   "The Adams ring arcs and the other faint rings vary "
                    "with longitude and time; this is one cut in 1989.",
             uncertainty=f"median half-width of the archived 68 % confidence interval ±{prof.noise:.3f} in τ⊥ per "
                         "5 km bin: most of the rings are near the noise level"),
         "reflectance": unknown("No machine-readable measurement of Neptune's ring reflectance was available."),
     }
     diag["899"] = prof
+    from . import rings_neptune
+    comp, diag["899-components"] = rings_neptune.build(ctx, (prof, srcs))
+    out["899"]["components"] = sourced(comp["model"], comp["label"], comp["sources"], method=COMPONENTS_METHOD)
     out["599"] = {
         "planet": 599,
         "opticalDepth": unknown("Jupiter's faint dust rings (normal optical depth of order 1e-6; Throop et al. 2004, "
@@ -309,4 +350,7 @@ def rings_json(ctx: BuildContext | None = None) -> tuple[dict, dict]:
         "reflectance": unknown("Jupiter's rings are seen mainly in forward-scattered light; no machine-readable "
                                "brightness profile was available."),
     }
+    from . import rings_jupiter
+    comp, diag["599-components"] = rings_jupiter.build(ctx)
+    out["599"]["components"] = sourced(comp["model"], comp["label"], comp["sources"], method=COMPONENTS_METHOD)
     return out, diag

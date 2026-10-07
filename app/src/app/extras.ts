@@ -7,6 +7,7 @@ import type { Mat3, SceneBody, SceneRings, SurfaceLayerRef } from '../render/sce
 import { unmeasuredTauPopulation } from '../render/earth';
 import { allowedValue, labelAllowed, worstOf, type ExistsLevel } from './reality';
 import type { ShapeLibrary } from './shapes';
+import { EARTH_ID, type NightglowSource } from './nightglow';
 
 export interface LayerRef {
   ref: SurfaceLayerRef;
@@ -35,6 +36,8 @@ export interface SceneExtras {
   atmospheres?: AtmosphereFile | null;
   /** Shape models (render/scene.ts SceneBody.shape), when shapes/index.json is loaded. */
   shapes?: ShapeLibrary | null;
+  /** Earth's airglow and aurora (render/scene.ts SceneBody.nightglow), with the time scale to evaluate them. */
+  nightglow?: { source: NightglowSource; etToUtcMs: (et: number) => number } | null;
 }
 
 const LABELS: readonly string[] = ['measured', 'derived', 'estimated', 'synthetic', 'unknown'];
@@ -89,15 +92,30 @@ export function poleOf(m: Mat3): [number, number, number] {
   return [m[2], m[5], m[8]];
 }
 
-function ringsFor(sys: RingSystem, orient: Mat3, level: ExistsLevel): SceneRings | null {
-  const od = allowedValue(sys.opticalDepth, level);
+function ringsFor(sys: RingSystem, orient: Mat3, level: ExistsLevel, et: number | undefined): SceneRings | null {
+  // Ring components (Jupiter, Uranus, Neptune: ringComponents.ts) replace the classic radial profile when admitted;
+  // the classic profile (opticalDepth, reflectance) stays for Saturn and for a level that does not admit them.
+  const comps = allowedValue(sys.components, level);
+  if (comps) {
+    return {
+      normal: poleOf(orient),
+      opticalDepth: [],
+      reflectance: null,
+      components: comps,
+      et,
+      worstLabel: sys.components!.label,
+    };
+  }
+  const estimate = allowedValue(sys.opticalDepthEstimate, level);
+  const selected = estimate ? sys.opticalDepthEstimate! : sys.opticalDepth;
+  const od = estimate ?? allowedValue(sys.opticalDepth, level);
   if (!od) return null;
   const refl = allowedValue(sys.reflectance, level);
   return {
     normal: poleOf(orient),
     opticalDepth: od.map((p) => ({ radiusKm: p.radiusKm, normalTau: p.normalTau })),
     reflectance: refl,
-    worstLabel: worstOf([sys.opticalDepth.label, ...(refl ? [sys.reflectance.label] : [])]),
+    worstLabel: worstOf([selected.label, ...(refl ? [sys.reflectance.label] : [])]),
   };
 }
 
@@ -105,7 +123,15 @@ function ringsFor(sys: RingSystem, orient: Mat3, level: ExistsLevel): SceneRings
  * Adds the admitted extras to a scene body in place and returns the worst label among what was added.
  * Maps and rings need the body-fixed frame, so they are only added when `sb.orient` is set.
  */
-export function applyExtras(sb: SceneBody, body: Body, extras: SceneExtras | undefined, level: ExistsLevel, lit: boolean): Label[] {
+export function applyExtras(
+  sb: SceneBody,
+  body: Body,
+  extras: SceneExtras | undefined,
+  level: ExistsLevel,
+  lit: boolean,
+  /** Emission time (TDB seconds past J2000) the body is seen at: time-varying ring structure (precession, arcs) and nightglow. */
+  emitEt?: number,
+): Label[] {
   const used: Label[] = [];
   const p = body.photometry;
   const disk = lit ? allowedValue(p?.diskReflectanceModel, level) : null;
@@ -167,9 +193,18 @@ export function applyExtras(sb: SceneBody, body: Body, extras: SceneExtras | und
     sb.atmosphere = atm;
     used.push(atm.worstLabel);
   }
+  // Earth's own light at night: needs the body-fixed frame (local time, magnetic coordinates) and the time.
+  if (body.id === EARTH_ID && extras.nightglow && sb.radii && emitEt !== undefined) {
+    const ms = extras.nightglow.etToUtcMs(emitEt);
+    const ng = Number.isFinite(ms) ? extras.nightglow.source.scene(level, ms) : null;
+    if (ng) {
+      sb.nightglow = ng;
+      used.push(ng.worstLabel);
+    }
+  }
   const sys = extras.rings?.[String(body.id)];
   if (sys) {
-    const r = ringsFor(sys, sb.orient, level);
+    const r = ringsFor(sys, sb.orient, level, emitEt);
     sb.rings = r;
     if (r) used.push(r.worstLabel);
   }
