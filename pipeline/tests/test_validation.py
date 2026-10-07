@@ -224,11 +224,18 @@ def test_report_rejects_unrecorded_or_invalid_sampling(tmp_path, monkeypatch, ss
     assert dest.read_text() == "previous report"
 
 
-def test_report_header_reads_sampling_from_run():
+def test_report_header_reads_sampling_from_run(tmp_path, monkeypatch):
     from pipeline.validation import report
 
     assert "3 × 3 = 9 samples per pixel" in report.sampling_header({"options": {"ss": 3}})
     assert "unknown" in report.sampling_header(None)
+    dest = tmp_path / "report.md"
+    monkeypatch.setattr(report, "REPORT", dest)
+    monkeypatch.setattr(report, "CONVERGENCE_REPORT", tmp_path / "absent.json")
+    monkeypatch.setattr(report, "findings", lambda cases: "")
+    run = {"generatedAt": "2026-10-07T00:00:00Z", "options": {"ss": 3, "reality": "best"}, "cases": []}
+    report.write(run=run)
+    assert "3 × 3 = 9 samples per pixel" in dest.read_text().split("*Generated")[0]
 
 
 def test_report_sampling_table_from_fixture_file(tmp_path, monkeypatch):
@@ -253,6 +260,13 @@ def test_report_sampling_table_from_fixture_file(tmp_path, monkeypatch):
     assert "| `fixture` | disk / earth | Y | 2 | 2 | 2 | 2 | 2 | +0 % |" in section
     assert "fail (X)" in section
     assert "not a proof" in section
+    dest = tmp_path / "report.md"
+    monkeypatch.setattr(report, "REPORT", dest)
+    monkeypatch.setattr(report, "findings", lambda cases: "")
+    # The summary and run section are unrelated to the convergence fixture's intentionally minimal ROI records.
+    monkeypatch.setattr(report, "run_section", lambda run, interpretation: "renderer run\n")
+    report.write(run=runs[3])
+    assert section in dest.read_text()
     with pytest.raises(ValueError, match="same run"):
         report.convergence_section({**runs[3], "git": "other"})
     path.unlink()

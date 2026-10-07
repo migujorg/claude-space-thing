@@ -56,6 +56,7 @@ function fingerprint() {
   const index = JSON.parse(readFileSync(resolve(repo, 'validation/index.json'), 'utf8'));
   const hash = createHash('sha256');
   hash.update(execFileSync('git', ['rev-parse', 'HEAD'], { cwd: ROOT }));
+  hash.update(execFileSync('git', ['diff', 'HEAD', '--', 'src', 'scripts'], { cwd: ROOT }));
   hash.update(readFileSync(resolve(ROOT, 'public/data/manifest.json')));
   hash.update(readFileSync(resolve(repo, 'validation/index.json')));
   for (const c of index.cases) hash.update(readFileSync(resolve(repo, 'validation', c.path)));
