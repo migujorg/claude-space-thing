@@ -509,10 +509,21 @@ export interface RingComponent {
   kind: 'sheet' | 'torus';
   inner: RingComponentEdge;
   outer: RingComponentEdge;
-  /** Inclusive support interval, TDB s past J2000. Outside it geometry is unknown, with zero light/extinction.
+  /** Inclusive support interval, TDB s past J2000. Outside it this geometry is unknown, with zero light/extinction.
    * basis distinguishes source-stated validity from a pipeline observation-support policy. Omitted for stationary
    * estimated profiles whose source states no temporal interval; their epoch/assumption remains in provenance. */
   geometryValidity?: { startEt: number; endEt: number; basis: string };
+  /** Alternative component admitted only at Best/Complete and only outside geometryValidity. */
+  outsideSupportEstimate?: Sourced<RingComponent>;
+  /** Explicit ellipse-and-mean-width estimate; static m=0 boundary offsets are not observed modes. */
+  centrelineEstimate?: {
+    centreline: RingComponentEdge;
+    meanWidthKm: number;
+    lastDatumEt: number;
+    lastDatumTdb: string;
+    /** Days per Julian year, supplied by the pipeline for elapsed-year annotation. */
+    yearDays: number;
+  };
   /**
    * Values at u = uStart + i·uStep across the band (u = (r − r_in)/(r_out − r_in)): the normal optical depth where the
    * band is widthRefKm wide (scaled by widthRefKm/W elsewhere when widthScaling), or, when !opticalDepthKnown, the

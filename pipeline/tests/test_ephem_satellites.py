@@ -1,7 +1,8 @@
 """Satellite products (ephem/sat-*.json) vs the NAIF satellite kernels.
 
 Requires `python -m pipeline build --only ephemeris`; the excerpt-vs-original checks also need the whole originals
-that `python -m pipeline.ephem_fixtures` downloads (VERIFY_ORIGINALS), and are skipped without them.
+that `python -m pipeline.ephem_fixtures verification-originals` downloads (VERIFY_ORIGINALS), and are skipped
+without them. That command only fetches originals; it does not regenerate app test fixtures.
 - every product segment is bit-identical to its kernel excerpt, with the declared coverage carried through;
 - SPICE spkgeo equals our evaluator at type 2/3 starts and interior epochs, and at endpoints where it uses the
   same record; a trimmed final boundary matches the retained source record exactly and SPICE to <= 10 ulps;
@@ -42,6 +43,17 @@ def segments():
 
 def coverage(segs) -> tuple[float, float]:
     return max(s.start for s in segs), min(s.end for s in segs)
+
+
+def source_segment(product, sources):
+    """The source segment containing this product's coverage (not the last segment for its body)."""
+    body = [s for s in sources if (s.target, s.center) == (product.target, product.center)]
+    matches = [s for s in body if s.start <= product.start and s.end >= product.end]
+    context = (f"body {product.target} wrt {product.center}, product [{product.start}, {product.end}], "
+               f"source intervals {[(s.start, s.end) for s in body]}")
+    assert matches, f"no single source segment contains the product: {context}"
+    assert len(matches) == 1, f"multiple source segments contain the product: {context}"
+    return matches[0]
 
 
 def build_window(segments) -> tuple[float, float]:
@@ -128,7 +140,8 @@ def test_product_is_bit_identical_to_excerpt_and_matches_spice(kernel, segments)
 def test_excerpt_equals_original_in_spice(name, segments):
     original = RAW / "naif" / "spk-satellites-full" / f"{name}.bsp"
     if not original.exists():
-        pytest.skip(f"{original.name} not downloaded (run python -m pipeline.ephem_fixtures)")
+        pytest.skip(f"{original.name} not downloaded (run python -m pipeline.ephem_fixtures "
+                    "verification-originals; downloads only, no fixture rewrites)")
     kernel = next(k for k in sat.KERNELS if k.name == name)
     segs = [s for _, s in segments[name]]
     excerpt = excerpt_path(kernel, segs)
@@ -143,16 +156,26 @@ def test_excerpt_equals_original_in_spice(name, segments):
             sp.unload(str(path))
     assert np.array_equal(states[original], states[excerpt]), name
     print(f"{name}: {len(pairs)} bodies x {ets.size} epochs, spkgeo(original) == spkgeo(excerpt) exactly")
-    sources = {(s.target, s.center): s for s in read_spk(original, {s.target for s in segs})}
+    sources = read_spk(original, {s.target for s in segs})
     failures = []
     sp.furnsh(str(original))
     try:
         for s in segs:
+            try:
+                source = source_segment(s, sources)
+                assert (s.type, s.frame, s.intlen, s.rsize) == (source.type, source.frame, source.intlen, source.rsize)
+                i0 = (s.init - source.init) / s.intlen
+                assert i0 == int(i0) and 0 <= i0 and int(i0) + s.n <= source.n
+                assert np.array_equal(s.records.view(np.uint64),
+                                      source.records[int(i0):int(i0) + s.n].view(np.uint64)), "record bits differ"
+            except AssertionError as error:
+                failures.append(f"{name} full kernel, body {s.target} wrt {s.center}: {error}")
+                continue
             b = s.init + s.intlen * np.arange(s.n + 1)
             epochs = np.unique(np.concatenate([ets, b[(b >= s.start) & (b < s.end)],
                                                [s.start, s.end]]))
             spice = np.array([sp.spkgeo(s.target, e, "J2000", s.center)[0] for e in epochs])
-            compare_spice(s, sources[s.target, s.center], epochs, spice,
+            compare_spice(s, source, epochs, spice,
                           f"{name} full kernel, body {s.target} wrt {s.center}, type {s.type}", failures)
     finally:
         sp.unload(str(original))
