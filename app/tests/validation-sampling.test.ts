@@ -72,8 +72,8 @@ it('invalid levels are excluded from convergence, verdict changes and promotion'
   ] }));
   const summary = samplingSummary(runs);
   expect(summary.verdictChanges).toEqual([]);
-  expect(summary.levels[4].cases.find((c) => c.id === 'earth').maxRelativePercent).toBeNull();
-  expect(summary.levels[3].cases.find((c) => c.id === 'earth').referenceSs).toBe(4);
+  expect(summary.levels[4].cases.find((c: { id: string }) => c.id === 'earth').maxRelativePercent).toBeNull();
+  expect(summary.levels[3].cases.find((c: { id: string }) => c.id === 'earth').referenceSs).toBe(4);
   expect(summary.levels[3].maxRelativePercent).toBeCloseTo(0.2);
   expect(canPromoteDefault(runs[2])).toBe(false);
   expect(canPromoteDefault(runs[3])).toBe(true);

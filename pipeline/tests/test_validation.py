@@ -302,3 +302,16 @@ def test_report_convergence_omits_invalid_frame_statistics(tmp_path):
     assert "not rendered" in section
     assert "largest relative difference" in section
     assert "verdict depends on sampling: none" in section.lower()
+
+
+def test_report_rejects_unattributed_run_errors_before_writing(tmp_path, monkeypatch):
+    from pipeline.validation import report
+
+    dest = tmp_path / "report.md"
+    dest.write_text("previous report")
+    monkeypatch.setattr(report, "REPORT", dest)
+    run = {"options": {"ss": 4}, "consoleErrors": ["WebGPU error: invalid texture"],
+           "cases": [{"id": "old", "rois": [{"id": "sky", "pass": True}]}]}
+    with pytest.raises(ValueError, match="unattributed errors"):
+        report.write(run=run)
+    assert dest.read_text() == "previous report"
