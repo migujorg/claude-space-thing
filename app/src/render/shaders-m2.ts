@@ -226,6 +226,7 @@ struct Ring {
   esun: vec4f,  // solar illuminance / π at the rings (XYZS) × resolved fraction: radiance per unit I/F
   ph: vec4f,    // reflectance tables base (vec4 index; < 0: reflectance not measured), Sun radius (km), 0, 0
   pm0: vec4f, pm1: vec4f, pm2: vec4f,  // planet world → unit-sphere rows
+  cmp: vec4f,   // ring components (ringComponents.ts): block base (vec4 index), count (0: the classic profile), pole sense, torus half-thickness (km)
 };
 
 const RING_NODES: u32 = 22u;     // F_lit at k_j = 2·2^(j/2)
@@ -412,6 +413,185 @@ fn ringW(R: Ring, r: f32, alphaDeg: f32, beffDeg: f32) -> vec4f {
   }
   return mix(Wr[0], Wr[1], t);
 }
+
+// ── Ring components (ringComponents.ts; Jupiter, Uranus, Neptune) ─────────────────────────────
+const CMP_REC: u32 = 20u;
+const CMP_EDGE: u32 = 9u;
+const CMP_GN: u32 = 32u;
+const CMP_GX0: f32 = 0.125;
+
+fn cmpV(R: Ring, i: u32) -> vec4f { return ringProf[u32(R.cmp.x) + i]; }
+
+/** Longitude (radians, 0..2π) of a planet-centred ring-plane point about the angular-momentum pole. */
+fn cmpLongitude(R: Ring, X: vec3f) -> f32 {
+  let P = R.N.xyz * R.cmp.z;
+  let xh = normalize(vec3f(-P.y, P.x, 0.0));
+  let yh = cross(P, xh);
+  let l = atan2(dot(X, yh), dot(X, xh));
+  return select(l, l + 2.0 * PI, l < 0.0);
+}
+
+/** Radius of component k's inner or outer edge at longitude lam (ringComponents.ts edgeRadius). */
+fn cmpEdgeR(R: Ring, k: u32, outer: bool, lam: f32) -> f32 {
+  let base = k * CMP_REC;
+  let e = cmpV(R, base + select(0u, 1u, outer));
+  var r = e.x * (1.0 - e.y * e.y) / (1.0 + e.y * cos(lam - e.z));
+  let nIn = u32(cmpV(R, base).w);
+  let nOut = u32(cmpV(R, base + 1u).w);
+  let j0 = select(0u, nIn, outer);
+  let j1 = select(nIn, nIn + nOut, outer);
+  for (var j = j0; j < j1; j++) {
+    let md = cmpV(R, base + 9u + j);
+    let arg = select(md.x * (lam - md.z), -md.z, md.x == 0.0);
+    r -= md.y * cos(arg);
+  }
+  return r;
+}
+
+struct CmpBand { rIn: f32, W: f32, s: f32 };
+
+/** Edges, width and τ scale of component k at lam (ringComponents.ts bandAt). */
+fn cmpBand(R: Ring, k: u32, lam: f32) -> CmpBand {
+  let base = k * CMP_REC;
+  let rIn = cmpEdgeR(R, k, false, lam);
+  let rOut = cmpEdgeR(R, k, true, lam);
+  let w = rOut - rIn;
+  let h3 = cmpV(R, base + 3u);
+  let flags = u32(h3.w);
+  if ((flags & 16u) != 0u || !(w > 0.0)) { return CmpBand(rIn, 0.0, 0.0); }
+  var s = select(1.0, h3.z / w, (flags & 1u) != 0u);
+  if ((flags & 4u) != 0u) {
+    let a = cmpV(R, base + 5u);
+    var phi = lam - a.x;
+    phi = phi - 2.0 * PI * floor(phi / (2.0 * PI));
+    let x = phi / a.y;
+    let n = a.z;
+    if (x >= 0.0 && x <= n - 1.0) {
+      let i = u32(min(floor(x), n - 2.0));
+      let rel = u32(a.w);
+      let f0 = cmpV(R, rel + i / 4u)[i % 4u];
+      let f1 = cmpV(R, rel + (i + 1u) / 4u)[(i + 1u) % 4u];
+      s *= mix(f0, f1, x - f32(i));
+    } else { s = 0.0; }
+  }
+  var b: CmpBand;
+  b.rIn = rIn;
+  b.W = w;
+  b.s = s;
+  return b;
+}
+
+/** Cumulative value of component k at bin edge j, float slot q (0: ∫τ du, 1: covered u, 4 + n: G node n). */
+fn cmpC(R: Ring, cum: u32, j: u32, q: u32) -> f32 { return cmpV(R, cum + j * CMP_EDGE + q / 4u)[q % 4u]; }
+
+/** ∫ of slot q over [ua, ub] (u units) of component k (ringComponents.ts tableSegment). */
+fn cmpSeg(R: Ring, k: u32, q: u32, ua: f32, ub: f32) -> f32 {
+  let base = k * CMP_REC;
+  let h2 = cmpV(R, base + 2u);
+  let h3 = cmpV(R, base + 3u);
+  let bins = h3.x;
+  let cum = u32(h3.y);
+  let a = clamp((ua - h2.z) / h2.w, 0.0, bins);
+  let b = clamp((ub - h2.z) / h2.w, 0.0, bins);
+  if (b <= a) { return 0.0; }
+  let j0 = u32(min(floor(a), bins - 1.0));
+  let j1 = u32(min(floor(b), bins - 1.0));
+  let d0 = cmpC(R, cum, j0 + 1u, q) - cmpC(R, cum, j0, q);
+  if (j0 == j1) { return (b - a) * d0; }
+  let d1 = cmpC(R, cum, j1 + 1u, q) - cmpC(R, cum, j1, q);
+  return (f32(j0) + 1.0 - a) * d0 + (cmpC(R, cum, j1, q) - cmpC(R, cum, j0 + 1u, q)) + (b - f32(j1)) * d1;
+}
+
+/** G(x) = ∫(1 − e^{−τx}) du over [ua, ub] and dG/dx, from the nodes (ringComponents.ts gAt). */
+fn cmpG(R: Ring, k: u32, ua: f32, ub: f32, x: f32) -> vec2f {
+  if (x <= CMP_GX0) {
+    let g0 = cmpSeg(R, k, 4u, ua, ub);
+    let T = cmpSeg(R, k, 0u, ua, ub);
+    let q = (g0 - T * CMP_GX0) / (CMP_GX0 * CMP_GX0);
+    return vec2f(T * x + q * x * x, T + 2.0 * q * x);
+  }
+  let j = u32(clamp(floor(log2(x / CMP_GX0) / 0.5), 0.0, f32(CMP_GN - 2u)));
+  let xa = CMP_GX0 * exp2(f32(j) * 0.5);
+  let xb = xa * exp2(0.5);
+  let Fa = cmpSeg(R, k, 4u + j, ua, ub);
+  let Fb = cmpSeg(R, k, 5u + j, ua, ub);
+  if (x > xb) {
+    let ginf = cmpSeg(R, k, 1u, ua, ub);
+    return vec2f(ginf - (ginf - Fb) * (xb / x), (ginf - Fb) * xb / (x * x));
+  }
+  if (Fa > 1e-30 && Fb > 1e-30) {
+    let pw = log2(Fb / Fa) / 0.5;
+    let v = Fa * pow(x / xa, pw);
+    return vec2f(v, pw * v / x);
+  }
+  let f = clamp((x - xa) / (xb - xa), 0.0, 1.0);
+  return vec2f(max(mix(Fa, Fb, f), 0.0), (Fb - Fa) / (xb - xa));
+}
+
+/** A phase table (offset rel within the block) at α (degrees): XYZS, or w < 0 outside its domain. */
+fn cmpPhase(R: Ring, rel: f32, alphaDeg: f32) -> vec4f {
+  if (rel < 0.0) { return vec4f(-1.0); }
+  let b = u32(rel);
+  let h = cmpV(R, b);
+  if (alphaDeg < h.y || alphaDeg > h.z) { return vec4f(-1.0); }
+  let n = u32(h.x);
+  let sv = b + 1u + (n + 3u) / 4u;
+  // Binary search for the last node ≤ α (nodes increasing).
+  var lo = 0u;
+  var hi = n - 1u;
+  while (hi - lo > 1u) {
+    let mid = (lo + hi) / 2u;
+    if (cmpV(R, b + 1u + mid / 4u)[mid % 4u] <= alphaDeg) { lo = mid; } else { hi = mid; }
+  }
+  let j = lo;
+  let g0 = cmpV(R, b + 1u + j / 4u)[j % 4u];
+  let g1 = cmpV(R, b + 1u + (j + 1u) / 4u)[(j + 1u) % 4u];
+  let t = clamp((alphaDeg - g0) / max(g1 - g0, 1e-6), 0.0, 1.0);
+  let va = max(cmpV(R, sv + j), vec4f(1e-30));
+  let vb = max(cmpV(R, sv + j + 1u), vec4f(1e-30));
+  return exp(mix(log(va), log(vb), t));
+}
+
+struct CmpHit { r: f32, lam: f32, ok: bool };
+
+/** Where the ray through ring-plane point X (planet-centred) meets component k's inclined plane. */
+fn cmpPlane(R: Ring, k: u32, X: vec3f, dirN: vec3f) -> CmpHit {
+  var o: CmpHit;
+  let lam0 = cmpLongitude(R, X);
+  let h2 = cmpV(R, k * CMP_REC + 2u);
+  o.ok = true;
+  if (h2.x == 0.0) { o.r = length(X); o.lam = lam0; return o; }
+  let dN = dot(dirN, R.N.xyz);
+  let z = R.cmp.z * h2.x * sin(lam0 - h2.y);
+  if (abs(dN) < 1e-4) { o.ok = false; o.r = length(X); o.lam = lam0; return o; }
+  let Y = X + dirN * (z / dN);
+  o.r = length(Y);
+  o.lam = cmpLongitude(R, Y);
+  return o;
+}
+
+/** Transmission of the sheet components to a ray at elevation sine muRay through ring-plane point X, footprint fw. */
+fn cmpTransmission(R: Ring, X: vec3f, fw: f32, muRay: f32) -> f32 {
+  let n = u32(R.cmp.y);
+  let r0 = length(X);
+  let lam = cmpLongitude(R, X);
+  var T = 1.0;
+  for (var k = 0u; k < n; k++) {
+    let base = k * CMP_REC;
+    let h3 = cmpV(R, base + 3u);
+    let flags = u32(h3.w);
+    if ((flags & 8u) != 0u || (flags & 2u) == 0u) { continue; }
+    let b6 = cmpV(R, base + 6u);
+    if (r0 + fw < b6.x || r0 - fw > b6.y) { continue; }
+    let bd = cmpBand(R, k, lam);
+    if (!(bd.W > 0.0)) { continue; }
+    let ua = (r0 - 0.5 * fw - bd.rIn) / bd.W;
+    let ub = (r0 + 0.5 * fw - bd.rIn) / bd.W;
+    if (cmpSeg(R, k, 1u, ua, ub) <= 0.0) { continue; }
+    T *= clamp(1.0 - (bd.W / fw) * cmpG(R, k, ua, ub, bd.s / max(muRay, 1e-6)).x, 0.0, 1.0);
+  }
+  return T;
+}
 `;
 
 /** Rings: analytic ray–plane intersection on a screen quad (FAR) or full screen (NEAR). */
@@ -464,6 +644,147 @@ struct FOut {
   @builtin(frag_depth) depth: f32,
 };
 
+/** Distance along the unit ray o + t·d (planet-centred) to the planet's ellipsoid, or 1e30. */
+fn planetHitT(R: Ring, o: vec3f, d: vec3f) -> f32 {
+  let p = vec3f(dot(R.pm0.xyz, o), dot(R.pm1.xyz, o), dot(R.pm2.xyz, o));
+  let q = vec3f(dot(R.pm0.xyz, d), dot(R.pm1.xyz, d), dot(R.pm2.xyz, d));
+  let a = dot(q, q);
+  let b = dot(p, q);
+  let c = dot(p, p) - 1.0;
+  let disc = b * b - a * c;
+  if (disc <= 0.0) { return 1e30; }
+  let t = (-b - sqrt(disc)) / a;
+  return select(1e30, t, t > 0.0);
+}
+
+/** Vertical CDF of a torus component at radius rho: fraction of the column below height z (∫ρ dz = 1). */
+fn cmpVertCdf(R: Ring, k: u32, rho: f32, z: f32) -> f32 {
+  let b6 = cmpV(R, k * CMP_REC + 6u);
+  let v = cmpV(R, k * CMP_REC + 7u);
+  if (b6.z < 1.5) {
+    // inclined orbits (Burns et al. 1999; Showalter et al. 2008): ρ = 1/(π√(h² − z²)), h = z0·r/r0 (capped)
+    var h = v.y * rho / v.x;
+    if (v.z > 0.0) { h = min(h, v.z); }
+    return 0.5 + asin(clamp(z / max(h, 1e-3), -1.0, 1.0)) / PI;
+  }
+  // broken power law: ρ ∝ |z|^−a (|z| < zb), zb^(b−a)|z|^−b (zb ≤ |z| ≤ zmax), heights scaled linearly in radius
+  // from 1 at the inner edge to b6.w at the outer edge
+  let rIn = cmpV(R, k * CMP_REC).x;
+  let rOut = cmpV(R, k * CMP_REC + 1u).x;
+  let hs = mix(1.0, b6.w, clamp((rho - rIn) / max(rOut - rIn, 1e-3), 0.0, 1.0));
+  let zb = v.x * hs;
+  let zm = v.y * hs;
+  let a = v.z;
+  let bb = v.w;
+  let i1 = pow(zb, 1.0 - a) / (1.0 - a);
+  let i2 = pow(zb, bb - a) * (pow(zb, 1.0 - bb) - pow(zm, 1.0 - bb)) / (bb - 1.0);
+  let y = min(abs(z), zm);
+  var g: f32;
+  if (y < zb) { g = pow(max(y, 1e-6), 1.0 - a) / (1.0 - a); }
+  else { g = i1 + pow(zb, bb - a) * (pow(zb, 1.0 - bb) - pow(y, 1.0 - bb)) / (bb - 1.0); }
+  return 0.5 + sign(z) * 0.5 * g / (i1 + i2);
+}
+
+struct TorusOut { L: vec4f, tNear: f32, unknown: f32 };
+
+/** Half-thickness (km) of torus component k at its outer radius: the slab its material fills. */
+fn cmpTorusHalf(R: Ring, k: u32) -> f32 {
+  let b6 = cmpV(R, k * CMP_REC + 6u);
+  let v = cmpV(R, k * CMP_REC + 7u);
+  if (b6.z < 1.5) {
+    var h = v.y * b6.y / v.x;
+    if (v.z > 0.0) { h = min(h, v.z); }
+    return h;
+  }
+  return v.y;
+}
+
+const CMP_TORUS_STEPS: f32 = 32.0;
+
+/**
+ * Light of the torus components (Jupiter's halo and gossamer rings) along the ray o + t·d (planet-centred, unit d),
+ * t < tMax: single scattering, I/F per unit path = D(α)·τ⊥(ρ)·(vertical density)/4, the planet's shadow per step.
+ * Each component is integrated over the ray's chord through its own slab and cylinder in up to 32 steps; the vertical
+ * density is integrated exactly over each step (its CDF), the radial profile and the shadow at the step's middle.
+ */
+fn cmpTorus(R: Ring, o: vec3f, d: vec3f, tMax: f32, alphaDeg: f32) -> TorusOut {
+  var out: TorusOut;
+  out.L = vec4f(0.0);
+  out.tNear = 1e30;
+  out.unknown = 0.0;
+  let N = R.N.xyz;
+  let oz = dot(o, N);
+  let dz = dot(d, N);
+  let op = o - oz * N;
+  let dp = d - dz * N;
+  let qa = dot(dp, dp);
+  let qb = dot(op, dp);
+  let K = u32(R.cmp.y);
+  for (var k = 0u; k < K; k++) {
+    let base = k * CMP_REC;
+    let h3 = cmpV(R, base + 3u);
+    if ((u32(h3.w) & 8u) == 0u) { continue; }
+    let h4 = cmpV(R, base + 4u);
+    let D = cmpPhase(R, h4.z, alphaDeg);
+    let lightKnown = D.w >= 0.0 && (u32(h3.w) & 16u) == 0u;
+    let b6 = cmpV(R, base + 6u);
+    let zM = cmpTorusHalf(R, k);
+    var t0 = 0.0;
+    var t1 = tMax;
+    if (abs(dz) > 1e-9) {
+      let ta = (-zM - oz) / dz;
+      let tb = (zM - oz) / dz;
+      t0 = max(t0, min(ta, tb));
+      t1 = min(t1, max(ta, tb));
+    } else if (abs(oz) > zM) { continue; }
+    let qc = dot(op, op) - b6.y * b6.y;
+    let disc = qb * qb - qa * qc;
+    if (disc <= 0.0 || qa < 1e-12) { if (qc > 0.0) { continue; } }
+    else {
+      let sq = sqrt(disc);
+      t0 = max(t0, (-qb - sq) / qa);
+      t1 = min(t1, (-qb + sq) / qa);
+    }
+    if (t1 <= t0) { continue; }
+    if ((u32(h3.w) & 16u) != 0u) {
+      out.unknown = 1.0;
+      out.tNear = min(out.tNear, t0);
+      continue;
+    }
+    let n = u32(clamp(ceil((t1 - t0) / 400.0), 4.0, CMP_TORUS_STEPS));
+    let dt = (t1 - t0) / f32(n);
+    let h2 = cmpV(R, base + 2u);
+    let rIn = cmpV(R, base).x;
+    let W = cmpV(R, base + 1u).x - rIn;
+    var acc = 0.0;
+    for (var i = 0u; i < n; i++) {
+      let ta = t0 + f32(i) * dt;
+      let X = o + (ta + 0.5 * dt) * d;
+      let z = dot(X, N);
+      let rho = length(X - z * N);
+      if (rho < b6.x || rho > b6.y) { continue; }
+      let u = (rho - rIn) / W;
+      let prof = cmpSeg(R, k, 0u, u - 0.5 * h2.w, u + 0.5 * h2.w) / h2.w;
+      if (prof <= 0.0) { continue; }
+      let za = oz + ta * dz;
+      let zb = za + dt * dz;
+      var frac: f32;
+      if (abs(zb - za) > 1e-3) { frac = abs(cmpVertCdf(R, k, rho, zb) - cmpVertCdf(R, k, rho, za)) / abs(zb - za); }
+      else {
+        let e = 0.5;
+        frac = abs(cmpVertCdf(R, k, rho, z + e) - cmpVertCdf(R, k, rho, z - e)) / (2.0 * e);
+      }
+      let dtau = prof * frac * dt;
+      if (dtau <= 0.0) { continue; }
+      if (lightKnown) { acc += dtau * planetShadow(R, X); }
+      else { out.unknown = 1.0; }
+      out.tNear = min(out.tNear, ta);
+    }
+    if (lightKnown) { out.L += h4.w * D * (0.25 * acc); }
+  }
+  return out;
+}
+
 @fragment fn fs(in: VOut) -> FOut {
   let R = rings[in.id];
   let N = R.N.xyz;
@@ -484,9 +805,10 @@ struct FOut {
     t = R.n.w + s;
     dir = R.n.xyz + in.xy.x * R.e1.xyz + in.xy.y * R.e2.xyz;
   }
-  if (!(t > 0.0) || occulted(F, dir)) { discard; }
   let r = length(X);
   let fw = max(fwidth(r), 1e-3);
+  if (R.cmp.y > 0.5) { return fsComponents(R, X, t, dir, r, fw); }
+  if (!(t > 0.0) || occulted(F, dir)) { discard; }
   if (r + fw < R.N.w || r - fw > R.geo.x) { discard; }
   let cov = clamp((r - R.N.w) / fw + 0.5, 0.0, 1.0) * clamp((R.geo.x - r) / fw + 0.5, 0.0, 1.0);
   let a = ringAvg(R, r - 0.5 * fw, r + 0.5 * fw);
@@ -521,6 +843,91 @@ struct FOut {
   o.depth = F.proj.z / max(t * dot(dir, -F.back.xyz), F.proj.z);
   return o;
 }
+
+/** Ring components (Jupiter, Uranus, Neptune): sheets at their eccentric, inclined bands, tori along the ray. */
+fn fsComponents(R: Ring, X: vec3f, t: f32, dir: vec3f, r: f32, fw: f32) -> FOut {
+  let N = R.N.xyz;
+  if (occulted(F, dir)) { discard; }
+  let dirN = normalize(dir);
+  let V = -dirN;
+  let S = R.sun.xyz;
+  let vN = dot(V, N);
+  let sN = dot(S, N);
+  let mu = abs(vN);
+  let mu0 = abs(sN);
+  let lit = vN * sN > 0.0;
+  let alphaDeg = degrees(acos(clamp(dot(S, V), -1.0, 1.0)));
+  let tPlanet = planetHitT(R, R.o.xyz, dirN) / max(length(dir), 1e-30);
+  var L = vec4f(0.0);
+  var unk = 0.0;
+  var tNear = 1e30;
+  // Tori: along the ray from the camera (planet-centred origin R.o), clipped at the planet.
+  if (R.cmp.w > 0.0) {
+    let lenD = length(dir);
+    let tor = cmpTorus(R, R.o.xyz, dirN, tPlanet * lenD, alphaDeg);
+    if (tor.tNear < 1e29) { L += tor.L; tNear = tor.tNear / lenD; }
+    unk += tor.unknown;
+  }
+  // Sheets: at the ring-plane intersection, if it lies in front of the camera and of the planet.
+  if (t > 0.0 && t < tPlanet && r - fw <= R.geo.x && r + fw >= R.N.w) {
+    var Ls = vec4f(0.0);
+    let K = u32(R.cmp.y);
+    let dN = dot(dirN, N);
+    for (var k = 0u; k < K; k++) {
+      let base = k * CMP_REC;
+      let h3 = cmpV(R, base + 3u);
+      let flags = u32(h3.w);
+      if ((flags & 8u) != 0u) { continue; }
+      let b6 = cmpV(R, base + 6u);
+      let h2 = cmpV(R, base + 2u);
+      let margin = fw + abs(h2.x) / max(abs(dN), 0.02);
+      if (r + margin < b6.x || r - margin > b6.y) { continue; }
+      if ((flags & 16u) != 0u) {
+        // Conservative radial annotation on the reference plane, not a substituted physical band or arc.
+        unk += max(0.0, min(r + 0.5 * fw, b6.y) - max(r - 0.5 * fw, b6.x)) / fw;
+        continue;
+      }
+      let hit = cmpPlane(R, k, X, dirN);
+      let bd = cmpBand(R, k, hit.lam);
+      if (!(bd.W > 0.0)) {
+        unk += max(0.0, min(r + 0.5 * fw, b6.y) - max(r - 0.5 * fw, b6.x)) / fw;
+        continue;
+      }
+      let ua = (hit.r - 0.5 * fw - bd.rIn) / bd.W;
+      let ub = (hit.r + 0.5 * fw - bd.rIn) / bd.W;
+      let T = cmpSeg(R, k, 0u, ua, ub);
+      if (T <= 0.0 || bd.s <= 0.0) { continue; }
+      let frac = bd.W / fw;
+      let h4 = cmpV(R, base + 4u);
+      let Lt = cmpPhase(R, h4.x, alphaDeg);
+      let Dt = cmpPhase(R, h4.z, alphaDeg);
+      let noLight = h4.x < 0.0 && h4.z < 0.0;
+      if (noLight || (h4.x >= 0.0 && Lt.w < 0.0) || (h4.z >= 0.0 && Dt.w < 0.0)) { unk += frac * cmpSeg(R, k, 1u, ua, ub); }
+      if (mu <= 0.0 || mu0 <= 0.0) { continue; }
+      if (h4.x >= 0.0 && Lt.w >= 0.0) {
+        var geo: f32;
+        if (lit) { geo = mu0 / (4.0 * (mu + mu0)) * cmpG(R, k, ua, ub, bd.s * (1.0 / mu + 1.0 / mu0)).x; }
+        else {
+          let x1 = bd.s / mu;
+          let x0 = bd.s / mu0;
+          if (abs(x1 - x0) < 1e-4 * x1) { geo = bd.s * cmpG(R, k, ua, ub, x1).y / (4.0 * mu); }
+          else { geo = mu0 / (4.0 * abs(mu - mu0)) * abs(cmpG(R, k, ua, ub, x1).x - cmpG(R, k, ua, ub, x0).x); }
+        }
+        Ls += h4.y * Lt * (frac * max(geo, 0.0));
+      }
+      if (h4.z >= 0.0 && Dt.w >= 0.0) { Ls += h4.w * Dt * (frac * bd.s * T / (4.0 * mu)); }
+    }
+    L += Ls * planetShadow(R, X);
+    if (dot(Ls, vec4f(1.0)) > 0.0 || unk > 0.0) { tNear = min(tNear, t); }
+  }
+  if (tNear >= 1e29) { discard; }
+  var o: FOut;
+  o.ext = toStore(F, L * R.esun);
+  o.w = 1.0;
+  o.mask = clamp(unk, 0.0, 1.0);
+  o.depth = F.proj.z / max(tNear * dot(dir, -F.back.xyz), F.proj.z);
+  return o;
+}
 `;
 
 /** Display-space hatch over "not measured" regions of surfaces (map gaps) and rings. */
@@ -538,4 +945,3 @@ export const MASK_HATCH_SHADER = /* wgsl */ `
   return vec4f(vec3f(g) * 0.7, 0.7);
 }
 `;
-

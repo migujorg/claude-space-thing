@@ -459,6 +459,101 @@ export interface RingSystem {
     radialProfiles: Sourced<RingIFProfile[]>;
     regionalPhaseCurves: Sourced<RingRegionalPhaseCurves>;
   };
+  /**
+   * Rings drawn one by one (Jupiter, Uranus, Neptune; docs/architecture.md §6 "Ring components"): eccentric,
+   * inclined and precessing narrow rings, arcs, dusty sheets and vertically extended tori, each with its own
+   * optical depth and light. When present and admitted it replaces `opticalDepth` for drawing; the label is the
+   * worst of its components' geometry, optical-depth and reflectance labels.
+   */
+  components?: Sourced<RingComponentModel>;
+}
+
+/** One edge of a ring component: a precessing, inclined keplerian ellipse with normal modes (French et al. 2024). */
+export interface RingComponentEdge {
+  /** Semimajor axis and a·e, km. */
+  a: number;
+  ae: number;
+  /** Longitude of periapse at the model epoch (degrees) and apsidal precession rate (degrees/day). */
+  varpi0Deg: number;
+  varpiDotDegPerDay: number;
+  /** Height amplitude a·sin i (km), node at epoch (degrees) and nodal rate (degrees/day). */
+  aSinI: number;
+  node0Deg: number;
+  nodeDotDegPerDay: number;
+  /** Δr = −A cos(m(λ − Ω_P t − δ)); for m = 0, −A cos(Ω_P t + δ) (t in days from the epoch). */
+  modes: { m: number; amplitudeKm: number; phaseDeg: number; patternSpeedDegPerDay: number }[];
+}
+
+export interface RingComponentProvenance {
+  /** Canonical Sourced payload; absent only in products built before the envelope migration. */
+  value?: Record<string, unknown> | null;
+  label: Label;
+  sources: string[];
+  method: string;
+}
+
+/** A tabulated phase function per CIE channel (X, Y, Z, scotopic), interpolated log-linearly in α. */
+export interface RingPhaseTable {
+  /** Canonical Sourced payload. Flat fields below mirror it for existing renderer consumers. */
+  value?: {
+    name: string; phaseDeg: number[]; valuesXYZS: number[][]; minPhaseDeg: number; maxPhaseDeg: number;
+  } | null;
+  name: string;
+  phaseDeg: number[];
+  valuesXYZS: number[][];
+  /** Outside [minPhaseDeg, maxPhaseDeg] this light is not measured (drawn as unknown). */
+  minPhaseDeg: number;
+  maxPhaseDeg: number;
+  label: Label;
+  sources: string[];
+  method: string;
+}
+
+export interface RingComponent {
+  id: string;
+  name: string;
+  /** 'sheet': a thin layer in the ring's plane; 'torus': spread vertically by `vertical`. */
+  kind: 'sheet' | 'torus';
+  inner: RingComponentEdge;
+  outer: RingComponentEdge;
+  /** Inclusive support interval, TDB s past J2000. Outside it geometry is unknown, with zero light/extinction.
+   * basis distinguishes source-stated validity from a pipeline observation-support policy. Omitted for stationary
+   * estimated profiles whose source states no temporal interval; their epoch/assumption remains in provenance. */
+  geometryValidity?: { startEt: number; endEt: number; basis: string };
+  /**
+   * Values at u = uStart + i·uStep across the band (u = (r − r_in)/(r_out − r_in)): the normal optical depth where the
+   * band is widthRefKm wide (scaled by widthRefKm/W elsewhere when widthScaling), or, when !opticalDepthKnown, the
+   * normal I/F at the thin term's reference phase (light only, no extinction).
+   */
+  profile: { uStart: number; uStep: number; values: number[]; widthRefKm: number; widthScaling: boolean; opticalDepthKnown: boolean };
+  /** Macroscopic particles (many-particle-thick layer): L_c(α) = scale · table(α). */
+  layer: { phaseFunction: string; scale: number } | null;
+  /** Optically thin dust: D_c(α) = scale · table(α), normal I/F = D·τ/4. */
+  thin: { phaseFunction: string; scale: number } | null;
+  /** Longitudinal modulation of τ (Neptune's arcs): factor(φ), φ = λ − λ0 − n (et − epochEt)/86400. */
+  arcs?: { lambda0Deg: number; epochEt: number; meanMotionDegPerDay: number; phiStartDeg: number; phiStepDeg: number; factor: number[] };
+  /** Vertical structure of a torus: density per unit height at radius r (normalized to ∫ dz = 1). */
+  vertical?:
+    | { law: 'inclined-orbits'; r0Km: number; z0Km: number; zMaxCapKm?: number }
+    | {
+      law: 'broken-power-law'; zBreakKm: number; zMaxKm: number; innerSlope: number; outerSlope: number;
+      /** Heights (zBreak, zMax) at the outer edge relative to the inner edge, linear in radius between (default 1). */
+      outerScale?: number;
+    };
+  provenance: { geometry: RingComponentProvenance; opticalDepth: RingComponentProvenance; reflectance: RingComponentProvenance };
+}
+
+export interface RingComponentModel {
+  kind: 'ring-components-v1';
+  formula: string;
+  /** Epoch of the edge elements, TDB seconds past J2000. */
+  epochEt: number;
+  longitudeOrigin: string;
+  /** +1 when the planet's angular momentum points along its IAU north pole, −1 when opposite (Uranus). */
+  poleSense?: 1 | -1;
+  phaseFunctions: Record<string, RingPhaseTable>;
+  components: RingComponent[];
+  notes: string;
 }
 
 export interface RingProfile {

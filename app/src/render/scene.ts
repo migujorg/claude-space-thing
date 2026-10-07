@@ -5,7 +5,7 @@
 // anything not allowed at the current `exists` level arrives here as null / flagged, so the renderer
 // never needs to reason about provenance labels except for the provenance-tint overlay.
 
-import type { BodyAtmosphere, DiskReflectanceModel, Label, PhaseFunction, RingReflectance, SpatialPhotometricModel, SurfaceLayerHeader } from '../data/schema';
+import type { BodyAtmosphere, DiskReflectanceModel, Label, PhaseFunction, RingComponentModel, RingReflectance, SpatialPhotometricModel, SurfaceLayerHeader } from '../data/schema';
 import type { EyeSettings } from '../eye/settings';
 import type { CometActivity } from './comets/model';
 import type { CloudPopulation } from './earth';
@@ -229,6 +229,13 @@ export interface SceneRings {
   reflectance: RingReflectance | null;
   /** Worst provenance label among the ring data drawn (e.g. estimated for Saturn's reflectance). */
   worstLabel: Label;
+  /**
+   * rings.json `components` (Jupiter, Uranus, Neptune; render/ringComponents.ts) when admitted at the reality level:
+   * drawn instead of `opticalDepth`.
+   */
+  components?: RingComponentModel | null;
+  /** TDB seconds at which the planet's light left it (the components' geometry is evaluated then). */
+  et?: number;
 }
 
 export interface SceneSun {

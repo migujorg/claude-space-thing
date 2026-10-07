@@ -50,6 +50,20 @@ describe('scene extras', () => {
     expect(used).toContain('estimated');
   });
 
+  it('ring components replace the profile where admitted, carrying the emission time; strict keeps the profile', () => {
+    const comps = { value: { kind: 'ring-components-v1', components: [], phaseFunctions: {} } as never, label: 'estimated' as const, sources: ['c'] };
+    const ex: SceneExtras = { surfaces, rings: { '1': { ...ring, components: comps } } };
+    const best = scene();
+    applyExtras(best, body(1), ex, 'best', true, 1234.5);
+    expect(best.rings?.components).toBe(comps.value);
+    expect(best.rings?.et).toBe(1234.5);
+    expect(best.rings?.worstLabel).toBe('estimated');
+    const strict = scene();
+    applyExtras(strict, body(1), ex, 'strict', true, 1234.5);
+    expect(strict.rings?.components).toBeUndefined();
+    expect(strict.rings?.opticalDepth[0].normalTau).toEqual([0.5, null]);
+  });
+
   it('no body frame → no maps or rings; unlit → no albedo map', () => {
     const sb = { ...scene(), orient: null };
     applyExtras(sb, body(1), extras, 'best', true);
