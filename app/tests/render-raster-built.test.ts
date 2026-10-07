@@ -85,7 +85,7 @@ it('neither centre-sampling nor the local sliver rule preserves an unresolved 17
   expect(rasterDisk(law, { radius: 1, alpha, offset: [0.23, 0.41], rule: 'footprint' }).sum).toBeGreaterThan(0);
 });
 
-it.skipIf(!built || !env.RASTER_REPORT)('writes the explicit raster sampling matrix (offline CPU only)', () => {
+it.skipIf(!built || !env.RASTER_REPORT)('writes the explicit raster sampling matrix (offline CPU only)', async () => {
   const rows: unknown[] = [];
   for (const { id, name, model } of distinct) for (let phase = 0; phase <= 179; phase++) {
     const alpha = phase * Math.PI / 180, law = lawAt(model, alpha);
@@ -102,6 +102,8 @@ it.skipIf(!built || !env.RASTER_REPORT)('writes the explicit raster sampling mat
       errors.footprint = footprint.sum / (radius ** 2 * reference) - 1;
       rows.push({ id, name, kind: model.kind, phase, radius, offset, errors, maxima, cpuIntegralError: cpuIntegral / reference - 1 });
     }
+    // Let Vitest deliver task updates during this optional long numerical survey.
+    await new Promise<void>(resolve => setTimeout(resolve, 0));
   }
   fs.writeFileSync(env.RASTER_REPORT!, JSON.stringify({ initialCommit: 'ef12c65', models, phases: 'all integers 0..179 at R=1; 0,30,60,90,120,150,170,175,179 at R<=128; 170,175,179 at R=512,2000', offsets, geometry: 'f32 orthographic sphere; y rotation 0.37 rad; paired quad derivatives; uniform map; collimated Sun', rows }, null, 2));
 }, 1800000);
