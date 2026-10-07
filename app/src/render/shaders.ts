@@ -1001,7 +1001,7 @@ export const BODY_OVERLAY_SHADER = COMMON + BODY_COMMON + /* wgsl */ `
 `;
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────
-// Stars: GPU visibility culling (Crumey threshold) → compact list + indirect draw arguments.
+// Stars: GPU visibility test (Crumey threshold) → two compact lists + indirect draw arguments.
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 /**
  * The limbs of the drawn atmospheres, for light from beyond them: point sources (CULL_SHADER) and the sky
@@ -1048,13 +1048,24 @@ fn limbTransmittanceTo(u: vec3f, D: f32) -> vec4f {
 }
 `;
 
+/**
+ * Sorts every point source in the frame into one of two lists (eye/points.ts is the tested CPU twin):
+ * `visible`, those above the threshold of the eye looking at them, which are displayed as points, and `unseen`,
+ * the rest. BOTH are splatted into the physical point image (PT): a star's light reaches the eye whether or not
+ * the eye can pick the star out. The veil of the frame, which is the background the next frame's verdicts are
+ * judged against, therefore holds every source whatever was decided, and no verdict depends on an earlier one,
+ * the source's own or a neighbour's. (Before, only the sources that passed were in PT. A star at threshold was
+ * then judged against a veil that held its light only on the frames after it had passed, and was drawn every other
+ * frame.) The verdict decides what is displayed as a point (PTDISP) and what overflows into painted glare (PTEX).
+ */
 export const CULL_SHADER = COMMON + /* wgsl */ `
-struct CullInfo { count: u32, stride: u32, maxVisible: u32, groupsX: u32 };
+struct CullInfo { count: u32, stride: u32, maxVisible: u32, groupsX: u32, maxUnseen: u32, pad0: u32, pad1: u32, pad2: u32 };
 @group(0) @binding(0) var<uniform> F: Frame;
 @group(0) @binding(1) var<uniform> E: Eye;
 @group(0) @binding(2) var<storage, read> stars: array<f32>;
 @group(0) @binding(3) var<storage, read_write> visible: array<vec4f>;
-@group(0) @binding(4) var<storage, read_write> args: array<atomic<u32>, 4>;
+// Two indirect draws: [0, 4) the visible list, [4, 8) the unseen list (instance counts at 1 and 5).
+@group(0) @binding(4) var<storage, read_write> args: array<atomic<u32>, 8>;
 @group(0) @binding(5) var bgTex: texture_2d<f32>;
 @group(0) @binding(6) var<uniform> info: CullInfo;
 ${SRCS(0, 7)}
@@ -1062,6 +1073,7 @@ ${VEIL}
 ${BG}
 
 ${LIMB_WGSL(8)}
+@group(0) @binding(9) var<storage, read_write> unseen: array<vec4f>;
 
 @compute @workgroup_size(256) fn main(@builtin(global_invocation_id) gid: vec3u) {
   let i = gid.x + gid.y * info.groupsX * 256u;
@@ -1077,7 +1089,9 @@ ${LIMB_WGSL(8)}
   let marg = E.misc2.x * 2.0 * F.size.zw;
   if (abs(ndc.x) > 1.0 + marg.x || abs(ndc.y) > 1.0 + marg.y) { return; }
   // Local background: last frame's scattered light at scales ≥ the Ricco area (so a star's own core glare
-  // does not mask it), plus the analytic veil (Sun, off-frame bodies).
+  // does not mask it), plus the analytic veil (Sun, off-frame bodies). That veil holds this source's light
+  // whatever last frame's verdict was (both lists go into PT), so taking its own light out is always right;
+  // only in the first frame a source is in view does the veil not hold it yet (hence the max).
   let own = e * (E.pts.w / pixelSolidAngle(F, ndc));
   let bg = max(bgAt(bgTex, ndc) / F.proj.w - own, vec4f(0.0)) + analyticVeil(E, normalize(u));
   // Judged by the eye looking at the star, adapted to that background (Crumey's condition), not to the
@@ -1086,7 +1100,14 @@ ${LIMB_WGSL(8)}
   let aR = max(bg.w, E.cr1.y * E.mes.z);
   let mL = mesopicM(aC, aR);
   let thr = E.mes.w * crumeyPointThreshold(E, blackwellEqM(E, mL, aC, aR)) * darkFactor(E, aC, aR) / E.map.w;
-  if (blackwellEqM(E, mL, e.y, e.w) < thr) { return; }
+  if (blackwellEqM(E, mL, e.y, e.w) < thr) {
+    // Not picked out by the eye: light on the retina all the same.
+    let j = atomicAdd(&args[5], 1u);
+    if (j >= info.maxUnseen) { return; }
+    unseen[2u * j] = vec4f(ndc, 0.0, 0.0);
+    unseen[2u * j + 1u] = e;
+    return;
+  }
   let k = atomicAdd(&args[1], 1u);
   if (k >= info.maxVisible) { return; }
   visible[2u * k] = vec4f(ndc, 0.0, 0.0);
@@ -1095,9 +1116,12 @@ ${LIMB_WGSL(8)}
 `;
 
 export const CLAMP_ARGS_SHADER = /* wgsl */ `
-@group(0) @binding(0) var<storage, read_write> args: array<u32, 4>;
-@group(0) @binding(1) var<uniform> maxVisible: vec4u;
-@compute @workgroup_size(1) fn main() { args[1] = min(args[1], maxVisible.x); }
+@group(0) @binding(0) var<storage, read_write> args: array<u32, 8>;
+@group(0) @binding(1) var<uniform> maxVisible: vec4u;   // x: the visible list's capacity, y: the unseen list's
+@compute @workgroup_size(1) fn main() {
+  args[1] = min(args[1], maxVisible.x);
+  args[5] = min(args[5], maxVisible.y);
+}
 `;
 
 // Point sources (stars, unresolved bodies, unresolved Sun), eye/points.ts. Two passes share the vertex stage:
@@ -1107,6 +1131,8 @@ export const CLAMP_ARGS_SHADER = /* wgsl */ `
 //    painted (as the viewer's glare, in display space);
 //  fsDisp (before the composite): what the display shows, a sharp splat of display flux ΔL_d·A_R,disp
 //    (Ricco summation sets brightness, never size) in display-linear XYZ with the star's own colour.
+// The sources the eye cannot pick out (the cull's unseen list) have no appearance to work out: vsLight and
+// fsLight put the same splat of their light into PT and nothing anywhere else.
 export const POINT_SHADER = COMMON + TONE + BG + /* wgsl */ `
 @group(0) @binding(0) var<uniform> F: Frame;
 @group(0) @binding(1) var<uniform> E: Eye;
@@ -1167,14 +1193,17 @@ struct PV {
   return o;
 }
 
-fn splat(in: PV) -> f32 {
-  // Offset from the true (sub-pixel) centre, in pixels.
+/** The splat at an offset (px) from the true (sub-pixel) centre, for the fragment at frag (px): per sr; < 0 outside. */
+fn splatAt(off: vec2f, frag: vec2f) -> f32 {
   let s = E.misc.z;
-  let r2 = dot(in.off, in.off);
+  let r2 = dot(off, off);
   let ext = E.misc2.x;
   if (r2 > ext * ext) { return -1.0; }
-  let ndc = ndcFromFrag(F, in.pos.xy);
+  let ndc = ndcFromFrag(F, frag);
   return exp(-r2 / (2.0 * s * s)) / (2.0 * PI * s * s) * E.misc2.y / pixelSolidAngle(F, ndc);
+}
+fn splat(in: PV) -> f32 {
+  return splatAt(in.off, in.pos.xy);
 }
 
 struct PhysOut { @location(0) pt: vec4f, @location(1) ex: vec4f };
@@ -1192,6 +1221,30 @@ struct PhysOut { @location(0) pt: vec4f, @location(1) ex: vec4f };
   let g = splat(in);
   if (g < 0.0) { discard; }
   return vec4f(in.disp.xyz * g, 0.0);
+}
+
+// Light only: a source the eye does not pick out (same list layout, same splat, PT alone).
+struct LV {
+  @builtin(position) pos: vec4f,
+  @location(0) off: vec2f,
+  @location(1) @interpolate(flat) e: vec4f,
+};
+
+@vertex fn vsLight(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> LV {
+  var corners = array<vec2f, 6>(vec2f(-1.0, -1.0), vec2f(1.0, -1.0), vec2f(-1.0, 1.0), vec2f(-1.0, 1.0), vec2f(1.0, -1.0), vec2f(1.0, 1.0));
+  let p = pts[2u * ii];
+  let offPx = corners[vi] * E.misc2.x;
+  var o: LV;
+  o.pos = vec4f(p.xy + offPx * 2.0 * F.size.zw, p.z, 1.0);
+  o.off = offPx * vec2f(1.0, -1.0);
+  o.e = pts[2u * ii + 1u];
+  return o;
+}
+
+@fragment fn fsLight(in: LV) -> @location(0) vec4f {
+  let g = splatAt(in.off, in.pos.xy);
+  if (g < 0.0) { discard; }
+  return toStore(F, in.e * g);
 }
 `;
 

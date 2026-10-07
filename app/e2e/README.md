@@ -6,6 +6,7 @@ The suite uses one Vite server and one headless Chromium with SwiftShader WebGPU
 
 The suite needs the built data in `app/public/data`. It cannot run in CI, which has no data and no WebGPU; CI runs the unit tests, including `tests/e2e-lib.test.ts` for the comparison logic.
 
+
 ## What it writes
 
 All output goes to `app/shots/e2e/`, which git ignores.
@@ -56,7 +57,7 @@ A scene also fails, without a retry, when the page reports a data product that t
 ## Determinism
 
 A scene renders the same numbers on every run of an unchanged tree. Two runs of the Moments scenes, earth-night
-and saturn-rings agree on every stat, stars included. Three things make this so:
+and saturn-rings agree on every stat, stars included. Four things make this so:
 
 - **Instant adaptation.** `defaults` sets `adapt=instant`, so the eye is always adapted to the view. With the
   real-time default, the frames rendered around the settled one would move the pigments by real elapsed time,
@@ -66,6 +67,19 @@ and saturn-rings agree on every stat, stars included. Three things make this so:
   hysteresis while the view changes. Before `__frameReady` the cut is set afresh at the settled limit
   (`SkyController.settleCut`), so it does not depend on the limits the loading frames passed through.
 - **Paused time.** A URL with `t` starts paused.
+- **A point image that holds every source.** A star is judged against the veil of the frame before, less its own
+  light. That veil is made from the physical point image, which holds every point source in the frame, whether
+  the eye can pick it out or not (`render/shaders.ts` `CULL_SHADER`: the visible and the unseen list). So the
+  veil, and with it every verdict, follows from the scene alone. Until 7 October 2026 only the stars that had
+  passed were in that image: a star at threshold was judged against a veil that held its light on some frames and
+  not on others, and was drawn every other frame (388 stars in pluto-charon; 9 of the 26 scenes), and which frame
+  a script read depended on how the page had loaded.
+
+The settled frame of a scene with `adapt=instant` is therefore one frame. Checked on the GPU by reading back which
+stars the cull kept on 300 consecutive frames of every scene: none changes in the 23 scenes with instant
+adaptation, and after a pass is skipped for one to three frames (no star light in the veil, no stars drawn, an
+older veil) the same set comes back. The three `adapt=realtime` scenes gain stars as their pigments regenerate, as
+they should; no star in them goes back and forth.
 
 ## Running
 
@@ -82,6 +96,8 @@ npm run e2e -- --gpu hardware                 # on the machine's GPU instead of 
 ## The scripts' own server
 
 Without `--base`, `e2e.mjs`, `validate.mjs`, `shot.mjs`, `sb-gpu.mjs`, `sky-shots.mjs` and `corona-shots.mjs` start their own Vite server through `scripts/local-server.mjs`: on `127.0.0.1`, at a free port the operating system assigns, and Vite must take exactly that port. They never use 5173. (Asking Vite for port 0 does not give a free port: Vite then takes its default, 5173, on `localhost`, which is `[::1]` where IPv6 comes first. A script run would sit on `[::1]:5173` beside a dev server on `127.0.0.1:5173`, and a browser that opens `http://localhost:5173` would be served the script's tree.)
+
+`e2e.mjs`, `validate.mjs` and `shot.mjs` start it without the file watcher and without hot reloading (`runServerOptions` in `scripts/e2e-lib.mjs`), so a source edit or a data rebuild under way does not reload the page of the scene being measured. A module or a data file is still read when a scene first asks for it, so a run made while either changes is not a run of one state.
 
 ## On the GPU (`--gpu hardware`)
 
@@ -114,10 +130,10 @@ How the numbers differ between the two adapters, same tree and data:
 
 - **Validation (HDR readback):** the same 39 pass, 25 fail, 5 not compared, with the same failing channels. Of the 276 channel means (69 regions × X, Y, Z, S), 92 are identical and 184 differ, by 3 × 10⁻⁶ to 6 × 10⁻³ relative (median 5 × 10⁻⁴; the largest are a sky-near and a terminator region), against tolerances of 5 % and more. Two runs on the same adapter are bit-identical, on either adapter.
 - **Scene stats:** over seven GPU runs against a SwiftShader run, adaptation luminance within 0.005 dex (1.1 %), pupil within 0.001 mm, limiting magnitude within 0.007 mag, the same bodies, points, labels and warnings, and the coarse image within 0.003 lightness. Every scene passes against the SwiftShader baseline on all of these.
-- **Stars drawn is not one number on the GPU.** In 9 of the 26 scenes the count alternates between two values on consecutive frames: pluto-charon 889 ↔ 1120, 908 ↔ 1101, 965 ↔ 1043 or 994 ↔ 1014 depending on the run (the two-frame mean stays at 1004–1005), jupiter-galileans 179 ↔ 186, and earth-night, uranus, neptune, starfield, starfield-enhanced, comet-lemmon and hyperion-fallback by 2 % or less (starfield-dark-30min, whose adaptation runs in real time, also moves by a few stars). The renderer culls each star against the light of the frame before, which holds the other stars' light. SwiftShader shows the same alternation (pluto-charon 996 ↔ 1014), but its frames take about a second, so a script reads the same frame on almost every run; on the GPU the read lands on either. In seven GPU runs pluto-charon failed the 5 % star tolerance three times (809, 909 and 1101 against 1015), and nothing else failed. A `hardware` run records the values seen over 16 animation frames in `starsDrawnFrames` and prints a note for a scene where they differ.
+- **Stars drawn is one number.** A `hardware` run records the values `starsDrawn` takes over 16 animation frames in `starsDrawnFrames`. In a scene with `adapt=instant` they must all be the same: if not, the scene fails ("starsDrawn changes from frame to frame"), and it is not accepted as a baseline. In a scene with `adapt=realtime` a changing count is a note. Until the cull fix of 7 October 2026 ([Determinism](#determinism)) the count alternated between two values on consecutive frames in 9 of the 26 scenes (pluto-charon 889 ↔ 1120, 908 ↔ 1101, 965 ↔ 1043 or 994 ↔ 1014 depending on the run; jupiter-galileans 179 ↔ 186; the others by 2 % or less), and in seven GPU runs pluto-charon failed the 5 % star tolerance three times. SwiftShader had the same alternation (pluto-charon 996 ↔ 1014), but its frames take about a second, so a script read the same frame on almost every run.
 - **The sky cube** is 512² on a hardware adapter and 256² on a software one (`src/app/sky.ts`), so the sky background is not the same computation on the two.
 
-The committed baseline was accepted on SwiftShader. A baseline accepted with `--gpu` records the mode and the adapter, and comparing a run with a baseline of the other kind prints a note.
+The committed baseline was accepted on SwiftShader. A baseline accepted with `--gpu` records the mode and the adapter, and comparing a run with a baseline of the other kind prints a note. A scene accepted on its own records its own acceptance (below), and the note then names the scenes it is about.
 
 ## Accepting a new baseline
 
@@ -130,6 +146,8 @@ Accept a new baseline when a change is intended. Examples: a renderer improvemen
    npm run e2e -- --accept --only saturn-rings
    ```
    This renders again and writes `baseline/stats.json` and `baseline/<id>.png` from that run. With `--only`, the other scenes keep their baseline. Scenes removed from `scenes.json` are dropped.
+
+   The header of `stats.json` (`acceptedAt`, `git`, `data`, `gpu`) says what the whole suite was last accepted with, and changes only when every scene is accepted. A scene accepted with `--only` carries its own `accepted` record (date, commit, data build, adapter).
 
    To accept the run you just reviewed without rendering it again, use `npm run e2e -- --accept-last`. It takes `--only` too, and reads `app/shots/e2e/report.json` and the thumbnails.
 

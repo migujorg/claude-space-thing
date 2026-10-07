@@ -136,6 +136,43 @@ def test_companion_signal_finds_the_right_parity():
 # ---------------------------------------------------------------------------------------------- committed cases
 
 
+def test_report_sizes_line_does_not_print_zero_for_inputs_never_fetched_here():
+    """§5's sizes line reads this machine's download ledger; a machine that never fetched the inputs says so."""
+    from pipeline.validation import report
+
+    ledger = {"validation/a/img.fits": {"bytes": 150_000_000}, "validation/b/img.fits": {"bytes": 44_900_000},
+              "naif/de442s.bsp": {"bytes": 31_000_000}}
+    here = report.sizes_line(13.4, ledger, 27.5)
+    assert here.startswith("**Sizes:** `validation/` 13.4 MB (committed); downloaded inputs 194.9 MB (download ledger), "
+                           "git-ignored in `data/raw/validation/` (27.5 MB present now: `python -m pipeline.validation clean`")
+    elsewhere = report.sizes_line(13.4, {"naif/de442s.bsp": {"bytes": 31_000_000}}, 0.0)
+    assert "downloaded inputs 0.0 MB" not in elsewhere
+    assert elsewhere.startswith("**Sizes:** `validation/` 13.4 MB (committed); the downloaded inputs are not on this machine "
+                                "(its download ledger has no entry under `validation/`, and the git-ignored "
+                                "`data/raw/validation/` holds 0.0 MB: `python -m pipeline.validation clean`")
+    assert here.endswith("so a changed archive file is refitted).") and elsewhere.endswith("so a changed archive file is refitted).")
+
+
+def test_report_run_line_names_the_adapter_and_machine():
+    """§7's run line says what rendered the run when the runner recorded it (scripts/validate.mjs `gpu`, `host`)."""
+    from pipeline.validation import report
+
+    run = {"generatedAt": "2026-10-05T01:45:00.000Z", "git": "abc1234", "dataGeneratedAt": "2026-10-05T00:03:04+00:00",
+           "options": {"ss": 1, "reality": "best"}, "cases": []}
+    line = report.run_section(run, "").split("\n")[2]
+    # a run from before the option: no adapter in the report, the line as it always was
+    assert "1 × 1 samples per pixel: `cd app && npm run validate` (" in line and "rendered by" not in line
+    host = {"cpu": "A CPU", "threads": 32}
+    soft = {**run, "host": host, "gpu": {"mode": "swiftshader", "adapter": {"vendor": "google", "architecture": "swiftshader"}}}
+    assert ("1 × 1 samples per pixel, rendered by SwiftShader (software WebGPU), adapter `google swiftshader`, on A CPU "
+            "(32 threads): `cd app && npm run validate` (") in report.run_section(soft, "")
+    hard = {**run, "host": host, "gpu": {"mode": "hardware", "adapter": {"vendor": "nvidia", "architecture": "blackwell"}}}
+    assert ("rendered by the machine's GPU, adapter `nvidia blackwell`, on A CPU (32 threads): "
+            "`cd app && npm run validate -- --gpu hardware` (") in report.run_section(hard, "")
+    assert report.rendered_by({**run, "gpu": {"mode": "swiftshader", "adapter": None}}) == \
+        ", rendered by SwiftShader (software WebGPU), adapter `unnamed adapter`"
+
+
 @pytest.mark.skipif(not CASES, reason="no validation cases built")
 @pytest.mark.parametrize("path", CASES, ids=[p.parent.name for p in CASES])
 def test_case_file(path: Path):

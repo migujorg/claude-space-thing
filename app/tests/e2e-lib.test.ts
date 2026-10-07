@@ -23,6 +23,16 @@ interface SceneResult {
   grid?: number[] | null;
   consoleErrors?: string[];
 }
+interface Meta {
+  acceptedAt: string;
+  git: string;
+  data: { manifestGeneratedAt: string; manifestSha256: string };
+  viewport?: { width: number; height: number };
+  gpu?: Gpu;
+}
+interface Baseline extends Partial<Meta> {
+  scenes: Record<string, { query: string; stats: unknown; consoleErrors: string[]; readyMs?: number; accepted?: Partial<Meta> }>;
+}
 interface Lib {
   sceneQuery(suite: unknown, scene: unknown): string;
   extractStats(debug: unknown): Stats;
@@ -37,12 +47,17 @@ interface Lib {
   THUMB_H: number;
   GPU_MODES: string[];
   gpuLaunchArgs(mode?: string): string[];
+  runServerOptions(): { hmr: boolean; watch: null };
   isSoftwareAdapter(info: Adapter | null): boolean;
   adapterLabel(info: Adapter | null): string;
   gpuMismatch(mode: string, info: Adapter | null): string | null;
   hdrFormatOf(warnings: string[] | undefined): string;
   gpuNote(baselineGpu: Gpu | undefined, gpu: Gpu): string | null;
+  mergeBaseline(prev: Baseline | null, results: { id: string; query: string; stats: unknown; consoleErrors?: string[]; readyMs?: number }[], meta: Meta, sceneIds: string[]): Baseline;
+  sceneAcceptance(baseline: Baseline | null, id: string): Partial<Meta>;
+  acceptanceNotes(baseline: Baseline | null, ids: string[], data: Meta['data'], gpu: Gpu): string[];
   starsFramesNote(values: number[] | undefined, compared: number | null | undefined): string | null;
+  starsFramesFailure(values: number[] | undefined, compared: number | null | undefined, query: string | undefined): string | null;
 }
 interface Adapter { vendor: string; architecture: string; device: string; description: string; fallback: boolean; float32Blendable: boolean }
 interface Gpu { mode: string; adapter: Adapter | null }
@@ -146,6 +161,10 @@ describe('the --gpu option', () => {
     expect(args.join(' ')).not.toMatch(/swiftshader/);
     expect(() => lib.gpuLaunchArgs('gpu')).toThrow(/--gpu gpu: expected swiftshader or hardware/);
   });
+  it('a run\'s own server does not watch files or reload pages: a data rebuild or an edit cannot lose the scene being measured', () => {
+    // the address and the port are local-server.mjs's (127.0.0.1, assigned by the OS, never 5173)
+    expect(lib.runServerOptions()).toEqual({ hmr: false, watch: null });
+  });
 
   it('tells a software adapter from a hardware one', () => {
     expect(lib.isSoftwareAdapter(SWIFTSHADER)).toBe(true);
@@ -185,11 +204,64 @@ describe('the --gpu option', () => {
     expect(lib.gpuNote(hard, soft)).toMatch(/accepted on hardware \(nvidia blackwell \(hardware\)\); this run rendered on swiftshader \(google swiftshader \(software\)\)/);
   });
 
+  it('accepting some scenes keeps the header of the whole suite\'s acceptance and records theirs; notes follow each scene\'s own', () => {
+    const soft: Gpu = { mode: 'swiftshader', adapter: SWIFTSHADER }, hard: Gpu = { mode: 'hardware', adapter: RTX };
+    const oct1: Meta = { acceptedAt: '2026-10-01T02:04:20.913Z', git: '48c7878', data: { manifestGeneratedAt: '2026-10-01T01:21:52+00:00', manifestSha256: 'aaaa' }, viewport: { width: 1280, height: 720 } };
+    const oct7: Meta = { acceptedAt: '2026-10-07T09:00:00.000Z', git: '67a912f', data: { manifestGeneratedAt: '2026-10-07T08:09:35+00:00', manifestSha256: 'bbbb' }, viewport: { width: 1280, height: 720 }, gpu: hard };
+    const scene = (n: number) => ({ query: 'q', stats: { starsDrawn: n }, consoleErrors: [], readyMs: 1 });
+    const prev: Baseline = { ...oct1, scenes: { a: scene(1015), b: scene(186), gone: scene(3) } };
+    const ids = ['a', 'b', 'c'];
+    // one scene of three: the header is still the suite's acceptance of 1 October; the scene carries its own
+    const part = lib.mergeBaseline(prev, [{ id: 'a', ...scene(667) }], oct7, ids);
+    expect(part.acceptedAt).toBe(oct1.acceptedAt);
+    expect(part.git).toBe('48c7878');
+    expect(part.data).toEqual(oct1.data);
+    expect(part.gpu).toBeUndefined();
+    expect(part.scenes.a.stats).toEqual({ starsDrawn: 667 });
+    expect(part.scenes.a.accepted).toEqual({ acceptedAt: oct7.acceptedAt, git: '67a912f', data: oct7.data, gpu: hard });
+    expect(part.scenes.b).toEqual(prev.scenes.b);
+    expect(part.scenes.gone).toBeUndefined();            // no longer in scenes.json
+    expect(lib.sceneAcceptance(part, 'a').gpu).toEqual(hard);
+    expect(lib.sceneAcceptance(part, 'b').gpu).toBeUndefined();
+    expect(lib.sceneAcceptance(part, 'b').git).toBe('48c7878');
+    // a hardware run on the new data against it: scene b alone gets the two notes, by name
+    expect(lib.acceptanceNotes(part, ['a', 'b', 'c'], oct7.data, hard)).toEqual([
+      'b: The baseline was accepted on another data build (manifest 2026-10-01T01:21:52+00:00); this run uses 2026-10-07T08:09:35+00:00. Differences may come from the data.',
+      'b: The baseline was accepted on swiftshader; this run rendered on hardware (nvidia blackwell (hardware)). Differences may come from the adapter.',
+    ]);
+    // a SwiftShader run on the old data: only scene a differs
+    expect(lib.acceptanceNotes(part, ['a', 'b'], oct1.data, soft)).toHaveLength(2);
+    expect(lib.acceptanceNotes(part, ['a', 'b'], oct1.data, soft).every((n) => n.startsWith('a: '))).toBe(true);
+    // a note that holds for every compared scene is not prefixed
+    expect(lib.acceptanceNotes(prev, ['a', 'b'], oct7.data, soft)).toEqual(['The baseline was accepted on another data build (manifest 2026-10-01T01:21:52+00:00); this run uses 2026-10-07T08:09:35+00:00. Differences may come from the data.']);
+    // the whole suite: the header is the new acceptance and no scene carries its own
+    const whole = lib.mergeBaseline(part, ids.map((id) => ({ id, ...scene(1) })), oct7, ids);
+    expect(whole.acceptedAt).toBe(oct7.acceptedAt);
+    expect(whole.gpu).toEqual(hard);
+    expect(Object.keys(whole.scenes)).toEqual(ids);
+    for (const id of ids) expect(whole.scenes[id].accepted).toBeUndefined();
+    expect(lib.acceptanceNotes(whole, ids, oct7.data, hard)).toEqual([]);
+    // no baseline yet: the first acceptance, even of one scene, writes the header
+    expect(lib.mergeBaseline(null, [{ id: 'a', ...scene(1) }], oct7, ids).git).toBe('67a912f');
+  });
+
   it('notes a star count that is not one number from frame to frame', () => {
     expect(lib.starsFramesNote(undefined, 10)).toBeNull();
     expect(lib.starsFramesNote([], 10)).toBeNull();
     expect(lib.starsFramesNote([1015], 1015)).toBeNull();
     expect(lib.starsFramesNote([965, 1043], 965)).toBe('starsDrawn changes from frame to frame: 965, 1043; the stats hold 965');
     expect(lib.starsFramesNote([2631, 2632, 2634, 2635, 2636, 2639, 2643], 2635)).toBe('starsDrawn changes from frame to frame: 2631 … 2643 (7 values); the stats hold 2635');
+  });
+
+  it('a star count that changes between frames fails a scene whose eye is always adapted, and only such a scene', () => {
+    const instant = 't=2026-10-15T00:00:00Z&smallbodies=0&adapt=instant&target=999&dist=60000';
+    const realtime = 't=2026-10-15T00:00:00Z&smallbodies=0&adapt=realtime&target=999&adaptfrom=10000,600,1800';
+    expect(lib.starsFramesFailure([667], 667, instant)).toBeNull();
+    expect(lib.starsFramesFailure(undefined, 667, instant)).toBeNull();   // not sampled (SwiftShader)
+    expect(lib.starsFramesFailure([913, 1096], 913, instant)).toBe('starsDrawn changes from frame to frame: 913, 1096; the stats hold 913 (the eye is always adapted in this scene: the settled frame must be one frame)');
+    expect(lib.starsFramesFailure([2624, 2626, 2629], 2626, realtime)).toBeNull();
+    expect(lib.starsFramesNote([2624, 2626, 2629], 2626)).not.toBeNull();
+    expect(lib.starsFramesFailure([1, 2], 1, 'target=999&adapt=instantly')).toBeNull();
+    expect(lib.starsFramesFailure([1, 2], 1, undefined)).toBeNull();
   });
 });

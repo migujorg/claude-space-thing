@@ -23,8 +23,8 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  adapterLabel, compareScene, decodePng, encodePng, extractStats, gpuLaunchArgs, gpuMismatch, gpuNote, gridFromThumb, hdrFormatOf, pageAdapterInfo,
-  pageStarsDrawnFrames, sceneQuery, starsFramesNote, statsTable, thumbFromLinear, THUMB_H, THUMB_W,
+  acceptanceNotes, adapterLabel, compareScene, decodePng, encodePng, extractStats, gpuLaunchArgs, gpuMismatch, gridFromThumb, hdrFormatOf, mergeBaseline,
+  pageAdapterInfo, pageStarsDrawnFrames, runServerOptions, sceneQuery, starsFramesFailure, starsFramesNote, statsTable, thumbFromLinear, THUMB_H, THUMB_W,
 } from './e2e-lib.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -75,15 +75,17 @@ function writeBaseline(rs, meta) {
     console.log(`Not accepting: ${bad.map((r) => r.id).join(', ')} did not render.`);
     process.exit(1);
   }
-  mkdirSync(BASE_DIR, { recursive: true });
-  const prev = baseline ?? { scenes: {} };
-  const accepted = { ...meta, scenes: { ...prev.scenes } };
-  for (const r of rs) {
-    accepted.scenes[r.id] = { query: r.query, stats: r.stats, consoleErrors: r.consoleErrors ?? [], readyMs: r.readyMs };
-    if (r.thumb) writeFileSync(resolve(BASE_DIR, `${r.id}.png`), encodePng(r.thumb, THUMB_W, THUMB_H));
+  // A settled scene of an always-adapted eye is one frame; a star count that changes between frames is not a baseline.
+  const unsteady = rs.filter((r) => starsFramesFailure(r.starsDrawnFrames, r.stats.starsDrawn, r.query));
+  if (unsteady.length) {
+    for (const r of unsteady) console.log(`Not accepting ${r.id}: ${starsFramesFailure(r.starsDrawnFrames, r.stats.starsDrawn, r.query)}`);
+    process.exit(1);
   }
-  // Drop scenes that no longer exist in scenes.json.
-  for (const id of Object.keys(accepted.scenes)) if (!suite.scenes.some((s) => s.id === id)) delete accepted.scenes[id];
+  mkdirSync(BASE_DIR, { recursive: true });
+  // The header describes the last acceptance of the whole suite; scenes accepted on their own record theirs
+  // (e2e-lib.mjs mergeBaseline). Scenes that no longer exist in scenes.json are dropped.
+  const accepted = mergeBaseline(baseline, rs, meta, suite.scenes.map((s) => s.id));
+  for (const r of rs) if (r.thumb) writeFileSync(resolve(BASE_DIR, `${r.id}.png`), encodePng(r.thumb, THUMB_W, THUMB_H));
   writeFileSync(baselinePath, JSON.stringify(accepted, null, 1) + '\n');
   console.log(`Accepted ${rs.length} scene(s) as the baseline in ${BASE_DIR}. Review the diff, then commit it.`);
   process.exit(0);
@@ -104,7 +106,7 @@ mkdirSync(OUT, { recursive: true });
 let server;
 let base = opt('base');
 if (!base) {
-  ({ server, base } = await startLocalServer(ROOT));
+  ({ server, base } = await startLocalServer(ROOT, runServerOptions()));
 }
 const browser = await chromium.launch({ headless: true, args: launchArgs });
 const vp = suite.viewport ?? { width: 1280, height: 720 };
@@ -230,13 +232,12 @@ await server?.close();
 // What rendered this run: the mode asked for and the adapter the pages got (the first scene's; they all share one
 // browser, and a scene whose adapter is not the mode's has failed above).
 const gpu = { mode: gpuMode, adapter: results.find((r) => r.adapter)?.adapter ?? null };
-const notes = [];
-if (compare && baseline.data?.manifestSha256 && baseline.data.manifestSha256 !== dataInfo.manifestSha256)
-  notes.push(`The baseline was accepted on another data build (manifest ${baseline.data.manifestGeneratedAt}); this run uses ${dataInfo.manifestGeneratedAt}. Differences may come from the data.`);
-const otherGpu = compare ? gpuNote(baseline.gpu, gpu) : null;
-if (otherGpu) notes.push(otherGpu);
+const notes = compare ? acceptanceNotes(baseline, results.map((r) => r.id), dataInfo, gpu) : [];
 for (const r of results) {
-  const unsteady = starsFramesNote(r.starsDrawnFrames, r.stats?.starsDrawn);
+  // A failure where the eye is always adapted (in the comparison below; said here when nothing is compared); a
+  // note where the adaptation runs in real time.
+  const fails = starsFramesFailure(r.starsDrawnFrames, r.stats?.starsDrawn, r.query);
+  const unsteady = fails ? (compare ? null : fails) : starsFramesNote(r.starsDrawnFrames, r.stats?.starsDrawn);
   if (unsteady) notes.push(`${r.id}: ${unsteady}`);
 }
 for (const r of results) {
@@ -251,6 +252,11 @@ for (const r of results) {
   }
   const scene = suite.scenes.find((s) => s.id === r.id);
   r.compare = compareScene(r, ref, scene?.tolerance);
+  const unsteady = starsFramesFailure(r.starsDrawnFrames, r.stats?.starsDrawn, r.query);
+  if (unsteady) {
+    r.compare.failures.push(unsteady);
+    r.compare.pass = false;
+  }
 }
 
 const report = {

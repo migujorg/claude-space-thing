@@ -89,3 +89,82 @@ export function pointAppearance(eye: EyeFrame, E: { Y: number; S: number }, bg: 
   const Lc = bY + (E.Y * unscattered * x) / o.coneSummationSr;
   return { visible, deltaLd, wantedFlux, drawnFlux, overflowFlux: wantedFlux - drawnFlux, peakLd, colourExponent: colourExponent(Lc, o.scene, peakLd, eye.display) };
 }
+
+// ── The local background of a point and the cull (shaders.ts CULL_SHADER; renderer.ts steps 2–4) ──────────────
+// The reference for what the GPU does, unit-tested (tests/eye-points.test.ts). The point image (PT) holds every
+// source in the frame, whether the eye can pick it out or not: its light reaches the eye either way. So the veil
+// a source is judged against is a function of the scene alone, and no verdict depends on an earlier one (a
+// source's own or a neighbour's). The cull decides only what is displayed as a point.
+
+/** One level of the retina pyramid: its weight in the CIE 146 kernel fit and its Gaussian's σ in pixels. */
+export interface VeilLevel {
+  weight: number;
+  sigmaPx: number;
+}
+
+/** A point source in the frame: position in pixels, illuminance at the eye in lux (photopic Y, scotopic S). */
+export interface PointSource {
+  x: number;
+  y: number;
+  E: { Y: number; S: number };
+}
+
+/**
+ * The veil level a point's local background is read at: the first whose Gaussian's equivalent area 2πσ_k²·Ω_px
+ * reaches the Ricco area, so a point's own core glare does not mask it (docs/eye-model.md §6); the last level
+ * when none does.
+ */
+export function backgroundLevel(levels: VeilLevel[], pixelSr: number, riccoAreaSr: number): number {
+  let k = 0;
+  while (k < levels.length - 1 && 2 * Math.PI * levels[k].sigmaPx ** 2 * pixelSr < riccoAreaSr) k++;
+  return k;
+}
+
+/**
+ * What a source of unit illuminance adds to that background r pixels away, per pixel solid angle (multiply by
+ * E/Ω_px for cd/m²): Σ_{k≥kR} w_k·exp(−r²/2σ_k²)/(2πσ_k²).
+ */
+export function veilKernelPerPixel(levels: VeilLevel[], kR: number, rPx: number): number {
+  let v = 0;
+  for (let k = kR; k < levels.length; k++) {
+    const s2 = levels[k].sigmaPx ** 2;
+    v += (levels[k].weight * Math.exp(-(rPx * rPx) / (2 * s2))) / (2 * Math.PI * s2);
+  }
+  return v;
+}
+
+/** A source's own light in its background, at its own position: the kernel at zero distance (Eye.pts.w). */
+export function ownVeilPerPixel(levels: VeilLevel[], kR: number): number {
+  return veilKernelPerPixel(levels, kR, 0);
+}
+
+/**
+ * The point sources' part of the background texture at each source (cd/m²): the veil, at scales from the Ricco
+ * area up, of EVERY source given, its own light included. There is no verdict among the arguments.
+ */
+export function pointVeil(sources: PointSource[], levels: VeilLevel[], kR: number, pixelSr: number): { Y: number; S: number }[] {
+  return sources.map((a) => {
+    let Y = 0, S = 0;
+    for (const b of sources) {
+      const k = veilKernelPerPixel(levels, kR, Math.hypot(a.x - b.x, a.y - b.y)) / pixelSr;
+      Y += b.E.Y * k;
+      S += b.E.S * k;
+    }
+    return { Y, S };
+  });
+}
+
+/**
+ * The cull's local background of a source (cd/m²): the background texture at the source less the source's own
+ * light there (never below zero: a texture from before the source was in the frame does not hold it), plus the
+ * analytic veil (Sun, off-frame bodies).
+ */
+export function cullBackground(texture: { Y: number; S: number }, own: { Y: number; S: number }, analytic: { Y: number; S: number }): { Y: number; S: number } {
+  return { Y: Math.max(texture.Y - own.Y, 0) + analytic.Y, S: Math.max(texture.S - own.S, 0) + analytic.S };
+}
+
+/** The verdict: is the point above the threshold of the eye looking at it, adapted to that background? */
+export function pointVisible(eye: EyeFrame, E: { Y: number; S: number }, bg: { Y: number; S: number }): boolean {
+  const o = pointObserver(eye, bg);
+  return blackwellEquivalent(E.Y, E.S, o.mesopic.m) >= o.thresholdBwLux;
+}
