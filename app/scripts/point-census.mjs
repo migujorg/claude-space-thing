@@ -200,6 +200,10 @@ const pageLone = async ({ n, lux, line }) => {
   const R = P.r ?? P;
   const set = R.setStars.bind(R);
   R.setStars = () => {};   // the sky controller must not put its catalogue back while this runs
+  // The eye stays as the scene left it: the adaptation is not measured again while the test source comes and goes.
+  // Otherwise the source would change the pupil, and with it the width of every other point's splat at a narrow
+  // field, and the veil without the source would not be the veil the source is seen against.
+  R.debugSkip.add('adapt');
   if (P !== R) P.setStars = () => {};
   const snap = window.__app.snapshot();
   const o = snap.camera.orient, W = R.targets.W, H = R.targets.H;
@@ -273,14 +277,16 @@ try {
     }
     await page.close();
     if (lone && !row.error) {
-      const ok = row.lone.rows.filter((r) => !r.hidden), bound = LONE_BOUND[row.lone.format];
-      const worst = Math.max(...ok.map((r) => Math.abs(r.residual)));
-      const moved = ok.filter((r) => r.levelMoved).length;
-      // a source bright enough to move the adaptation changes the level read between the two frames: no measurement
-      row.fail = !ok.length || moved > 0 || !(worst < bound);
+      const clear = row.lone.rows.filter((r) => !r.hidden), bound = LONE_BOUND[row.lone.format];
+      // A source that moves the adaptation enough to change the level read gives no measurement at that place.
+      const ok = clear.filter((r) => !r.levelMoved), moved = clear.length - ok.length;
+      const worst = ok.length ? Math.max(...ok.map((r) => Math.abs(r.residual))) : NaN;
+      row.fail = ok.length > 0 && !(worst < bound);
       rows.push(row);
-      console.log(`${scene.id.padEnd(28)} ${row.lone.size.join('x')} ${row.lone.format} level ${ok[0]?.level}: ${ok.length} positions (${row.lone.rows.length - ok.length} hidden)  largest |residual| / own light ${worst.toExponential(2)} (bound ${bound})  own / background, median ${ok.map((r) => r.ownOverBackground).sort((a, b) => a - b)[ok.length >> 1]?.toExponential(1)}` +
-        (moved ? `  the level read moved with the source at ${moved} positions: use a smaller --lux` : '') + (row.fail ? '  FAIL' : ''));
+      console.log(`${scene.id.padEnd(28)} ${row.lone.size.join('x')} ${row.lone.format} ` + (ok.length
+        ? `level ${ok[0].level}: ${ok.length} positions  largest |residual| / own light ${worst.toExponential(2)} (bound ${bound})  own / background, median ${ok.map((r) => r.ownOverBackground).sort((a, b) => a - b)[ok.length >> 1].toExponential(1)}`
+        : 'no position to measure') +
+        (row.lone.rows.length - clear.length ? `  (${row.lone.rows.length - clear.length} behind a body)` : '') + (moved ? `  (${moved} not measured: the level read moved with the source)` : '') + (row.fail ? '  FAIL' : ''));
       if (line) console.log('  along the line: ' + row.lone.rows.map((r) => `${r.x.toFixed(2)}: ${r.hidden ? 'hidden' : r.residual.toExponential(1)}`).join('  '));
       continue;
     }
