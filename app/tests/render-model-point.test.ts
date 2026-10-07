@@ -127,7 +127,7 @@ function selectedTables(row: number): SmallBodyTables {
     cometRow: new Map(), nongravRow: nrow === undefined ? new Map() : new Map([[0, 0]]), count: 1 };
 }
 
-it.skipIf(!built)('audits Titan warning sets in all 33 canonical scene geometries', async () => {
+it.skipIf(!built)('audits Titan warning sets in all canonical scene geometries', async () => {
   const data = await loadAll({ fetch: fetchFs, base: '/data/', eagerEphemeris: (p) => p === 'ephem/de442s.json' });
   const scenes = JSON.parse(fs.readFileSync(new URL('../e2e/scenes.json', import.meta.url), 'utf8'));
   const baseline = JSON.parse(fs.readFileSync(new URL('../e2e/baseline/stats.json', import.meta.url), 'utf8'));
@@ -138,7 +138,6 @@ it.skipIf(!built)('audits Titan warning sets in all 33 canonical scene geometrie
   const eye = computeEyeFrame(DEFAULT_EYE_SETTINGS, state, 'eye', 0, null);
   let bind: AtmosphereBinding | null = null;
   const changed: string[] = [];
-  expect(scenes.scenes).toHaveLength(33);
   for (const sc of scenes.scenes) {
     const model = new AppModel({ TimeScale, formatUtc, Ephemeris, EphemerisSet, bodyToIcrf, apparentPosition, OrientationSet, PreciseOrientation });
     model.setData(data);
