@@ -60,9 +60,17 @@ def run(ctx: BuildContext) -> None:
     rj, rdiag = rings.rings_json(ctx)
     write_json(ctx, "rings.json", rj, "light", indent=None)
     for n, prof in rdiag.items():
+        if n.endswith("-components"):
+            continue
         tau = prof.tau[np.isfinite(prof.tau)]
         print(f"[light] rings {n}: {prof.radius[0]:.0f}-{prof.radius[-1]:.0f} km, {prof.radius.size} bins, "
               f"max normal tau {tau.max():.2f}")
+    for key in ("599", "799", "899"):
+        comp = rj[key].get("components") or {}
+        if comp.get("value"):
+            m = comp["value"]
+            print(f"[light] rings {key} components: {len(m['components'])} ({comp['label']}), phase functions "
+                  f"{', '.join(m['phaseFunctions'])}")
 
     sbc = smallbody_colors.build(ctx)
     write_json(ctx, "smallbody-class-colors.json", sbc, "light")

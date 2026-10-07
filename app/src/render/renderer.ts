@@ -28,6 +28,7 @@ import { LIMB_N, limbChordTable } from './atmosphere';
 import { SurfaceGpu } from './surfaceGpu';
 import { AtmosphereGpu, ATM_UB_BYTES, type ApColumns, type AtmosphereBinding } from './atmosphereGpu';
 import type { RingPrep } from './rings';
+import { CMP_RECORD_VEC4 } from './ringComponents';
 import type { BackgroundTargets } from './sky/background';
 import { LAW } from './spatial';
 import { cameraGeom, prepareFrame, type PreparedFrame } from './frame';
@@ -240,6 +241,7 @@ export class Renderer {
   private ringProfBuf: GPUBuffer | null = null;
   private ringProfKey: unknown[] = [];
   private ringProfOffsets: number[] = [];
+  private ringCmpOffsets: number[] = [];
   private dummyStorage: GPUBuffer;
   /** Surface-map page cache budget (MiB), albedo 2/3 and height 1/3. */
   surfaceCacheMiB = 1024;
@@ -1496,32 +1498,44 @@ export class Renderer {
     return t.createView({ dimension: '2d-array' });
   }
 
-  /** Ring records (14 vec4 each, struct Ring) and their cumulative radial profiles. Returns the ring count. */
+  /**
+   * Ring records (15 vec4 each, struct Ring) and the ring-profile buffer: per system its classic cumulative profile
+   * and reflectance tables, then its component block (ringComponents.ts: per-frame records, rewritten every frame,
+   * then static tables). Returns the ring count.
+   */
   private writeRings(rings: RingPrep[]): number {
     const d = this.device;
     if (!rings.length) return 0;
     // Profiles: re-upload only when the set of ring systems changes.
-    const key = rings.map((r) => r.profile);
+    const key = rings.flatMap((r) => [r.profile, r.cmp?.packed ?? null]);
     if (key.length !== this.ringProfKey.length || key.some((k, i) => k !== this.ringProfKey[i])) {
-      // Per ring system: cumulative profile (stride vec4 per bin edge), then the reflectance tables.
       const offsets: number[] = [];
+      const cmpOffsets: number[] = [];
       let total = 0;
       for (const r of rings) {
         offsets.push(total);
         total += r.profile.cumulative.length / 4 + (r.profile.tables ? r.profile.tables.length / 4 : 0);
+        cmpOffsets.push(r.cmp ? total : -1);
+        if (r.cmp) total += r.cmp.packed.sizeVec4;
       }
       const data = new Float32Array(Math.max(total * 4, 64));
       rings.forEach((r, i) => {
         data.set(r.profile.cumulative, offsets[i] * 4);
         if (r.profile.tables) data.set(r.profile.tables, offsets[i] * 4 + r.profile.cumulative.length);
+        if (r.cmp) data.set(r.cmp.packed.staticData, (cmpOffsets[i] + r.cmp.packed.count * CMP_RECORD_VEC4) * 4);
       });
       this.ringProfBuf?.destroy();
       this.ringProfBuf = d.createBuffer({ size: data.byteLength, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST, label: 'ring profiles' });
       d.queue.writeBuffer(this.ringProfBuf, 0, data);
       this.ringProfKey = key;
       this.ringProfOffsets = offsets;
+      this.ringCmpOffsets = cmpOffsets;
     }
-    const STRIDE = 56;
+    // Component records at this frame's time.
+    rings.forEach((r, i) => {
+      if (r.cmp && this.ringCmpOffsets[i] >= 0) d.queue.writeBuffer(this.ringProfBuf!, this.ringCmpOffsets[i] * 16, r.cmp.records);
+    });
+    const STRIDE = 60;
     const a = new Float32Array(rings.length * STRIDE);
     rings.forEach((r, i) => {
       const o = i * STRIDE;
@@ -1529,10 +1543,11 @@ export class Renderer {
       const base = this.ringProfOffsets[i];
       const tabBase = p.tables ? base + p.cumulative.length / 4 : -1;
       a.set([...r.n, r.D, ...r.e1, r.beta, ...r.e2, r.near ? 1 : 0, ...r.E1, 0, ...r.E2, 0, ...r.o, 0], o);
-      a.set([...r.normal, p.rMin, p.rMax, p.bins, base, p.stride], o + 24);
+      a.set([...r.normal, r.rIn, r.rOut, p.bins, base, p.stride], o + 24);
       a.set([...r.sunDir, r.sunDistKm, ...r.esun, tabBase, r.sunRadiusKm, 0, 0], o + 32);
       const M = r.M;
       a.set([M[0], M[1], M[2], 0, M[3], M[4], M[5], 0, M[6], M[7], M[8], 0], o + 44);
+      a.set(r.cmp ? [this.ringCmpOffsets[i], r.cmp.packed.count, r.cmp.poleSense, r.cmp.packed.zMax] : [0, 0, 1, 0], o + 56);
     });
     if (!this.ringsBuf || this.ringsBuf.size < a.byteLength) {
       this.ringsBuf?.destroy();
