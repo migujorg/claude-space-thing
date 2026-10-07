@@ -84,8 +84,8 @@ def test_uranus_support_is_independent_of_actual_manifest_window(built):
         # The build window must not redefine the source's support. Runtime width/draw gating is tested by
         # app/tests/render-ring-components.test.ts against this actual manifest, including zero light/extinction.
         assert span != window
-        assert span["startEt"] == rings_uranus.GEOMETRY_VALIDITY["startEt"]
-        assert span["endEt"] == rings_uranus.GEOMETRY_VALIDITY["endEt"]
+        assert span["startEt"] == rings_uranus.geometry_validity(c["id"].removeprefix("uranus-"))["startEt"]
+        assert span["endEt"] == rings_uranus.geometry_validity(c["id"].removeprefix("uranus-"))["endEt"]
 
 
 def test_tiled_bins_cover_the_band_exactly():
@@ -271,3 +271,85 @@ def test_jupiter_main_ring_vs_measured_phase_curve(built):
             assert abs(ratio - 1) < 0.35, (a, ratio)
         else:
             assert 0.35 < ratio < 0.7, (a, ratio)
+
+# -------------------------------------------------------------------------------- centreline extrapolation
+
+def test_supported_uranus_numerical_payload_is_bit_for_bit_unchanged(built):
+    import hashlib
+    import json
+    # Captured at ff7db88 before adding the estimate: only the historical numerical payload, not support/method text.
+    values = [{k: c[k] for k in ('id', 'inner', 'outer', 'profile', 'layer', 'thin')}
+              for c in _model(built[1], '799')['components'][:10]]
+    assert hashlib.sha256(json.dumps(values, sort_keys=True).encode()).hexdigest() == \
+        'eafebb86146e93eaf27f756d4d8eefbe760302c23c0d3dcd895b3ba1709f622c'
+
+
+@pytest.mark.parametrize('ring,width', list(zip(rings_uranus.RINGS,
+    [2.316, 2.684, 3.231, 7.277, 8.516, 2.227, 3.258, 4.977, 2.3, 58.574])))
+def test_uranus_estimate_has_published_constant_width_and_cor_ellipse(built, ring, width):
+    c = next(c for c in _model(built[1], '799')['components'] if c['id'] == f'uranus-{ring}')
+    alt = c['outsideSupportEstimate']
+    assert alt['label'] == 'estimated'
+    e = alt['value']
+    assert e['provenance']['geometry']['label'] == 'estimated'
+    assert e['layer'] == c['layer'] and e['thin'] == c['thin']
+    assert e['provenance']['reflectance'] == c['provenance']['reflectance']
+    cor = dict(rings_uranus.orbits()[ring]['COR'], modes=[])
+    et = rc.et_of_tdb_calendar(2026, 10, 1)
+    dt = (et - rings_uranus.EPOCH_ET) / rc.DAY
+    lam = np.arange(0., 360., .25)
+    ri, ro = (rc.edge_radius(e[k], lam, dt) for k in ('inner', 'outer'))
+    assert np.allclose(ro-ri, width, rtol=0, atol=1e-10)
+    assert np.allclose((ro+ri)/2, rc.edge_radius(cor, lam, dt), rtol=0, atol=1e-10)
+    assert e['profile']['widthScaling'] is False
+    integral = sum(e['profile']['values']) * e['profile']['uStep'] * width
+    # Compare the pre-serialization equivalent depth; historical uStep rounds to 6 decimals.
+    depth = built[2]['799-components']['profiles'][ring].ed
+    assert integral == pytest.approx(depth, rel=3e-5)
+    assert all(s in built[0].sources for s in alt['sources'])
+
+
+def test_uranus_estimate_uncertainties_are_computed_from_the_transcription():
+    ctx = BuildContext(796998128., 891692528.)
+    method = rings_uranus.estimate_method('epsilon', ctx)
+    # Report's independently worked apse phase displacement at the actual window endpoints.
+    for et, expected in [(ctx.start_et, .430801), (ctx.end_et, .463077)]:
+        dt = (et - rings_uranus.EPOCH_ET) / rc.DAY
+        disp = 405.894 * math.sin(math.radians(math.hypot(.009, dt * .0000042)))
+        assert disp == pytest.approx(expected, abs=5e-7)
+        assert f'{disp:.6f} km' in method
+    assert 'not dynamical change' in method and '20 to 97 km' in method
+    assert '2050' in method and 'not a measurement' in method
+    assert 'undefined' in method
+    assert '5.509 km' in rings_uranus.estimate_method('gamma', ctx)
+
+
+@pytest.mark.parametrize('ring,end', [(r, '2002-07-29' if r in ('eta', 'delta') else
+    '1996-04-10' if r == 'lambda' else '2006-09-20') for r in rings_uranus.RINGS])
+def test_uranus_each_ring_has_its_own_last_accepted_datum(ring, end):
+    row = rings_uranus.support_widths()[ring]
+    assert row['last_datum'] == end
+    assert rings_uranus.geometry_validity(ring)['endEt'] == rings_uranus._date_et(end) + rc.DAY
+
+
+@pytest.mark.parametrize('ring,radial,vertical', list(zip(rings_uranus.RINGS,
+    [(.554312,.595816),(.460138,.494631),(.496209,.533380),(.437337,.470066),(.437593,.470055),
+     (None,None),(.562849,.604926),(None,None),(None,None),(.430801,.463077)],
+    [(.598834,.639105),(.491610,.524065),(.710839,.757385),(.435571,.462914),(.668545,.709939),
+     (None,None),(None,None),(None,None),(None,None),(None,None)])))
+def test_all_cor_formal_phase_displacements_match_research_worked_numbers(ring, radial, vertical):
+    # Report values were calculated independently; no physical validation target selects this model.
+    for j, et in enumerate((796998128., 891692528.)):
+        d = rings_uranus.formal_displacements(ring, et)
+        for axis, values in [('radial', radial), ('vertical', vertical)]:
+            if values[j] is None:
+                assert d[axis] is None
+            else:
+                assert d[axis] == pytest.approx(values[j], abs=5e-7)
+
+
+def test_uranus_method_preserves_exact_window_and_reference_epochs():
+    method = rings_uranus.estimate_method('epsilon', BuildContext(796998128., 891692528.))
+    assert 'Data-window start ET 796998128:' in method
+    assert 'Data-window end ET 891692528:' in method
+    assert '(et - 211982400) / (86400 * 365.25)' in method
