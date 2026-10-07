@@ -124,11 +124,11 @@ struct EarthIn {
 };
 
 /** One part of the pixel (earth.ts EarthPart): share, direct and diffuse radiance factors, emission transmission. */
-struct EarthPart { w: f32, dir: vec4f, dif: vec4f, emit: vec4f };
+struct EarthPart { w: f32, dir: vec4f, dif: vec4f, emit: vec4f, surfaceDir: vec4f, surfaceDif: vec4f, lowerDirect: f32, lowerDiffuse: f32 };
 struct EarthParts { clear: EarthPart, cloudy: EarthPart, gap: f32, gapEmit: f32, glintShare: f32, glintMax: f32 };
 
 /** One τ node of a cloud (earth.ts earthParts, the node loop's body): direct, diffuse and emission terms (w unused). */
-fn cloudNode(tau: f32, g: f32, Rs: vec4f, owRg: f32, m0: f32, mu0: f32, mu: f32) -> EarthPart {
+fn cloudNode(tau: f32, g: f32, Rs: vec4f, owRg: f32, ow: f32, m0: f32, mu0: f32, mu: f32) -> EarthPart {
   let tp = (1.0 - g * g) * tau;
   var rbar = 0.0;
   var tdir = 0.0;
@@ -137,15 +137,21 @@ fn cloudNode(tau: f32, g: f32, Rs: vec4f, owRg: f32, m0: f32, mu0: f32, mu: f32)
     tdir += 2.0 * G4W[k] * G4X[k] * exp(-tp / G4X[k]);
   }
   let R0 = cloudPlaneAlbedo(tau, g, mu0);
-  let through = exp(-tp / max(mu, 1e-4)) + max(1.0 - rbar - tdir, 0.0) * escapeFn(mu);
+  let tView = exp(-tp / max(mu, 1e-4));
+  let through = tView + max(1.0 - rbar - tdir, 0.0) * escapeFn(mu);
   let multi = 1.0 / (1.0 - Rs * rbar);
   // The glint seen through a thin cloud: the unscattered beam both ways.
-  let glintThrough = owRg * exp(-tp / max(m0, 1e-4)) * exp(-tp / max(mu, 1e-4));
+  let glintThrough = owRg * exp(-tp / max(m0, 1e-4)) * tView;
+  let surfaceDir = m0 * (1.0 - R0) * multi * Rs * through + glintThrough;
+  // Water's Fresnel skylight is below the cloud, including at τ=0.
+  let surfaceDif = (1.0 - rbar) * multi * (Rs + ow * FRESNEL_DIFFUSE) * through;
+  // Directional lower-air light: no angular redistribution on the second passage, no cloud/air LUT feedback.
   return EarthPart(
     1.0,
-    m0 * (R0 * escapeFn(mu) + (1.0 - R0) * multi * Rs * through) + glintThrough,
-    rbar * escapeFn(mu) + (1.0 - rbar) * multi * Rs * through,
+    m0 * R0 * escapeFn(mu) + surfaceDir,
+    rbar * escapeFn(mu) + surfaceDif,
     multi * through,
+    surfaceDir, surfaceDif, (1.0 - R0) * tView, (1.0 - rbar) * tView,
   );
 }
 
@@ -191,18 +197,22 @@ fn earthParts(e: EarthIn, mu0: f32, mu: f32, cosBeta: f32, cosOmega: f32) -> Ear
     if (e.windKnown > 0.5) { rg = glintRF(cosBeta, mu, cosOmega, e.u10, mu0); }
     else { o.glintShare = clearW * ow; o.glintMax = glintMaxRF(cosBeta, mu, cosOmega, mu0); }
   }
-  o.clear = EarthPart(clearW, Rs * m0 + ow * rg, Rs + ow * FRESNEL_DIFFUSE, vec4f(1.0));
-  o.cloudy = EarthPart(cloudy, vec4f(0.0), vec4f(0.0), vec4f(0.0));
+  o.clear = EarthPart(clearW, Rs * m0 + ow * rg, Rs + ow * FRESNEL_DIFFUSE, vec4f(1.0), vec4f(0.0), vec4f(0.0), 0.0, 0.0);
+  o.cloudy = EarthPart(cloudy, vec4f(0.0), vec4f(0.0), vec4f(0.0), vec4f(0.0), vec4f(0.0), 0.0, 0.0);
   // Each τ node is a sub-pixel of its own (independent pixel approximation), weighted by its share of the cloud.
   if (cloudy > 0.0) {
     let owRg = ow * rg;
     for (var n = 0; n < 3; n++) {
       let w = fRet / cloudy * wts[n];
       if (w <= 0.0) { continue; }
-      let q = cloudNode(taus[n], g, Rs, owRg, m0, mu0, mu);
+      let q = cloudNode(taus[n], g, Rs, owRg, ow, m0, mu0, mu);
       o.cloudy.dir += w * q.dir;
       o.cloudy.dif += w * q.dif;
       o.cloudy.emit += w * q.emit;
+      o.cloudy.surfaceDir += w * q.surfaceDir;
+      o.cloudy.surfaceDif += w * q.surfaceDif;
+      o.cloudy.lowerDirect += w * q.lowerDirect;
+      o.cloudy.lowerDiffuse += w * q.lowerDiffuse;
     }
     if (fUn > 0.0) {
       var unTau = e.unTau;
@@ -210,10 +220,14 @@ fn earthParts(e: EarthIn, mu0: f32, mu: f32, cosBeta: f32, cosOmega: f32) -> Ear
       for (var n = 0; n < 8; n++) {
         let w = fUn / cloudy * unP[n / 4][n % 4];
         if (w <= 0.0) { continue; }
-        let q = cloudNode(unTau[n / 4][n % 4], CLOUD_G_LIQUID, Rs, owRg, m0, mu0, mu);
+        let q = cloudNode(unTau[n / 4][n % 4], CLOUD_G_LIQUID, Rs, owRg, ow, m0, mu0, mu);
         o.cloudy.dir += w * q.dir;
         o.cloudy.dif += w * q.dif;
         o.cloudy.emit += w * q.emit;
+        o.cloudy.surfaceDir += w * q.surfaceDir;
+        o.cloudy.surfaceDif += w * q.surfaceDif;
+        o.cloudy.lowerDirect += w * q.lowerDirect;
+        o.cloudy.lowerDiffuse += w * q.lowerDiffuse;
       }
     }
   }
