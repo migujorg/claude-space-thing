@@ -136,7 +136,6 @@ def test_companion_signal_finds_the_right_parity():
 # ---------------------------------------------------------------------------------------------- committed cases
 
 
-@pytest.mark.skipif(not CASES, reason="no validation cases built")
 def test_report_run_line_names_the_adapter_and_machine():
     """§7's run line says what rendered the run when the runner recorded it (scripts/validate.mjs `gpu`, `host`)."""
     from pipeline.validation import report
@@ -157,6 +156,7 @@ def test_report_run_line_names_the_adapter_and_machine():
         ", rendered by SwiftShader (software WebGPU), adapter `unnamed adapter`"
 
 
+@pytest.mark.skipif(not CASES, reason="no validation cases built")
 @pytest.mark.parametrize("path", CASES, ids=[p.parent.name for p in CASES])
 def test_case_file(path: Path):
     c = json.loads(path.read_text(encoding="utf-8"))
