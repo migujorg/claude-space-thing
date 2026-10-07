@@ -2,8 +2,12 @@
 
 Read against generator commit `aa04a34`. The research table
 `pipeline/src/pipeline/syn_tables/hilda_2025.json` is loaded only by
-`pipeline.syn_sources.hilda_model()` and its tests. The synthetic stage does
-**not** consume or register it. Current product/inspector statements remain true.
+`pipeline.syn_sources.hilda_model()` and its tests. At `9178ae1`, the synthetic
+stage also registers its citation metadata solely to explain why the model is
+inactive in the product/inspector; it does **not** consume the fitted inputs.
+Root's reviewed decision is to keep it inactive because of the missing family
+coefficients, magnitude coefficients, spline end conditions and real-valued
+Eq. 4 convention, rather than the historical HCM/component count comparison.
 
 Source: Vokrouhlický, Nesvorný, Brož, Bottke, Deienno, Fuls & Shelly,
 *Orbital and absolute magnitude distribution of Hilda population*, AJ 169, 242
@@ -126,6 +130,6 @@ was checked **before** downloading any catalogue/list; all are below 200 MB.
 | https://zenodo.org/api/records/14959240/files/1911_Schubart_family.list_060_WO_INTERLOPERS/content | 15:27:14.079334 | 2,349,136 | All membership identifiers/H |
 
 The Zenodo record licenses the catalogue CC-BY-4.0. The source paper is an
-author manuscript. A pipeline Download/SourceRecord must be registered when
-and only when an activated stage uses these inputs; this preparatory table
-must not make current products claim the new model.
+author manuscript. A model-data Download must be registered when and only when
+an activated stage uses those inputs. The citation SourceRecord now explains
+inactivity; current products do not claim that the fitted model is used.
