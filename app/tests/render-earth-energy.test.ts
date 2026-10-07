@@ -6,7 +6,7 @@
 // varies by 10–20 % with clouds and the hemisphere in view (photometry.json uncertainty).
 
 import { describe, expect, it } from 'vitest';
-import { earthParts, earthShade, type XYZS } from '../src/render/earth';
+import { earthAtmosphereRadiance, earthParts, earthShade, type XYZS } from '../src/render/earth';
 import { atmosphereModelFromData, precomputeAtmosphere, ProfileGrid, skyIrradianceK, sunTransmittanceK, viewPath } from '../src/render/atmosphere';
 import { f16ToNumber } from '../src/render/surface';
 import { DATA_DIR } from './core-data';
@@ -133,15 +133,9 @@ describe.skipIf(!builtAtm)('Earth energy check with the atmosphere (real layers 
         const path = viewPath(model, tab, G, p, obs, sun, cth, 24);
         sunTransmittanceK(model, tab, 0, mu0, ts0); skyIrradianceK(model, tab, 0, mu0, es0);
         sunTransmittanceK(model, tab, cth, mu0, tsc); skyIrradianceK(model, tab, cth, mu0, esc);
-        const unknownW = Math.max(1 - pr.clear.w - pr.cloudy.w, 0);
+        const rho = earthAtmosphereRadiance(pr, path, { ts0, es0, tsc, esc }, w, mu0);
         for (let c = 0; c < 4; c++) {
-          let rho = 0;
-          for (let k = 0; k < K; k++) {
-            const clearRad = Math.PI * path.L[k] + path.Td[k] * (pr.clear.dir[c] * ts0[k] + pr.clear.dif[c] * es0[k]);
-            const cloudRad = Math.PI * path.Lc[k] + path.Tcd[k] * (pr.cloudy.dir[c] * tsc[k] + pr.cloudy.dif[c] * esc[k]);
-            rho += w[c][k] * (pr.clear.w * clearRad + pr.cloudy.w * cloudRad + unknownW * Math.PI * path.L[k]);
-          }
-          A[c] += (rho * mu * dOmega) / Math.PI;
+          A[c] += (rho[c] * mu * dOmega) / Math.PI;
           A0[c] += ((pr.clear.w * pr.clear.dir[c] + pr.cloudy.w * pr.cloudy.dir[c]) * mu * dOmega) / Math.PI;
         }
         unknown += (pr.gap * mu * dOmega) / Math.PI;
