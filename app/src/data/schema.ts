@@ -441,6 +441,9 @@ export interface RingSystem {
   planet: number;
   /** Radial profiles of normal optical depth, each from one measured occultation cut. */
   opticalDepth: Sourced<RingProfile[]>;
+  /** Optional reconstructed optical depth, with its own provenance. Preferred when its label is admitted;
+   * otherwise opticalDepth supplies the unchanged archive measurement (Saturn at Strict). */
+  opticalDepthEstimate?: Sourced<RingProfile[]>;
   /** Ring I/F model for the lit and unlit faces (per CIE channel, any geometry in its domain), calibrated on the
    *  measurements below; `unknown` where no measurement exists. See docs/architecture.md §6. */
   reflectance: Sourced<RingReflectance>;
