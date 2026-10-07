@@ -313,4 +313,5 @@ def build_planet(ctx: BuildContext, p: Planet) -> dict:
 
 
 def build(ctx: BuildContext, work: Path) -> list[dict]:
-    return [build_planet(ctx, p) for p in PLANETS]
+    only = set(ctx.param("surfaces.bodies"))
+    return [build_planet(ctx, p) for p in PLANETS if not only or p.naif in only]
