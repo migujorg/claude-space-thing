@@ -163,6 +163,19 @@ def fingerprint(stage: str, depends: tuple[str, ...], params: dict, window: tupl
 # ------------------------------------------------------------------------------------------------ manifest state
 
 
+def _partial_params(stage: str, ctx: BuildContext) -> dict:
+    """Operations that retain products built by an earlier run, not complete profile output.
+
+    Level caps and DAMIT omission define complete output for their fingerprinted configuration. Body/layer
+    filters and orientation-only updates instead leave some products uncertified by this run's code hash.
+    """
+    keys = {
+        "surfaces": ("surfaces.bodies", "surfaces.earthLayers"),
+        "shapes": ("shapes.only", "shapes.reorient"),
+    }.get(stage, ())
+    return {k: v for k in keys if (v := ctx.param(k))}
+
+
 def read_manifest() -> dict:
     p = OUT / "manifest.json"
     if not p.exists():
@@ -470,6 +483,11 @@ def adopt(ctx: BuildContext, plan: Plan) -> int:
         rec = records.get(name, {})
         code = code_closure(name)
         fp = fingerprint(name, deps, ctx.params, window, products, code)
+        partial = _partial_params(name, ctx)
+        if partial:
+            rows.append((name, "NOT ADOPTABLE", f"partial build parameter(s) set ({', '.join(partial)}): "
+                         "adopt without them"))
+            continue
         if rec:
             if rec.get("status") == "built" and rec.get("fingerprint") == fp["fingerprint"]:
                 rows.append((name, "up to date", "already recorded"))
@@ -539,6 +557,8 @@ def _why(name: str, plan: Plan, rec: dict, fp: dict, present: bool, why_not: str
         return "no completed build recorded"
     if rec.get("status") == "failed":
         return "the previous run failed"
+    if rec.get("status") == "partial":
+        return "the previous run was partial"
     if not present:
         return f"products incomplete: {why_not}"
     changed = [k for k in ("code", "params", "window", "inputs") if k in rec and rec[k] != fp[k]]
@@ -618,10 +638,12 @@ def run(ctx: BuildContext, plan: Plan, *, keep_going: bool = True, dry_run: bool
                 outcomes[name] = Outcome("would run", f"after {', '.join(after)}")
             continue
         fp = fingerprint(name, deps, ctx.params, window, products)
+        partial = _partial_params(name, ctx)
         rec = records.get(name, {})
         present, why_not = products_present(products, name)
         if name not in plan.forced:
-            if rec.get("fingerprint") == fp["fingerprint"] and rec.get("status") == "built" and present:
+            if (not partial and rec.get("fingerprint") == fp["fingerprint"]
+                    and rec.get("status") == "built" and present):
                 outcomes[name] = Outcome("up to date", f"built {rec.get('finishedAt', '?')}",
                                          product_bytes=_stage_bytes(products, name),
                                          products=_stage_count(products, name))
@@ -668,8 +690,10 @@ def run(ctx: BuildContext, plan: Plan, *, keep_going: bool = True, dry_run: bool
         products = {k: v for k, v in products.items() if v.get("stage") != name}
         products.update(mine)
         # The record keeps the fingerprint of the inputs as they were when the stage started.
-        records[name] = {"status": "built", "finishedAt": _now(), "seconds": round(secs, 1), "downloadedBytes": got,
+        records[name] = {"status": "partial" if partial else "built",
+                         "finishedAt": _now(), "seconds": round(secs, 1), "downloadedBytes": got,
                          "profile": None if plan.explicit else plan.profile,
+                         **({"partialParams": partial} if partial else {}),
                          **{k: fp[k] for k in ("fingerprint", "code", "params", "window", "inputs")}}
         _save(ctx, records)
         o = outcomes[name] = Outcome("built", "", secs, got, sum(v.get("bytes", 0) for v in mine.values()), len(mine))

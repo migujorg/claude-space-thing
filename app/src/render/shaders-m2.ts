@@ -2,6 +2,15 @@
 // spatial.ts), surface-map virtual texturing (mirror of surface.ts), height normals and self-shadowing,
 // rings (mirror of rings.ts) and the "not measured" gap hatch.
 
+/** Vector angle: keeps the transverse component at opposition and at conjunction.
+ * Unlike acos(dot), this does not amplify cosine rounding near either endpoint.
+ * Inputs must be nonzero directions; they need not be exactly unit length. */
+export const ANGLE_WGSL = /* wgsl */ `
+fn vectorAngle(a: vec3f, b: vec3f) -> f32 {
+  return atan2(length(cross(a, b)), dot(a, b));
+}
+`;
+
 /** Spatial laws (spatial.ts lawRadf). Uses the Body fields law0..law2. */
 export const LAW_WGSL = /* wgsl */ `
 fn hFn2002(x: f32, w: f32) -> f32 {
@@ -91,9 +100,11 @@ fn lawRadf(mu0: f32, mu: f32, g: f32, l0: vec4f, l1: vec4f, l2: vec4f) -> f32 {
   switch kind {
     case 1u: { return mu0 / (mu0 + mu); }
     case 2u: { return 2.0 * l0.y * mu0 / (mu0 + mu) + (1.0 - l0.y) * mu0; }
-    // No emission floor: the same published Minnaert law enters the CPU integral.
-    // Built k in [0.788, 0.9717] keeps this power finite even at mu = 2^-149.
-    case 3u: { return pow(mu0, l0.y) * pow(mu, l0.y - 1.0); }
+    // The emission cosine is bounded at 1e-3, as for Barkstrom below: with k < 1 the law is integrable over the
+    // disk but unbounded at a point, and the body pass evaluates it on limb fragments of partial coverage whose
+    // cosine is zero up to rounding (unbounded, those pixels were drawn brighter than the disk centre). The bound
+    // changes the disk integral by less than 1e-4 (render-law-twins.test.ts).
+    case 3u: { return pow(mu0, l0.y) * pow(max(mu, 1e-3), l0.y - 1.0); }
     case 4u: { return hapkeRadf(mu0, mu, g, l0, l1, l2); }
     case 6u: { return akimovDisk(mu0, mu, g); }
     case 7u: { return pow(mu0 * mu / (mu0 + mu), l0.y) / max(mu, 1e-3); }
@@ -219,7 +230,7 @@ fn surfLevel(R: f32, fp: f32, maxL: f32) -> u32 {
 `;
 
 /** Ring profile access and physics (rings.ts), plus the disk-overlap helper shared with eclipses. */
-export const RING_COMMON = /* wgsl */ `
+export const RING_COMMON = ANGLE_WGSL + /* wgsl */ `
 struct Ring {
   n: vec4f,     // FAR: unit direction to the centre, w = D (km)
   e1: vec4f,    // tangent basis, w = quad half-extent (tan units)
@@ -826,7 +837,7 @@ fn cmpTorus(R: Ring, o: vec3f, d: vec3f, tMax: f32, alphaDeg: f32) -> TorusOut {
   let mu = abs(vN);
   let mu0 = abs(sN);
   let lit = vN * sN > 0.0;
-  let alphaDeg = degrees(acos(clamp(dot(S, V), -1.0, 1.0)));
+  let alphaDeg = degrees(vectorAngle(S, V));
   var L = vec4f(0.0);
   var reflKnown = false;
   if (R.ph.x >= 0.0) {
@@ -863,7 +874,7 @@ fn fsComponents(R: Ring, X: vec3f, t: f32, dir: vec3f, r: f32, fw: f32) -> FOut 
   let mu = abs(vN);
   let mu0 = abs(sN);
   let lit = vN * sN > 0.0;
-  let alphaDeg = degrees(acos(clamp(dot(S, V), -1.0, 1.0)));
+  let alphaDeg = degrees(vectorAngle(S, V));
   let tPlanet = planetHitT(R, R.o.xyz, dirN) / max(length(dir), 1e-30);
   var L = vec4f(0.0);
   var unk = 0.0;

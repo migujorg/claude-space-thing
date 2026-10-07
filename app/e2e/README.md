@@ -204,15 +204,25 @@ For each case, the runner (`scripts/validate.mjs`, page `validation.html`, code 
 
 ```sh
 cd app
-npm run validate                                   # all cases (about 1 minute on the workstation, 4 on a cloud workspace; Himawari is the slowest)
+npm run validate                                   # all cases, shared default 4 × 4 = 16 samples per pixel
 npm run validate -- --only io-nh-lorri-2007        # some cases
-npm run validate -- --ss 2                         # 2 × 2 samples per pixel (the references are pixel-area averages)
+npm run validate -- --ss 2                         # explicit 2 × 2 override (the references are pixel-area averages)
 npm run validate -- --reality strict               # measured and derived data only
 npm run validate -- --hdr f16                      # the rgba16float fallback targets
 npm run validate -- --strict                       # exit 1 when a region fails (default: only when a case does not render)
 npm run validate -- --gpu hardware                 # on the machine's GPU instead of SwiftShader
 ```
 
-`report.md`'s header and `report.json` (`gpu`, and `hdrFormat` per case) say which adapter and which HDR targets rendered the run.
+`report.md`'s header and `report.json` (`options.ss`, `gpu`, and `ss`/`hdrFormat` per case) record the sampling, adapter and HDR targets of the actual run. The CLI, `npm run validate`, and the browser runner share `DEFAULT_VALIDATION_SS` in `src/validation/sampling.mjs`: provisionally 4 samples per axis (16 per pixel). One pixel-centre sample changes verdicts and undersamples small disks. The grid evaluates points at `(x + (dx + ½)/ss, y + (dy + ½)/ss)` in the reference pixel footprint and box-averages them; the shader's derivative-based limb coverage also becomes finer.
+
+To measure the coarsest converged grid on stable code, cases and built data:
+
+```sh
+cd app && node scripts/validate-sampling.mjs
+```
+
+This uses `local-server.mjs` on a free port and `--gpu hardware`, runs the whole validation sequentially at 1, 2, 3, 4 and 6 samples per axis, and writes `shots/validation/sampling-convergence.json` and `.md`: every ROI and ratio in X/Y/Z/S, the 4→6 relative changes and every verdict. It retains the runs under `sampling/<ss>/` and promotes the shared default's run and images to `shots/validation/`. Inspect changes at every grid in every channel and verdict; a stable tally alone does not establish convergence. The default stays provisional until this evidence supports the coarsest grid.
+
+`cd pipeline && .venv/bin/python -m pipeline.validation report` includes the convergence table automatically when its JSON file is present. It refuses runs without recorded sampling, and refuses a convergence file that does not contain the reported run. Rerun the sweep or remove the stale file before reporting a separate run. The generated report's header reads sampling from that run.
 
 From a script, the page exposes `window.__validation.run(case, { ss, reality })`. For experiments with a changed scene, it also exposes `window.__validation.debug`, which is `{ renderer, data }`.

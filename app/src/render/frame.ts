@@ -63,6 +63,10 @@ export interface ResolvedBody {
   sunDir: V3;
   sunDistKm: number;
   sunRadiusKm: number;
+  /**
+   * Always 1. Written to the W target, which nothing reads: a resolved body carries no Ricco weight
+   * (docs/eye-model.md §6.3). The field, the target and their plumbing are to be removed together.
+   */
   riccoWeight: number;
   occluders: [V3, number][];
   hatch: boolean;
@@ -160,7 +164,7 @@ export interface PreparedFrame {
    */
   offFrameFluxDeg2: number;
   /** Sun shield (viewing aid) on: the occulting disc's direction and cos(angular radius); null when off. */
-  sunShield: { dir: V3; cosRadius: number } | null;
+  sunShield: { dir: V3; cosRadius: number; radius: number } | null;
 }
 
 export function cameraGeom(snap: SceneSnapshot, W: number, H: number, near: number): CameraGeom {
@@ -197,8 +201,28 @@ export function diskOverlapFraction(rs: number, ro: number, d: number): number {
 const angle = (a: V3, b: V3) => 2 * Math.asin(Math.min(1, 0.5 * len(sub(normalize(a), normalize(b)))));
 
 /**
- * @param pointFootprintSr equivalent solid angle of a point splat's footprint (for the Ricco weight)
+ * Smallest σ (pixels) of a point-source splat. A reconstruction-filter choice, not an eye constant:
+ * at σ ≥ 0.6 px the discrete sum of the Gaussian over the pixel grid equals its integral to 2·10⁻³
+ * for every sub-pixel position (Poisson summation: 2·exp(−2π²σ²)), so splats conserve energy.
  */
+export const SIGMA_MIN_PX = 0.6;
+/**
+ * σ of a point splat in pixels: the observer's optical point spread, never narrower than SIGMA_MIN_PX.
+ * @param coreSigmaDeg equivalent σ of the eye's optical core (EyeFrame.coreSigmaDeg)
+ * @param pixelAngle angle of a pixel at the view centre, rad
+ * @param opticalCore EyeSettings.opticalCore: false for an imager at the frame's own sampling, whose point spread
+ *   is the reconstruction minimum at every field
+ */
+export function splatSigmaPx(coreSigmaDeg: number, pixelAngle: number, opticalCore: boolean): number {
+  return Math.max(opticalCore ? ((coreSigmaDeg * Math.PI) / 180) / pixelAngle : 0, SIGMA_MIN_PX);
+}
+/**
+ * Relative margin by which a body's own point is drawn nearer than the nearest point of its disk. A numerical
+ * tolerance, not a property of anything: the disk's depth is computed per fragment in float32 (2⁻²⁴ ≈ 6·10⁻⁸
+ * relative), the point's here in float64.
+ */
+const OWN_POINT_DEPTH_MARGIN = 1e-6;
+
 const normCache = new NormalizationCache();
 /** Disk renormalization factors under an atmosphere (I0, Iatm, Apath, Ashell per channel), by phase bin. */
 const ATM_FACTOR_BIN_DEG = 1;
@@ -240,6 +264,10 @@ export interface PrepareOptions {
   atmospheres?: (b: SceneBody, groundAlbedo: number[], dust: { scale: number; bin: number } | null) => AtmosphereBinding | { error: string; unmeasured?: AtmosphereBinding } | null;
 }
 
+/**
+ * @param pointFootprintSr equivalent solid angle 2πσ² of a point splat as the renderer draws it: the eye's optical
+ *   core (Watson 2013), never narrower than SIGMA_MIN_PX. It decides which bodies are points (below).
+ */
 export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, pointFootprintSr: number, opts: PrepareOptions = {}): PreparedFrame {
   const warnings: string[] = [];
   const resolved: ResolvedBody[] = [];
@@ -248,8 +276,13 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
   const overlay: number[] = [];
   const tintOn = snap.view.overlays.provenanceTint;
   const fwd: V3 = [-g.back[0], -g.back[1], -g.back[2]];
-  const AR = eye.riccoAreaSr;
   const zeroBg = pointObserver(eye, { Y: 0, S: 0 });
+  // Point or disk (docs/eye-model.md §6.3). A body is a point to the eye while its disk is smaller than the eye's
+  // point spread, and the splat is that point spread as drawn. So the switch is made on the disk's diameter in
+  // units of the splat: 1 to 2 px for the reconstruction-minimum splat (σ = SIGMA_MIN_PX), and the same multiple of
+  // σ (1.67 to 3.33) when the screen resolves the eye's optical core. `splatScale` is the splat's σ over the minimum.
+  const splatScale = Math.max(1, Math.sqrt(pointFootprintSr / (2 * Math.PI)) / g.pixelAngle / SIGMA_MIN_PX);
+  const resolvedShare = (diamPx: number) => smooth(1, 2, diamPx / splatScale);
 
   const inFrame = (c: V3) => {
     if (c[2] >= 0) return false;
@@ -275,7 +308,7 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
   const sunR = snap.sun?.radius ?? 0;
   let sun: SunPrep | null = null;
   let adaptedWhite: V3 | null = null;
-  let sunShield: { dir: V3; cosRadius: number } | null = null;
+  let sunShield: { dir: V3; cosRadius: number; radius: number } | null = null;
   if (snap.sun) {
     const s = snap.sun;
     const dist = len(s.pos);
@@ -285,12 +318,15 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
     const n = scale(s.pos, 1 / dist);
     const rho = Math.asin(Math.min(1, s.radius / dist));
     const diamPx = (2 * rho) / g.pixelAngle;
-    let fRes = s.limbDarkening ? smooth(1, 2, diamPx) : 0;
+    let fRes = s.limbDarkening ? resolvedShare(diamPx) : 0;
     // Sun shield (viewing aid, ViewSettings.sunShield): an occulting disc covers the solar disk (its
     // angular radius plus one pixel). The Sun's light never reaches the eye: no disk, no point, no veil.
     const shielded = snap.view.sunShield === true;
-    if (shielded) sunShield = { dir: n, cosRadius: Math.cos(Math.min(rho + g.pixelAngle, Math.PI)) };
-    if (!s.limbDarkening && diamPx > 1 && !shielded) warnings.push('Sun: limb darkening unknown → drawn as an unresolved point of the correct illuminance (no uniform disk assumed)');
+    if (shielded) {
+      const radius = Math.min(rho + g.pixelAngle, Math.PI);
+      sunShield = { dir: n, cosRadius: Math.cos(radius), radius };
+    }
+    if (!s.limbDarkening && diamPx / splatScale > 1 && !shielded) warnings.push('Sun: limb darkening unknown → drawn as an unresolved point of the correct illuminance (no uniform disk assumed)');
     const c = toCam(g, s.pos);
     const sunInFrame = inFrame(c);
     // Visible fraction of the disk (bodies in front), for the analytic glare veil.
@@ -403,16 +439,9 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
     // its layers carry their own absolute calibration (surface reflectance, cloud optical thickness and air, each
     // in absolute units), and its disk albedo is the weather of one day, which a single disk value cannot fix.
     const physical = !earth && b.atmosphere?.surface && b.orient && irr && opts.atmospheres ? b.atmosphere.surface : null;
-    // Its tables once ready, for a disk at least a pixel across (a point's light is its disk photometry).
+    // An in-range point is the disk photometry directly: it needs neither the model tables nor an integral.
+    // A disk needs the model's spatial pattern; beyond the range, a point also needs its phase dependence.
     const resolvedDisk = (2 * angR) / g.pixelAngle > 1;
-    let physB: AtmosphereBinding | null = null;
-    if (physical && resolvedDisk) {
-      const got = opts.atmospheres!(b, [0, 0, 0, 0], null);
-      if (got && 'error' in got) warnings.push(got.error);
-      else if (got?.tables && got.grid) physB = got;
-    }
-    // Fully resolved (smooth(1, 2, diameter px) = 1) it has no point part: the picture is the model's alone.
-    const modelDiskOnly = physB !== null && (2 * angR) / g.pixelAngle >= 2;
     /** The scale of the model to the disk photometry, per channel, once it is drawn. */
     let modelScale: XYZS | null = null;
     // Disk-integrated p·Φ per channel: from the body's disk reflectance model (the Moon: ROLO) inside its
@@ -446,13 +475,22 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
           phi = x.phi;
           if (range) phaseEdge = ((alpha * 180) / Math.PI > range[1] ? range[1] : range[0]) * (Math.PI / 180);
           label = worse(label, 'estimated');
-          // A fully resolved model-drawn disk has no point part: its continuation is the model's (said below).
-          if (!modelDiskOnly) warnings.push(`${b.name}: phase extrapolated beyond measured range (${range?.[0]}–${range?.[1]}°) with the spatial law → estimated`);
         } else {
           warnings.push(`${b.name}: ${ph.reason} → sunlit part drawn as not measured (night side black)`);
         }
       }
       if (phi !== null) pPhi = b.albedoXYZS.map((a) => a * phi!) as XYZS;
+    }
+    let physB: AtmosphereBinding | null = null;
+    if (physical && pPhi && (resolvedDisk || phaseEdge !== null)) {
+      const got = opts.atmospheres!(b, [0, 0, 0, 0], null);
+      if (got && 'error' in got) warnings.push(got.error);
+      else if (got?.tables && got.grid) physB = got;
+    }
+    // With ready tables, the model supplies the continuation for both representations (said below).
+    if (phaseEdge !== null && !physB) {
+      const range = phaseRangeDeg(b.phase!);
+      warnings.push(`${b.name}: phase extrapolated beyond measured range (${range?.[0]}–${range?.[1]}°) with the spatial law → estimated`);
     }
     let Idisk: XYZS | null = null;
     if (pPhi) {
@@ -520,7 +558,7 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
     let atmB: AtmosphereBinding | null = null;
     let onDisk = false;
     const groundAlbedo = b.albedoXYZS && irr ? [0, 1, 2, 3].map((c) => LAMBERT_ALBEDO_PER_GEOMETRIC_ALBEDO * (b.albedoXYZS![c] / irr[c])) : [0, 0, 0, 0];
-    // Only for a resolved disk (smooth(1, 2, diameter px) > 0): a point's light is its disk photometry.
+    // The same calibration and integrated light for a model-drawn body at every angular size.
     if (physical && physB && pPhi && irr) {
       // The model's radiance, L = (E_sun/π)·ρ_surface·μ0 under the air plus the air's own light (the shader's
       // ATM_OVER_PHOTOMETRY with the surface scale b.rad = E_sun/π·ρ, and the shell), times the factor of the rule
@@ -535,6 +573,15 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
       const own = [0, 1, 2, 3].map((c) => d[c] + physical.xyzs[c] * d[4 + c]);
       const scaleC = pRef.map((v, c) => (own[c] > 0 ? v / own[c] : 0)) as XYZS;
       modelScale = scaleC;
+      // ∫L dΩ = E☉(1 AU)·A_model(α)·scale·(R/Δ)²/d², including the shell beyond the surface limb.
+      // In range E already is p·Φ exactly; beyond it the model, with the edge's held factors,
+      // supplies the phase dependence for the point and off-frame glare as it does for the resolved disk.
+      // Reuse the 1° cache: slowly changing phases need no new integral until they enter another bin.
+      if (edge?.ok) {
+        const current = aRef === alpha ? d : modelDisk(physB, alpha);
+        const modelPPhi = irr.map((v, c) => v * scaleC[c] * (current[c] + physical.xyzs[c] * current[4 + c])) as XYZS;
+        E = diskIlluminance(modelPPhi, dAU, R, D, 1);
+      }
       atmB = physB;
       K = irr.map((v, c) => (v * physical.xyzs[c] * scaleC[c]) / (Math.PI * dAU * dAU)) as XYZS;
       law = LAMBERT_LAW;
@@ -642,9 +689,7 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
     const tint = tintOn ? ([...PROVENANCE_TINT[label], PROVENANCE_TINT_ALPHA] as [number, number, number, number]) : null;
     const hatch = !lit && !(E && E[1] > 0);
     const diamPx = (2 * angR) / g.pixelAngle;
-    const fRes = smooth(1, 2, diamPx);
-    const At = 2 * Math.PI * (1 - Math.cos(angR));
-    const ricco = Math.min(1, Math.max(At, pointFootprintSr) / AR);
+    const fRes = resolvedShare(diamPx);
 
     // Behind the Sun shield's occulting disc: hidden (its resolved part is cut out on the GPU).
     const behindShield = sunShield !== null && dot(normalize(b.pos), sunShield.dir) >= sunShield.cosRadius;
@@ -689,7 +734,7 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
         bodyToWorld: orient ?? [1, 0, 0, 0, 1, 0, 0, 0, 1], radiiKm: radii,
         planetshine, ring: ringFor(b),
         sunDir, sunDistKm: toSunLen, sunRadiusKm: sunR,
-        riccoWeight: ricco, occluders, hatch, tint,
+        riccoWeight: 1, occluders, hatch, tint,
         earth: orient ? earth : null,
         atmosphere: orient && atmB && b.atmosphere && irr
           ? {
@@ -718,7 +763,11 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
         // Visibility is judged on the GPU at the point's own background (eye-model.md §2 "Fixations");
         // here only points invisible even against a zero background are dropped.
         if (blackwellEquivalent(Ep[1], Ep[3], zeroBg.mesopic.m) >= zeroBg.thresholdBwLux) {
-          points.push({ ndc, depth: g.near / -c[2], E: Ep });
+          // In the switch the body is part disk, part point. The point is drawn at the depth of the body's nearest
+          // point, not of its centre: the centre lies behind the disk's surface, and the disk would hide the core
+          // of the body's own splat. Anything nearer than the body still hides the point.
+          const nearest = Math.max((-c[2] - extentOf(b, b.radii)) * (1 - OWN_POINT_DEPTH_MARGIN), g.near);
+          points.push({ ndc, depth: g.near / nearest, E: Ep });
         }
         if (tintOn && fRes < 0.5) ringVertices(ndc, 7, 1.5, [...PROVENANCE_TINT[ptLabel], PROVENANCE_TINT_ALPHA] as [number, number, number, number], g, overlay);
       }
@@ -798,7 +847,8 @@ function atmTop(b: SceneBody): number {
 /**
  * Disk integrals of a body drawn from its atmosphere model (modelDiskXYZS: the air's light per channel, then the
  * surface term per unit reflectance) at phase angle a, from the same 1° bins, linear between them. A new bin costs
- * one integral (about 30 ms for Titan's 12 bins); inside a measured range of a few degrees there are few.
+ * one integral (about 30 ms for Titan's 12 spectral bins). The held edge and the current phase share this cache,
+ * including for points: at most four new integrals on a cold frame, one per crossed bin for a slow phase.
  */
 function modelDisk(bind: AtmosphereBinding, a: number): number[] {
   const binning = (Math.PI / 180) * ATM_FACTOR_BIN_DEG;

@@ -38,7 +38,7 @@ HDR scene (X, Y, Z, S luminance, cd/m²)          points (stars, unresolved bodi
         │                                                  │
         │    points at their own fixation: Crumey threshold, response, colour at the local background   §2 §6
         │                                                  │
-        └──► perceived image: Ricco summation of small sources ─► rod + cone responses (Pattanaik 2000; rods: Hunt)
+        └──► perceived image: resolved bodies at their own luminance ─► rod + cone responses (Pattanaik 2000; rods: Hunt)
                ─► display response ─► display luminance ─► colour (mesopic, CAT02) ─► sRGB   §4 §5 §7
 ```
 
@@ -78,13 +78,31 @@ looks around the frame, and fixations are not uniform over the frame:
 
 So A = exp(Σ w·Ω·ln(L_ret + L₀) / Σ w·Ω) over the frame, w the weight above (`eye/fixation.ts`; GPU:
 `ADAPT_SHADER`). The resolved solar disk is never fixated: it cannot be looked at. Its veil still
-counts wherever the eye looks. Consequences:
+counts wherever the eye looks.
+
+That holds at every angular size since October 2026. Before, the shader decided "inside the disk" by
+comparing a cosine in 32-bit floats, and one step of a 32-bit float below 1 is the cosine of 1.2′. A solar
+disk a few arcminutes or less in radius could not be told from the sky around it, some of its pixels drew
+fixations, and at 1.5·10⁹ cd/m² they took all of them. The Sun from 9.5 au at a 5° field adapted the frame
+to 5·10⁸ cd/m² and was shown as a grey disk without glare; it now adapts it to 2500 cd/m² and is shown at
+display white with its glare, as from 1 au. The test compares the chord between the two directions with
+the chord of the disk's radius (`eye/fixation.ts inSkyDisc`). The Sun shield's occulting disc (§8b) used
+the same cosine and let 500 to 1900 cd/m² of corona through inside a small disc; it uses the same chord
+now.
+
+Consequences of the fixation rule:
 
 - A quarter Moon filling the view is seen adapted to its sunlit half, even when the view centre falls on
   the night side (the v1 rule saturated the lit half to white).
 - A small bright body in a dark field (the Moon from Earth, a planet in a star field) sets the adaptation
   by its light rather than its area. A 1° log-average around it would be pulled down by the black sky
-  that fills most of the field.
+  that fills most of the field. The physiology allows this down to the scale of cones: the gain of the
+  cone pathways is regulated within 13.5″ to 19″ and within about 20 ms (MacLeod, Williams & Makous 1992;
+  He & MacLeod 1998), so the cones under the image of a disk the eye resolves adapt to that disk.
+- A body drawn resolved is therefore shown at its own luminance at that adaptation, whatever its angular
+  size: it carries no Ricco weight (§6.3 "Point or disk"). Until October 2026 a resolved body smaller
+  than the Ricco area was dimmed by A_t/A_R while the adaptation was measured from its undimmed light, and
+  a sunlit moon a few arcminutes across was drawn black.
 - Of two bodies in view, the brighter and larger dominates. The crescent Earth beside the Moon is seen
   adapted mostly to the Earth, so the Moon (albedo 0.12 against the Earth's 0.3) looks darker, as in the
   well-known spacecraft images.
@@ -119,12 +137,20 @@ It is exp⟨ln(L + L₀)⟩ − L₀ with L₀ the dark light (below). The retin
 veil from every glare source (§3), in frame (the pyramid) and off frame (the analytic veil of the Sun
 and bodies within 100° of fixation). Including the veil follows Moon & Spencer (1945): the adaptation
 state in a non-uniform field is that of the fixated luminance plus the equivalent veiling luminance
-of the surround (their surround term is a 1/θ² veil, which CIE 146 supersedes). The log-average is
-Ward Larson et al.'s (1997) foveal statistic, the method Pattanaik et al. (2000) cite; v0 used the
-arithmetic mean, which let a small bright region (a fixated star's own near-core glare) dominate the
-field. The cores of point sources are excluded (a star's image covers a few receptors, not the
-adaptation pool); their scattered light is included. Photopic (A_cone, from Y) and scotopic (A_rod,
-from S) averages are measured separately.
+of the surround (their surround term is a 1/θ² veil, which CIE 146 supersedes). We know that formula
+through Ward Larson et al. (1997, Eq. 8: L_a = 0.913·L_f + L_v, with L_f the average luminance of a 1°
+foveal field); Moon & Spencer's own paper was not read.
+
+The logarithm is where we follow Ward Larson et al. and where we do not. They average the luminance
+over each 1° foveal field arithmetically and then take logarithms across the fields, one per possible
+fixation (their §4.2). In 'brightness' mode our log-average runs across fixations too, each fixation
+adapted to the retinal image at the point it looks at. In 'centre' mode the geometric mean inside the
+one 1° field is our own choice, not theirs: v0 used the arithmetic mean there, which let a small bright
+region (a fixated star's own near-core glare) dominate the field.
+
+The cores of point sources are excluded (a star's image covers a few receptors, not the adaptation
+pool); their scattered light is included. Photopic (A_cone, from Y) and scotopic (A_rod, from S)
+averages are measured separately.
 
 *Checked against the "grey veil" report:* in the night-side view of Earth from 400 000 km the veil
 filling the frame is the Moon's glare (60° off axis, i.e. off frame, analytic veil). It is included in
@@ -462,9 +488,12 @@ V ≈ −1.9), while the dark sky around it shows stars to V ≈ 6.5 (regression
 
 **Brightness, not size.** A point's image is far smaller than the area over which the eye sums light at
 low luminance, so its pixel luminance says little about how bright it looks. Crumey's Ricco area
-A_R(B) = ΔI/ΔB∞ (Eq. 22/59, with C∞ from Eq. 39/40) is defined so that a point of illuminance E is
-exactly as detectable as a patch of area A_R and luminance E/A_R. Ricco's law governs brightness, not
-perceived size: dark-adapted A_R is ~50′ in radius, yet stars look like points. So:
+A_R(B) = ΔI/ΔB∞ (Eq. 22/59, with C∞ from Eq. 39/40) is the intersection of the two asymptotes of his
+threshold curve. So a point of illuminance E is exactly as detectable as a large patch whose luminance
+exceeds the background by E/A_R. (A patch of area A_R itself needs 2^(1/q) times more, 1.9 to 3.2, by
+the full curve, Eq. 41.) The law is about detection on a background the eye is adapted to; using it for
+the brightness of a point is our extension (§10). Summation sets how bright a point looks, not how large:
+dark-adapted A_R is ~50′ in radius, yet stars look like points. So:
 
 1. the scene observer's response to the local background B plus E·u/A_R (u = unscattered fraction) is
    mapped to an intended display luminance increment ΔL_d over the background's (§3);
@@ -477,9 +506,62 @@ perceived size: dark-adapted A_R is ~50′ in radius, yet stars look like points
 
 Where the dot and a painted halo overlap beyond the display range, the dot is drawn over the halo
 with a hue-preserving fit into the gamut, so a bright star keeps its colour instead of clipping to
-white. A resolved body smaller than A_R keeps the Ricco weight A_t/A_R on its luminance, which makes
-the point-to-disk transition continuous (a residual step of up to max(1, A_R,disp/A_t) remains for
-disks between 1 and ~2.4 px across, where the viewer's own summation applies; not corrected).
+white.
+
+**Point or disk** (`render/frame.ts`). A body is a point to the eye while its disk is smaller than the
+eye's point spread, and the splat is that point spread as drawn: σ = max(σ_c, 0.6 px), σ_c the optical
+core of §3. The switch is made on the disk's diameter d in units of the splat:
+
+s = 0.6·d/σ,  resolved share f = smoothstep(1, 2, s),  point share 1 − f.
+
+- Where the splat is the reconstruction minimum (σ = 0.6 px), s is the diameter in pixels and the switch
+  runs from 1 to 2 px. That is every field wider than 11° to 13° on 720 lines, depending on the pupil,
+  and wider than 32° to 39° on 2160 lines.
+- Where the screen resolves the eye's core, the switch runs from d = 1.67 σ_c to 3.33 σ_c at every field:
+  1.1′ to 2.2′ at a 6 mm pupil, 0.9′ to 1.8′ at 3 mm. A narrower field then magnifies the picture and
+  changes nothing in it. This is the reading of §3 and §5b, where the optical core and the acuity cell are
+  also fixed in scene angle: a narrow field is a magnified picture of what the unaided eye sees.
+- The Sun follows the same rule.
+- In the switch the body's point is drawn at the depth of the body's nearest point, so that its own disk
+  does not hide the core of its splat.
+- **The validation runs with another observer.** It compares the HDR buffer, before the eye model, with a
+  spacecraft camera's image (docs/reports/validation.md). Its observer is an imager at the frame's own
+  sampling, not an eye, and a body must be in that buffer whenever the frame resolves it. So the
+  validation runner sets `EyeSettings.opticalCore` to false: the splat is then the reconstruction minimum
+  and the switch is 1 to 2 px at every field. The setting changes nothing else in the model. With the eye
+  as observer, the Earth and the Moon of the EPOXI case (0.9′ and 0.24′ across in a view 3.5′ wide) are
+  points, and its three rows read zero. The app and the scene suite always run with the eye.
+
+The two numbers 1 and 2 are the original pixel rule; no constant was added. The published summation
+diameters for photopic foveal vision fall on the range this gives (2.4′ to 2.95′ for detection at
+8 cd/m², Tuten et al. 2018), but the rule is not fitted to them (§10).
+
+**A resolved body carries no Ricco weight.** Its pixels go through the tone reproduction (§4) at their
+own retinal luminance, u·L plus the analytic veil, at the frame's adaptation (`eye/extended.ts`). The
+reasons:
+
+- Crumey's model is "concerned with threshold rather than brightness perception" (2014, p. 2602), and
+  its B is the luminance "immediately surrounding the target", to which the observer is adapted. A sunlit
+  disk on a dark sky is a million times above threshold, and the frame's adaptation is the disk's own
+  luminance, not its surround's.
+- Where brightness was measured against size above threshold, it is not diluted by area. Diamond (1962)
+  found an effect of area only at threshold for foveal fields 5.4′ to 54′ across at up to 1156 cd/m².
+  Hanes (1951) and Higgins & Rinalducci (1975) found brightness falling with size at high levels.
+- The eye that looks at a disk it resolves is adapted to that disk (§2).
+
+So the screen's answer to "why is it this bright" is the same sentence for a small disk and a large one:
+the eye is adapted to A cd/m², the light of what it looks at in this view, and this surface is L cd/m².
+
+**The step at the switch stays.** A point is judged by an eye adapted to the sky behind it; a disk by an
+eye adapted to the disk. Those are the two limits of this model, and the switch is where one gives way
+to the other. For Jupiter alone at the default field, between 1 and 2 px across (4.5′ and 8.9′), the
+adaptation goes from 6·10⁻⁵ to 173 cd/m², and the light shown in a 301 px window falls by a factor of 70:
+from glare filling the window to a small grey disk. Both sides are what the model says. A blend, a floor
+or a wider ramp would hide the step without making either side more true. Removing it means changing one
+of the limits: either a point's own light enters its adaptation, or a disk does not adapt the eye until
+it fills some published field. The one published expression of that kind is Ward Larson et al.'s Eq. 8
+(§2), and it changes both: a 30′ body would be shown at 4.4 times its adaptation, and Ganymede at 3.6′
+would adapt the eye to 0.9 cd/m² instead of 262.
 
 **Colour of point sources.** Only cones carry colour, and a point concentrates its light on few cones,
 so a star's colour depends on its own retinal illuminance, not on the global mesopic state or on the
@@ -655,8 +737,50 @@ checks that the Sun's light on the bodies is unaffected.
   resulting core (~0.8′) is sub-pixel at normal fields of view.
 - **Acuity loss at low luminance** (§5b) uses the physical local luminance. A rod bleach does not
   lower acuity further.
-- **Ricco summation for supra-threshold brightness** is our extension of a threshold result. It is
-  exact at threshold by construction; above threshold it assumes brightness pools like detection.
+- **Ricco summation for the brightness of a point** is our extension of a threshold result. It is
+  exact at threshold by construction; above threshold it assumes brightness pools like detection. Since
+  October 2026 only point sources use it; a resolved body carries no weight (§6.3).
+  - Irikura, Taniguchi & Aoki (1993) measured the question directly for small lights. Four observers,
+    adapted to a background of 0 to 10 cd/m², looked in turn at a 0.4′ reference light of 3·10⁻⁶ to
+    3·10⁻⁴ lux and at a disk 1′, 3′, 9′, 27′ or 81′ across, and the disk's intensity was set to equal
+    brightness. The intensity needed was 1.2, 1.6, 3.6, 13 and 73 times the reference's at 1 cd/m²
+    (their Table 2). Without summation it would be the ratio of areas: 6, 56, 506 and more. Their
+    conclusion: summation "is complete regardless of the background luminance for an area of less than
+    10 min²", a disk 3.6′ across, and partial above.
+  - Below the switch the rule agrees with them: a disk under 1.1′ to 2.2′ is a point of its total light.
+  - **Between 2.2′ and about 3.6′ it does not.** There the rule draws a surface the eye is adapted to,
+    at the same display luminance whatever its light; their observers still saw a light as bright as a
+    point of 0.63 of its intensity. The conditions differ: their eye was adapted to the background and
+    glanced at each light, ours is adapted to the disk it looks at. Their sizes step from 3′ to 9′, so
+    the end of complete summation lies somewhere between, 1.4 to 4 times the diameter at which our switch
+    ends. Diamond (1962) found no effect of area from 5.4′. The switch is not moved to fit one study: it
+    belongs to the eye's point spread.
+- **The step at the switch** from point to disk is a property of the two limits, not an error to be
+  smoothed (§6.3).
+- **A darker body beside a brighter one that sets the adaptation is shown too dark, down to black.**
+  Callisto (147 cd/m²) in a frame adapted to Jupiter (A = 620 cd/m²) reaches the tone reproduction at
+  u·L = 89 cd/m², 0.14 A. Pattanaik's reference black is 5A/32 = 0.156 A, and rule 2 maps it to the
+  display's black, which is 0 cd/m² here (`displayBlackCdM2`). So Callisto is drawn at or near 0 at
+  every resolved size, also at 9′ and 13′ across (mean level 0.3 and 3.8 of 255 on the GPU). Two things combine: one adaptation state for the extended
+  image, and a display black of zero. On the display of Pattanaik et al.'s own paper (white 125, black
+  4 cd/m²) the same surface is at 3.6 cd/m². On ours a surface at 0.2 A is at 1.0 cd/m², at 0.38 A
+  (Ganymede beside Jupiter) at 7.9, against 36 at A. As a point Callisto is bright, because points are
+  judged at their own fixation.
+- **The acuity filter spreads dim small disks** (§5b). It takes the acuity of the average luminance of
+  the 1° field around a pixel. For a small body in a dark field that average is dark, while the frame is
+  adapted to the body by its light. Pluto 3′ across at a 1° field is shown at mean level 78 of 255 with
+  its light over 7724 px; with the filter off, at 113 over 1144 px. Charon: 63 against 112. Triton: 84
+  against 109. At 6′ Pluto is at 105 against 108. The filter's foveal luminance should follow the same
+  rule as the frame's adaptation (the average over the 1° field weighted by light); not done.
+  - The same filter, with the old weight stored per pixel of the sharp silhouette, drew a grey arc
+    outside the sunlit limb of a dimmed disk. The arc went with the weight.
+- **A disk 2 to 3 px across beside a brighter body is darkened** because pixel coverage is averaged
+  before the tone reproduction (Ganymede beside Jupiter: mean level 15 at 2 px, 64 at 3 px).
+- **A displayed disk smaller than the viewer's own Ricco area** (5′ radius, taken in scene angle) is
+  summed by the viewer's eye; a point's display flux allows for that (§6.3 step 2), a disk's does not.
+- **Rings and comae keep older criteria.** Rings become part of their planet's point by screen pixels,
+  and a coma becomes a point below the Ricco area (`comets/layer.ts`). Neither was re-examined with the
+  switch.
 - **Cone bleaching** is off (see §4).
 - **One adaptation state for the extended image (v2: fixation-weighted, §2).**
   - Two v1 failures are gone. A bright body filling half of a dark frame (the quarter Moon from
@@ -740,7 +864,17 @@ checks that the Sun's light on the bodies is unaffected.
 - Fairchild, M. D. (2013). Color Appearance Models, 3rd ed. Wiley. (Ch. 12: the Hunt model.)
 - Curcio, C. A., Sloan, K. R., Kalina, R. E., Hendrickson, A. E. (1990). Human photoreceptor
   topography. J. Comp. Neurol. 292, 497–523.
+- Diamond, A. L. (1962). Brightness of a field as a function of its area. JOSA 52, 700–706. (Abstract and
+  tables read, by the lane `ricco-research`; cited also by Irikura et al. 1993.)
+- Hanes, R. M. (1951). Suprathreshold area brightness relationships. JOSA 41, 28–31. (Abstract only.)
+- He, S., MacLeod, D. I. A. (1998). Contrast-modulation flicker: dynamics and spatial resolution of the
+  light adaptation process. Vision Res. 38, 985–1000.
 - Hecht, S. (1947). Visual thresholds of steady point sources in the eye. JOSA 37, 59.
+- Higgins, K. E., Rinalducci, E. J. (1975). Suprathreshold intensity-area relationships: a spatial
+  Broca-Sulzer effect. Vision Res. 15, 129–143. (Author abstract only.)
+- Irikura, T., Taniguchi, T., Aoki, Y. (1993). Effect of spatial summation on brightness perception of a
+  light at suprathreshold level. J. Illum. Engng. Inst. Jpn. 77(2), 90–94. doi:10.2150/jieij1980.77.2_90.
+  (Read in full.)
 - Hunt, R. W. G. (1995). The Reproduction of Colour, 5th ed. Fountain Press.
 - Hunt, R. W. G. (2004). The Reproduction of Colour, 6th ed. Wiley.
 - Ledda, P., Santos, L. P., Chalmers, A. (2004). A local model of eye adaptation for high dynamic
@@ -755,7 +889,10 @@ checks that the Sun's light on the bodies is unaffected.
 - Kirk, A. G., O'Brien, J. F. (2011). Perceptually based tone mapping for low-light conditions.
   ACM TOG 30(4), 42 (SIGGRAPH 2011).
 - Mantiuk, R., Daly, S., Kerofsky, L. (2008). Display adaptive tone mapping. ACM TOG 27(3), 68.
-- Moon, P., Spencer, D. E. (1945). The visual effect of non-uniform surrounds. JOSA 35, 233–248.
+- MacLeod, D. I. A., Williams, D. R., Makous, W. (1992). A visual nonlinearity fed by single cones. Vision
+  Res. 32, 347–363.
+- Moon, P., Spencer, D. E. (1945). The visual effect of non-uniform surrounds. JOSA 35, 233–248. (Not
+  read; known through Ward Larson et al. 1997, Eq. 8.)
 - Protte, P., Hoffmann, S. M. (2020). Accuracy of magnitudes in pre-telescopic star catalogues.
   Astron. Nachr. 341; arXiv:2008.04967.
 - Okabe, M., Ito, K. (2008). Color Universal Design (CUD): how to make figures and presentations that
@@ -769,6 +906,9 @@ checks that the Sun's light on the bodies is unaffected.
 - Spencer, G., Shirley, P., Zimmerman, K., Greenberg, D. P. (1995). Physically-based glare effects
   for digital images. SIGGRAPH 95, 325–334.
 - Schaefer, B. E. (1990). Telescopic limiting magnitudes. PASP 102, 212–229.
+- Tuten, W. S., Cooper, R. F., Tiruveedhula, P., Dubra, A., Roorda, A., Cottaris, N. P., Brainard, D. H.,
+  Morgan, J. I. W. (2018). Spatial summation in the human fovea: do normal optical aberrations and fixational
+  eye movements have an effect? J. Vision 18(8):6. doi:10.1167/18.8.6.
 - Schaefer, B. E. (1996), survey of experienced observers, as cited by Crumey (2014) §1.2 (not read).
 - Ward, G. (1994). A contrast-based scalefactor for luminance display. Graphics Gems IV, 415–421.
 - Ward Larson, G., Rushmeier, H., Piatko, C. (1997). A visibility matching tone reproduction operator

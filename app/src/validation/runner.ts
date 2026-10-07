@@ -9,6 +9,8 @@
 // chosen reality level (snapshot.ts sceneBodyOf). Things that change with time are the app's, not the
 // observation's: Earth's clouds are those of the app's cloud day, seasonal and volcanic changes are not modelled.
 
+import { validationSampling } from './sampling.mjs';
+
 import type { Body, Label, LightData, ValidationBody, ValidationCase, ValidationRoi } from '../data/schema';
 import type { SceneBody, SceneSnapshot, SceneSun } from '../render/scene';
 import type { OrientationSetPort, OrientationSourcePort } from '../app/ports';
@@ -30,7 +32,7 @@ export interface ValidationData {
 export interface ValidationOptions {
   /** Reality level the app's data are filtered at (default 'best': the most complete level for known bodies). */
   reality?: ExistsLevel;
-  /** Samples per pixel along each axis: the view is rendered at ss × its size and box-averaged (default 1). */
+  /** Samples per pixel along each axis: the view is rendered at ss × its size and box-averaged (default DEFAULT_VALIDATION_SS in sampling.mjs). */
   ss?: number;
 }
 
@@ -76,7 +78,7 @@ function usesOf(sb: SceneBody): string[] {
 /** The case's view as a SceneSnapshot drawn from the app's data. */
 export function validationScene(c: ValidationCase, data: ValidationData, opts: ValidationOptions = {}): ValidationScene {
   const level = opts.reality ?? 'best';
-  const ss = Math.max(1, Math.round(opts.ss ?? 1));
+  const ss = validationSampling(opts.ss);
   const v = c.view;
   const byId = new Map(data.bodies.map((b) => [b.id, b]));
   const notes: string[] = [];
@@ -115,7 +117,9 @@ export function validationScene(c: ValidationCase, data: ValidationData, opts: V
     camera: { orient: v.camera.orient, fovY: v.camera.fovY, width: v.camera.width * ss, height: v.camera.height * ss },
     sun: sunOf(data.light, v.sun.pos, level),
     bodies,
-    view: { mode: 'eye', exposureBoostStops: 0, overlays: { provenanceTint: false } },
+    // The observer is an imager at the frame's own sampling, not an eye (EyeSettings.opticalCore): the case's
+    // regions are read from the HDR buffer, and a body must be in it whenever the frame resolves it.
+    view: { mode: 'eye', exposureBoostStops: 0, overlays: { provenanceTint: false }, eye: { opticalCore: false } },
     orbits: [],
   };
   if (!snapshot.sun) notes.push(`the Sun is not admitted at level ${level} (light.json)`);

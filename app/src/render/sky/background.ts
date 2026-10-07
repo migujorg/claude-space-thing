@@ -20,6 +20,7 @@
 
 import { AU_KM, DAYS_PER_JULIAN_CENTURY, EARTH_MEAN_LONGITUDE, SECONDS_PER_DAY } from '../../core/constants';
 import { COMMON, LIMB_WGSL } from '../shaders';
+import { ANGLE_WGSL } from '../shaders-m2';
 import { HEALPIX_WGSL, npix } from './healpix';
 import { zodiacalWgsl, OBLIQUITY_J2000_RAD, type ZodiParams } from './zodiacal';
 import { coronaWgsl, cyclePhase, K_FOOTPRINT_MAX_B, K_FOOTPRINT_MAX_N, K_FOOTPRINT_SLOPE, type CoronaParams } from './corona';
@@ -133,7 +134,7 @@ const MIP_WGSL = /* wgsl */ `
 }
 `;
 
-const ZODI_COMPUTE_WGSL = (m: ZodiParams) => COMMON + zodiacalWgsl(m) + /* wgsl */ `
+const ZODI_COMPUTE_WGSL = (m: ZodiParams) => COMMON + ANGLE_WGSL + zodiacalWgsl(m) + /* wgsl */ `
 struct ZU { obs: vec4f, sunDir: vec4f, grid: vec4u, eclY: vec4f, eclZ: vec4f };
 @group(0) @binding(0) var<uniform> F: Frame;
 @group(0) @binding(1) var<uniform> Z: ZU;
@@ -145,7 +146,7 @@ struct ZU { obs: vec4f, sunDir: vec4f, grid: vec4u, eclY: vec4f, eclZ: vec4f };
   // ICRF → helio-ecliptic J2000
   let de = vec3f(d.x, dot(Z.eclY.xyz, d), dot(Z.eclZ.xyz, d));
   let I = zodiI(Z.obs.xyz, de, Z.obs.w);
-  let eps = acos(clamp(dot(d, Z.sunDir.xyz), -1.0, 1.0));
+  let eps = vectorAngle(d, Z.sunDir.xyz);
   var L = zodiXYZS(I, eps);
   if (Z.sunDir.w < 0.5) { L = vec4f(0.0); }
   textureStore(outZ, vec2i(id.xy), L);

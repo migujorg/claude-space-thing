@@ -7,7 +7,7 @@
 //
 //   npm run validate                         all cases
 //   npm run validate -- --only io-nh-lorri-2007,saturn-cassini-wac-2016
-//   options: --ss N (N × N samples per pixel, default 1)  --reality strict|best|complete (default best)
+//   options: --ss N (N × N samples per pixel, default DEFAULT_VALIDATION_SS in src/validation/sampling.mjs)  --reality strict|best|complete (default best)
 //            --hdr f16 (rgba16float fallback targets)  --timeout <s per case, default 900>
 //            --base http://127.0.0.1:5173 (use a running server)  --strict (exit 1 when an ROI fails)
 //            --gpu swiftshader|hardware (default swiftshader; hardware = the machine's GPU through Vulkan, and the
@@ -23,11 +23,11 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { adapterLabel, encodePng, gpuLaunchArgs, gpuMismatch, pageAdapterInfo, runServerOptions } from './e2e-lib.mjs';
 import { markdownReport } from './validate-lib.mjs';
+import { parseSamplingOption } from '../src/validation/sampling.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const REPO = resolve(ROOT, '..');
 const VALIDATION = resolve(REPO, 'validation');
-const OUT = resolve(ROOT, 'shots/validation');
 
 const argv = process.argv.slice(2);
 const flag = (k) => argv.includes(`--${k}`);
@@ -36,7 +36,8 @@ const opt = (k) => {
   return i >= 0 && argv[i + 1] && !argv[i + 1].startsWith('--') ? argv[i + 1] : undefined;
 };
 const only = opt('only')?.split(',').filter(Boolean);
-const ss = Math.max(1, Number(opt('ss') ?? 1));
+const ss = parseSamplingOption(argv);
+const OUT = resolve(ROOT, opt('out') ?? 'shots/validation');
 const reality = opt('reality') ?? 'best';
 const timeoutMs = 1000 * Number(opt('timeout') ?? 900);
 const gpuMode = opt('gpu') ?? 'swiftshader';
@@ -103,6 +104,7 @@ for (const entry of cases) {
       page.evaluate(({ c, opts }) => window.__validation.run(c, opts), { c, opts: { ss, reality } }),
       new Promise((_, rej) => setTimeout(() => rej(new Error(`timeout after ${timeoutMs / 1000} s`)), timeoutMs)),
     ]);
+    if (r.ss !== ss) throw new Error(`requested ss ${ss}, renderer recorded ${r.ss}`);
     const y = new Float32Array(Buffer.from(r.hdrY, 'base64').buffer.slice(0));
     const disp = new Uint8Array(Buffer.from(r.display, 'base64'));
     const peak = Math.max(1e-30, ...r.rois.filter((q) => q.expected).map((q) => q.expected[1]), ...r.rois.map((q) => q.rendered.mean[1]).filter(Number.isFinite));

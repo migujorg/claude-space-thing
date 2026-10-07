@@ -4,8 +4,10 @@
 // fusion, reassociation or denormal handling. The entire LAW_WGSL and its external PI are pinned.
 import { describe, expect, it } from 'vitest';
 import type { BodyPhotometry, SpatialPhotometricModel } from '../src/data/schema';
-import { LAW_WGSL } from '../src/render/shaders-m2';
+import { ANGLE_WGSL, LAW_WGSL, RING_COMMON, RING_SHADER } from '../src/render/shaders-m2';
 import { COMMON } from '../src/render/shaders';
+import { BODY_SHADER, ATM_BODY_SHADER, EARTH_BODY_SHADER } from '../src/render/shaders';
+import { MESH_SHADER } from '../src/render/meshes/shaders';
 import { gaussLegendre, LAMBERT_LAW, LAW, lawDiskIntegral, lawRadf, resolveLaw, type ResolvedLaw } from '../src/render/spatial';
 
 // As in core-data.ts, use typed dynamic imports: the app does not require @types/node.
@@ -15,11 +17,59 @@ const fs: { existsSync(p: URL): boolean; readFileSync(p: URL, enc: 'utf8'): stri
   await import(/* @vite-ignore */ 'node:fs' as string);
 const { env }: { env: Record<string, string | undefined> } = await import(/* @vite-ignore */ 'node:process' as string);
 
+type Direction = [number, number, number];
+/** Float32 vector operations, in WGSL order (including input uniforms). */
+function shaderVectorPair(aIn: Direction, bIn: Direction) {
+  const f = Math.fround, a = aIn.map(f), b = bIn.map(f);
+  const mul = (x: number, y: number) => f(x * y);
+  const dot = f(f(mul(a[0], b[0]) + mul(a[1], b[1])) + mul(a[2], b[2]));
+  const cross = [
+    f(mul(a[1], b[2]) - mul(a[2], b[1])),
+    f(mul(a[2], b[0]) - mul(a[0], b[2])),
+    f(mul(a[0], b[1]) - mul(a[1], b[0])),
+  ];
+  const sine = f(Math.sqrt(f(f(mul(cross[0], cross[0]) + mul(cross[1], cross[1])) + mul(cross[2], cross[2]))));
+  return { dot, sine };
+}
+function shaderVectorAngle(a: Direction, b: Direction) {
+  const { sine, dot } = shaderVectorPair(a, b);
+  return Math.fround(Math.atan2(sine, dot));
+}
+
+describe('float32 vector angle', () => {
+  it('pins the vector helper independently of the unchanged spatial-law hash', () => {
+    expect(ANGLE_WGSL).toBe('\nfn vectorAngle(a: vec3f, b: vec3f) -> f32 {\n  return atan2(length(cross(a, b)), dot(a, b));\n}\n');
+    expect(RING_COMMON.startsWith(ANGLE_WGSL)).toBe(true);
+    for (const shader of [BODY_SHADER, ATM_BODY_SHADER, EARTH_BODY_SHADER, MESH_SHADER, RING_SHADER(COMMON)]) {
+      expect(shader.split('fn vectorAngle(')).toHaveLength(2);
+      expect(shader).not.toMatch(/acos\(clamp\(dot\(S, V\)/);
+      expect(shader).toContain('vectorAngle(S, V)');
+    }
+    const sky = fs.readFileSync(new URL('../src/render/sky/background.ts', import.meta.url), 'utf8');
+    expect(sky).toContain('COMMON + ANGLE_WGSL + zodiacalWgsl(m)');
+    expect(sky).toContain('let eps = vectorAngle(d, Z.sunDir.xyz);');
+  });
+  for (const degrees of [1e-5, 1e-4, 1e-3, 1e-2]) for (const opposite of [false, true]) {
+    it(`${degrees}° ${opposite ? 'from 180°' : 'from zero'}: relative angle error < 1e-3`, () => {
+      const small = degrees * Math.PI / 180, trueAngle = opposite ? Math.PI - small : small;
+      // Axis aligned unit vectors isolate angle recovery from prior vector quantization.
+      // At arbitrary orientations, input f32 directions themselves have O(1e-7 rad) error.
+      const a: Direction = [1, 0, 0], b: Direction = [Math.cos(trueAngle), Math.sin(trueAngle), 0];
+      const angle = shaderVectorAngle(a, b);
+      expect(Math.abs(angle / trueAngle - 1)).toBeLessThan(1e-3);
+      // Near pi, the output angle's f32 ulp is 2^-22 rad: it cannot retain the tiny
+      // supplement to 0.1%. The cross product still retains it to that accuracy.
+      expect(Math.abs(shaderVectorPair(a, b).sine / Math.sin(small) - 1)).toBeLessThan(1e-3);
+      expect(Math.abs(angle - trueAngle)).toBeLessThan(opposite ? 2 ** -23 : small * 1e-3);
+    });
+  }
+});
+
 // Numerical guard variants are for one-at-a-time attribution only; the default is the shader.
 const shaderGuards = {
   hFloor: 1e-6, cotFloor: 1e-6, expFloor: -80, psiCut: Math.PI - 1e-4,
   psiDen: 1e-6, bcCut: 1e-6, hcMissing: 1e9,
-  akimovEps: 1e-4, akimovFloor: 1e-20, minnaertFloor: 0, akimovStable: false, bcStable: true,
+  akimovEps: 1e-4, akimovFloor: 1e-20, minnaertFloor: 1e-3, akimovStable: false, bcStable: true,
 };
 type Guards = typeof shaderGuards;
 
@@ -180,10 +230,17 @@ function integrate(radf: (mu0: number, mu: number, g: number) => number, alpha: 
 // recovered cos(beta) is amplified by g/(pi-g) = 179. The 48/96/384-node signed errors
 // are -4.294e-4/-5.935e-4/-3.799e-4. These are bounded passing assertions, not it.fails.
 const AKIMOV_F32_CRESCENT_BOUND = 7e-4;
+// The shader bounds Minnaert's emission cosine at 1e-3 (see the limb-fragment test below). On a crescent thinner
+// than 5 degrees the lit sliver lies at such cosines and the bound costs the disk integral up to this much
+// (measured maximum 2.19e-3, Uranus at 179 degrees; below 1e-4 at 170 degrees and under). The bound belongs to
+// the limb fragments, not to the law: evaluating those fragments at the mean cosine of their covered sliver
+// would remove both it and this allowance (root's backlog, job limb-fragments).
+const MINNAERT_BOUND_CRESCENT = 2.5e-3;
+const minnaertBoundLimited = (kind: string, phase: number) => kind === 'minnaert' && phase >= 175;
 
 describe('surface law twins', () => {
   it('pins every WGSL helper used by the transcription, and its external PI', () => {
-    expect(createHash('sha256').update(LAW_WGSL).digest('hex')).toBe('8d033e5f3fe6d941306dd9a15549eeabec2e7e9356533ef556c438a12a513a85');
+    expect(createHash('sha256').update(LAW_WGSL).digest('hex')).toBe('834affd6f08f33a0c1824972163c28999080e76bde22093de78d8729ede669f5');
     expect(COMMON.match(/const PI: f32 = [^;]+;/)?.[0]).toBe('const PI: f32 = 3.14159265358979;');
   });
   it.skipIf(!built)('has built spatial models to compare (otherwise download/build light first)', () => {
@@ -205,11 +262,25 @@ describe('surface law twins', () => {
     const cpuNormalization = lawDiskIntegral(law, alpha, undefined, 32)[0];
     expect(Math.abs(reference / cpuNormalization - 1)).toBeLessThan(1e-4);
   });
-  it.skipIf(!built)('Minnaert: the shader reproduces the published unfloored emission law', () => {
+  it.skipIf(!built)('Minnaert: the shader law, with its bound on the emission cosine, integrates to the published law', () => {
     for (const { model } of models.filter(m => m.model.kind === 'minnaert')) for (const phase of [...phaseDeg, ...extendedPhaseDeg]) {
       const alpha = deg(phase), law = getLaw(model, alpha);
       const cpu = integrate((mu0, mu, g) => lawRadf(law, mu0, mu, g), alpha, 48);
+      expect(Math.abs(integrate(shaderLaw(law), alpha, 48) / cpu - 1)).toBeLessThan(minnaertBoundLimited('minnaert', phase) ? MINNAERT_BOUND_CRESCENT : 1e-4);
+      // Without the bound the transcription is the published law at every phase: the allowance above is the bound's alone.
       expect(Math.abs(integrate(shaderLaw(law, { minnaertFloor: 0 }), alpha, 48) / cpu - 1)).toBeLessThan(1e-4);
+    }
+  });
+  // The body pass evaluates the law on limb fragments of partial coverage, where the ray grazes or just misses
+  // the surface and the emission cosine is zero up to float32 rounding. Minnaert's mu^(k-1) with k < 1 is
+  // integrable over the disk but unbounded at a point: sampled there it drew limb pixels brighter than the disk
+  // centre (7 October 2026: 56 pixels of the Uranus validation frame, +1.4 % in its disk flux). The shader bounds
+  // the cosine at 1e-3, as it does for Barkstrom.
+  it.skipIf(!built)('Minnaert: a limb fragment at a rounding-sized emission cosine is no brighter than at the bound', () => {
+    for (const { model } of models.filter(m => m.model.kind === 'minnaert')) {
+      const law = getLaw(model, 0), shader = shaderLaw(law), atBound = shader(1, 1e-3, 0);
+      for (const mu of [2 ** -149, 2 ** -126, 1e-12, 1e-7, 1e-4]) expect(shader(1, mu, 0)).toBe(atBound);
+      expect(shader(1, 2e-3, 0)).toBeLessThan(atBound);
     }
   });
   it.skipIf(!built)('sourced Minnaert emission powers stay finite through the entire positive f32 range', () => {
@@ -240,13 +311,15 @@ describe('surface law twins', () => {
   });
   for (const { id, name, model } of models) for (const phase of phasesFor(model)) {
     const limited = model.kind === 'akimov' && phase === 179;
+    const bounded = minnaertBoundLimited(model.kind, phase);
     it(`${name} (${id}) ${model.kind} at ${phase}°: ${limited
       ? 'f32 coordinate rounding amplified by the latitude exponent stays within 7e-4'
+      : bounded ? 'disk integrals agree within the stated cost of the limb bound, 2.5e-3'
       : 'disk integrals agree within 1e-4'}`, () => {
       const alpha = deg(phase), law = getLaw(model, alpha);
       const cpu = integrate((mu0, mu, g) => lawRadf(law, mu0, mu, g), alpha, 48);
       const gpu = integrate(shaderLaw(law), alpha, 48);
-      expect(Math.abs(gpu / cpu - 1)).toBeLessThan(limited ? AKIMOV_F32_CRESCENT_BOUND : 1e-4);
+      expect(Math.abs(gpu / cpu - 1)).toBeLessThan(limited ? AKIMOV_F32_CRESCENT_BOUND : bounded ? MINNAERT_BOUND_CRESCENT : 1e-4);
     });
   }
 });
