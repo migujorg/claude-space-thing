@@ -7,6 +7,7 @@
 // irregular moons (populations with a `center`) move on fixed Kepler ellipses about their planet-system barycentre
 // (GM of the system); their heliocentric state adds the barycentre's, which the caller supplies (CenterState).
 
+import { D_H_CONSTANT_KM } from './constants';
 import type { SyntheticCellsHeader, SyntheticObjectsHeader, SyntheticPopulation } from '../data/schema';
 import { BinaryTable } from '../data/binaryTable';
 
@@ -164,7 +165,7 @@ export function syntheticPopulation(s: SyntheticCatalog, j: number): SyntheticPo
 
 /** Diameter (km) from H and p_V (Pravec & Harris 2007 Eq. 3, the relation the pipeline uses). */
 export function diameterFromH(H: number, pV: number): number {
-  return (1329 / Math.sqrt(pV)) * 10 ** (-H / 5);
+  return (D_H_CONSTANT_KM / Math.sqrt(pV)) * 10 ** (-H / 5);
 }
 
 export interface SyntheticCell {

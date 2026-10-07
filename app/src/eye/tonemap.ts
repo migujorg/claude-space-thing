@@ -7,7 +7,7 @@
 // This file is the reference implementation (float64, used by tests and on the CPU for per-frame
 // scalars). The per-pixel part is mirrored in WGSL (app/src/render/shaders.ts); keep them in sync.
 
-import { CRUMEY, HUNT as H, PATTANAIK as P } from './constants';
+import { CRUMEY, HUNT as H, PATTANAIK as P, XYZ_TO_HPE } from './constants';
 
 export function sigmaCone(A: number): number {
   const a = Math.max(A, 1e-12);
@@ -235,7 +235,7 @@ export function colourExponent(Lp: number, s: ObserverState, Ld: number, d: Disp
 }
 
 /** Hunt–Pointer–Estevez XYZ → LMS (Hunt 2004; Fairchild 2013, as used by Hunt's model). */
-export const XYZ_TO_HPE = [0.38971, 0.68898, -0.07868, -0.22981, 1.1834, 0.04641, 0, 0, 1] as const;
+export { XYZ_TO_HPE } from './constants';
 
 /**
  * Apply a colour exponent to a chromaticity (XYZ with Y = 1) relative to a white (XYZ, Y = 1):
