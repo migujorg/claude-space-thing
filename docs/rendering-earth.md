@@ -28,8 +28,8 @@ columns, `skip=limb` leaves stars undimmed, `stars=N` adds N TEST FIXTURE stars,
 | Input | Layer / file | Used for |
 |---|---|---|
 | Surface reflectance | `surfaces/399/albedo`: kind `relative-reflectance`, header `normalization.absoluteDiskMean` | texel × absoluteDiskMean = absolute reflectance factor (MODIS NBAR on land; water-leaving reflectance π·Rrs over water) |
-| Clouds | `surfaces/399/clouds`: kind `cloud-properties` (cloudFraction, opticalThickness, cloudTopHeightM, iceFraction; VIIRS CLDPROP, 2026-09-28 daytime overpass) | cloud reflection and transmission (§2) |
-| Cloud τ statistics | `surfaces/399/cloudTau`: kind `cloud-optical-thickness-moments` (tauRetrievedFraction, lnTauMoment1, lnTauMoment2, iceTauFraction; the same samples) | which share of the cloud has an optical thickness, and its ln τ distribution (§2) |
+| Clouds | `surfaces/399/clouds`: kind `cloud-properties` (cloudFraction, opticalThickness, cloudTopHeightM, iceFraction; SatCORPS composite, a mosaic of the 13:30 local hours of 2026-09-28) | cloud fraction and top height (§2) |
+| Cloud thickness | `surfaces/399/cloudTau` and `cloudTauEstimated`: kind `cloud-optical-thickness-moments` (tauRetrievedFraction, lnTauMoment1, lnTauMoment2, iceTauFraction; the same cells) | which share of the cloud has a thickness, measured or estimated, and its ln τ distribution (§2) |
 | Water | `surfaces/399/water`: kind `surface-water` (waterFraction, seaIceFraction) | glint, sky reflection, sea ice (§1, §3) |
 | Wind | `surfaces/399/wind`: kind `surface-wind` (10 m speed: AMSR3 ascending ~13:30, daily mean, passes) | glint width (§3) |
 | Night lights | `surfaces/399/night`: kind `emitted-radiance` (VIIRS Black Marble DNB radiance; header `constants.toXYZS`) | emitted light (§5) |
@@ -63,8 +63,8 @@ share is missing.
 
 ## 2. Clouds
 
-Each texel holds a cloud fraction C, the in-cloud optical thickness τ at 0.65 µm, the cloud-top height and
-the share of ice-phase retrievals.
+Each texel holds a cloud fraction C, the share of it that has an optical thickness τ at 0.65 µm with the
+distribution of that thickness, the cloud-top height and the ice share ("The cloud field", below).
 
 **Reflection and transmission** use the δ-Eddington two-stream solution for a non-absorbing layer over a
 black surface (Joseph, Wiscombe & Weinman 1976; the conservative closed form was re-derived with sympy,
@@ -76,8 +76,12 @@ R(μ0) = [(1 − g)τ + (2/3 − μ0)(1 − e^{−τ'/μ0})] / [4/3 + (1 − g)�
 - The spherical albedo r̄ = 2∫R(μ)μ dμ uses 4-point Gauss–Legendre.
 - The direct view transmission is e^{−τ'/μ}.
 
-**Asymmetry parameter g** is the one the retrieval itself assumed, so the retrieved τ reproduces the
-reflectance the satellite measured:
+**Asymmetry parameter g.** The values are those of the MODIS/VIIRS retrieval, chosen when the cloud field came
+from it, so that a retrieved τ reproduced the reflectance the satellite measured. The present field is retrieved
+by another algorithm (SatCORPS, "The cloud field" below), whose ice model is roughened hexagonal columns with g from
+0.77 to 0.81 (Minnis et al. 2021, IEEE TGRS 59, 2744, §III-A.1, pp. 5–6), not 0.75: for ice the renderer's cloud is
+no longer the retrieval's own, and a given τ is drawn somewhat brighter than it was measured. The constants are
+unchanged (`core/constants.ts`); which value serves this field is open.
 
 - **Liquid clouds: g = 0.867.** Mie theory (scripted with miepython) with the water refractive index of Hale &
   Querry (1973) and the modified-gamma distribution (v_e = 0.10) of the MODIS/VIIRS retrieval (Platnick et al.
@@ -95,172 +99,112 @@ cloud base, and is seen through the direct view path plus the diffuse part (1 �
 
 **Energy.** A non-absorbing cloud over a white surface reflects all the light (tested to 10⁻⁶).
 
-**Unknown values.**
+**The cloud field** (`pipeline/src/pipeline/satcorps.py`, `surf_earth.build_clouds`; source note
+[sources/satcorps-gcc.md](sources/satcorps-gcc.md)). The layers are built from NASA Langley's SatCORPS Global
+Cloud Composite (GEO-LEO global, V2): hourly files on a 1/36° grid in which each cell holds one satellite's
+retrieval, from five geostationary imagers and NOAA-20 VIIRS, with its class, optical depth, top height, source,
+observation time and angles.
 
-- Cloud state unknown (all NaN, poleward of the daylit band: north of 78.8° N and south of 82.5° S on
-  2026-09-28): the pixel is drawn clear and marked.
-- Cloudy but no optical thickness: that share contributes no reflected light and is marked. With the
-  `cloudTau` layer this is cloudFraction − f_τ, 39 % of the daylit cloud (below); without it, only the texels
-  with no retrieval at all (2.5 % of the cloud cover). It is hatched where it is over half the pixel. With the
-  `cloudTau` layer at Best and Complete, cloudFraction − f_τ instead takes the measured partly-cloudy statistic
-  (estimated, below). It is no longer marked.
-- The marks count only where the pixel is lit. At night only the cloud state matters, and only where
-  there are lights to hide.
+- **It is a mosaic of moments, not one.** Each longitude comes from the hourly file nearest 13:30 local solar
+  time of the UTC day 2026-09-28: 24 strips of 15°. The cuts between strips are hard and one hour apart; between
+  the strips of 23 UTC (east of 150° W) and 00 UTC (west of it) the weather is 23 hours apart. These are real
+  discontinuities in the picture: nothing is blended between hours. Geostationary cells were observed 7–725 s after
+  their file's hour; the polar orbiter's cells between 2 h before and 3 h after it. 13:30 is the local time of the
+  product's own polar orbiter, so the cells that fill the caps and a geostationary outage are of the same local hour,
+  and of the wind layer that sets the glint (§3).
+- **Aggregation.** The cells are summed onto the level-4 texels by area overlap (2.5 cells per texel on average).
+  Every channel of the two thickness layers is an area-weighted sum, so the pyramid's 2×2 means are exact. A texel
+  observed over less than half its area is unknown; nothing is carried across a hole. The mosaic is known over
+  99.97 % of the globe, caps included.
+- **Classes.** Each cell is one of: clear; cloud with a thickness retrieved from sunlight (*measured*); cloud whose
+  thickness is the provider's estimate (*estimated*); the provider's "possible cloud"; cloud without a thickness
+  ("no cloud property retrievals"); not observed. By area: clear 35.2 %, measured 53.9 %, estimated 8.4 %,
+  possible 2.5 %, without a thickness 0.09 %, not observed 0.03 %.
+- **The estimated group** is: any cell with the Sun 82° or more from the zenith (the provider's documented night
+  algorithm: thermal channels, thin cloud only, thick cloud a default or an extrapolation); a geostationary cell
+  with the Sun 75.25° or more from the zenith; a geostationary cell over water within 40° of the Sun's mirror
+  direction. The last two are not documented by the provider: they are where its "possible" classes, a few percent
+  of cells elsewhere, are all but absent (0.17 % inside the cone against 2.5 % outside, in the strips used), which
+  matches the provider's statement that values "in the solar terminator and sun-glint" are extrapolated. No cell is
+  flagged in the files. Each layer header states the test and the counts (`constants.geometricTest`).
 
-**What the layer cannot say (validation, M5).** In the validation case `earth-himawari9-2026` (Himawari-9,
-the cloud layer's own overpass), the disk centre renders 2.1× the measured radiance and three points
-near it 1.2–1.25×. The limb passes. The centre texel is 81 % cloudy with an in-cloud mean τ = 7.8 (low
-cumulus, tops near 1 km), and its neighbours range from clear to τ = 20. Across the swath from 125° E to
-160° E the render is about 1.4× the image. The model reproduces what the layer says there (checked on the
-CPU with earth.ts): the excess is in what the layer means.
+**The three layers.**
 
-- Its cloud fraction counts the samples with a retrieved cloud top. These include partly cloudy samples,
-  for which the retrieval gives no optical thickness.
-- Its τ is the mean over the samples that have one.
-- The renderer gives that τ to the whole cloud fraction. Where no sample has a τ (49 % of the cloudy texels
-  in the swath) the share is drawn as unknown. Where only some lack one, nothing in the layer tells, and
-  broken cumulus comes out too bright.
-- R(τ̄) ≥ the mean of R(τ) adds to it (the plane-parallel bias, Cahalan et al. 1994, J. Atmos. Sci. 51,
-  2434).
+- `clouds`: cloudFraction counts every cloud class and the "possible" class; opticalThickness and iceFraction are
+  the mean thickness and ice share of the measured cells; cloudTopHeightM is the mean top of the cells with a
+  thickness of either group (one channel serves both levels: where a texel holds estimated cells it includes their
+  heights).
+- `cloudTau` (label **derived**): f_τ, the share of the texel that is cloud with a *measured* thickness; Σ a·ln τ and
+  Σ a·(ln τ)² over those cells (a: the cell's share of the texel); the share that is ice. Mean ln τ = m1 / f_τ,
+  var ln τ = m2 / f_τ − (mean ln τ)².
+- `cloudTauEstimated` (label **estimated**): the same over the cells with a measured *or* an estimated thickness.
+  Where a texel has no estimated cell it equals `cloudTau`.
 
-A fix needs two things from the pipeline: the share of samples with an optical-thickness retrieval (the rest
-of the cloudy share is then unknown), and preferably the mean of ln τ (Cahalan et al.'s effective
-thickness). The renderer change is then small. The 8-px blocks in the rendered case are the glint: the wind
-layer's resolution and swath gaps (§3; clear water where the wind is unknown gets no glint).
+**What is drawn at each reality level.** The shell (`app/extras.ts`) binds `cloudTauEstimated` in place of
+`cloudTau` where its label is admitted (Best estimate, Complete) and `cloudTau` at Strict. The renderer
+(`earth.ts cloudLogNormal`, mirrored in `shaders-earth.ts`) draws the share f_τ of the bound layer as a log-normal
+in τ, three sub-pixels at τ = exp(μ), exp(μ ± √3σ) with weights 2/3, 1/6, 1/6 (the 3-point Gauss–Hermite rule),
+each with the full two-stream cloud; the ice share sets g. The rest of the cloud, cloudFraction − f_τ, has no
+thickness at that level: it reflects nothing, the air over it is drawn, and it is marked not measured (hatched
+where it is over half the pixel). **No statistic stands in for a thickness.**
 
-**The `cloudTau` layer.** It is built from the
-same 16 samples per texel as `clouds` (the rebuilt `clouds` tiles are bit-identical to the previous build),
-float16 × 4. Both layers' counts, fractions, means and log moments, including their region provenance, are
-**derived** from measured L2 retrievals (architecture §2.1). VIIRS CLDPROP v1.1 cloud-top heights use NOAA
-Enterprise ACHA with CLAVR-x cloud-top phase, as documented in the CLDPROP L2 User Guide v1.2, §§3.1–3.1.2.
-The label correction admits the same cloud layers at Strict, Best and Complete; the current app still withholds
-Earth's surface/cloud rendering at Strict because its atmosphere and albedo inputs are estimated.
+| Class | Strict | Best estimate, Complete |
+|---|---|---|
+| measured thickness | drawn | drawn |
+| estimated thickness | not measured | drawn with the provider's value (estimated) |
+| "possible" cloud | not measured | not measured |
+| cloud without a thickness | not measured | not measured |
+| not observed | cloud state unknown: drawn clear and marked | the same |
 
-- `tauRetrievedFraction` f_τ is the share of samples with an optical-thickness retrieval, 0 ≤ f_τ ≤
-  cloudFraction. The cloudy share without a thickness is cloudFraction − f_τ; its thickness is unknown. A sample
-  with height and no thickness counts as cloud. These VIIRS GIBS inputs cannot distinguish partly cloudy pixels
-  from pixels restored to clear sky by the optical algorithm or failed optical retrievals. GIBS serves no cloud
-  mask or partly-cloudy thickness (CLDPROP's `_PCL` fields) for these VIIRS inputs; it does serve PCL thickness
-  for MODIS Aqua and Terra, which are different observations.
-- `lnTauMoment1` = Σ ln τ_i / N and `lnTauMoment2` = Σ (ln τ_i)² / N are taken over the retrieved samples, with N
-  all samples of the texel. So mean ln τ = m1 / f_τ, and var ln τ = m2 / f_τ − (mean ln τ)².
-- `iceTauFraction` is the share of samples with an ice-phase retrieval.
+Not measured is 10.9 % of the globe's area at Strict and 2.6 % at Best. (In the app the Earth's layers are drawn
+only where its atmosphere is admitted, which is estimated: at Strict the Earth is its disk photometry, §0.) The marks
+count only where the pixel is lit; at night only where there are lights to hide.
 
-Every channel is a per-sample average, so the pyramid's 2×2 means are exact at every level. A coarse texel's
-variance includes the spread between its texels. That is unlike `clouds`, whose in-cloud means are averaged
-without their counts. ln τ is taken at each colour-map bin's geometric centre: ±0.018 above τ = 1, but the bin
-0.01–1 is taken as τ = 0.1, ±2.3 in ln τ.
-
-The layer measures the problem directly. In the daylit globe, 39 % of the cloud fraction has no thickness
-(μ0-weighted). In the validation swath (40° S–40° N, 125–160° E) it is 47–50 %, depending on the weighting:
-41 % of the cloudy texels have no retrieval at all and 30 % have some. At (0°, 140.7° E), for example,
-cloudFraction = 0.94 but f_τ = 0.06.
-
-For the part that has a thickness, the header's `diagnostics.planeAlbedoCheck` compares the plane albedo
-× f_τ (δ-Eddington, overpass Sun) from the moments with the independent-pixel mean of R(τ_i). The figures
-are bias, then the mean absolute error per texel:
+**The moments against the cells.** The header's `diagnostics.planeAlbedoCheck` compares the plane albedo × f_τ
+(δ-Eddington, the Sun of 13:30 local) from the moments with the area mean of R(τ_i) over the measured cells
+(independent pixels). Bias, then mean absolute error per texel, for the globe and for the validation swath
+(40° S–40° N, 125–160° E):
 
 | | level 4 (4.9 km) | level 0 (78 km) |
 |---|---|---|
-| R(linear mean τ) | +3.0 %, 3.0 % | +13–14 %, 13–14 % |
-| R(exp mean ln τ) | −0.1 to −0.3 %, 1.1–1.2 % | −0.3 to −0.5 %, 3.3–3.7 % |
-| 3-point log-normal (nodes μ, μ ± √3σ; weights 2/3, 1/6, 1/6) | +0.1 %, 0.2–0.3 % | +0.5 %, 0.8 % |
+| R(linear mean τ) | +1.7 to +2.8 %, 1.7–2.8 % | +12–17 %, 12–17 % |
+| R(exp mean ln τ) | −0.3 to −0.8 %, 0.8–1.4 % | −2.4 to −4.5 %, 4.9–7.2 % |
+| 3-point log-normal | +0.2 to +0.4 %, 0.3–0.6 % | +0.7 to +1.0 %, 1.1–1.6 % |
 
-The first row is the plane-parallel bias. The log-mean alone is nearly unbiased; the log-normal from both
-moments also holds per texel at coarse levels.
+The first row is the plane-parallel bias (Cahalan et al. 1994, J. Atmos. Sci. 51, 2434). The log-normal from both
+moments holds at every level.
 
-**How the renderer uses it (M5).** Where the moments are known (`earth.ts cloudLogNormal`, mirrored in
-`shaders-earth.ts`):
+**What the field does not say.** No uncertainty per cell and no validation of this product version; the
+algorithm family's thin ice cloud is, by day in geostationary data, 2.25 thicker than the lidar's on average (RMS
+10.6); a pixel of 2–3 km is cloudy or clear as a whole, so small cumulus in pixels called clear is missing; the
+composite's paper mentions no parallax correction; the grid's latitude is read as geodetic on the evidence of its
+coastlines. Where the sea glints the sources disagree about the cloud itself (at 130° E, 6° S on this day: 74 %
+cloud from NOAA-20 at 04:36 UTC, 6 % from Himawari-9 at 05:06). All of it is in the source note.
 
-- The retrieved share f_τ of the pixel is a log-normal in τ: ln τ has mean m1/f_τ and variance m2/f_τ −
-  mean². It is drawn as three sub-pixels at τ = exp(μ), exp(μ ± √3σ) with weights 2/3, 1/6, 1/6 (the 3-point
-  Gauss–Hermite rule), each with the full two-stream cloud (reflection, transmission to and from the surface,
-  multiple reflection, glint through thin cloud). Against a 400-point integral of the plane albedo it is within
-  0.05 % for σ(ln τ) = 0.5 and within 0.6 % for σ = 1 (τ ≥ 3); for σ = 1.4 on thin cloud it reaches 1–3 %. The
-  ice share among the retrievals (iceTauFraction/f_τ) sets g.
-- The rest of the cloud, cloudFraction − f_τ, has no measured thickness for its own samples. VIIRS GIBS serves
-  no partly-cloudy thickness for them.
-  - At Strict it gets no τ: it reflects nothing and is marked unknown (hatched where it is over half the pixel).
-  - At Best and Complete it is a second population, with the measured partly-cloudy τ distribution of the
-    header's `unmeasuredTau` statistic (below), labelled **estimated** in the body's worst label and tint.
-    Its probabilities are taken bin by bin (`earth.ts unmeasuredTauPopulation`; empty bins dropped), as
-    sub-pixels with liquid g, in the same two-stream layer as the retrieved part. The renderer's plane albedo
-    R̄ = Σ p_k R(τ_k) is 0.35599, 0.23700, 0.16705, 0.12035 and 0.08673 at μ0 = 0.2–1.0. The header's
-    `planeAlbedoLiquid` check values are 0.356, 0.237, 0.1671, 0.1204 and 0.0867.
-- Without the layer (older data), the clouds layer's mean τ applies to the whole cloud, as before.
+**Validation** (`earth-himawari9-2026`, Himawari-9 at 04:05 UTC on 2026-09-28; `earth-moon-epoxi-2008`, with this
+cloud field standing in for 2008). Rendered Y over expected Y on the GPU, 4 × 4 samples per pixel, with the layer
+this one replaced (VIIRS imagery through GIBS, its cloud without a thickness given a global partly-cloudy
+statistic) and with this one; and what the model renders with no cloud at all (CPU twin):
 
-Validation (`earth-himawari9-2026`, Himawari-9 over the cloud layer's own overpass):
+| Region | previous layer | this layer | no cloud |
+|---|---|---|---|
+| Himawari disk centre | 1.51 fail | 1.28 fail | 0.95 |
+| Himawari limb | 0.99 pass | 1.01, fails in Z | 0.99 |
+| Himawari terminator | 0.64 fail | 0.75 fail | 0.74 |
+| Himawari 130° E | 1.38 fail | 1.21 fail | 1.19 |
+| Himawari 150° E | 1.02 pass | 1.18 fail | 0.17 |
+| Himawari 141° E, 10° S | 1.38 fail | 1.11, Y passes, Z and S fail | 1.09 |
+| EPOXI Earth, whole disk | 0.97 pass | 1.02 pass | 0.55 |
+| EPOXI Earth, centre | 0.99 pass | 0.96 pass | 0.46 |
+| EPOXI Moon/Earth ratio (0.1017 ± 0.0008) | 0.1007 fail | 0.0958 fail | |
 
-| ROI | before | after |
-|---|---|---|
-| disk centre | 2.08 | 1.03 |
-| near-centre points | 1.17–1.25 | 0.79, 0.91, 0.99 |
-| limb | 0.99 | 0.99 |
-
-The disk centre's agreement is partly coincidental: at (0°, 140.7° E) the texel has cloudFraction 0.94 and
-f_τ 0.06, so most of that pixel is unknown and hatched. It shows only the retrieved cloud, the clear sea and
-the air. For the same reason the EPOXI Earth of 2008 (whole disk at 75° phase, the app's cloud day standing
-in for 2008) now renders at 0.85 of its measured disk brightness and 0.62 at its centre, against 1.07 and
-1.01 when the clouds layer's mean τ was spread over the whole cloud. That was the overestimate this layer
-removes. What is missing now is the light of the cloud whose thickness is not measured.
-
-**With the partly-cloudy statistic at Best** (the second population above), the same cases give:
-
-| ROI | unknown (Strict rule) | with the statistic |
-|---|---|---|
-| Himawari disk centre | 1.03 | 1.47 (fail) |
-| Himawari near-centre points | 0.79, 0.99, 0.91 | 1.29, 1.01, 1.36 |
-| Himawari limb (Y) | 0.99 | 1.00 (Z 1.11, just outside its tolerance) |
-| Himawari terminator | 0.71 | 0.57 |
-| EPOXI Earth, whole disk | 0.85 | 0.94 (pass) |
-| EPOXI Earth, centre | 0.62 | 0.92 (pass) |
-| EPOXI Moon/Earth ratio | 0.111 (0.1016 ± 0.0014) | 0.1010 (pass) |
-
-The whole-disk case now passes. The texels at Himawari's centre do not: they are 81–94 % "cloudy" with
-f_τ = 0.06, yet in the image they are about as dark as the clear sea under the air. Their cloud without a
-retrieval is much thinner than the global partly-cloudy mean (τ_g 1.24). Even with no light from it, the centre
-renders 1.03. A regional or per-texel statistic would be needed there. At the terminator the unknown share
-was drawn as clear air over a black surface. That air reached the ground, whereas air over a cloud stops at
-its top, so 0.71 was too bright for the wrong reason.
-
-**A statistic for the unmeasured share (`cloudTau.json` → `constants.unmeasuredTau`; for Best estimate).**
-Cloudy samples without a thickness retrieval can be partly cloudy, restored to clear sky by the optical
-algorithm, or failed optical retrievals; the two VIIRS GIBS layers cannot distinguish these populations.
-MODIS and VIIRS report successful partly-cloudy retrievals in `_PCL` fields. GIBS serves PCL thickness for
-MODIS Aqua and Terra, but not VIIRS NOAA-20. The MOD06 population behind the statistic includes CSR = 1, 3;
-CLDPROP v1.1 omits CSR = 3. The table is derived from the observed global τ histogram of MODIS partly cloudy pixels: July 2021,
-MODIS C6.1 Level-3 COSP product, read from Fig. 7 of Pincus et al. (2023) (docs/sources/pincus-2023-modis-cosp.md;
-`pipeline/src/pipeline/cloud_pcl.py`).
-
-- **Partly cloudy, all heights** (`statistics.floorCellsZero.partlyCloudyAllHeights`):
-
-  | τ bin | 0–0.3 | 0.3–1.3 | 1.3–3.6 | 3.6–9.4 | 9.4–23 | > 23 |
-  |---|---|---|---|---|---|---|
-  | probability | 0.042 | 0.468 | 0.335 | 0.132 | 0.024 | 0 |
-
-  ln τ has mean 0.21 and σ = 1.17 (τ_g = 1.24). The population is 91.5 % low (pc ≥ 680 hPa) and 3.5 % ice.
-  For comparison, fully cloudy pixels in the same figure have τ_g = 6.9, and our own VIIRS retrievals of the
-  day have τ_g = 8.3.
-- **How to apply it** (`constants.use.unmeasuredShare`): at Best, give the share cloudFraction − f_τ this
-  distribution as a separate population, labelled **estimated**; at Strict it stays unknown. The mixture of
-  retrieved cloud and this assumed population is also **estimated**.
-  - The plane albedo is R̄ = Σ_k p_k R(τ_k) over the seven bins, with τ_k = exp(`tauBinLnCentre[k]`); this
-    assumes no shape. Alternatively, use a log-normal with these μ and σ through the same 3-point rule as the
-    retrieved part.
-  - Use liquid g. Do not give this share the texel's own retrieved distribution, which is biased to overcast cloud.
-  - `planeAlbedoLiquid` lists R̄ at μ0 = 0.2–1.0 for checking. The bin sum gives 0.356, 0.237, 0.167, 0.120 and
-    0.087 at μ0 = 0.2, 0.4, 0.6, 0.8 and 1.0. The log-normal agrees to 1–3 % up to μ0 = 0.6 and is 6–10 % higher
-    at μ0 = 0.8–1, because the measured distribution has no mass above τ = 23. R(τ_g) is 30–40 % too low there.
-    So the bin sum is the one to use.
-- **Why a partly-cloudy τ fits a whole sample:** a partly cloudy pixel's τ is retrieved as if the pixel were
-  overcast, i.e. it is the plane-parallel τ that gives the pixel's mean reflectance.
-- **Caveats** (reasons for the estimated label):
-  - The histogram holds only successful partly-cloudy retrievals. About 34 % of global over-ocean liquid PCL
-    attempts fail (Platnick et al. 2017), and failed overcast retrievals and pixels restored to clear are also
-    in our share; the same τ is assumed for them.
-  - It is one month, global, MODIS rather than VIIRS, with no regional dependence.
-  - The palest histogram cells cannot be read. `floorCellsAtFloor` bounds that effect: τ_g up to 1.77,
-    σ up to 1.73.
+The cases test the model; they did not choose the field. With the assumed thickness gone, the three regions it
+made 1.38–1.51 are 1.11–1.28, and what remains is no longer the cloud field's: 130° E and 141° E are too bright
+with no cloud at all (clear sea with sun glint under the air); the disk centre has 27 % cloud of thickness 2.7,
+retrieved from the same Himawari scan as the reference image, and renders a third brighter than with no cloud; and
+150° E, overcast at thickness 22, renders 1.18. The cloud's angular law (a plane albedo spread by the escape
+function, 1.29 times Lambert at the nadir at every thickness), the glint and the reference are what these rows
+now test.
 
 **Not modelled.** Cloud parallax and cloud shadows on the ground. The cloud-top height is used only to
 place the cloud's reflection inside the atmosphere (§4). Also not modelled: 3D cloud effects, the glory,
@@ -474,20 +418,22 @@ claim, so it is not marked: marking it would hatch most of the night side.
 
 | Model | A (X, Y, Z, S) | Ratio to measured |
 |---|---|---|
-| Surface + clouds, no atmosphere (level 1) | 0.179 0.178 0.182 0.180 | 0.74 0.75 0.59 0.67 |
-| + atmosphere, glint, sky reflection and lower-air transmission (level 0) | 0.218 0.217 0.276 0.247 | 0.91 0.91 0.90 0.92 |
+| Surface + clouds, no atmosphere (level 1) | 0.150 0.150 0.153 0.151 | 0.62 0.63 0.50 0.56 |
+| + atmosphere, glint, sky reflection and lower-air transmission (level 0) | 0.200 0.199 0.261 0.231 | 0.83 0.84 0.85 0.86 |
 | Measured p·Φ(2.42°) | 0.241 0.238 0.308 0.269 | 1 |
 
-With the atmosphere the colour matches: all four channels come out 0.90–0.92 of the measurement (with the
-δ-scaled view transmittance). The remaining 8–10 % is within the photometry's stated variability: the disk reflectance changes by 10–20 %
-with clouds and the hemisphere in view, and the clouds here are from a different day, 2026-09-28. Model
-approximations also contribute:
+With the atmosphere the colour matches: all four channels come out 0.83–0.86 of the measurement (with the
+δ-scaled view transmittance). The test draws the `clouds` layer alone, without the thickness layers: each texel's
+whole cloud fraction at the mean thickness of its measured cells, and no thickness where a texel has cloud but no
+measured cell. The remaining 14–17 % is at the edge of the photometry's stated variability: the disk reflectance
+changes by 10–20 % with clouds and the hemisphere in view, and the clouds here are a mosaic of a different day,
+2026-09-28 (§2). Model approximations also contribute:
 
 - Lambert land;
 - two-stream clouds without a glory or phase features, which matter at 2.4° phase;
 - clouds as a layer at their top.
 
-The unknown share of the disk is 1 %.
+The unknown share of the disk is 4 % (6 % at level 1): cloud in texels without a measured thickness.
 
 ## 7. Cost
 

@@ -292,13 +292,16 @@ def _geometric_test(info: dict) -> dict:
                     f"are cells over water with the solar zenith angle below {satcorps.GEO_QUALIFIED_SZA_DEG:g}°, inside "
                     "and outside the cone.",
             "allGeostationary": tot, "bySatellite": ev},
-        "limits": "The cone's edge was found at this local hour (each satellite near 13:30 local): the 'possible' classes "
-                  "return between 40° and 42° on all five satellites. Away from it the edge moves (in the 04:00 UTC file "
-                  "of the same day GOES-18, seen near its evening limb, has them back from 28°), and Himawari-9 has them "
-                  "again inside 10°: the provider's zone depends on more than this angle. The solar-zenith limit holds on "
-                  "every satellite in that file: none of 3,232,427 geostationary cells between 75.25° and 82° is in a "
-                  "'possible' class, against 116,722 of 7,128,216 between 60° and 75.25° (docs/sources/satcorps-gcc.md). "
-                  "The polar orbiter's cells show neither feature and are not tested for them."}
+        "limits": "40° is where the 'possible' classes return in these strips (each satellite near 13:30 local) for "
+                  "Himawari-9, Meteosat-9, Meteosat-10 and GOES-18, between 40° and 42°; for GOES-19 they return gradually "
+                  "from about 28°, and Himawari-9 and Meteosat-9 have them again inside 10°. In the 04:00 UTC file of the same day GOES-18, "
+                  "seen near its evening limb, has them back from 28°. The provider's zone therefore depends on more than "
+                  "this angle: 40° is the widest edge seen, taken without an inner limit, not the provider's definition. "
+                  "'No cloud property retrievals' does not mark the low Sun (it occurs up to 82°); only the 'possible' "
+                  "classes do, on every satellite of that file: none of 3,232,427 geostationary cells between 75.25° and "
+                  "82° is in a 'possible' class, against 116,722 of 7,128,216 between 60° and 75.25° "
+                  "(docs/sources/satcorps-gcc.md). The polar orbiter's cells have no 'possible' class anywhere and are "
+                  "not tested for either feature."}
 
 
 def build_clouds(ctx: BuildContext) -> list[dict]:
