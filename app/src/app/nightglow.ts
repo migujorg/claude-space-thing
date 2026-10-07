@@ -10,6 +10,7 @@
 
 import type { AirglowModel, AuroraModel, Label } from '../data/schema';
 import type { AuroraBins } from '../data/nightglow';
+import { DAYS_PER_JULIAN_YEAR } from '../core/constants';
 import type { SceneAirglowLayer, SceneNightglow } from '../render/scene';
 import { labelAllowed, worstOf, type ExistsLevel } from './reality';
 
@@ -45,7 +46,7 @@ export function bracket(nodes: number[], x: number): { i: number; f: number } {
 
 /** Linear weights of the two month bins around a day of year (cyclic over the year): [month a, month b, weight of b]. */
 export function monthWeights(centres: number[], doy: number): [number, number, number] {
-  const Y = 365.25;
+  const Y = DAYS_PER_JULIAN_YEAR;
   for (let m = 0; m < 12; m++) {
     const a = centres[m], b = m < 11 ? centres[m + 1] : centres[0] + Y;
     const d = doy < a && m === 0 ? doy + Y : doy;

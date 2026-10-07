@@ -26,8 +26,9 @@ WebGPU scene verification on the running app.
 The build checked on 2026-10-04 contains 59 raw inputs (122,867,792 bytes, including the reused CIE tables,
 US76 document and NAIF leap-second kernel) and five products (5,256,249 bytes). Rebuilds with all raw
 inputs cached took 45–67 s; most of it was magnetic field-line tracing. Itikawa's NIST PDF first returned HTTP 403
-and succeeded with the pipeline's browser user agent. If the publisher refuses a future retrieval, the existing
-transcription remains cited and the source record explicitly omits a retrieval date and checksum. UTC dates use
+and succeeded with the pipeline's browser user agent. The cached rebuild on 2026-10-07 took 67 s and reproduced
+all five previously audited product hashes; it needed no downloads. If the publisher refuses a future retrieval,
+the existing transcription remains cited and the source record explicitly omits a retrieval date and checksum. UTC dates use
 SPICE and the registered NAIF LSK rather than a fixed TDB-to-UTC offset. Airglow v2 wraps its physical
 payload in the canonical `Sourced.value` envelope; the app resolves that envelope without altering the numbers.
 The climatological coupling is also a complete `Sourced` value with its own registered source list.
