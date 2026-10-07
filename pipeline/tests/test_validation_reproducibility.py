@@ -186,3 +186,14 @@ def test_spectral_intermediate_cache_is_private_and_discarded(tmp_path,monkeypat
         (fresh/'derived.json').write_text('computed this run')
     assert earth.CACHE==shared and sentinel.read_text()=='historical values'
     assert not fresh.exists()
+
+
+def test_generation_stamp_is_an_explicit_artifact_input(monkeypatch):
+    from pipeline.validation import reproducibility as r
+    monkeypatch.setenv('SOURCE_DATE_EPOCH','1791360000')
+    first=r.generation_time(None)
+    assert first==r.generation_time(None)
+    assert r.generation_time({'generated':'2026-09-30T19:00:00+00:00'})=='2026-09-30T19:00:00+00:00'
+    monkeypatch.delenv('SOURCE_DATE_EPOCH')
+    with pytest.raises(r.ReproductionError,match='SOURCE_DATE_EPOCH'):
+        r.generation_time(None)

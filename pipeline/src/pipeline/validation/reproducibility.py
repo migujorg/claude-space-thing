@@ -113,10 +113,12 @@ def runtime():
     # Build configuration captures BLAS/LAPACK implementation as well as versions.
     from numpy._core import _multiarray_umath
     import scipy
+    import spiceypy as sp
     import zlib
     from PIL import features
     return {'python': platform.python_version(), 'machine': platform.machine(),
             'libc': list(platform.libc_ver()), 'floatRounds': sys.float_info.rounds,
+            'spiceToolkit': sp.tkvrsn('TOOLKIT'),
             'pngCompression': {'pythonZlib': zlib.ZLIB_RUNTIME_VERSION, 'pillowZlib': features.version('zlib')},
             'system': platform.system(),
             'libraries': {p: version(p) for p in ('numpy', 'scipy', 'spiceypy', 'astropy',
@@ -281,3 +283,19 @@ def isolated_spectral_cache():
             yield
         finally:
             earth.CACHE = previous
+
+
+def generation_time(expected):
+    """Artifact creation time is an input, never a fresh wall-clock read on rebuild."""
+    if expected and expected.get('generated'):
+        return expected['generated']
+    import datetime as dt
+    value = os.environ.get('SOURCE_DATE_EPOCH')
+    if value is None:
+        raise ReproductionError('new validation candidates require SOURCE_DATE_EPOCH (Unix seconds of '
+                                'artifact creation, fixed once for the batch); committed rebuilds retain '
+                                'their recorded generated timestamp')
+    try:
+        return dt.datetime.fromtimestamp(int(value), dt.timezone.utc).isoformat(timespec='seconds')
+    except (ValueError, OverflowError, OSError) as exc:
+        raise ReproductionError('invalid SOURCE_DATE_EPOCH: expected Unix seconds') from exc

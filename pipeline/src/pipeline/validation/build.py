@@ -772,6 +772,7 @@ def preview(path: Path, refs: list[np.ndarray], bands: list[str], rois: list[roi
 def build_case(case, *, expected: dict | None = None) -> dict:
     from . import reproducibility as repro
     repro.require_single_thread()
+    generated = repro.generation_time(expected)
     if expected is not None:
         repro.preflight(expected)
     lock = (expected or {}).get("reproducibility")
@@ -790,8 +791,9 @@ def build_case(case, *, expected: dict | None = None) -> dict:
                     raise repro.ReproductionError(f'{src["id"]}: actual input sha256 differs from source ledger')
         if expected is not None:
             repro.check_sources(expected, built["json"])
+    built["json"]["generated"] = generated
     built["json"]["reproducibility"] = {
-        "schema": "validation-rebuild-v1", "criterion": "exact scientific JSON and float32 reference bytes",
+        "schema": "validation-rebuild-v1", "artifactCreated": generated, "criterion": "exact scientific JSON and float32 reference bytes",
         "inputs": inputs, "implementation": repro.implementation(), "runtime": repro.runtime(),
         "fits": [{"product": m["product"], "inputs": m.get("fitInputs"), "freeResult": m.get("freeFitResult"), "result": m.get("fitResult")}
                  for m in p.img_meta],
