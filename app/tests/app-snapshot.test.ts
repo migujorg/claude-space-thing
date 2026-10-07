@@ -160,6 +160,24 @@ describe('ellipsoid calibration at Strict and Best', () => {
       expect(p.worstLabel).toBe(calibration === 'estimated' && level === 'best' ? 'estimated' : 'derived');
     });
   }
+  // A body with unequal radii and NO disk albedo at this level (Amalthea, Thebe, Janus, Proteus and the other small
+  // moons without a photometry record) has no disk scale to calibrate: the calibration view must not touch its label.
+  // 7 October 2026: the first wiring pushed 'estimated' for every such body, and the scene suite refused the landing
+  // (ten scenes' point markers changed from derived to estimated).
+  for (const level of ['strict', 'best'] as const) it(`no disk albedo, unequal radii, at ${level}: the label is untouched`, () => {
+    const mk = (radii: [number, number, number]) => {
+      const b = body(399, 'Moonlet', 'planet', {});
+      b.radii.value = radii;
+      const bs = [body(10,'Sun','star',{r:500}), b];
+      const world = computeWorld(0, [5e5,0,0], bs, eph, core, 10);
+      const s = buildSnapshot({world, camera: cam, reality:{...defaultReality(), exists:level},light:fakeLight(), selectedId:null, orbits:[],orientations:new IauOrientationSet(bs,fakeBodyToIcrf)});
+      return s.bodies.find(x => x.id === 399)!;
+    };
+    const sphere = mk([10, 10, 10]), triaxial = mk([10, 9.5, 9]);
+    expect(triaxial.worstLabel).toBe(sphere.worstLabel);
+    expect(triaxial.surfaceUnknown).toBe(sphere.surfaceUnknown);
+    expect(triaxial.albedoMeasurementView ?? null).toBeNull();
+  });
 });
 
 // Compare every built physical body's admission with the rc reality contract.

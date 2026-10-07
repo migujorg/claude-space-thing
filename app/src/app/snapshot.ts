@@ -134,7 +134,9 @@ export function sceneBodyOf(
   const calibration = g.body.photometry?.albedoMeasurementView;
   const absoluteEarth = !!sb.surface?.clouds && !!sb.surface?.albedo?.header.normalization?.absoluteDiskMean;
   const rCal = sb.radii;
-  if (sb.orient && rCal && !sb.shape && !sb.atmosphere?.surface && !absoluteEarth
+  // Only a body that has a disk albedo at this level has a disk scale to calibrate: a moon with unequal radii
+  // and no photometry record is drawn from other data and keeps its label.
+  if (sb.albedoXYZS && sb.orient && rCal && !sb.shape && !sb.atmosphere?.surface && !absoluteEarth
       && !(rCal[0] === rCal[1] && rCal[1] === rCal[2])) {
     // A compiled mean defines its own reference. Only an unrecoverable single
     // observation introduces an assumed view; its estimated label follows §2.1.
