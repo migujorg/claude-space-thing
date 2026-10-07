@@ -321,7 +321,13 @@ describe.skipIf(!hasComponents)('ring components: real light-stage products', ()
         expect(frame.warnings.join(' ')).toContain('reflectance not measured');
       } else {
         expect(frame.draw!.cmp!.packed.model).toBe(chosen);
-        expect(frame.warnings.filter((x) => x.includes('geometry estimated'))).toHaveLength(10);
+        const geometryWarnings = frame.warnings.filter((x) => x.includes('geometry estimated'));
+        expect(geometryWarnings).toHaveLength(1);
+        const years = chosen.components.filter((c) => c.centrelineEstimate).map((c) => {
+          const e = c.centrelineEstimate!;
+          return (et - e.lastDatumEt) / (DAY_S * e.yearDays);
+        });
+        expect(geometryWarnings[0]).toBe(`Uranus rings: geometry estimated from COR centreline fits with constant mean widths for ring 6, ring 5, ring 4, α ring, β ring, η ring, γ ring, δ ring, λ ring, ε ring; ${Math.min(...years).toFixed(2)}–${Math.max(...years).toFixed(2)} years beyond last accepted data; fitted modes and width variation omitted; dynamical change is unbounded`);
         expect(frame.warnings.join(' ')).toContain('λ ring');
         expect(frame.warnings.join(' ')).toContain('reflectance not measured');
       }

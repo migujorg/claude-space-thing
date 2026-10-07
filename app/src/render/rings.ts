@@ -449,10 +449,12 @@ export function prepareRings(b: SceneBody, sunIrradianceXYZS_1AU: XYZS | null, s
   if (comps) {
     const et = r.et ?? comps.epochEt;
     const estimates = comps.components.filter((c) => c.centrelineEstimate);
-    for (const c of estimates) {
-      const e = c.centrelineEstimate!;
-      const years = (et - e.lastDatumEt) / (DAY_S * e.yearDays);
-      out.warnings.push(`${b.name} ${c.name}: geometry estimated from the COR ellipse and constant mean width ${e.meanWidthKm} km; ${years.toFixed(2)} years beyond last accepted datum ${e.lastDatumTdb}; fitted modes and width variation omitted. Formal statistical errors assume constant rates; dynamical change is unbounded`);
+    if (estimates.length) {
+      const years = estimates.map((c) => {
+        const e = c.centrelineEstimate!;
+        return (et - e.lastDatumEt) / (DAY_S * e.yearDays);
+      });
+      out.warnings.push(`${b.name} rings: geometry estimated from COR centreline fits with constant mean widths for ${estimates.map((c) => c.name).join(', ')}; ${Math.min(...years).toFixed(2)}–${Math.max(...years).toFixed(2)} years beyond last accepted data; fitted modes and width variation omitted; dynamical change is unbounded`);
     }
     const unsupported = comps.components.filter((c) => !geometrySupported(c, et)).map((c) => c.name);
     if (unsupported.length) out.warnings.push(`${b.name} rings: geometry not measured at this time for ${unsupported.join(', ')} → no light or extinction; radial annotation hatched as not measured`);
