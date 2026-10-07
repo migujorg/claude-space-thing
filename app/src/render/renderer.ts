@@ -159,7 +159,7 @@ export class Renderer {
   private sunSP = 1;
   private fieldDeg2 = 0;
   private persistentWarnings: string[] = [];
-  /** Debug: names of passes to skip ('bodies', 'background', 'cull', 'points', 'pyramid', 'sun', 'adapt', 'composite', 'overlays', 'meshShadow'). */
+  /** Debug: names of passes to skip ('bodies', 'background', 'cull', 'points', 'unseen' (the point sources the eye does not pick out, in the point image), 'pyramid', 'sun', 'adapt', 'composite', 'overlays', 'meshShadow'). */
   debugSkip = new Set<string>();
   /** Extended sky light behind the bodies (render/sky/background.ts), drawn into EXT after the bodies pass. */
   private background: { encode(enc: GPUCommandEncoder, t: BackgroundTargets): void } | null = null;
@@ -754,10 +754,9 @@ export class Renderer {
     const kR = backgroundLevel(veilLevels, omegaCentre, eye.riccoAreaSr);
     this.bgView = t.levels[kR].acc.createView();
     // A source's own light in that background at its own position, per unit illuminance and per pixel
-    // solid angle: Σ_{k≥kR} w_k/(2π V_k), V_k the variance of level k's term as the splat and the read of
-    // level kR make it. The shaders subtract it: the background excludes the source. The veil holds every
-    // point source in the frame, displayed or not (step 3), so there is always that light to take out.
-    this.selfVeilPx = ownVeilPerPixel(veilLevels, kR, sigmaPx);
+    // solid angle: Σ_{k≥kR} w_k/(2π σ_k²). The shaders subtract it: the background excludes the source. The
+    // veil holds every point source in the frame, displayed or not (step 3), so the subtraction is always right.
+    this.selfVeilPx = ownVeilPerPixel(veilLevels, kR);
 
     this.writeUniforms(snapshot, eye, g, prep, sigmaPx, extentPx, wPt);
 
@@ -957,7 +956,7 @@ export class Renderer {
       if ((this.starCount > 0 || (this.extraPts?.count ?? 0) > 0) && !skip.has('points')) {
         pass.setBindGroup(0, this.pointBindGroup(pipe, this.visible, bg));
         pass.drawIndirect(this.args, 0);
-        if (pipe === this.pointPipe) {
+        if (pipe === this.pointPipe && !skip.has('unseen')) {
           pass.setPipeline(this.pointLightPipe);
           pass.setBindGroup(0, d.createBindGroup({
             layout: this.pointLightPipe.getBindGroupLayout(0),

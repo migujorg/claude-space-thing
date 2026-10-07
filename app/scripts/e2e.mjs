@@ -236,8 +236,10 @@ await server?.close();
 const gpu = { mode: gpuMode, adapter: results.find((r) => r.adapter)?.adapter ?? null };
 const notes = compare ? acceptanceNotes(baseline, results.map((r) => r.id), dataInfo, gpu) : [];
 for (const r of results) {
-  // A failure where the eye is always adapted (below); a note where the adaptation runs in real time.
-  const unsteady = starsFramesFailure(r.starsDrawnFrames, r.stats?.starsDrawn, r.query) ? null : starsFramesNote(r.starsDrawnFrames, r.stats?.starsDrawn);
+  // A failure where the eye is always adapted (in the comparison below; said here when nothing is compared); a
+  // note where the adaptation runs in real time.
+  const fails = starsFramesFailure(r.starsDrawnFrames, r.stats?.starsDrawn, r.query);
+  const unsteady = fails ? (compare ? null : fails) : starsFramesNote(r.starsDrawnFrames, r.stats?.starsDrawn);
   if (unsteady) notes.push(`${r.id}: ${unsteady}`);
 }
 for (const r of results) {

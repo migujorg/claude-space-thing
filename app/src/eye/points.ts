@@ -96,11 +96,7 @@ export function pointAppearance(eye: EyeFrame, E: { Y: number; S: number }, bg: 
 // a source is judged against is a function of the scene alone, and no verdict depends on an earlier one (a
 // source's own or a neighbour's). The cull decides only what is displayed as a point.
 
-/**
- * One level of the retina pyramid: its weight in the CIE 146 kernel fit and its Gaussian's σ in full-resolution
- * pixels as the veil shows it (renderer.ts pyramidSigma: box downsampling to the level, its blur, and the
- * bilinear upsamples back to full resolution).
- */
+/** One level of the retina pyramid: its weight in the CIE 146 kernel fit and its Gaussian's σ in pixels. */
 export interface VeilLevel {
   weight: number;
   sigmaPx: number;
@@ -125,47 +121,32 @@ export function backgroundLevel(levels: VeilLevel[], pixelSr: number, riccoAreaS
 }
 
 /**
- * Variance (px²) of the Gaussian that stands for level k's term in the background texture of level kR, read at a
- * point source's position. It differs from the level's σ² in the veil at full resolution in three ways, all of
- * which matter when the background is read at a fine level:
- *  - the source is not a point in PT but the splat of the eye's optical core (+ σ_splat²);
- *  - the texture is level kR's, not level 0's: the upsamples from kR down to full resolution, which σ_k counts
- *    (Σ_{j=1..kR} 4^j/6 = (4^{kR+1} − 4)/18), do not happen;
- *  - the shaders read that texture bilinearly at the source's position (+ 4^kR/6, one tent of a level-kR texel).
- * This is the mean over the source's position within a texel: tests/eye-points.test.ts runs the pyramid's
- * arithmetic on the CPU and finds the mean within 2 % and single positions within about ±20 % of it.
+ * What a source of unit illuminance adds to that background r pixels away, per pixel solid angle (multiply by
+ * E/Ω_px for cd/m²): Σ_{k≥kR} w_k·exp(−r²/2σ_k²)/(2πσ_k²).
  */
-function backgroundVariancePx2(levels: VeilLevel[], kR: number, k: number, splatSigmaPx: number): number {
-  return levels[k].sigmaPx ** 2 - (4 ** (kR + 1) - 4) / 18 + 4 ** kR / 6 + splatSigmaPx ** 2;
-}
-
-/**
- * What a source of unit illuminance, splatted with σ_splat pixels, adds to that background r pixels away, per
- * pixel solid angle (multiply by E/Ω_px for cd/m²): Σ_{k≥kR} w_k·exp(−r²/2V_k)/(2πV_k), V_k as above.
- */
-export function veilKernelPerPixel(levels: VeilLevel[], kR: number, rPx: number, splatSigmaPx: number): number {
+export function veilKernelPerPixel(levels: VeilLevel[], kR: number, rPx: number): number {
   let v = 0;
   for (let k = kR; k < levels.length; k++) {
-    const s2 = backgroundVariancePx2(levels, kR, k, splatSigmaPx);
+    const s2 = levels[k].sigmaPx ** 2;
     v += (levels[k].weight * Math.exp(-(rPx * rPx) / (2 * s2))) / (2 * Math.PI * s2);
   }
   return v;
 }
 
 /** A source's own light in its background, at its own position: the kernel at zero distance (Eye.pts.w). */
-export function ownVeilPerPixel(levels: VeilLevel[], kR: number, splatSigmaPx: number): number {
-  return veilKernelPerPixel(levels, kR, 0, splatSigmaPx);
+export function ownVeilPerPixel(levels: VeilLevel[], kR: number): number {
+  return veilKernelPerPixel(levels, kR, 0);
 }
 
 /**
  * The point sources' part of the background texture at each source (cd/m²): the veil, at scales from the Ricco
  * area up, of EVERY source given, its own light included. There is no verdict among the arguments.
  */
-export function pointVeil(sources: PointSource[], levels: VeilLevel[], kR: number, pixelSr: number, splatSigmaPx: number): { Y: number; S: number }[] {
+export function pointVeil(sources: PointSource[], levels: VeilLevel[], kR: number, pixelSr: number): { Y: number; S: number }[] {
   return sources.map((a) => {
     let Y = 0, S = 0;
     for (const b of sources) {
-      const k = veilKernelPerPixel(levels, kR, Math.hypot(a.x - b.x, a.y - b.y), splatSigmaPx) / pixelSr;
+      const k = veilKernelPerPixel(levels, kR, Math.hypot(a.x - b.x, a.y - b.y)) / pixelSr;
       Y += b.E.Y * k;
       S += b.E.S * k;
     }
