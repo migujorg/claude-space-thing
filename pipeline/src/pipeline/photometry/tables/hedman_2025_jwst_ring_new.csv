@@ -1,0 +1,22 @@
+# Hedman, M. M., de Pater, I., Cartwright, R. J., El Moutamid, M., DeColibus, R., Showalter, M. R., Tiscareno, M. S.,
+# Rowe-Gurney, N., Roman, M. T., Fletcher, L. N. & Hammel, H. B. (2025). Spectral trends across the rings and inner moons
+# of Uranus and Neptune from JWST NIRCam images. Planetary Science Journal 6, 204. DOI:10.3847/PSJ/adf325.
+# Text source: arXiv:2506.18650v2, Table 3 "Ring Spectral Parameters" (p. 8) and Table 1 (geometry, p. 6).
+# Normal equivalent width NEW (m) = radially integrated normal I/F (mu I/F) above background; Uranus averaged over all
+# 36 ring-plane longitude wedges (35,000-60,000 km for the main rings; the epsilon ring isolated by reflecting its
+# exterior profile), Neptune over +-45 deg of each ansa (arcs excluded). Statistical 1-sigma errors; the authors estimate
+# total uncertainties better than 5 %. Geometry: DD2739-011 (Uranus) ring opening 64.1 deg, phase 2.81 deg, JWST-planet
+# 19.28 AU, Sun-planet 19.63 AU; DD2739-004 (Neptune) ring opening 21.5 deg, phase 1.79 deg, 29.47 AU, 29.92 AU.
+planet,observation,filter,wavelength_um,ring_opening_deg,phase_deg,feature,new_m,err_m
+uranus,jw02739-o011,F140M,1.403,64.1,2.81,main rings,1497.8,2.4
+uranus,jw02739-o011,F140M,1.403,64.1,2.81,epsilon,1117.6,2.2
+uranus,jw02739-o011,F140M,1.403,64.1,2.81,6-delta,376.5,1.4
+uranus,jw02739-o011,F210M,2.090,64.1,2.81,main rings,1504.6,1.7
+uranus,jw02739-o011,F210M,2.090,64.1,2.81,epsilon,1153.4,1.5
+uranus,jw02739-o011,F210M,2.090,64.1,2.81,6-delta,339.5,1.0
+neptune,jw02739-o004,F140M,1.403,21.5,1.79,main rings,40.63,1.01
+neptune,jw02739-o004,F140M,1.403,21.5,1.79,adams,13.16,1.01
+neptune,jw02739-o004,F140M,1.403,21.5,1.79,le verrier+lassell+arago,29.99,0.82
+neptune,jw02739-o004,F210M,2.090,21.5,1.79,main rings,54.74,0.93
+neptune,jw02739-o004,F210M,2.090,21.5,1.79,adams,18.22,0.93
+neptune,jw02739-o004,F210M,2.090,21.5,1.79,le verrier+lassell+arago,41.04,0.75

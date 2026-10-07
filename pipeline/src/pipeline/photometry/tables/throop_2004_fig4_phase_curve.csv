@@ -1,0 +1,53 @@
+# Throop, H. B., Porco, C. C., West, R. A., Burns, J. A., Showalter, M. R. & Nicholson, P. D. (2004). The jovian
+# rings: new results derived from Cassini, Galileo, Voyager, and Earth-based observations. Icarus 172, 59-77.
+# DOI:10.1016/j.icarus.2003.12.020. Digitized from Fig. 4 ("Clear phase curve"): the best-fit non-spherical-particle
+# model of the main ring's radially averaged (over its 6500 km width) normal tau*w0*P (= 4 mu I/F, their Eq. 1) at
+# lambda = 0.46 um: total (solid line) and large-body component (dashed line); the dust component (dotted) is total
+# minus large bodies. The model is a fit to the plotted Cassini ISS, Galileo SSI and Voyager measurements (taken at
+# various wavelengths; see throop_2004_fig4_data.csv). Digitization: pixel trace of the published figure (axes
+# calibrated on the tick marks: 2.867 px/deg, 77 px/decade), values read every 5 deg (closer at the forward-scattering
+# peak), about +-5 % where the curves are separate from the data symbols, +-10 % where they cross them. The large-body
+# curve leaves the plot below 1e-8 at alpha ~ 130 deg ("large_tau_w0_p" empty beyond): it follows the Callisto-like
+# power law ((180 - alpha)/180)^3.09 of Porco et al. (2003) to within the digitization error over 0-125 deg, which
+# rings_jupiter.py uses beyond. The total curve leaves the top of the plot (1e-3) at alpha ~ 179.2 deg.
+phase_deg,total_tau_w0_p,large_tau_w0_p
+0,1.05e-6,4.7e-7
+5,9.0e-7,4.35e-7
+10,7.4e-7,4.0e-7
+15,6.4e-7,3.62e-7
+20,5.8e-7,3.3e-7
+25,4.95e-7,2.9e-7
+30,4.25e-7,2.6e-7
+35,3.7e-7,2.3e-7
+40,3.33e-7,2.1e-7
+45,3.03e-7,1.88e-7
+50,2.77e-7,1.69e-7
+55,2.65e-7,1.5e-7
+60,2.58e-7,1.28e-7
+65,2.53e-7,1.16e-7
+70,2.47e-7,1.01e-7
+75,2.38e-7,8.7e-8
+80,2.2e-7,7.5e-8
+85,2.22e-7,6.4e-8
+90,2.33e-7,5.4e-8
+95,2.2e-7,4.6e-8
+100,2.13e-7,3.8e-8
+105,2.3e-7,3.2e-8
+110,2.68e-7,2.5e-8
+115,3.45e-7,2.0e-8
+120,4.55e-7,1.6e-8
+125,5.55e-7,1.2e-8
+130,6.9e-7,
+135,9.0e-7,
+140,1.18e-6,
+145,1.58e-6,
+150,2.0e-6,
+155,2.57e-6,
+160,3.4e-6,
+165,4.4e-6,
+170,7.1e-6,
+172.5,1.1e-5,
+175,3.3e-5,
+177,1.4e-4,
+178,3.7e-4,
+179.2,1.0e-3,
