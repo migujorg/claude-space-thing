@@ -28,7 +28,7 @@ const lawAt = (m: SpatialPhotometricModel, alpha: number) => {
   return result.law;
 };
 
-it.skipIf(!built)('actual square-pixel footprint conserves all built laws, including thin crescents', () => {
+it.skipIf(!built)('actual square-pixel footprint conserves all built laws, including thin crescents', async () => {
   for (const { model, name } of distinct) for (const phase of phases) {
     const alpha = phase * Math.PI / 180, law = lawAt(model, alpha);
     const reference = rasterDisk(law, { radius: 1, alpha, rule: 'footprint', pixels: false, order: 96 }).sum;
@@ -43,10 +43,11 @@ it.skipIf(!built)('actual square-pixel footprint conserves all built laws, inclu
       expect(frame.maxPixel).toBeLessThanOrEqual(publishedRadf(law, witness.mu0, witness.mu, alpha) * (1 + 1e-4));
       expect(Math.abs(frame.sum / (radius ** 2 * reference) - 1), `${name}, ${phase}, R=${radius}, ${offset}`).toBeLessThan(1e-4);
     }
+    await new Promise<void>(resolve => setTimeout(resolve, 0));
   }
 }, 120000);
 
-it.skipIf(!built)('footprint totals have no radius/offset dependence from R=1 through R=2000', () => {
+it.skipIf(!built)('footprint totals have no radius/offset dependence from R=1 through R=2000', async () => {
   for (const { model } of distinct) for (const phase of phases) {
     const alpha = phase * Math.PI / 180, law = lawAt(model, alpha);
     const reference = rasterDisk(law, { radius: 1, alpha, rule: 'footprint', pixels: false, order: 96 }).sum;
@@ -56,19 +57,21 @@ it.skipIf(!built)('footprint totals have no radius/offset dependence from R=1 th
     }
     // Saturn's reference intentionally removes its old floor; other laws share the production integral.
     if (law.kind !== LAW.barkstrom) expect(Math.abs(reference / (Math.PI * lawDiskIntegral(law, alpha)[0]) - 1)).toBeLessThan(1e-4);
+    await new Promise<void>(resolve => setTimeout(resolve, 0));
   }
 }, 120000);
 
-it.skipIf(!built)('square-pixel integration resolves every integer phase from 0 through 179 degrees', () => {
+it.skipIf(!built)('square-pixel integration resolves every integer phase from 0 through 179 degrees', async () => {
   for (const { model, name } of distinct) for (let phase = 0; phase <= 179; phase++) {
     const alpha = phase * Math.PI / 180, law = lawAt(model, alpha);
     const reference = rasterDisk(law, { radius: 1, alpha, rule: 'footprint', pixels: false, order: 64 }).sum;
     const frame = rasterDisk(law, { radius: 1, alpha, offset: [0.23, 0.41], rule: 'footprint', order: 32 });
     expect(Math.abs(frame.sum / reference - 1), `${name}, ${phase}`).toBeLessThan(1e-4);
+    await new Promise<void>(resolve => setTimeout(resolve, 0));
   }
 }, 120000);
 
-it.skipIf(!built)('Minnaert footprint pixels obey a finite interior-cosine bound without an emission floor', () => {
+it.skipIf(!built)('Minnaert footprint pixels obey a finite interior-cosine bound without an emission floor', async () => {
   for (const { model } of models.filter(m => m.model.kind === 'minnaert')) for (const phase of phases) {
     const alpha = phase * Math.PI / 180, law = lawAt(model, alpha);
     for (const radius of [1, 2, 4, 8]) for (const offset of offsets) {
@@ -79,6 +82,7 @@ it.skipIf(!built)('Minnaert footprint pixels obey a finite interior-cosine bound
       const muInterior = sliverCosine(1 / (Math.sqrt(Math.PI) * radius), law.p);
       expect(frame.maxPixel).toBeLessThanOrEqual(publishedRadf(law, 1, muInterior, alpha) * (1 + 1e-4));
     }
+    await new Promise<void>(resolve => setTimeout(resolve, 0));
   }
 }, 120000);
 
