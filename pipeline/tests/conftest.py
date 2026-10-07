@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import os
 import socket
+import shutil
 import sys
 from functools import wraps
 from pathlib import Path
@@ -101,12 +102,32 @@ def pytest_runtest_setup(item):
     item.config._data_write_guard.violations.clear()
 
 
+@pytest.fixture(scope="session", autouse=True)
+def private_earth_cache(tmp_path_factory):
+    """Earth photometry can populate its disk-integral cache even in a reader test.
+
+    Seed the small JSON cache to keep warm runs fast, but direct cold computations to temporary storage.
+    This also covers indirect spectrum/phase calls in other photometry tests.
+    """
+    from pipeline.photometry import earth
+
+    original = earth.CACHE
+    private = tmp_path_factory.mktemp("earth-cache")
+    if (original / "earth").is_dir():
+        shutil.copytree(original / "earth", private / "earth")
+    earth.CACHE = private
+    try:
+        yield
+    finally:
+        earth.CACHE = original
+
+
 @pytest.hookimpl(hookwrapper=True)
 def pytest_runtest_makereport(item, call):
     report = (yield).get_result()
     # Even a writer that catches AssertionError must not turn an attempted mutation into a passing test.
     violations = item.config._data_write_guard.violations
-    if report.passed and violations:
+    if not report.failed and violations:
         report.outcome = "failed"
         report.longrepr = "\n".join(violations)
     violations.clear()

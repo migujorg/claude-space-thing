@@ -6,6 +6,20 @@ import subprocess
 import sys
 
 
+def test_earth_reader_cache_miss_is_private(monkeypatch):
+    from pipeline import paths
+    from pipeline.photometry import earth
+
+    assert earth.CACHE.resolve() != paths.CACHE.resolve()
+    # An empty test-only image selection exercises the cache writer without processing a full disk.
+    monkeypatch.setattr(earth.ed, "epoxi_files", lambda: {})
+    monkeypatch.setattr(earth.ed, "epoxi_selection", lambda: {})
+    cache = earth.CACHE / "earth" / f"epoxi-{earth._cache_key([])}.json"
+    assert not cache.exists()
+    assert earth.epoxi_disk() == {}
+    assert cache.read_text().strip() == "{}"
+
+
 def test_shared_data_guard_blocks_real_mutations_and_allows_private_writes(tmp_path):
     code = '''
 import os, sys
