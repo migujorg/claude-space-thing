@@ -21,6 +21,7 @@
 // piecewise-constant τ; only the interpolation of G between its nodes is approximate.
 
 import type { RingComponent, RingComponentEdge, RingComponentModel, RingPhaseTable } from '../data/schema';
+import { SECONDS_PER_DAY } from '../core/constants';
 import type { XYZS } from './photometry';
 
 export const G_NODES = 32;
@@ -32,7 +33,7 @@ export const CMP_EDGE_VEC4 = 1 + G_NODES / 4;
 export const CMP_RECORD_VEC4 = 20;
 export const CMP_MAX_MODES = 11;
 export const CMP_MAX = 32;
-export const DAY_S = 86400;
+export const DAY_S = SECONDS_PER_DAY;
 const DEG = Math.PI / 180;
 
 export function gNode(j: number): number {
