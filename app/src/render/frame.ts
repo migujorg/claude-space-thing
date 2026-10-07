@@ -8,7 +8,7 @@ import { diskIlluminance, diskModelPPhi, evalPhase, extrapolatePhase, LAMBERT_AL
 import { LAMBERT_LAW, lawRadf, MotionNormalization, mapDiskIntegral, NormalizationCache, photometricFrame, resolveLaw, TEXEL_LAW, type ResolvedLaw, type ZonalProfile } from './spatial';
 import { sampleLevel0, type Level0Map } from './surface';
 import { MAX_POPULATION_NODES, NIGHT_LAMP, type CloudPopulation } from './earth';
-import { atmosphereDiskFactors, marsDustScale } from './atmosphere';
+import { atmosphereDiskFactors, marsDustScale, modelDiskXYZS } from './atmosphere';
 import type { AtmosphereBinding } from './atmosphereGpu';
 import { texelRadf, type TexelHapke } from './texelLaw';
 import { planetshineSources, type PlanetshineSource } from './planetshine';
@@ -392,6 +392,29 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
     const earth = earthMode(b, surface, irr, warnings);
     if (!earth && surface?.albedo && b.surface?.albedo?.header.normalization?.absoluteDiskMean) surface = { ...surface, albedo: undefined };
     if (!earth && surface && (surface.clouds || surface.cloudTau || surface.water || surface.night || surface.wind)) surface = { ...surface, clouds: undefined, cloudTau: undefined, water: undefined, night: undefined, wind: undefined };
+    // A body drawn from its atmosphere model (SceneAtmosphere.surface: Titan; docs/rendering-earth.md §8 "Titan").
+    // The rule (architecture §4.3, §4.4): the model gives the spatial pattern of its resolved disk, and the disk
+    // photometry its absolute brightness and colour. Wherever that photometry is admitted and covers the phase
+    // angle, the whole model radiance is scaled per channel by measured p·Φ(α) over the model's own disk integral,
+    // so the drawn disk's integral is the measurement; beyond the measured range the scale of the range's edge is
+    // held where a continuation is allowed (Best, Complete: estimated), and the body is not measured where it is
+    // not (Strict). Nothing of the model is adjusted or stored: the factors are computed here and said in a warning.
+    // The exception is the Earth drawn with its layers (earthMode), which is never scaled to its disk photometry:
+    // its layers carry their own absolute calibration (surface reflectance, cloud optical thickness and air, each
+    // in absolute units), and its disk albedo is the weather of one day, which a single disk value cannot fix.
+    const physical = !earth && b.atmosphere?.surface && b.orient && irr && opts.atmospheres ? b.atmosphere.surface : null;
+    // Its tables once ready, for a disk at least a pixel across (a point's light is its disk photometry).
+    const resolvedDisk = (2 * angR) / g.pixelAngle > 1;
+    let physB: AtmosphereBinding | null = null;
+    if (physical && resolvedDisk) {
+      const got = opts.atmospheres!(b, [0, 0, 0, 0], null);
+      if (got && 'error' in got) warnings.push(got.error);
+      else if (got?.tables && got.grid) physB = got;
+    }
+    // Fully resolved (smooth(1, 2, diameter px) = 1) it has no point part: the picture is the model's alone.
+    const modelDiskOnly = physB !== null && (2 * angR) / g.pixelAngle >= 2;
+    /** The scale of the model to the disk photometry, per channel, once it is drawn. */
+    let modelScale: XYZS | null = null;
     // Disk-integrated p·Φ per channel: from the body's disk reflectance model (the Moon: ROLO) inside its
     // domain, else albedoXYZS·Φ(α) (architecture §4.3).
     // The measured phase range's edge when α lies beyond it (the photometry is then the law's extrapolation).
@@ -423,7 +446,8 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
           phi = x.phi;
           if (range) phaseEdge = ((alpha * 180) / Math.PI > range[1] ? range[1] : range[0]) * (Math.PI / 180);
           label = worse(label, 'estimated');
-          warnings.push(`${b.name}: phase extrapolated beyond measured range (${range?.[0]}–${range?.[1]}°) with the spatial law → estimated`);
+          // A fully resolved model-drawn disk has no point part: its continuation is the model's (said below).
+          if (!modelDiskOnly) warnings.push(`${b.name}: phase extrapolated beyond measured range (${range?.[0]}–${range?.[1]}°) with the spatial law → estimated`);
         } else {
           warnings.push(`${b.name}: ${ph.reason} → sunlit part drawn as not measured (night side black)`);
         }
@@ -497,7 +521,33 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
     let onDisk = false;
     const groundAlbedo = b.albedoXYZS && irr ? [0, 1, 2, 3].map((c) => LAMBERT_ALBEDO_PER_GEOMETRIC_ALBEDO * (b.albedoXYZS![c] / irr[c])) : [0, 0, 0, 0];
     // Only for a resolved disk (smooth(1, 2, diameter px) > 0): a point's light is its disk photometry.
-    if (b.atmosphere && b.orient && irr && lit && opts.atmospheres && (earth || pPhi) && (2 * angR) / g.pixelAngle > 1) {
+    if (physical && physB && pPhi && irr) {
+      // The model's radiance, L = (E_sun/π)·ρ_surface·μ0 under the air plus the air's own light (the shader's
+      // ATM_OVER_PHOTOMETRY with the surface scale b.rad = E_sun/π·ρ, and the shell), times the factor of the rule
+      // above in each channel: the measured p·Φ over the model's disk integral, both at α, or at the edge of the
+      // measured range when α lies beyond it. Until the tables are ready, or when the atmosphere cannot be drawn
+      // (warned above), the disk photometry stands in, without the air. With no admitted photometry at this phase
+      // (pPhi null, warned above) there is nothing to scale the model to: the body stays not measured.
+      const edge = phaseEdge !== null && b.phase && b.albedoXYZS ? evalPhase(b.phase, phaseEdge) : null;
+      const aRef = edge?.ok ? phaseEdge! : alpha;
+      const pRef = edge?.ok ? b.albedoXYZS!.map((v, c) => (v * edge.phi) / irr[c]) : pPhi.map((v, c) => v / irr[c]);
+      const d = modelDisk(physB, aRef);
+      const own = [0, 1, 2, 3].map((c) => d[c] + physical.xyzs[c] * d[4 + c]);
+      const scaleC = pRef.map((v, c) => (own[c] > 0 ? v / own[c] : 0)) as XYZS;
+      modelScale = scaleC;
+      atmB = physB;
+      K = irr.map((v, c) => (v * physical.xyzs[c] * scaleC[c]) / (Math.PI * dAU * dAU)) as XYZS;
+      law = LAMBERT_LAW;
+      lit = true;
+      onDisk = true;
+      // Two decimals: the photometry behind the factors is good to a few percent (the exact values are in the tests).
+      const by = `×${scaleC[0].toFixed(2)} X, ${scaleC[1].toFixed(2)} Y, ${scaleC[2].toFixed(2)} Z, ${scaleC[3].toFixed(2)} S`;
+      const deg = (a: number) => Number(((a * 180) / Math.PI).toFixed(1));
+      const range = b.phase ? phaseRangeDeg(b.phase) : null;
+      warnings.push(edge?.ok
+        ? `${b.name}: atmosphere model scaled to the disk photometry as at ${deg(aRef)}°, ${by}: phase ${deg(alpha)}° is beyond the measured range (${range?.[0]}–${range?.[1]}°) and the factors of its edge are held → estimated`
+        : `${b.name}: atmosphere model scaled to the disk photometry at ${deg(alpha)}°, ${by} (measured p·Φ over the model's disk integral)`);
+    } else if (!physical && b.atmosphere && b.orient && irr && lit && opts.atmospheres && (earth || pPhi) && resolvedDisk) {
       const dust = b.atmosphere.body.dustColumn ? marsDustScale(b.atmosphere.body, snap.et) : null;
       const got = opts.atmospheres(b, groundAlbedo, dust ? { scale: dust.scale, bin: dust.bin } : null);
       if (got && 'error' in got) {
@@ -625,9 +675,12 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
         cands.sort((a, b2) => a.d - b2.d);
         for (const k of cands.slice(0, 4)) occluders.push([k.o, k.r]);
       }
-      // Earth: the source's illuminance over π, shaded by the Earth model like sunlight (earth.ts).
+      // Earth: the source's illuminance over π, shaded by the Earth model like sunlight (earth.ts). A body drawn
+      // from its atmosphere model: on its surface's reflectance, with the model's scale (the air itself is not lit
+      // by planetshine).
+      const physK = physical && modelScale ? physical.xyzs.map((v, c) => v * modelScale![c]) : null;
       const planetshine = lit
-        ? planetshineSources(b, snap.bodies, irr).map((ps) => ({ ...ps, K: (earth ? ps.E.map((e) => e / Math.PI) : ps.K).map((v) => v * fRes) as XYZS }))
+        ? planetshineSources(b, snap.bodies, irr).map((ps) => ({ ...ps, K: (earth ? ps.E.map((e) => e / Math.PI) : physK ? ps.E.map((e, c) => (e * physK[c]) / Math.PI) : ps.K).map((v) => v * fRes) as XYZS }))
         : [];
       resolved.push({
         body: b, frame, lit,
@@ -645,7 +698,7 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
             onDisk,
             shellBeta: prepareBody(b.pos, [atmTop(b), atmTop(b), atmTop(b)], null, 3 * g.pixelAngle).beta,
             sunAngularRadius: Math.asin(Math.min(1, sunR / toSunLen)),
-            sunE: irr.map((v) => (v / (Math.PI * dAU * dAU)) * fRes) as XYZS,
+            sunE: irr.map((v, c) => (v / (Math.PI * dAU * dAU)) * fRes * (modelScale ? modelScale[c] : 1)) as XYZS,
             binding: atmB,
           }
           : null,
@@ -740,6 +793,30 @@ function extentOf(b: SceneBody, radii: [number, number, number]): number {
 function atmTop(b: SceneBody): number {
   const a = b.atmosphere!.body;
   return Math.max(...b.radii!) + (a.topAltitudeKm ?? 0) - (a.altitudesKm[0] ?? 0);
+}
+
+/**
+ * Disk integrals of a body drawn from its atmosphere model (modelDiskXYZS: the air's light per channel, then the
+ * surface term per unit reflectance) at phase angle a, from the same 1° bins, linear between them. A new bin costs
+ * one integral (about 30 ms for Titan's 12 bins); inside a measured range of a few degrees there are few.
+ */
+function modelDisk(bind: AtmosphereBinding, a: number): number[] {
+  const binning = (Math.PI / 180) * ATM_FACTOR_BIN_DEG;
+  const i0 = Math.min(Math.floor(a / binning), Math.round(Math.PI / binning) - 1);
+  const at = (i: number): number[] => {
+    const key = `model|${bind.key}|${i}`;
+    let f = atmCache.get(key);
+    if (!f) {
+      const d = modelDiskXYZS(bind.model, bind.tables!, bind.grid!, [Math.sin(i * binning), 0, Math.cos(i * binning)], [0, 0, 1]);
+      f = [...d.air, ...d.surface];
+      if (atmCache.size > 4096) atmCache.clear();
+      atmCache.set(key, f);
+    }
+    return f;
+  };
+  const f0 = at(i0), f1 = at(i0 + 1);
+  const tt = Math.min(Math.max(a / binning - i0, 0), 1);
+  return f0.map((v, k) => v + (f1[k] - v) * tt);
 }
 
 function tangent(n: V3): [V3, V3] {

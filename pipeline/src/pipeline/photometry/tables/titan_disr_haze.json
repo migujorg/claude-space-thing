@@ -13,7 +13,7 @@
   "valid_nm": [400, 1600],
   "_valid_where": "Section 7.1: 'the Tomasko et al. (2008) values for tau_haze(h, lambda) and omega_haze(h, lambda), which are only given for a wavelength range of 400-1600 nm'",
   "ssa_statement": "Section 7.1 / A.4: omega_haze from Tomasko et al. (2008) Table 2 and Fig. 48 for three regions (above 144 km, 30-80 km, below 30 km; linear in altitude between 80 and 144 km); 'typically omega_haze(h, lambda) ~ 0.8-1'. The values themselves are not reproduced there.",
-  "phase_statement": "Section 7.1: phase functions F11 tabulated by Tomasko et al. (2008) for two altitude regions (above and below 80 km), 355-5166 nm. Not reproduced there."
+  "phase_statement": "Section 7.1: phase functions F11 tabulated by Tomasko et al. (2008) for two altitude regions (above and below 80 km), 355-5166 nm. Not reproduced there; 'Typically a phase function is given about every 100 nm for lambda < 1 um and about every 200 nm for 1 um < lambda < 1.5 um'."
  },
  "vincendon_langevin_2010": {
   "_citation": "Vincendon, M. & Langevin, Y. (2010). A spherical Monte-Carlo model of aerosols: Validation and first applications to Mars and Titan. Icarus 207, 923-931. DOI:10.1016/j.icarus.2009.12.018; text source arXiv:1103.3215, section 3.1 (p. 16-17).",
@@ -21,5 +21,43 @@
   "tau_total_1080nm_tomasko": 2.6,
   "exponents_quoted": {"below_30": 0.97, "30_80": 1.41, "above_80": 2.43},
   "scale_height_vims_km": [80, 10]
+ },
+ "doose_2016_ssa_rule": {
+  "_citation": "Doose, L. R., Karkoschka, E., Tomasko, M. G. & Anderson, C. M. (2016), Icarus 270, 355-375, DOI:10.1016/j.icarus.2015.09.039 (paywalled), as stated by Es-sayeh, M. et al. (2023), Planetary Science Journal 4, 44, DOI:10.3847/PSJ/acbd37, Section 2.2 (p. 6), and by Rannou, P., Bezard, B., Lellouch, E., Es-Sayeh, M., Rodriguez, S., Nixon, C., West, R. & de Batz de Trenquelleon, B. (2026), Mapping Titan's haze and mist with the near infra-red spectrometer onboard the James Webb space telescope, Icarus 450, 116944, DOI:10.1016/j.icarus.2026.116944 (CC BY 4.0, HAL hal-05684613), Fig. 4 caption.",
+  "_quote_es_sayeh_2023": "We include in our RT model the transition observed by Huygens during the descent as reported in Doose et al. (2016): Above 200 km, omega0(lambda) is computed with the fractal aggregate model, below 80 km, omega0(lambda) is defined as omega(lambda, z < 80 km) = (0.565 + omega(lambda, z > 200 km)/1.5, and between these two altitudes, omega0(lambda) is linearly interpolated.",
+  "_quote_rannou_2026": "The single scattering albedo of the mist is calculated from the single scattering albedo of the haze with the same rule as published by Doose et al. (2016) : omega_Mist = (0.565 + omega_Haze)/1.5.",
+  "_quote_barnes_2018": "For the haze single-scattering albedo, we assume values from Doose et al. (2016) for wavelengths shorter than 0.9 um. As recommended by Doose et al. (2016), we have one single-scattering albedo for below 80 km, another one for above 200 km, and we interpolate linearly in between. (Barnes et al. 2018, AJ 156, 247, Sect. 2.2.)",
+  "offset": 0.565,
+  "divisor": 1.5,
+  "below_km": 80.0,
+  "above_km": 200.0,
+  "_note": "Es-sayeh et al. print the rule with an unbalanced parenthesis; Rannou et al. (2026) give (0.565 + omega_haze)/1.5, and the two curves of Barnes et al. (2018) Fig. 4 (tables/titan_doose_2016_ssa.csv) satisfy that form to 0.0006. The other reading, 0.565 + omega/1.5, exceeds 1 for every omega above 0.65."
+ },
+ "doose_2016_ssa_extrapolation": {
+  "_statement": "Doose et al.'s single-scattering albedo is plotted by Barnes et al. (2018) from 499.8 nm only. Garcia Munoz, Lavvas & West (2017, Nature Astronomy 1, 0114; arXiv:1704.07460, Methods p. 28): 'The DISR optical properties are well constrained between 490 and 950 nm for gamma_a and omega_0,a [Doose et al. 2016], and down to 355 nm for p_a(theta)'; p. 5: 'The DISR implementation is poorly constrained shortwards of 490 nm though'.",
+  "method": "linear in wavelength: the least-squares line through the digitized above-200-km vertices from 499.8 to 600.8 nm, continued to 360 nm (an assumption, fixed before any comparison with Titan's albedo); below 80 km from the rule, capped at 1",
+  "fit_range_nm": [499.0, 601.0]
+ },
+ "garcia_munoz_2017_surface": {
+  "_citation": "Garcia Munoz, A., Lavvas, P. & West, R. A. (2017). Titan brighter at twilight than in daylight. Nature Astronomy 1, 0114. DOI:10.1038/s41550-017-0114; arXiv:1704.07460v1, Methods (p. 31). The values are their interpolation of Table 1 of Karkoschka, E. & Schroeder, S. E. (2016), Eight-color maps of Titan's surface from spectroscopy with Huygens' DISR, Icarus 270, 260-271, DOI:10.1016/j.icarus.2015.06.010 (paywalled).",
+  "_quote": "For the radiative transfer calculations, we assumed Lambert-like reflection at Titan's surface. The wavelength-dependent surface reflectances were borrowed from Table 1 of a relevant work [43]. Extrapolation from/interpolation between the tabulated values yielded the following surface reflectances adopted in our calculations: 0.023 (UV2_CL2), 0.035 (CL1_UV3), 0.067 (CL1_BL2), 0.072 (BL1_CL2), 0.109 (CL1_GRN), 0.123 (CL1_MT1), 0.123 (CL1_CB1), 0.131 (RED_CL2), 0.132 (CL1_CL2), 0.144 (CL1_MT2), 0.147 (CL1_CB2), 0.151 (IR2_CL2, CL1_MT3, CL1_IR3, CL1_CB3).",
+  "_lambda_eff_from": "Fig. 1 panel titles (lambda_eff of each filter combination)",
+  "filters": ["UV2_CL2", "CL1_UV3", "CL1_BL2", "BL1_CL2", "CL1_GRN", "CL1_MT1", "CL1_CB1", "RED_CL2", "CL1_CL2", "CL1_MT2", "CL1_CB2", "IR2_CL2", "CL1_MT3", "CL1_IR3", "CL1_CB3"],
+  "lambda_eff_nm": [306, 343, 441, 455, 569, 619, 619, 649, 651, 727, 750, 861, 889, 928, 938],
+  "reflectance": [0.023, 0.035, 0.067, 0.072, 0.109, 0.123, 0.123, 0.131, 0.132, 0.144, 0.147, 0.151, 0.151, 0.151, 0.151]
+ },
+ "karkoschka_1994_methane": {
+  "_citation": "Karkoschka, E. (1994). Spectrophotometry of the jovian planets and Titan at 300- to 1000-nm wavelength: the methane spectrum. Icarus 111, 174-192. DOI:10.1006/icar.1994.1139; text from PDS GBAT_0001 document/icarus94.asc (sections 'Temperature Dependence' and 'The Method').",
+  "_quote_temperature": "This suggests that one cold-temperature methane spectrum is sufficient to model methane absorptions for all jovian planets and Titan.",
+  "_quote_method": "The indirect determination of the methane absorption coefficients is described by Karkoschka and Tomasko (1992). The basic assumption is that methane bands strengths of Benner (1979) are valid at cold temperatures. The accuracy of the method is estimated at 5 percent. An additional uncertainty comes from the placement of the continuum. Its influence is estimated to be between 0.0003 km-am^-1 at 400-nm wavelength and 0.02 km-am^-1 at 1000-nm wavelength (a factor of 2 every 100 nm). The new methane spectrum is shown in Fig. 3. It is based on the methane spectrum inferred from each object with the averaging weights adjusted.",
+  "accuracy": 0.05,
+  "continuum_uncertainty_km_am": {"400": 0.0003, "1000": 0.02},
+  "_note": "'each object' includes Titan: the coefficients are partly inferred from Titan's own spectrum (one of five objects). The comparison with Karkoschka's Titan albedo inside the methane bands is therefore not fully independent (docs/reports/atmospheres.md)."
+ },
+ "es_sayeh_2023_aggregates": {
+  "_quote": "Isophote contours of the solar aureole, as measured by DISR during the Huygens descent, are best fitted by a model with 3000 monomers of radius 0.05 um and an optical depth profile that agrees with the constraints of the visible spectrometer systems (Tomasko et al. 2008), again regardless of the fractal dimension. In the work of Tomasko et al. (2008) and Doose et al. (2016), solely the fractal dimension is not constrained by observations and is set to 2.",
+  "monomers": 3000,
+  "monomer_radius_um": 0.05,
+  "fractal_dimension_assumed": 2.0
  }
 }

@@ -58,6 +58,20 @@ def _cassini_wac(band: str) -> Download:
               "for CB2, CB3.")
 
 
+def _cassini_nac(band: str) -> Download:
+    return Download(
+        id=f"svo-cassini-iss-nac-{band.lower()}", url=_SVO.format(id=f"Cassini/ISS_NAC.{band}"), subdir="filters",
+        name=f"Cassini_ISS_NAC.{band}.dat",
+        title=f"Cassini ISS narrow-angle camera {band} system response, SVO Cassini/ISS_NAC.{band}",
+        citation="Porco, C. C. et al. (2004). Cassini Imaging Science: instrument characteristics and anticipated "
+                 "scientific investigations at Saturn. Space Science Reviews 115, 363-497. "
+                 "DOI:10.1007/s11214-004-1456-7. Curve as distributed by the SVO Filter Profile Service (profile "
+                 "reference: Cassini ISS Data User's Guide, 2016-09-29). " + _SVO_CITE,
+        notes="Full system response (filter + CCD + optics), photon counter (SVO DetectorType 1): band averages "
+              "weight by T(λ)·E(λ)·λ. The NAC filter combination is <band>/CL2 for BL1 and RED, CL1/<band> for "
+              "GRN, CB1, CB2, MT1 and MT2 (Titan's phase curves, García Muñoz et al. 2017).")
+
+
 def _hrsc(band: str) -> Download:
     return Download(
         id=f"svo-mex-hrsc-{band.lower()}", url=_SVO.format(id=f"MEX/HRSC.{band}"), subdir="filters",
@@ -127,6 +141,7 @@ FILTERS = {**{f"bessell.{b}": _bessell(b) for b in "UBVRI"}, **{f"johnson.{b}": 
            **{f"voyager.nac.{b}": _voyager_nac(b) for b in ("Clear", "Violet", "Blue", "Green", "Orange")},
            "lorri.Pan": _lorri(),
            **{f"cassini.wac.{b}": _cassini_wac(b) for b in ("VIO", "BL1", "GRN", "RED", "CB2", "CB3")},
+           **{f"cassini.nac.{b}": _cassini_nac(b) for b in ("BL1", "GRN", "RED", "CB1", "CB2", "MT1", "MT2")},
            **{f"hrsc.{b}": _hrsc(b) for b in ("Blue", "Green", "Red", "NIR")}}
 # Short aliases: plain letters are Bessell (1990).
 FILTERS.update({b: FILTERS[f"bessell.{b}"] for b in "UBVRI"})

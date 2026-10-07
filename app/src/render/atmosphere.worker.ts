@@ -6,5 +6,7 @@ const ctx = self as unknown as { onmessage: ((e: MessageEvent<{ id: number; mode
 ctx.onmessage = (e) => {
   const { id, model } = e.data;
   const t = precomputeAtmosphere(model);
-  ctx.postMessage({ id, tables: t }, [t.transmittance.buffer, t.multiScattering.buffer, t.skyIrradiance.buffer, t.profile.buffer]);
+  const buffers = [t.transmittance.buffer, t.multiScattering.buffer, t.skyIrradiance.buffer, t.profile.buffer];
+  if (t.msSource) buffers.push(t.msSource.buffer);
+  ctx.postMessage({ id, tables: t }, buffers);
 };
