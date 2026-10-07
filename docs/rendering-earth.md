@@ -18,7 +18,7 @@ Code:
   columns `AP_COLUMNS_SHADER` and the limb transmittance of light from beyond (`LIMB_WGSL`, used by the star
   cull and the sky background).
 
-Tests: `app/tests/render-earth.test.ts`, `render-atmosphere.test.ts` (TEST FIXTURE atmosphere) and
+Tests: `app/tests/render-earth.test.ts`, `render-earth-transport.test.ts`, `render-atmosphere.test.ts` (TEST FIXTURE atmosphere) and
 `render-earth-energy.test.ts` (real products, §6), `render-titan.test.ts` (real products, §8 "Titan"). Test page: `render-test.html?scene=earth-data&sun=lat,lon&obs=lat,lon&dist=km`.
 Any of `map|clouds|water|night|wind|atm=0` switches a part off; `skip=ap` marches every pixel instead of the
 columns, `skip=limb` leaves stars undimmed, `stars=N` adds N TEST FIXTURE stars, `bench=N` reports median pass times.
@@ -346,7 +346,23 @@ spherical around it. The march also records the part above the cloud tops.
 The pixel is then composed, per bin, folded into XYZS with the fold weights:
 
 - **Clear part:** path radiance + T_view·(ρ_dir·T_sun(0) + ρ_dif·E_sky(0));
-- **Cloudy part:** path radiance above the cloud tops + T_view,above·(ρ_dir·T_sun(h_c) + ρ_dif·E_sky(h_c));
+- **Cloudy part:** path radiance above the cloud tops, plus cloud reflection lit at h_c and seen through
+  T_view,above, plus the transmitted surface terms lit at the ground and seen through the whole air column.
+  The surface terms retain §2's downward cloud transmission, cloud/base multiple reflection and direct +
+  diffuse upward transmission; open water also retains its Fresnel skylight reflection. Lower-air path light
+  is L_lower = max(L_whole − L_above, 0), already attenuated by the upper air. Per τ node it is multiplied by
+  t_view·T(μ0) for downward direct flux and t_view·(1 − r̄) for downward diffuse flux. Because the existing
+  path table combines single and multiple scattering and is already folded to XYZS, their mixture is
+  approximated per channel by the cloud-top horizontal irradiances B = max(μ0, 0)·fold(T_sun(h_c)) and
+  D = fold(E_sky(h_c)): lower transmission = t_view·[T(μ0)B + (1 − r̄)D]/(B + D), averaged over τ nodes.
+  If B + D is zero, diffuse transmission is used for any twilight path light. This approximation neglects
+  the transmitted downward beam's angular redistribution, redistribution on the upward cloud passage of
+  directional air light, and cloud feedback on the precomputed multiple-scattering field. It adds no fitted
+  coefficient and remains estimated. At τ = 0 both cloud transmissions are one, cloud reflection is zero,
+  and surface + whole-air light exactly recover the clear share at any cloud height. At τ → ∞ all lower
+  terms vanish, retaining the previous opaque-cloud result. Reflection increases and lower-air transmission
+  decreases continuously with τ; their sum need not be monotonic (a thin cloud may dim bright grazing air
+  before thick-cloud reflection dominates).
 - **Unknown part:** path radiance only.
 
 ρ_dir and ρ_dif are the Earth model's radiance factors for direct sunlight and for diffuse skylight. Each
@@ -446,11 +462,11 @@ claim, so it is not marked: marking it would hatch most of the night side.
 | Model | A (X, Y, Z, S) | Ratio to measured |
 |---|---|---|
 | Surface + clouds, no atmosphere (level 1) | 0.179 0.178 0.182 0.180 | 0.74 0.75 0.59 0.67 |
-| + atmosphere, glint, sky reflection (level 0) | 0.215 0.214 0.271 0.243 | 0.89 0.90 0.88 0.91 |
+| + atmosphere, glint, sky reflection and lower-air transmission (level 0) | 0.218 0.217 0.276 0.247 | 0.91 0.91 0.90 0.92 |
 | Measured p·Φ(2.42°) | 0.241 0.238 0.308 0.269 | 1 |
 
-With the atmosphere the colour matches: all four channels come out 0.88–0.91 of the measurement (with the
-δ-scaled view transmittance). The remaining 9–12 % is within the photometry's stated variability: the disk reflectance changes by 10–20 %
+With the atmosphere the colour matches: all four channels come out 0.90–0.92 of the measurement (with the
+δ-scaled view transmittance). The remaining 8–10 % is within the photometry's stated variability: the disk reflectance changes by 10–20 %
 with clouds and the hemisphere in view, and the clouds here are from a different day, 2026-09-28. Model
 approximations also contribute:
 

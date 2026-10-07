@@ -786,6 +786,8 @@ const EARTH_WITH_ATMOSPHERE = /* wgsl */ `
         let unknownW = max(1.0 - pr.clear.w - pr.cloudy.w, 0.0);
         var Lsun = PI * ((pr.clear.w + unknownW) * path.Lf + pr.cloudy.w * path.Lcf);
         var Temit = vec4f(0.0);
+        var directTop = vec4f(0.0);
+        var diffuseTop = vec4f(0.0);
         for (var j = 0; j < atmK4(); j++) {
           let ts0 = atmTsun(A.geo.x, muSg, j);
           let es0 = atmIrr(0.0, muSg, j);
@@ -793,10 +795,23 @@ const EARTH_WITH_ATMOSPHERE = /* wgsl */ `
           let esc = atmIrr(ein.cthKm, muSg, j);
           for (var c = 0; c < 4; c++) {
             let clearRad = path.Td[j] * (pr.clear.dir[c] * ts0 + pr.clear.dif[c] * es0);
-            let cloudRad = path.Tcd[j] * (pr.cloudy.dir[c] * tsc + pr.cloudy.dif[c] * esc);
+            let cloudRad = path.Tcd[j] * ((pr.cloudy.dir[c] - pr.cloudy.surfaceDir[c]) * tsc
+              + (pr.cloudy.dif[c] - pr.cloudy.surfaceDif[c]) * esc)
+              + path.Td[j] * (pr.cloudy.surfaceDir[c] * ts0 + pr.cloudy.surfaceDif[c] * es0);
+            directTop[c] += dot(A.w[4 * c + j], tsc);
+            diffuseTop[c] += dot(A.w[4 * c + j], esc);
             Lsun[c] += dot(A.w[4 * c + j], pr.clear.w * clearRad + pr.cloudy.w * cloudRad);
             Temit[c] += dot(A.w[4 * c + j], path.Td[j]);
           }
+        }
+        // earth.ts earthAtmosphereRadiance: lower path's combined scattering source is approximated
+        // by the cloud-top direct/diffuse horizontal irradiance mixture. No new spectral path table.
+        for (var c = 0; c < 4; c++) {
+          let beam = max(mu0, 0.0) * directTop[c];
+          let total = beam + diffuseTop[c];
+          var lowerT = pr.cloudy.lowerDiffuse;
+          if (total > 0.0) { lowerT = (pr.cloudy.lowerDirect * beam + pr.cloudy.lowerDiffuse * diffuseTop[c]) / total; }
+          Lsun[c] += PI * pr.cloudy.w * max(path.Lf[c] - path.Lcf[c], 0.0) * lowerT;
         }
         L = A.sunE * Lsun * sunVisible(b, p);
         // Moonshine (planetshine sources) and night lights, dimmed by the view path.
