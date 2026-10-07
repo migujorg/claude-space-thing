@@ -472,6 +472,37 @@ export function lommelSeeligerPhase(alpha: number): number {
 }
 
 /**
+ * The zonally weighted disk integral by a fixed n × n Gauss–Legendre rule over the lit lune (the rule every
+ * normalization used before the converged quadratures above): n² law evaluations whatever the map, so its cost
+ * is bounded (about 2 ms for Hapke at n = 24), where `zonalDiskIntegral` splits the lune at every row knot of
+ * the map and costs seconds for a Hapke law on a 256-row map. It does not resolve the row knots: against the
+ * converged integral it is within 2.5e-3 for the built maps (render-law-motion-cost.test.ts; 1.9e-3 measured).
+ */
+function fixedOrderZonalIntegral(law: ResolvedLaw, a: number, zonal: { profile: ZonalProfile; pole: V3 }, n: number): XYZS {
+  const lam0 = a - Math.PI / 2, lam1 = Math.PI / 2;
+  if (lam1 <= lam0) return [0, 0, 0, 0];
+  const { x, w } = gaussLegendre(n);
+  const sa = Math.sin(a), ca = Math.cos(a), P = zonal.pole;
+  const acc = [0, 0, 0, 0], m = [1, 1, 1, 1];
+  for (let p = 0; p < n; p++) {
+    const lam = lam0 + ((x[p] + 1) / 2) * (lam1 - lam0);
+    const wl = (w[p] * (lam1 - lam0)) / 2;
+    const sl = Math.sin(lam), cl = Math.cos(lam);
+    for (let q = 0; q < n; q++) {
+      const beta = (x[q] * Math.PI) / 2;
+      const cb = Math.cos(beta), sb = Math.sin(beta);
+      const mu = cb * cl;
+      const r = lawRadf(law, cb * (sl * sa + cl * ca), mu, a);
+      if (!(r > 0)) continue;
+      const f = r * mu * cb * wl * ((w[q] * Math.PI) / 2);
+      zonalAt(zonal.profile, cb * sl * P[0] + sb * P[1] + cb * cl * P[2], m);
+      for (let k = 0; k < 4; k++) acc[k] += f * m[k];
+    }
+  }
+  return acc.map((v) => v / Math.PI) as XYZS;
+}
+
+/**
  * Normalization of a spatial law with a map for one geometry: Φ(α)/I(α) per channel, cached on a
  * quantized geometry key. The renderer multiplies albedoXYZS/(π d²) by this factor.
  */
@@ -506,51 +537,6 @@ function logGamma(z: number): number {
 }
 const latitudeBeta = (s: number) => Math.exp(logGamma(0.5) + logGamma(s + 1) - logGamma(s + 1.5));
 const scalarXYZS = (v: number): XYZS => [v, v, v, v];
-
-interface PhaseCell { lo: number; hi: number; values: number[] }
-/** Piecewise cubic in log(I / particle-phase-factor) versus t=log(pi/(pi-alpha)); this removes the crescent's
- * vanishing power law. Each cell is checked at seven interlaced points against converged
- * quadrature, to 1e-7 relative. The supported-model tested bound is 2e-5 (not an
- * interval-arithmetic certificate for arbitrary future Hapke fits). Construction is synchronous:
- * no unbounded/old result is drawn while a table is being constructed. */
-function hapkePhaseFactor(law: ResolvedLaw, a: number): number {
-  const tg = Math.tan(a / 2), Bs = law.hs > 0 ? 1 / (1 + tg / law.hs) : 0;
-  const x = law.hc > 0 ? tg / law.hc : Infinity;
-  const Bc = x > 1e-9 ? (1 - Math.expm1(-x) / x) / (2 * (1 + x) ** 2) : 1;
-  return doubleHG(a, law.b, law.c) * (1 + law.bs0 * Bs) * (1 + law.bc0 * Bc);
-}
-function phaseTable(law: ResolvedLaw): PhaseCell[] {
-  const out: PhaseCell[] = [], cache = new Map<number, number>();
-  const evalAt = (t: number) => {
-    let v = cache.get(t);
-    if (v === undefined) {
-      const a = Math.PI * -Math.expm1(-t);
-      v = Math.log(lawDiskIntegral(law, a, undefined, 24)[0] / hapkePhaseFactor(law, a));
-      cache.set(t, v);
-    }
-    return v;
-  };
-  const visit = (lo: number, hi: number, depth: number) => {
-    const values = [0, 1 / 3, 2 / 3, 1].map(u => evalAt(lo + u * (hi - lo)));
-    const cell = { lo, hi, values };
-    let error = 0;
-    for (const u of [1 / 12, 1 / 6, 1 / 4, 1 / 2, 3 / 4, 5 / 6, 11 / 12])
-      error = Math.max(error, Math.abs(Math.expm1(cubic(cell, lo + u * (hi - lo)) - evalAt(lo + u * (hi - lo)))));
-    if (error <= 1e-7) out.push(cell);
-    else if (depth < 16) { const mid = (lo + hi) / 2; visit(lo, mid, depth + 1); visit(mid, hi, depth + 1); }
-    else throw new Error('Surface-law phase interpolation did not converge');
-  };
-  const end = Math.log(Math.PI / 1e-4);
-  for (let j = 0; j < 16; j++) visit(end * j / 16, end * (j + 1) / 16, 0);
-  return out;
-}
-function cubic(c: PhaseCell, t: number): number {
-  const u = (t - c.lo) / (c.hi - c.lo), [a, b, d, e] = c.values;
-  return -4.5 * (u - 1 / 3) * (u - 2 / 3) * (u - 1) * a
-    + 13.5 * u * (u - 2 / 3) * (u - 1) * b
-    - 13.5 * u * (u - 1 / 3) * (u - 1) * d
-    + 4.5 * u * (u - 1 / 3) * (u - 2 / 3) * e;
-}
 
 interface ZonalSpectrum { coeff: Float64Array; energy: XYZS; min: XYZS; max: XYZS; slope: XYZS; knots: Float64Array }
 const SPECTRAL_MAX = 512;
@@ -823,13 +809,46 @@ function barkstromFloorCorrection(law: ResolvedLaw, a: number, P: V3, z: ZonalPr
 /** Cache owned by the caller, so cold work and warm work can be benchmarked separately. No
  * rounded geometry key: every query uses its actual phase/pole, also when the camera stops. */
 export class MotionNormalization {
-  private phases = new Map<string, PhaseCell[]>();
   private spectra = new WeakMap<ZonalProfile, ZonalSpectrum>();
   private moments = new Map<string, Float64Array>();
   private degrees = new WeakMap<ZonalProfile, { degree: number; alpha: number }>();
   private variableMoments?: Float64Array;
   private variableExponent?: number;
   private variableDegree = 0;
+  private fixed = new NormalizationCache();
+  private zonalIds = new WeakMap<ZonalProfile, number>();
+  private nextZonalId = 1;
+
+  /**
+   * The bounded-cost path for what no fast method above covers (a Hapke law, and any law but Minnaert and
+   * Barkstrom under a zonal map): a fixed-order quadrature (about 2 ms), cached. A lookup runs on the main
+   * thread inside a frame, first use included: 7 October 2026, a table built on first use took 1.5–2.5 s per
+   * Hapke body, and the converged zonal integral 0.8–6 s in every frame of a mapped one.
+   *
+   * The cache's cell is chosen so that the value at its centre stands for every phase in it within 10⁻⁵:
+   * |d ln I/dα| is bounded by the two opposition terms at α = 0, b₀/(2h) each (B = 1/(1 + tan(α/2)/h)), plus
+   * the crescent's power law, at most 4/(π − α), plus 2 for the rest; the cell's width is 10⁻⁵ over that bound,
+   * rounded down to a power of two (Pluto's coherent peak, h_C = 1.4·10⁻⁴: cells of 7·10⁻⁹ rad). The integral
+   * is evaluated at the cell's centre and at the pole rounded to 10⁻⁴, so the result does not depend on which
+   * phase of the cell was asked for first.
+   */
+  private fixedOrder(law: ResolvedLaw, a: number, zonal?: { profile: ZonalProfile; pole: V3 }): XYZS {
+    const n = law.kind === LAW.hapke ? 24 : 32;
+    const surge = law.kind === LAW.hapke ? (law.hs > 0 ? law.bs0 / (2 * law.hs) : 0) + (law.hc > 0 ? law.bc0 / (2 * law.hc) : 0) : 0;
+    const slope = surge + 4 / 2 ** Math.floor(Math.log2(Math.PI - a)) + 2;
+    const step = 2 ** Math.floor(Math.log2(1e-5 / slope)), cell = Math.round(a / step);
+    const centre = Math.min(cell * step, Math.PI);
+    let key = `${JSON.stringify(law)}|${step}|${cell}`;
+    let at = zonal;
+    if (zonal) {
+      let id = this.zonalIds.get(zonal.profile);
+      if (!id) this.zonalIds.set(zonal.profile, (id = this.nextZonalId++));
+      const pole = zonal.pole.map((v) => Math.round(v * 1e4) / 1e4) as V3;
+      key += `|${id}|${pole.join(',')}`;
+      at = { profile: zonal.profile, pole };
+    }
+    return this.fixed.get(key, () => (at ? fixedOrderZonalIntegral(law, centre, at, n) : lawDiskIntegral(law, centre, undefined, n)));
+  }
 
   get(law: ResolvedLaw, alpha: number, zonal?: { profile: ZonalProfile; pole: V3 }): XYZS {
     const a = Math.min(Math.max(alpha, 0), Math.PI), delta = Math.PI - a;
@@ -905,7 +924,7 @@ export class MotionNormalization {
       }
       return lawDiskIntegral(law, a, zonal);
     }
-    if (zonal) return lawDiskIntegral(law, a, zonal);
+    if (zonal) return this.fixedOrder(law, a, zonal);
     if (law.kind === LAW.lambert) return scalarXYZS(2 / (3 * Math.PI) * (Math.sin(a) + delta * Math.cos(a)));
     if (law.kind === LAW.lommelSeeliger) return scalarXYZS(0.5 * lommelSeeligerPhase(a));
     if (law.kind === LAW.lunarLambert) {
@@ -917,16 +936,7 @@ export class MotionNormalization {
       return scalarXYZS(Math.cos(a / 2) * 2 * delta / Math.PI ** 2 * latitudeBeta((a / delta + 1) / 2));
     }
     if (law.kind === LAW.hapke && law.p === 0) return scalarXYZS(0);
-    if (law.kind === LAW.hapke && delta >= 1e-4) {
-      const key = JSON.stringify(law);
-      let cells = this.phases.get(key);
-      if (!cells) { cells = phaseTable(law); this.phases.set(key, cells); }
-      const t = Math.log(Math.PI / delta);
-      let lo = 0, hi = cells.length - 1;
-      while (lo < hi) { const mid = (lo + hi) >>> 1; if (t > cells[mid].hi) lo = mid + 1; else hi = mid; }
-      return scalarXYZS(Math.exp(cubic(cells[lo], t)) * hapkePhaseFactor(law, a));
-    }
-    return lawDiskIntegral(law, a, undefined, law.kind === LAW.hapke ? 24 : 32);
+    return this.fixedOrder(law, a);
   }
 }
 
