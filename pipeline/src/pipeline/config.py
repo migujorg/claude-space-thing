@@ -22,7 +22,7 @@ from typing import Any, Callable
 
 # Order matters: later stages may read earlier stages' outputs (each stage's DEPENDS names them).
 STAGES = ["time", "ephemeris", "light", "surfaces", "shapes", "bodies", "smallbodies", "sbphotometry", "synthetic",
-          "comets", "stars", "deepstars", "sky"]
+          "comets", "stars", "deepstars", "sky", "nightglow"]
 
 
 def _bool(v: str) -> bool:
@@ -215,6 +215,9 @@ COSTS: dict[str, Cost] = {
     "sky": Cost(0.13, 0.13, 0.2, 0.04, 30, 2.5, "docs/reports/sky.md",
                 "96 all-sky aggregation queries on the Gaia archive (10-19 min per 48); 18 MB of corona papers and "
                 "sunspot-number files"),
+    "nightglow": Cost(0.13, 0.13, 0.14, 0.006, 4, 1, "docs/reports/nightglow.md (build checked 2026-10-04)",
+                      "PALACE airglow model (2.7 MB), OVATION Prime coefficients (57 MB), OMNI 2 solar wind, IGRF-14, "
+                      "papers; field-line tracing of the magnetic grid takes most of the time"),
 }
 
 
@@ -240,6 +243,7 @@ RAW_DIRS: dict[str, tuple[str, ...]] = {
     "smallbodies": ("sbdb", "ssodnet", "mpc", "lcdb", "gaia_dr3_sso", "cneos", "horizons"),
     "sbphotometry": ("sbpy",), "synthetic": ("synthetic", "papers"), "comets": ("comets", "papers"),
     "stars": ("stars",), "deepstars": ("stars/gaia_dr3_deep",), "sky": ("sky", "stars/gaia_dr3_sums"),
+    "nightglow": ("nightglow", "sky/solar_cycle", "atmospheres", "cie", "naif/lsk"),
 }
 
 #: surfaces products by level cap (GB), summed from the tiles of a full build (levels 0..cap of every layer).

@@ -1,0 +1,13 @@
+{
+  "_about": "Published values used by the airglow part of the nightglow stage (nightglow_airglow.py) and its checks.",
+  "layerThickness": {
+    "_source": "Baker, D. J. & Stair, A. T. Jr. (1988), Rocket measurements of the altitude distributions of the hydroxyl airglow, Physica Scripta 37, 611-622, DOI:10.1088/0031-8949/37/4/021 (paywalled; values as quoted in the open-access review Wuest, S., Bittner, M., Espy, P. J., French, W. J. R. & Mulligan, F. J. (2023), Hydroxyl airglow observations for investigating atmospheric dynamics: results and challenges, Atmos. Chem. Phys. 23, 1599-1618, DOI:10.5194/acp-23-1599-2023, Sect. 2: 34 rocket flights at mid and high latitudes) and in PALACE (Noll et al. 2025, Sect. 4.1: 'about 87 km with an FWHM of about 8 km').",
+    "ohPeakKm": 86.8, "ohPeakSdKm": 2.6, "ohFwhmKm": 8.6, "ohFwhmSdKm": 3.1,
+    "thermosphere": "PALACE (Noll et al. 2025) Sect. 4.5: 'The major fraction of the emission is usually emitted between 200 and 300 km, and typical peak heights are around 250 km' (630/636 nm); the reference height of the other thermospheric O lines is 50 km higher (300 km)."
+  },
+  "limbCheck": {
+    "_source": "Lednyts'kyy, O., von Savigny, C., Eichmann, K.-U. & Mlynczak, M. G. (2015), Atomic oxygen retrievals in the MLT region from SCIAMACHY nightglow limb measurements, Atmos. Meas. Tech. 8, 1021-1041, DOI:10.5194/amt-8-1021-2015 (CC BY), Fig. 4b: monthly mean green-line limb emission rate, September 2010, 20-25 deg N, Envisat night side (about 22 h local time), read from the figure: peak about 7.8e3 R (between 7.0e3 and 8.5e3 R) at about 89-90 km tangent height.",
+    "peakLimbR": 7.8e3, "peakLimbRRange": [7.0e3, 8.5e3], "peakTangentKm": 89.5,
+    "latitudeDeg": 22.5, "localTimeH": 22.0, "month": 9, "year": 2010
+  }
+}
