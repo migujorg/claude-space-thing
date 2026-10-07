@@ -607,8 +607,17 @@ It is applied the way Ward Larson et al. do, as a variable-resolution filter.
     otherwise have no weight at all.
   - Where nothing in the 1° field can be seen against the veil, every weight is the dark light and L_a is
     the geometric mean of the retinal image there, not the arithmetic mean it was.
-- The extended image is read from the level of an image pyramid (mip chain of EXT) whose texel is half
-  a cycle at R: level log₂(1/(2·R·pixel angle)), linear between levels.
+- The extended image is read from the level of an image chain (mips of EXT) whose texel is half a cycle
+  at R: level log₂(1/(2·R·pixel angle)), linear between levels.
+  - Every level tiles the frame. A texel is the mean of the interval of the level above that it covers,
+    each texel there by the share of the interval it fills (`eye/acuity.ts` `downTiling`), and a position
+    is mapped onto a level by the level's size. The chain's sides are halved rounding down, so a plain
+    mean of 2 × 2 would never read the last row or column of an odd level (§10).
+  - The level is chosen by the nominal texel of 2^m px. Below an odd side the real texel is a little
+    larger and the two axes differ; §10 has the table.
+  - At the frame's edge the read stops at the last texel: the image is taken to continue. The veil
+    pyramid of §3 takes the opposite, dark beyond the frame; it is a different operator with its own
+    down-sampling.
 - Point sources are not blurred: their image is the eye's point spread (§3), and their visibility has
   its own model (§6).
 - On in eye mode only: enhanced mode lifts eye limits.
@@ -752,6 +761,21 @@ checks that the Sun's light on the bodies is unaffected.
   shows the Sun's veil from just outside the frame). Starlight outside the frame does not scatter
   into it, so the veil darkens slightly within the pyramid's reach of the frame edges (visible only in
   dense star fields with enhanced mode). A guard band would fix it.
+- **The veil is too dark at the frame's edges, also for light that is in the frame.** The pyramid's
+  upsampling reads zero beyond a level's edge, where that level's blur has in fact put light. §3's model
+  (dark beyond the frame; light scattered beyond the edge is lost) is the same pyramid on an unbounded
+  dark canvas. Against that, by a float twin of the pyramid with the fitted weights at 1280 × 720 and a
+  50° field (October 2026; not rendered):
+  - a uniform frame's veil is 17 % low at the middle of each edge and 23 % low in the corners, and the
+    veil light inside the frame is 0.75 % low;
+  - level by level the outermost pixel gets 0.70·(¾)^k of a uniform field instead of about a half: 0.30
+    against 0.53 at level 3, 0.17 against 0.51 at level 5;
+  - at 1283 × 723 the far edges are 4 to 6 % low and the near ones 17 %.
+
+  It reaches the background of points near the edges, the painted glare there and the adaptation's
+  retinal image. The pyramid loses nothing on the way down: its sides round up, and four times the sum
+  over a level is the sum over the level below at odd and even sides (tested). Not changed: a fix alters
+  the two stages that the points' own-light term takes as zero beyond the edge, and comes after it.
 - **A point's own light in its background is one number per frame**, the sum of the veil levels' Gaussians
   at their peaks. What the background texture really holds of a source at its own position (the pyramid's
   arithmetic run on the CPU, `tests/eye-points.test.ts`) is less by a third when the background is read at
@@ -820,11 +844,52 @@ checks that the Sun's light on the bodies is unaffected.
     shape). And at 5 to 7 cd/m² the tone reproduction shows light down to 1.3 % of the adaptation
     luminance at level 8/255, where at 291 cd/m² it is 18 %: the count takes in the whole foot of that
     blur. The app's own functions on a uniform disk give 2.25 times for Pluto's case.
-  - The image pyramid itself (not the block sums of §5b) has the sides the frame gives it. Where a level
-    has an odd side the next one drops its last row or column, so at cells of 32 px and more on 720
-    lines the bottom 16 lines of the frame are read from the row above them. Not changed.
   - The same filter, with the old weight stored per pixel of the sharp silhouette, drew a grey arc
     outside the sunlit limb of a dimmed disk. The arc went with the weight.
+- **The acuity filter's image chain** (§5b). Until October 2026 it was made with the veil pyramid's
+  mean of 2 × 2, although its sides round down where the veil pyramid's round up. Two things followed.
+  - Where a level's side was odd, its last row or column was in no coarser level. On 720 lines: rows
+    704–719 from cells of 32 px on, rows 640–703 as well from 128 px, rows 512–639 as well from 256 px.
+    On 1280 columns: columns 1024–1279 from 512 px. A source in the last row was absent from those
+    levels, and the read showed the row above in its place.
+  - Where the frame's own side was odd, the first level's last texel was averaged with zero. A frame of
+    1283 × 723 inside Jupiter's disk at a 3.6° field showed its last column at 0.48 of the interior and
+    its last row at 0.50 (on the GPU). Both are at 1.01 since.
+  - Now every level tiles the frame. At 1280 × 720 the picture is the same to the bit wherever no odd
+    level is read.
+  - **Not right yet: below an odd side the real texel is larger than the nominal 2^m px by which the
+    level is chosen, and the two axes differ.** Real texels in pixels, x × y, to two decimals:
+
+    | Nominal | 1280 × 720 | 1283 × 723 | 1375 × 138 | 250 × 250 |
+    |---|---|---|---|---|
+    | 2 | 2 × 2 | 2 × 2 | 2 × 2 | 2 × 2 |
+    | 4 | 4 × 4 | 4 × 3.99 | 4 × 4.06 | 4.03 × 4.03 |
+    | 8 | 8 × 8 | 8.02 × 8.03 | 7.99 × 8.12 | 8.06 × 8.06 |
+    | 16 | 16 × 16 | 16.04 × 16.07 | 15.99 × 17.25 | 16.67 × 16.67 |
+    | 32 | 32 × 32.73 | 32.08 × 32.86 | 31.98 × 34.5 | 35.71 × 35.71 |
+    | 64 | 64 × 65.45 | 64.15 × 65.73 | 65.48 × 69 | 83.33 × 83.33 |
+    | 128 | 128 × 144 | 128.3 × 144.6 | 137.5 × 138 | 250 × 250 |
+    | 256 | 256 × 360 | 256.6 × 361.5 | 275 × 138 | |
+    | 512 | 640 × 720 | 641.5 × 723 | 687.5 × 138 | |
+
+    Frames of 256 × 256 and 512 × 512 are exact at every level. One real size per level would be a
+    second approximation, since the axes differ; choosing by the nominal size keeps an even frame's
+    picture as it was.
+  - **When each level is read.** The cell reaches the nominal size below this adaptation of the fovea
+    (cd/m², 720 lines; a level is read from half its texel on, linearly):
+
+    | Cell | 10° field | 5° | 1° | 0.3° |
+    |---|---|---|---|---|
+    | 8 px | 0.0054 | 0.051 | 16 | always |
+    | 16 px | 0.00025 | 0.0054 | 0.41 | always |
+    | 32 px | never | 0.00025 | 0.090 | 2.1 |
+    | 64 px | never | never | 0.012 | 0.28 |
+    | 128 px | never | never | 0.00074 | 0.057 |
+    | 256 px | never | never | 0.000023 | 0.0063 |
+    | 512 px | never | never | never | 0.00031 |
+
+    At a 50° field no cell reaches 8 px: it is 5.6 px at the dark light. So at 1280 × 720 the error is
+    2.3 % along y for cells of 32 and 64 px, and 12.5 % or more only below 7·10⁻⁴ cd/m² at a 1° field.
 - **A disk 2 to 3 px across beside a brighter body is darkened** because pixel coverage is averaged
   before the tone reproduction (Ganymede beside Jupiter: mean level 15 at 2 px, 64 at 3 px).
 - **A displayed disk smaller than the viewer's own Ricco area** (5′ radius, taken in scene angle) is
