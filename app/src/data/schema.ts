@@ -441,6 +441,9 @@ export interface RingSystem {
   planet: number;
   /** Radial profiles of normal optical depth, each from one measured occultation cut. */
   opticalDepth: Sourced<RingProfile[]>;
+  /** Optional reconstructed optical depth, with its own provenance. Preferred when its label is admitted;
+   * otherwise opticalDepth supplies the unchanged archive measurement (Saturn at Strict). */
+  opticalDepthEstimate?: Sourced<RingProfile[]>;
   /** Ring I/F model for the lit and unlit faces (per CIE channel, any geometry in its domain), calibrated on the
    *  measurements below; `unknown` where no measurement exists. See docs/architecture.md §6. */
   reflectance: Sourced<RingReflectance>;
@@ -449,6 +452,101 @@ export interface RingSystem {
     radialProfiles: Sourced<RingIFProfile[]>;
     regionalPhaseCurves: Sourced<RingRegionalPhaseCurves>;
   };
+  /**
+   * Rings drawn one by one (Jupiter, Uranus, Neptune; docs/architecture.md §6 "Ring components"): eccentric,
+   * inclined and precessing narrow rings, arcs, dusty sheets and vertically extended tori, each with its own
+   * optical depth and light. When present and admitted it replaces `opticalDepth` for drawing; the label is the
+   * worst of its components' geometry, optical-depth and reflectance labels.
+   */
+  components?: Sourced<RingComponentModel>;
+}
+
+/** One edge of a ring component: a precessing, inclined keplerian ellipse with normal modes (French et al. 2024). */
+export interface RingComponentEdge {
+  /** Semimajor axis and a·e, km. */
+  a: number;
+  ae: number;
+  /** Longitude of periapse at the model epoch (degrees) and apsidal precession rate (degrees/day). */
+  varpi0Deg: number;
+  varpiDotDegPerDay: number;
+  /** Height amplitude a·sin i (km), node at epoch (degrees) and nodal rate (degrees/day). */
+  aSinI: number;
+  node0Deg: number;
+  nodeDotDegPerDay: number;
+  /** Δr = −A cos(m(λ − Ω_P t − δ)); for m = 0, −A cos(Ω_P t + δ) (t in days from the epoch). */
+  modes: { m: number; amplitudeKm: number; phaseDeg: number; patternSpeedDegPerDay: number }[];
+}
+
+export interface RingComponentProvenance {
+  /** Canonical Sourced payload; absent only in products built before the envelope migration. */
+  value?: Record<string, unknown> | null;
+  label: Label;
+  sources: string[];
+  method: string;
+}
+
+/** A tabulated phase function per CIE channel (X, Y, Z, scotopic), interpolated log-linearly in α. */
+export interface RingPhaseTable {
+  /** Canonical Sourced payload. Flat fields below mirror it for existing renderer consumers. */
+  value?: {
+    name: string; phaseDeg: number[]; valuesXYZS: number[][]; minPhaseDeg: number; maxPhaseDeg: number;
+  } | null;
+  name: string;
+  phaseDeg: number[];
+  valuesXYZS: number[][];
+  /** Outside [minPhaseDeg, maxPhaseDeg] this light is not measured (drawn as unknown). */
+  minPhaseDeg: number;
+  maxPhaseDeg: number;
+  label: Label;
+  sources: string[];
+  method: string;
+}
+
+export interface RingComponent {
+  id: string;
+  name: string;
+  /** 'sheet': a thin layer in the ring's plane; 'torus': spread vertically by `vertical`. */
+  kind: 'sheet' | 'torus';
+  inner: RingComponentEdge;
+  outer: RingComponentEdge;
+  /** Inclusive support interval, TDB s past J2000. Outside it geometry is unknown, with zero light/extinction.
+   * basis distinguishes source-stated validity from a pipeline observation-support policy. Omitted for stationary
+   * estimated profiles whose source states no temporal interval; their epoch/assumption remains in provenance. */
+  geometryValidity?: { startEt: number; endEt: number; basis: string };
+  /**
+   * Values at u = uStart + i·uStep across the band (u = (r − r_in)/(r_out − r_in)): the normal optical depth where the
+   * band is widthRefKm wide (scaled by widthRefKm/W elsewhere when widthScaling), or, when !opticalDepthKnown, the
+   * normal I/F at the thin term's reference phase (light only, no extinction).
+   */
+  profile: { uStart: number; uStep: number; values: number[]; widthRefKm: number; widthScaling: boolean; opticalDepthKnown: boolean };
+  /** Macroscopic particles (many-particle-thick layer): L_c(α) = scale · table(α). */
+  layer: { phaseFunction: string; scale: number } | null;
+  /** Optically thin dust: D_c(α) = scale · table(α), normal I/F = D·τ/4. */
+  thin: { phaseFunction: string; scale: number } | null;
+  /** Longitudinal modulation of τ (Neptune's arcs): factor(φ), φ = λ − λ0 − n (et − epochEt)/86400. */
+  arcs?: { lambda0Deg: number; epochEt: number; meanMotionDegPerDay: number; phiStartDeg: number; phiStepDeg: number; factor: number[] };
+  /** Vertical structure of a torus: density per unit height at radius r (normalized to ∫ dz = 1). */
+  vertical?:
+    | { law: 'inclined-orbits'; r0Km: number; z0Km: number; zMaxCapKm?: number }
+    | {
+      law: 'broken-power-law'; zBreakKm: number; zMaxKm: number; innerSlope: number; outerSlope: number;
+      /** Heights (zBreak, zMax) at the outer edge relative to the inner edge, linear in radius between (default 1). */
+      outerScale?: number;
+    };
+  provenance: { geometry: RingComponentProvenance; opticalDepth: RingComponentProvenance; reflectance: RingComponentProvenance };
+}
+
+export interface RingComponentModel {
+  kind: 'ring-components-v1';
+  formula: string;
+  /** Epoch of the edge elements, TDB seconds past J2000. */
+  epochEt: number;
+  longitudeOrigin: string;
+  /** +1 when the planet's angular momentum points along its IAU north pole, −1 when opposite (Uranus). */
+  poleSense?: 1 | -1;
+  phaseFunctions: Record<string, RingPhaseTable>;
+  components: RingComponent[];
+  notes: string;
 }
 
 export interface RingProfile {
@@ -1464,4 +1562,145 @@ export interface ValidationCase {
   appProducts: Record<string, unknown>;
   notes: string[];
   sources: SourceRecord[];
+}
+
+// ── Nightglow: airglow and aurora (pipeline stage `nightglow`, docs/reports/nightglow.md) ─────────────────────────
+
+/** One PALACE emission class (Noll et al. 2025): its spectrum folded through the CIE observers, and its climatology. */
+export interface AirglowClass {
+  id: string;
+  chem: string;
+  name: string;
+  /** Reference height of the class's emission layer, km (AirglowLayer.centreKm). */
+  layerKm: number;
+  /** Zenith column emission rate above the atmosphere, R: annual nocturnal mean at 100 sfu (all wavelengths). */
+  referenceR: number;
+  /** The part of referenceR at 360–830 nm, R. */
+  visibleR: number;
+  /** Luminance (X, Y, Z cd/m²; S scotopic cd/m²) of a column of 1 R of the class's spectrum. */
+  xyzsPerR: number[];
+  /** The same split over the 10 nm samples of `AirglowModel.samplesNm`, for spectral attenuation. */
+  xyzsPerRBySample: number[][];
+  zenithXYZSReference: number[];
+  shareOfZenithY: number;
+  shareOfZenithS: number;
+  brightestVisibleLines: { nmAir: number; R: number }[];
+  /** PALACE climatology [month 12][local-time bin 12]: scaling at 100 sfu, solar-cycle effect (% per sfu), residual σ. */
+  f0: number[][];
+  sce: number[][];
+  sigma: number[][];
+}
+
+/** A Gaussian volume-emission layer (altitude above the reference ellipsoid). */
+export interface AirglowLayer {
+  id: string;
+  centreKm: number;
+  sigmaKm: number;
+  fwhmKm: number;
+  kind: 'mesopause' | 'thermosphere';
+  classes: string[];
+}
+
+/** Daily solar radio flux (centred 27-day means of F10.7), sfu, with the provenance of each day. */
+export interface SolarRadioFluxSeries {
+  firstDay: string;
+  values: (number | null)[];
+  labelSegments: { label: Label; from: string; to: string }[];
+  lastObservedDay: string;
+}
+
+/** Resolved airglow data used by the app; serialized as AirglowProduct. */
+export interface AirglowModel {
+  kind: 'airglowModel';
+  version: number;
+  description: string;
+  units: Record<string, string>;
+  classes: AirglowClass[];
+  layers: AirglowLayer[];
+  omitted: { id: string; reason: string; zenithY: number }[];
+  samplesNm: number[];
+  climatology: {
+    monthCentreDoy: number[];
+    ltBinCentresHours: number[];
+    localTime: string;
+    nightWeight: number[][];
+    srf0: number;
+    /** Night domain: the airglow is drawn where the solar zenith angle at the ground point below exceeds this. */
+    nightMinSolarZenithDeg?: number;
+    scaling: string;
+    domain: string;
+  };
+  solarRadioFlux: Sourced<SolarRadioFluxSeries>;
+  label: Label;
+  sources: string[];
+  method: string;
+  uncertainty: string;
+  limbCheck?: {
+    peakLimbR: number; peakLimbRRange: [number, number]; peakTangentKm: number;
+    latitudeDeg: number; localTimeH: number; month: number; year: number; _source?: string;
+    /** Solar radio flux of that month (sfu) and how it was formed. */
+    srfSfu?: number | null; srfMethod?: string;
+  };
+}
+
+/** nightglow/airglow.json v2: inline physical data in the canonical Sourced.value envelope. */
+export interface AirglowProduct extends Sourced<Omit<AirglowModel, 'kind' | 'version' | 'label' | 'sources' | 'method' | 'uncertainty'>> {
+  kind: 'airglowModel';
+  version: number;
+}
+
+/** An aurora line group of the emission model. */
+export interface AuroraLineGroup {
+  /** Column per unit energy flux at each average-energy node, R per (erg cm⁻² s⁻¹). */
+  columnRPerErg: number[];
+  peakKm: number[];
+  /** Luminance of 1 R of the group (all its lines, in their fixed ratios). */
+  xyzsPerR: number[];
+  /** The same over the 10 nm samples (emission.value.samplesNm). */
+  xyzsPerRBySample?: number[][];
+}
+
+/** nightglow/aurora.json */
+export interface AuroraModel {
+  kind: 'auroraModel';
+  version: number;
+  description: string;
+  ovation: Sourced<{
+    file: string; dtype: 'float32' | 'float16'; layout: string;
+    seasons: string[]; quantities: string[];
+    couplingNodes: number[]; mlatDeg: number[]; mltHours: number[];
+    seasonWeights: string; types: string;
+  }>;
+  coupling: Sourced<{
+    unit: string;
+    hourlyStart: string;
+    stepHours: number;
+    values: (number | null)[];
+    measuredUntil: string;
+    climatology: { value: number; label: Label; method: string; sources: string[] };
+  }>;
+  magneticCoordinates: Sourced<{
+    file: string; dtype: 'float32'; layout: string;
+    /** [first, step, count] */
+    latDeg: [number, number, number];
+    lonDeg: [number, number, number];
+    altitudeKm: number;
+    epochYear: number;
+    /** Dipole frame axes (x, y, z) in Earth-fixed coordinates. */
+    dipoleFrameRows: number[][];
+    mlt: string;
+    undefined: string;
+  }>;
+  emission: Sourced<{
+    file: string; dtype: 'float32'; layout: string; unit: string;
+    groups?: string[];
+    samplesNm?: number[];
+    averageEnergyNodesKeV: number[];
+    altitudesKm: number[];
+    lines: Record<string, AuroraLineGroup>;
+    n2plusBands: { nmVac: number; photonsRelative4278: number }[];
+    checks: Record<string, unknown>;
+  }>;
+  label: Label;
+  nowcastCheck?: { source: string; use: string };
 }

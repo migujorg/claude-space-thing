@@ -1,0 +1,65 @@
+{
+  "_about": "Published constants for the aurora model of the nightglow stage (nightglow_aurora.py). Each block names its source; values transcribed by hand from the documents named (page images where the text layer is unusable). docs/reports/nightglow.md.",
+  "fang2008": {
+    "_source": "Fang, X., Randall, C. E., Lummerzheim, D., Solomon, S. C., Mills, M. J., Marsh, D. R., Jackman, C. H., Wang, W. & Lu, G. (2008), Electron impact ionization: A new parameterization for 100 eV to 1 MeV electrons, J. Geophys. Res. 113, A09311, DOI:10.1029/2008JA013384. Eqs. 2, 4, 6, 7 and Table 1 (read from the page image: the text layer drops the minus signs). Open copy: https://acd-ext.gsfc.nasa.gov/People/Jackman/Fang_2008.pdf",
+    "P": [
+      [0.349979, -0.0618200, -0.0408124, 0.0165414],
+      [0.585425, -0.0500793, 0.0569309, -0.00402491],
+      [0.169692, -0.0258981, 0.0196822, 0.00120505],
+      [-0.122271, -0.0115532, 5.37951e-6, 0.00120189],
+      [1.57018, 0.287896, -0.414857, 0.0518158],
+      [0.883195, 0.0431402, -0.0833599, 0.0102515],
+      [1.90953, -0.0474704, -0.180200, 0.0246652],
+      [-1.29566, -0.210952, 0.273106, -0.0292752]
+    ],
+    "yNorm_g_cm2": 4e-6,
+    "yExponent": 0.606,
+    "deltaEpsilon_keV": 0.035,
+    "validEnergy_keV": [0.1, 1000.0],
+    "_note": "E0 is the characteristic energy of a Maxwellian (mean energy 2 E0); Q0 in keV cm^-2 s^-1; rho in g cm^-3; H = kT/(m g) in cm; 35 eV per ion pair."
+  },
+  "n2plus": {
+    "_source": "Q_emis of the N2+ first negative (0,0) band at 391.4 nm, 14.8e-18 cm^2 at 100 eV (Doering & Yang best value, Itikawa 2006 Sect. 9.2 and Table 19), and the total ionisation cross section of N2 at 100 eV, 2.51e-16 cm^2 (Itikawa 2006 Table 16): Itikawa, Y. (2006), Cross sections for electron collisions with nitrogen molecules, J. Phys. Chem. Ref. Data 35, 31-53, DOI:10.1063/1.1937426 (NIST copy https://srd.nist.gov/JPCRD/jpcrd697.pdf). The ratio Q_exc(B)/Q_ion is constant within 10 % above 100 eV (same section). Band Einstein coefficients of N2+ B-X (v'=0) by direct integration: Laher's tables (https://web.ipac.caltech.edu/staff/laher/fluordir/N2+_B-X.out, 1999), identical within precision to Gilmore, Laher & Espy (1992), J. Phys. Chem. Ref. Data 21, 1005, DOI:10.1063/1.555910.",
+    "Qemis3914_cm2_100eV": 1.48e-17,
+    "Qion_N2_cm2_100eV": 2.51e-16,
+    "A01_over_A00": 0.32544,
+    "bands_v0": [
+      {"vpp": 0, "lambda_vac_um": 0.39116, "wavenumber_cm": 25564.7, "A_s": 1.14e7},
+      {"vpp": 1, "lambda_vac_um": 0.42753, "wavenumber_cm": 23389.8, "A_s": 3.71e6},
+      {"vpp": 2, "lambda_vac_um": 0.47064, "wavenumber_cm": 21247.6, "A_s": 7.84e5},
+      {"vpp": 3, "lambda_vac_um": 0.52252, "wavenumber_cm": 19138.1, "A_s": 1.35e5},
+      {"vpp": 4, "lambda_vac_um": 0.58611, "wavenumber_cm": 17061.7, "A_s": 2.07e4},
+      {"vpp": 5, "lambda_vac_um": 0.66585, "wavenumber_cm": 15018.4, "A_s": 2.99e3}
+    ],
+    "_note": "A01_over_A00 = 3.71e6 / 1.14e7. Band positions are band origins: vacuum wavelength = 1e4 / wavenumber (um)."
+  },
+  "o1d": {
+    "_source": "Transition probabilities: NIST Atomic Spectra Database (Kramida et al.), O I 2s2.2p4 1D2 -> 3P2,1,0 (M1 + E2): 630.0304 nm 5.63e-3 + 2.11e-5 s^-1, 636.3776 nm 1.82e-3 + 3.39e-6 s^-1, 639.1733 nm 8.6e-7 s^-1 (air wavelengths). Quenching: IUPAC preferred values, Atkinson, R. et al. (2004), Evaluated kinetic and photochemical data for atmospheric chemistry: Volume I - gas phase reactions of Ox, HOx, NOx and SOx species, Atmos. Chem. Phys. 4, 1461-1738, DOI:10.5194/acp-4-1461-2004 (summary table rows 36 and I.A1.3): O(1D) + N2 1.8e-11 exp(107/T) (100-350 K), O(1D) + O2 3.2e-11 exp(67/T) (200-350 K), cm^3 molecule^-1 s^-1. Used at thermospheric temperatures beyond the evaluated range (extrapolation). Quenching by O and by electrons is not included.",
+    "A630_s": 5.6511e-3,
+    "A636_s": 1.82339e-3,
+    "A639_s": 8.6e-7,
+    "A_total_s": 7.47535e-3,
+    "kN2": {"A": 1.8e-11, "EoverR": 107.0},
+    "kO2": {"A": 3.2e-11, "EoverR": 67.0},
+    "lines_air_nm": {"630": 630.0304, "636": 636.3776, "639": 639.1733}
+  },
+  "oi5577": {
+    "_source": "NIST Atomic Spectra Database: O I 2s2.2p4 1D2 - 1S0, 557.7339 nm (air).",
+    "line_air_nm": 557.7339
+  },
+  "gabrielse2021": {
+    "_source": "Gabrielse, C., Nishimura, T., Chen, M., Hecht, J. H., Kaeppler, S. R., Gillies, D. M., Reimer, A. S., Lyons, L. R., Deng, Y., Donovan, E. & Evans, J. S. (2021), Estimating precipitating energy flux, average energy, and Hall auroral conductance from THEMIS all-sky-imagers with focus on mesoscales, Frontiers in Physics 9, 744298, DOI:10.3389/fphy.2021.744298 (CC BY). Fig. 2B: B3C electron-transport results (Strickland et al.) for Maxwellian precipitation in an MSIS90 atmosphere (Fort Smith, 16 Feb 2010), green/blue (557.7/427.8) against red/blue (630.0/427.8) for 30 average energies (listed beside the figure) and oxygen scaling factors fO. Read here for fO = 1.00 (the reference O/N2): each E line traced from its foot on the fO = 0.25 curve to the fO = 1.00 curve (image analysis of the figure's embedded 1350 x 1151 px image; axes calibrated on the decade ticks: x = 409.5 + 212.5 log10(R/B), y = 801 - 345.2 log10(G/B / 10)). E = 3.67 and 4.69 keV and E above 9.81 keV could not be separated and are left out.",
+    "columns": ["averageEnergy_keV", "red_over_blue", "green_over_blue", "x_px", "y_px"],
+    "points": [[0.104, 65.1805, 8.352, 795.0, 828.0], [0.262, 31.2312, 7.751, 727.1, 839.2], [0.391, 18.8493, 7.674, 680.5, 840.7], [0.525, 13.154, 7.777, 647.3, 838.7], [0.656, 9.7117, 7.876, 619.3, 836.8], [0.787, 7.504, 7.934, 595.5, 835.7], [0.921, 6.1078, 8.132, 576.5, 832.0], [1.06, 4.9177, 8.241, 556.5, 830.0], [1.34, 3.5453, 8.408, 526.3, 827.0], [1.62, 2.704, 8.521, 501.3, 825.0], [1.91, 2.0556, 8.606, 476.0, 823.5], [2.15, 1.772, 8.606, 462.3, 823.5], [2.39, 1.4948, 8.624, 446.6, 823.2], [2.67, 1.2154, 8.664, 427.5, 822.5], [2.9, 1.1144, 8.612, 419.5, 823.4], [3.18, 0.9229, 8.664, 402.1, 822.5], [4.15, 0.6134, 8.521, 364.4, 825.0], [5.14, 0.4854, 8.38, 342.8, 827.5], [6.37, 0.3439, 8.078, 311.0, 833.0], [7.56, 0.2727, 7.761, 289.6, 839.0], [8.7, 0.204, 7.236, 262.8, 849.5], [9.81, 0.1833, 7.046, 252.9, 853.5]],
+    "readingUncertainty": "about +-3 px in x and y, i.e. +-3 % in R/B and +-2 % in G/B; the energy assignment assumes the 29 E-line feet detected on the fO = 0.25 curve plus its left end are the table's 30 energies in order"
+  },
+  "whiter2023": {
+    "_source": "Whiter, D. K., Partamies, N., Gustavsson, B. & Kauristie, K. (2023), The altitude of green OI 557.7 nm and blue N2+ 427.8 nm aurora, Ann. Geophys. 41, 1-12, DOI:10.5194/angeo-41-1-2023 (CC BY). 57 907 simultaneous triangulated peak emission heights, MIRACLE all-sky cameras (northern Finland and Sweden, 2000-2007, solar zenith angle > 101 deg, IL < -50 nT).",
+    "meanPeakKm": {"OI5577": 114.84, "N2p4278": 116.55},
+    "meanPeakSigmaKm": {"OI5577": 0.06, "N2p4278": 0.07},
+    "_use": "Check only (tests and report): the model's peak heights at typical OVATION average energies are compared with these measured means; nothing is fitted to them."
+  },
+  "op2010": {
+    "_source": "Newell, P. T., Sotirelis, T. & Wing, S. (2009), Diffuse, monoenergetic, and broadband aurora: The global precipitation budget, J. Geophys. Res. 114, A09207, DOI:10.1029/2009JA014326; Newell, P. T., Sotirelis, T. & Wing, S. (2010), Seasonal variations in diffuse, monoenergetic, and broadband aurora, J. Geophys. Res. 115, A03216, DOI:10.1029/2009JA014805. Coupling function: Newell, P. T., Sotirelis, T., Liou, K., Meng, C.-I. & Rich, F. J. (2007), A nearly universal solar wind-magnetosphere coupling function inferred from 10 magnetospheric state variables, J. Geophys. Res. 112, A01206, DOI:10.1029/2006JA012015. IDL release by NOAA NCEI (Redmon, Machol, Case; sourceforge.net/projects/ovation-prime), its coefficient files and algorithm as ported to Python in OvationPyme (Kilcommons)."
+  }
+}

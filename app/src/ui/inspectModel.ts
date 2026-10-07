@@ -1,11 +1,12 @@
 // Inspector view-model: pure functions from a body + data + level to display rows. No DOM.
 
-import type { Body, EphemHeader, EphemSegment, Label, LightData, Sourced } from '../data/schema';
+import type { Body, EphemHeader, EphemSegment, Label, LightData, RingSystem, Sourced } from '../data/schema';
 import type { SurfaceLayer } from '../data/surfaces';
 import type { EphemerisSourcePort, OrientationSourcePort } from '../app/ports';
 import { labelAllowed, worstOf, type ExistsLevel } from '../app/reality';
 import { formatValue } from './format';
 import type { ShapeStatus } from '../app/shapes';
+import type { NightglowInfo } from '../app/nightglow';
 
 export interface AttrRow {
   key: string;
@@ -73,6 +74,10 @@ export interface AttributeContext {
   surfaces?: SurfaceLayer[];
   /** Shape model status (app/shapes.ts), when the body has one. */
   shape?: ShapeStatus | null;
+  /** The Earth's airglow and aurora at the current time (app/nightglow.ts NightglowSource.info). */
+  nightglow?: NightglowInfo | null;
+  /** The body's ring system (rings.json), when it has one. */
+  rings?: RingSystem | null;
 }
 
 export function attributeRows(body: Body, level: ExistsLevel, ephs: { path: string; header: EphemHeader }[], ctx: AttributeContext = {}): AttrRow[] {
@@ -124,6 +129,7 @@ export function attributeRows(body: Body, level: ExistsLevel, ephs: { path: stri
   rows.push(row('albedoXYZS', 'Geometric albedo (XYZ + scotopic)', p?.geometricAlbedoXYZS, level, 'xyzs'));
   rows.push(row('albedoV', 'Geometric albedo (V)', p?.geometricAlbedoV, level));
   rows.push(row('phase', 'Phase function', p?.phaseFunction, level, 'phase'));
+  if (ctx.rings) rows.push(...ringRows(ctx.rings, level));
   for (const sl of ctx.surfaces ?? []) {
     // An albedo map carries a brightness pattern and a colour; the drawn map is as grounded as the worse (extras.ts).
     const label = sl.layer === 'albedo' && sl.colorLabel ? worstOf([sl.label, sl.colorLabel]) : sl.label;
@@ -136,6 +142,48 @@ export function attributeRows(body: Body, level: ExistsLevel, ephs: { path: stri
       ...(sl.method ? { method: sl.method } : sl.notes ? { method: sl.notes } : {}),
       sources: sl.sources,
       withheld: label !== 'unknown' && !labelAllowed(label, level),
+    });
+  }
+  if (ctx.nightglow) rows.push(...nightglowRows(ctx.nightglow, level));
+  return rows;
+}
+
+const sig = (x: number, n = 3) => Number(x.toPrecision(n)).toString();
+
+/** The Earth's own light at night: what the airglow and the aurora are based on, and whether they are drawn. */
+export function nightglowRows(info: NightglowInfo, level: ExistsLevel): AttrRow[] {
+  const rows: AttrRow[] = [];
+  const a = info.airglow;
+  if (a) {
+    const srf = a.srf ? `10.7 cm solar flux (27-day mean) ${sig(a.srf.sfu)} sfu on ${a.srf.day} (${a.srf.label}${a.srf.label === 'estimated' ? ': partly predicted' : ': observed'})` : 'no solar flux for this day';
+    rows.push({
+      key: 'airglow',
+      name: 'Airglow (PALACE climatology, measured at Cerro Paranal)',
+      label: a.label,
+      value: a.drawn
+        ? `drawn on the night side; zenith luminance near local midnight ${a.zenithY !== null ? sig(a.zenithY) : 'unknown'} cd/m²; ${srf}`
+        : `not drawn — ${a.reason ?? 'unknown'}; ${srf}`,
+      method: a.method,
+      uncertainty: a.uncertainty,
+      sources: a.sources,
+      withheld: !a.drawn && a.label !== 'unknown' && !labelAllowed(a.label, level),
+    });
+  }
+  const u = info.aurora;
+  if (u) {
+    const c = u.coupling;
+    const drive = c.measured
+      ? `solar-wind coupling dΦ/dt ${sig(c.value)} (from OMNI measurements, ${c.label})`
+      : `solar-wind coupling ${sig(c.value)}: climatological median (${c.label}) — no measured solar wind at this time (measured until ${c.measuredUntil.slice(0, 16).replace('T', ' ')} UT)`;
+    rows.push({
+      key: 'aurora',
+      name: 'Aurora (OVATION Prime 2010 + emission model)',
+      label: u.label,
+      value: u.drawn ? `drawn: electron aurora, ${drive}` : `not drawn — ${u.reason ?? 'unknown'}; ${drive}`,
+      method: u.method,
+      uncertainty: u.uncertainty,
+      sources: u.sources,
+      withheld: !u.drawn && u.label !== 'unknown' && !labelAllowed(u.label, level),
     });
   }
   return rows;
@@ -188,4 +236,51 @@ export function sunWhy(light: LightData | null, level: ExistsLevel, drawn: boole
 /** Label for a quantity derived from inputs (position is derived; add the others' labels). */
 export function derivedLabel(...inputs: Label[]): Label {
   return worstOf(['derived', ...inputs]);
+}
+
+/**
+ * Ring rows: the classic profile (optical depth, reflectance) and, for a component model (Jupiter, Uranus, Neptune;
+ * render/ringComponents.ts), one row per component with the worst of its geometry, optical-depth and reflectance
+ * labels (each aspect's own label and method in the row's method), and one per phase-function table.
+ */
+export function ringRows(sys: RingSystem, level: ExistsLevel): AttrRow[] {
+  const rows: AttrRow[] = [];
+  const od = sys.opticalDepth;
+  const nProf = od.value?.length ?? 0;
+  rows.push({ ...row('rings:tau', 'Rings: optical depth profile', od, level), value: od.value ? `${nProf} occultation profile${nProf === 1 ? '' : 's'}` : 'unknown' });
+  rows.push({ ...row('rings:refl', 'Rings: reflectance model', sys.reflectance, level), value: sys.reflectance.value ? 'single-scattering ring model' : 'unknown' });
+  const c = sys.components;
+  if (!c) return rows;
+  const m = c.value;
+  rows.push({ ...row('rings:components', 'Rings: components', c, level), value: m ? `${m.components.length} components, ${Object.keys(m.phaseFunctions).length} phase functions` : 'unknown' });
+  if (!m) return rows;
+  const aspects = ['geometry', 'opticalDepth', 'reflectance'] as const;
+  const aspectName = { geometry: 'Geometry', opticalDepth: 'Optical depth', reflectance: 'Reflectance' };
+  for (const comp of m.components) {
+    const p = comp.provenance;
+    const label = worstOf(aspects.map((a) => p[a].label));
+    const known = aspects.filter((a) => p[a].label !== 'unknown').map((a) => p[a].label);
+    const shown = known.length ? worstOf(known) : 'unknown';
+    rows.push({
+      key: `rings:${comp.id}`,
+      name: `Ring: ${comp.name}`,
+      label,
+      value: aspects.map((a) => `${aspectName[a].toLowerCase()} ${p[a].label}`).join(' · '),
+      method: aspects.map((a) => `${aspectName[a]} (${p[a].label}): ${p[a].method}`).join(' '),
+      sources: uniq(aspects.flatMap((a) => p[a].sources)),
+      withheld: shown !== 'unknown' && !labelAllowed(shown, level),
+    });
+  }
+  for (const [id, t] of Object.entries(m.phaseFunctions)) {
+    rows.push({
+      key: `rings:phase:${id}`,
+      name: `Ring phase function: ${t.name}`,
+      label: t.label,
+      value: `${t.minPhaseDeg}–${t.maxPhaseDeg}° (outside: not measured)`,
+      method: t.method,
+      sources: t.sources,
+      withheld: !labelAllowed(t.label, level),
+    });
+  }
+  return rows;
 }

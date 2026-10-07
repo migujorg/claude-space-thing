@@ -6,6 +6,8 @@ import datetime as dt
 import hashlib
 import json
 import threading
+from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -16,7 +18,7 @@ from pipeline import surf_cog
 from pipeline import surf_earth as se
 from pipeline import surf_gibs as gb
 from pipeline import surf_tiles as st
-from pipeline.paths import OUT
+from pipeline.paths import OUT, RAW
 
 
 def _clock(monkeypatch, day):
@@ -146,6 +148,41 @@ def test_daylit_rows_follow_the_season():
     dec = se.daylit_rows("2026-12-21")
     assert june[lat > 80].all() and not june[lat < -75].any()
     assert dec[lat < -80].all() and not dec[lat > 75].any()
+
+
+@pytest.mark.parametrize("day", [se.CLOUD_DAY, "2026-06-21", "2026-12-21"])
+def test_cloud_daylit_rows_use_cldprop_optical_and_height_limit(day):
+    # Hubanks et al., CLDPROP L3 guide v2.1, §8.13 Table 9: L2 continuity COP/CTP day is SZA ≤ 80°.
+    lat = np.radians(st.lat_centers(se.LEVEL))
+    dec = np.radians(se.solar_declination_deg(day))
+    hour = np.radians(15 * (se.OVERPASS_LST_H - 12))
+    mu = np.sin(lat) * np.sin(dec) + np.cos(lat) * np.cos(dec) * np.cos(hour)
+    np.testing.assert_array_equal(se.daylit_rows(day), mu >= np.cos(np.radians(80.0)))
+    assert se.VIIRS_CLDPROP_DAY_SZA_MAX_DEG == 80.0
+
+
+def test_cloud_diagnostic_domain_uses_cldprop_limit_including_boundary(monkeypatch):
+    # At equinox/noon, latitude is SZA: include the documented 80° boundary, exclude the MODIS-only band.
+    monkeypatch.setattr(se, "solar_declination_deg", lambda day: 0.0)
+    monkeypatch.setattr(se, "OVERPASS_LST_H", 12.0)
+    lat = np.array([79.9, 80.0, 80.1, 81.36, 85.0])
+    expected = np.where(lat <= 80.0, np.cos(np.radians(lat)), 0.0)
+    np.testing.assert_array_equal(se._overpass_mu0(lat, se.CLOUD_DAY), expected)
+    monkeypatch.setattr(st, "lat_centers", lambda level: lat)
+    np.testing.assert_array_equal(se.daylit_rows(se.CLOUD_DAY), expected > 0)
+
+
+def test_modis_population_retains_its_own_cited_daylight_domain(monkeypatch):
+    # The histogram is already aggregated by MODIS; documenting its domain must not refilter it for VIIRS.
+    cp = se.cloud_pcl
+    assert cp.MODIS_COP_DAY_SZA_MAX_DEG == 81.36
+    if not all((RAW / "papers" / name).exists() for name in (cp.PDF_NAME, cp.P17_NAME)):
+        pytest.skip("MODIS population source PDFs not downloaded")
+    pdf = cp.fetch_pdf()
+    monkeypatch.setattr(se.sl, "register_dataset", lambda ctx, sid, *args, **kwargs: sid)
+    table, _ = cp.table(SimpleNamespace())
+    assert any("MODIS" in c and "SZA < 81.36°" in c for c in table["caveats"])
+    assert table["statistics"] == cp.statistics(cp.figure_cells(cp.pdf_image(pdf.read_bytes(), *cp.IMAGE_SIZE)))
 
 
 def test_coverage_weighted_coarse_levels():
@@ -381,6 +418,51 @@ def test_earth_wind_layer():
 
 
 # ------------------------------------------------------------------------------------------------ cloud τ moments
+
+
+@pytest.mark.parametrize("layer", ["clouds", "cloudTau"])
+def test_cloud_headers_label_aggregates_derived_and_assumed_population_estimated(monkeypatch, layer):
+    # Exercise the builder and real header serialization with a tiny observational fixture, without downloads
+    # or writing tiles/products. Counts, fractions, means and log moments are derived from the L2 retrievals;
+    # the population assigned to cloud without its own thickness remains an assumed input (estimated).
+    monkeypatch.setattr(se, "LEVEL", 0)
+    monkeypatch.setattr(st, "level_shape", lambda level: (4, 8))
+    monkeypatch.setattr(se, "centric_rows", lambda level: np.arange(4))
+    monkeypatch.setattr(se, "daylit_rows", lambda day: np.ones(4, bool))
+    cm = gb.Colormap("test", np.array([1]), np.array([1.0]), np.array([4.0]), np.array([2.5]),
+                     np.zeros(1, bool), np.zeros(1, int), ["Ice"], np.array([], np.int64), None)
+    monkeypatch.setattr(gb, "capabilities", lambda: None)
+    monkeypatch.setattr(gb, "layer_info", lambda caps, name: {
+        "layer": name, "colormap": "test", "periods": [se.CLOUD_DAY]})
+    monkeypatch.setattr(gb, "colormap", lambda url: cm)
+    monkeypatch.setattr(se, "_fetch_blocks", lambda name, day: [((), 0, 0, Path(name))])
+    monkeypatch.setattr(gb, "read_rgba", lambda path: path)
+    def decode(path, cm):
+        values = np.full((4, 8), 2.5 if path.name == se.L_COT else 1000.0, np.float32)
+        if path.name == se.L_COT:
+            values[:, ::2] = np.nan  # Height without thickness belongs to the cloudy, unretrieved share.
+        return values, np.zeros((4, 8), int), np.zeros((4, 8), bool), 0
+    monkeypatch.setattr(gb, "decode", decode)
+    monkeypatch.setattr(se, "record", lambda path: {})
+    monkeypatch.setattr(se, "discard", lambda path: None)
+    monkeypatch.setattr(se, "_register_gibs", lambda ctx: se.SRC_GIBS)
+    monkeypatch.setattr(se.sl, "register_dataset", lambda ctx, sid, *args, **kwargs: sid)
+    monkeypatch.setattr(se.cloud_pcl, "table", lambda ctx: ({
+        "label": "estimated", "sources": ["pcl-test"], "tauBinLnCentre": [0.0],
+        "statistics": {"floorCellsZero": {"partlyCloudyAllHeights": {
+            "binProbability": [1.0], "meanLnTau": 0.0, "sdLnTau": 0.0}}}}, "pcl-test"))
+    monkeypatch.setattr(st, "write_pyramid", lambda *args, **kwargs: SimpleNamespace(
+        listing=lambda: b"", bytes=0, files=[], missing={}))
+    monkeypatch.setattr(se.sl, "write_bin", lambda *args: None)
+    monkeypatch.setattr(se.sl, "write_json", lambda *args: None)
+    ctx = SimpleNamespace(param=lambda key: None, products={})
+    headers = {h["layer"]: h for h in se.build_clouds(ctx)}
+    h = headers[layer]
+    assert h["brightness"]["label"] == "derived"
+    assert h["coverage"]["regions"][0]["brightness"]["label"] == "derived"
+    if layer == "cloudTau":
+        assert h["constants"]["unmeasuredTau"]["label"] == "estimated"
+        assert h["constants"]["unmeasuredTau"]["sources"] == ["pcl-test"]
 
 
 def test_ln_tau_at_the_geometric_bin_centre():

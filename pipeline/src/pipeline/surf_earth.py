@@ -5,7 +5,7 @@ Every Earth layer is dated. All inputs are public and need no login.
 clouds  VIIRS (NOAA-20) cloud properties of one UTC day, product CLDPROP_L2_VIIRS_NOAA20 v1.1 (Platnick et al. 2021),
         as served by NASA GIBS: cloud-top height (daytime) and cloud optical thickness with its thermodynamic phase,
         decoded exactly (to one colour-map bin) from the published GIBS colour maps. Sampled at ~1.1 km and
-        aggregated to level 4 (4.9 km): cloud fraction (share of samples with a cloud-top retrieval), mean in-cloud
+        aggregated to level 4 (4.9 km): cloud fraction (share with a cloud-top or optical-thickness retrieval), mean in-cloud
         optical thickness, mean cloud-top height and ice fraction. Each place is seen at the NOAA-20 daytime overpass
         (~13:30 local solar time) of that day.
 cloudTau  From the same samples: the share with an optical-thickness retrieval and the ln τ moments of those
@@ -54,7 +54,11 @@ NAME = "Earth"
 SUBDIR = "surfaces/earth"
 LEVEL = 4
 SAMPLES = 4                      # WMS pixels per texel along each axis (1.1 km samples for 4.9 km texels)
-DAY_SZA_MAX = 81.36              # CLDPROP daytime retrieval limit (solar zenith angle, degrees)
+# Hubanks et al. (2022), CLDPROP L3 User Guide v2.1, §8.13, pp. 69–70, Table 9:
+# L2 continuity cloud optical AND cloud-top day classification is SZA ≤ 80° (cloud mask: ≤ 85°).
+# https://atmosphere-imager.gsfc.nasa.gov/sites/default/files/ModAtmo/documents/L3_CLDPROP_User_Guide_v2.1.pdf
+# CLDPROP L2 User Guide v1.2 (March 2021), Appendix D, pp. 71–72, also uses 80° for day/night phase tests.
+VIIRS_CLDPROP_DAY_SZA_MAX_DEG = 80.0
 OVERPASS_LST_H = 13.5            # NOAA-20 ascending-node local solar time
 
 L_COT = "VIIRS_NOAA20_Cloud_Optical_Thickness"
@@ -132,7 +136,7 @@ def daylit_rows(day: str) -> np.ndarray:
     dec = np.radians(solar_declination_deg(day))
     hour = np.radians(15.0 * (OVERPASS_LST_H - 12.0))
     cos_sza = np.sin(lat) * np.sin(dec) + np.cos(lat) * np.cos(dec) * np.cos(hour)
-    return cos_sza > np.cos(np.radians(DAY_SZA_MAX))
+    return cos_sza >= np.cos(np.radians(VIIRS_CLDPROP_DAY_SZA_MAX_DEG))
 
 
 def _register_gibs(ctx: BuildContext) -> str:
@@ -208,7 +212,7 @@ def _overpass_mu0(lat_deg: np.ndarray, day: str) -> np.ndarray:
     dec = np.radians(solar_declination_deg(day))
     hour = np.radians(15.0 * (OVERPASS_LST_H - 12.0))
     mu = np.sin(lat) * np.sin(dec) + np.cos(lat) * np.cos(dec) * np.cos(hour)
-    return np.where(mu > np.cos(np.radians(DAY_SZA_MAX)), mu, 0.0)
+    return np.where(mu >= np.cos(np.radians(VIIRS_CLDPROP_DAY_SZA_MAX_DEG)), mu, 0.0)
 
 
 class _TauDiagnostics:
@@ -290,7 +294,8 @@ class _TauDiagnostics:
 
 def _unmeasured_tau(ctx: BuildContext) -> tuple[dict, str]:
     """The partly-cloudy τ statistic (cloud_pcl.py) for the cloud share without a retrieval, with its plane albedo
-    (liquid g, δ-Eddington as for the retrieved part) at a few Sun heights for reference."""
+    (liquid g, δ-Eddington as for the retrieved part) at a few Sun heights for reference. Applying this population
+    to the derived cloudy share introduces an assumption, so the mixture remains estimated."""
     t, sid = cloud_pcl.table(ctx)
     d = t["statistics"]["floorCellsZero"]["partlyCloudyAllHeights"]
     p, tau = np.array(d["binProbability"]), np.exp(np.array(t["tauBinLnCentre"]))
@@ -340,6 +345,8 @@ def build_clouds(ctx: BuildContext) -> list[dict]:
         cot_s, cth_s, cls_s = _reshape_blocks(cot), _reshape_blocks(cth), _reshape_blocks(cls)
         del cot, cth, cls
         has_tau = np.isfinite(cot_s)
+        # A height without thickness still counts as cloud. These two VIIRS GIBS layers cannot distinguish
+        # partly cloudy pixels from pixels restored to clear sky by the optical algorithm or failed retrievals.
         cloudy = np.isfinite(cth_s) | has_tau
         f = cloudy.sum(axis=2) / n
         n_cot = has_tau.sum(axis=2)
@@ -388,7 +395,9 @@ def build_clouds(ctx: BuildContext) -> list[dict]:
     frac = top[..., 0][known]
     lat_known = st.lat_centers(LEVEL)[known[:, 0]]
     regions = [sl.Region(float(lat_known.min()), float(lat_known.max()), -180, 180,
-                         sl.Provenance("measured", [SRC_CLDPROP], "daylit at the NOAA-20 overpass"),
+                         sl.Provenance("derived", [SRC_CLDPROP, gibs_id],
+                                       "Counts, fractions and means of decoded L2 retrievals, daylit at the "
+                                       "NOAA-20 overpass"),
                          note="Poleward of the daylit band (Sun below the CLDPROP day limit at ~13:30 local) the "
                               "layer is unknown.")]
     epoch = {"start": f"{day}T00:00:00Z", "end": f"{day}T23:59:59Z",
@@ -400,8 +409,9 @@ def build_clouds(ctx: BuildContext) -> list[dict]:
         channels=["cloudFraction", "opticalThickness", "cloudTopHeightM", "iceFraction"],
         frame=FRAME,
         sources=[SRC_CLDPROP, gibs_id],
-        brightness=sl.Provenance("measured", [SRC_CLDPROP, gibs_id],
-                                 "L2 retrievals (cloud-top height from the IR/CO2-slicing algorithm, optical thickness "
+        brightness=sl.Provenance("derived", [SRC_CLDPROP, gibs_id],
+                                 "L2 retrievals (cloud-top height from NOAA Enterprise ACHA with CLAVR-x cloud-top "
+                                 "phase; CLDPROP L2 User Guide v1.2 §3.1; optical thickness "
                                  "at 0.65/0.86 µm with its phase) decoded to one colour-map bin, aggregated per texel "
                                  f"from {SAMPLES * SAMPLES} ~1.1 km samples.",
                                  "COT bins ~4 % wide (1-100; one bin 0.01-1 and one 100-150); CTH bins 50 m, ≥ 12 km "
@@ -423,9 +433,11 @@ def build_clouds(ctx: BuildContext) -> list[dict]:
         diagnostics={"meanCloudFraction": float(np.nanmean(frac)), "unmatchedColours": stats["unmatchedColours"],
                      "cthCensoredSamples": stats["cthCensored"],
                      "daylitLatitudeRange": [float(lat_known.min()), float(lat_known.max())]},
-        notes=["Cloud fraction counts cloud-top retrievals, so partly cloudy pixels with a retrieval count as cloudy; "
-               "optical thickness is only retrieved for overcast pixels (CLDPROP gives partly cloudy pixels' "
-               "thickness only in a separate field that GIBS does not serve), so its mean is biased towards thick "
+        notes=["Cloud fraction counts samples with a cloud-top or optical-thickness retrieval. A sample with height "
+               "but no thickness counts as cloud; these layers cannot distinguish partly cloudy pixels from pixels "
+               "restored to clear sky by the optical algorithm or failed optical retrievals. The VIIRS GIBS optical "
+               "thickness layer supplies standard retrievals, without CLDPROP's separate _PCL field, so its mean "
+               "is biased towards thick "
                f"cloud. The {TAU_LAYER} layer gives the share of samples with a thickness and its ln τ moments.",
                "Over bright snow and ice the cloud mask is less reliable.",
                "Coarser levels are 2×2 means of each channel. That is exact for cloudFraction, but opticalThickness, "
@@ -444,7 +456,7 @@ def build_clouds(ctx: BuildContext) -> list[dict]:
         channels=["tauRetrievedFraction", "lnTauMoment1", "lnTauMoment2", "iceTauFraction"],
         frame=FRAME,
         sources=[SRC_CLDPROP, gibs_id, pcl_sid],
-        brightness=sl.Provenance("measured", [SRC_CLDPROP, gibs_id],
+        brightness=sl.Provenance("derived", [SRC_CLDPROP, gibs_id],
                                  "Counts and ln τ moments of the L2 optical-thickness retrievals (0.65/0.86 µm, with "
                                  f"phase) among the {SAMPLES * SAMPLES} ~1.1 km samples of each texel: the same "
                                  "samples as the clouds layer.",
@@ -469,15 +481,17 @@ def build_clouds(ctx: BuildContext) -> list[dict]:
                             "texel, for a distribution-aware albedo)",
                 "iceShare": "iceTauFraction / tauRetrievedFraction",
                 "cloudyWithoutTau": "cloudFraction (clouds layer) − tauRetrievedFraction: cloud-top retrievals "
-                                    "without an optical thickness (partly cloudy pixels, failed retrievals); their "
-                                    "thickness is not measured here (see unmeasuredTau)",
+                                    "without an optical thickness. These inputs cannot distinguish partly cloudy "
+                                    "pixels from pixels restored to clear sky by the optical algorithm or failed "
+                                    "retrievals; their thickness is not measured here (see unmeasuredTau)",
                 "unmeasuredShare": "At Strict the cloudyWithoutTau share stays unknown. At Best it may take the "
                                    "partly-cloudy population statistic unmeasuredTau.statistics.floorCellsZero."
                                    "partlyCloudyAllHeights (label estimated): plane albedo R̄ = Σ_k p_k R(τ_k) over "
                                    "the seven bins with τ_k = exp(tauBinLnCentre[k]) (no fitted shape; preferred: a "
                                    "log-normal with meanLnTau and sdLnTau is 6-10 % brighter at μ0 ≥ 0.8 because the "
                                    "measured distribution has no mass above τ = 23, see planeAlbedoLiquid); liquid "
-                                   "phase (iceShare ≈ 0.035), the same δ-Eddington layer as the retrieved part. Not "
+                                   "phase (iceShare ≈ 0.035), the same δ-Eddington layer as the retrieved part. The "
+                                   "mixture of retrieved cloud and this assumed population is estimated. Not "
                                    "the texel's own retrieved distribution, which is biased to overcast cloud.",
                 "levels": "every channel is a per-sample average, so the pyramid's 2×2 means are the same "
                           "quantities for the coarser texel (exact at every level, including the ln τ spread between "
@@ -495,12 +509,14 @@ def build_clouds(ctx: BuildContext) -> list[dict]:
                         "(the validation case); 'level0' = texels 16 × 16 level-4 texels, moments averaged as the "
                         "pyramid does",
                 **rep}},
-        notes=["The clouds layer's cloudFraction counts every sample with a cloud top; its opticalThickness is the "
-               "mean over the samples that also have an optical-thickness retrieval. This layer says how many do "
+        notes=["The clouds layer's cloudFraction counts every sample with a cloud top or optical thickness; its "
+               "opticalThickness is the mean over the samples with an optical-thickness retrieval. This layer says how many do "
                "(tauRetrievedFraction) and how their thickness is distributed (ln τ moments), so a renderer can give "
                "the thickness only to the share that has one and treat the rest as unknown.",
                "GIBS serves no cloud mask and no partly-cloudy optical thickness (CLDPROP's _PCL fields) for VIIRS "
-               "NOAA-20: the cloudy share without a thickness is known only as cloudFraction − tauRetrievedFraction.",
+               "NOAA-20: the cloudy share without a thickness is known only as cloudFraction − tauRetrievedFraction. "
+               "GIBS does serve separate PCL optical-thickness layers for MODIS Aqua and Terra (MOD06/MYD06); "
+               "those are different instruments and observations.",
                "The mean of R over a texel's retrievals is below R(mean τ) (plane-parallel bias); see "
                "diagnostics.planeAlbedoCheck for how close exp(mean ln τ) and a log-normal from the two moments come."],
     )

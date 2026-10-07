@@ -33,7 +33,7 @@ HOSTS: dict[str, tuple[str, ...]] = {
               "iopscience.iop.org", "sourceforge.net", "nssdc.gsfc.nasa.gov", "web.lmd.jussieu.fr",
               "www-mars.lmd.jussieu.fr", "raw.githubusercontent.com", "www.iup.uni-bremen.de", "ntrs.nasa.gov",
               "b.tellusjournals.se", "sbnarchive.psi.edu", "www.data.jma.go.jp", "pdssbn.astro.umd.edu",
-              "noaa-himawari9.s3.amazonaws.com"),
+              "noaa-himawari9.s3.amazonaws.com", "ciclops.org", "pages.astro.umd.edu"),
     "surfaces": ("asc-pds-services.s3.us-west-2.amazonaws.com", "pds-smallbodies.astro.umd.edu",
                  "ncc.nesdis.noaa.gov", "www.ngdc.noaa.gov", "gibs.earthdata.nasa.gov",
                  "modiseuwest.blob.core.windows.net", "planetarycomputer.microsoft.com", "www.oceancolour.org",
@@ -54,6 +54,11 @@ HOSTS: dict[str, tuple[str, ...]] = {
     "deepstars": ("gea.esac.esa.int",),
     "sky": ("gea.esac.esa.int", "www.stsci.edu", "arxiv.org", "scispace.com", "articles.adsabs.harvard.edu", "www.sidc.be",
             "services.swpc.noaa.gov"),
+    "nightglow": ("zenodo.org", "gmd.copernicus.org", "www.spaceweather.gc.ca", "services.swpc.noaa.gov",
+                  "spdf.gsfc.nasa.gov", "raw.githubusercontent.com", "www.ngdc.noaa.gov", "acd-ext.gsfc.nasa.gov",
+                  "srd.nist.gov", "web.ipac.caltech.edu", "www.frontiersin.org", "angeo.copernicus.org",
+                  "acp.copernicus.org", "amt.copernicus.org", "physics.nist.gov", "ntrs.nasa.gov", "files.cie.co.at",
+                  "naif.jpl.nasa.gov"),
 }
 #: The Gaia XP spectra's host, by stars.xpSource (stars_gaia module docstring), for the stages that read them.
 XP_HOSTS = {"archive": "gaia.ari.uni-heidelberg.de", "bulk": "cdn.gea.esac.esa.int"}

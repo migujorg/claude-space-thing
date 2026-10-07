@@ -5,7 +5,7 @@
 // anything not allowed at the current `exists` level arrives here as null / flagged, so the renderer
 // never needs to reason about provenance labels except for the provenance-tint overlay.
 
-import type { BodyAtmosphere, DiskReflectanceModel, Label, PhaseFunction, RingReflectance, SpatialPhotometricModel, SurfaceLayerHeader } from '../data/schema';
+import type { BodyAtmosphere, DiskReflectanceModel, Label, PhaseFunction, RingComponentModel, RingReflectance, SpatialPhotometricModel, SurfaceLayerHeader } from '../data/schema';
 import type { EyeSettings } from '../eye/settings';
 import type { CometActivity } from './comets/model';
 import type { CloudPopulation } from './earth';
@@ -125,6 +125,59 @@ export interface SceneBody {
    * least a pixel across (a point is drawn from the disk photometry alone); include its label in `worstLabel`.
    */
   shape?: SceneShape | null;
+  /**
+   * Earth's own light (docs/reports/nightglow.md): airglow layers and the aurora, emitted in the upper atmosphere
+   * and added along each view ray (render/nightglow.ts), attenuated by `atmosphere` where the light crosses it.
+   * Present only when admitted at the reality level (both are estimated: Best estimate and Complete); include its
+   * label in `worstLabel`.
+   */
+  nightglow?: SceneNightglow | null;
+}
+
+/** Airglow and aurora for one frame, already evaluated for its time and admitted at the reality level. */
+export interface SceneNightglow {
+  /** Spectral samples (nm) of the per-sample tables; the renderer merges them into its atmosphere bins. */
+  samplesNm: number[];
+  /** Universal time of the frame, hours after 0 h UT: the local mean solar time at longitude λ is UT + λ/15 h. */
+  utHours: number;
+  airglow: SceneAirglow | null;
+  aurora: SceneAurora | null;
+  worstLabel: Label;
+}
+
+export interface SceneAirglow {
+  /** Drawn where the solar zenith angle at the ground point below exceeds this (deg); elsewhere unknown (not drawn). */
+  nightMinSzaDeg: number;
+  /** Local-time nodes, hours from local midnight, ascending; values beyond the end nodes are held. */
+  ltNodesH: number[];
+  /** Gaussian emission layers (altitude above the ellipsoid). The renderer caches by the array's identity. */
+  layers: SceneAirglowLayer[];
+}
+
+export interface SceneAirglowLayer {
+  centreKm: number;
+  sigmaKm: number;
+  /** Zenith column luminance seen from above the layer, per local-time node and spectral sample: [lt][sample][X, Y, Z, S]. */
+  xyzsBySample: Float32Array;
+}
+
+export interface SceneAurora {
+  /**
+   * Precipitating electrons for this frame (OVATION Prime 2010 at the frame's coupling and season):
+   * [|mlat| node][MLT node][energy flux N, number flux N, energy flux S, number flux S] in erg cm⁻² s⁻¹ and
+   * 10⁸ cm⁻² s⁻¹. A new array whenever the values change (the renderer re-uploads by identity).
+   */
+  grid: Float32Array;
+  mltHours: number[];
+  mlatDeg: number[];
+  /** Magnetic coordinates at 110 km on a geographic grid: [lat][lon][mlat deg, cos mlon, sin mlon] (NaN: none). */
+  magnetic: { data: Float32Array; latDeg: [number, number, number]; lonDeg: [number, number, number] };
+  /** Dipole frame axes (x, y, z) in Earth-fixed coordinates (magnetic local time from the Sun's dipole longitude). */
+  dipoleFrameRows: number[][];
+  /** Volume emission per unit energy flux: [energy node][altitude][group 4], R per km per (erg cm⁻² s⁻¹). */
+  emission: { data: Float32Array; energiesKeV: number[]; altitudesKm: number[] };
+  /** Per line group: luminance of 1 R split over `samplesNm` ([sample][X, Y, Z, S]). */
+  groupsBySample: number[][][];
 }
 
 /** A shape model as the renderer needs it (docs/rendering-shapes.md; ShapeModelHeader, DamitIndexHeader). */
@@ -220,6 +273,13 @@ export interface SceneRings {
   reflectance: RingReflectance | null;
   /** Worst provenance label among the ring data drawn (e.g. estimated for Saturn's reflectance). */
   worstLabel: Label;
+  /**
+   * rings.json `components` (Jupiter, Uranus, Neptune; render/ringComponents.ts) when admitted at the reality level:
+   * drawn instead of `opticalDepth`.
+   */
+  components?: RingComponentModel | null;
+  /** TDB seconds at which the planet's light left it (the components' geometry is evaluated then). */
+  et?: number;
 }
 
 export interface SceneSun {
