@@ -4,6 +4,7 @@ import type { AppModel } from '../app/model';
 import { clear, h, toggleClass } from './dom';
 import { groupReport } from './dataReport';
 import { formatBytes, sig } from './format';
+import { syntheticPopulationFacts } from './syntheticInspect';
 
 export class DataPanel {
   readonly el = h('div', { class: 'st-panel st-modal st-data' });
@@ -141,8 +142,23 @@ export class DataPanel {
       h('div', null, `${n(sb.count)} objects${s.ms !== null ? `, usable ${sig(s.ms / 1000, 2)} s after the download began` : ''}; ${drawnBy}.`),
       c ? h('div', null, `At ${m.reality.exists}: ${n(c.drawn)} ${sb.field ? 'drawn' : 'admitted'}, ${n(c.withheld)} withheld, ${n(c.noPosition)} without a position (${c.from === 'field' ? 'counted by the field' : 'by catalogue labels'}).`) : null,
       sb.syntheticCount
-        ? h('div', null, `Synthetic layer: ${n(sb.syntheticCount)} objects standing in for undiscovered ones (${sb.synthetic!.header.populations.map((p) => `${p.name} ${n(p.objects)}`).join(', ')}); drawn at Complete only${c?.synthetic ? ` — ${n(c.synthetic.drawn)} drawn now` : ''}${sb.field && !sb.field.syntheticCount ? ' — not drawn: it does not fit this device (see Problems)' : ''}.`)
+        ? h('div', null, `Synthetic layer: ${n(sb.syntheticCount)} statistical objects standing in for conditional model deficits (${sb.synthetic!.header.populations.map((p) => `${p.name} ${n(p.objects)}`).join(', ')}); drawn at Complete only${c?.synthetic ? ` — ${n(c.synthetic.drawn)} drawn now` : ''}${sb.field && !sb.field.syntheticCount ? ' — not drawn: it does not fit this device (see Problems)' : ''}.`)
         : null,
+      sb.synthetic ? h('div', null,
+        h('div', null, sb.synthetic.header.yieldRule),
+        ...sb.synthetic.header.populations.map((p) => {
+          const r = syntheticPopulationFacts(p, m.reality.exists)[0];
+          return h('details', null,
+            h('summary', null, `${p.name}: ${n(p.objects)} synthetic objects`),
+            h('div', null, r.method),
+            h('div', null, r.uncertainty),
+            h('div', null, String(p.limit.uncertainty ?? 'Completeness proxy; detection probability unknown.')),
+            h('div', null, String(p.model.motion ?? 'Motion metadata unavailable.')),
+            h('div', null, String(p.model.positionUncertainty ?? 'Individual position budget unknown.')),
+            h('button', { type: 'button', onclick: () => this.actions.openSources(r.sources, p.name) }, 'Sources'),
+          );
+        }),
+      ) : null,
       h('div', null, `Positions propagated within ${m.formatTime(w.startEt)} → ${m.formatTime(w.endEt)}; ${names}.`),
     );
   }
