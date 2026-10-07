@@ -94,53 +94,45 @@ function tabAt(row: number[], c: number): number {
  * at relative azimuth φ, so that P = Σ_m (2 − δ_m0) M_m cos(mφ). For m = 0 the columns are renormalized so that
  * ½ Σ_a w_a M[a][b] = 1 (energy conservation on the quadrature); m = 1 takes the same column factors.
  */
-function phaseMatrix(p: (c: number) => number, mu: Float64Array, w: Float64Array, m: number, norm?: Float64Array): { M: Float64Array; norm: Float64Array } {
+function phaseMatrices(p: (c: number) => number, mu: Float64Array, w: Float64Array): { M: Float64Array; norm: Float64Array }[] {
   const N = mu.length, n2 = 2 * N;
-  const dir = (a: number) => (a < N ? -mu[a] : mu[a - N]);
-  const M = new Float64Array(n2 * n2);
-  const NPHI = 180;
+  const M = Array.from({ length: FOURIER_N }, () => new Float64Array(n2 * n2));
+  const sums = new Float64Array(FOURIER_N);
   for (let a = 0; a < n2; a++) for (let b = 0; b < n2; b++) {
-    const ma = dir(a), mb = dir(b);
+    const ma = a < N ? -mu[a] : mu[a - N], mb = b < N ? -mu[b] : mu[b - N];
     const sa = Math.sqrt(1 - ma * ma), sb = Math.sqrt(1 - mb * mb);
-    let s = 0;
-    for (let k = 0; k < NPHI; k++) {
-      const phi = (Math.PI * (k + 0.5)) / NPHI;          // symmetric in φ: integrate over [0, π]
-      s += p(ma * mb + sa * sb * Math.cos(phi)) * Math.cos(m * phi);
+    sums.fill(0);
+    for (let q = 0; q < AZIMUTH_N; q++) {
+      const phase = p(ma * mb + sa * sb * azimuthCos[q]);
+      for (let mm = 0; mm < FOURIER_N; mm++) sums[mm] += phase * fourierCos[mm * AZIMUTH_N + q];
     }
-    M[a * n2 + b] = (4 * Math.PI * s) / NPHI;
+    for (let mm = 0; mm < FOURIER_N; mm++) M[mm][a * n2 + b] = (4 * Math.PI * sums[mm]) / AZIMUTH_N;
   }
-  const nrm = norm ?? new Float64Array(n2);
-  if (!norm) {
-    for (let b = 0; b < n2; b++) {
-      let s = 0;
-      for (let a = 0; a < n2; a++) s += 0.5 * w[a % N] * M[a * n2 + b];
-      nrm[b] = s;
-    }
+  const norm = new Float64Array(n2);
+  for (let b = 0; b < n2; b++) {
+    let sum = 0;
+    for (let a = 0; a < n2; a++) sum += 0.5 * w[a % N] * M[0][a * n2 + b];
+    norm[b] = sum;
   }
-  for (let b = 0; b < n2; b++) for (let a = 0; a < n2; a++) M[a * n2 + b] /= nrm[b];
-  return { M, norm: nrm };
+  for (const matrix of M) for (let b = 0; b < n2; b++) for (let a = 0; a < n2; a++) matrix[a * n2 + b] /= norm[b];
+  return M.map((matrix) => ({ M: matrix, norm }));
 }
 
-/**
- * The same with the direct beam: v[a] = Fourier term m of P between stream a and the beam, azimuth measured from
- * the Sun's azimuth (unrenormalized).
- */
-function beamVector(p: (c: number) => number, mu: Float64Array, muS: number, m: number): Float64Array {
+/** All Fourier terms of the direct beam, reusing each phase evaluation. The per-term sum order is unchanged. */
+function beamVectors(p: (c: number) => number, mu: Float64Array, muS: number): Float64Array[] {
   const N = mu.length, n2 = 2 * N;
-  const v = new Float64Array(n2);
+  const v = Array.from({ length: FOURIER_N }, () => new Float64Array(n2));
+  const sums = new Float64Array(FOURIER_N);
   const ss = Math.sqrt(Math.max(0, 1 - muS * muS));
-  const NPHI = 180;
   for (let a = 0; a < n2; a++) {
     const ma = a < N ? -mu[a] : mu[a - N];
     const sa = Math.sqrt(1 - ma * ma);
-    let s = 0;
-    // The Sun's beam travels along −S: the scattering angle between the beam and stream a (at azimuth φ from the
-    // Sun's) has cos Θ = −(stream · S).
-    for (let k = 0; k < NPHI; k++) {
-      const phi = (Math.PI * (k + 0.5)) / NPHI;
-      s += p(-(ma * muS + sa * ss * Math.cos(phi))) * Math.cos(m * phi);
+    sums.fill(0);
+    for (let q = 0; q < AZIMUTH_N; q++) {
+      const phase = p(-(ma * muS + sa * ss * azimuthCos[q]));
+      for (let mm = 0; mm < FOURIER_N; mm++) sums[mm] += phase * fourierCos[mm * AZIMUTH_N + q];
     }
-    v[a] = (4 * Math.PI * s) / NPHI;
+    for (let mm = 0; mm < FOURIER_N; mm++) v[mm][a] = (4 * Math.PI * sums[mm]) / AZIMUTH_N;
   }
   return v;
 }
@@ -166,6 +158,14 @@ export interface OsResult {
 export const VIEW_N = 19;
 /** Fourier terms of the source table (m = 0 … FOURIER_N − 1). A sampling choice. */
 export const FOURIER_N = 6;
+// Same 180 midpoint azimuth nodes as before; cache the transcendental factors, never their approximations.
+const AZIMUTH_N = 180;
+const azimuthCos = Float64Array.from({ length: AZIMUTH_N }, (_, q) => Math.cos((Math.PI * (q + 0.5)) / AZIMUTH_N));
+const fourierCos = Float64Array.from({ length: FOURIER_N * AZIMUTH_N }, (_, i) => {
+  const mm = Math.floor(i / AZIMUTH_N), q = i % AZIMUTH_N;
+  const phi = (Math.PI * (q + 0.5)) / AZIMUTH_N;
+  return Math.cos(mm * phi);
+});
 export const viewMu = (v: number) => Math.cos((Math.PI * v) / (VIEW_N - 1));
 
 /**
@@ -228,10 +228,10 @@ export function ordersOfScattering(
   const vmu = Float64Array.from({ length: VIEW_N }, (_, v) => viewMu(v));
   // Per Fourier term: the layer-mixed phase matrices are formed per layer from these (Rayleigh, then each group).
   const phs = [pR, ...pAg];
-  const base = phs.map((p) => phaseMatrix(p, mu, w, 0));
-  const PM: { M: Float64Array; O: Float64Array }[][] = phs.map(() => []);
-  for (let mm = 0; mm < FOURIER_N; mm++) phs.forEach((p, q) => {
-    PM[q].push({ M: mm ? phaseMatrix(p, mu, w, mm, base[q].norm).M : base[q].M, O: outputMatrix(p, mu, vmu, mm, base[q].norm) });
+  const PM = phs.map((p) => {
+    const matrices = phaseMatrices(p, mu, w);
+    const outputs = outputMatrices(p, mu, vmu, matrices[0].norm);
+    return matrices.map((v, mm) => ({ M: v.M, O: outputs[mm] }));
   });
   const wq = [wR, ...wAg];
   const NQ = phs.length;
@@ -251,6 +251,10 @@ export function ordersOfScattering(
         for (let i = 0; i < VIEW_N * n2; i++) Y[l * VIEW_N * n2 + i] += (a / ws) * Oq[i];
       }
     }
+    // The left factor of every transport dot product is invariant across all Sun angles and orders.
+    // Preserve (w * M) * I, rather than regrouping the products or the sum.
+    for (let i = 0; i < X.length; i++) X[i] = w[(i % n2) % N] * X[i];
+    for (let i = 0; i < Y.length; i++) Y[i] = w[(i % n2) % N] * Y[i];
     mixM.push(X);
     mixO.push(Y);
   }
@@ -341,7 +345,7 @@ export function ordersOfScattering(
         for (let a = 0; a < n2; a++) {
           let s = 0;
           const r = (l * n2 + a) * n2;
-          for (let b = 0; b < n2; b++) s += w[b % N] * Mx[r + b] * Imean[o + b];
+          for (let b = 0; b < n2; b++) s += Mx[r + b] * Imean[o + b];
           Snext[o + a] = 0.5 * s;
         }
       }
@@ -373,8 +377,9 @@ export function ordersOfScattering(
     res.J.push(J);
     res.down.push(dn);
     if (!any) { res.orders.push(0); continue; }
+    const beams = phs.map((p) => beamVectors(p, mu, muS));
     for (let mm = 0; mm < FOURIER_N; mm++) {
-      const vs = phs.map((p) => beamVector(p, mu, muS, mm));
+      const vs = beams.map((v) => v[mm]);
       for (let l = 0; l < L; l++) for (let a = 0; a < n2; a++) {
         let c = 0;
         for (let q = 0; q < NQ; q++) c += wq[q][l] * vs[q][a];
@@ -395,7 +400,7 @@ export function ordersOfScattering(
       for (let l = 0; l < L; l++) for (let v = 0; v < VIEW_N; v++) {
         let acc2 = 0;
         const r = (l * VIEW_N + v) * n2;
-        for (let b = 0; b < n2; b++) acc2 += w[b % N] * Y[r + b] * s.totMean[l * n2 + b];
+        for (let b = 0; b < n2; b++) acc2 += Y[r + b] * s.totMean[l * n2 + b];
         Jl[l * VIEW_N + v] = 0.5 * acc2;
       }
       for (let l = 0; l <= L; l++) {
@@ -411,19 +416,19 @@ export function ordersOfScattering(
  * Fourier term m of the phase function between view node v (direction of travel μ_v) and stream b, "mean 1" and
  * with stream b's column factor of the m = 0 matrix (as phaseMatrix).
  */
-function outputMatrix(p: (c: number) => number, mu: Float64Array, vmu: Float64Array, m: number, norm: Float64Array): Float64Array {
+function outputMatrices(p: (c: number) => number, mu: Float64Array, vmu: Float64Array, norm: Float64Array): Float64Array[] {
   const N = mu.length, n2 = 2 * N, NV = vmu.length;
-  const O = new Float64Array(NV * n2);
-  const NPHI = 180;
+  const O = Array.from({ length: FOURIER_N }, () => new Float64Array(NV * n2));
+  const sums = new Float64Array(FOURIER_N);
   for (let v = 0; v < NV; v++) for (let b = 0; b < n2; b++) {
     const ma = vmu[v], mb = b < N ? -mu[b] : mu[b - N];
     const sa = Math.sqrt(Math.max(0, 1 - ma * ma)), sb = Math.sqrt(1 - mb * mb);
-    let s = 0;
-    for (let q = 0; q < NPHI; q++) {
-      const phi = (Math.PI * (q + 0.5)) / NPHI;
-      s += p(ma * mb + sa * sb * Math.cos(phi)) * Math.cos(m * phi);
+    sums.fill(0);
+    for (let q = 0; q < AZIMUTH_N; q++) {
+      const phase = p(ma * mb + sa * sb * azimuthCos[q]);
+      for (let mm = 0; mm < FOURIER_N; mm++) sums[mm] += phase * fourierCos[mm * AZIMUTH_N + q];
     }
-    O[v * n2 + b] = (4 * Math.PI * s) / NPHI / norm[b];
+    for (let mm = 0; mm < FOURIER_N; mm++) O[mm][v * n2 + b] = (4 * Math.PI * sums[mm]) / AZIMUTH_N / norm[b];
   }
   return O;
 }

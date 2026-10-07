@@ -1,0 +1,150 @@
+{
+  "sourceCommit": "db55a5b",
+  "ground": "min(1, 1.5 * geometricAlbedoXYZS / solarIrradianceXYZS_1AU); Titan uses surfaceReflectance; annual-mean Mars dust",
+  "bodies": [
+    {
+      "id": "299",
+      "name": "Venus",
+      "modelSha256": "a4fa1483ba74ba064d22b509b5ccbe82142b12bd75774dc260062c01ba2bd909",
+      "K": 12,
+      "tables": {
+        "transmittance": {
+          "bytes": 786432,
+          "sha256": "4d4360905ece155c809d124f6add6f30184f6d7868f7c5f4975f82825cbc0d0f"
+        },
+        "multiScattering": {
+          "bytes": 49152,
+          "sha256": "d3270f7b3640ce5e00d3e216735272a250b1b5341e3c4cbae12c6f2a6d0cb870"
+        },
+        "skyIrradiance": {
+          "bytes": 49152,
+          "sha256": "68f6a31ef634f287e813c904d4c6b3f33e790daea6f122296535e36ad1e293a3"
+        },
+        "profile": {
+          "bytes": 49152,
+          "sha256": "c0d47d94157a3dacdc87e619461293d41d6df09356e84d54dfe9367e085724d9"
+        }
+      }
+    },
+    {
+      "id": "399",
+      "name": "Earth",
+      "modelSha256": "aa084fb61726065ac3bbf3097e8b1f70d577434930b1a299f2dceb921434c668",
+      "K": 12,
+      "tables": {
+        "transmittance": {
+          "bytes": 786432,
+          "sha256": "6a8277d802fa7f8ca3c6a1f58c71b6bb9d3077c95dfe8c1a9fd1f99c5884bfb1"
+        },
+        "multiScattering": {
+          "bytes": 49152,
+          "sha256": "c0d79c2b4b66c987d214cc6b1c86a077445c2632236c8ec2dcec511d1ed3d278"
+        },
+        "skyIrradiance": {
+          "bytes": 49152,
+          "sha256": "5e68fd80d79f497990f43c7fbc464c4dc4c074ec284d85ace396cce0724dfc9f"
+        },
+        "profile": {
+          "bytes": 49152,
+          "sha256": "107aefde112d0087b3af83f2c7c30544c5c952012e85274ed039a9d6c162adf0"
+        }
+      }
+    },
+    {
+      "id": "499",
+      "name": "Mars",
+      "modelSha256": "251f39f6e74298b07fceafdc29c0ce3abb5cd2ac7f77864195219399945aebcc",
+      "K": 12,
+      "tables": {
+        "transmittance": {
+          "bytes": 786432,
+          "sha256": "3c4e17a260b7619ce980d0752c24db1c26d2f2a7a51eea96e79d0e50d1e18343"
+        },
+        "multiScattering": {
+          "bytes": 49152,
+          "sha256": "cf7d3022c9c20df20036dd1392dd549679af9b64d898087ef4e4ea55e043be10"
+        },
+        "skyIrradiance": {
+          "bytes": 49152,
+          "sha256": "7685004d97b30a0f94ed1fc490e5ec0cdff62523524f3ec4028b19e01e8b9221"
+        },
+        "profile": {
+          "bytes": 49152,
+          "sha256": "59e458576128e83251d0b7b32a3050d3dc6cc06a1252de70f61510d7e466f5f9"
+        }
+      }
+    },
+    {
+      "id": "599",
+      "name": "Jupiter",
+      "error": "Jupiter: no atmosphere profile (scale height only) \u2192 no atmosphere drawn"
+    },
+    {
+      "id": "606",
+      "name": "Titan",
+      "modelSha256": "af17175bb24da66fd3fcf49ced4e290c0f9228dab06cc296f91e5f47402cba14",
+      "K": 12,
+      "tables": {
+        "transmittance": {
+          "bytes": 786432,
+          "sha256": "4dcc1ebccca5a2b8ce8f8816d3670526426c488fa745978b2217f8d28afce40b"
+        },
+        "multiScattering": {
+          "bytes": 49152,
+          "sha256": "e25212311099c1d97c49904dde0701c7db4c7b10151c4cf3617e867def3ee61e"
+        },
+        "skyIrradiance": {
+          "bytes": 49152,
+          "sha256": "d385cf23386380968ab5247a6f2a66526876dc3fe1de9403f6dee625bd746c38"
+        },
+        "profile": {
+          "bytes": 49152,
+          "sha256": "1b4db60fe2d077c6bbaa5af3ebeb3dd467df1121fc7ea04e1aa61d646d091a6b"
+        },
+        "msSource": {
+          "bytes": 5603328,
+          "sha256": "ab38437f551ad275fce0ad601d6173bc9bf182c7c07899966a62df62b38237c8"
+        }
+      }
+    },
+    {
+      "id": "699",
+      "name": "Saturn",
+      "error": "Saturn: no atmosphere profile (scale height only) \u2192 no atmosphere drawn"
+    },
+    {
+      "id": "799",
+      "name": "Uranus",
+      "error": "Uranus: no atmosphere profile (scale height only) \u2192 no atmosphere drawn"
+    },
+    {
+      "id": "899",
+      "name": "Neptune",
+      "error": "Neptune: no atmosphere profile (scale height only) \u2192 no atmosphere drawn"
+    },
+    {
+      "id": "999",
+      "name": "Pluto",
+      "modelSha256": "d6cc8cba34cbf9c6ea30bae78d0fba3f79bd3d3203614839151b5acdc456d763",
+      "K": 12,
+      "tables": {
+        "transmittance": {
+          "bytes": 786432,
+          "sha256": "bf9da08fda8dadba07d709cf67a4ef72fe9691e1b0e76a75225e2c6a180fed95"
+        },
+        "multiScattering": {
+          "bytes": 49152,
+          "sha256": "8a206b9705036a14fa9fbba15747c5455cb3e2e30b2df8e47bba5ed5cbe96c39"
+        },
+        "skyIrradiance": {
+          "bytes": 49152,
+          "sha256": "11807a766d85da1ba8961d1a079ff1b681c54af91088f302500ef83ed3b6b1d5"
+        },
+        "profile": {
+          "bytes": 49152,
+          "sha256": "8d041d4d076e5a30c378e0e886ef5a335795e7e733db7aca8ce955150673ab5e"
+        }
+      }
+    }
+  ]
+}

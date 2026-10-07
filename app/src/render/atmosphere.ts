@@ -145,6 +145,20 @@ export class ProfileGrid {
     for (let q = 0; q < this.K * 5; q++) out[q] = this.v[o0 + q] * (1 - f) + this.v[o1 + q] * f;
     return out;
   }
+  /** Extinction only, with exactly the interpolation and subtraction order of at() then δ scaling. */
+  extinctionAt(h: number, out: Float64Array, scale?: number[][]): Float64Array {
+    const x = Math.sqrt(clamp(h / this.H, 0, 1)) * (this.n - 1);
+    const i = Math.min(Math.floor(x), this.n - 2), f = x - i;
+    const o0 = i * this.K * 5, o1 = (i + 1) * this.K * 5;
+    for (let k = 0; k < this.K; k++) {
+      const a = o0 + 5 * k, b = o1 + 5 * k;
+      const ext = this.v[a] * (1 - f) + this.v[b] * f;
+      out[k] = scale ? ext
+        - scale[0][k] * (this.v[a + 3] * (1 - f) + this.v[b + 3] * f)
+        - scale[1][k] * (this.v[a + 4] * (1 - f) + this.v[b + 4] * f) : ext;
+    }
+    return out;
+  }
 }
 
 // ── Ray geometry in the spherical shell (Bruneton 2017 §"Intersections") ───────────────────────────
@@ -413,30 +427,13 @@ export function precomputeAtmosphere(m: AtmosphereModel): AtmosphereTables {
   const P = new Float64Array(5 * K);
   const tab: AtmosphereTables = { K, transmittance: new Float32Array(T_W * T_H * K), multiScattering: new Float32Array(0), skyIrradiance: new Float32Array(0), profile: new Float32Array(0) };
 
-  // 1. Transmittance to the top (Bruneton 2017 ComputeTransmittanceToTopAtmosphereBoundary): trapezoid
-  //    rule, 300 steps.
-  const tau = new Float64Array(K);
-  for (let j = 0; j < T_H; j++) for (let i = 0; i < T_W; i++) {
-    const [r, mu] = rMuFromTransmittanceUv(m, i / (T_W - 1), j / (T_H - 1));
-    const d = distanceToTop(m, r, mu);
-    const n = 300;
-    tau.fill(0);
-    for (let s = 0; s <= n; s++) {
-      const t = (d * s) / n;
-      const rs = Math.sqrt(t * t + 2 * r * mu * t + r * r);
-      G.at(rs - m.bottomKm, P);
-      const w = s === 0 || s === n ? 0.5 : 1;
-      for (let k = 0; k < K; k++) tau[k] += w * P[5 * k];
-    }
-    for (let k = 0; k < K; k++) tab.transmittance[(j * T_W + i) * K + k] = Math.exp(-(tau[k] * d) / n);
-  }
-
-  // 1b. With msScale (the forward peak of an 'orders' model's particle scattering counted as unscattered): the
-  //     transmittance to the top of the scaled medium, σ_t' = σ_t − Σ_g f_g·σ_s,particle g.
+  // 1. Transmittance to the top: same 300-step trapezoid rule. An orders model only consumes the
+  // scaled table (and returns it); do not integrate the full medium that would be discarded.
   const fMs = msScaleOf(m);
   const scaled = fMs.some((fg) => fg.some((f) => f > 0));
   const tabMs: AtmosphereTables = scaled ? { ...tab, transmittance: new Float32Array(T_W * T_H * K) } : tab;
-  if (scaled) {
+  const tau = new Float64Array(K), extinction = new Float64Array(K);
+  const integrateTransmittance = (out: Float32Array, scale?: number[][]) => {
     for (let j = 0; j < T_H; j++) for (let i = 0; i < T_W; i++) {
       const [r, mu] = rMuFromTransmittanceUv(m, i / (T_W - 1), j / (T_H - 1));
       const d = distanceToTop(m, r, mu);
@@ -445,13 +442,15 @@ export function precomputeAtmosphere(m: AtmosphereModel): AtmosphereTables {
       for (let s = 0; s <= n; s++) {
         const t = (d * s) / n;
         const rs = Math.sqrt(t * t + 2 * r * mu * t + r * r);
-        G.at(rs - m.bottomKm, P);
+        G.extinctionAt(rs - m.bottomKm, extinction, scale);
         const w = s === 0 || s === n ? 0.5 : 1;
-        for (let k = 0; k < K; k++) tau[k] += w * (P[5 * k] - fMs[0][k] * P[5 * k + 3] - fMs[1][k] * P[5 * k + 4]);
+        for (let k = 0; k < K; k++) tau[k] += w * extinction[k];
       }
-      for (let k = 0; k < K; k++) tabMs.transmittance[(j * T_W + i) * K + k] = Math.exp(-(tau[k] * d) / n);
+      for (let k = 0; k < K; k++) out[(j * T_W + i) * K + k] = Math.exp(-(tau[k] * d) / n);
     }
-  }
+  };
+  if (!scaled || m.multipleScattering !== 'orders') integrateTransmittance(tab.transmittance);
+  if (scaled) integrateTransmittance(tabMs.transmittance, fMs);
 
   if (m.multipleScattering === 'orders') {
     // 2'-3'. Orders of scattering in the scaled medium (atmosphereMs.ts): the multiple-scattering source by
@@ -504,41 +503,55 @@ export function precomputeAtmosphere(m: AtmosphereModel): AtmosphereTables {
     tab.multiScattering = new Float32Array(MS_N * MS_N * K);
     const dirs = sphereDirections(64);
     const L2 = new Float64Array(K), fms = new Float64Array(K), ts = new Float64Array(K);
-    for (let j = 0; j < MS_N; j++) for (let i = 0; i < MS_N; i++) {
+    for (let j = 0; j < MS_N; j++) {
       const h = Math.max(H * (j / (MS_N - 1)), 1e-3);
       const r = m.bottomKm + h;
-      const muS = -1 + 2 * (i / (MS_N - 1));
-      const sunV: V3 = [Math.sqrt(Math.max(1 - muS * muS, 0)), 0, muS];
-      L2.fill(0); fms.fill(0);
-      for (const w of dirs) {
+      // The paths, profile and view attenuation depend on altitude and direction, never on the Sun.
+      // Cache doubles, preserving the original multiplication order when adding the Sun's transmission.
+      fms.fill(0);
+      const rays = dirs.map((w) => {
         const ground = rayHitsGround(m, r, w[2]);
         const dist = ground ? distanceToBottom(m, r, w[2]) : distanceToTop(m, r, w[2]);
-        const n = 20;
-        const ds = dist / n;
+        const n = 20, ds = dist / n;
+        const points = new Float64Array(n * 3), asc = new Float64Array(n * K);
         tau.fill(0);
         for (let s = 0; s < n; s++) {
           const t = (s + 0.5) * ds;
           const p: V3 = [w[0] * t, w[1] * t, r + w[2] * t];
           const rp = Math.hypot(p[0], p[1], p[2]);
+          points.set([p[0], p[2], rp], s * 3);
           G.at(rp - m.bottomKm, P);
-          transmittanceToSunK(m, tab, rp, (p[0] * sunV[0] + p[2] * sunV[2]) / rp, ts);
           for (let k = 0; k < K; k++) {
             const ext = P[5 * k], sc = P[5 * k + 1];
             const a = Math.exp(-(tau[k] + 0.5 * ext * ds));
-            L2[k] += (a * sc * ts[k] * ds) / (4 * Math.PI) / dirs.length;
+            asc[s * K + k] = a * sc;
             fms[k] += (a * sc * ds) / dirs.length;
             tau[k] += ext * ds;
           }
         }
-        if (ground) {
-          const p: V3 = [w[0] * dist, w[1] * dist, r + w[2] * dist];
-          const rp = Math.hypot(p[0], p[1], p[2]);
-          const muSp = (p[0] * sunV[0] + p[2] * sunV[2]) / rp;
-          transmittanceToSunK(m, tab, rp, muSp, ts);
-          for (let k = 0; k < K; k++) L2[k] += (Math.exp(-tau[k]) * ts[k] * Math.max(muSp, 0) * m.groundAlbedo[k]) / Math.PI / dirs.length;
+        const p: V3 = [w[0] * dist, w[1] * dist, r + w[2] * dist];
+        const rp = Math.hypot(p[0], p[1], p[2]);
+        return { ground, ds, points, asc, p, rp, attenuation: Float64Array.from(tau, (v) => Math.exp(-v)) };
+      });
+      for (let i = 0; i < MS_N; i++) {
+        const muS = -1 + 2 * (i / (MS_N - 1));
+        const sunV: V3 = [Math.sqrt(Math.max(1 - muS * muS, 0)), 0, muS];
+        L2.fill(0);
+        for (const ray of rays) {
+          const { points, asc, ds, ground, p, rp, attenuation } = ray;
+          for (let s = 0; s < 20; s++) {
+            const q = s * 3;
+            transmittanceToSunK(m, tab, points[q + 2], (points[q] * sunV[0] + points[q + 1] * sunV[2]) / points[q + 2], ts);
+            for (let k = 0; k < K; k++) L2[k] += (asc[s * K + k] * ts[k] * ds) / (4 * Math.PI) / dirs.length;
+          }
+          if (ground) {
+            const muSp = (p[0] * sunV[0] + p[2] * sunV[2]) / rp;
+            transmittanceToSunK(m, tab, rp, muSp, ts);
+            for (let k = 0; k < K; k++) L2[k] += (attenuation[k] * ts[k] * Math.max(muSp, 0) * m.groundAlbedo[k]) / Math.PI / dirs.length;
+          }
         }
+        for (let k = 0; k < K; k++) tab.multiScattering[(j * MS_N + i) * K + k] = L2[k] / Math.max(1 - fms[k], 1e-3);
       }
-      for (let k = 0; k < K; k++) tab.multiScattering[(j * MS_N + i) * K + k] = L2[k] / Math.max(1 - fms[k], 1e-3);
     }
 
     // 3. Sky irradiance on a horizontal surface at altitude h (Bruneton's irradiance texture, here from this
@@ -546,15 +559,18 @@ export function precomputeAtmosphere(m: AtmosphereModel): AtmosphereTables {
     tab.skyIrradiance = new Float32Array(IRR_W * IRR_H * K);
     const up = sphereDirections(96).filter((w) => w[2] > 0);
     const L = new Float64Array(K);
-    for (let j = 0; j < IRR_H; j++) for (let i = 0; i < IRR_W; i++) {
+    for (let j = 0; j < IRR_H; j++) {
       const h = H * (j / (IRR_H - 1));
       const r = m.bottomKm + h;
-      const muS = -1 + 2 * (i / (IRR_W - 1));
-      const sunV: V3 = [Math.sqrt(Math.max(1 - muS * muS, 0)), 0, muS];
-      const o = (j * IRR_W + i) * K;
-      for (const w of up) {
-        skyRadianceK(m, tab, [0, 0, r], w, sunV, 16, G, L);
-        for (let k = 0; k < K; k++) tab.skyIrradiance[o + k] += (L[k] * w[2] * 2 * Math.PI) / up.length;
+      const rays = up.map((w) => prepareSkyRay(m, [0, 0, r], w, 16, G));
+      for (let i = 0; i < IRR_W; i++) {
+        const muS = -1 + 2 * (i / (IRR_W - 1));
+        const sunV: V3 = [Math.sqrt(Math.max(1 - muS * muS, 0)), 0, muS];
+        const o = (j * IRR_W + i) * K;
+        for (let d = 0; d < up.length; d++) {
+          skyRadianceOnRay(m, tab, rays[d], sunV, L);
+          for (let k = 0; k < K; k++) tab.skyIrradiance[o + k] += (L[k] * up[d][2] * 2 * Math.PI) / up.length;
+        }
       }
     }
 
@@ -583,33 +599,66 @@ export function profileAltitude(m: AtmosphereModel, x: number): number {
  * plus Hillaire's multiple-scattering term, marched in n steps. The reference for the per-pixel shader.
  */
 export function skyRadianceK(m: AtmosphereModel, tab: AtmosphereTables, p: V3, w: V3, sunV: V3, n: number, G: ProfileGrid, out: Float64Array): Float64Array {
-  const K = tab.K;
+  return skyRadianceOnRay(m, tab, prepareSkyRay(m, p, w, n, G), sunV, out);
+}
+
+interface SkyRay {
+  w: V3;
+  ds: number;
+  points: Float64Array;
+  coefficients: Float64Array;
+  attenuation: Float64Array;
+}
+
+/** Solar-angle independent march inputs. Retained only for one altitude row during precomputation. */
+function prepareSkyRay(m: AtmosphereModel, p: V3, w: V3, n: number, G: ProfileGrid): SkyRay {
+  const K = G.K;
   const r = Math.hypot(p[0], p[1], p[2]);
   const mu = (p[0] * w[0] + p[1] * w[1] + p[2] * w[2]) / r;
   const ground = rayHitsGround(m, r, mu);
   const dist = ground ? distanceToBottom(m, r, mu) : distanceToTop(m, r, mu);
-  const nu = w[0] * sunV[0] + w[1] * sunV[1] + w[2] * sunV[2];
-  const depol = rayleighDepolarization(m);
-  const [table, table2] = particleGroups(m).tables;
-  const fMs = msScaleOf(m);
-  const P = new Float64Array(5 * K), ts = new Float64Array(K), ms = new Float64Array(K), tau = new Float64Array(K);
-  out.fill(0);
   const ds = dist / n;
+  const P = new Float64Array(5 * K), tau = new Float64Array(K);
+  const points = new Float64Array(n * 5), coefficients = new Float64Array(n * 5 * K), attenuation = new Float64Array(n * K);
   for (let s = 0; s < n; s++) {
     const t = (s + 0.5) * ds;
     const q: V3 = [p[0] + w[0] * t, p[1] + w[1] * t, p[2] + w[2] * t];
     const rq = Math.hypot(q[0], q[1], q[2]);
     const h = rq - m.bottomKm;
-    const muS = (q[0] * sunV[0] + q[1] * sunV[1] + q[2] * sunV[2]) / rq;
+    points.set([q[0], q[1], q[2], rq, h], s * 5);
     G.at(h, P);
+    coefficients.set(P, s * 5 * K);
+    for (let k = 0; k < K; k++) {
+      const ext = P[5 * k];
+      attenuation[s * K + k] = Math.exp(-(tau[k] + 0.5 * ext * ds));
+      tau[k] += ext * ds;
+    }
+  }
+  return { w, ds, points, coefficients, attenuation };
+}
+
+function skyRadianceOnRay(m: AtmosphereModel, tab: AtmosphereTables, ray: SkyRay, sunV: V3, out: Float64Array): Float64Array {
+  const K = tab.K, { w, ds, points, coefficients, attenuation } = ray;
+  const nu = w[0] * sunV[0] + w[1] * sunV[1] + w[2] * sunV[2];
+  const depol = rayleighDepolarization(m);
+  const [table, table2] = particleGroups(m).tables;
+  const fMs = msScaleOf(m);
+  const ts = new Float64Array(K), ms = new Float64Array(K);
+  const phaseR = Float64Array.from(depol, (d) => rayleighPhase(nu, d));
+  const phaseA = table ? Float64Array.from({ length: K }, (_, k) => particlePhase(table, nu, k)) : null;
+  const phaseA2 = table2 ? Float64Array.from({ length: K }, (_, k) => particlePhase(table2, nu, k)) : null;
+  out.fill(0);
+  for (let s = 0; s < attenuation.length / K; s++) {
+    const q = s * 5, rq = points[q + 3], h = points[q + 4];
+    const muS = (points[q] * sunV[0] + points[q + 1] * sunV[1] + points[q + 2] * sunV[2]) / rq;
     transmittanceToSunK(m, tab, rq, muS, ts);
     if (tab.multiScattering.length) msLookupK(m, tab, h, muS, ms); else ms.fill(0);
+    const o = s * 5 * K;
     for (let k = 0; k < K; k++) {
-      const ext = P[5 * k], sc = P[5 * k + 1];
-      const ss = P[5 * k + 2] * rayleighPhase(nu, depol[k]) + (table ? P[5 * k + 3] * particlePhase(table, nu, k) : 0) + (table2 ? P[5 * k + 4] * particlePhase(table2, nu, k) : 0);
-      const S = ss * ts[k] + (sc - fMs[0][k] * P[5 * k + 3] - fMs[1][k] * P[5 * k + 4]) * ms[k];
-      out[k] += Math.exp(-(tau[k] + 0.5 * ext * ds)) * S * ds;
-      tau[k] += ext * ds;
+      const b = o + 5 * k, sc = coefficients[b + 1];
+      const ss = coefficients[b + 2] * phaseR[k] + (phaseA ? coefficients[b + 3] * phaseA[k] : 0) + (phaseA2 ? coefficients[b + 4] * phaseA2[k] : 0);
+      const S = ss * ts[k] + (sc - fMs[0][k] * coefficients[b + 3] - fMs[1][k] * coefficients[b + 4]) * ms[k];
+      out[k] += attenuation[s * K + k] * S * ds;
     }
   }
   return out;
