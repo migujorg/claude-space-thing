@@ -30,7 +30,7 @@ for (const limits of [baseline, wider, { ...wider, maxTextureDimension3D: 4096 }
         const plan = frameSize(W, H, limits, ADAPT_TILE_PX);
         if (!plan.ok) { expect(plan.warning).toMatch(/Frame cannot be rendered/); continue; }
         const p = plan.size;
-        // EXT, PT, PTEX, PTDISP, W, MASK, depth, offscreen display; five textures at every pyramid level.
+        // EXT, PT, PTEX, PTDISP, MASK, depth, offscreen display; five textures at every pyramid level.
         for (const { w, h } of [{ w: p.W, h: p.H }, ...p.levels]) {
           expect(Math.max(w, h)).toBeLessThanOrEqual(limits.maxTextureDimension2D);
           expect(Math.max(Math.ceil(w / 8), Math.ceil(h / 8))).toBeLessThanOrEqual(limits.maxComputeWorkgroupsPerDimension);
@@ -42,6 +42,17 @@ for (const limits of [baseline, wider, { ...wider, maxTextureDimension3D: 4096 }
         for (let j = 0; j < p.acuMips; j++) {
           expect(Math.max(1, p.acuW >> j, p.acuH >> j)).toBeLessThanOrEqual(limits.maxTextureDimension2D);
         }
+        // The fovea's block sums (the acuity filter's adaptation, eye/acuity.ts): one texel per adaptation
+        // invocation, sides rounded up to powers of two so that every level halves exactly, down to 1 × 1.
+        expect(p.fovW).toBeGreaterThanOrEqual(p.tilesX * 8);
+        expect(p.fovH).toBeGreaterThanOrEqual(p.tilesY * 8);
+        expect(Math.max(p.fovW, p.fovH)).toBeLessThanOrEqual(limits.maxTextureDimension2D);
+        expect(2 ** (p.fovMips - 1)).toBe(Math.max(p.fovW, p.fovH));
+        for (let j = 0; j + 1 < p.fovMips; j++) {
+          expect((p.fovW >> j) % 2 === 0 || p.fovW >> j <= 1).toBe(true);
+          expect((p.fovH >> j) % 2 === 0 || p.fovH >> j <= 1).toBe(true);
+        }
+        expect(Math.max(Math.ceil(p.fovW / 8), Math.ceil(p.fovH / 8))).toBeLessThanOrEqual(limits.maxComputeWorkgroupsPerDimension);
         // Night emission (half-resolution), zodiacal grid (+1 interpolation border).
         for (const { w, h } of [sampledFrameSize(W, H, 2), sampledFrameSize(W, H, 16, 1)]) {
           expect(Math.max(w, h)).toBeLessThanOrEqual(limits.maxTextureDimension2D);
@@ -81,6 +92,11 @@ it('refuses above 2D, storage/buffer and compute limits before planning allocati
   expect(frameSize(1024, 1024, { ...baseline, maxBufferSize: 1024 }, ADAPT_TILE_PX).ok).toBe(false);
   expect(frameSize(1024, 1024, { ...baseline, maxComputeWorkgroupsPerDimension: 1 }, ADAPT_TILE_PX).ok).toBe(false);
   expect(frameSize(NaN, 1, baseline, ADAPT_TILE_PX).ok).toBe(false);
+  // The fovea's block sums are 8 × 8 texels even for a 1 × 1 frame: a device that cannot hold them is refused.
+  const tiny = frameSize(1, 1, { ...baseline, maxTextureDimension2D: 4 }, ADAPT_TILE_PX);
+  expect(tiny.ok).toBe(false);
+  if (!tiny.ok) expect(tiny.warning).toMatch(/block sums/);
+  expect(frameSize(1, 1, { ...baseline, maxTextureDimension2D: 8 }, ADAPT_TILE_PX).ok).toBe(true);
 });
 
 it('falls back to the same per-pixel atmosphere when its complete depth cannot fit', () => {

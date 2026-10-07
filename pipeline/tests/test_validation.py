@@ -161,14 +161,14 @@ def test_report_run_line_names_the_adapter_and_machine():
            "options": {"ss": 1, "reality": "best"}, "cases": []}
     line = report.run_section(run, "").split("\n")[2]
     # a run from before the option: no adapter in the report, the line as it always was
-    assert "1 × 1 samples per pixel: `cd app && npm run validate` (" in line and "rendered by" not in line
+    assert "1 × 1 samples per pixel: `cd app && npm run validate -- --ss 1` (" in line and "rendered by" not in line
     host = {"cpu": "A CPU", "threads": 32}
     soft = {**run, "host": host, "gpu": {"mode": "swiftshader", "adapter": {"vendor": "google", "architecture": "swiftshader"}}}
     assert ("1 × 1 samples per pixel, rendered by SwiftShader (software WebGPU), adapter `google swiftshader`, on A CPU "
-            "(32 threads): `cd app && npm run validate` (") in report.run_section(soft, "")
+            "(32 threads): `cd app && npm run validate -- --ss 1` (") in report.run_section(soft, "")
     hard = {**run, "host": host, "gpu": {"mode": "hardware", "adapter": {"vendor": "nvidia", "architecture": "blackwell"}}}
     assert ("rendered by the machine's GPU, adapter `nvidia blackwell`, on A CPU (32 threads): "
-            "`cd app && npm run validate -- --gpu hardware` (") in report.run_section(hard, "")
+            "`cd app && npm run validate -- --ss 1 --gpu hardware` (") in report.run_section(hard, "")
     assert report.rendered_by({**run, "gpu": {"mode": "swiftshader", "adapter": None}}) == \
         ", rendered by SwiftShader (software WebGPU), adapter `unnamed adapter`"
 
@@ -238,7 +238,8 @@ def test_report_header_reads_sampling_from_run(tmp_path, monkeypatch):
     assert "3 × 3 = 9 samples per pixel" in dest.read_text().split("*Generated")[0]
 
 
-def test_report_sampling_table_from_fixture_file(tmp_path, monkeypatch):
+@pytest.mark.parametrize("history", ["", "### History: sampling sweep\n\nfixture history\n\n"])
+def test_report_sampling_table_from_fixture_file(tmp_path, monkeypatch, history):
     from pipeline.validation import report
 
     # Fixture file in the script's output shape. Four channels and a ratio: Y alone cannot establish convergence.
@@ -254,6 +255,7 @@ def test_report_sampling_table_from_fixture_file(tmp_path, monkeypatch):
     path = tmp_path / "sampling-convergence.json"
     path.write_text(json.dumps({"schema": "validation-sampling-v1", "runs": runs}))
     monkeypatch.setattr(report, "CONVERGENCE_REPORT", path)
+    monkeypatch.setattr(report, "sampling_history_section", lambda run: history)
     section = report.convergence_section(runs[3])
     assert "1 × 1 | 2 × 2 | 3 × 3 | 4 × 4 | 6 × 6" in section
     assert "| `fixture` | disk | X | 1 | 2 | 3 | 4 | 6 | -33.3333 % |" in section
@@ -266,7 +268,12 @@ def test_report_sampling_table_from_fixture_file(tmp_path, monkeypatch):
     # The summary and run section are unrelated to the convergence fixture's intentionally minimal ROI records.
     monkeypatch.setattr(report, "run_section", lambda run, interpretation: "renderer run\n")
     report.write(run=runs[3])
-    assert section in dest.read_text()
+    text = dest.read_text()
+    # Section builders supply separators; the writer owns the single final file newline.
+    assert section.rstrip("\n") in text
+    assert text.endswith("\n") and not text.endswith("\n\n")
+    if history:
+        assert section + history.rstrip("\n") in text
     with pytest.raises(ValueError, match="same run"):
         report.convergence_section({**runs[3], "git": "other"})
     path.unlink()
