@@ -160,12 +160,32 @@ export async function startApp(canvas: HTMLCanvasElement, uiRoot: HTMLElement, d
     model,
   };
 
+  let frameSizeRefused = false;
+  let frameRefusalError: string | null = null;
+  let frameReadyPending = false;
+  let startupComplete = false;
+  let viewportGeneration = 0;
+  let completedViewportGeneration = -1;
   const sizeViewport = () => {
+    viewportGeneration++;
     const r = canvas.getBoundingClientRect();
     const w = Math.max(1, r.width || window.innerWidth), hgt = Math.max(1, r.height || window.innerHeight);
     const dpr = window.devicePixelRatio || 1;
     model.setViewport({ width: w, height: hgt, dpr });
-    renderer?.resize(w, hgt, dpr);
+    try {
+      renderer?.resize(w, hgt, dpr);
+      frameSizeRefused = false;
+      if (frameRefusalError && window.__frameError === frameRefusalError) delete window.__frameError;
+      frameRefusalError = null;
+    } catch (e) {
+      const warning = (renderer?.stats.warnings ?? []).find((w) => w.startsWith('Frame cannot be rendered:'));
+      if (!(e instanceof RangeError) || e.message !== warning) throw e;
+      frameSizeRefused = true; // Existing top alert shows the renderer's refusal on the next UI update.
+      frameReadyPending = true;
+      window.__frameReady = false;
+      if (!window.__frameError || window.__frameError === frameRefusalError) window.__frameError = warning;
+      frameRefusalError = warning;
+    }
   };
 
   const ready = (async () => {
@@ -243,7 +263,7 @@ export async function startApp(canvas: HTMLCanvasElement, uiRoot: HTMLElement, d
       const s = model.frame(dt, fly);
       ui.update(dt, renderer?.stats ?? null);
       const ws = frameWaiters.splice(0);
-      if (!renderer) { ws.forEach((w) => w()); return; }
+      if (!renderer || frameSizeRefused) { ws.forEach((w) => w()); return; }
       // The small-body field propagates and shades the catalogue on the GPU, before the frame that draws its points.
       const field = model.smallBodies?.field;
       const dev = renderer.gpuDevice;
@@ -262,9 +282,19 @@ export async function startApp(canvas: HTMLCanvasElement, uiRoot: HTMLElement, d
       renderer.render(s);
       inFlight = true;
       const r = renderer;
-      const done = ws.length ? r.settled() : r.frameDone ? r.frameDone() : r.gpuDevice ? r.gpuDevice.queue.onSubmittedWorkDone() : r.settled();
+      const renderedGeneration = viewportGeneration;
+      const done = ws.length || frameReadyPending ? r.settled() : r.frameDone ? r.frameDone() : r.gpuDevice ? r.gpuDevice.queue.onSubmittedWorkDone() : r.settled();
       done.then(
-        () => { inFlight = false; ws.forEach((w) => w()); },
+        () => {
+          inFlight = false;
+          completedViewportGeneration = renderedGeneration;
+          // An older in-flight frame cannot certify a refused or newly resized viewport.
+          if (startupComplete && frameReadyPending && !frameSizeRefused && renderedGeneration === viewportGeneration && !window.__frameError) {
+            window.__frameReady = true;
+            frameReadyPending = false;
+          }
+          ws.forEach((w) => w());
+        },
         (e) => { inFlight = false; console.error(e); ws.forEach((w) => w()); },
       );
     };
@@ -349,7 +379,11 @@ export async function startApp(canvas: HTMLCanvasElement, uiRoot: HTMLElement, d
       await sky.idle();
       await nextFrame();
     }
-    if (!window.__frameError) window.__frameReady = true;
+    startupComplete = true;
+    if (!window.__frameError && !frameSizeRefused && completedViewportGeneration === viewportGeneration) {
+      window.__frameReady = true;
+      frameReadyPending = false;
+    } else frameReadyPending = true;
   })().catch((e) => {
     console.error(e);
     window.__frameError = String((e as Error)?.stack ?? e);

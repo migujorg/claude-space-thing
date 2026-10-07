@@ -135,7 +135,7 @@ describe('scene suite helpers', () => {
     expect(lib.compareScene(scene(debug(), g), null)).toMatchObject({ pass: true, notes: ['no baseline for this scene'] });
     // Per-scene tolerance overrides.
     expect(lib.compareScene(scene(debug({ adapt: 300, warnings: ['Sun: limb darkening unknown'] }), g), base, { adaptationLog10: 0.5 }).pass).toBe(true);
-    expect(lib.statsTable([{ id: 'x', readyMs: 1000, ...scene(debug(), g), compare: { pass: true, failures: [] } }])).toMatch(/x\s+1\s+100\s+3\.00\s+2\.50\s+1000\s+2 \(1\)\s+1 measured, 1 derived\s+0\s+0\.300\s+pass/);
+    expect(lib.statsTable([{ id: 'x', readyMs: 1000, ...scene(debug(), g), compare: { pass: true, failures: [] } }])).toMatch(/x\s+1000\s+(?:none\s+){6}100\s+3\.00\s+2\.50\s+1000\s+2 \(1\)\s+1 measured, 1 derived\s+0\s+0\.300\s+pass/);
   });
 });
 
