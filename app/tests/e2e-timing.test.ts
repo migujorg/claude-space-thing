@@ -29,6 +29,19 @@ describe('scene frame cost measurements', () => {
     expect(timings.gpuFrameMs).toEqual({ samples: 60, median: 15.25, max: 30 });
   });
 
+  it('distinguishes a stable star census from unavailable counts', async () => {
+    const stats = { starsDrawn: 7 };
+    vi.stubGlobal('window', { __app: { debugState: () => ({ renderer: stats }) } });
+    vi.stubGlobal('requestAnimationFrame', (cb: (t: number) => void) => { cb(0); return 0; });
+    const stable = await lib.pageFrameSamples({ frames: 60, starFrames: 16, timeoutMs: 1000 });
+    expect(stable.starsDrawnFrames).toEqual([7]);
+    expect(stable.starsDrawnVaried).toBe(false);
+    stats.starsDrawn = NaN;
+    const missing = await lib.pageFrameSamples({ frames: 60, starFrames: 16, timeoutMs: 1000 });
+    expect(missing.starsDrawnFrames).toEqual([]);
+    expect(missing.starsDrawnVaried).toBeNull();
+  });
+
   it('reports unavailable GPU time as null and ignores invalid samples without inventing zero', () => {
     const timings = lib.summarizeFrameTimings([...samples(), { cpuPrepMs: NaN, cpuFrameMs: -1, gpuFrameMs: Infinity }]);
     expect(timings.cpuPrepMs).toEqual({ samples: 60, median: 1.6, max: 1.6 });

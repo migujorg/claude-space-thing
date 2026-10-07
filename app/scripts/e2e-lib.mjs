@@ -220,9 +220,9 @@ export async function pageFrameSamples({ frames, starFrames = 0, timeoutMs }) {
         await new Promise(requestAnimationFrame);
         if (window.__frameError) throw new Error(window.__frameError);
         samples.push({ cpuPrepMs: stats?.cpuPrepMs, cpuFrameMs: stats?.cpuFrameMs, frameMs: stats?.frameMs, gpuFrameMs: stats?.gpuFrameMs });
-        if (i < starFrames && typeof stats?.starsDrawn === 'number') seen.add(stats.starsDrawn);
+        if (i < starFrames && Number.isFinite(stats?.starsDrawn)) seen.add(stats.starsDrawn);
       }
-      return { samples, starsDrawnFrames: [...seen].sort((a, b) => a - b), starsDrawnVaried: seen.size > 1 };
+      return { samples, starsDrawnFrames: [...seen].sort((a, b) => a - b), starsDrawnVaried: seen.size ? seen.size > 1 : null };
     })()]);
   } finally {
     clearTimeout(timer);
@@ -543,7 +543,7 @@ export function statsTable(results) {
       s.pupilDiameterMm !== null && s.pupilDiameterMm !== undefined ? s.pupilDiameterMm.toFixed(2) : 'none',
       s.limitingMagnitude !== null && s.limitingMagnitude !== undefined ? s.limitingMagnitude.toFixed(2) : 'none',
       String(s.starsDrawn ?? ''),
-      r.starsDrawnVaried === undefined ? 'none' : r.starsDrawnVaried ? 'yes' : 'no',
+      r.starsDrawnVaried == null ? 'none' : r.starsDrawnVaried ? 'yes' : 'no',
       s.bodies ? `${s.bodiesDrawn} (${s.bodies.length})` : '',
       Object.entries(labels).map(([l, n]) => `${n} ${l}`).join(', '),
       String(s.warnings?.length ?? 0),
