@@ -388,15 +388,17 @@ def build_clouds(ctx: BuildContext) -> list[dict]:
                            "apart in time and a day apart in local date: a real discontinuity, as every strip edge is."},
         "cuts": "Hard cuts at every multiple of 15° of longitude; no blending between hours. A level-4 texel that a cut "
                 "runs through is the area mean of the cells on both sides of it.",
-        "strips": [{k: s[k] for k in ("fileHourUtc", "lonWest", "lonEast", "referenceTime", "sources", "cells")}
-                   for s in info["strips"]],
+        "strips": [{k: s[k] for k in ("fileHourUtc", "lonWest", "lonEast", "referenceTime", "produced", "sources", "cells",
+                                      "surfaceTypeFrom") if k in s} for s in info["strips"]],
         "secondsFromNominalHour": {
             "geostationary": [min(t[0] for t in geo_t), max(t[1] for t in geo_t)] if geo_t else None,
             "polarOrbiter": [min(t[0] for t in leo_t), max(t[1] for t in leo_t)] if leo_t else None}}
-    epoch = {"start": f"{day}T00:00:00Z", "end": f"{day}T23:59:59Z",
-             "observed": f"{day} (UTC day of the 24 hourly files): each place within about half an hour of "
-                         f"{satcorps.LOCAL_SOLAR_HOUR:g} h local solar time where a geostationary imager saw it, within about "
-                         "two hours of it where NOAA-20 did; 15° strips one hour apart, a 24-hour cut at 150° W",
+    # No single start and end: the layer is not one observation window. `observed` is the sentence a reader is shown
+    # (the app's inspector prints it), `observedSpan` and `mosaic` say the same in numbers.
+    epoch = {"observed": f"a mosaic of {day} (UTC): each longitude at its {int(satcorps.LOCAL_SOLAR_HOUR)}:"
+                         f"{int(round(satcorps.LOCAL_SOLAR_HOUR % 1 * 60)):02d} local solar hour, in 24 strips of 15° cut one "
+                         "hour apart, with a 24-hour seam at 150° W",
+             "utcDay": day,
              "observedSpan": {"earliest": _iso(day, t_first), "latest": _iso(day, t_last)},
              "mosaic": mosaic,
              "changes": "clouds change within minutes to hours; this is a mosaic of one day's early afternoons, 'estimated' "
@@ -428,6 +430,14 @@ def build_clouds(ctx: BuildContext) -> list[dict]:
         "30-60° N, 0.715 against 0.629 at 30-60° S; docs/sources/satcorps-gcc.md).",
         "The provider's phase is the radiatively dominant one; thin cirrus over water cloud can be missed and mixed phase "
         "is not a class (product page)."]
+    borrowed = [s for s in info["strips"] if "surfaceTypeFrom" in s]
+    if borrowed:
+        unknowns.append(
+            "Surface type: " + "; ".join(
+                f"the {s['fileHourUtc']:02d} UTC file ({s.get('produced', '').strip() or 'production time not stated'}) holds no "
+                f"surface_type, so the map of its strip is read from the {s['surfaceTypeFrom']['fileHourUtc']:02d} UTC file"
+                for s in borrowed)
+            + ". Only the map's water class is used (the glint test); it is identical in the files that hold it.")
     common = {"samplesPerTexel": "area overlap of 1/36° cells: 2.5 cells per level-4 texel on average", "sourceDate": day,
               "classes": classes, "geometricTest": _geometric_test(info),
               "pins": {"table": "pipeline/src/pipeline/satcorps.py PINS",

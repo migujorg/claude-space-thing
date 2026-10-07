@@ -153,6 +153,40 @@ describe('scene extras', () => {
     expect(usedStrict).not.toContain('estimated');
   });
 
+  it('binds the thickness layer with the estimated values at Best and Complete, the measured one at Strict', () => {
+    const abs = { normalization: { absoluteDiskMean: { X: 0.03, Y: 0.03, Z: 0.03, S: 0.03 } } };
+    const layers = surfaceRefs([
+      layer(1, 'albedo', { maxLevel: 3, brightness: { label: 'measured' }, color: { label: 'measured' }, ...abs }),
+      layer(1, 'clouds', { maxLevel: 3, kind: 'cloud-properties', brightness: { label: 'derived' } }),
+      layer(1, 'cloudTau', { maxLevel: 3, kind: 'cloud-optical-thickness-moments', brightness: { label: 'derived' } }),
+      layer(1, 'cloudTauEstimated', { maxLevel: 3, kind: 'cloud-optical-thickness-moments', brightness: { label: 'estimated' } }),
+    ], '/data');
+    expect(layers.get(1)?.cloudTau?.label).toBe('derived');
+    expect(layers.get(1)?.cloudTauEstimated?.label).toBe('estimated');
+    const comp = { id: 'rayleigh', description: '', extinctionPerKm: { value: [[1]], label: 'derived', sources: [] }, singleScatteringAlbedo: { value: [1], label: 'derived', sources: [] }, phaseFunction: { value: { kind: 'rayleigh', depolarization: [0] }, label: 'derived', sources: [] } };
+    const atmospheres = { definition: '', wavelengthsNm: [550], channels: ['X', 'Y', 'Z', 'S'], foldWeights: { value: [[1], [1], [1], [1]], label: 'derived', sources: [] }, bodies: { '1': { name: 'X', naifId: 1, referenceRadiusKm: 1, altitudeReference: '', altitudesKm: [0], topAltitudeKm: 1, topRadiusKm: 2, scaleHeightKm: { value: 1, label: 'derived', sources: [] }, components: [comp] } } } as unknown as SceneExtras['atmospheres'];
+    for (const level of ['best', 'complete'] as const) {
+      const sb = scene();
+      const used = applyExtras(sb, body(1), { surfaces: layers, rings: null, atmospheres }, level, true);
+      expect(sb.surface?.cloudTau).toBe(layers.get(1)?.cloudTauEstimated?.ref);
+      expect(sb.surface?.cloudTauUnmeasured).toBeUndefined();      // no statistic: cloud outside the layer stays unknown
+      expect(used).toContain('estimated');
+    }
+    const strict = scene();
+    const usedStrict = applyExtras(strict, body(1), { surfaces: layers, rings: null, atmospheres }, 'strict', true);
+    expect(strict.surface?.cloudTau).toBe(layers.get(1)?.cloudTau?.ref);
+    expect(usedStrict).not.toContain('estimated');
+    // without the estimated layer (older data) the measured one serves every level
+    const old = surfaceRefs([
+      layer(1, 'albedo', { maxLevel: 3, brightness: { label: 'measured' }, color: { label: 'measured' }, ...abs }),
+      layer(1, 'clouds', { maxLevel: 3, kind: 'cloud-properties', brightness: { label: 'derived' } }),
+      layer(1, 'cloudTau', { maxLevel: 3, kind: 'cloud-optical-thickness-moments', brightness: { label: 'derived' } }),
+    ], '/data');
+    const best = scene();
+    applyExtras(best, body(1), { surfaces: old, rings: null, atmospheres }, 'best', true);
+    expect(best.surface?.cloudTau).toBe(old.get(1)?.cloudTau?.ref);
+  });
+
   it('attaches an admitted atmosphere to a body drawn from its photometry (unknown scattering does not withhold it)', () => {
     const comp = (id: string, ext: string, ssa: string) => ({ id, description: '', extinctionPerKm: { value: [[1]], label: ext, sources: [] }, singleScatteringAlbedo: { value: ssa === 'unknown' ? null : [1], label: ssa, sources: [] }, phaseFunction: { value: ssa === 'unknown' ? null : { kind: 'rayleigh', depolarization: [0] }, label: ssa, sources: [] } });
     const entry = (components: unknown[]) => ({ name: 'X', naifId: 1, referenceRadiusKm: 1, altitudeReference: '', altitudesKm: [0], topAltitudeKm: 1, topRadiusKm: 2, scaleHeightKm: { value: 1, label: 'derived', sources: [] }, components });

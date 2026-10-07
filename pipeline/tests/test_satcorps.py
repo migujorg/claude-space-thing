@@ -160,7 +160,7 @@ def server(tmp_path, monkeypatch):
     srv.shutdown()
 
 
-def write_file(path, fields: dict[str, np.ndarray], nlat=180, nlon=360):
+def write_file(path, fields: dict[str, np.ndarray], nlat=180, nlon=360, without=()):
     """A file with the product's layout: (1, lat, lon) packed variables, gzip + shuffle chunks, the same attributes."""
     with h5py.File(path, "w") as f:
         f.attrs["reference_time"] = "2026-09-28T04:00:00Z"
@@ -170,6 +170,8 @@ def write_file(path, fields: dict[str, np.ndarray], nlat=180, nlon=360):
         f.create_dataset("lon", data=((np.arange(nlon) + 0.5) * 360.0 / nlon - 180.0).astype("f4"))
         f.create_dataset("granule_name_list", data=np.array([b"TEST.FIXTURE.GRANULE"], dtype="S32"))
         for name, (dt, scale, fill, valid) in PACK.items():
+            if name in without:
+                continue
             ds = f.create_dataset(name, data=fields[name].astype(dt)[None], chunks=(1, nlat // 2, nlon // 4),
                                   compression="gzip", compression_opts=5, shuffle=True)
             ds.attrs["scale_factor"] = np.array([scale], "f4")
@@ -251,6 +253,36 @@ def test_the_mosaic_takes_each_strip_from_its_own_hours_file(server, tmp_path, m
         sc.mosaic("2026-09-28", {h: v for h, v in info["pins"].items() if h != 7})
 
 
+def test_a_file_without_the_surface_type_takes_it_from_the_nearest_hour_that_has_one(server, tmp_path, monkeypatch):
+    """One hour's file is of another processing run and holds no `surface_type` (2026-09-28, 20 UTC): the same
+    columns of the next hour's file are read, recorded and pinned; any other missing variable is an error."""
+    monkeypatch.setattr(sc, "META_BLOCK", 4096)
+    monkeypatch.setattr(sc, "PRODUCT_DIR", f"http://127.0.0.1:{server.server_port}/")
+    base = {n: np.broadcast_to(v, (180, 360)).copy() for n, v in cells(relative_azimuth=0).items()}   # in the mirror direction
+    base["surface_type"][:, ::2] = 17                           # water in every other column: estimated there
+    for h in range(24):
+        path = tmp_path / f"h{h}.nc"
+        write_file(path, base, without=("surface_type",) if h == 20 else ())
+        _Handler.by_name[sc.file_url("2026-09-28", h).rsplit("/", 1)[-1]] = path.read_bytes()
+    m = sc.mosaic("2026-09-28", None)
+    assert (m.cls[:, ::2] == sc.ESTIMATED).all() and (m.cls[:, 1::2] == sc.MEASURED).all()   # also in the 20 UTC strip
+    s20 = m.info["strips"][20]
+    assert s20["surfaceTypeFrom"]["fileHourUtc"] == 21 and "2026271.2100." in s20["surfaceTypeFrom"]["url"]
+    assert all("surfaceTypeFrom" not in s for i, s in enumerate(m.info["strips"]) if i != 20)
+    pin = m.info["pins"][20]
+    assert pin["surfaceType"]["fileHourUtc"] == 21 and len(pin["surfaceType"]["sha256"]) == 64
+    assert np.array_equal(sc.mosaic("2026-09-28", m.info["pins"]).cls, m.cls)
+    bad = {**m.info["pins"], 20: {k: v for k, v in pin.items() if k != "surfaceType"}}
+    with pytest.raises(ValueError, match="surface_type"):
+        sc.mosaic("2026-09-28", bad)
+    write_file(tmp_path / "x.nc", base, without=("cloud_top_height",))
+    _Handler.by_name[sc.file_url("2026-09-28", 5).rsplit("/", 1)[-1]] = (tmp_path / "x.nc").read_bytes()
+    monkeypatch.setattr(download, "RAW", tmp_path / "raw2")
+    monkeypatch.setattr(download, "_LEDGER", tmp_path / "raw2" / "_downloads.json")
+    with pytest.raises(ValueError, match="cloud_top_height"):
+        sc.mosaic("2026-09-28", None)
+
+
 # ------------------------------------------------------------------------------------------------ aggregation
 
 
@@ -289,6 +321,14 @@ def test_area_overlap_conserves_every_class_share():
     assert (w_dst * a["thicknessLnTau"]).sum() == pytest.approx((w_src * np.where(both, m.ln_tau, 0)).sum(), rel=1e-5)
     assert (w_dst * a["thicknessIce"]).sum() == pytest.approx((w_src * (both & m.ice)).sum(), rel=1e-6)
     assert (w_dst * a["topSum"]).sum() == pytest.approx((w_src * np.where(both, m.top_m, 0)).sum(), rel=1e-5)
+
+
+def test_edges_that_coincide_leave_no_sliver():
+    # 1/3 + 1/3 + 1/3 is not 1 in floating point: the cell beyond a shared edge must get no weight at all.
+    src = np.cumsum(np.full(9, 1 / 3)) - 1 / 3            # edges 0, 1/3, …, 8/3 with rounding
+    w = sc.overlap(src, np.array([0.0, 1.0, 2.0])).toarray()
+    assert (w[0, 3:] == 0).all() and (w[1, :3] == 0).all() and (w[1, 6:] == 0).all()
+    assert w.sum(axis=1) == pytest.approx(1.0, abs=1e-9)
 
 
 def test_every_channel_is_exact_under_two_by_two_means():

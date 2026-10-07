@@ -185,16 +185,19 @@ class StripData:
     sources: str
     paths: list[Path]
     digest: str                          # sha256 of the strip's packed arrays (the content pin)
+    produced: str = ""                   # the file's `processed_history`
+    missing: tuple[str, ...] = ()        # variables asked for that the file does not hold
+    n_lon: int = 0                       # columns of the whole file
 
 
 def _text(x) -> str:
     return x.decode("utf-8", "replace") if isinstance(x, bytes) else str(x)
 
 
-def read_strip(strip: Strip, pin: dict | None, subdir: str = SUBDIR) -> StripData:
-    """The strip's columns of every layer variable. `pin` = {bytes, etag, lastModified, sha256}: the remote file
-    and the decoded content this build was made with; a difference is an error, never a silent update. None reads
-    unpinned (first acquisition, tests)."""
+def read_strip(strip: Strip, pin: dict | None, subdir: str = SUBDIR, variables: tuple[str, ...] = VARIABLES) -> StripData:
+    """The strip's columns of the layer variables (those of `variables` the file holds; the others are listed in
+    `missing`). `pin` = {bytes, etag, lastModified, sha256}: the remote file and the decoded content this build was
+    made with; a difference is an error, never a silent update. None reads unpinned (first acquisition, tests)."""
     rf = RangeFile(strip.url, subdir)
     if pin is not None:
         for k in ("bytes", "etag", "lastModified"):
@@ -208,14 +211,18 @@ def read_strip(strip: Strip, pin: dict | None, subdir: str = SUBDIR) -> StripDat
             raise ValueError(f"{strip.url}: grid is not north-first, west-first")
         cols = columns(lon_all, strip)
         arrays, attrs = {}, {}
-        for n in VARIABLES:
+        missing = tuple(n for n in variables if n not in f)
+        for n in variables:
+            if n in missing:
+                continue
             ds = f[n]
             arrays[n] = ds[0, :, cols]
             lo, hi = (int(v) for v in ds.attrs["valid_range"])
             attrs[n] = {"scale": float(np.ravel(ds.attrs["scale_factor"])[0]), "fill": int(np.ravel(ds.attrs["_FillValue"])[0]),
                         "valid": (lo, hi)}
         granules = [_text(g) for g in f["granule_name_list"][:]]
-        ref, version, sources = (_text(f.attrs.get(k, "")) for k in ("reference_time", "version", "satellite_sources"))
+        ref, version, sources, produced = (_text(f.attrs.get(k, "")) for k in ("reference_time", "version", "satellite_sources",
+                                                                                 "processed_history"))
     h = hashlib.sha256()
     for n in sorted(arrays):
         a = np.ascontiguousarray(arrays[n])
@@ -224,7 +231,8 @@ def read_strip(strip: Strip, pin: dict | None, subdir: str = SUBDIR) -> StripDat
     digest = h.hexdigest()
     if pin is not None and pin.get("sha256") != digest:
         raise ValueError(f"{strip.url}: the strip's content differs from its pin (sha256 {digest}, pinned {pin.get('sha256')})")
-    return StripData(strip, lat, lon_all[cols], arrays, attrs, rf.remote, granules, ref, version, sources, list(rf.paths), digest)
+    return StripData(strip, lat, lon_all[cols], arrays, attrs, rf.remote, granules, ref, version, sources, list(rf.paths), digest,
+                     produced, missing, int(lon_all.size))
 
 
 # ------------------------------------------------------------------------------------------------------ classes
@@ -320,14 +328,19 @@ def _centre_edges(c: np.ndarray) -> np.ndarray:
     return c[0] - step / 2 + step * np.arange(c.size + 1)
 
 
+SLIVER = 1e-9
+
+
 def overlap(src_edges: np.ndarray, dst_edges: np.ndarray) -> sp.csr_matrix:
     """Rows: destination cells; columns: source cells; entries: the share of the destination cell's extent that
-    the source cell covers (both edge arrays ascending). A row sums to 1 where the source grid covers the cell."""
+    the source cell covers (both edge arrays ascending). A row sums to 1 where the source grid covers the cell.
+    Overlaps below SLIVER of the destination cell are rounding at edges that coincide, not area, and are dropped
+    (they would leave a texel with a cloud share of 1e-12 that the float16 tiles round to none)."""
     lo = np.maximum(dst_edges[:-1, None], src_edges[None, :-1]) if dst_edges.size * src_edges.size < 4_000_000 else None
     rows, cols, vals = [], [], []
     if lo is not None:
         ov = np.minimum(dst_edges[1:, None], src_edges[None, 1:]) - lo
-        r, c = np.nonzero(ov > 0)
+        r, c = np.nonzero(ov > SLIVER * (dst_edges[1:] - dst_edges[:-1])[:, None])
         rows, cols, vals = r, c, ov[r, c] / (dst_edges[1:] - dst_edges[:-1])[r]
     else:
         first = np.clip(np.searchsorted(src_edges, dst_edges[:-1], side="right") - 1, 0, src_edges.size - 2)
@@ -335,7 +348,7 @@ def overlap(src_edges: np.ndarray, dst_edges: np.ndarray) -> sp.csr_matrix:
         for i in range(dst_edges.size - 1):
             k = np.arange(first[i], last[i] + 1)
             ov = np.minimum(dst_edges[i + 1], src_edges[k + 1]) - np.maximum(dst_edges[i], src_edges[k])
-            keep = ov > 0
+            keep = ov > SLIVER * (dst_edges[i + 1] - dst_edges[i])
             rows.append(np.full(int(keep.sum()), i))
             cols.append(k[keep])
             vals.append(ov[keep] / (dst_edges[i + 1] - dst_edges[i]))
@@ -411,7 +424,61 @@ def layers(a: dict[str, np.ndarray], min_observed: float = 0.5) -> dict[str, np.
 #: {bytes, etag, lastModified} of the remote file and the sha256 of the strip's packed arrays (StripData.digest).
 #: A file that changes, or a strip that decodes differently, fails the build. `python -m pipeline.satcorps pins
 #: <day>` reads a day unpinned and prints this table (an explicit input update, like the other Earth pins).
-PINS: dict[str, dict[int, dict]] = {}
+PINS: dict[str, dict[int, dict]] = {
+    "2026-09-28": {
+        0: {"bytes": 1416742922, "etag": '"5471c80a-65cb2be2fc640"', "lastModified": "Wed, 30 Sep 2026 12:50:25 GMT",
+            "sha256": "03ff65521306f2a03c3e6026af8223a133dcdb5c186996b169d9faa234a215ad"},
+        1: {"bytes": 1409019843, "etag": '"53fbefc3-65cb3953d7c40"', "lastModified": "Wed, 30 Sep 2026 13:50:33 GMT",
+            "sha256": "e13e37a416649438525464d65fb2aa759be90d0d0d1b5a4408ccb12a279a7e36"},
+        2: {"bytes": 1407948239, "etag": '"53eb95cf-65cb46ba35980"', "lastModified": "Wed, 30 Sep 2026 14:50:30 GMT",
+            "sha256": "3380b8049b3f2f2f577699638d72cb3260a00b7935a991cff3820f6104d2f94e"},
+        3: {"bytes": 1409462580, "etag": '"5402b134-65cb54264c440"', "lastModified": "Wed, 30 Sep 2026 15:50:33 GMT",
+            "sha256": "7f5c25d22331e8d79f2e8d50ddcd43f98da0c3409c99093df57832d675e7d080"},
+        4: {"bytes": 1396230260, "etag": '"5338c874-65cb619262f00"', "lastModified": "Wed, 30 Sep 2026 16:50:36 GMT",
+            "sha256": "7406123b23cd038020fbf4bb0c1a2a84ce6b754d0db7fb55e7f498031413caa6"},
+        5: {"bytes": 1433491869, "etag": '"5571599d-65cb6ef4f0340"', "lastModified": "Wed, 30 Sep 2026 17:50:29 GMT",
+            "sha256": "398c140870ff3d3a3915f2d2750fafc2b6601a739af39a094e3a31c147b2a517"},
+        6: {"bytes": 1432145449, "etag": '"555cce29-65cb7c6012bc0"', "lastModified": "Wed, 30 Sep 2026 18:50:31 GMT",
+            "sha256": "685162bdd097175241f8c12ab732a41f9777e2d27b1b85ecd1c45d9454e42384"},
+        7: {"bytes": 1420829560, "etag": '"54b02378-65cb89cb35440"', "lastModified": "Wed, 30 Sep 2026 19:50:33 GMT",
+            "sha256": "dbdcf2a1da428fafc38cb2dbd29b18975a81d1fcd290ec1b697dab4ccdbe18f6"},
+        8: {"bytes": 1256188749, "etag": '"4adfeb4d-65cb97337b600"', "lastModified": "Wed, 30 Sep 2026 20:50:32 GMT",
+            "sha256": "196b575da521be93ab09684fc47459f48a2cde3d62adc703c56cc635ca80f7b0"},
+        9: {"bytes": 1413467086, "etag": '"543fcbce-65cba49acd580"', "lastModified": "Wed, 30 Sep 2026 21:50:30 GMT",
+            "sha256": "0f2a24e89f0f1423d83aa7d38f141cff0dcd7f70362af642a28657079c4747a0"},
+        10: {"bytes": 1413342618, "etag": '"543de59a-65cbb204fbbc0"', "lastModified": "Wed, 30 Sep 2026 22:50:31 GMT",
+            "sha256": "a83c38c9118e085e6efc08b769449d5274e7e8c791e4d091081761b3ec45972a"},
+        11: {"bytes": 1405354364, "etag": '"53c4017c-65cbbf6971480"', "lastModified": "Wed, 30 Sep 2026 23:50:26 GMT",
+            "sha256": "35206ebdd4d2a8c09a47b8df3406736d761999c9bb7676f55f1ede49b7f936e8"},
+        12: {"bytes": 1396207136, "etag": '"53386e20-65cbccd958840"', "lastModified": "Thu, 01 Oct 2026 00:50:33 GMT",
+            "sha256": "811db0fd0c6f3647065c97186d41eb002c79e4eecf93030a8c04783f59c52210"},
+        13: {"bytes": 1393075073, "etag": '"5308a381-65cbda3dce100"', "lastModified": "Thu, 01 Oct 2026 01:50:28 GMT",
+            "sha256": "3b1c998c5ce656d0245459e3e4ce3d534ca6e327f1650fc29f5aee5eac089288"},
+        14: {"bytes": 1391649246, "etag": '"52f2e1de-65cbe7a708500"', "lastModified": "Thu, 01 Oct 2026 02:50:28 GMT",
+            "sha256": "91e91098dd6bfd8604e422652bc11a5664e82edc4a25fdcb1d48aa6a8d415119"},
+        15: {"bytes": 1405129767, "etag": '"53c09427-65cbf5122ad80"', "lastModified": "Thu, 01 Oct 2026 03:50:30 GMT",
+            "sha256": "9f013d923ee63a7d8beb4b3dfc85e4d6a429692fd42cbaf1abec344148f18b17"},
+        16: {"bytes": 1397701562, "etag": '"534f3bba-65cc027888ac0"', "lastModified": "Thu, 01 Oct 2026 04:50:27 GMT",
+            "sha256": "761c74eb2ec7dfb291eb085566bf55d51a65831a5be0ff1b47a0c13bb7b30845"},
+        17: {"bytes": 1303273658, "etag": '"4dae60ba-65cc0fe1c2ec0"', "lastModified": "Thu, 01 Oct 2026 05:50:27 GMT",
+            "sha256": "03b3e86f1a57209c465e3b01aba1f4db2ff4265079e09cd990e6a09aa3e8226f"},
+        18: {"bytes": 1411424735, "etag": '"5420a1df-65cc1d4afd2c0"', "lastModified": "Thu, 01 Oct 2026 06:50:27 GMT",
+            "sha256": "59cb42838a0b19d26adb1e1fe75dcf942613d743bededfb753cf04321b1e0d0d"},
+        19: {"bytes": 1413140173, "etag": '"543acecd-65cc2ab24f240"', "lastModified": "Thu, 01 Oct 2026 07:50:25 GMT",
+            "sha256": "8841b134e0eedd50a08dcd5348907a2272758a6e089f858e3a2fc0e8a9d3b237"},
+        20: {"bytes": 1415119385, "etag": '"54590219-65cc381e65d00"', "lastModified": "Thu, 01 Oct 2026 08:50:28 GMT",
+            "sha256": "e01182f8f8327dfd45da3a5837bebedca6743aaa7c9cafe8a8d9770d144fb5f1",
+            "surfaceType": {"fileHourUtc": 21, "bytes": 1416354658, "etag": '"546bdb62-65cc458894340"',
+                            "lastModified": "Thu, 01 Oct 2026 09:50:29 GMT",
+                            "sha256": "b8ef5e376985a7f8d7f29d6b90eb12b002b9cb569aacb0e41b04a172192b04da"}},
+        21: {"bytes": 1416354658, "etag": '"546bdb62-65cc458894340"', "lastModified": "Thu, 01 Oct 2026 09:50:29 GMT",
+            "sha256": "46ec0ed578284cf5f5859fc09ee9747c377b25b0b4e58163d504d46a88a1d921"},
+        22: {"bytes": 1419609868, "etag": '"549d870c-65cc52efe62c0"', "lastModified": "Thu, 01 Oct 2026 10:50:27 GMT",
+            "sha256": "a8db527391adb026ee38b4a35c446c97b8e366b8054d422ccc8febda0ac4f3fc"},
+        23: {"bytes": 1427024477, "etag": '"550eaa5d-65cc60639df80"', "lastModified": "Thu, 01 Oct 2026 11:50:38 GMT",
+            "sha256": "44df75c68509fecbaff21d973601e5c1ef382034144328dc423cb557fbd90052"},
+    },
+}
 
 
 def _count(mask: np.ndarray) -> int:
@@ -431,10 +498,14 @@ def mosaic(day: str, pins: dict[int, dict] | None, subdir: str = SUBDIR) -> Mosa
     for strip in strips(day):
         if pins is not None and strip.hour not in pins:
             raise ValueError(f"SatCORPS strip of {day} {strip.hour:02d} UTC has no pin")
-        d = read_strip(strip, None if pins is None else pins[strip.hour], subdir)
+        pin = None if pins is None else pins[strip.hour]
+        d = read_strip(strip, pin, subdir)
+        borrowed = None
+        if d.missing:
+            borrowed = _borrow_surface_type(day, strip, d, pin, subdir)
         if lat is None:
             lat = d.lat
-            n_lon = int(round(360.0 / float(d.lon[1] - d.lon[0])))
+            n_lon = d.n_lon                      # (the files' longitudes are float32: not a source for the step)
             step = 360.0 / n_lon
             lon = -180.0 + step * (np.arange(n_lon) + 0.5)
             cls = np.full((lat.size, n_lon), 255, np.uint8)
@@ -467,12 +538,18 @@ def mosaic(day: str, pins: dict[int, dict] | None, subdir: str = SUBDIR) -> Mosa
             if m.any():
                 t = rt[m & rt_ok]
                 srcs[name] = {"cells": _count(m), "secondsFromNominal": [int(t.min()), int(t.max())] if t.size else None}
-        files = {download.ledger_key(p): download.record(p) for p in d.paths}
+        files = {download.ledger_key(p): download.record(p) for p in d.paths + (borrowed.paths if borrowed else [])}
         info["files"].update(files)
         info["pins"][strip.hour] = {**d.remote, "sha256": d.digest}
+        if borrowed:
+            info["pins"][strip.hour]["surfaceType"] = {"fileHourUtc": borrowed.strip.hour, **borrowed.remote, "sha256": borrowed.digest}
         info["strips"].append({
             "fileHourUtc": strip.hour, "lonWest": strip.lon_west, "lonEast": strip.lon_east, "url": strip.url,
-            "referenceTime": d.reference_time, "version": d.version, "satelliteSources": d.sources,
+            "referenceTime": d.reference_time, "version": d.version, "satelliteSources": d.sources, "produced": d.produced,
+            **({"surfaceTypeFrom": {
+                "fileHourUtc": borrowed.strip.hour, "url": borrowed.strip.url, "sha256": borrowed.digest,
+                "why": "this hour's file has no surface_type variable; the same columns of the nearest hourly file that "
+                       "has one are read instead (the map is the same in the files that hold it)"}} if borrowed else {}),
             "inputGranules": len(d.granules), "remote": d.remote, "sha256": d.digest,
             "bytesRead": int(sum(e["bytes"] for e in files.values())), "rangesRead": len(files), "sources": srcs,
             "cells": {CLASS_NAMES[c]: _count(k == c) for c in CLASS_NAMES}})
@@ -498,15 +575,33 @@ def mosaic(day: str, pins: dict[int, dict] | None, subdir: str = SUBDIR) -> Mosa
     return Mosaic(lat=lat, lon=lon, cls=cls, ln_tau=ln_tau, ice=ice, top_m=top_m, info=info)
 
 
+def _borrow_surface_type(day: str, strip: Strip, d: StripData, pin: dict | None, subdir: str) -> StripData:
+    """`surface_type` (a land/water map on the product's grid; only "water" is used, for the glint test) for a strip
+    whose own file lacks it: the same columns of the nearest hourly file of the day that holds it (the next hours
+    first). On 2026-09-28 the 20 UTC file, of an earlier processing run, has none; over that strip's columns the
+    map is identical, cell for cell, in the 04, 12, 19 and 21 UTC files (docs/sources/satcorps-gcc.md)."""
+    if d.missing != ("surface_type",):
+        raise ValueError(f"{strip.url}: variables {d.missing} are missing")
+    spin = None if pin is None else pin.get("surfaceType")
+    if pin is not None and spin is None:
+        raise ValueError(f"{strip.url}: no surface_type in the file and no pin for the file it is to be read from")
+    order = [spin["fileHourUtc"]] if spin else [(strip.hour + k) % 24 for k in (1, -1, 2, -2, 3, -3)]
+    for hd in order:
+        b = read_strip(Strip(hd, file_url(day, hd), strip.lon_west, strip.lon_east),
+                       None if spin is None else {k: spin[k] for k in ("bytes", "etag", "lastModified", "sha256")},
+                       subdir, variables=("surface_type",))
+        if not b.missing:
+            if b.arrays["surface_type"].shape != d.arrays["satellite_ID"].shape:
+                raise ValueError(f"{b.strip.url}: surface_type has another shape than the strip")
+            d.arrays["surface_type"], d.attrs["surface_type"] = b.arrays["surface_type"], b.attrs["surface_type"]
+            return b
+    raise ValueError(f"{strip.url}: no neighbouring hour's file holds surface_type")
+
+
 if __name__ == "__main__":
     import json
     import sys
     if len(sys.argv) == 3 and sys.argv[1] == "pins":
-        table = {}
-        for st_ in strips(sys.argv[2]):
-            d_ = read_strip(st_, None)
-            table[st_.hour] = {**d_.remote, "sha256": d_.digest}
-            print(f"# {st_.hour:02d} UTC read: {len(d_.paths)} ranges", file=sys.stderr, flush=True)
-        print(json.dumps({sys.argv[2]: table}, indent=1))
+        print(json.dumps({sys.argv[2]: mosaic(sys.argv[2], None).info["pins"]}, indent=1))
     else:
         raise SystemExit("usage: python -m pipeline.satcorps pins <YYYY-MM-DD>")
