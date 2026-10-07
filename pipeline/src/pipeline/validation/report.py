@@ -690,6 +690,7 @@ def write(extra_sections: str = "", run: dict | None = None, run_interpretation:
     if run is not None:
         parts.append("\n" + run_section(run, run_interpretation))
         parts.append("\n" + convergence)
+    # Sections supply internal separators; only the writer normalizes the file's final newline.
     REPORT.write_text("".join(parts).rstrip() + "\n", encoding="utf-8", newline="\n")
 
 

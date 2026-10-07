@@ -238,7 +238,8 @@ def test_report_header_reads_sampling_from_run(tmp_path, monkeypatch):
     assert "3 × 3 = 9 samples per pixel" in dest.read_text().split("*Generated")[0]
 
 
-def test_report_sampling_table_from_fixture_file(tmp_path, monkeypatch):
+@pytest.mark.parametrize("history", ["", "### History: sampling sweep\n\nfixture history\n\n"])
+def test_report_sampling_table_from_fixture_file(tmp_path, monkeypatch, history):
     from pipeline.validation import report
 
     # Fixture file in the script's output shape. Four channels and a ratio: Y alone cannot establish convergence.
@@ -254,6 +255,7 @@ def test_report_sampling_table_from_fixture_file(tmp_path, monkeypatch):
     path = tmp_path / "sampling-convergence.json"
     path.write_text(json.dumps({"schema": "validation-sampling-v1", "runs": runs}))
     monkeypatch.setattr(report, "CONVERGENCE_REPORT", path)
+    monkeypatch.setattr(report, "sampling_history_section", lambda run: history)
     section = report.convergence_section(runs[3])
     assert "1 × 1 | 2 × 2 | 3 × 3 | 4 × 4 | 6 × 6" in section
     assert "| `fixture` | disk | X | 1 | 2 | 3 | 4 | 6 | -33.3333 % |" in section
@@ -266,7 +268,12 @@ def test_report_sampling_table_from_fixture_file(tmp_path, monkeypatch):
     # The summary and run section are unrelated to the convergence fixture's intentionally minimal ROI records.
     monkeypatch.setattr(report, "run_section", lambda run, interpretation: "renderer run\n")
     report.write(run=runs[3])
-    assert section in dest.read_text()
+    text = dest.read_text()
+    # Section builders supply separators; the writer owns the single final file newline.
+    assert section.rstrip("\n") in text
+    assert text.endswith("\n") and not text.endswith("\n\n")
+    if history:
+        assert section + history.rstrip("\n") in text
     with pytest.raises(ValueError, match="same run"):
         report.convergence_section({**runs[3], "git": "other"})
     path.unlink()
