@@ -6,6 +6,32 @@ import subprocess
 import sys
 
 
+def test_absent_roots_are_private_before_pipeline_import(tmp_path):
+    tests = tmp_path / "tests"
+    tests.mkdir()
+    (tests / "conftest.py").write_bytes(Path(__file__).with_name("conftest.py").read_bytes())
+    (tests / "test_empty_checkout.py").write_text('''
+import os
+from pathlib import Path
+from pipeline import paths
+
+def test_private_roots():
+    for key in ("RAW", "CACHE", "OUT"):
+        original = Path(os.environ["ORIGINAL_" + key])
+        private = getattr(paths, key)
+        assert private != original and private.is_dir()
+        assert not original.exists()
+        (private / "fixture").write_bytes(b"test-only")
+''')
+    env = dict(os.environ)
+    for key in ("RAW", "CACHE", "OUT"):
+        env["PIPELINE_" + key] = env["ORIGINAL_" + key] = str(tmp_path / ("missing-" + key.lower()))
+    result = subprocess.run([sys.executable, "-m", "pytest", "-q", str(tests), "--confcutdir", str(tests)],
+                            env=env, capture_output=True, text=True, timeout=20)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "1 passed" in result.stdout
+
+
 def test_earth_reader_cache_miss_is_private(monkeypatch):
     from pipeline import paths
     from pipeline.photometry import earth

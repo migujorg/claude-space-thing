@@ -14,6 +14,7 @@ import os
 import socket
 import shutil
 import sys
+import tempfile
 from functools import wraps
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -94,8 +95,30 @@ def pytest_configure(config):
     defaults = (repo / "data/raw", repo / "data/cache", repo / "app/public/data")
     roots = [os.environ.get(key) or default for key, default in zip(
         ("PIPELINE_RAW", "PIPELINE_CACHE", "PIPELINE_OUT"), defaults)]
+    # paths.py creates its roots on import. On a data-free CI checkout, redirect missing roots before
+    # collection so importing the pipeline cannot create shared directories just to discover absent inputs.
+    config._test_data_env = {}
+    config._test_data_tmp = None
+    for key, root in zip(("PIPELINE_RAW", "PIPELINE_CACHE", "PIPELINE_OUT"), roots):
+        if not Path(root).expanduser().is_dir():
+            if config._test_data_tmp is None:
+                config._test_data_tmp = tempfile.TemporaryDirectory(prefix="pipeline-test-data-")
+            private = Path(config._test_data_tmp.name) / key.lower()
+            private.mkdir()
+            config._test_data_env[key] = os.environ.get(key)
+            os.environ[key] = str(private)
     config._data_write_guard = DataWriteGuard([*roots, *defaults])
     config._data_write_guard.install()
+
+
+def pytest_unconfigure(config):
+    for key, original in config._test_data_env.items():
+        if original is None:
+            os.environ.pop(key, None)
+        else:
+            os.environ[key] = original
+    if config._test_data_tmp is not None:
+        config._test_data_tmp.cleanup()
 
 
 def pytest_runtest_setup(item):
