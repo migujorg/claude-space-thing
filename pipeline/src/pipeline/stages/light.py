@@ -29,7 +29,21 @@ from ..schema import BuildContext, sourced, unknown, worst
 
 DEPENDS: tuple[str, ...] = ()
 # Optional cache/product inputs; no scheduling dependency (surfaces depends on light).
-OPTIONAL_INPUTS = ("surfaces",)
+def fingerprint_inputs(products: dict) -> dict:
+    """Read-only late inputs, avoiding generated timestamps and a scheduling cycle."""
+    import hashlib
+    import json
+    import re
+    from ..paths import OUT
+    inputs = {}
+    for rel, record in sorted(products.items()):
+        if re.fullmatch(r"surfaces/\d+/albedo/0/0/\d+\.bin", rel):
+            inputs[rel] = record.get("sha256")
+        elif re.fullmatch(r"surfaces/\d+/albedo\.json", rel) and (OUT/rel).exists():
+            header=json.loads((OUT/rel).read_text());header.pop("generated",None)
+            inputs[rel]=hashlib.sha256(json.dumps(header,sort_keys=True).encode()).hexdigest()
+    return inputs
+
 # Pure numerical implementation shared with the renderer; fingerprint hook is in the handoff.
 CODE_INPUTS = ("app/src/render/spatial.ts", "app/src/render/surface.ts")
 

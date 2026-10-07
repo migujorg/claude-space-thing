@@ -48,3 +48,19 @@ def test_ahi_view_retains_the_actual_scan_geometry():
     assert view["value"]["latitudeDeg"] == 0
     assert "2025-03-20" in view["value"]["epoch"]
     assert abs(view["value"]["phaseAngleDeg"]-2.420352164420693) < 1e-6
+
+
+def test_late_fingerprint_tracks_map_values_not_generation_time(tmp_path, monkeypatch):
+    import json
+    from pipeline import paths
+    from pipeline.stages.light import fingerprint_inputs
+    monkeypatch.setattr(paths,"OUT",tmp_path)
+    rel="surfaces/599/albedo.json"
+    header=tmp_path/rel;header.parent.mkdir(parents=True)
+    header.write_text(json.dumps({"generated":"first","sources":["source"],"color":{"label":"estimated"}}))
+    products={rel:{"stage":"surfaces","sha256":"header"},"surfaces/599/albedo/0/0/0.bin":{"sha256":"tile"}}
+    first=fingerprint_inputs(products)
+    header.write_text(json.dumps({"generated":"later","sources":["source"],"color":{"label":"estimated"}}))
+    assert fingerprint_inputs(products)==first
+    products["surfaces/599/albedo/0/0/0.bin"]["sha256"]="changed"
+    assert fingerprint_inputs(products)!=first
