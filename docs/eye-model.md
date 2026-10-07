@@ -78,7 +78,19 @@ looks around the frame, and fixations are not uniform over the frame:
 
 So A = exp(Σ w·Ω·ln(L_ret + L₀) / Σ w·Ω) over the frame, w the weight above (`eye/fixation.ts`; GPU:
 `ADAPT_SHADER`). The resolved solar disk is never fixated: it cannot be looked at. Its veil still
-counts wherever the eye looks. Consequences:
+counts wherever the eye looks.
+
+That holds at every angular size since October 2026. Before, the shader decided "inside the disk" by
+comparing a cosine in 32-bit floats, and one step of a 32-bit float below 1 is the cosine of 1.2′. A solar
+disk a few arcminutes or less in radius could not be told from the sky around it, some of its pixels drew
+fixations, and at 1.5·10⁹ cd/m² they took all of them. The Sun from 9.5 au at a 5° field adapted the frame
+to 5·10⁸ cd/m² and was shown as a grey disk without glare; it now adapts it to 2500 cd/m² and is shown at
+display white with its glare, as from 1 au. The test compares the chord between the two directions with
+the chord of the disk's radius (`eye/fixation.ts inSkyDisc`). The Sun shield's occulting disc (§8b) used
+the same cosine and let 500 to 1900 cd/m² of corona through inside a small disc; it uses the same chord
+now.
+
+Consequences of the fixation rule:
 
 - A quarter Moon filling the view is seen adapted to its sunlit half, even when the view centre falls on
   the night side (the v1 rule saturated the lit half to white).
