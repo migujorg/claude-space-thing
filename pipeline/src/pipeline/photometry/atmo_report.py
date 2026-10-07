@@ -191,8 +191,10 @@ def main() -> None:
     w("## Titan")
     w("")
     w("Five components over a surface (`surfaceReflectance`), all from the Huygens descent (landing site, 10° S, "
-      "January 2005) and used for the whole globe; Titan is drawn from them alone (docs/rendering-earth.md §8 "
-      "\"Titan\"), so its disk-integrated brightness and colour are a test of these numbers (below).")
+      "January 2005) and used for the whole globe. Titan's resolved disk is drawn from them (docs/rendering-earth.md "
+      "§8 \"Titan\"): they give the picture's spatial pattern, and the renderer scales it per channel to Titan's disk "
+      "photometry (\"What is drawn\", below). The model's own disk-integrated brightness and colour, before that "
+      "scaling, are a test of these numbers, and the test is reported first.")
     w("")
     w(f"- **Haze extinction** (DISR model, Tomasko et al. 2008 via Bazzon et al. 2014): τ = {t['tau_531']:.2f} at "
       f"531 nm, {t['tau_550']:.2f} at 550 nm, {t['tau_650']:.2f} at 650 nm, {t['tau_940']:.2f} at 940 nm, "
@@ -372,7 +374,7 @@ def main() -> None:
                       for c, x in zip("XYZS", ca)) + ".")
         w("")
         w(f"Against the ISS phase curves (pass: each range's median within 2σ = ±{200 * TC.ISS_ABSOLUTE:.0f} %; "
-          "measured / renderer):")
+          "measured / renderer; the renderer's model as it is, before the scaling of \"What is drawn\"):")
         w("")
         w("| filter | all | " + " | ".join(hdr) + " | result |")
         w("|---|---|" + "---|" * len(hdr) + "---|")
@@ -389,6 +391,52 @@ def main() -> None:
             if not f["broad"]:
                 res += " *"
             w(f"| {name} | {f['median_ratio']:.2f} | " + " | ".join(cell(c) for c in cells) + f" | {res} |")
+        w("")
+    nz = v["normalization"]
+    if nz:
+        lo_a, hi_a = nz["range"]
+        w("### What is drawn")
+        w("")
+        w("Disk photometry is the app's absolute calibration of a body's brightness and colour (docs/architecture.md "
+          "§4.3, §4.4), so the model's own level does not reach the screen. The renderer scales the model's radiance in "
+          "each channel by the measured p·Φ(α) of `photometry.json` (Karkoschka's albedo, above) over the model's own "
+          "disk integral (`app/src/render/frame.ts`; docs/rendering-earth.md §8 \"Titan\"): inside the photometry's "
+          f"phase range, {lo_a:g}–{hi_a:g}°, the drawn disk's integral is the measurement, and the model supplies the "
+          "spatial pattern. The comparisons above are thus the finding about the DISR model and its extrapolated "
+          "albedo; they are no longer what the picture shows. Nothing in the model is adjusted and no factor is "
+          "stored: the app computes the factors each time from its own disk integral (its 12 bins, the surface's "
+          "channel equivalents, 1° phase bins; `frameModel` in `titan-renderer.json`) and prints them in the "
+          "renderer's warning line. The same computation here:")
+        w("")
+        w("| α | measured p·Φ (X, Y, Z, S) | model's disk integral | factor (measured / model) |")
+        w("|---|---|---|---|")
+        for row in nz["rows"]:
+            w(f"| {row['alpha']:g}° | " + ", ".join(f"{x:.4f}" for x in row["measured"]) + " | "
+              + ", ".join(f"{x:.4f}" for x in row["model"]) + " | " + ", ".join(f"{x:.3f}" for x in row["factor"]) + " |")
+        w("")
+        edge = nz["rows"][-1]["factor"]
+        zero = nz["rows"][0]["factor"]
+        w(f"- The factors are the reciprocal of the model's excess over the measurement: at {hi_a:g}° X, Y and S are "
+          f"lowered by {100 * (1 - edge[0]):.1f}, {100 * (1 - edge[1]):.1f} and {100 * (1 - edge[3]):.1f} % and Z by "
+          f"{100 * (1 - edge[2]):.1f} %; at 0° Z by {100 * (1 - zero[2]):.1f} %, because the model brightens toward "
+          "opposition in the blue (the backscatter peak of the 355 and 430 nm phase functions) by more than the "
+          f"{100 * (TC.read_table_json('garcia_munoz_2017_titan.json')['zero_phase_factor'] - 1):.0f} % in every "
+          "channel that the photometry assumes between 5.7° and 0° (an assumption of that phase function, label "
+          "`estimated`).")
+        w(f"- The measurement the model is scaled to carries Karkoschka's ±{100 * TC.K98_ABSOLUTE:.0f} % absolute "
+          "calibration (1σ) and Titan's seasonal changes of a few percent; the scaling itself is numerical (the drawn "
+          "disk's integral is within 0.1 % of the measurement on the renderer's CPU twin, "
+          "`app/tests/render-titan.test.ts`).")
+        w(f"- Beyond {hi_a:g}° the photometry says nothing (the phase function ends there), and the factors of "
+          f"{hi_a:g}° are held at Best estimate and Complete: an assumption, so the result is `estimated`. The ISS "
+          "phase curves above are compared with the model before these factors, and they are not an input to them. "
+          f"In the picture every phase beyond {hi_a:g}° carries the same factors (Y −{100 * (1 - edge[1]):.1f} %, Z "
+          f"−{100 * (1 - edge[2]):.1f} %), so the model's excess of forward scattering beyond 150°, which the ISS "
+          "curves show in every filter, is drawn as the model has it.")
+        w(f"- Inside the range only {hi_a:g}° is a measurement (Karkoschka's 1995 albedo). The values below it are the "
+          "phase function's assumed linear rise to García Muñoz et al.'s zero-phase factor, the same in every "
+          "channel, so toward opposition the scaling replaces the model's own blue backscatter peak by that "
+          "assumption; which of the two is nearer to Titan is not decided by either.")
         w("")
     w("")
     # ---------------------------------------------------------------- Venus

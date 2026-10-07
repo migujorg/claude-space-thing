@@ -8,7 +8,8 @@
 // the photometry's phase range the disk's integral is the measurement (architecture §4.3).
 //
 // TITAN_REPORT=1 also writes docs/reports/titan-renderer.json (every sample as its own bin, and the app's 12 bins, at
-// the report's phase angles) for pipeline/src/pipeline/photometry/titan_check.py; a few minutes.
+// the report's phase angles; and the frame's own disk integrals at 0–6°) for pipeline/src/pipeline/photometry/
+// titan_check.py; under a minute on the workstation.
 
 import { describe, expect, it } from 'vitest';
 import { atmosphereFor } from '../src/app/extras';
@@ -190,6 +191,18 @@ describe.skipIf(!af)('Titan drawn from its atmosphere model', () => {
     out.perSample = { wavelengthsNm: wl, A };
     const app = titanModel();
     out.appBins = { wavelengthsNm: app.wavelengthsNm, weights: app.weights, A: await run(app) };
+    // What the frame scales to the disk photometry (frame.ts modelDisk): the app's model folded to X, Y, Z, S as the
+    // shaders compose it (modelDiskXYZS with the surface's channel equivalents), at the frame's 1° phase bins and grid.
+    await tick();
+    const tab = precomputeAtmosphere(app);
+    const G = new ProfileGrid(app, 512);
+    const rho = af!.bodies['606'].surfaceReflectance!.value!.channelEquivalents;
+    const bins = [0, 1, 2, 3, 4, 5, 6];
+    out.frameModel = {
+      what: 'The disk-integrated reflectance X, Y, Z, S of the app\'s model as the frame computes it to scale the model to the disk photometry (frame.ts modelDisk; atmosphere.ts modelDiskXYZS: the air\'s light plus the surface term with the surface\'s channel equivalents), at its 1° phase bins; the frame interpolates linearly between them.',
+      phasesDeg: bins,
+      A: bins.map((a) => { const d = modelDiskXYZS(app, tab, G, dir(a), [0, 0, 1]); return [0, 1, 2, 3].map((c) => d.air[c] + rho[c] * d.surface[c]); }),
+    };
     fs.writeFileSync(OUT_PATH, JSON.stringify(out) + '\n');
   }, 3600000);
 });

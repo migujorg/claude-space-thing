@@ -9,6 +9,11 @@ approximations (those are tested against the same reference in app/tests/render-
   and medium NAC filters inside 360-830 nm, band-averaged with the SVO system responses; the two methane filters are
   listed too, but the model's 10 nm sampling (box-averaged absorption) cannot resolve their 5 nm passbands.
 
+The renderer does not put the model's own brightness on the screen: it scales the model per channel to Titan's disk
+photometry (app/src/render/frame.ts; docs/rendering-earth.md §8 "Titan"). `normalization` gives those factors, from
+the renderer's own disk integrals and the photometry of photometry.json; the comparisons above stay the finding
+about the model.
+
 Nothing here feeds back into the model.
 """
 
@@ -20,7 +25,7 @@ import math
 import numpy as np
 
 from ..paths import REPO
-from . import albedo, atmo, atmo_bodies as ab, filters, solar
+from . import albedo, atmo, atmo_bodies as ab, filters, moons, solar
 from .common import read_table_json
 from .titan_digitize import read_iss
 
@@ -193,10 +198,45 @@ def renderer_check(m: dict) -> dict | None:
             "iss": iss}
 
 
+def disk_photometry(alpha_deg: float) -> np.ndarray:
+    """Titan's disk photometry p·Φ(α) per channel X, Y, Z, S as photometry.json has it, as reflectances (over the
+    Sun's XYZS): Karkoschka's albedo at 5.7° × the zero-phase factor × the phase function (moons.titan_spectrum,
+    moons.titan_phase), valid inside the phase function's range."""
+    k98, _ = karkoschka_57()
+    fac = read_table_json("garcia_munoz_2017_titan.json")["zero_phase_factor"]
+    pf = moons.titan_phase().function
+    if not pf["minDeg"] <= alpha_deg <= pf["maxDeg"]:
+        raise ValueError(f"phase {alpha_deg}° outside Titan's phase function ({pf['minDeg']}-{pf['maxDeg']}°)")
+    dm = sum(c * alpha_deg ** i for i, c in enumerate(pf["coeffs"]))
+    return xyzs_of_fine(k98) * fac * 10.0 ** (-0.4 * dm)
+
+
+def normalization() -> dict | None:
+    """What the renderer draws: its model scaled per channel by measured p·Φ(α) over the model's own disk integral
+    (app/src/render/frame.ts). The model's integrals are the frame's own (titan-renderer.json `frameModel`: its 12
+    bins, the surface's channel equivalents, its 1° phase bins, linear between them); the factors are computed in
+    the app at run time, and here the same way for the report. Beyond the phase function's range the app holds the
+    factors of the range's edge."""
+    if not RENDERER_JSON.exists():
+        return None
+    with open(RENDERER_JSON) as f:
+        fm = json.load(f).get("frameModel")
+    if not fm:
+        return None
+    deg, A = np.array(fm["phasesDeg"], float), np.array(fm["A"])
+    pf = moons.titan_phase().function
+    rows = []
+    for a in sorted({0.0, 1.0, 2.0, 3.0, 4.0, 5.0, float(pf["maxDeg"])}):
+        meas = disk_photometry(a)
+        model = np.array([np.interp(a, deg, A[:, c]) for c in range(4)])
+        rows.append({"alpha": a, "measured": meas.tolist(), "model": model.tolist(), "factor": (meas / model).tolist()})
+    return {"range": [float(pf["minDeg"]), float(pf["maxDeg"])], "rows": rows}
+
+
 def results() -> dict:
     m = mc()
     return {"mc": {"photons": m["photonsPerSample"], "samples": int(m["wl"].size)}, "spectrum": spectrum_check(m),
-            "iss": iss_check(m), "renderer": renderer_check(m)}
+            "iss": iss_check(m), "renderer": renderer_check(m), "normalization": normalization()}
 
 
 def main() -> None:
@@ -223,6 +263,11 @@ def main() -> None:
         for name, f in rr["iss"].items():
             print(f"  {name}: median measured/renderer {f['median_ratio']:.3f}, {100 * f['within_20pct']:.0f} % within "
                   "±20 %: " + "  ".join(f"{b['lo']}-{b['hi']}:{b['median_ratio']:.2f}" for b in f["bins"]))
+    nz = r["normalization"]
+    if nz:
+        for row in nz["rows"]:
+            print(f"drawn: at {row['alpha']:.1f}° the model is scaled by", [round(x, 4) for x in row["factor"]],
+                  "(measured p·Φ", [round(x, 4) for x in row["measured"]], "over model", [round(x, 4) for x in row["model"]], ")")
 
 
 if __name__ == "__main__":

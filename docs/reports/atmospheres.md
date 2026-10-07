@@ -82,7 +82,7 @@ Direct sunlight reddens with air mass (plane-parallel air mass; near the horizon
 
 ## Titan
 
-Five components over a surface (`surfaceReflectance`), all from the Huygens descent (landing site, 10° S, January 2005) and used for the whole globe; Titan is drawn from them alone (docs/rendering-earth.md §8 "Titan"), so its disk-integrated brightness and colour are a test of these numbers (below).
+Five components over a surface (`surfaceReflectance`), all from the Huygens descent (landing site, 10° S, January 2005) and used for the whole globe. Titan's resolved disk is drawn from them (docs/rendering-earth.md §8 "Titan"): they give the picture's spatial pattern, and the renderer scales it per channel to Titan's disk photometry ("What is drawn", below). The model's own disk-integrated brightness and colour, before that scaling, are a test of these numbers, and the test is reported first.
 
 - **Haze extinction** (DISR model, Tomasko et al. 2008 via Bazzon et al. 2014): τ = 8.63 at 531 nm, 8.11 at 550 nm, 6.04 at 650 nm, 3.25 at 940 nm, 2.61 at 1080 nm; Vincendon & Langevin (2010) quote Tomasko et al.'s total as 2.6 at 1.08 µm. The haze is three components sharing this extinction (below 80 km; above 80 km with weights 1 − w and w, w = (z − 80 km)/120 km), so that its albedo can change with altitude as Doose et al. (2016) prescribe; their columns add to τ(550) = 8.10.
 - **Haze single-scattering albedo** (Doose et al. 2016, paywalled; digitized from the vector drawing of Barnes et al. 2018, Fig. 4, free to read; `tables/titan_doose_2016_ssa.csv`, `titan_digitize.py`): above 200 km 0.844 at 500 nm, 0.917 at 650 nm, 0.936 at 800 nm; below 80 km 0.940, 0.988, 1.000. The two curves obey Doose et al.'s rule ω(< 80 km) = (0.565 + ω(> 200 km))/1.5 (Es-sayeh et al. 2023) to 0.0005. Below 500 nm Doose et al. give nothing ("poorly constrained shortwards of 490 nm", García Muñoz et al. 2017): the above-200-km curve is continued linearly (the line through its 500–600 nm vertices) and the other by the rule, giving 0.791 / 0.904 at 400 nm — an extrapolation, and the model's largest error (below).
@@ -130,26 +130,45 @@ The renderer's CPU twin (`atmosphere.ts` `diskReflectanceSpectral`, the tables a
 
 | α | 6° | 10° | 20° | 30° | 40° | 50° | 60° | 70° | 80° | 90° | 100° | 110° | 120° | 130° | 140° | 150° | 155° | 160° | 163° | 166° | 169° |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| min | 0.99 | 0.99 | 0.97 | 1.00 | 0.98 | 0.98 | 0.97 | 0.95 | 0.94 | 0.94 | 0.90 | 0.91 | 0.90 | 0.88 | 0.86 | 0.82 | 0.83 | 0.83 | 0.86 | 0.89 | 0.91 |
-| median | 1.04 | 1.04 | 1.04 | 1.03 | 1.02 | 1.01 | 1.01 | 1.00 | 1.00 | 0.98 | 0.97 | 0.96 | 0.95 | 0.95 | 0.91 | 0.89 | 0.89 | 0.90 | 0.92 | 0.94 | 0.96 |
-| max | 1.08 | 1.08 | 1.08 | 1.07 | 1.08 | 1.05 | 1.05 | 1.05 | 1.08 | 1.05 | 1.10 | 1.08 | 1.07 | 1.06 | 0.99 | 0.95 | 1.05 | 0.99 | 0.98 | 0.99 | 1.01 |
+| min | 0.98 | 0.98 | 0.97 | 1.00 | 0.98 | 0.97 | 0.96 | 0.95 | 0.93 | 0.93 | 0.89 | 0.90 | 0.88 | 0.87 | 0.85 | 0.81 | 0.82 | 0.83 | 0.86 | 0.89 | 0.91 |
+| median | 1.03 | 1.03 | 1.03 | 1.03 | 1.02 | 1.01 | 1.00 | 0.99 | 0.99 | 0.97 | 0.96 | 0.94 | 0.94 | 0.93 | 0.90 | 0.88 | 0.88 | 0.89 | 0.92 | 0.94 | 0.96 |
+| max | 1.07 | 1.08 | 1.07 | 1.06 | 1.07 | 1.05 | 1.04 | 1.04 | 1.07 | 1.04 | 1.09 | 1.06 | 1.06 | 1.04 | 0.98 | 0.95 | 1.05 | 0.99 | 0.98 | 0.99 | 1.01 |
 | reference 1σ | 0.02 | 0.02 | 0.02 | 0.02 | 0.02 | 0.02 | 0.03 | 0.03 | 0.03 | 0.03 | 0.03 | 0.04 | 0.04 | 0.04 | 0.04 | 0.03 | 0.03 | 0.03 | 0.03 | 0.03 | 0.02 |
 
 The reference's own noise per sample and phase bin (last row: its median over the samples, 2–4 %) accounts for much of the spread between min and max; the median over the 48 samples is the renderer's systematic error, known to about 0.6 %.
 
-Against Karkoschka at 5.7° (pass: within 2σ = ±8 % per channel; the renderer at 6.04°, where its light differs from that at 5.7° by about 0.1 %): with the app's 12 bins of 4 samples X, Y, Z, S = 1.017, 1.018, 1.126, 1.057 of observed (1.033, 1.029, 1.120, 1.060 with every sample its own bin), that is 1.024, 1.028, 1.033, 1.028 of the reference: the renderer's own approximation adds 2.4–3.3 % at this phase. Colour x, y 0.3717, 0.3745 against 0.3811, 0.3838 (Δu′v′ 0.0060). X PASS (+1.7 %), Y PASS (+1.8 %), Z FAIL (+12.6 %), S PASS (+5.7 %).
+Against Karkoschka at 5.7° (pass: within 2σ = ±8 % per channel; the renderer at 6.04°, where its light differs from that at 5.7° by about 0.1 %): with the app's 12 bins of 4 samples X, Y, Z, S = 1.012, 1.012, 1.119, 1.051 of observed (1.027, 1.023, 1.113, 1.053 with every sample its own bin), that is 1.018, 1.023, 1.027, 1.022 of the reference: the renderer's own approximation adds 1.8–2.7 % at this phase. Colour x, y 0.3717, 0.3746 against 0.3811, 0.3838 (Δu′v′ 0.0059). X PASS (+1.2 %), Y PASS (+1.2 %), Z FAIL (+11.9 %), S PASS (+5.1 %).
 
-Against the ISS phase curves (pass: each range's median within 2σ = ±20 %; measured / renderer):
+Against the ISS phase curves (pass: each range's median within 2σ = ±20 %; measured / renderer; the renderer's model as it is, before the scaling of "What is drawn"):
 
 | filter | all | 0–30° | 30–60° | 60–90° | 90–120° | 120–150° | 150–160° | 160–170° | result |
 |---|---|---|---|---|---|---|---|---|---|
-| BL1_CL2 | 0.83 | 0.87 | 0.83 | 0.82 | 0.91 | 0.98 | 0.84 | 0.77 | FAIL (160–170°) |
-| CL1_GRN | 0.99 | 1.00 | 0.98 | 0.98 | 1.03 | 1.06 | 0.84 | 0.78 | FAIL (160–170°) |
-| CL1_CB1 | 1.00 | 1.04 | 0.97 | 1.00 | 1.02 | 1.07 | 0.85 | 0.80 | FAIL (160–170°) |
-| RED_CL2 | 0.97 | 0.98 | 0.97 | 0.97 | 1.04 | 1.09 | 0.89 | 0.82 | PASS |
-| CL1_CB2 | 0.92 | 0.94 | 0.91 | 0.91 | 0.97 | 1.06 | 0.88 | 0.82 | PASS |
-| CL1_MT1 | 0.93 | 0.94 | 0.92 | 0.93 | 0.99 | 1.05 | 0.83 | 0.79 | FAIL (160–170°) * |
-| CL1_MT2 | 0.86 | 0.87 | 0.86 | 0.83 | 0.92 | 1.01 | 0.86 | 0.80 | PASS * |
+| BL1_CL2 | 0.84 | 0.87 | 0.84 | 0.83 | 0.92 | 0.99 | 0.84 | 0.77 | FAIL (160–170°) |
+| CL1_GRN | 0.99 | 1.01 | 0.99 | 0.99 | 1.04 | 1.08 | 0.85 | 0.79 | FAIL (160–170°) |
+| CL1_CB1 | 1.01 | 1.05 | 0.98 | 1.01 | 1.03 | 1.09 | 0.86 | 0.80 | FAIL (160–170°) |
+| RED_CL2 | 0.98 | 0.98 | 0.97 | 0.98 | 1.05 | 1.11 | 0.90 | 0.82 | PASS |
+| CL1_CB2 | 0.93 | 0.94 | 0.92 | 0.92 | 0.99 | 1.08 | 0.89 | 0.83 | PASS |
+| CL1_MT1 | 0.94 | 0.94 | 0.93 | 0.93 | 1.01 | 1.07 | 0.84 | 0.79 | FAIL (160–170°) * |
+| CL1_MT2 | 0.86 | 0.87 | 0.86 | 0.84 | 0.93 | 1.03 | 0.86 | 0.80 | PASS * |
+
+### What is drawn
+
+Disk photometry is the app's absolute calibration of a body's brightness and colour (docs/architecture.md §4.3, §4.4), so the model's own level does not reach the screen. The renderer scales the model's radiance in each channel by the measured p·Φ(α) of `photometry.json` (Karkoschka's albedo, above) over the model's own disk integral (`app/src/render/frame.ts`; docs/rendering-earth.md §8 "Titan"): inside the photometry's phase range, 0–5.7°, the drawn disk's integral is the measurement, and the model supplies the spatial pattern. The comparisons above are thus the finding about the DISR model and its extrapolated albedo; they are no longer what the picture shows. Nothing in the model is adjusted and no factor is stored: the app computes the factors each time from its own disk integral (its 12 bins, the surface's channel equivalents, 1° phase bins; `frameModel` in `titan-renderer.json`) and prints them in the renderer's warning line. The same computation here:
+
+| α | measured p·Φ (X, Y, Z, S) | model's disk integral | factor (measured / model) |
+|---|---|---|---|
+| 0° | 0.2282, 0.2226, 0.1308, 0.1726 | 0.2324, 0.2240, 0.1614, 0.1848 | 0.982, 0.994, 0.810, 0.934 |
+| 1° | 0.2274, 0.2218, 0.1303, 0.1720 | 0.2311, 0.2236, 0.1560, 0.1831 | 0.984, 0.992, 0.835, 0.940 |
+| 2° | 0.2266, 0.2210, 0.1298, 0.1714 | 0.2298, 0.2232, 0.1505, 0.1813 | 0.986, 0.990, 0.863, 0.946 |
+| 3° | 0.2258, 0.2203, 0.1294, 0.1709 | 0.2288, 0.2227, 0.1474, 0.1801 | 0.987, 0.989, 0.878, 0.949 |
+| 4° | 0.2251, 0.2195, 0.1289, 0.1703 | 0.2277, 0.2221, 0.1443, 0.1789 | 0.989, 0.988, 0.893, 0.952 |
+| 5° | 0.2243, 0.2188, 0.1285, 0.1697 | 0.2270, 0.2215, 0.1439, 0.1784 | 0.988, 0.987, 0.893, 0.951 |
+| 5.7° | 0.2237, 0.2182, 0.1282, 0.1693 | 0.2266, 0.2211, 0.1435, 0.1780 | 0.988, 0.987, 0.893, 0.951 |
+
+- The factors are the reciprocal of the model's excess over the measurement: at 5.7° X, Y and S are lowered by 1.2, 1.3 and 4.9 % and Z by 10.7 %; at 0° Z by 19.0 %, because the model brightens toward opposition in the blue (the backscatter peak of the 355 and 430 nm phase functions) by more than the 2 % in every channel that the photometry assumes between 5.7° and 0° (an assumption of that phase function, label `estimated`).
+- The measurement the model is scaled to carries Karkoschka's ±4 % absolute calibration (1σ) and Titan's seasonal changes of a few percent; the scaling itself is numerical (the drawn disk's integral is within 0.1 % of the measurement on the renderer's CPU twin, `app/tests/render-titan.test.ts`).
+- Beyond 5.7° the photometry says nothing (the phase function ends there), and the factors of 5.7° are held at Best estimate and Complete: an assumption, so the result is `estimated`. The ISS phase curves above are compared with the model before these factors, and they are not an input to them. In the picture every phase beyond 5.7° carries the same factors (Y −1.3 %, Z −10.7 %), so the model's excess of forward scattering beyond 150°, which the ISS curves show in every filter, is drawn as the model has it.
+- Inside the range only 5.7° is a measurement (Karkoschka's 1995 albedo). The values below it are the phase function's assumed linear rise to García Muñoz et al.'s zero-phase factor, the same in every channel, so toward opposition the scaling replaces the model's own blue backscatter peak by that assumption; which of the two is nearer to Titan is not decided by either.
 
 
 ## Venus
