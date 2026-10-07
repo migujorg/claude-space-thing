@@ -129,8 +129,9 @@ def restrict(seg: Segment, t0: float, t1: float) -> Segment:
 def _clenshaw(c: np.ndarray, s: np.ndarray, deriv: bool) -> tuple[np.ndarray, np.ndarray | None]:
     """Chebyshev series sum_k c[:, k] T_k(s) (and its d/ds) with the recurrence of SPICE CHBINT/CHBVAL.
 
-    Same operation order as SPICE, so results are bit-identical to spkgeo; that matters at 30 AU, where one
-    float64 ulp is ~1 mm.
+    For types 2/3, this SPICE operation order is bit-identical when selecting the same record (tested at
+    product starts and sampled interior epochs), including the retained source record at a trimmed final
+    boundary where full-kernel spkgeo may differ by a few ulps by selecting the neighbouring polynomial.
     """
     s2 = 2.0 * s
     w1 = w2 = w3 = np.zeros_like(s)

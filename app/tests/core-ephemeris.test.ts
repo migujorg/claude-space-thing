@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { EphemHeader } from '../src/data/schema';
 import { Ephemeris, EphemerisSet } from '../src/core/ephemeris';
+import type { LoadedSegment } from '../src/core/ephemeris';
 import type { Vec3 } from '../src/core/vec';
 import { distance, norm, sub } from '../src/core/vec';
 import { MaxTracker, fixture, loadEphemeris, loadEphemerisSet } from './core-data';
@@ -31,34 +32,110 @@ const planetary = spk.kernel.file.replace(/\.bsp$/, '');
 const de = loadEphemeris(`ephem/${planetary}`);
 const set = loadEphemerisSet();
 
+// ephem_fixtures.py writes SPICE doubles with json.dumps, without rounding: these JSON numbers round-trip
+// to the same float64 bits in JS. Horizons' printed decimal vectors below are only tolerance references.
+// Endpoint scan: all 14 planetary and 464 satellite type 2/3 segments had at most
+// 8 position ulps and 3 velocity ulps (satellite excerpts: 0); 10 adds a small margin.
+const endpointUlps = 10;
+
+function expectSpiceBits(actual: { pos: Vec3; vel: Vec3 }, reference: SpiceCase, body: string, trimmedEnd = false): void {
+  const values = [...actual.pos, ...actual.vel];
+  const refs = [...reference.pos, ...reference.vel];
+  const ours = new BigUint64Array(new Float64Array(values).buffer);
+  const spice = new BigUint64Array(new Float64Array(refs).buffer);
+  const components = ['pos.x', 'pos.y', 'pos.z', 'vel.x', 'vel.y', 'vel.z'];
+  for (let j = 0; j < components.length; j++) {
+    const detail = `${body}, et ${reference.et}, ${components[j]}: ` +
+      `ours 0x${ours[j].toString(16).padStart(16, '0')}, SPICE 0x${spice[j].toString(16).padStart(16, '0')}`;
+    if (trimmedEnd) {
+      // Full-kernel SPICE may select the following polynomial, which the product
+      // omits. Python tests verify bits against the retained source record itself.
+      // Extract the exponent so values just below powers of two use their own ulp.
+      const magnitude = (ours[j] & 0x7fffffffffffffffn) > (spice[j] & 0x7fffffffffffffffn) ? ours[j] : spice[j];
+      const exponent = Number((magnitude >> 52n) & 0x7ffn);
+      const ulp = exponent === 0 ? Number.MIN_VALUE : 2 ** (exponent - 1023 - 52);
+      expect.soft(Math.abs(values[j] - refs[j]) / ulp, detail).toBeLessThanOrEqual(endpointUlps);
+    } else {
+      expect.soft(ours[j], detail).toBe(spice[j]);
+    }
+  }
+}
+
+function atFinalRecordBoundary(s: LoadedSegment, et: number): boolean {
+  return et === s.endEt && s.endEt === s.initEt + s.n * s.intLen;
+}
+
 describe.skipIf(!de)(`Ephemeris (TS Chebyshev) vs SPICE spkgeo on the original ${spk.kernel.file}`, () => {
-  it('reproduces every segment to < 1 mm and < 1 µm/s', () => {
+  it('reproduces sampled segments exactly for types 2/3, with bounded neighbouring-polynomial endpoints', () => {
     const max = new MaxTracker();
     for (const seg of spk.segments) {
       for (const c of seg.cases) {
         if (!max.inCoverage(de!.covers(seg.target, c.et))) continue;
         const st = de!.state(seg.target, c.et);
-        expect(st!.center).toBe(seg.center);
+        expect.soft(st!.center).toBe(seg.center);
         const dp = distance(st!.pos, c.pos as [number, number, number]);
         const dv = distance(st!.vel, c.vel as [number, number, number]);
         max.add('position km', dp, `${seg.target} wrt ${seg.center}`);
         max.add('velocity km/s', dv, `${seg.target} wrt ${seg.center}`);
-        expect(dp).toBeLessThan(1e-6);
-        expect(dv).toBeLessThan(1e-9);
+        expect.soft(dp).toBeLessThan(1e-6);
+        expect.soft(dv).toBeLessThan(1e-9);
+        const loaded = de!.find(seg.target, c.et)!;
+        const type = loaded.type;
+        if (type === 2 || type === 3) {
+          expectSpiceBits(st!, c, `${seg.target} wrt ${seg.center} (${spk.kernel.file}, type ${type})`,
+                          atFinalRecordBoundary(loaded, c.et));
+        }
       }
     }
     max.report(`TS ${planetary} vs SPICE:`);
     max.requireSome('planetary SPICE fixture');
   });
+
+  // Test-only references read from NAIF de442s.bsp (Earth wrt EMB, J2000, km and km/s),
+  // sha256 54d97562a5b094d298b1b8eafa5a2e17e3e010ce85e1a366d07f003ad159323c.
+  // https://naif.jpl.nasa.gov/pub/naif/generic_kernels/spk/planets/de442s.bsp
+  // These cover the current product's start and final record boundary; a different
+  // build window skips these fixed-epoch regressions, leaving the fixture tests above.
+  const start: SpiceCase = {
+    et: 796564800,
+    pos: [-4163.183273582794, -1102.7628161510866, -626.2609799172914],
+    vel: [0.003949245124075588, -0.011198782834249004, -0.006111955247176013],
+  };
+  it.skipIf(de?.find(399, start.et)?.startEt !== start.et)('matches SPICE bits at the Earth product start', () => {
+    expectSpiceBits(de!.state(399, start.et)!, start, '399 wrt 3, de442s start');
+  });
+
+  const end: SpiceCase = {
+    et: 891950400,
+    pos: [4203.589172442336, -1258.5044564376726, -249.12683993698306],
+    vel: [0.0035798784450729736, 0.011317943080263378, 0.005789629568672616],
+  };
+  const endingRecord: SpiceCase = {
+    et: end.et,
+    pos: [4203.589172442336, -1258.5044564376726, -249.1268399369833],
+    vel: [0.003579878445072975, 0.01131794308026338, 0.005789629568672615],
+  };
+  // endingRecord comes from the Python evaluator on the full kernel's record ending
+  // here; end comes from spkgeo, which selects the next record. They differ by 8 ulps
+  // in Z (2.2737367544323206e-13 km), with identical bits for the retained record.
+  it.skipIf(!de || !de.find(399, end.et) || !atFinalRecordBoundary(de.find(399, end.et)!, end.et))(
+    'matches retained source-record bits and bounds the SPICE neighbouring-polynomial endpoint', () => {
+      const actual = de!.state(399, end.et)!;
+      expectSpiceBits(actual, endingRecord, '399 wrt 3, de442s ending source record');
+      expectSpiceBits(actual, end, '399 wrt 3, de442s full-kernel endpoint', true);
+    },
+  );
 });
 
 // Satellite products: SPICE spkgeo on the kernel excerpts (each loaded alone) vs the TS evaluator on our products.
-// Types 2 and 3 are bit-identical to SPICE; type 17 (a conic) agrees to < 1 mm (a mean longitude of ~1e5 rad has an
-// ulp of ~1e-11 rad, i.e. ~1 mm at a = 117,061 km).
+// Types 2/3 are bit-identical when selecting the same record (tested at starts and sampled interior epochs),
+// including the retained source record at a trimmed final boundary where full-kernel SPICE may select the
+// neighbouring polynomial and differ by <= 10 ulps of the larger component magnitude.
+// Type 17 (a conic) agrees to < 1 mm (a mean longitude of ~1e5 rad has an ulp of ~1e-11 rad, i.e. ~1 mm at a = 117,061 km).
 const satProducts = [...new Set(spk.satellites.map((s) => s.product))];
 const sats = new Map(satProducts.map((p) => [p, loadEphemeris(p)] as const));
 describe.skipIf([...sats.values()].some((e) => !e))('Satellite products vs SPICE spkgeo on the kernel excerpts', () => {
-  it('reproduces sampled segments of every kernel (SPK types 2, 3 and 17) to < 1 mm and < 1e-9 km/s', () => {
+  it('reproduces sampled segments of every kernel to < 1 mm and < 1e-9 km/s, types 2/3 bit for bit', () => {
     const max = new MaxTracker();
     const types = new Set<number>();
     for (const seg of spk.satellites) {
@@ -66,13 +143,16 @@ describe.skipIf([...sats.values()].some((e) => !e))('Satellite products vs SPICE
       for (const c of seg.cases) {
         if (!max.inCoverage(e.covers(seg.target, c.et))) continue;
         const st = e.state(seg.target, c.et);
-        expect(st!.center).toBe(seg.center);
+        expect.soft(st!.center).toBe(seg.center);
         const dp = distance(st!.pos, c.pos as Vec3);
         const dv = distance(st!.vel, c.vel as Vec3);
         max.add(`type ${seg.type} position km`, dp, `${seg.target} (${seg.kernel})`);
         max.add(`type ${seg.type} velocity km/s`, dv, `${seg.target} (${seg.kernel})`);
-        expect(dp, `${seg.target}`).toBeLessThan(1e-6);
-        expect(dv, `${seg.target}`).toBeLessThan(1e-9);
+        expect.soft(dp, `${seg.target}`).toBeLessThan(1e-6);
+        expect.soft(dv, `${seg.target}`).toBeLessThan(1e-9);
+        if (seg.type === 2 || seg.type === 3) {
+          expectSpiceBits(st!, c, `${seg.target} wrt ${seg.center} (${seg.kernel}, type ${seg.type})`);
+        }
         types.add(seg.type);
       }
     }

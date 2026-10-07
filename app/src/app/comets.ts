@@ -8,6 +8,7 @@
 // points. Drawing needs the position and the total-magnitude law admitted at the reality level, and 'estimated'
 // (the coma model's label) admitted too.
 
+import { LONG_PERIOD_COMET_YEARS, SECONDS_PER_JULIAN_YEAR } from '../core/constants';
 import type { CometListProduct, CometModelProduct, Label } from '../data/schema';
 import { activityOf, type CometInput } from '../render/comets/model';
 import { cometLod } from '../render/comets/lod';
@@ -16,9 +17,6 @@ import type { CoreFunctions, Vec3 } from './ports';
 import { labelAllowed, type ExistsLevel } from './reality';
 import { labelOf, numOf, sbId, type SmallBodies } from './smallbodies';
 
-const YEAR_S = 365.25 * 86400;
-/** Long-period comets (dust colour population of Jewitt 2015): orbital period above 200 yr, or unbound. */
-const LONG_PERIOD_YEARS = 200;
 /** Refresh interval of the coarse per-candidate states (s of simulated time). */
 const COARSE_S = 3600;
 
@@ -58,8 +56,8 @@ export class CometShell {
     const r = Math.hypot(...h.pos), v2 = h.vel[0] ** 2 + h.vel[1] ** 2 + h.vel[2] ** 2;
     const energy = v2 / 2 - mu / r;
     const aKm = energy < 0 ? -mu / (2 * energy) : Infinity;
-    const periodYears = Number.isFinite(aKm) ? (2 * Math.PI * Math.sqrt(aKm ** 3 / mu)) / YEAR_S : Infinity;
-    const dust = periodYears > LONG_PERIOD_YEARS ? 'longPeriod' : 'shortPeriod';
+    const periodYears = Number.isFinite(aKm) ? (2 * Math.PI * Math.sqrt(aKm ** 3 / mu)) / SECONDS_PER_JULIAN_YEAR : Infinity;
+    const dust = periodYears > LONG_PERIOD_COMET_YEARS ? 'longPeriod' : 'shortPeriod';
     const sc: SceneComet = {
       id: sbId(row), name: this.sb.name(row), rel: a.app.rel, helioPos: h.pos, helioVel: h.vel,
       M1: law.M1, K1: law.K1, totalLabel: law.label, activity, dust,
