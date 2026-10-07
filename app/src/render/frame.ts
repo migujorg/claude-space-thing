@@ -526,7 +526,8 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
         if (!atThisGeometry && measurementView.kind === 'orientation-mean') {
           const scaleLabel = b.albedoScaleLabel ?? 'estimated';
           label = worse(label, scaleLabel);
-          warnings.push(`${b.name}: albedo measurement view unstated → uniform-orientation mean ellipsoid normalization (${scaleLabel}; product bounds its uncertainty)`);
+          // The persistent calibration assumption/bound is in the sourced product
+          // and the albedo uncertainty text, rather than a warning repeated per frame.
         }
         // A point/glare carries its actual disk's rotation-mean flux at this view.
         if (atThisGeometry || resolvedShare((2 * angR) / g.pixelAngle) < 1 || !inFrame(c)) {
