@@ -1,6 +1,8 @@
 """Regenerate the app's core references: `uv run python -m pipeline.ephem_fixtures`
 (`... -m pipeline.ephem_fixtures orientation`: only core_spice_orient.json, from the kernels already in data/raw,
 at the epochs the committed file has; no network).
+`python -m pipeline.ephem_fixtures verification-originals` only downloads VERIFY_ORIGINALS to data/raw and records
+them in the download ledger; it does not read built products or write app test fixtures.
 
 Writes app/tests/fixtures/:
   horizons_geometric.json    JPL Horizons geometric SSB-centred ICRF states (independent of our pipeline)
@@ -327,11 +329,22 @@ def _write(name: str, obj: dict) -> None:
     print(f"wrote {FIXTURES / name}")
 
 
-if __name__ == "__main__":
-    import sys
-    if sys.argv[1:] == ["orientation"]:
+def cli(argv: list[str] | None = None) -> None:
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Regenerate app test fixtures, or download verification originals.")
+    parser.add_argument("command", nargs="?", choices=("orientation", "verification-originals"),
+                        help="orientation: rewrite only the lunar reference; verification-originals: download only, "
+                             "no fixture rewrites; omitted: regenerate all seven app references and fetch originals")
+    args = parser.parse_args(argv)
+    if args.command == "verification-originals":
+        for name in VERIFY_ORIGINALS:
+            fetch(f"{sat.SAT_URL}/{name}.bsp", "naif/spk-satellites-full")
+    elif args.command == "orientation":
         orientation()
-    elif sys.argv[1:]:
-        raise SystemExit("usage: python -m pipeline.ephem_fixtures [orientation]")
     else:
         main()
+
+
+if __name__ == "__main__":
+    cli()
