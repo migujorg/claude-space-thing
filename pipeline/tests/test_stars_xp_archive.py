@@ -94,6 +94,7 @@ def tap(op, monkeypatch, tmp_path):
     for mod in (sg, download):
         monkeypatch.setattr(mod, "RAW", tmp_path / "raw")
     monkeypatch.setattr(download, "_LEDGER", tmp_path / "raw" / "_downloads.json")
+    monkeypatch.setattr(download, "CACHE", tmp_path / "cache")
     monkeypatch.setattr(sg, "CACHE", tmp_path / "cache")
     monkeypatch.setattr(sg, "XP_BATCH", 4)         # several queries per pixel
     yield srv

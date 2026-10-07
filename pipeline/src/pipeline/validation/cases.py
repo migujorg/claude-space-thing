@@ -172,7 +172,21 @@ NEPTUNE = FrameCase(
            "percentile and has a +0.02 sky offset; the 15.36 s frame (sky ≈ 0) is used.",
            "Neptune's clouds (the Great Dark Spot, bright companions) move between frames; ROI means average over "
            "them, and the renderer has no time-matched cloud map for Neptune: the ROIs test the disk-integrated "
-           "albedo and the limb-darkening law."],
+           "albedo and the limb-darkening law.",
+           "The pointing fit's roll is weakly constrained on this nearly featureless disk. The recorded "
+           "validation-fit-repro starting-point probe (2026-10-07) shifted the optimizer's x start and simplex "
+           "x coordinates by 0.001 output pixel at each refinement: common roll moved +0.1835 degrees, Green "
+           "centre moved (+0.060, +0.010) pixels, and maximum finite reference I/F difference was 0.02225524 "
+           "with 198 finite-mask changes. Probe-minus-unperturbed expectations in the unperturbed build's "
+           "2-sigma tolerance units, in X/Y/Z/S order: disk-centre [0.001113690, 0.0006406582, 0.0003535027, "
+           "0.0002490441]; limb [-0.004216226, -0.002484336, -0.005605099, -0.003632766]; terminator "
+           "[-0.02169443, -0.02453043, -0.01479793, -0.02117054] (rectangle moved from [201,146,204,149] "
+           "to [201,147,204,150]); disk-integrated [0.0002161755, 0.0001308588, 0.0001121974, "
+           "0.00007234042]. Sky-near upper-limit changes were [0.0001820, 0.0001879, 0.0001960, "
+           "0.0004463] in cd/m2 (X/Y/Z) and scotopic cd/m2 (S); upper limits have no symmetric tolerance. "
+           "Sky-far was unknown in both probe builds, so no tolerance-unit sensitivity was measured there. "
+           "This diagnostic is not a roll covariance or a fitted uncertainty; the production optimizer, "
+           "start, regions and tolerance rule are unchanged."],
 )
 
 URANUS = FrameCase(
