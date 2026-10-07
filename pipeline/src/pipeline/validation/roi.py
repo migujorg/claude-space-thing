@@ -10,7 +10,9 @@ empty sky) and satisfies the angle criteria. Among qualifying windows the kind d
   terminator     lit surface, all incidence angles ≥ 65° and ≤ 88°: largest mean incidence, then smallest emission
   ring           lit ring face with radii inside [r1, r2]: the window farthest from the planet's disk
   point          lit surface: the window whose mean surface point is nearest to `lat_lon`
-  sky            no body or ring within `clear` pixels: nearest to the target and farthest from it (upper limits)
+  sky            no body or ring within `clear` pixels: nearest to the target and farthest from it (upper limits),
+                 among windows with finite reference data in every band. The data footprint applies to the
+                 window itself; the registration margin remains a geometric constraint. Ties use row-major order.
   disk-integrated  the rectangle enclosing the target's whole projected disk plus a margin (sum of all its light)
 """
 
@@ -71,9 +73,19 @@ def _wmean(a: np.ndarray, k: int) -> np.ndarray:
     return out
 
 
-def select(specs: list[RoiSpec], sub_res: dict[str, np.ndarray], sub: int) -> list[Roi]:
+class NoSkyWindowError(ValueError):
+    """A requested sky ROI has no geometrically eligible window recorded in every band."""
+
+
+def select(specs: list[RoiSpec], sub_res: dict[str, np.ndarray], sub: int,
+           *, refs: list[np.ndarray] | None = None) -> list[Roi]:
     cls_sub, tgt_sub = sub_res["cls"], sub_res["tgt"]
     cls, tgt = g.uniform_class(cls_sub, tgt_sub, sub)
+    valid = None
+    if refs is not None:
+        if not refs or any(a.shape != cls.shape for a in refs):
+            raise ValueError("reference bands must be nonempty and match the geometric pixel grid")
+        valid = np.logical_and.reduce([np.isfinite(a) for a in refs])
     pv = {k: g.pixel_view(np.nan_to_num(sub_res[k], nan=0.0), sub) for k in ("inc", "emi", "pha", "mu0", "mu")}
     inc_max = g.pixel_view(np.nan_to_num(sub_res["inc"], nan=180.0), sub, "max")
     inc_min = g.pixel_view(np.nan_to_num(sub_res["inc"], nan=0.0), sub, "min")
@@ -131,6 +143,10 @@ def select(specs: list[RoiSpec], sub_res: dict[str, np.ndarray], sub: int) -> li
         else:
             raise ValueError(s.kind)
         tl = _windows(mask, k, s.margin)
+        if s.kind in ("sky-near", "sky-far") and valid is not None:
+            tl &= _windows(valid, k, 0)
+            if not tl.any():
+                raise NoSkyWindowError(f"{s.id}: no sky window with data in all bands")
         if not tl.any():
             continue
         sc = np.where(tl, np.nan_to_num(score, nan=-np.inf), -np.inf)

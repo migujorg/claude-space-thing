@@ -1111,10 +1111,10 @@
    "note": null,
    "target": 899,
    "rect": [
-    1,
-    1,
-    6,
-    6
+    25,
+    13,
+    30,
+    18
    ],
    "pixels": 25,
    "geometry": {
@@ -1127,18 +1127,18 @@
      "filter": "voyager.nac.Violet",
      "product": "C1109146",
      "iof": {
-      "mean": null,
-      "std": null,
-      "n": 0,
+      "mean": -0.002326195,
+      "std": 0.0007467659,
+      "n": 25,
       "nInRect": 25
      },
      "sigmaRel": {
       "calibration": 0.1,
-      "noise": null,
-      "registration": null
+      "noise": 0.0642,
+      "registration": 1.04988
      },
      "bandRadiance": {
-      "value": null,
+      "value": -1.253309e-06,
       "sigma": null,
       "unit": "W m-2 sr-1 nm-1",
       "bandSolarIrradiance1AU": 1.545158
@@ -1148,18 +1148,18 @@
      "filter": "voyager.nac.Green",
      "product": "C1109140",
      "iof": {
-      "mean": null,
-      "std": null,
-      "n": 0,
+      "mean": -0.0005125001,
+      "std": 0.0007600946,
+      "n": 25,
       "nInRect": 25
      },
      "sigmaRel": {
       "calibration": 0.1,
-      "noise": null,
-      "registration": null
+      "noise": 0.29662,
+      "registration": 3.28359
      },
      "bandRadiance": {
-      "value": null,
+      "value": -3.297193e-07,
       "sigma": null,
       "unit": "W m-2 sr-1 nm-1",
       "bandSolarIrradiance1AU": 1.845064
@@ -1169,18 +1169,18 @@
      "filter": "voyager.nac.Orange",
      "product": "C1109104",
      "iof": {
-      "mean": null,
-      "std": null,
-      "n": 0,
+      "mean": -0.006276476,
+      "std": 0.001126231,
+      "n": 25,
       "nInRect": 25
      },
      "sigmaRel": {
       "calibration": 0.1,
-      "noise": null,
-      "registration": null
+      "noise": 0.03589,
+      "registration": 0.24846
      },
      "bandRadiance": {
-      "value": null,
+      "value": -3.935167e-06,
       "sigma": null,
       "unit": "W m-2 sr-1 nm-1",
       "bandSolarIrradiance1AU": 1.798077
@@ -1188,9 +1188,16 @@
     }
    ],
    "expected": {
-    "type": "none",
-    "label": "unknown",
-    "method": "no valid sky pixels in this window (not recorded by the instrument)"
+    "type": "upper-limit",
+    "upperLimitXYZS": [
+     0.1024229,
+     0.1057531,
+     0.1103354,
+     0.2511935
+    ],
+    "comparison": "every channel of the renderer's mean radiance over rect ≤ upperLimitXYZS",
+    "label": "derived",
+    "method": "Largest band I/F in the window + 2 × its pixel standard deviation (I/F 0.00225), converted with a solar (grey) spectrum. The camera's scattered light and the calibration's zero level make this an upper limit on the true sky."
    }
   }
  ],
