@@ -7,6 +7,8 @@
 // window.__frameReady is set once the renderer and the data are ready (window.__frameError on failure).
 
 import { loadAll } from '../data/load';
+import { validationSampling } from './sampling.mjs';
+
 import type { ValidationCase } from '../data/schema';
 import { Renderer } from '../render/renderer';
 import { regionStats } from '../render/hdrReadback';
@@ -69,7 +71,7 @@ async function main(): Promise<void> {
   const missing = loaded.report.products.filter((p) => p.status === 'missing' || p.status === 'error').map((p) => p.path);
 
   async function run(c: ValidationCase, opts: ValidationOptions = {}): Promise<RunResult> {
-    const ss = Math.max(1, Math.round(opts.ss ?? 1));
+    const ss = validationSampling(opts.ss);
     const scene = validationScene(c, data, opts);
     const W = c.view.camera.width, H = c.view.camera.height;
     renderer.resize(W * ss, H * ss, 1);

@@ -330,6 +330,80 @@ def findings(cases: list[dict]) -> str:
 
 
 RUN_REPORT = REPO / "app" / "shots" / "validation" / "report.json"
+CONVERGENCE_REPORT = RUN_REPORT.with_name("sampling-convergence.json")
+
+
+def recorded_sampling(run: dict) -> int:
+    """A report must never assume the sampling of a run (including old runs)."""
+    ss = (run.get("options") or {}).get("ss")
+    if type(ss) is not int or ss < 1:
+        raise ValueError("run must record sampling as a positive integer in options.ss; rerun validation")
+    if any(c.get("ss", ss) != ss for c in run.get("cases", []) if not c.get("error")):
+        raise ValueError("run must record consistent sampling in options.ss and each case")
+    return ss
+
+
+def sampling_header(run: dict | None) -> str:
+    if run is None:
+        return "**Rendered sampling:** unknown (no renderer run supplied).\n\n"
+    ss = recorded_sampling(run)
+    return f"**Rendered sampling:** {ss} × {ss} = {ss * ss} samples per pixel (recorded in the run).\n\n"
+
+
+def _sampling_rows(run: dict) -> list[tuple]:
+    rows = []
+    for c in run["cases"]:
+        if c.get("error"):
+            raise ValueError("sampling convergence contains a case that did not render")
+        for q in c.get("rois", []):
+            rows.append((c["id"], q["id"], q["rendered"]["mean"], q["pass"], q["failing"]))
+        for q in c.get("ratios", []):
+            rows.append((c["id"], f"{q['numerator']} / {q['denominator']}", q["rendered"], q["pass"], q["failing"]))
+    return rows
+
+
+def convergence_section(run: dict, path=None) -> str:
+    """Optional sweep evidence from scripts/validate-sampling.mjs; refuse stale/mismatched evidence."""
+    path = CONVERGENCE_REPORT if path is None else path
+    if not path.exists():
+        return ""
+    sweep = json.loads(path.read_text(encoding="utf-8"))
+    runs = sweep.get("runs", [])
+    if sweep.get("schema") != "validation-sampling-v1" or [recorded_sampling(r) for r in runs] != [1, 2, 3, 4, 6]:
+        raise ValueError("sampling convergence must record the 1, 2, 3, 4, 6 grids")
+    if run not in runs:
+        raise ValueError("sampling convergence must contain the same run being reported; rerun the sweep or remove its file")
+    identity = lambda r: (r.get("git"), r.get("dataGeneratedAt"), r.get("gpu"), r.get("dataMissing"),
+                          {k: v for k, v in r["options"].items() if k != "ss"},
+                          [(c["id"], c.get("hdrFormat")) for c in r["cases"]])
+    if any(identity(r) != identity(run) for r in runs):
+        raise ValueError("sampling convergence inputs, adapter or options differ between grids")
+    rows = [_sampling_rows(r) for r in runs]
+    if any([(q[0], q[1]) for q in rr] != [(q[0], q[1]) for q in rows[0]] for rr in rows):
+        raise ValueError("sampling convergence region sets differ between grids")
+    columns = " | ".join(f"{r['options']['ss']} × {r['options']['ss']}" for r in runs)
+    L = ["### Sampling convergence", "",
+         f"Sweep of {runs[0]['generatedAt']} through {runs[-1]['generatedAt']} (git {run.get('git')}, "
+         f"data {run.get('dataGeneratedAt')}){rendered_by(run)}. "
+         "Source: `app/shots/validation/sampling-convergence.json` (`cd app && node scripts/validate-sampling.mjs`).",
+         "", "Every ROI and ratio, all channels. ROI X/Y/Z: cd/m²; S: scotopic cd/m²; ratios: dimensionless. "
+         "Δ 4→6 = 100 × (value at 4 / value at 6 − 1); zero/zero is 0%, nonzero/zero is unknown. "
+         "These finite grids show convergence evidence, not a proof. Choose the coarsest stable grid by the values "
+         "and every verdict; a stable tally alone is insufficient. No law, source or tolerance is selected here.", "",
+         f"| case | region | channel | {columns} | Δ 4→6 |", "|---|---|---|---|---|---|---|---|---|"]
+    for i, q in enumerate(rows[0]):
+        for k, ch in enumerate(CH):
+            values = [rr[i][2][k] if rr[i][2] else None for rr in rows]
+            a, b = values[3], values[4]
+            delta = None if a is None or b is None or not math.isfinite(a) or not math.isfinite(b) else (100 * (a / b - 1) if b else (0 if a == 0 else None))
+            ds = "—" if delta is None else f"{'+' if delta >= 0 else ''}{_g(delta, 6)} %"
+            L.append(f"| `{q[0]}` | {q[1]} | {ch} | " + " | ".join(_g(v, 7) for v in values) + f" | {ds} |")
+    L += ["", f"| case | region | {columns} |", "|---|---|---|---|---|---|---|"]
+    for i, q in enumerate(rows[0]):
+        verdicts = ["not compared" if rr[i][3] is None else "pass" if rr[i][3] else f"fail ({''.join(rr[i][4])})" for rr in rows]
+        L.append(f"| `{q[0]}` | {q[1]} | " + " | ".join(verdicts) + " |")
+    return "\n".join(L) + "\n\n"
+
 
 
 def _g(v, d=4):
@@ -352,6 +426,7 @@ def rendered_by(run: dict) -> str:
 
 def run_section(run: dict, interpretation: str) -> str:
     """§7: the renderer's run (`npm run validate`, app/shots/validation/report.json): Y per ROI and the verdicts."""
+    recorded_sampling(run)
     o = run["options"]
     cmd = "cd app && npm run validate" + (" -- --gpu hardware" if (run.get("gpu") or {}).get("mode") == "hardware" else "")
     L = ["## 7. The renderer against the cases\n",
@@ -391,8 +466,10 @@ def run_section(run: dict, interpretation: str) -> str:
 
 
 def write(extra_sections: str = "", run: dict | None = None, run_interpretation: str = "") -> None:
+    sampling = sampling_header(run)  # validate before reading inputs or replacing the report
+    convergence = convergence_section(run) if run is not None else ""
     cases = [json.loads(p.read_text(encoding="utf-8")) for p in sorted((VALIDATION / "cases").glob("*/case.json"))]
-    parts = [HEADER, "## 4. The cases\n\n", summary_table(cases), "\n",
+    parts = [HEADER.replace("\n\n", "\n\n" + sampling, 1), "## 4. The cases\n\n", summary_table(cases), "\n",
              "Sizes: `validation/` holds only case.json, reference.bin (float32 I/F on the view grid) and "
              "preview.png per case; the downloaded images are fetched into `data/raw/validation/` (git-ignored) "
              "and may be deleted after the build (`clean`).\n\n"]
@@ -400,8 +477,9 @@ def write(extra_sections: str = "", run: dict | None = None, run_interpretation:
         parts.append(case_section(c) + "\n")
     parts.append(findings(cases))
     parts.append(extra_sections)
-    if run:
+    if run is not None:
         parts.append("\n" + run_section(run, run_interpretation))
+        parts.append("\n" + convergence)
     REPORT.write_text("".join(parts), encoding="utf-8", newline="\n")
 
 
