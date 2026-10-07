@@ -90,7 +90,7 @@ struct FOut {
     if (mu <= 1e-3) { mu = max(dot(Ng, V), 1e-3); }
     let mu0 = dot(N, S);
     if (mu0 > 0.0) {
-      let g = acos(clamp(dot(S, V), -1.0, 1.0));
+      let g = vectorAngle(S, V);
       var sh = 1.0;
       if (U.info.z > 0.5) { sh = selfShadow(in.ls, dot(Ng, S)); }
       L = b.rad * U.info.y * lawRadf(mu0, mu, g, b.law0, b.law1, b.law2) * (sunVisible(b, in.pb) * ringShadowT(b, in.pb) * sh);

@@ -2,6 +2,15 @@
 // spatial.ts), surface-map virtual texturing (mirror of surface.ts), height normals and self-shadowing,
 // rings (mirror of rings.ts) and the "not measured" gap hatch.
 
+/** Vector angle: keeps the transverse component at opposition and at conjunction.
+ * Unlike acos(dot), this does not amplify cosine rounding near either endpoint.
+ * Inputs must be nonzero directions; they need not be exactly unit length. */
+export const ANGLE_WGSL = /* wgsl */ `
+fn vectorAngle(a: vec3f, b: vec3f) -> f32 {
+  return atan2(length(cross(a, b)), dot(a, b));
+}
+`;
+
 /** Spatial laws (spatial.ts lawRadf). Uses the Body fields law0..law2. */
 export const LAW_WGSL = /* wgsl */ `
 fn hFn2002(x: f32, w: f32) -> f32 {
@@ -221,7 +230,7 @@ fn surfLevel(R: f32, fp: f32, maxL: f32) -> u32 {
 `;
 
 /** Ring profile access and physics (rings.ts), plus the disk-overlap helper shared with eclipses. */
-export const RING_COMMON = /* wgsl */ `
+export const RING_COMMON = ANGLE_WGSL + /* wgsl */ `
 struct Ring {
   n: vec4f,     // FAR: unit direction to the centre, w = D (km)
   e1: vec4f,    // tangent basis, w = quad half-extent (tan units)
@@ -828,7 +837,7 @@ fn cmpTorus(R: Ring, o: vec3f, d: vec3f, tMax: f32, alphaDeg: f32) -> TorusOut {
   let mu = abs(vN);
   let mu0 = abs(sN);
   let lit = vN * sN > 0.0;
-  let alphaDeg = degrees(acos(clamp(dot(S, V), -1.0, 1.0)));
+  let alphaDeg = degrees(vectorAngle(S, V));
   var L = vec4f(0.0);
   var reflKnown = false;
   if (R.ph.x >= 0.0) {
@@ -865,7 +874,7 @@ fn fsComponents(R: Ring, X: vec3f, t: f32, dir: vec3f, r: f32, fw: f32) -> FOut 
   let mu = abs(vN);
   let mu0 = abs(sN);
   let lit = vN * sN > 0.0;
-  let alphaDeg = degrees(acos(clamp(dot(S, V), -1.0, 1.0)));
+  let alphaDeg = degrees(vectorAngle(S, V));
   let tPlanet = planetHitT(R, R.o.xyz, dirN) / max(length(dir), 1e-30);
   var L = vec4f(0.0);
   var unk = 0.0;
