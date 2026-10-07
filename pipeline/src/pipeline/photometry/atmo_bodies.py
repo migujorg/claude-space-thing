@@ -10,8 +10,8 @@ from functools import lru_cache
 import numpy as np
 
 from . import atmo
-from .atmo_sources import HASI_DESCENT, HASI_ENTRY, PECK_KHANNA_N2
-from .common import read_table_json
+from .atmo_sources import HASI_DESCENT, HASI_ENTRY, HUYGENS_DTWG_DESCENT, HUYGENS_GCMS_CH4, PECK_KHANNA_N2
+from .common import read_table_csv, read_table_json
 
 K_B = 1.380649e-23          # J/K, SI defining constant (2019)
 
@@ -100,6 +100,166 @@ def titan_haze_beta(z_km: np.ndarray, lam_nm: np.ndarray) -> np.ndarray:
     z = np.asarray(z_km, float)[:, None]
     return np.where(z > 80.0, t80 / h * np.exp(-(z - 80.0) / h), np.where(z >= 30.0, t30 / 50.0 + 0 * z,
                                                                           t0 / 30.0 + 0 * z))
+
+
+# ---------------------------------------------------------------------------------------------- Titan haze optics
+def _ssa_rows() -> dict[str, tuple[np.ndarray, np.ndarray]]:
+    rows = read_table_csv("titan_doose_2016_ssa.csv")
+    out = {}
+    for curve in ("above_200km", "below_80km"):
+        r = [(float(x["wavelength_nm"]), float(x["ssa"])) for x in rows if x["curve"] == curve]
+        a = np.array(r)
+        out[curve] = (a[:, 0], a[:, 1])
+    return out
+
+
+def doose_rule(omega_top: np.ndarray) -> np.ndarray:
+    """Doose et al. (2016): ω(z < 80 km) = (0.565 + ω(z > 200 km)) / 1.5 (Es-sayeh et al. 2023; Rannou et al. 2026)."""
+    r = TITAN["doose_2016_ssa_rule"]
+    return (r["offset"] + np.asarray(omega_top, float)) / r["divisor"]
+
+
+def titan_ssa_extrapolation() -> tuple[float, float]:
+    """(slope per nm, intercept) of the line through the digitized above-200-km albedo over the fit range."""
+    lam, w = _ssa_rows()["above_200km"]
+    lo, hi = TITAN["doose_2016_ssa_extrapolation"]["fit_range_nm"]
+    s = (lam >= lo) & (lam <= hi)
+    k, c = np.polyfit(lam[s], w[s], 1)
+    return float(k), float(c)
+
+
+def titan_ssa(lam_nm: np.ndarray) -> dict[str, np.ndarray]:
+    """Haze single-scattering albedo above 200 km ('top') and below 80 km ('low') at air wavelengths lam_nm (the
+    figure's axis is in µm without an air/vacuum statement; the difference, 0.15 nm, is far below its resolution).
+    Digitized curves (linear between vertices) from their first vertex (499.8 nm) on; shortward, the top curve
+    continued linearly (titan_ssa_extrapolation) and the low one from Doose's rule. Capped at 1. 'extrapolated'
+    marks the wavelengths below the first vertex."""
+    rows = _ssa_rows()
+    lam = np.asarray(lam_nm, float)
+    lt, wt = rows["above_200km"]
+    ll, wl = rows["below_80km"]
+    k, c = titan_ssa_extrapolation()
+    first = max(lt[0], ll[0])
+    ext = lam < first
+    top = np.where(ext, k * lam + c, np.interp(lam, lt, wt))
+    low = np.where(ext, doose_rule(k * lam + c), np.interp(lam, ll, wl))
+    return {"top": np.clip(top, 0.0, 1.0), "low": np.clip(low, 0.0, 1.0), "extrapolated": ext, "first_nm": first}
+
+
+def titan_upper_weight(z_km: np.ndarray) -> np.ndarray:
+    """Weight of the above-200-km albedo: 0 below 80 km, 1 above 200 km, linear between (Doose et al. 2016)."""
+    r = TITAN["doose_2016_ssa_rule"]
+    return np.clip((np.asarray(z_km, float) - r["below_km"]) / (r["above_km"] - r["below_km"]), 0.0, 1.0)
+
+
+def read_tomasko_phase(path) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """(angles deg, wavelengths nm, P[wavelength][angle]) of an Adamkovics refdata table (header 'deg' and wavelengths
+    in Angstrom; rows: angle then one value per wavelength)."""
+    lines = [ln.split() for ln in path.read_text(encoding="utf-8").splitlines() if ln.strip()]
+    lam = np.array([float(v) for v in lines[0][1:]]) / 10.0
+    a = np.array([[float(v) for v in ln] for ln in lines[1:]])
+    if a.shape[1] != lam.size + 1:
+        raise ValueError(f"{path}: {a.shape[1] - 1} value columns for {lam.size} wavelengths")
+    return a[:, 0], lam, a[:, 1:].T
+
+
+def mean_over_sphere_tab(angles_deg: np.ndarray, p: np.ndarray) -> np.ndarray:
+    """Mean over the sphere of tabulated phase functions p[..., angle], linear in angle between nodes (the schema's
+    interpolation), integrated on a fine angle grid."""
+    th = np.radians(np.linspace(0.0, 180.0, 18001))
+    pp = np.stack([np.interp(np.degrees(th), angles_deg, row) for row in np.atleast_2d(p)])
+    return np.trapezoid(pp * np.sin(th), th, axis=-1) / 2.0
+
+
+#: Angles of the resampled Titan phase functions: 0.25° steps through the forward peak, then 1° to 30°, 2° beyond.
+TITAN_PHASE_ANGLES = np.concatenate([np.arange(0.0, 10.0, 0.25), np.arange(10.0, 30.0, 1.0),
+                                     np.arange(30.0, 180.0 + 1e-9, 2.0)])
+
+
+def _loglinear_in_angle(ang: np.ndarray, p: np.ndarray, to: np.ndarray) -> np.ndarray:
+    return np.exp(np.stack([np.interp(to, ang, np.log(row)) for row in np.atleast_2d(p)]))
+
+
+def titan_phase_on_grid(path, grid_nm: np.ndarray) -> dict:
+    """Tomasko et al. (2008) phase functions at the product's wavelengths: linear in wavelength between the tabulated
+    wavelengths (355, 430, 491, 600, 713, 822, 935 nm in the visible), log-linear in angle between the tabulated angles
+    (39: every 1° over 0-10° and 170-180°, 5-10° apart between) onto TITAN_PHASE_ANGLES (the table's 1° steps
+    under-resolve the forward peak: linear interpolation would add 2-4 % to the integral, log-linear 0.1-1 %), each
+    row then renormalized to a mean of 1 over the sphere with
+    the schema's linear interpolation between the new nodes. Returns the table and diagnostics."""
+    ang, lam, p = read_tomasko_phase(path)
+    g = np.asarray(grid_nm, float)
+    by_lam = np.stack([np.interp(g, lam, p[:, j]) for j in range(ang.size)], axis=1)
+    out = _loglinear_in_angle(ang, by_lam, TITAN_PHASE_ANGLES)
+    norm = mean_over_sphere_tab(TITAN_PHASE_ANGLES, out)
+    raw_lin = mean_over_sphere_tab(ang, p)
+    raw_log = mean_over_sphere_tab(TITAN_PHASE_ANGLES, _loglinear_in_angle(ang, p, TITAN_PHASE_ANGLES))
+    return {"anglesDeg": TITAN_PHASE_ANGLES, "values": out / norm[:, None], "raw_lambda_nm": lam, "raw": p,
+            "raw_angles": ang, "raw_norm": raw_log, "raw_norm_linear": raw_lin, "norm": norm}
+
+
+def tab_asymmetry(angles_deg: np.ndarray, p: np.ndarray) -> np.ndarray:
+    th = np.radians(np.linspace(0.0, 180.0, 18001))
+    pp = np.stack([np.interp(np.degrees(th), angles_deg, row) for row in np.atleast_2d(p)])
+    return np.trapezoid(pp * np.cos(th) * np.sin(th), th, axis=-1) / np.trapezoid(pp * np.sin(th), th, axis=-1)
+
+
+# ---------------------------------------------------------------------------------------------- Titan methane
+def _utc_seconds(s: str) -> float:
+    import datetime as _dt
+    return _dt.datetime.fromisoformat(s.strip()).replace(tzinfo=_dt.timezone.utc).timestamp()
+
+
+@lru_cache(maxsize=1)
+def titan_methane_profile() -> dict[str, np.ndarray]:
+    """Huygens GCMS methane mole fraction (PDS, by UTC) placed at the DTWG reconstructed altitude of each UTC (PDS),
+    sorted by altitude and averaged in 1 km bins. Returns z_km, x (mole fraction), the altitude range and the raw
+    sample count."""
+    g = [ln.split(",") for ln in HUYGENS_GCMS_CH4.fetch().read_text(encoding="utf-8").splitlines()[1:] if ln.strip()]
+    t = np.array([_utc_seconds(r[0]) for r in g])
+    x = np.array([float(r[1]) for r in g])
+    d = [ln.split() for ln in HUYGENS_DTWG_DESCENT.fetch().read_text(encoding="utf-8").splitlines() if ln.strip()]
+    td = np.array([_utc_seconds(r[2]) for r in d])
+    zd = np.array([float(r[4]) for r in d])
+    o = np.argsort(td)
+    if t.min() < td.min() - 60 or t.max() > td.max() + 60:
+        raise ValueError("GCMS samples outside the DTWG descent trajectory")
+    z = np.interp(t, td[o], zd[o])
+    edges = np.arange(np.floor(z.min()), np.ceil(z.max()) + 1.0, 1.0)
+    idx = np.digitize(z, edges) - 1
+    zc, xc = [], []
+    for i in range(edges.size - 1):
+        s = idx == i
+        if s.any():
+            zc.append(float(z[s].mean()))
+            xc.append(float(x[s].mean()))
+    return {"z_km": np.array(zc), "x": np.array(xc), "z_range": (float(z.min()), float(z.max())), "n": int(t.size)}
+
+
+def titan_methane_fraction(z_km: np.ndarray) -> np.ndarray:
+    """Mole fraction at altitude z: the binned GCMS profile, held at its highest (lowest) bin above (below) it."""
+    p = titan_methane_profile()
+    return np.interp(np.asarray(z_km, float), p["z_km"], p["x"])
+
+
+@lru_cache(maxsize=1)
+def karkoschka_methane_k() -> tuple[np.ndarray, np.ndarray]:
+    """(air wavelength nm, methane absorption coefficient per km-amagat) of Karkoschka (1998), PDS 1995LOW.TAB columns
+    2 and 3 (0.4 nm sampling, 1 nm resolution, 300-1050 nm)."""
+    from . import albedo
+    d = np.loadtxt(albedo.KARKOSCHKA.fetch())
+    return d[:, 1], d[:, 2]
+
+
+def methane_k_fine(fine_air_nm: np.ndarray) -> np.ndarray:
+    """k on the 1 nm air grid: mean of the 0.4 nm samples within ±0.5 nm of each grid point (k is itself a 1 nm
+    resolution quantity; the box only resamples it)."""
+    lam, k = karkoschka_methane_k()
+    out = np.empty(np.asarray(fine_air_nm).size)
+    for i, l0 in enumerate(np.asarray(fine_air_nm, float)):
+        s = (lam >= l0 - 0.5) & (lam <= l0 + 0.5)
+        out[i] = k[s].mean() if s.any() else np.interp(l0, lam, k)
+    return out
 
 
 # ---------------------------------------------------------------------------------------------- Venus

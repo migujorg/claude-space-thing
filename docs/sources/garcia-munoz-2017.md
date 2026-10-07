@@ -7,3 +7,4 @@
 **Use:**
 - **Titan albedo spectrum:** Karkoschka (1998) PDS column 8 × 1.02. Label **estimated**, because the factor comes from their radiative-transfer model of the phase curve. See `karkoschka-1998.md`.
 - **Titan phase function:** Δm = 2.5 log₁₀(1.02) spread linearly over 0–5.7°. Label **estimated**; the linear shape is an assumption. It is unknown beyond 5.7°: the paper's Cassini ISS phase curves (0–166°) are published only as figures, and the data are "available from the corresponding author upon reasonable request".
+- **Titan's haze** (`titan-haze.md`): the surface reflectance the paper's Methods adopted (under the haze model), and the ISS phase curves of Fig. 1, digitized from the vector drawing (`tables/titan_garcia_munoz_2017_iss.csv`) to test the haze model and its rendering (docs/reports/atmospheres.md, "Titan"). They are not used for the point light's phase function above (an open step).

@@ -21,7 +21,7 @@ import numpy as np
 
 from .. import cie
 from ..schema import BuildContext, sourced, unknown, worst
-from . import albedo, atmo, atmo_bodies as ab, atmo_earth as ae, atmo_mars as am, atmo_sources as src, solar
+from . import albedo, atmo, atmo_bodies as ab, atmo_earth as ae, atmo_mars as am, atmo_sources as src, moons, solar
 
 EARTH_ALT = np.arange(0.0, 86.0 + 1e-9, 1.0)
 MARS_ALT = np.arange(0.0, 80.0 + 1e-9, 1.0)
@@ -29,6 +29,7 @@ TITAN_ALT = np.concatenate([np.arange(0.0, 150.0, 2.0), np.arange(150.0, 500.0 +
 VENUS_ALT = np.arange(60.0, 110.0 + 1e-9, 0.5)
 PLUTO_ALT = np.arange(0.0, 300.0 + 1e-9, 5.0)
 TITAN_DISR_TOP_KM = 150.0          # DISR measured from ~150 km down (Tomasko et al. 2008 via Bazzon et al. 2014)
+LOSCHMIDT_M3 = 2.686780111e25      # m^-3 at 273.15 K, 101.325 kPa (one amagat): CODATA 2018 Loschmidt constant
 LS_TABLE_STEP_DAYS = 2.0
 DEFAULT_WINDOW = (796688664.0, 891383064.0)      # the build window (TDB s) when run without a BuildContext
 
@@ -372,26 +373,137 @@ def titan(b: Build) -> tuple[dict, dict]:
         extra=separable(n, sig, "estimated", [s_hd, s_he, s_pk, s_bod],
                         "HASI number density and the N2 cross-section."))
     beta_h = ab.titan_haze_beta(alt, atmo.FINE_VAC)
-    haze, d_haze = component(
-        "haze", "Photochemical organic haze (Huygens DISR model)", alt, beta_h,
-        beta_label="estimated", beta_sources=[s_bz, s_vl, *common],
-        beta_method="The Huygens DISR haze model of Tomasko et al. (2008) as transcribed by Bazzon et al. (2014, "
-                    "eqs. A.8-A.13): cumulative optical depth τ80 = 1.012e7 λ^-2.339 above 80 km (scale height "
-                    "65 km), + τ30 = 2.029e4 λ^-1.409 linear over 30-80 km, + τ0 = 6.270e2 λ^-0.9706 linear below "
-                    "30 km (λ in nm); β = -dτ/dz. Measured by DISR from ~150 km to the surface at 350-1600 nm "
-                    f"(Bazzon: 400-1600 nm); ABOVE {TITAN_DISR_TOP_KM:.0f} km the 65 km exponential is extrapolated "
-                    "(Cassini VIMS limb data give 80 ± 10 km, Vincendon & Langevin 2010), and 360-400 nm is a power-"
-                    "law extrapolation. Landing-site (10° S, 2005) model used globally.",
-        beta_uncertainty="The haze varies with latitude and season (north-south asymmetry, detached layer near "
-                         "500 km, polar hoods) — not represented.",
-        ssa=None, ssa_method="UNKNOWN: DISR's haze single-scattering albedo (Tomasko et al. 2008 Table 2/Fig. 48; "
-                             "Doose et al. 2016) is in papers not accessible to this pipeline (Elsevier), and no "
-                             "open transcription of the values was found; 'typically 0.8-1' (Bazzon et al. 2014) is "
-                             "not a usable spectrum. Needs a hand-provided copy of Tomasko et al. (2008), "
-                             "DOI:10.1016/j.pss.2007.11.019.",
-        phase=None, phase_method="UNKNOWN: the DISR phase functions (tabulated in Tomasko et al. 2008 for above and "
-                                 "below 80 km, 355-5166 nm) are not accessible to this pipeline.",
-        ch_sources=[*common])
+    s_ph_lo, s_ph_hi, s_barnes, s_es, s_gm = b.s(src.TOMASKO_PHASE_LOW), b.s(src.TOMASKO_PHASE_HIGH), \
+        b.s(src.BARNES_2018), b.s(src.ES_SAYEH_2023), b.s(moons.GARCIA_MUNOZ)
+    s_gcms, s_dtwg, s_kark, s_k94 = b.s(src.HUYGENS_GCMS_CH4), b.s(src.HUYGENS_DTWG_DESCENT), \
+        b.s(albedo.KARKOSCHKA), b.s(moons.KARKOSCHKA_1994_TEXT)
+    beta_method = ("The Huygens DISR haze model of Tomasko et al. (2008) as transcribed by Bazzon et al. (2014, "
+                   "eqs. A.8-A.13): cumulative optical depth τ80 = 1.012e7 λ^-2.339 above 80 km (scale height "
+                   "65 km), + τ30 = 2.029e4 λ^-1.409 linear over 30-80 km, + τ0 = 6.270e2 λ^-0.9706 linear below "
+                   "30 km (λ in nm); β = -dτ/dz. Measured by DISR from ~150 km to the surface at 350-1600 nm "
+                   f"(Bazzon: 400-1600 nm); ABOVE {TITAN_DISR_TOP_KM:.0f} km the 65 km exponential is extrapolated "
+                   "(Cassini VIMS limb data give 80 ± 10 km, Vincendon & Langevin 2010), and 360-400 nm is a power-"
+                   "law extrapolation. Landing-site (10° S, 2005) model used globally. The haze is split into "
+                   "three components that share this extinction, so that the single-scattering albedo can follow "
+                   "Doose et al. (2016) in altitude (below 80 km; above 80 km with weights 1 − w and w, w = (z − 80 "
+                   "km)/120 km clipped to 0-1): their sum is the whole haze.")
+    beta_unc = ("The haze varies with latitude and season (north-south asymmetry, detached layer near 500 km, polar "
+                "hoods) — not represented. Doose et al. (2016) revised the DISR extinction profile (not accessible); "
+                "the albedos below are theirs, the extinction Tomasko et al.'s (2008).")
+    ss = ab.titan_ssa(atmo.FINE)
+    k_ext, c_ext = ab.titan_ssa_extrapolation()
+    first = ss["first_nm"]
+    rule = ab.TITAN["doose_2016_ssa_rule"]
+    ssa_method = (f"Huygens DISR haze single-scattering albedo of Doose et al. (2016): {{which}}. Digitized from the "
+                  f"vector drawing of Barnes et al. (2018, Fig. 4; tables/titan_doose_2016_ssa.csv), which plots "
+                  f"Doose et al.'s values for below 80 km and above 200 km from {first:.1f} nm; between 80 and 200 km "
+                  f"Doose et al. interpolate linearly (here: two components weighted 1 − w and w). The curves obey "
+                  f"Doose et al.'s rule ω(< 80 km) = ({rule['offset']} + ω(> 200 km))/{rule['divisor']} (as stated by "
+                  f"Es-sayeh et al. 2023 and Rannou et al. 2026) to 0.0006. ESTIMATE below {first:.0f} nm: the DISR "
+                  f"albedo is 'poorly constrained shortwards of 490 nm' (García Muñoz et al. 2017) and not plotted "
+                  f"there; the above-200-km curve is continued linearly ({k_ext * 100:.4f} per 100 nm, the line "
+                  f"through its 500-600 nm vertices), the below-80-km one by the rule; capped at 1. Landing-site "
+                  f"profile used globally.")
+    ph_lo = ab.titan_phase_on_grid(src.TOMASKO_PHASE_LOW.fetch(), atmo.GRID_NM)
+    ph_hi = ab.titan_phase_on_grid(src.TOMASKO_PHASE_HIGH.fetch(), atmo.GRID_NM)
+    phase_method = ("Huygens DISR aerosol phase function of Tomasko et al. (2008, Table 1: the fractal-aggregate "
+                    "phase functions fitted to the DISR measurements, {which}), from the machine-readable copy in the "
+                    "reference data of Adamkovics et al. (2016); linear in wavelength between the tabulated 355, 430, "
+                    "491, 600, 713, 822 and 935 nm, log-linear in angle from the table's 39 angles (every 1° over "
+                    "0-10° and 170-180°, 5-10° apart between) onto 0.25° steps through the forward peak (0-10°), 1° "
+                    "to 30° and 2° beyond (the table's 1° steps under-resolve the peak), each row "
+                    "renormalized to a mean of 1 over the sphere (the tabulated rows integrate to "
+                    "{norm_lo:.4f}-{norm_hi:.4f}). Asymmetry 0.73-0.80. ESTIMATE: a secondary transcription, "
+                    "interpolated in wavelength, the landing-site fit used globally.")
+    w = ab.titan_upper_weight(alt)[:, None]
+    low_mask = (alt <= 80.0)[:, None].astype(float)
+    common_h = dict(beta_label="estimated", beta_sources=[s_bz, s_vl, *common], beta_method=beta_method,
+                    beta_uncertainty=beta_unc, ssa_label="estimated", ssa_sources=[s_barnes, s_es, s_gm])
+    which_low = "the 'below 80 km' curve"
+    which_top = "the 'above 200 km' curve"
+    tab = lambda p: {"kind": "tabulated", "anglesDeg": _sig(p["anglesDeg"]), "values": _sig(p["values"], 4)}  # noqa: E731
+    g_lo = np.interp(atmo.FINE, atmo.GRID_NM, ab.tab_asymmetry(ph_lo["anglesDeg"], ph_lo["values"]))
+    g_hi = np.interp(atmo.FINE, atmo.GRID_NM, ab.tab_asymmetry(ph_hi["anglesDeg"], ph_hi["values"]))
+    pm_lo = phase_method.format(which="below 80 km", norm_lo=ph_lo["raw_norm"].min(), norm_hi=ph_lo["raw_norm"].max())
+    pm_hi = phase_method.format(which="above 80 km", norm_lo=ph_hi["raw_norm"].min(), norm_hi=ph_hi["raw_norm"].max())
+    haze_low, d_haze_low = component(
+        "haze-below-80km", "Photochemical haze and mist below 80 km (Huygens DISR)", alt, beta_h * low_mask,
+        ssa=ss["low"], ssa_method=ssa_method.format(which=which_low),
+        phase=tab(ph_lo), phase_label="estimated", phase_sources=[s_ph_lo], phase_method=pm_lo, g_fine=g_lo,
+        ch_sources=[*common], **common_h)
+    haze_mid, d_haze_mid = component(
+        "haze-above-80km-a", "Photochemical haze above 80 km: the share (1 − w) with the below-80-km albedo",
+        alt, beta_h * (1.0 - low_mask) * (1.0 - w),
+        ssa=ss["low"], ssa_method=ssa_method.format(which=which_low + ", weighted 1 − w above 80 km"),
+        phase=tab(ph_hi), phase_label="estimated", phase_sources=[s_ph_hi], phase_method=pm_hi, g_fine=g_hi,
+        ch_sources=[*common], **common_h)
+    haze_top, d_haze_top = component(
+        "haze-above-80km-b", "Photochemical haze above 80 km: the share w with the above-200-km albedo",
+        alt, beta_h * (1.0 - low_mask) * w,
+        ssa=ss["top"], ssa_method=ssa_method.format(which=which_top + ", weighted w above 80 km"),
+        phase=tab(ph_hi), phase_label="estimated", phase_sources=[s_ph_hi], phase_method=pm_hi, g_fine=g_hi,
+        ch_sources=[*common], **common_h)
+
+    # methane absorption: n_CH4(z) k(λ)
+    x_ch4 = ab.titan_methane_fraction(alt)
+    k_fine = ab.methane_k_fine(atmo.FINE)
+    n_ch4 = n * x_ch4
+    beta_m = (n_ch4 / LOSCHMIDT_M3)[:, None] * k_fine[None, :]          # km^-1 (k per km-amagat)
+    mp = ab.titan_methane_profile()
+    col_ch4 = float(np.trapezoid(n_ch4 / LOSCHMIDT_M3, alt))              # km-amagat
+    km = ab.TITAN["karkoschka_1994_methane"]
+    meth, d_meth = component(
+        "methane", "Methane absorption bands (pure absorber; its Rayleigh scattering is in 'rayleigh')", alt, beta_m,
+        beta_label="estimated", beta_sources=[s_gcms, s_dtwg, s_hd, s_he, s_kark, s_k94, *common],
+        beta_method=f"β = k(λ) n_CH4(z)/n_L (n_L = {LOSCHMIDT_M3:.5e} m^-3, one amagat). n_CH4 = x(z) n(z): the "
+                    f"Huygens GCMS methane mole fraction (PDS, {mp['n']} samples by UTC) placed at the DTWG "
+                    f"reconstructed altitude of each sample, averaged in 1 km bins ({mp['z_range'][0]:.1f}-"
+                    f"{mp['z_range'][1]:.1f} km; x = {mp['x'][-1]:.4f} at the top, held above, {mp['x'][0]:.4f} at "
+                    f"the surface), times the HASI number density. Column {col_ch4:.2f} km-amagat. k(λ): "
+                    "Karkoschka's (1998) cold-temperature methane absorption coefficients (PDS GBAT_0001 1995LOW.TAB, "
+                    "1 nm resolution; 'one cold-temperature methane spectrum is sufficient to model methane "
+                    "absorptions for all jovian planets and Titan', Karkoschka 1994), averaged over 1 nm air bins; the "
+                    "extinctionPerKm samples are 10 nm box averages of β. ESTIMATE: the PDS calls k 'estimated' "
+                    f"(±{km['accuracy'] * 100:.0f} %, inferred from planetary spectra including Titan's); a band "
+                    "average of k is not the band average of e^(−k u) (exact only for weak absorption: a renderer "
+                    "that needs band transmissions should work at the 1 nm resolution of k).",
+        beta_uncertainty=f"k ±{km['accuracy'] * 100:.0f} %, continuum ±{km['continuum_uncertainty_km_am']['400']} "
+                         f"(400 nm) to ±{km['continuum_uncertainty_km_am']['1000']} km-am^-1 (1000 nm); Niemann et "
+                         "al. (2010) later revised the GCMS mole fractions to 1.48 % (stratosphere) and 5.65 % "
+                         "(surface), 5 and 15 % above this PDS stage-2 product.",
+        ssa=np.zeros(atmo.FINE.size), ssa_label="derived", ssa_sources=[s_kark],
+        ssa_method="Absorption only.", phase={"kind": "none"}, phase_label="derived", phase_sources=[s_kark],
+        phase_method="Pure absorber: no scattering.", g_fine=np.zeros(atmo.FINE.size),
+        extra={"methaneMoleFraction": sourced({"altitudeKm": _sig(mp["z_km"]), "moleFraction": _sig(mp["x"], 4)},
+                                              "derived", [s_gcms, s_dtwg],
+                                              method="Huygens GCMS mole fraction by UTC (PDS hpgcms_0001 "
+                                                     "DTWG_MOLE_FRACTION, stage 2) at the DTWG altitude of each UTC "
+                                                     "(PDS hpdtwg_0001, linear in time between its records), means "
+                                                     "over 1 km bins: computed from two measured products."),
+               "absorptionCoefficient": sourced({"wavelengthNm": [float(x) for x in atmo.FINE],
+                                                 "perKmAmagat": _sig(k_fine, 4)}, "estimated", [s_kark, s_k94],
+                                                method="Karkoschka (1998) k on the 1 nm air grid (mean of the 0.4 nm "
+                                                       "samples within ±0.5 nm), for renderers that resolve the "
+                                                       "bands.")})
+    beta_m_s = atmo.sample_box(beta_m)
+    meth["extinctionPerKm"]["value"] = _sig(beta_m_s)
+    meth["columnOpticalDepth"] = _sig(_col(beta_m_s, alt))
+
+    sfc = ab.TITAN["garcia_munoz_2017_surface"]
+    lam_s, r_s = np.array(sfc["lambda_eff_nm"], float), np.array(sfc["reflectance"], float)
+    o = np.argsort(lam_s, kind="stable")
+    r_fine = np.interp(atmo.FINE, lam_s[o], r_s[o])
+    surface = sourced(
+        {"wavelengthsNm": [float(x) for x in atmo.GRID_NM], "reflectance": _sig(atmo.sample(r_fine), 4),
+         "channelEquivalents": _sig(atmo.channel_weights() @ r_fine, 4)},
+        "estimated", [s_gm],
+        method="Lambert reflectance of the surface below the haze: the values García Muñoz et al. (2017, Methods) "
+               "adopted at their filters' effective wavelengths (306-938 nm, 0.023-0.151), interpolated from "
+               "Karkoschka & Schröder's (2016) DISR eight-colour surface maps around the Huygens landing site (Table "
+               "1, not accessible); linear in wavelength between them. ESTIMATE: one landing-site spectrum used "
+               "for the whole globe, Lambertian. channelEquivalents: sunlight × observer weighted means (X, Y, Z, S).",
+        uncertainty="Titan's surface albedo varies by a factor of a few across the globe (dark dune fields to bright "
+                    "Xanadu) — visible only faintly through the haze.")
     entry = {
         "name": "Titan", "naifId": 606, "referenceRadiusKm": _sig(albedo.mean_radius(606), 7),
         "altitudeReference": "altitude above the surface at the Huygens landing site (HASI)",
@@ -400,12 +512,17 @@ def titan(b: Build) -> tuple[dict, dict]:
                                  "troposphere and stratosphere): use the tabulated HASI-based profiles."),
         "surfacePressurePa": sourced(_sig(float(np.interp(0.0, hp["z_km"], hp["P"])), 6), "measured", [s_hd],
                                      method="HASI descent profile, lowest sample (at the surface, 2005-01-14)."),
-        "components": [ray, haze],
-        "omitted": "Not included: haze single-scattering albedo and phase function (unknown, see the haze component), "
-                   "methane absorption bands (619, 727, 790 nm and stronger in the near infrared; Karkoschka & "
-                   "Tomasko 2010, not accessed), the detached haze layer, latitude/season variation, clouds.",
+        "components": [ray, haze_low, haze_mid, haze_top, meth],
+        "surfaceReflectance": surface,
+        "omitted": "Not included: the detached haze layer near 500 km (seasonal; it vanished in 2012-2016), "
+                   "latitude/season variation of the haze (north-south asymmetry, polar hoods), clouds, methane "
+                   "Rayleigh scattering as its own species (counted as N2), the temperature dependence of methane "
+                   "absorption, gases other than N2 and CH4.",
     }
-    return entry, {"ray": d_ray, "haze": d_haze}
+    diag = {"ray": d_ray, "haze_low": d_haze_low, "haze_mid": d_haze_mid, "haze_top": d_haze_top, "methane": d_meth,
+            "ssa": ss, "phase_lo": ph_lo, "phase_hi": ph_hi, "ch4_column_km_am": col_ch4, "surface_fine": r_fine,
+            "ssa_extrapolation": (k_ext, c_ext)}
+    return entry, diag
 
 
 # ---------------------------------------------------------------------------------------------- Venus
