@@ -117,7 +117,7 @@ export function sceneBodyOf(
     allowPhaseExtrapolation: level !== 'strict',
     phaseEstimated: lit && !!f.phase && g.body.photometry?.phaseFunction?.label === 'estimated',
   };
-  const used = applyExtras(sb, g.body, extras, level, lit);
+  const used = applyExtras(sb, g.body, extras, level, lit, emit);
   // Shape model (app/shapes.ts): a mesh in place of the ellipsoid, when its labels are admitted and it can be placed.
   const mesh = extras?.shapes && sb.radii ? extras.shapes.sceneShape(sb, level, emit) : null;
   if (mesh && sb.radii) {

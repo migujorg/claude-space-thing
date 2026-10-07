@@ -1,0 +1,15 @@
+# Throop, H. B. et al. (2004). Icarus 172, 59-77. DOI:10.1016/j.icarus.2003.12.020. Digitized from Fig. 6
+# ("Composite ring spectrum, for alpha ~ 75 deg"): best-fit model of the main ring's radially averaged normal
+# tau*w0*P vs wavelength: total (solid line), large bodies (dashed line; "the ring's color is due predominantly to
+# that from the large bodies") and non-spherical dust ("Spheroids", dotted black line). The model fits Cassini ISS
+# filter measurements at 0.45-0.95 um. Digitization: pixel trace (axes on the tick marks: 903 px/um, 226 px/decade),
+# about +-3 %; total equals large + dust to within 2 %.
+wavelength_um,total_tau_w0_p,large_tau_w0_p,dust_tau_w0_p
+0.4205,2.54e-7,1.33e-7,1.19e-7
+0.4604,2.59e-7,1.35e-7,1.24e-7
+0.5002,2.67e-7,1.36e-7,1.31e-7
+0.6198,3.11e-7,1.67e-7,1.45e-7
+0.6733,3.31e-7,1.81e-7,1.51e-7
+0.7660,3.62e-7,2.05e-7,1.58e-7
+0.8591,3.89e-7,2.24e-7,1.64e-7
+0.9654,4.19e-7,2.44e-7,1.72e-7

@@ -29,6 +29,7 @@
 
 import type { SceneBody, SceneRings } from './scene';
 import type { Label, RingReflectance } from '../data/schema';
+import { geometrySupported, packComponentRecords, packComponents, phaseValue, type PackedComponents } from './ringComponents';
 import { AU_KM } from './constants';
 import { dot, len, normalize, prepareBody, type M3, type V3 } from './raycast';
 import type { XYZS } from './photometry';
@@ -346,6 +347,11 @@ export interface RingPrep {
   label: Label;
   /** Centre, camera-relative km (float64), for bodies' ring shadows and transmission. */
   pos: V3;
+  /** Inner and outer radius of the drawn system (km): the classic profile's, or the components' bounds. */
+  rIn: number;
+  rOut: number;
+  /** Ring components (ringComponents.ts) with this frame's records, or null for the classic profile. */
+  cmp: { packed: PackedComponents; records: Float32Array<ArrayBuffer>; poleSense: number } | null;
 }
 
 export interface RingFrame {
@@ -410,18 +416,26 @@ export function ringIlluminance(p: RingProfile, normal: V3, toObs: V3, D: number
 
 const pointCache = new WeakMap<RingProfile, Map<string, XYZS | null>>();
 
+const EMPTY_RINGS: SceneRings = { normal: [0, 0, 1], opticalDepth: [], reflectance: null, worstLabel: 'unknown' };
+
 /**
  * Per-frame preparation of a body's ring system: the resolved part to draw (faded in between 1 and 2
  * pixels of ring diameter) and the light of the unresolved part, which joins the planet's point source.
+ * A system with components (Jupiter, Uranus, Neptune; ringComponents.ts) is drawn from them; their unresolved
+ * light is not added to the planet's point (it is below 0.1 % of the planet's for all three).
  */
 export function prepareRings(b: SceneBody, sunIrradianceXYZS_1AU: XYZS | null, sunRadiusKm: number, pixelAngle: number): RingFrame {
   const out: RingFrame = { draw: null, pointE: null, warnings: [] };
   const r = b.rings;
-  if (!r || !b.radii || !r.opticalDepth.some((p) => p.radiusKm.length >= 2)) return out;
-  const prof = ringProfile(r);
+  const comps = r?.components ?? null;
+  if (!r || !b.radii || (!comps && !r.opticalDepth.some((p) => p.radiusKm.length >= 2))) return out;
+  const prof = ringProfile(comps ? EMPTY_RINGS : r);
+  const packed = comps ? packComponents(comps) : null;
+  const rIn = packed ? packed.rMin : prof.rMin;
+  const rOut = packed ? packed.rMax : prof.rMax;
   const D = len(b.pos);
   if (!(D > 0)) return out;
-  const fRes = smooth(1, 2, (2 * Math.asin(Math.min(1, prof.rMax / D))) / pixelAngle);
+  const fRes = smooth(1, 2, (2 * Math.asin(Math.min(1, rOut / D))) / pixelAngle);
   const planet = prepareBody(b.pos, b.radii, (b.orient as M3 | null) ?? null);
   const sunLen = len(b.toSun);
   const sunDir = normalize(b.toSun);
@@ -431,7 +445,15 @@ export function prepareRings(b: SceneBody, sunIrradianceXYZS_1AU: XYZS | null, s
   const toObs = normalize([-b.pos[0], -b.pos[1], -b.pos[2]]);
   const m = r.reflectance;
   const alphaDeg = (Math.acos(Math.max(-1, Math.min(1, dot(toObs, sunDir)))) * 180) / Math.PI;
-  if (!m) out.warnings.push(`${b.name} rings: reflectance not measured → rings absorb and cast shadows only; their material is hatched as not measured`);
+  if (comps) {
+    const et = r.et ?? comps.epochEt;
+    const unsupported = comps.components.filter((c) => !geometrySupported(c, et)).map((c) => c.name);
+    if (unsupported.length) out.warnings.push(`${b.name} rings: geometry not measured at this time for ${unsupported.join(', ')} → no light or extinction; radial annotation hatched as not measured`);
+    const dark = comps.components.filter((c) => geometrySupported(c, et) && !c.layer && !c.thin && c.profile.opticalDepthKnown).map((c) => c.name);
+    if (dark.length) out.warnings.push(`${b.name} rings: reflectance not measured for ${dark.join(', ')} → absorption only where geometry is valid, covered material hatched as not measured`);
+    const outside = Object.values(comps.phaseFunctions).filter((t) => !phaseValue(t, alphaDeg)).map((t) => t.name);
+    if (outside.length) out.warnings.push(`${b.name} rings: phase angle ${alphaDeg.toFixed(2)}° outside the measured range of ${outside.join('; ')} → that light not measured (hatched)`);
+  } else if (!m) out.warnings.push(`${b.name} rings: reflectance not measured → rings absorb and cast shadows only; their material is hatched as not measured`);
   else if (alphaDeg < m.minPhaseDeg || alphaDeg > m.maxPhaseDeg) {
     out.warnings.push(`${b.name} rings: phase angle ${alphaDeg.toFixed(2)}° outside the reflectance model's ${m.minPhaseDeg}–${m.maxPhaseDeg}° → ring brightness not measured (hatched)`);
   } else {
@@ -441,7 +463,7 @@ export function prepareRings(b: SceneBody, sunIrradianceXYZS_1AU: XYZS | null, s
       out.warnings.push(`${b.name} rings: effective elevation ${beff.toFixed(2)}° outside the calibrated ${e[0]}–${e[e.length - 1]}° → particle term held at the table edge (estimated)`);
     }
   }
-  if (fRes < 1 && m && sunIrradianceXYZS_1AU) {
+  if (fRes < 1 && m && !comps && sunIrradianceXYZS_1AU) {
     // Per unit esun and D = 1 (E scales with both), cached on the quantized directions and the planet's
     // shape: an unresolved ring system otherwise costs ~10⁴ ray tests every frame.
     const q = (v: number[]) => v.map((x) => x.toFixed(4)).join(',');
@@ -457,7 +479,8 @@ export function prepareRings(b: SceneBody, sunIrradianceXYZS_1AU: XYZS | null, s
     if (unit) out.pointE = unit.map((v, k) => (v * esun[k] * (1 - fRes)) / (D * D)) as XYZS;
   }
   if (fRes > 0) {
-    const frame = prepareBody(b.pos, [prof.rMax, prof.rMax, prof.rMax], null, 3 * pixelAngle);
+    const ext = packed ? Math.hypot(rOut, packed.zMax) : rOut;
+    const frame = prepareBody(b.pos, [ext, ext, ext], null, 3 * pixelAngle);
     out.draw = {
       bodyId: b.id, near: frame.near, n: frame.n, D, e1: frame.e1, e2: frame.e2, beta: frame.beta,
       // D·e1, D·e2 in km (the tangent-plane offsets of the FAR parametrisation, O(ring radius)).
@@ -465,7 +488,8 @@ export function prepareRings(b: SceneBody, sunIrradianceXYZS_1AU: XYZS | null, s
       E2: [frame.e2[0] * D, frame.e2[1] * D, frame.e2[2] * D],
       o: [-b.pos[0], -b.pos[1], -b.pos[2]],
       normal, profile: prof, sunDir, sunDistKm: sunLen, esun: esun.map((v) => v * fRes) as XYZS,
-      sunRadiusKm, M: planet.M, label: r.worstLabel, pos: b.pos,
+      sunRadiusKm, M: planet.M, label: r.worstLabel, pos: b.pos, rIn, rOut,
+      cmp: packed && comps ? { packed, records: packComponentRecords(packed, r.et ?? comps.epochEt), poleSense: comps.poleSense ?? 1 } : null,
     };
   }
   return out;
