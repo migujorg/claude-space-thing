@@ -15,6 +15,41 @@ const fs: { existsSync(p: URL): boolean; readFileSync(p: URL, enc: 'utf8'): stri
   await import(/* @vite-ignore */ 'node:fs' as string);
 const { env }: { env: Record<string, string | undefined> } = await import(/* @vite-ignore */ 'node:process' as string);
 
+type Direction = [number, number, number];
+/** Float32 vector operations, in WGSL order (including input uniforms). */
+function shaderVectorPair(aIn: Direction, bIn: Direction) {
+  const f = Math.fround, a = aIn.map(f), b = bIn.map(f);
+  const mul = (x: number, y: number) => f(x * y);
+  const dot = f(f(mul(a[0], b[0]) + mul(a[1], b[1])) + mul(a[2], b[2]));
+  const cross = [
+    f(mul(a[1], b[2]) - mul(a[2], b[1])),
+    f(mul(a[2], b[0]) - mul(a[0], b[2])),
+    f(mul(a[0], b[1]) - mul(a[1], b[0])),
+  ];
+  const sine = f(Math.sqrt(f(f(mul(cross[0], cross[0]) + mul(cross[1], cross[1])) + mul(cross[2], cross[2]))));
+  return { dot, sine };
+}
+function shaderVectorAngle(a: Direction, b: Direction) {
+  return Math.fround(Math.acos(Math.min(1, Math.max(-1, shaderVectorPair(a, b).dot))));
+}
+
+describe('float32 vector angle', () => {
+  for (const degrees of [1e-5, 1e-4, 1e-3, 1e-2]) for (const opposite of [false, true]) {
+    it(`${degrees}° ${opposite ? 'from 180°' : 'from zero'}: relative angle error < 1e-3`, () => {
+      const small = degrees * Math.PI / 180, trueAngle = opposite ? Math.PI - small : small;
+      // Axis aligned unit vectors isolate angle recovery from prior vector quantization.
+      // At arbitrary orientations, input f32 directions themselves have O(1e-7 rad) error.
+      const a: Direction = [1, 0, 0], b: Direction = [Math.cos(trueAngle), Math.sin(trueAngle), 0];
+      const angle = shaderVectorAngle(a, b);
+      expect(Math.abs(angle / trueAngle - 1)).toBeLessThan(1e-3);
+      // Near pi, the output angle's f32 ulp is 2^-22 rad: it cannot retain the tiny
+      // supplement to 0.1%. The cross product still retains it to that accuracy.
+      expect(Math.abs(shaderVectorPair(a, b).sine / Math.sin(small) - 1)).toBeLessThan(1e-3);
+      expect(Math.abs(angle - trueAngle)).toBeLessThan(opposite ? 2 ** -23 : small * 1e-3);
+    });
+  }
+});
+
 // Numerical guard variants are for one-at-a-time attribution only; the default is the shader.
 const shaderGuards = {
   hFloor: 1e-6, cotFloor: 1e-6, expFloor: -80, psiCut: Math.PI - 1e-4,
