@@ -268,6 +268,7 @@ class _RangeHandler(http.server.BaseHTTPRequestHandler):
 @pytest.fixture
 def server(tmp_path, monkeypatch):
     monkeypatch.setattr(download, "RAW", tmp_path / "raw")
+    monkeypatch.setattr(download, "CACHE", tmp_path / "cache")
     monkeypatch.setattr(download, "_LEDGER", tmp_path / "raw" / "_downloads.json")
     srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), _RangeHandler)
     t = threading.Thread(target=srv.serve_forever, daemon=True)

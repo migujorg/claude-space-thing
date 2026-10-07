@@ -145,6 +145,8 @@ def test_single_thread_requirement_is_explicit(monkeypatch):
 
 def test_verify_reports_reference_difference_without_modifying_case(tmp_path,monkeypatch,capsys):
     from pipeline.validation import __main__ as cli
+    from pipeline import paths
+    monkeypatch.setattr(paths,'CACHE',tmp_path/'cache')
     monkeypatch.setitem(cli.CASES,'fixture-case',object())
     monkeypatch.setattr(build,'preview',lambda path,*args: path.write_bytes(b'preview fixture'))
     built={'json': {'schema':'validation-case-v1','id':'fixture-case','observation':{},'view':{},
