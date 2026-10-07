@@ -2,6 +2,7 @@
 // Opened by clicking a star that no body covers (app/sky.ts attachStarPicking); closed with × or when a body is
 // selected.
 
+import { CRUMEY } from '../eye/constants';
 import type { StarFacts } from '../app/sky';
 import { chip } from './chips';
 import { append, clear, h, toggleClass } from './dom';
@@ -31,7 +32,7 @@ export class StarCard {
         h('button', { class: 'st-x', title: 'Close', onclick: () => this.show(null) }, '×')),
       h('div', { class: 'st-kv' },
         row('Catalogue', null, f.catalogId, `Record source: ${f.catalog}`),
-        row('Brightness', f.labels.flux, `${Y.toExponential(3)} lx · V≈${f.vLike.toFixed(2)}`, 'Photopic illuminance Y at the observer (outside any atmosphere); V-like magnitude from Y (2.54e-6 lx for V = 0)'),
+        row('Brightness', f.labels.flux, `${Y.toExponential(3)} lx · V≈${f.vLike.toFixed(2)}`, `Photopic illuminance Y at the observer (outside any atmosphere); V-like magnitude from Y (${CRUMEY.zeroPointVLux.toExponential(2)} lx for V = 0)`),
         row('Colour', f.labels.colour, `x ${(X / sum).toFixed(4)}, y ${(Y / sum).toFixed(4)} · S/Y ${(S / Y).toFixed(2)}`, 'CIE 1931 chromaticity and scotopic-to-photopic ratio'),
         row('Direction', f.labels.position, `RA ${f.radecDeg[0].toFixed(4)}°, Dec ${f.radecDeg[1] >= 0 ? '+' : ''}${f.radecDeg[1].toFixed(4)}°`, 'ICRS direction as drawn, at the catalogue epoch of the build')),
       h('h3', null, 'How these values were obtained'),
