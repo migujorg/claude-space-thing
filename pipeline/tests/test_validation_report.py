@@ -1,5 +1,4 @@
 """The narrative must be evidence from this run, rather than a remembered baseline."""
-from copy import deepcopy
 import json
 import re
 
@@ -7,13 +6,13 @@ from pipeline.validation import report
 
 
 def stub_run(offset=0, ss=4):
-    expected, rendered, sigma = 113 + offset, 71 + offset, 3 + offset
+    expected, rendered, sigma = 113 + offset, 71 + offset, 3 + offset / 100
     roi = {"id": "disk-centre", "expectedType": "value", "expected": [expected] * 4,
            "tolerance": [2 * sigma] * 4, "sigma": [sigma] * 4,
            "ratio": [rendered / expected] * 4, "deviationSigma": [(rendered - expected) / sigma] * 4,
            "rendered": {"mean": [rendered] * 4}, "pass": False, "failing": ["Y"]}
-    ratio = {"numerator": "moon", "denominator": "earth", "expected": [0.213 + offset] * 4,
-             "rendered": [0.171 + offset] * 4, "tolerance": [0.003 + offset] * 4,
+    ratio = {"numerator": "moon", "denominator": "earth", "expected": [0.213 + offset / 1000] * 4,
+             "rendered": [0.171 + offset / 2000] * 4, "tolerance": [0.003 + offset / 100000] * 4,
              "pass": False, "failing": ["Y", "Z"]}
     return {"generatedAt": "2026-10-07T13:00:00Z", "git": "stub", "dataGeneratedAt": "data",
             "options": {"ss": ss, "reality": "best"}, "cases": [{"id": "earth-moon-epoxi-2008", "ss": ss,
@@ -80,7 +79,6 @@ def test_historical_sweep_is_dated_and_uses_finest_valid_frame(tmp_path):
         c["ratios"] = []
         if ss in (3, 6):
             c["status"] = "not rendered"
-            c["rois"][0].update(pass_=None)
             c["rois"][0]["pass"] = None
         runs.append(r)
     path = tmp_path / "history.json"
@@ -88,7 +86,7 @@ def test_historical_sweep_is_dated_and_uses_finest_valid_frame(tmp_path):
     text = report.sampling_history_section(stub_run(ss=4), path)
     assert "History: sampling sweep" in text
     assert "old-commit" in text and "2026-10-07" in text
-    assert "| 1 × 1 | 25" in text and "| 2 × 2 | 5" in text
+    assert "| 1 × 1 | 20" in text and "| 2 × 2 | 5" in text
     assert "| 3 × 3 | —" in text and "| 6 × 6 | —" in text
     assert "finest valid level is 4 × 4" in text
     assert "Current run sampling 4 × 4" in text
