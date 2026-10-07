@@ -150,7 +150,9 @@ export interface RoiResult {
   ratio?: XYZS;
   /** (rendered − expected) / σ per channel (value ROIs). */
   deviationSigma?: XYZS;
-  /** null: not compared ('none', or nothing rendered there). */
+  status?: 'not rendered';
+  reason?: string;
+  /** null: not compared or the whole case was not rendered. */
   pass: boolean | null;
   failing: string[];
   note?: string;
@@ -175,6 +177,8 @@ export function compareRoi(roi: ValidationRoi, r: RegionStats): RoiResult {
 }
 
 export interface RatioResult {
+  status?: 'not rendered';
+  reason?: string;
   numerator: string;
   denominator: string;
   expected: XYZS;
