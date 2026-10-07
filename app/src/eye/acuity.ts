@@ -32,9 +32,13 @@ export function acuityLevel(R: number, pixelDeg: number): number {
  * adaptation statistic (fixation.ts: the log-average of the retinal image weighted by the light that can be seen)
  * over the samples of the 1° field around the pixel. A uniform field gives its own retinal luminance; a small
  * bright body in a dark field gives the body's, not the field's mean.
+ *
+ * The solar disk is not excluded here as it is from the frame's fixations (§2: one cannot look at it): the filter
+ * asks with what acuity each pixel is shown, with the fovea on that pixel by construction. A field inside the disk
+ * would otherwise have no weight at all.
  */
 export function fovealAdaptation(field: RetinalSample[]): number {
-  return fixationAdaptation(field, 'brightness').coneCdM2;
+  return fixationAdaptation(field.map((s) => ({ ...s, onSunDisk: false })), 'brightness').coneCdM2;
 }
 
 /**
@@ -44,4 +48,15 @@ export function fovealAdaptation(field: RetinalSample[]): number {
  */
 export function fovealFieldLevel(pixelDeg: number, blockPx: number): number {
   return Math.max(0, Math.log2(1 / (blockPx * pixelDeg)));
+}
+
+/**
+ * Size of the block-sum texture for `blocksX` × `blocksY` blocks: each side the next power of two. A mip chain
+ * halves each side rounding down, so with any other size a level drops the last odd row or column of the one
+ * below, and a body there would be missing from the 1° field of its own pixels. The padding holds zero sums
+ * (no weight), which change no ratio.
+ */
+export function fovealSumsSize(blocksX: number, blocksY: number): [number, number] {
+  const pow2 = (n: number) => 2 ** Math.ceil(Math.log2(Math.max(1, n)));
+  return [pow2(blocksX), pow2(blocksY)];
 }

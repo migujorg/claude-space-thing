@@ -43,6 +43,7 @@ import type { CometModelProduct } from '../data/schema';
 import { orbitVertices } from './overlays';
 import { AdaptationState, computeEyeFrame, localObserver, type EyeFrame } from '../eye/model';
 import { NO_SKY_DISC, skyDisc } from '../eye/fixation';
+import { fovealSumsSize } from '../eye/acuity';
 import { magnitudeFromLux } from '../eye/crumey';
 import { DEFAULT_EYE_SETTINGS, type EyeSettings } from '../eye/settings';
 import { fitScatterKernel } from '../eye/glare';
@@ -554,10 +555,11 @@ export class Renderer {
         mipLevelCount: Math.max(1, Math.min(levels.length - 1, Math.floor(Math.log2(Math.max(w1, h1))) + 1)),
       }))(levels[1]?.w ?? 1, levels[1]?.h ?? 1),
       // One texel per adaptation invocation (8 × 8 per workgroup), like `partials`.
-      fov: d.createTexture({
-        size: [tilesX * 8, tilesY * 8], format: 'rgba32float', usage: ST, label: 'fovea sums',
-        mipLevelCount: Math.floor(Math.log2(Math.max(tilesX * 8, tilesY * 8))) + 1,
-      }),
+      // Sides are powers of two so that no level of the chain drops a row or column (eye/acuity.ts fovealSumsSize).
+      fov: ((size: [number, number]) => d.createTexture({
+        size, format: 'rgba32float', usage: ST, label: 'fovea sums',
+        mipLevelCount: Math.log2(Math.max(size[0], size[1])) + 1,
+      }))(fovealSumsSize(tilesX * 8, tilesY * 8)),
       zero: tex(1, 1, 'rgba32float', ST, 'zero'),
       zero2: tex(1, 1, 'rgba32float', ST, 'zero2'),
       // One partial per adaptation invocation (8 × 8 per workgroup).

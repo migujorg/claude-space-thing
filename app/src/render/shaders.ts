@@ -1460,11 +1460,13 @@ fn adaptSample(p: vec2i) -> AdaptSample {
     let Ls = max(ext.y, 0.0);
     let Lr = max(ret.y, 0.0) + E.dark.x;
     let vis = clamp(Ls / (Lr * crumeyLargeContrast(E, Lr)) - 1.0, 0.0, 1.0);
+    let wAll = (Ls * vis + E.dark.x) * om;
     // Inside the disc that is never fixated? By the chord, not a float32 cosine (eye/fixation.ts inSkyDisc).
-    let wgt = select((Ls * vis + E.dark.x) * om, 0.0, E.fix.w >= 0.0 && distance(dir, E.fix.xyz) <= E.fix.w);
+    let wgt = select(wAll, 0.0, E.fix.w >= 0.0 && distance(dir, E.fix.xyz) <= E.fix.w);
     // The fovea's adaptation at a pixel uses these weights over its 1° field in either fixation mode: the
-    // acuity filter treats every pixel as looked at in turn.
-    fov = vec2f(lc * wgt, wgt);
+    // acuity filter treats every pixel as looked at in turn, the never-fixated disc included (eye/acuity.ts
+    // fovealAdaptation: the fovea is on the pixel by construction).
+    fov = vec2f(lc * wAll, wAll);
     if (E.flags.z > 0.5) {
       // Fixations over the whole frame.
       acc = vec4f(lc * wgt, lr * wgt, wgt, 0.0);
