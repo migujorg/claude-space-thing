@@ -24,10 +24,11 @@ picture, within tolerances that come from the data's own uncertainties.
 calibrations) are chosen by the sources' own merits and by their coverage of the geometry: which body, phase angles,
 latitudes, season and wavelengths they measure, and how directly. How a choice scores on these cases plays no part.
 - **Competing published laws:** when two exist, or a published law and an approximation of it, the better-supported
-  one is used even if the other scores better here. For example, Saturn keeps the native Barkstrom law of Dones et
-  al. (1993) although its Minnaert approximation passed the terminator ROI and the exact law fails it (§7).
-- **Sources must exclude the cases:** a source whose data include a validation frame is not used for the quantity
-  that frame tests (e.g. Belgacem's regional Europa fits).
+  one is used on that evidence. For example, Saturn uses the native Barkstrom law of Dones et al. (1993),
+  rather than its Minnaert approximation. The terminator comparison also includes ringshine the app omits (§7).
+- **Independence must be stated:** an independent comparison must exclude sources that include the tested frame
+  (e.g. Belgacem's regional Europa fits are excluded). Pluto's map and law share flyby inputs with its case;
+  those rows do not provide an independent check (§7).
 - **No correction factors from the cases:** a factor derived from a case (e.g. the Galilean LORRI offset) is
   documented as a bound, not applied.
 
@@ -60,8 +61,10 @@ Everything photometric comes from the app's own data, exactly as in normal rende
 phase function, spatial model, ROLO), surface maps, `rings.json`, `atmospheres.json`, at the reality level being
 tested (the tolerances assume the most complete level that the data admit).
 Pixel (x, y) with y down has the ray right·(x+½−W/2)s + up·(H/2−y−½)s − back, s = `pixelPitchRad` = 2 tan(fovY/2)/H.
-The reference values are **area averages** over each pixel, so the harness should supersample (≥ 4 × 4 per pixel);
-ROIs never contain pixels that straddle a limb, terminator, ring edge or shadow edge (§3.5).
+The reference values are **area averages** over each pixel, so the harness should supersample; the recorded grid
+and, when supplied, the sampling sweep below describe the numerical evidence for that run.
+Local body and ring ROIs exclude pixels that straddle a limb, terminator, ring edge or shadow edge (§3.5).
+Disk-integrated rectangles deliberately include the entire disk.
 
 **Interface** (types in `app/src/data/schema.ts`: `ValidationCase`, `ValidationRoi`, `ValidationRatio`), implemented
 in the app (`cd app && npm run validate`; app/e2e/README.md "Validation against calibrated images"; results in
@@ -297,8 +300,7 @@ def findings(cases: list[dict]) -> str:
         if items:
             L.append(f"* `{c['id']}`: " + "; ".join(items) + ".")
     L += ["", "These offsets are the missions' attitude-knowledge errors plus ours; the fits themselves are tied to "
-          "the target's own limb and terminator, which is what the renderer comparison needs. The three Saturn "
-          "frames agree with one another to 0.5 binned pixel.", ""]
+          "the target's own limb and terminator, which is what the renderer comparison needs.", ""]
     L += ["**App data preview** (disk-integrated ROIs; `photometry.json` alone, no rendering):", ""]
     for c in cases:
         for r in c["rois"]:
@@ -331,6 +333,8 @@ def findings(cases: list[dict]) -> str:
 
 RUN_REPORT = REPO / "app" / "shots" / "validation" / "report.json"
 CONVERGENCE_REPORT = RUN_REPORT.with_name("sampling-convergence.json")
+# A different, dated sweep can support a historical comparison, never pretend to be this run.
+CONVERGENCE_HISTORY_REPORT = RUN_REPORT.with_name("sampling-history.json")
 
 
 def recorded_sampling(run: dict) -> int:
@@ -480,30 +484,168 @@ def rendered_by(run: dict) -> str:
     return f", rendered by {kind}, adapter `{name}`{where}"
 
 
+def tally_lines(run: dict) -> str:
+    """Count verdicts by row type; a ratio is never silently counted as a region."""
+    regions = [(c, q) for c in run["cases"] for q in c.get("rois", [])]
+    ratios = [(c, q) for c in run["cases"] for q in c.get("ratios", [])]
+
+    def counts(rows):
+        return (sum(not not_rendered(c) and q["pass"] is True for c, q in rows),
+                sum(not not_rendered(c) and q["pass"] is False for c, q in rows),
+                sum(not_rendered(c) for c, q in rows),
+                sum(not not_rendered(c) and q["pass"] is None for c, q in rows))
+
+    def line(name, rows):
+        yes, no, invalid, uncompared = counts(rows)
+        return f"**{name}: {yes} pass, {no} fail, {invalid} not rendered, {uncompared} not compared.**"
+
+    brightness = [(c, q) for c, q in regions if q["expectedType"] == "value"]
+    sky = [(c, q) for c, q in regions if q["expectedType"] == "upper-limit"]
+    return "\n\n".join((line("Regions", regions), line("Brightness regions", brightness),
+                          line("Sky upper limits", sky), line("Ratio rows", ratios)))
+
+
+def run_findings(run: dict) -> str:
+    """Only this run supplies the failure rows and their numerical descriptions."""
+    validate_frame_verdicts(run)
+    groups = {}
+    region_count = ratio_count = 0
+    for c in run["cases"]:
+        if not_rendered(c):
+            continue
+        for is_ratio, qs in ((False, c.get("rois", [])), (True, c.get("ratios", []))):
+            for q in qs:
+                if q["pass"] is not False:
+                    continue
+                ratio_count += int(is_ratio)
+                region_count += int(not is_ratio)
+                if is_ratio:
+                    group = "Ratio rows"
+                elif q.get("target") in (501, 502, 503, 504):
+                    group = "Galilean moons"
+                elif c["id"].startswith("earth-"):
+                    group = "Earth"
+                elif c["id"].startswith("saturn-"):
+                    group = "Saturn rings" if q.get("kind") == "ring" else "Saturn globe"
+                else:
+                    group = c["id"]
+                groups.setdefault(group, []).append((c, q, is_ratio))
+    L = ["**What the failures say.**", "", "### Findings computed from this run", "",
+         f"{region_count + ratio_count} failing rows: {region_count} region{'s' if region_count != 1 else ''} "
+         f"and {ratio_count} ratio row{'s' if ratio_count != 1 else ''} "
+         "(valid frames only). Each row below names a failing channel; relative error and tolerance "
+         "are percentages of the expected value. ROI radiance is in cd/m² (S: scotopic cd/m²); "
+         "ratios are dimensionless.", ""]
+    if not groups:
+        L += ["No failing rows in valid frames.", ""]
+    for group, rows in groups.items():
+        L += [f"#### {group}", "",
+              "| case | row | channel | expected ± tolerance | rendered | relative error (%) | tolerance (%) | σ |",
+              "|---|---|---|---|---|---|---|---|"]
+        for c, q, is_ratio in rows:
+            name = f"{q['numerator']} / {q['denominator']}" if is_ratio else q["id"]
+            rendered = q["rendered"] if is_ratio else q["rendered"]["mean"]
+            for channel in q["failing"]:
+                k = CH.index(channel)
+                value = rendered[k]
+                if not is_ratio and q["expectedType"] == "upper-limit":
+                    expected, error, tolerance, dev = f"≤ {_g(q['upperLimit'][k], 5)}", None, None, None
+                else:
+                    e, t = q["expected"][k], q["tolerance"][k]
+                    expected = f"{_g(e, 5)} ± {_g(t, 3)}"
+                    error = 100 * (value / e - 1) if e else None
+                    tolerance = 100 * t / abs(e) if e else None
+                    sigma = t / TOLERANCE_K if is_ratio else q["sigma"][k]
+                    dev = (value - e) / sigma if sigma else None
+                err = "—" if error is None else f"{error:+.2f}"
+                deviation = "—" if dev is None else f"{dev:+.2f}"
+                L.append(f"| `{c['id']}` | {name} | {channel} | {expected} | {_g(value, 5)} | "
+                         f"{err} | {'—' if tolerance is None else f'{tolerance:.1f}'} | {deviation} |")
+        L.append("")
+    return "\n".join(L) + "\n"
+
+
+def sampling_history_section(run: dict, path=None) -> str:
+    """An optional independent sweep is explicitly history, with its own commit and date.
+
+    Use the same validity/identity rules as current-run convergence. Old sweeps with unattributed
+    errors are refused; an audited migration must attribute them and clear invalid verdicts first.
+    """
+    path = CONVERGENCE_HISTORY_REPORT if path is None else path
+    if not path.exists():
+        return ""
+    sweep = json.loads(path.read_text(encoding="utf-8"))
+    runs = sweep.get("runs", [])
+    if not runs:
+        raise ValueError("sampling history must contain runs")
+    # Validate the full sweep, without claiming it includes the current renderer run.
+    convergence_section(runs[0], path)
+    rows = [_sampling_rows(r) for r in runs]
+    L = ["### History: sampling sweep", "",
+         f"Measured {runs[0]['generatedAt']} through {runs[-1]['generatedAt']} at git "
+         f"`{runs[0].get('git')}`, data {runs[0].get('dataGeneratedAt')}{rendered_by(runs[0])}. "
+         "Source: `app/shots/validation/sampling-history.json`. This is a separate historical sweep, "
+         "not measurements of the run above.", ""]
+    if sweep.get("frameValidityAudit"):
+        L += ["Frame-validity audit: " + sweep["frameValidityAudit"], ""]
+    L += ["Largest absolute relative difference over all ROI and ratio channels, against each case's "
+          "finest valid level. Invalid frames contribute no measurements. Zero/zero contributes zero; "
+          "nonzero/zero has no relative difference.", "",
+          "| sampling | largest relative difference (%) | not rendered cases |",
+          "|---|---|---|"]
+    maxima = []
+    for j, r in enumerate(runs):
+        differences = []
+        for i, q in enumerate(rows[j]):
+            if q[5]:
+                continue
+            valid = [k for k, rr in enumerate(rows) if not rr[i][5]]
+            ref = max(valid, key=lambda k: recorded_sampling(runs[k]))
+            for a, b in zip(q[2] or [], rows[ref][i][2] or []):
+                if a is not None and b is not None and math.isfinite(a) and math.isfinite(b) and (b or a == 0):
+                    differences.append(abs(100 * (a / b - 1)) if b else 0)
+        largest = max(differences) if differences else None
+        maxima.append(largest)
+        ss = recorded_sampling(r)
+        invalid = ", ".join(f"`{c['id']}`" for c in r["cases"] if not_rendered(c)) or "none"
+        L.append(f"| {ss} × {ss} | {_g(largest, 6)} | {invalid} |")
+    for c in runs[0]["cases"]:
+        valid = [r for r in runs if not not_rendered(next(cc for cc in r["cases"] if cc["id"] == c["id"]))]
+        if valid and len(valid) < len(runs):
+            finest = max(recorded_sampling(r) for r in valid)
+            L += ["", f"`{c['id']}`: finest valid level is {finest} × {finest}; it has no finer valid check."]
+    ss = recorded_sampling(run)
+    ix = next((j for j, r in enumerate(runs) if recorded_sampling(r) == ss), None)
+    L += ["", f"Current run sampling {ss} × {ss}: " +
+          (f"the historical sweep's matching level differs by at most {_g(maxima[ix], 6)} % from each "
+           "case's finest valid level. The default remains provisional, with the missing finer "
+           "checks stated above; finite grids do not establish the coarsest converged grid."
+           if ix is not None else "no matching level in this historical sweep.")]
+    return "\n".join(L) + "\n\n"
+
+
 def run_section(run: dict, interpretation: str) -> str:
     """§7: the renderer's run (`npm run validate`, app/shots/validation/report.json): Y per ROI and the verdicts."""
     recorded_sampling(run)
     validate_frame_verdicts(run)
     o = run["options"]
-    cmd = "cd app && npm run validate" + (" -- --gpu hardware" if (run.get("gpu") or {}).get("mode") == "hardware" else "")
+    cmd = f"cd app && npm run validate -- --ss {o['ss']}" + (
+        " --gpu hardware" if (run.get("gpu") or {}).get("mode") == "hardware" else "")
     L = ["## 7. The renderer against the cases\n",
          f"Run of {run['generatedAt'][:16].replace('T', ' ')} UTC (git {run.get('git')}, data built "
          f"{(run.get('dataGeneratedAt') or '?')[:16].replace('T', ' ')}), reality level {o['reality']}, "
          f"{o['ss']} × {o['ss']} samples per pixel{rendered_by(run)}: `{cmd}` (the full table, with X, Z, S, is in "
          "`app/shots/validation/report.md`). Y in cd/m²; the verdict covers X, Y, Z and S (failing channels named).",
          "", "| case | ROI | expected Y ± 2σ | rendered Y | rendered / expected | σ | verdict |", "|---|---|---|---|---|---|---|"]
-    tally = {True: 0, False: 0, None: 0, "not rendered": 0}
     for c in run["cases"]:
         if c.get("error") and not c.get("rois"):
             L.append(f"| `{c['id']}` | — | — | — | — | — | did not render: {c['error'][:120]} |")
             continue
         for q in c["rois"]:
             if not_rendered(c):
-                tally["not rendered"] += 1
                 reason = (q.get("reason") or c.get("reason") or c.get("error") or "invalid frame").replace("|", "/").replace("\n", " ")
                 L.append(f"| `{c['id']}` | {q['id']} | — | — | — | — | not rendered: {reason} |")
                 continue
-            tally[q["pass"]] += 1
             if q["expectedType"] == "value":
                 exp = f"{_g(q['expected'][1])} ± {_g(q['tolerance'][1], 2)}"
                 ratio, dev = f"{q['ratio'][1]:.3f}", f"{q['deviationSigma'][1]:+.1f}"
@@ -514,7 +656,6 @@ def run_section(run: dict, interpretation: str) -> str:
             v = {True: "pass", False: f"**fail** ({''.join(q['failing'])})", None: "not compared"}[q["pass"]]
             L.append(f"| `{c['id']}` | {q['id']} | {exp} | {_g(q['rendered']['mean'][1])} | {ratio} | {dev} | {v} |")
         for r in c.get("ratios", []):
-            tally["not rendered" if not_rendered(c) else r["pass"]] += 1
             if not_rendered(c):
                 reason = (r.get("reason") or c.get("reason") or c.get("error") or "invalid frame").replace("|", "/").replace("\n", " ")
                 L.append(f"| `{c['id']}` | {r['numerator']} / {r['denominator']} | — | — | — | — | not rendered: {reason} |")
@@ -522,21 +663,21 @@ def run_section(run: dict, interpretation: str) -> str:
             v = {True: "pass", False: f"**fail** ({''.join(r['failing'])})", None: "not compared"}[r["pass"]]
             L.append(f"| `{c['id']}` | {r['numerator']} / {r['denominator']} | {_g(r['expected'][1])} ± "
                      f"{_g(r['tolerance'][1], 2)} | {_g(r['rendered'][1]) if r['rendered'] else '—'} | — | — | {v} |")
-    L += ["", f"**{tally[True]} pass, {tally[False]} fail, {tally['not rendered']} not rendered.** {tally[None]} not compared. How each body was drawn:", ""]
+    L += ["", tally_lines(run) + "\n\nHow each body was drawn:", ""]
     for c in run["cases"]:
         if not_rendered(c):
             continue
         bodies = "; ".join(f"{b['name']}: {', '.join(b.get('uses') or []) or b['drawn']}" for b in c["scene"]["bodies"])
         warn = "; ".join(c.get("stats", {}).get("warnings") or [])
         L.append(f"* `{c['id']}`: {bodies}." + (f" Renderer warnings: {warn}." if warn else ""))
-    return "\n".join(L) + "\n\n" + interpretation
+    return "\n".join(L) + "\n\n" + run_findings(run) + interpretation
 
 
 def write(extra_sections: str = "", run: dict | None = None, run_interpretation: str = "") -> None:
     if run is not None:
         validate_frame_verdicts(run)
     sampling = sampling_header(run)  # validate before reading inputs or replacing the report
-    convergence = convergence_section(run) if run is not None else ""
+    convergence = (convergence_section(run) + sampling_history_section(run)) if run is not None else ""
     cases = [json.loads(p.read_text(encoding="utf-8")) for p in sorted((VALIDATION / "cases").glob("*/case.json"))]
     parts = [HEADER.replace("\n\n", "\n\n" + sampling, 1), "## 4. The cases\n\n", summary_table(cases), "\n",
              "Sizes: `validation/` holds only case.json, reference.bin (float32 I/F on the view grid) and "
@@ -549,156 +690,63 @@ def write(extra_sections: str = "", run: dict | None = None, run_interpretation:
     if run is not None:
         parts.append("\n" + run_section(run, run_interpretation))
         parts.append("\n" + convergence)
-    REPORT.write_text("".join(parts), encoding="utf-8", newline="\n")
+    # Sections supply internal separators; only the writer normalizes the file's final newline.
+    REPORT.write_text("".join(parts).rstrip() + "\n", encoding="utf-8", newline="\n")
 
 
 FINDINGS = """## 6. Limitations and open issues
 
-1. **Pointing is fitted, not taken from C-kernels.** The missions' attitude kernels are hundreds of MB per year. The
-   fitted camera is tied to the target itself (limb, terminator, rings), which is what a radiance comparison needs;
-   the mission pointing serves as a check (§5) and, where the image cannot decide, for the parity (Voyager: a
-   Saturn frame with four moons; LORRI: the header WCS, which also gives the roll).
-2. **Scene changes with time are not in the tolerance.** Earth's clouds (only the Himawari ROIs within ±1 h of the
-   VIIRS overpass see the app's clouds; `cloudTimeOffsetH`), Neptune's and Jupiter's cloud features, Io's volcanic
-   deposits, seasonal changes since the observation. The ROI standard deviation enters the noise term, which makes
-   textured ROIs looser but does not cover a systematically different scene.
-3. **Single-band cases (LORRI)** give XYZS only through the body's disk-integrated spectral shape ('estimated');
-   regional colour differences (Pluto's red Cthulhu and white Sputnik, Io's sulphur colours) can exceed the
-   grey-versus-shape spectral term. The band radiance itself is 'derived' and is the sharper quantity.
-4. **Instrument responses:** the Voyager filter curves are the pre-launch curves digitized from Smith et al. (1977)
-   and are generic to both spacecraft; the HRI-VIS 350, 550 and 650 nm filters have red leaks; the LORRI response is
-   the SVO copy of the archive's launch calibration.
-5. **LORRI RSOLAR for 2007:** the Jupiter-encounter archive carries the pre-flight keyword (13 % higher than the
-   2016 in-flight value used here, per Weaver et al. 2020's stability finding).
-6. **Not included:** Mars (no calibrated full-disk image found within reach: the Emirates Mars Mission archive is
-   behind a JavaScript check, the ESA PSA was not tried); Mercury (the MESSENGER MDIS CDR directory tried at the PDS
-   Geosciences Node answered "webpage unavailable"; not pursued further); a high-resolution Moon (the Cassini 1999
-   lunar images in the calibrated holdings have I/F ~25× too high, consistent with CISSCAL's Jupiter
-   solar-distance option, validation-cassini-iss.md); Titan (its haze optics are 'unknown' in atmospheres.json);
-   Venus.
-7. **Himawari:** one segment of ten (the equatorial swath); no disk-integrated ROI from this scene (the app's Earth
-   albedo itself comes from the 2025-03-20 Himawari scene).
-8. **Sky ROIs** are upper limits only: every camera's scattered light and zero level are in them.
-9. **Sampling:** the reference is an area average per pixel; a renderer sampling pixel centres only will differ at
-   ROI edges by up to the within-ROI gradient × ½ pixel, which the registration term does not include for it.
-10. **The app data preview's misses (§5) are findings about photometry.json, not about a renderer.** The preview is
-    `geometricAlbedoXYZS · Φ(α)` alone, as built with the cases. Where it is off by more than 2σ:
-    - The **Moon** entry is the ROLO model, fitted to Earth-based photometry of the near side. EPOXI saw the far side
-      (sub-observer longitude ~175° E), which has a larger highland fraction and is brighter. photometry.json now
-      states this limitation. The far-side basis is the app's LRO WAC maps; how the renderer would use them is in §7.
-    - The **Galilean** entries use Mayorga et al.'s (2020) longitude-averaged GRN phase curve. Their Table 4
-      rotational variation is now in photometry.json (`diskReflectanceModel`, kind `rotation-slices-v1`). At the
-      LORRI views it multiplies the preview by 0.994, 0.836, 1.058 and 0.970 (Io, Europa, Ganymede, Callisto),
-      which leaves a common deficit of ~11 %. The rendered values are in §7.
+1. **Pointing is fitted, not taken from C-kernels.** The fitted camera is tied to the target itself (limb,
+   terminator, rings); the mission pointing serves as a check (§5) and, where the image cannot decide,
+   for the parity (Voyager: a Saturn frame with moons; LORRI: the header WCS, which also gives the roll).
+2. **Scene changes with time are not in the tolerance.** Earth's clouds, giant-planet cloud features,
+   Io's volcanic deposits and seasonal changes can differ from the observation. `cloudTimeOffsetH`
+   records the Himawari regions' timing relative to the cloud overpass. Texture in a region contributes
+   to the noise term but does not cover a systematically different scene.
+3. **Single-band cases (LORRI)** give XYZS only through the body's disk-integrated spectral shape
+   ('estimated'). Regional colour differences can exceed the grey-versus-shape spectral term.
+   The band radiance itself is 'derived' and is the sharper quantity.
+4. **Instrument responses:** the Voyager filter curves are the pre-launch curves digitized from Smith
+   et al. (1977), generic to both spacecraft; the EPOXI calibration notes in each case describe the
+   HRI-VIS red leaks; the LORRI response is the SVO copy of the archive's launch calibration.
+5. **LORRI calibration:** the reader uses the in-flight RSOLAR from Weaver et al. (2020), including
+   for the Jupiter-encounter frames. The case's calibration notes record both it and the archived keyword.
+6. **Not in this set:** Mars, Mercury, a high-resolution lunar case, Titan and Venus.
+7. **Himawari:** an equatorial segment, without a disk-integrated ROI. The app's Earth albedo comes
+   from a different Himawari scene; each case records its spectral convention.
+8. **Sky ROIs** are upper limits: the camera's scattered light and zero level are included in them.
+9. **Sampling:** the reference is an area average per pixel. Sampling only pixel centres can miss
+   within-pixel variation, which the registration term does not include for the renderer.
+10. **App data previews (§5)** evaluate the data without rendering, as built with the cases. The Moon's
+    preview uses ROLO's Earth-based near-side photometry, while EPOXI saw the far side. The renderer
+    uses the lunar maps at ROLO's reference geometry. The Galilean previews are longitude-averaged;
+    the renderer also uses the measured rotational variation (`rotation-slices-v1`). A preview is not
+    a rendered measurement.
 """
 
-RUN_FINDINGS = """**What the failures say.** The numbers in items 5 and 6 are those of the run above. Those in items 1 to 4 were
-measured when each change was made, on the software renderer and, for Saturn, against the case as it was before
-its regions were rebuilt; they differ from the table above in the third digit (by up to 1 %). Two checks of the
-runner itself, made on the same tree and data as the run above. With 2 × 2 samples per pixel, 14 of the 47 body regions change by more than 0.3 % and six by more than
-1 % (Pluto's limb +3.5 %, the EPOXI Moon's disk +2.8 %, the EPOXI Earth's centre +1.6 %, Europa's and Callisto's
-limbs and Europa's terminator about 1 %), and one verdict changes: the Himawari limb's Z is +2.06σ with one sample
-and +1.99σ with four. The rgba16float fallback targets give the same means as rgba32float within 0.06 %.
+RUN_FINDINGS = """### Current reading (decisions of 2026-10-07)
 
-*In the data (photometry.json, rings.json):*
+* **Galilean moons:** the disk totals have a common deficit; no factor is applied. Their maps also
+  carry hemispheric gradients: the large-scale term is estimated. The leading/trailing comparison
+  with measured rotation slices identifies a disagreement for Ganymede and Callisto. These rows
+  do not separate every map contribution from the spatial law.
+* **Earth:** clouds without a thickness retrieval use an estimated population statistic. A design
+  for that term is under way. Cloud timing and a different scene limit what these rows establish.
+* **Jupiter's centre:** the app uses a 2025 map against a 2007 planet. This is a scene difference,
+  outside the case's uncertainty budget, rather than evidence for choosing a different law.
+* **Saturn's terminator:** the frame shows night-side light with ringshine's signature, which the
+  app does not draw. The deficit does not establish that the Barkstrom law darkens too steeply.
+  **Ring rows:** the case's phase is beyond the ring reflectance model's domain. Ring brightness
+  is shown as unknown, and these HDR rows compare the reference with zero ring light.
+* **Moon/Earth ratio:** the table above gives its refreshed tolerance, failing channels and relative
+  errors. It depends on the Earth's rendered clouds and on a scene from another epoch. It is not
+  an independent test of the Moon's scale.
+* **Passes have limits:** sky upper limits test leakage beyond bodies, with no sky loaded; they
+  cannot fail because a sky model is too bright. Pluto's map and law use the same flyby as the
+  case, so those rows test the app against its own inputs; only its albedo is independent.
+  Saturn's limb is outside the map's polar coverage, and Uranus's view is outside its map.
+  Jupiter's disk total and the broad single-band spectral budgets do not establish that the
+  spatial pattern or spectral convention is correct.
 
-1. **Disk-resolved photometry: published laws, tested here independently.** photometry.json now carries a
-   `spatialModel` from published fits for Jupiter, Saturn, Uranus and Neptune (Minnaert k from the Hubble OPAL
-   READMEs, at the Y-channel wavelength; for Saturn beyond small phase the Barkstrom law with B(α) from Pioneer 11),
-   Io (Hapke, Simonelli & Veverka 1986), Europa, Ganymede and Callisto (Hapke, Domingue & Verbiscer 1997), Mimas to
-   Rhea (Akimov, Filacchione et al. 2022; no validation frame), Pluto, Charon and Triton (Hapke, Verbiscer et al.
-   2022) and Mars (Vincendon 2013); all *estimated*
-   (docs/sources/spatial-photometry.md). Before them every disk was Lambert (effective Minnaert k 1.0, against the
-   observed 0.7–0.9 for the planets and Pluto and 0.5–0.8 for the icy moons). Rendered / observed, Lambert → the
-   published law:
-   - **into tolerance:** Uranus disk centre 1.154 → 0.997 and terminator 0.609 → 0.907; Pluto disk centre
-     1.584 → 1.070 and terminator 0.647 → 0.916 (Pluto's disk integral also moves from 1.247 to 0.998, because
-     the Hapke law now carries its phase curve beyond the Earth-based 1.74°).
-   - **closer, already within tolerance:** Neptune centre 1.157 → 1.002, limb 0.824 → 0.958, terminator
-     0.567 → 0.837; Jupiter terminator 0.931 → 0.978. Jupiter's centre stays too bright (1.235 → 1.212); its
-     2025 OPAL map shows other belt features than the 2007 planet.
-   - **Saturn (54.6°): the published law fails at the terminator.** Rendered / observed for centre, limb and
-     terminator:
-
-     | Stage | Centre | Limb | Terminator |
-     |---|---|---|---|
-     | Lambert | 1.311 | 1.032 | 1.034 |
-     | OPAL's k = 0.72 at all phases | 1.187 | 1.316 | 1.719 |
-     | Minnaert k(α), fitted to Pioneer's Barkstrom B(α) | 1.223 | 1.239 | 1.509 |
-     | Same, with the Cassini ISS disk-integrated phase curve | 0.900 | 0.912 | 1.111 |
-     | Now: the native Barkstrom law with Pioneer's B(α) | 0.882 | 1.091 | 0.705 |
-
-     - **Disk-integrated brightness (the step to 0.900 / 0.912 / 1.111):** Mallama & Hilton's Eq. 12, a fit to
-       the red-light Pioneer 11 model, is 1.36× brighter at 54.6° than the full-disk reflectance that Wang et al.
-       (2024) measured with Cassini ISS in GRN, 2004–2017. Their dataset keeps only images within 3° of the ring
-       plane, so it excludes this frame (28.7° above it). Beyond 5.7°, the app now uses that curve, digitized from
-       the paper's Fig. 7 (docs/sources/wang-2024.md).
-     - **Spatial law (the last step):** the renderer now evaluates Dones et al.'s (1993) Barkstrom law exactly,
-       with B(54.6°) = 1.34 interpolated to 562 nm, instead of its Minnaert approximation. Relative to the centre:
-       - the terminator goes from 1.234 to 0.80, so its excess turns into a 20 % deficit (−2.6σ; −3.2σ in Z);
-       - the limb goes from 1.013 to 1.237 (still +0.9σ).
-     - **Reading:** the exact Pioneer law darkens toward the terminator (∝ μ0^B) more steeply than this 2016 frame
-       shows. The Minnaert approximation matched better by accident of its disk-averaged fit. Possible causes, not
-       tested:
-       - epoch and latitude: Pioneer in 1979 saw equatorial belts and zones; this frame looks from 28.7° north in
-         northern summer;
-       - the Barkstrom fit's behaviour at small μ0.
-     - **Other limit:** both sides of the phase-curve comparison are CISSCAL-calibrated, so a common ISS
-       calibration error would not show.
-
-     Nothing is tuned to this frame.
-   - **Galilean moons:** measured against the disk-integrated value (which carries the common offset of item 2),
-     the laws flatten the disks as observed. Europa's centre / limb / terminator go from 1.20 / 0.95 / 0.60 to
-     1.02 / 1.01 / 0.85 of the disk-integrated ratio, and Ganymede's from 1.08 / 0.87 / 0.42 to 0.91 / 0.98 / 0.66.
-     Callisto's limb stays too bright (1.27 → 1.31) while its centre (1.11 → 1.00) and terminator (0.63 → 0.84)
-     improve. In absolute terms they still fail because of item 2 (Ganymede's centre and Callisto's limb now
-     fail, 0.808 and 1.065).
-   - **Io** now has the Hapke law of Simonelli & Veverka (1986, Voyager violet filter). Relative to the
-     disk-integrated ratio (0.885), its centre / limb / terminator go from 1.13 / 0.96 / 0.68 (Lambert) to
-     0.96 / 1.01 / 0.99. In absolute terms the terminator moves into tolerance (0.598 → 0.874), while the centre
-     now fails (1.000 → 0.848, −3.8σ) with the common offset of item 2, as Europa's and Ganymede's do.
-2. **Galilean moons, disk-integrated:** with the rotational variation (§6.10) Io, Europa and Ganymede render at
-   0.885, 0.888 and 0.893 of LORRI (−3 to −5σ), the same to 1 %; Callisto at 0.812 (46.5° phase, in Mayorga et al.'s
-   30–60° data gap). **Bounded, not corrected** (docs/sources/mayorga-2020.md, "The ~11 % offset"):
-   - **Cassini side:** Mayorga et al.'s tight apertures and close sky annuli, applied to the ISS WAC extended PSF
-     from the calibration volume, recover only 87–95 % of a moon's light. CISSCAL's absolute factors refer to
-     the total flux.
-   - **LORRI side:** the in-flight RSOLAR (Weaver et al. 2020) reads 7 ± 5 % above the ground scale, judged by
-     Jupiter in the same 2007 set (0.936 against Karkoschka). The archive's pre-flight value would give 1.061.
-   - **Together:** the two predict 0.78–0.93, which contains the observed ratios.
-   - **Ruled out:** the LORRI colour term (Y/LORRI 0.97–1.02 by moon) and the phase curves. Io, Europa and
-     Ganymede share the offset at different phase angles.
-   - **Callisto's extra 8 %** is probably the polynomial inside the data gap.
-
-   The aperture loss depends on per-image moon sizes that the paper does not give, and the LORRI evidence rests
-   on a validation frame, so nothing is changed.
-3. **Saturn's rings are not drawn at 54.6° phase:** `rings.json`'s reflectance model covers 0.25–47°, so the
-   renderer hatches the rings as not measured and draws no ring light (ROIs C, B, A render 0; they still cast
-   shadows and absorb). Observed: B ring I/F ~0.11 in the green. No published, machine-usable ring photometry
-   beyond 47° was found: the Voyager ISS profiles on PDS are at 47° only, the Cassini ISS phase curves of
-   Déau et al. (2009) reach 25°, and HST reaches 6.3°. It stays unknown.
-4. **Pluto's phase function** is measured only to 1.74° (Earth-based). 15.8° is extrapolated with the spatial
-   law (renderer warning), which is now Verbiscer et al.'s Hapke fit to the full New Horizons phase curve
-   (item 1).
-
-*In the renderer (for the renderer engineer):*
-
-5. **The Moon's far side (EPOXI): fixed in the renderer.** It renders 152.5 cd/m² against 164.1 ± 17 (0.929,
-   −1.4σ). Before the fix it rendered 130.1 (0.793, −4.1σ), with the Moon's maps normalized over a rotation rather
-   than at ROLO's reference view. The Moon/Earth ratio fails in X and Y: 0.0981 against 0.1016 ± 0.0014, with the
-   Moon at 0.929 and the Earth at 0.962 of the observed. The ratio's tolerance is 1.4 %, far tighter than either
-   disk's (10 %), so it follows the Earth's rendering closely: it failed at 0.089 when the Earth rendered 1.068 (the
-   clouds layer's mean τ), passed at 0.101 when the Earth rendered 0.938 (the cloudTau clouds of item 6), and fails
-   again now that the light of the air below a cloud comes through the cloud (docs/rendering-earth.md §4), which
-   raised seven of the Earth's eight body regions by 0.8–13 % (the Himawari limb by 0.04 %).
-6. **Earth (Himawari-9, 2026-09-28 04:05 UTC):** the clouds are drawn from the cloudTau layer
-   (docs/rendering-earth.md §2): the share with a retrieval as a log-normal in τ, the rest with the partly-cloudy τ
-   statistic (estimated). The disk centre (cloud-time offset 0.03 h, so the app's clouds are those of this very
-   time) renders 7011 against 4678 ± 600 cd/m² (1.50×, +7.8σ). The three near-centre points render 1.38×, 1.02×
-   (pass) and 1.38×. The limb passes in X, Y and S (Y 1.000) and fails in Z (1.112, +2.1σ; with four samples per
-   pixel it passes, +2.0σ). The terminator renders 0.64, but its clouds are 4.2 h older, so that one is
-   inconclusive. The rendered image shows 8-pixel blocks in the ocean/cloud field around the disk centre
-   (`app/shots/validation/earth-himawari9-2026.hdr.png`). To check: the cloud without a retrieval at the centre
-   (its thickness is a global statistic), and the sun glint (the specular point is near 130° E). The EPOXI Earth of
-   2008, seen whole at 75° phase, passes: disk-integrated 0.962, centre 0.980.
+These readings follow the validation triage's findings, not a fit of any case, tolerance or model.
 """

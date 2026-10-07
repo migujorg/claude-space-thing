@@ -59,7 +59,7 @@ Every entry is therefore **estimated**, and its `method` states the assumptions.
 
 - **The 0° value:** it is 2 × OPAL's k = 0.719. At zero phase μ0 = μ, and the Barkstrom law equals Minnaert's with B = 2k. OPAL is used there because at small phase its law is the one divided out of the map the app shows. Pioneer's own 0° value, 1.335, lies outside Pioneer's observed phase range.
 - **Independence:** Pioneer 11 (1979), fitted in 1984/1993; none of the validation frames is involved.
-- **Validation** (Cassini WAC, 2016, 54.6°; docs/reports/validation.md): the exact law gives centre / limb / terminator 0.882 / 1.091 / 0.705 of observed. The terminator fails (−2.6σ): the law darkens toward it more steeply than this frame shows. The earlier Minnaert approximation gave 0.900 / 0.912 / 1.111. The exact law is kept because it is the published one; nothing is fitted to the frame.
+- **Validation** (Cassini WAC, 2016; docs/reports/validation.md): the terminator row includes night-side light with ringshine's signature, which the app does not draw (`docs/rendering-m2.md` §6). The deficit does not establish that the exact Barkstrom law darkens too steeply. The current report gives the run's values; the law is kept because it is the published one, and nothing is fitted to the frame.
 - **Season- and latitude-aware alternatives (searched 2026-09-30, none adopted).** Pioneer 11 saw Saturn near equinox in 1979, mostly its equatorial belts and zones. The validation frame looks from 28.7° N in northern summer. Candidates checked:
 
   | Source | What it gives | Why not adopted |

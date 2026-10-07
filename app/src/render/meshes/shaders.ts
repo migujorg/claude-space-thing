@@ -68,8 +68,7 @@ fn selfShadow(ls: vec3f, cosSun: f32) -> f32 {
 
 struct FOut {
   @location(0) ext: vec4f,
-  @location(1) w: f32,
-  @location(2) mask: f32,
+  @location(1) mask: f32,
 };
 
 @fragment fn fs(in: MV) -> FOut {
@@ -102,7 +101,6 @@ struct FOut {
   }
   var o: FOut;
   o.ext = toStore(F, L);
-  o.w = b.misc.x;
   o.mask = select(0.0, 1.0, U.info.w > 0.5);
   return o;
 }
