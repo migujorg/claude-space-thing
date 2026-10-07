@@ -4,7 +4,7 @@
 // comae from 1 to 40 pixels in radius and nuclei on and off pixel centres. The same sum on the CPU mirror is
 // tests/comets.test.ts.
 
-import type { CometModelProduct } from '../../data/schema';
+import type { CometMeasuredActivity, CometModelProduct } from '../../data/schema';
 import type { SceneComet } from '../scene';
 import { CometLayer, cometInput } from './layer';
 import { activityOf, coma, enclosed, type V3 } from './model';
@@ -12,7 +12,7 @@ import { activityOf, coma, enclosed, type V3 } from './model';
 interface Fixture {
   comet: { M1: number; K1: number; name: string };
   ours: { helioKm: V3; helioVelKmS: V3; earthHelioKm: V3 }[];
-  measured: { C2?: number; CN?: number; C3?: number; afrho?: number; sources: string[] } | null;
+  measured: CometMeasuredActivity | null;
   model: CometModelProduct;
 }
 

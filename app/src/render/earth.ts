@@ -6,51 +6,15 @@
 // Radiance factor ρ: L = (E_sun/π)·ρ, with E_sun the solar illuminance on a surface normal to the Sun,
 // so a Lambert surface of reflectance R has ρ = R·μ0.
 
-/**
- * Asymmetry parameter g of liquid-water clouds at visible wavelengths, derived by Mie theory:
- * - refractive index of water from Hale & Querry (1973), n = 1.331–1.333 at 550–650 nm;
- * - the modified-gamma size distribution (effective variance 0.10) that the MODIS/VIIRS cloud-property
- *   retrieval assumes (Platnick et al. 2017);
- * - g = 0.860, 0.867, 0.873 at 550 nm for effective radii 8, 12, 20 µm (0.857–0.872 at 650 nm); the
- *   12 µm value is used (script in docs/rendering-earth.md §3).
- * Using the retrieval's own particle model keeps the reflectance of the retrieved optical thickness
- * consistent with what the satellite saw.
- */
-export const CLOUD_G_LIQUID = 0.867;
-/**
- * Asymmetry parameter of ice clouds: ≈ 0.75 in the mid-visible for the severely roughened aggregated
- * columns (Yang et al. 2013) of the MODIS Collection 6 retrieval (Platnick et al. 2017), which the VIIRS
- * CLDPROP product continues. Alternatives: smooth crystals (g ≈ 0.8, Baum et al. 2005, Collection 5).
- */
-export const CLOUD_G_ICE = 0.75;
-/**
- * Visible (λ < 700 nm) albedo of snow-covered first-year sea ice in spring (thick snow > 3 cm, SON):
- * 0.96 (Brandt et al. 2005, J. Climate 18, 3606, Table 3), taken as spectrally flat and Lambertian.
- * An assumption for all sea ice, so its light is labelled estimated. Alternatives in the same table:
- * thin snow on first-year ice 0.85–0.94, bare first-year ice 0.54–0.67. Perovich et al. (2002) measured
- * Arctic summer ice-only albedos of 0.4 (with melt ponds) to 0.65.
- */
-export const SEA_ICE_ALBEDO_VIS = 0.96;
+import { CLOUD_G_ICE, CLOUD_G_LIQUID, COX_MUNK_MAX_WIND, COX_MUNK_SIGMA2, SEA_ICE_ALBEDO_VIS, SEA_WATER_N, WIND_12_5_PER_10 } from '../core/constants';
+export { CLOUD_G_ICE, CLOUD_G_LIQUID, COX_MUNK_MAX_WIND, COX_MUNK_SIGMA2, SEA_ICE_ALBEDO_VIS, SEA_WATER_N, WIND_12_5_PER_10 } from '../core/constants';
+
 /**
  * The night layer's radiance → luminance conversion: CIE HP1 (high-pressure sodium) from the layer
  * header's constants.toXYZS. The alternative there, CIE LED-B3 (4000 K LED), differs by 3 % in Y and
  * mostly in colour. The lamp spectrum is not measured, so night-light colour is estimated.
  */
 export const NIGHT_LAMP = 'HP1';
-
-/**
- * Sea-surface slope variance of Cox & Munk (1954, JOSA 44, 838, clean surface): σ² = 0.003 + 5.12·10⁻³·U,
- * U the wind speed (m/s) at 12.5 m, isotropic Gaussian slopes (their Gram–Charlier skewness and
- * peakedness terms and the up/cross-wind anisotropy are left out: the wind direction is not in the layer).
- */
-export const COX_MUNK_SIGMA2 = { a: 0.003, b: 5.12e-3 };
-/**
- * U(12.5 m)/U(10 m) for a neutral logarithmic profile with a ~0.2 mm roughness length, the conversion the
- * wind layer's header gives (surfaces/399/wind.json constants.coxMunk.height).
- */
-export const WIND_12_5_PER_10 = 1.02;
-/** Refractive index of sea water in the visible, as Cox & Munk (1954) used for its Fresnel reflectance. */
-export const SEA_WATER_N = 1.338;
 
 /** Fresnel reflectance of unpolarised light at a dielectric interface (Cox & Munk 1954 Eq. 10). */
 export function fresnel(cosI: number, n = SEA_WATER_N): number {
@@ -106,8 +70,6 @@ function glintOf(cosBeta: number, mu: number, cosOmega: number, s2: number, mu0:
   const tan2 = (1 - c2) / c2;
   return (fresnel(cosOmega) * Math.exp(-tan2 / s2) * seaShadowing(mu0, mu, s2)) / (4 * s2 * mu * c2 * c2);
 }
-/** Largest wind speed (m/s, 12.5 m) of Cox & Munk's clean-surface photographs (their Table 1: 13.8 m/s). */
-export const COX_MUNK_MAX_WIND = 13.8;
 
 /**
  * The largest glint radiance factor any wind within Cox & Munk's measured range (0–13.8 m/s) could give at
@@ -221,8 +183,11 @@ export interface CloudPopulation {
 export function unmeasuredTauPopulation(header: unknown): (CloudPopulation & { label: string }) | null {
   const u = (header as { constants?: { unmeasuredTau?: Record<string, unknown> } } | null)?.constants?.unmeasuredTau;
   if (!u) return null;
-  const ln = u.tauBinLnCentre;
-  const stats = u.statistics as Record<string, Record<string, { binProbability?: unknown }>> | undefined;
+  const value = u.value;
+  if (!value || typeof value !== 'object') return null;
+  const payload = value as Record<string, unknown>;
+  const ln = payload.tauBinLnCentre;
+  const stats = payload.statistics as Record<string, Record<string, { binProbability?: unknown }>> | undefined;
   const pr = stats?.floorCellsZero?.partlyCloudyAllHeights?.binProbability;
   if (!Array.isArray(ln) || !Array.isArray(pr) || ln.length !== pr.length || ln.length === 0) return null;
   if (!ln.every((x) => typeof x === 'number' && fin(x)) || !pr.every((x) => typeof x === 'number' && fin(x) && x >= 0)) return null;

@@ -3,6 +3,8 @@
 // placed here from the ephemerides at a time near the current one (the Earth over the lunar horizon, Jupiter with
 // its four large moons, Pluto with Charon). Nothing here is a physical value: camera framings only.
 
+import { SECONDS_PER_DAY } from '../../core/constants';
+
 import type { Vec3 } from '../ports';
 import { Geometry, minima, type EventView, type FinderInput, type SkyEvent } from './finder';
 
@@ -20,7 +22,7 @@ export interface Bookmark {
 }
 
 const SUN = 10, EARTH = 399, MOON = 301, JUPITER = 599, PLUTO = 999, CHARON = 901;
-const DAY = 86400;
+const DAY = SECONDS_PER_DAY;
 
 const sub = (a: Vec3, b: Vec3): Vec3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
 const add = (a: Vec3, b: Vec3): Vec3 => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
