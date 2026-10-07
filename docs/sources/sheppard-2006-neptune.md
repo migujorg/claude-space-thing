@@ -5,4 +5,6 @@
 
 ## What is used
 
-The earlier completeness statement for Neptune is recorded with the newer one (`sheppard-2024-uranus-neptune`), which supersedes it. The survey covered 1.75 deg² to an R-band 50 % detection efficiency of 25.8 mag, a radius of about 17 km for albedo 0.04 (abstract). No population below that is published, so the layer adds no Neptunian irregular moons.
+The earlier completeness statement for Neptune is recorded with the newer one (`sheppard-2024-uranus-neptune`), which supersedes it. The survey covered 1.75 deg² to an R-band 50 % detection efficiency of 25.8 mag, a radius of about 17 km for albedo 0.04 (abstract). No supported population below that was found in the sources reviewed, so the layer adds no Neptunian irregular moons.
+
+Product-use scope: catalogue-count conditioning and a fitted H proxy do not establish detection probability for a generated orbit or guarantee consistency with all observations. Discovery yield is aggregate under fixed inputs; catalogue refits can change counts and identities. Source survey efficiencies and completeness statements above retain their published domains; the current generator does not apply their pointings or efficiencies as an object veto. [Audited limitations](../reports/synthetic-limitations.md).

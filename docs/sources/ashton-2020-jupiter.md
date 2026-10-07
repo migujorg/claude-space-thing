@@ -14,3 +14,5 @@
 - Retrograde moons only: the direct (prograde) jovians are neither debiased nor modelled (the authors expect their completeness to be worse; Sec. 3.5).
 - The total rests on one 1° field 1.5° west of Jupiter, scaled by the known moons' sky distribution over 10 oppositions (a multiplier of 11 ± 5): "within a factor of 2".
 - The paper's 2020 statement that the catalogue was complete to m_r ≈ 23.2 is not used. The stage finds the limit of today's catalogue by comparing it with the model.
+
+Product-use scope: catalogue-count conditioning and a fitted H proxy do not establish detection probability for a generated orbit or guarantee consistency with all observations. Discovery yield is aggregate under fixed inputs; catalogue refits can change counts and identities. Source survey efficiencies and completeness statements above retain their published domains; the current generator does not apply their pointings or efficiencies as an object veto. [Audited limitations](../reports/synthetic-limitations.md).

@@ -1,10 +1,10 @@
-"""Synthetic small-body populations: fill what the surveys could not yet detect (M6, NORTH_STAR 3.3).
+"""Synthetic small-body populations: condition population models on eligible catalogue counts (M6, NORTH_STAR 3.3).
 
 Algorithm (docs/reports/synthetic-populations.md has the full description and the numbers):
 
   cells     Each population has a fixed grid of cells (a, e, i, H): a-bin edges, e and i bin widths, H bins of
             H_BIN mag aligned on multiples of H_BIN. The grid does not depend on the catalogue.
-  limit     H_lim per a-bin, the magnitude down to which the catalogue is complete there:
+  limit     H_lim per a-bin, a fitted magnitude proxy, not a measured detection probability or an observation veto:
               - catalogue-extrapolated populations (main belt, Hungarias, Hildas, Jupiter Trojans): the Hendler &
                 Malhotra (2020) model H_lim(a) = -5 log10(a (a - 1)) + C, C refitted to the current catalogue on
                 every build (fit_hlim);
@@ -12,10 +12,10 @@ Algorithm (docs/reports/synthetic-populations.md has the full description and th
                 whose known count is significantly (2 sigma, Poisson) below the model's count (realization_limit).
             No synthetic object is ever brighter than the H_lim of its a-bin.
   model     Expected number of objects per cell at H >= H_lim:
-              - extrapolated: f(e, i | a) N(a, H), where N(a, H) continues the catalogue's own counts in the complete
+              - extrapolated: f(e, i | a) N(a, H), where N(a, H) continues the catalogue's own counts in the assumed representative bright
                 reference bin [H_lim - 1, H_lim - 0.5) with the published debiased slope dN/dH ~ 10^(alpha H) (and,
                 brighter than a published slope break, the catalogue's own slope measured just above H_lim), and
-                f(e, i | a) is the orbit distribution of the complete (H < H_lim) catalogue in that a-bin;
+                f(e, i | a) is the orbit distribution of the bright (H < H_lim) catalogue, without selection correction in that a-bin;
               - realization: the number of model objects in the cell.
   deficit   raw = max(0, model - known) per cell; the (a-bin, H-bin) group's total is max(0, sum model - sum known)
             and is shared among its cells in proportion to raw (removes the upward bias of clipping small Poisson
@@ -25,10 +25,10 @@ Algorithm (docs/reports/synthetic-populations.md has the full description and th
             ordered list of candidates (a, e, i uniform in the cell, H from the slope law within the H bin, angles,
             attribute quantiles); realization populations order the model objects in the cell by random keys.
   yield     The cell shows the first floor(deficit + u0) candidates (u0 from the cell's seed: unbiased rounding) that
-            pass the cell's current limits (H >= H_lim, perihelion rule). When the catalogue grows, the known count
-            rises, the deficit falls and the list is truncated from the end: the same objects remain, in the same
-            places, minus the last ones. Rerunning with the same (algorithm, seed, model files, catalogue snapshot)
-            gives byte-identical products.
+            pass the cell's current limits (H >= H_lim, perihelion rule). Yield is aggregate, not one-to-one: with fixed model/limits/templates, eligible known
+            counts reduce group deficits within rounding. Real catalogue releases refit limits, normalization and
+            templates; object identity and monotonic population counts are not guaranteed. Rerunning with the same (algorithm, seed, model files, catalogue snapshot)
+            gives byte-identical object records; headers include run timing.
 """
 
 from __future__ import annotations
