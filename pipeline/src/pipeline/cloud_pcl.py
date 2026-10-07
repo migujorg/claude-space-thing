@@ -53,6 +53,11 @@ P17_CITATION = ("Platnick, S., Meyer, K. G., King, M. D., Wind, G., Amarasinghe,
                 "and microphysical products: Collection 6 updates and examples from Terra and Aqua. IEEE Transactions "
                 "on Geoscience and Remote Sensing 55, 502-525. doi:10.1109/TGRS.2016.2610522.")
 
+# Platnick et al., MODIS C6/C6.1 Cloud Optical Properties User Guide, §1.1.2, p. 5: θ0 < 81.36°.
+# https://modis-images.gsfc.nasa.gov/_docs/C6MOD06OPUserGuide.pdf
+# The transcribed MODIS population retains this source domain; it is not the VIIRS layer's day limit.
+MODIS_COP_DAY_SZA_MAX_DEG = 81.36
+
 IMAGE_SIZE = (2067, 2518)              # width, height of Fig. 7's raster
 TAU_EDGES = [0.0, 0.3, 1.3, 3.6, 9.4, 23.0, 60.0, 150.0]
 PC_EDGES_HPA = [0.0, 180.0, 310.0, 440.0, 560.0, 680.0, 800.0, 1100.0]   # panel rows, top to bottom
@@ -235,6 +240,9 @@ def table(ctx) -> tuple[dict, str]:
                     "distribution is assumed for them.",
                     "One month (July 2021), global, MODIS rather than VIIRS (the continuity algorithm is designed to "
                     "match); no regional dependence.",
+                    f"Heritage MODIS optical retrieval daytime domain: SZA < {MODIS_COP_DAY_SZA_MAX_DEG}° "
+                    "(MODIS C6/C6.1 Cloud Optical Properties User Guide §1.1.2, p. 5). The histogram is transcribed "
+                    "as published; the VIIRS CLDPROP layer's separate 80° day limit does not refilter it.",
                     "A partly cloudy pixel's τ is retrieved as if the pixel were overcast, so it is the plane-parallel "
                     "τ that reproduces the pixel's mean reflectance: the right quantity to spread over the whole "
                     "sample."],

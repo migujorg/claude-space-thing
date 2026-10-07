@@ -18,7 +18,7 @@ from pipeline import surf_cog
 from pipeline import surf_earth as se
 from pipeline import surf_gibs as gb
 from pipeline import surf_tiles as st
-from pipeline.paths import OUT
+from pipeline.paths import OUT, RAW
 
 
 def _clock(monkeypatch, day):
@@ -148,6 +148,41 @@ def test_daylit_rows_follow_the_season():
     dec = se.daylit_rows("2026-12-21")
     assert june[lat > 80].all() and not june[lat < -75].any()
     assert dec[lat < -80].all() and not dec[lat > 75].any()
+
+
+@pytest.mark.parametrize("day", [se.CLOUD_DAY, "2026-06-21", "2026-12-21"])
+def test_cloud_daylit_rows_use_cldprop_optical_and_height_limit(day):
+    # Hubanks et al., CLDPROP L3 guide v2.1, §8.13 Table 9: L2 continuity COP/CTP day is SZA ≤ 80°.
+    lat = np.radians(st.lat_centers(se.LEVEL))
+    dec = np.radians(se.solar_declination_deg(day))
+    hour = np.radians(15 * (se.OVERPASS_LST_H - 12))
+    mu = np.sin(lat) * np.sin(dec) + np.cos(lat) * np.cos(dec) * np.cos(hour)
+    np.testing.assert_array_equal(se.daylit_rows(day), mu >= np.cos(np.radians(80.0)))
+    assert se.VIIRS_CLDPROP_DAY_SZA_MAX_DEG == 80.0
+
+
+def test_cloud_diagnostic_domain_uses_cldprop_limit_including_boundary(monkeypatch):
+    # At equinox/noon, latitude is SZA: include the documented 80° boundary, exclude the MODIS-only band.
+    monkeypatch.setattr(se, "solar_declination_deg", lambda day: 0.0)
+    monkeypatch.setattr(se, "OVERPASS_LST_H", 12.0)
+    lat = np.array([79.9, 80.0, 80.1, 81.36, 85.0])
+    expected = np.where(lat <= 80.0, np.cos(np.radians(lat)), 0.0)
+    np.testing.assert_array_equal(se._overpass_mu0(lat, se.CLOUD_DAY), expected)
+    monkeypatch.setattr(st, "lat_centers", lambda level: lat)
+    np.testing.assert_array_equal(se.daylit_rows(se.CLOUD_DAY), expected > 0)
+
+
+def test_modis_population_retains_its_own_cited_daylight_domain(monkeypatch):
+    # The histogram is already aggregated by MODIS; documenting its domain must not refilter it for VIIRS.
+    cp = se.cloud_pcl
+    assert cp.MODIS_COP_DAY_SZA_MAX_DEG == 81.36
+    if not all((RAW / "papers" / name).exists() for name in (cp.PDF_NAME, cp.P17_NAME)):
+        pytest.skip("MODIS population source PDFs not downloaded")
+    pdf = cp.fetch_pdf()
+    monkeypatch.setattr(se.sl, "register_dataset", lambda ctx, sid, *args, **kwargs: sid)
+    table, _ = cp.table(SimpleNamespace())
+    assert any("MODIS" in c and "SZA < 81.36°" in c for c in table["caveats"])
+    assert table["statistics"] == cp.statistics(cp.figure_cells(cp.pdf_image(pdf.read_bytes(), *cp.IMAGE_SIZE)))
 
 
 def test_coverage_weighted_coarse_levels():
