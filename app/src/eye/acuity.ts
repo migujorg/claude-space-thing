@@ -57,6 +57,6 @@ export function fovealFieldLevel(pixelDeg: number, blockPx: number): number {
  * (no weight), which change no ratio.
  */
 export function fovealSumsSize(blocksX: number, blocksY: number): [number, number] {
-  const pow2 = (n: number) => 2 ** Math.ceil(Math.log2(Math.max(1, n)));
+  const pow2 = (n: number) => { let p = 1; while (p < n) p *= 2; return p; };
   return [pow2(blocksX), pow2(blocksY)];
 }

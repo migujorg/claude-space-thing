@@ -558,7 +558,7 @@ export class Renderer {
       // Sides are powers of two so that no level of the chain drops a row or column (eye/acuity.ts fovealSumsSize).
       fov: ((size: [number, number]) => d.createTexture({
         size, format: 'rgba32float', usage: ST, label: 'fovea sums',
-        mipLevelCount: Math.log2(Math.max(size[0], size[1])) + 1,
+        mipLevelCount: Math.round(Math.log2(Math.max(size[0], size[1]))) + 1,
       }))(fovealSumsSize(tilesX * 8, tilesY * 8)),
       zero: tex(1, 1, 'rgba32float', ST, 'zero'),
       zero2: tex(1, 1, 'rgba32float', ST, 'zero2'),
