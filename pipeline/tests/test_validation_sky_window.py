@@ -49,9 +49,27 @@ def test_missing_band_rejects_preferred_corner_and_produces_compared_row(monkeyp
 
 def test_no_complete_window_has_named_outcome():
     _, _, res = _scene()
-    refs = [np.zeros((40, 40)), np.full((40, 40), np.nan)]
+    refs = [np.zeros((40, 40)), np.zeros((40, 40))]
+    refs[1][::2, ::2] = np.nan      # each band has data, but no fully recorded 5×5 window exists
     with pytest.raises(roi.NoSkyWindowError, match="sky-far: no sky window with data in all bands"):
         roi.select([roi.RoiSpec("sky-far", "sky-far")], res, 2, refs=refs)
+
+
+def test_reference_footprint_does_not_grow_the_geometric_margin():
+    _, _, res = _scene()
+    spec = roi.RoiSpec("sky-far", "sky-far", margin=2)
+    baseline = roi.select([spec], res, 2)[0]
+    refs = [np.full((40, 40), np.nan)]
+    x0, y0, x1, y1 = baseline.rect
+    refs[0][y0:y1, x0:x1] = 0.
+    assert roi.select([spec], res, 2, refs=refs)[0].rect == baseline.rect
+
+
+def test_reference_footprint_does_not_change_surface_selection():
+    _, _, res = _scene()
+    spec = roi.RoiSpec("disk-centre", "disk-centre", size=3)
+    baseline = roi.select([spec], res, 2)[0]
+    assert roi.select([spec], res, 2, refs=[np.full((40, 40), np.nan)])[0].rect == baseline.rect
 
 
 @pytest.mark.parametrize("kind", ["sky-near", "sky-far"])
