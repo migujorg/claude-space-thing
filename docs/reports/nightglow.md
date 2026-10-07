@@ -309,3 +309,9 @@ The two existing ISS limb scenes retain their geometry. The green mesopause band
 above it, near/above the centre. Stars appear above the dark limb. With the daylight eye history the same
 physical HDR emission remains, but the band and faint stars should disappear or become much harder to see.
 All appearance statements here are GPU checks for root, not observations made in this lane.
+
+Screen reconstruction also bounds UV to the emission texture's first and last texel centres. The sampler
+wraps longitude for the magnetic/OVATION tables; reusing that wrap at the screen edge formerly mixed
+the first and last columns when the emission was calculated at half resolution. This is a texture
+coordinate correction, not a luminance clamp. Its CPU boundary regression failed first; GPU parity
+against `fullResolutionNightglow` remains for root.

@@ -13,7 +13,7 @@ import { describe, expect, it } from 'vitest';
 import type { AirglowModel, AirglowProduct, AuroraModel } from '../src/data/schema';
 import { decodeAirglowProduct, decodeFloat16 } from '../src/data/nightglow';
 import { airglowLayers, auroraGrid, couplingAt, dayOfYear, monthWeights, NightglowSource, seasonWeights, solarRadioFlux } from '../src/app/nightglow';
-import { emissionTables, layerBranchIntegral, limbFactor, nightDomainWeight, packTables, PHOTON_RADIANCE_PER_R, KEV_PER_ERG_PER_1E8, nightglowRay, sampleBins, slabIntegral, toF16Array } from '../src/render/nightglow';
+import { emissionTables, layerBranchIntegral, limbFactor, nightDomainWeight, packTables, PHOTON_RADIANCE_PER_R, screenTextureUv, KEV_PER_ERG_PER_1E8, nightglowRay, sampleBins, slabIntegral, toF16Array } from '../src/render/nightglow';
 import { numberToF16 } from '../src/render/surface';
 import { nightglowRows } from '../src/ui/inspectModel';
 import { DATA_DIR, loadBodies, loadTimeData, loadEphemerisSet, loadOrientation } from './core-data';
@@ -58,6 +58,17 @@ describe('float16 upload', () => {
     const back = decodeFloat16(h.buffer);
     expect(back[8]).toBeCloseTo(3.14159, 2);
     expect(back[9]).toBeCloseTo(12.56, 1);
+  });
+});
+
+describe('nightglow screen reconstruction', () => {
+  it('never interpolates across the opposite screen edge with the periodic magnetic sampler', () => {
+    for (const pixel of [0.5, 1279.5]) {
+      const texel = screenTextureUv(pixel, 1280, 640) * 640 - 0.5;
+      expect(Math.floor(texel)).toBeGreaterThanOrEqual(0);
+      expect(Math.ceil(texel)).toBeLessThanOrEqual(639);
+    }
+    expect(screenTextureUv(640, 1280, 640)).toBe(0.5);
   });
 });
 

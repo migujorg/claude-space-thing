@@ -215,6 +215,12 @@ export function toF16Array(src: ArrayLike<number>, out: Uint16Array<ArrayBuffer>
 const toBodyFixed = (R: M3, w: V3): V3 => [R[0] * w[0] + R[3] * w[1] + R[6] * w[2], R[1] * w[0] + R[4] * w[1] + R[7] * w[2], R[2] * w[0] + R[5] * w[1] + R[8] * w[2]];
 const toWorld = (R: M3, b: V3): V3 => [R[0] * b[0] + R[1] * b[1] + R[2] * b[2], R[3] * b[0] + R[4] * b[1] + R[5] * b[2], R[6] * b[0] + R[7] * b[1] + R[8] * b[2]];
 
+/** CPU twin of screen-texture reconstruction coordinates, bounded to the first/last texel centres. */
+export function screenTextureUv(pixel: number, frameSize: number, textureSize: number): number {
+  const halfTexel = 0.5 / textureSize;
+  return Math.max(halfTexel, Math.min(1 - halfTexel, pixel / frameSize));
+}
+
 /**
  * CPU ray twin for diagnostics: separate airglow and aurora XYZS before lower-atmosphere attenuation.
  * These are upper bounds when a far-side ray crosses the lower atmosphere; exact unattenuated terms
@@ -827,7 +833,11 @@ struct NOut {
   let cTop = sqrt((rTop - rt) * (rTop + rt));
   let sNear = max(-pr.tCam, -cTop);
   if (sNear >= cTop || occulted(F, pr.d)) { discard; }
-  let v = textureSampleLevel(lowTex, ngSamp, in.pos.xy * F.size.zw, 0.0);
+  // ngSamp wraps longitude for the magnetic/OVATION tables. Screen light must not wrap: bound
+  // reconstruction to the edge texel centres (screenTextureUv CPU twin), also at half resolution.
+  let halfTexel = 0.5 / vec2f(textureDimensions(lowTex));
+  let uv = clamp(in.pos.xy * F.size.zw, halfTexel, vec2f(1.0) - halfTexel);
+  let v = textureSampleLevel(lowTex, ngSamp, uv, 0.0);
   if (all(v == vec4f(0.0))) { discard; }
   var o: NOut;
   o.ext = v;
