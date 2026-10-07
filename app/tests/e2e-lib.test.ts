@@ -47,7 +47,7 @@ interface Lib {
   THUMB_H: number;
   GPU_MODES: string[];
   gpuLaunchArgs(mode?: string): string[];
-  runServerOptions(): { port: number; strictPort: boolean; hmr: boolean; watch: null };
+  runServerOptions(): { hmr: boolean; watch: null };
   isSoftwareAdapter(info: Adapter | null): boolean;
   adapterLabel(info: Adapter | null): string;
   gpuMismatch(mode: string, info: Adapter | null): string | null;
@@ -162,7 +162,8 @@ describe('the --gpu option', () => {
     expect(() => lib.gpuLaunchArgs('gpu')).toThrow(/--gpu gpu: expected swiftshader or hardware/);
   });
   it('a run\'s own server does not watch files or reload pages: a data rebuild or an edit cannot lose the scene being measured', () => {
-    expect(lib.runServerOptions()).toEqual({ port: 0, strictPort: false, hmr: false, watch: null });
+    // the address and the port are local-server.mjs's (127.0.0.1, assigned by the OS, never 5173)
+    expect(lib.runServerOptions()).toEqual({ hmr: false, watch: null });
   });
 
   it('tells a software adapter from a hardware one', () => {

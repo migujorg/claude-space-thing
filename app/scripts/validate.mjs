@@ -9,13 +9,13 @@
 //   npm run validate -- --only io-nh-lorri-2007,saturn-cassini-wac-2016
 //   options: --ss N (N × N samples per pixel, default 1)  --reality strict|best|complete (default best)
 //            --hdr f16 (rgba16float fallback targets)  --timeout <s per case, default 900>
-//            --base http://localhost:5173 (use a running server)  --strict (exit 1 when an ROI fails)
+//            --base http://127.0.0.1:5173 (use a running server)  --strict (exit 1 when an ROI fails)
 //            --gpu swiftshader|hardware (default swiftshader; hardware = the machine's GPU through Vulkan, and the
 //            run stops if the browser gave a software adapter instead)
 // Not part of CI (no data, no WebGPU there). A failing ROI is a finding, reported with its numbers.
 
 import { chromium } from 'playwright';
-import { createServer } from 'vite';
+import { startLocalServer } from './local-server.mjs';
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { cpus } from 'node:os';
@@ -60,9 +60,7 @@ mkdirSync(OUT, { recursive: true });
 let server;
 let base = opt('base');
 if (!base) {
-  server = await createServer({ root: ROOT, server: runServerOptions(), logLevel: 'error' });
-  await server.listen();
-  base = `http://localhost:${server.httpServer.address().port}`;
+  ({ server, base } = await startLocalServer(ROOT, runServerOptions()));
 }
 const browser = await chromium.launch({ headless: true, args: launchArgs });
 

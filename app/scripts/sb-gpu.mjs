@@ -1,14 +1,16 @@
-// Runs the small-body GPU field test page (sb-test.html) in headless Chromium with SwiftShader WebGPU, like
-// shot.mjs: prints the page log, writes the JSON result, and (render mode) a screenshot.
+// Runs the small-body GPU field test page (sb-test.html) in headless Chromium, like shot.mjs: prints the page log,
+// writes the JSON result, and (render mode) a screenshot. `--gpu swiftshader|hardware` as in shot.mjs (default
+// swiftshader; with hardware a software adapter is an error: app/e2e/README.md "On the GPU").
 //
-//   node scripts/sb-gpu.mjs --query "mode=accuracy&n=1000" --json out/sb-accuracy.json
+//   node scripts/sb-gpu.mjs --query "mode=accuracy&n=1000" --json out/sb-accuracy.json [--gpu hardware]
 //   node scripts/sb-gpu.mjs --query "mode=timing" --json out/sb-timing.json
 //   node scripts/sb-gpu.mjs --query "mode=render&scene=above" --out ../docs/reports/img/smallbodies-above.png
 import { chromium } from 'playwright';
-import { createServer } from 'vite';
+import { startLocalServer } from './local-server.mjs';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { adapterLabel, gpuLaunchArgs, gpuMismatch, pageAdapterInfo } from './e2e-lib.mjs';
 
 const args = Object.fromEntries(
   process.argv.slice(2).reduce((acc, a, i, arr) => (a.startsWith('--') ? [...acc, [a.slice(2), arr[i + 1]?.startsWith('--') ? 'true' : arr[i + 1]]] : acc), []),
@@ -18,15 +20,13 @@ const width = Number(args.width ?? 1280);
 const height = Number(args.height ?? 720);
 const timeoutMs = Number(args.timeout ?? 3600000);
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const gpuMode = args.gpu ?? 'swiftshader';
+// The shared arguments of the mode (they throw on an unknown mode, before anything starts), plus what this page
+// always needed: no GPU watchdog (one dispatch can take minutes on SwiftShader) and a larger JS heap (the catalogue).
+const launchArgs = [...gpuLaunchArgs(gpuMode), '--disable-gpu-watchdog', '--js-flags=--max-old-space-size=8192'];
 
-const server = await createServer({ root, server: { port: 0, strictPort: false }, logLevel: 'error' });
-await server.listen();
-const base = `http://localhost:${server.httpServer.address().port}`;
-const browser = await chromium.launch({
-  headless: true,
-  args: ['--enable-unsafe-webgpu', '--enable-features=Vulkan', '--use-webgpu-adapter=swiftshader', '--use-angle=swiftshader',
-    '--ignore-gpu-blocklist', '--disable-gpu-watchdog', '--js-flags=--max-old-space-size=8192'],
-});
+const { server, base } = await startLocalServer(root);
+const browser = await chromium.launch({ headless: true, args: launchArgs });
 let failed = false;
 try {
   const page = await browser.newPage({ viewport: { width, height } });
@@ -38,6 +38,10 @@ try {
   const err = await page.evaluate(() => window.__frameError);
   if (err) { console.log('[frameError]', err); failed = true; }
   const res = await page.evaluate(() => window.__sbResult);
+  const adapter = await page.evaluate(pageAdapterInfo);
+  console.log('[gpu]', `${gpuMode}, adapter ${adapterLabel(adapter)}`);
+  const wrongGpu = gpuMismatch(gpuMode, adapter);
+  if (wrongGpu) { console.log('[gpu]', wrongGpu); failed = true; }
   console.log(`[done in ${((Date.now() - t0) / 1000).toFixed(0)} s]`);
   if (args.json && res !== undefined) {
     mkdirSync(dirname(resolve(args.json)), { recursive: true });

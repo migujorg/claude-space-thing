@@ -5,7 +5,7 @@
 // illuminance outside the Moon relative to the Sun's, and SkyController.checkCorona() (GPU texture vs CPU twin).
 // The views of docs/reports/sky.md §5.5: the scene eclipse-2027-totality query, and the Sun shield from 1 AU.
 import { chromium } from 'playwright';
-import { createServer } from 'vite';
+import { startLocalServer } from './local-server.mjs';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -16,9 +16,7 @@ if (!/[?&]present=/.test(url)) url += (url.includes('?') ? '&' : '?') + 'present
 const out = resolve(args.out ?? 'shots/corona.png');
 const width = Number(args.width ?? 1280), height = Number(args.height ?? 720);
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const server = await createServer({ root, server: { port: 0, strictPort: false }, logLevel: 'error' });
-await server.listen();
-const base = `http://localhost:${server.httpServer.address().port}`;
+const { server, base } = await startLocalServer(root);
 const browser = await chromium.launch({ headless: true, args: ['--enable-unsafe-webgpu', '--enable-features=Vulkan', '--use-webgpu-adapter=swiftshader', '--use-angle=swiftshader', '--ignore-gpu-blocklist'] });
 let failed = false;
 try {

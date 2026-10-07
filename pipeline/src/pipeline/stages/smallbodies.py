@@ -517,18 +517,7 @@ def run(ctx: BuildContext) -> None:
 
     # ------------------------------------------------------------------ verification against Horizons
     res = sb_verify.run(cat, model, common, ctx.start_et, ctx.end_et, states_common=states)
-    ver = sb_verify.summary(res)
-    fails = []
-    for r, v in zip(res, ver):
-        tol = _tolerance(cat, r)
-        v["toleranceKm"] = tol
-        v["flags"] = int(flags[r.row])
-        if not r.same_solution:
-            fails.append(f"{r.label}: SBDB orbit {r.orbit_id} != Horizons {r.horizons_soln}")
-        elif not (r.max_err_km <= tol):
-            fails.append(f"{r.label}: {r.max_err_km:.2f} km > {tol} km")
-        print(f"[{STAGE}] verify {r.label:30s} max |dr| = {r.max_err_km:9.3f} km over {r.epochs.size} epochs "
-              f"(tol {tol:g}) level<={r.max_substep_level} {r.horizons_soln}")
+    ver, fails = check_verification(cat, res, flags)
     t = lap("verification vs Horizons", t)
     write_json(ctx, VERIFICATION, {
         "description": "Build record of the smallbodies stage: what this run computed for its verification objects "
@@ -555,6 +544,31 @@ def run(ctx: BuildContext) -> None:
     print(f"[{STAGE}] {n} objects; positions: {stats['labels']['position']}; total {timing['total']} s")
     if fails:
         raise ValueError("small-body verification failed: " + "; ".join(fails))
+
+
+def check_verification(cat: sb_catalog.Catalog, res: list[sb_verify.Result], flags: np.ndarray
+                       ) -> tuple[list[dict], list[str]]:
+    """The verification's summary rows (with each object's tolerance and flags) and the reasons it fails, one per
+    object: Horizons used another orbit solution; an epoch of the window was not compared (our propagation stopped
+    part-way, or Horizons gave no state there: no verification object is expected to stop, so this is never left
+    out of the maximum); the largest difference exceeds the object's tolerance."""
+    ver = sb_verify.summary(res)
+    fails = []
+    for r, v in zip(res, ver):
+        tol = _tolerance(cat, r)
+        v["toleranceKm"] = tol
+        v["flags"] = int(flags[r.row])
+        if not r.same_solution:
+            fails.append(f"{r.label}: SBDB orbit {r.orbit_id} != Horizons {r.horizons_soln}")
+        elif r.uncompared.size:
+            fails.append(f"{r.label}: {r.uncompared.size} of {r.epochs.size} epochs not compared: "
+                         f"{r.why_uncompared()} (max |dr| over the others {r.max_err_compared_km:.2f} km)")
+        elif not (r.max_err_km <= tol):
+            fails.append(f"{r.label}: {r.max_err_km:.2f} km > {tol} km")
+        print(f"[{STAGE}] verify {r.label:30s} max |dr| = {r.max_err_compared_km:9.3f} km over "
+              f"{r.epochs.size - r.uncompared.size} of {r.epochs.size} epochs "
+              f"(tol {tol:g}) level<={r.max_substep_level} {r.horizons_soln}")
+    return ver, fails
 
 
 def _floats(a) -> list:

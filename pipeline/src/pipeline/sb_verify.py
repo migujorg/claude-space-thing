@@ -7,6 +7,12 @@ SBDB epoch -> the product's common epoch (exactly as the stage does) -> every gr
 on the grid, propagating epoch by epoch equals propagating from the common epoch directly). Horizons' own model is
 JPL's small-body integrator (DE441 planets, the 16 most massive asteroids, relativity, Earth and Sun oblateness,
 fitted non-gravitational terms), so the difference measures our force model + integrator, not orbit uncertainty.
+
+Every epoch of the window must be compared. The chains run outward from the common epoch, so a propagation that
+stops (a collision, the end of the ephemeris, no convergence) leaves every later epoch of its chain without a state.
+No verification object is expected to stop inside the window: such epochs are counted (`Result.uncompared`) and
+make the largest error undefined (`Result.max_err_km` is NaN), so the object cannot pass a tolerance on the part
+that happened to be propagated.
 """
 
 from __future__ import annotations
@@ -24,6 +30,7 @@ from .sb_catalog import Catalog, epoch_et, states_at_epoch
 from .sb_model import ForceModel, propagate
 
 SUBDIR = "horizons/smallbodies"
+STATUS_NAMES = {dyn.COLLIDED: "COLLIDED", dyn.NO_EPHEMERIS: "NO_EPHEMERIS", dyn.NO_CONVERGENCE: "NO_CONVERGENCE"}
 
 # (label, SBDB primary designation, category)
 OBJECTS = [
@@ -74,12 +81,39 @@ class Result:
         return np.linalg.norm(self.ours[:, :3] - self.horizons[:, :3], axis=1)
 
     @property
+    def uncompared(self) -> np.ndarray:
+        """Indices of the epochs with no comparison: our propagation stopped at or before them (chains run outward
+        from the common epoch, and what lies beyond a stop has no state), or Horizons gave no state."""
+        return np.nonzero(~np.isfinite(self.err_km))[0]
+
+    @property
     def max_err_km(self) -> float:
-        return float(np.nanmax(self.err_km))
+        """Largest position difference over the window. NaN unless every epoch was compared: an object whose
+        propagation stopped part-way has no largest error, and `max_err_km <= tolerance` is then false."""
+        return float(np.max(self.err_km)) if self.err_km.size else math.nan
+
+    @property
+    def max_err_compared_km(self) -> float:
+        """Largest position difference over the epochs that were compared (for messages; NaN if none was)."""
+        e = self.err_km[np.isfinite(self.err_km)]
+        return float(e.max()) if e.size else math.nan
 
     @property
     def max_err_vel(self) -> float:
-        return float(np.nanmax(np.linalg.norm(self.ours[:, 3:] - self.horizons[:, 3:], axis=1)))
+        d = np.linalg.norm(self.ours[:, 3:] - self.horizons[:, 3:], axis=1)
+        return float(np.max(d)) if d.size else math.nan
+
+    def why_uncompared(self) -> str:
+        """What left epochs without a comparison, for the verification's failure message ('' if none)."""
+        if self.uncompared.size == 0:
+            return ""
+        parts = [f"our propagation stopped at {hz.et_to_tdb_calendar(float(self.epochs[j]))[:16]} TDB "
+                 f"({STATUS_NAMES.get(int(self.status[j]), int(self.status[j]))})"
+                 for j in np.nonzero(self.status != dyn.OK)[0]]
+        n_hz = int((~np.isfinite(self.horizons[:, :3]).all(axis=1)).sum())
+        if n_hz:
+            parts.append(f"Horizons gave no state at {n_hz}")
+        return "; ".join(parts) or "states are missing though no propagation reported a stop"
 
 
 def find_row(cat: Catalog, pdes: str) -> int:
@@ -221,5 +255,6 @@ def reference(model: ForceModel, s0: np.ndarray, t0: float, epochs: np.ndarray, 
 def summary(results: list[Result]) -> list[dict]:
     return [{"object": r.label, "category": r.category, "qAu": r.q_au, "e": r.e, "sbdbOrbit": r.orbit_id,
              "horizonsSolution": r.horizons_soln, "sameSolution": r.same_solution, "epochs": int(r.epochs.size),
+             "uncomparedEpochs": int(r.uncompared.size),
              "maxErrKm": r.max_err_km, "maxErrKmS": r.max_err_vel, "maxLevel": r.max_substep_level}
             for r in results]

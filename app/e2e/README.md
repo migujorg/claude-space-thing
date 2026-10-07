@@ -6,7 +6,6 @@ The suite uses one Vite server and one headless Chromium with SwiftShader WebGPU
 
 The suite needs the built data in `app/public/data`. It cannot run in CI, which has no data and no WebGPU; CI runs the unit tests, including `tests/e2e-lib.test.ts` for the comparison logic.
 
-A run renders the tree and the data as it finds them: its Vite server has neither the file watcher nor hot reloading (`runServerOptions` in `scripts/e2e-lib.mjs`), so a source edit or a data rebuild under way does not reload the page of the scene being measured. A module or a data file is still read when a scene first asks for it, so a run made while either changes is not a run of one state.
 
 ## What it writes
 
@@ -90,9 +89,15 @@ npm run e2e                                   # all scenes, compared with the ba
 npm run e2e -- --only earth-day,saturn-rings  # some scenes
 npm run e2e -- --no-compare                   # render and report only
 npm run e2e -- --jobs 1 --timeout 900         # one scene at a time, 15 min per scene (default 2 and 600 s)
-npm run e2e -- --base http://localhost:5173   # use a running dev server
+npm run e2e -- --base http://127.0.0.1:5173   # use a running dev server
 npm run e2e -- --gpu hardware                 # on the machine's GPU instead of SwiftShader (see below)
 ```
+
+## The scripts' own server
+
+Without `--base`, `e2e.mjs`, `validate.mjs`, `shot.mjs`, `sb-gpu.mjs`, `sky-shots.mjs` and `corona-shots.mjs` start their own Vite server through `scripts/local-server.mjs`: on `127.0.0.1`, at a free port the operating system assigns, and Vite must take exactly that port. They never use 5173. (Asking Vite for port 0 does not give a free port: Vite then takes its default, 5173, on `localhost`, which is `[::1]` where IPv6 comes first. A script run would sit on `[::1]:5173` beside a dev server on `127.0.0.1:5173`, and a browser that opens `http://localhost:5173` would be served the script's tree.)
+
+`e2e.mjs`, `validate.mjs` and `shot.mjs` start it without the file watcher and without hot reloading (`runServerOptions` in `scripts/e2e-lib.mjs`), so a source edit or a data rebuild under way does not reload the page of the scene being measured. A module or a data file is still read when a scene first asks for it, so a run made while either changes is not a run of one state.
 
 ## On the GPU (`--gpu hardware`)
 
