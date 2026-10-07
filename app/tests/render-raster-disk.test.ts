@@ -17,3 +17,12 @@ it('integrates a subpixel crescent instead of losing it between pixel centres', 
   const result = rasterDisk(law, { radius: 1, alpha, offset: [0.23, 0.41], rule: 'footprint', order: 24 });
   expect(Math.abs(result.sum / expected - 1)).toBeLessThan(1e-4);
 });
+
+it('a coordinate rotation can turn closest-approach rounding into false crescent light', () => {
+  const law = { ...LAMBERT_LAW, kind: LAW.minnaert, p: 0.788 }, alpha = 179 * Math.PI / 180;
+  const expected = Math.PI * lawDiskIntegral(law, alpha)[0];
+  const rounded = rasterDisk(law, { radius: 1, alpha, offset: [0.23, 0.41], rotation: 0.37, rule: 'bounded' });
+  expect(rounded.sum / expected).toBeGreaterThan(100);
+  const sliver = rasterDisk(law, { radius: 1, alpha, offset: [0.23, 0.41], rotation: 0.37, rule: 'sliver' });
+  expect(sliver.sum).toBe(0);
+});

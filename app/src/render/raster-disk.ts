@@ -3,6 +3,7 @@
  * are integers; derivatives are paired 2x2-quad differences of the discriminant.
  * This isolates footprint sampling, not perspective, textures, shadows or GPU accuracy.
  */
+import { rasterShaderLaw } from './raster-law-twin';
 import { gaussLegendre, LAW, lawRadf, type ResolvedLaw } from './spatial';
 
 export type RasterRule = 'bounded' | 'unbounded' | 'sliver' | 'footprint';
@@ -13,7 +14,7 @@ export interface RasterOptions {
   rule: RasterRule;
   /** Coordinate rotation about body y; exercises cancellation in the f32 normal dot. */
   rotation?: number;
-  /** f32 geometry is the default; laws use the CPU twin in f64 (see handoff). */
+  /** f32 geometry and scalar law operations are the default. */
   f32?: boolean;
   order?: number;
   /** Footprint total can be integrated without materialising every pixel. */
@@ -39,19 +40,13 @@ export function publishedRadf(law: ResolvedLaw, mu0: number, mu: number, alpha: 
   return lawRadf(law, mu0, mu, alpha);
 }
 
-/** Old shader floors (the Minnaert restoration is still pending on initial lane HEAD). */
-function boundedRadf(law: ResolvedLaw, mu0: number, mu: number, alpha: number): number {
-  if (!(mu0 > 0) || !(mu > 0)) return 0;
-  if (law.kind === LAW.minnaert) return mu0 ** law.p * Math.max(mu, 1e-3) ** (law.p - 1);
-  return lawRadf(law, mu0, mu, alpha);
-}
-
 export function rasterDisk(law: ResolvedLaw, options: RasterOptions): RasterResult {
   if (!(options.radius >= 1) || !(options.alpha >= 0 && options.alpha < Math.PI)) throw new Error('Expected radius >= 1 and 0 <= phase < pi');
   if (options.rule === 'footprint') return footprintDisk(law, options);
   const R = options.radius, [ox, oy] = options.offset ?? [0, 0];
   const f = options.f32 === false ? (v: number) => v : Math.fround;
   const sa = Math.sin(options.alpha), ca = Math.cos(options.alpha);
+  const evaluate = rasterShaderLaw(law, options.rule === 'bounded' ? {} : { minnaertFloor: 0, barkstromFloor: 0 }, f);
   const c = f(Math.cos(options.rotation ?? 0.37)), s = f(Math.sin(options.rotation ?? 0.37));
   const disc = (i: number, j: number) => {
     const x = f((i - ox) / R), y = f((j - oy) / R);
@@ -59,11 +54,15 @@ export function rasterDisk(law: ResolvedLaw, options: RasterOptions): RasterResu
   };
   const out: RasterResult = { sum: 0, maxPixel: 0, nonfinite: 0, evaluated: 0 };
   for (let j = Math.floor(oy - R - 1); j <= Math.ceil(oy + R + 1); j++) {
-    for (let i = Math.floor(ox - R - 1); i <= Math.ceil(ox + R + 1); i++) {
+    // Analytic circle-row limits discard only the empty part of the bounding quad.
+    const rowRadius = Math.sqrt(Math.max(0, R * R - Math.max(0, Math.abs(j - oy) - 2) ** 2));
+    const centreRadius = Math.sqrt(Math.max(0, R * R - (j - oy) ** 2));
+    const left = ca < 0 ? -ca * centreRadius : -rowRadius;
+    for (let i = Math.floor(ox + left - 2); i <= Math.ceil(ox + rowRadius + 2); i++) {
       const D = disc(i, j);
-      const fw = Math.abs(f(disc(i + (i % 2 === 0 ? 1 : -1), j) - D))
-        + Math.abs(f(disc(i, j + (j % 2 === 0 ? 1 : -1)) - D));
-      const cov = Math.max(0, Math.min(1, 0.5 + D / Math.max(fw, 1e-30)));
+      const fw = f(Math.abs(f(disc(i + (i % 2 === 0 ? 1 : -1), j) - D))
+        + Math.abs(f(disc(i, j + (j % 2 === 0 ? 1 : -1)) - D)));
+      const cov = Math.max(0, Math.min(1, f(0.5 + f(D / Math.max(fw, f(1e-30))))));
       if (cov === 0) continue;
       let x = f((i - ox) / R), y = f((j - oy) / R), z = f(Math.sqrt(Math.max(D, 0)));
       if (options.rule === 'sliver' && cov < 1) {
@@ -79,7 +78,7 @@ export function rasterDisk(law: ResolvedLaw, options: RasterOptions): RasterResu
       const nx = f(f(c * bx) - f(s * bz)), nz = f(f(s * bx) + f(c * bz));
       const len = f(Math.sqrt(f(f(nx * nx) + f(f(y * y) + f(nz * nz)))));
       const mu = f(nz / len), mu0 = f(f(f(nx / len) * f(sa)) + f(mu * f(ca)));
-      const value = cov * (options.rule === 'bounded' ? boundedRadf : publishedRadf)(law, mu0, mu, options.alpha);
+      const value = f(cov * evaluate(mu0, mu, options.alpha));
       out.evaluated++;
       if (!Number.isFinite(value)) out.nonfinite++;
       out.sum += value; out.maxPixel = Math.max(out.maxPixel, value);
@@ -108,7 +107,7 @@ function footprintDisk(law: ResolvedLaw, o: RasterOptions): RasterResult {
       if (Math.abs(x) >= 1) continue;
       xEdges.push(x);
       // Where the limb or terminator meets this vertical edge.
-      for (const a of [1, -ca]) if (a !== 0 && x / a > 0 && x / a < 1 || a === 1 && x / a > -1 && x / a < 0) {
+      for (const a of [1, -1, -ca]) if (a !== 0 && x / a > 0 && x / a < 1) {
         const y = Math.sqrt(1 - (x / a) ** 2); ys.push(-y, y);
       }
     }
