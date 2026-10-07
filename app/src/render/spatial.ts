@@ -969,11 +969,12 @@ export interface EllipsoidGeometry {
  * the exact Jacobian times the exact piecewise-linear map, without resampling the map. */
 export class EllipsoidNormalization {
   private motion = new MotionNormalization();
-  private bare = new MotionNormalization();
+  constructor(private bare = new MotionNormalization()) {}
   private profiles = new WeakMap<ZonalProfile, Map<string, ZonalProfile>>();
   private plain = new Map<string, ZonalProfile>();
   private means = new WeakMap<ZonalProfile, XYZS>();
   private equatorMoments = new WeakMap<ZonalProfile, Map<string, XYZS>>();
+  private equatorNodes = new WeakMap<ZonalProfile, Map<number, { logCos: number; values: XYZS }[]>>();
   private exact = new Map<string, XYZS>();
 
   private profile(radii: V3, map?: ZonalProfile): ZonalProfile {
@@ -1018,7 +1019,7 @@ export class EllipsoidNormalization {
   get(law: ResolvedLaw, alpha: number, geometry: EllipsoidGeometry, map?: ZonalProfile): XYZS {
     const [a,b,c]=geometry.radii;
     if(a===b && b===c) return this.bare.get(law,alpha,map?{profile:map,pole:geometry.pole}:undefined);
-    if(a===b) {
+    if(a===b && (map || law.kind === LAW.minnaert || law.kind === LAW.barkstrom)) {
       const profile = this.profile(geometry.radii,map);
       if ((law.kind === LAW.minnaert || law.kind === LAW.barkstrom) && geometry.pole[0] === 0 && geometry.pole[2] === 0) {
         // At the equator-on reference the law separates in photometric latitude and
@@ -1028,14 +1029,25 @@ export class EllipsoidNormalization {
         const momentKey = `${law.kind}:${law.p}:${Math.sign(geometry.pole[1])}`;
         let latitude = moments.get(momentKey);
         if (!latitude) {
-          const gl = gaussLegendre(16), vals = [0,0,0,0], cuts = [-Math.PI/2,...profile.cuts!,Math.PI/2];
+          const sign=Math.sign(geometry.pole[1]);
+          let nodesBySign=this.equatorNodes.get(profile);
+          if(!nodesBySign)this.equatorNodes.set(profile,nodesBySign=new Map());
+          let nodes=nodesBySign.get(sign);
+          if(!nodes) {
+            nodes=[];
+            const gl=gaussLegendre(16),vals=[0,0,0,0],cuts=[-Math.PI/2,...profile.cuts!,Math.PI/2];
+            for(let j=1;j<cuts.length;j++)for(let i=0;i<gl.x.length;i++) {
+              const half=(cuts[j]-cuts[j-1])/2,beta=cuts[j-1]+(gl.x[i]+1)*half;
+              profile.sample!(Math.sin(beta)*sign,vals);
+              nodes.push({logCos:Math.log(Math.cos(beta)),values:vals.map(v=>v*gl.w[i]*half) as XYZS});
+            }
+            nodesBySign.set(sign,nodes);
+          }
           latitude = [0,0,0,0];
-          for(let j=1;j<cuts.length;j++)for(let i=0;i<gl.x.length;i++) {
-            const half=(cuts[j]-cuts[j-1])/2,beta=cuts[j-1]+(gl.x[i]+1)*half;
-            profile.sample!(Math.sin(beta)*Math.sign(geometry.pole[1]),vals);
-            const exponent = law.kind === LAW.minnaert ? 2*law.p+1 : law.p+1;
-            const weight=Math.cos(beta)**exponent*gl.w[i]*half;
-            for(let k=0;k<4;k++)latitude[k]+=weight*vals[k];
+          const exponent=law.kind===LAW.minnaert?2*law.p+1:law.p+1;
+          for(const node of nodes) {
+            const weight=Math.exp(exponent*node.logCos);
+            for(let k=0;k<4;k++)latitude[k]+=weight*node.values[k];
           }
           if(moments.size>64)moments.clear(); moments.set(momentKey,latitude);
         }
@@ -1046,23 +1058,35 @@ export class EllipsoidNormalization {
         const floorBound=2*Math.pow(1e-3,law.p+1)/((law.p+1)*(law.p+2));
         if(value.every((v,k)=>floorBound*max[k]<1e-6*v))return value;
         // The only nonseparable term is Barkstrom's emission-cosine floor.
-        // Here its material strip is integrated exactly, including the Jacobian/map,
-        // rather than substituting a limb map value at the narrowest crescents.
+        // At an equator-on view, the latitude shift from a normal in this strip
+        // to the limb is <= mu² |tan(phi)|/(1+sqrt(1-f²)). Integrating this bound
+        // with mu^B and upper=min(f, tan(pi-alpha) cos(phi)) gives the closed form
+        // below. Reuse the limb profile only when its positive error bound fits;
+        // otherwise sample the exact latitude at every node.
+        const tangent=Math.sin(alpha)/Math.abs(Math.cos(alpha)),power=law.p+3;
+        const phiBound=2*(tangent<=1e-3 ? tangent**power/power
+          : Math.pow(1e-3,power)*(1/power+Math.log(tangent/1e-3)));
+        const latitudeBound=phiBound/(Math.PI*(1+Math.sqrt(1-1e-6))*power);
+        let reuseLimb=true;
         const correction=(order:number):XYZS=>{
           const gl=gaussLegendre(order),acc:XYZS=[0,0,0,0],vals=[0,0,0,0],sa=Math.sin(alpha),ca=Math.cos(alpha);
           if(ca>=0)throw new Error('Barkstrom equator floor bound unexpectedly unresolved before quadrature domain');
+          const phiGL=gaussLegendre(Math.max(2,order/2));
+          const muNodes=Array.from(gl.x,x=>(1+Math.sin(x*Math.PI/2))/2);
+          const muWeights=Array.from(gl.x,(x,i)=>gl.w[i]*Math.PI/4*Math.cos(x*Math.PI/2));
           const threshold=-ca*1e-3/(sa*Math.sqrt(1-1e-6));
           const cuts=[-Math.PI/2,...profile.cuts!,Math.PI/2];
           if(threshold<1) {const cut=Math.acos(threshold);cuts.push(-cut,cut);cuts.sort((x,y)=>x-y);}
-          for(let segment=1;segment<cuts.length;segment++)for(let j=0;j<order;j++) {
-            const half=(cuts[segment]-cuts[segment-1])/2,u=gl.x[j]*Math.PI/2;
+          for(let segment=1;segment<cuts.length;segment++)for(let j=0;j<phiGL.x.length;j++) {
+            const half=(cuts[segment]-cuts[segment-1])/2,u=phiGL.x[j]*Math.PI/2;
             const phi=(cuts[segment]+cuts[segment-1])/2+half*Math.sin(u),cp=Math.cos(phi),sp=Math.sin(phi);
             const upper=Math.min(1e-3,sa*cp/Math.hypot(ca,sa*cp));
+            if(reuseLimb)profile.sample!(sp*Math.sign(geometry.pole[1]),vals);
             for(let i=0;i<order;i++) {
-              const mu=(gl.x[i]+1)*upper/2,root=Math.sqrt(1-mu*mu),mu0=sa*root*cp+ca*mu;
+              const mu=muNodes[i]*upper,root=Math.sqrt(1-mu*mu),mu0=sa*root*cp+ca*mu;
               if(mu0<=0)continue;
-              profile.sample!(root*sp*Math.sign(geometry.pole[1]),vals);
-              const w=Math.pow(mu*mu0/(mu+mu0),law.p)*(1-mu/1e-3)*gl.w[i]*upper/2*gl.w[j]*half/2*Math.cos(u);
+              if(!reuseLimb)profile.sample!(root*sp*Math.sign(geometry.pole[1]),vals);
+              const w=Math.pow(mu*mu0/(mu+mu0),law.p)*(1-mu/1e-3)*muWeights[i]*upper*phiGL.w[j]*half/2*Math.cos(u);
               for(let k=0;k<4;k++)acc[k]+=w*vals[k];
             }
           }
@@ -1071,7 +1095,13 @@ export class EllipsoidNormalization {
         let previous=correction(4);
         for(let order=8;order<=64;order*=2) {
           const next=correction(order);
-          if(next.every((v,k)=>Math.abs(v-previous[k])<1e-6*value[k]))return value.map((v,k)=>v-next[k]) as XYZS;
+          const corrected=value.map((v,k)=>v-next[k]) as XYZS;
+          if(next.every((v,k)=>Math.abs(v-previous[k])<1e-6*Math.abs(corrected[k]))) {
+            if(reuseLimb && corrected.some((v,k)=>profile.slopeBound![k]*latitudeBound>=MOTION_RELATIVE_BUDGET*v)) {
+              reuseLimb=false; previous=correction(4); order=4; continue;
+            }
+            return corrected;
+          }
           previous=next;
         }
         throw new Error('Barkstrom equator floor correction did not converge');
@@ -1080,8 +1110,15 @@ export class EllipsoidNormalization {
     }
     // Triaxial fallback: integrate in normal-space photometric coordinates with the
     // full Jacobian. This is only needed for the instantaneous point/glare flux.
-    if (!geometry.axes) throw new Error('Triaxial ellipsoid needs body-frame photometric axes');
-    const R=Math.cbrt(a*b*c), d=geometry.radii.map(v=>(v/R)**2), axes=geometry.axes;
+    let axes=geometry.axes;
+    if (!axes) {
+      if(a!==b)throw new Error('Triaxial ellipsoid needs body-frame photometric axes');
+      const P=geometry.pole,el=Math.hypot(P[0],P[1]);
+      const E:V3=el>1e-12?[-P[1]/el,P[0]/el,0]:[1,0,0];
+      const F:V3=[P[1]*E[2]-P[2]*E[1],P[2]*E[0]-P[0]*E[2],P[0]*E[1]-P[1]*E[0]];
+      axes=[[E[0],F[0],P[0]],[E[1],F[1],P[1]],[E[2],F[2],P[2]]];
+    }
+    const R=Math.cbrt(a*b*c), d=geometry.radii.map(v=>(v/R)**2);
     const key=JSON.stringify([law,alpha,d,axes]);
     if (!map) {const hit=this.exact.get(key);if(hit)return hit;}
     const delta=Math.PI-alpha;
@@ -1089,20 +1126,22 @@ export class EllipsoidNormalization {
     const evaluate=(n:number):XYZS=>{
       const gl=gaussLegendre(n),acc:XYZS=[0,0,0,0],values=[1,1,1,1];
       for(let j=0;j<n;j++) for(let i=0;i<n;i++) {
-        const beta=gl.x[j]*Math.PI/2, cb=Math.cos(beta), sb=Math.sin(beta);
+        const betaScale=law.kind===LAW.akimov?Math.sqrt(delta/Math.PI):1;
+        const v=gl.x[j]*Math.PI/2,tan=Math.tan(v),beta=Math.atan(betaScale*tan),cb=Math.cos(beta),sb=Math.sin(beta);
+        const betaJac=betaScale*(1+tan*tan)/(1+betaScale*betaScale*tan*tan);
         const u=gl.x[i]*Math.PI/2,eps=delta*(1+Math.sin(u))/2,mu=cb*Math.sin(eps),mu0=cb*Math.sin(delta-eps);
         const nv=[cb*Math.cos(eps),sb,mu];
         const bf=axes[0].map((v,k)=>v*nv[0]+axes[1][k]*nv[1]+axes[2][k]*nv[2]);
         const den=bf.reduce((s,v,k)=>s+d[k]*v*v,0),jac=d[0]*d[1]*d[2]/den**2;
         if(map) zonalAt(map,d[2]*bf[2]/Math.hypot(...bf.map((v,k)=>d[k]*v)),values);
-        const weight=lawRadf(law,mu0,mu,alpha)*mu*cb*jac*gl.w[j]*gl.w[i]*delta*Math.PI/8*Math.cos(u);
+        const weight=lawRadf(law,mu0,mu,alpha)*mu*cb*jac*gl.w[j]*gl.w[i]*delta*Math.PI/8*Math.cos(u)*betaJac;
         for(let k=0;k<4;k++)acc[k]+=weight*values[k];
       }
       return acc;
     };
     let old=evaluate(32);
-    for(let n=64;n<=512;n*=2) {const value=evaluate(n);if(value.every((v,k)=>Math.abs(v-old[k])<1e-5*Math.abs(v))) {if(!map){if(this.exact.size>512)this.exact.clear();this.exact.set(key,value);}return value;}old=value;}
-    throw new Error('Triaxial normal-space integral did not converge');
+    for(let n=64;n<=1024;n*=2) {const value=evaluate(n);if(value.every((v,k)=>Math.abs(v-old[k])<1e-5*Math.abs(v))) {if(!map){if(this.exact.size>512)this.exact.clear();this.exact.set(key,value);}return value;}old=value;}
+    throw new Error('Ellipsoid normal-space integral did not converge');
   }
 
   reference(law: ResolvedLaw, alpha: number, radii: V3, view: AlbedoMeasurementView, map?: ZonalProfile): XYZS {

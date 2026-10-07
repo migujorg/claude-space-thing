@@ -153,7 +153,11 @@ by R², multiplied by M̄ at the **position's planetocentric latitude**, x = D²
 law × map over the projected ellipsoid, rather than multiplying a sphere integral by a projected area.
 Map interpolation knots are transformed exactly into normal latitude. Smooth integration cuts introduce
 no resampling or replacement of the map. The existing motion quadrature caches each transformed profile;
-equator-on Minnaert separates into a cached latitude moment and a longitude moment. The orientation-mean
+equator-on Minnaert/Barkstrom separate into a cached latitude moment and a longitude moment.
+Barkstrom's emission-cosine floor is integrated separately. A limb-profile reuse has a positive analytic
+error bound from the normal latitude shift ≤ μ²|tan φ|/(1+sqrt(1−f²)), f=10⁻³; if that bound exceeds
+the motion relative budget, the exact shifted profile is sampled. Both strip quadrature coordinates refine
+to convergence, with source-row cuts and the μ=f transition split explicitly. The orientation-mean
 fallback averages the Jacobian/map first, then multiplies the bare-law integral. The sphere path is unchanged.
 Tests independently sum the original parameterized ellipsoid surface, including Jupiter at 6.8° and Saturn
 at 5.7°, and test that a pole-on point and disk agree within 0.5%.

@@ -229,7 +229,7 @@ const normCache = new NormalizationCache();
 const ATM_FACTOR_BIN_DEG = 1;
 const atmCache = new Map<string, number[]>();
 const motionNormalization = new MotionNormalization();
-const ellipsoidNormalization = new EllipsoidNormalization();
+const ellipsoidNormalization = new EllipsoidNormalization(motionNormalization);
 /** Scene wiring is supplied by the shell; see the outside-lease diff in this lane handoff. */
 type CalibratedSceneBody = SceneBody & { albedoMeasurementView?: AlbedoMeasurementView | null };
 const lawKey = (l: ResolvedLaw) => `${l.kind}:${l.p}:${l.b}:${l.c}:${l.bs0}:${l.hs}:${l.bc0}:${l.hc}:${l.thetaBar}:${l.K}:${l.hFn}`;

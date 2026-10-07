@@ -6,9 +6,10 @@ import { AdaptationState, computeEyeFrame } from '../src/eye/model';
 import { DEFAULT_EYE_SETTINGS } from '../src/eye/settings';
 import { AU_KM } from '../src/render/constants';
 import type { SceneBody, SceneSnapshot } from '../src/render/scene';
-const fs: {readFileSync(p:URL,enc:'utf8'):string} = await import(/* @vite-ignore */ 'node:fs' as string);
-const photo = JSON.parse(fs.readFileSync(new URL('../public/data/photometry.json', import.meta.url), 'utf8'));
-const bodies = JSON.parse(fs.readFileSync(new URL('../public/data/bodies.json', import.meta.url), 'utf8'));
+const fs: {readFileSync(p:URL,enc:'utf8'):string;existsSync(p:URL):boolean} = await import(/* @vite-ignore */ 'node:fs' as string);
+const built = fs.existsSync(new URL('../public/data/photometry.json', import.meta.url)) && fs.existsSync(new URL('../public/data/bodies.json', import.meta.url));
+const photo = built ? JSON.parse(fs.readFileSync(new URL('../public/data/photometry.json', import.meta.url), 'utf8')) : {};
+const bodies = built ? JSON.parse(fs.readFileSync(new URL('../public/data/bodies.json', import.meta.url), 'utf8')) : [];
 type V3 = [number, number, number];
 export function surfaceSum(radii: V3, law: ResolvedLaw, alpha: number, latitude = 0, n = 400): number {
   const [a,b,c] = radii, o = [Math.cos(latitude), 0, Math.sin(latitude)];
@@ -39,7 +40,7 @@ function frame(radii: V3, model: any, alpha: number, latitude = 0, diamPx = 100)
   const contract=1e4/25*(R/D)**2*(Math.sin(alpha)+(Math.PI-alpha)*Math.cos(alpha))/Math.PI;
   return {p,contract,R,D,law};
 }
-describe('ellipsoid flux pinned at the albedo measurement view',()=>{
+describe.skipIf(!built)('ellipsoid flux pinned at the albedo measurement view',()=>{
   for (const [id,phase] of [[599,6.8],[699,5.7]]) it(`${id} equator-on disk carries its measured photometry`,()=>{
     const radii=bodies.find((b:any)=>b.id===id).radii.value as V3,alpha=phase*Math.PI/180;
     const {p,contract,R,D,law}=frame(radii,photo[id].spatialModel.value,alpha);
@@ -92,11 +93,11 @@ function positionQuadrature(radii:V3,law:ResolvedLaw,alpha:number,z?:ZonalProfil
   return sum;
 }
 describe('ellipsoid law and zonal-map quadrature',()=>{
-  for(const id of [599,699,799,899])it(`${id} exact source rows and position latitude`,()=>{
+  for(const id of [599,699,799,899])it.skipIf(!built || ![0,1].every(t=>fs.existsSync(new URL(`../public/data/surfaces/${id}/albedo/0/0/${t}.bin`,import.meta.url))))(`${id} exact source rows and position latitude`,()=>{
     const radii=bodies.find((b:any)=>b.id===id).radii.value as V3;
     const tiles=[0,1].map(t=>{const v=fileBytes.readFileSync(new URL(`../public/data/surfaces/${id}/albedo/0/0/${t}.bin`,import.meta.url));return v.buffer.slice(v.byteOffset,v.byteOffset+v.byteLength) as ArrayBuffer;});
     const z=zonalMeanOfLevel0(tiles),norm=new EllipsoidNormalization();
-    for(const phase of [0,60,150,179]) {
+    for(const phase of [0,60,150,179,179.5,179.9]) {
       const alpha=phase*Math.PI/180,lr=resolveLaw(photo[id].spatialModel.value,alpha),law='error' in lr?LAMBERT_LAW:lr.law;
       const ref=positionQuadrature(radii,law,alpha,z),got=norm.reference(law,alpha,radii,{kind:'latitude',latitudeDeg:0},z);
       for(let k=0;k<4;k++)expect(Math.abs(got[k]/ref[k]-1),`${phase}° channel ${k}`).toBeLessThan(1e-4);
