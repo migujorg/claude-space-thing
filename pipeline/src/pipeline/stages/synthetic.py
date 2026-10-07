@@ -1,10 +1,10 @@
-"""`synthetic` stage -> app/public/data/synthetic/ (the COMPLETE reality level: objects no survey has found yet).
+"""`synthetic` stage -> app/public/data/synthetic/ (the COMPLETE reality level: statistical stand-ins for model deficits).
 
-Fills, population by population, only what the catalogue is missing (algorithm: pipeline/syn_model.py; description
+Conditions model counts, population by population, on eligible catalogue counts (algorithm: pipeline/syn_model.py; description
 and numbers: docs/reports/synthetic-populations.md):
 
   neo       q < 1.3 au: the Granvik et al. (2018) NEO model realization (17 < H < 25).
-  hungaria  1.78 <= a < 2.0 au, q >= 1.3 au  } the catalogue, complete to the Hendler & Malhotra (2020) limit
+  hungaria  1.78 <= a < 2.0 au, q >= 1.3 au  } the catalogue assumed representative brighter than the Hendler & Malhotra (2020) proxy
   mainbelt  2.0 <= a < 3.7 au, q >= 1.3 au   } H_lim(a) refitted here, continued fainter with the debiased slope of
                                              } Maeda et al. (2021)
   hilda     3.7 <= a < 4.2 au, q >= 1.3 au: the same, slope of Terai & Yoshida (2018)
@@ -13,7 +13,7 @@ and numbers: docs/reports/synthetic-populations.md):
   centaur   q > 5.2 au, 5.35 <= a < 30 au: one realization of the Kurlander et al. (2025) Centaur model (Nesvorny et al.
             2019 orbits, Lawler et al. 2018 H law, 21 400 with H_r < 13.7), reweighted for the archive's selection
   irregular-<planet>  the irregular moons of Jupiter (retrograde; Ashton et al. 2020), Saturn (Ashton et al. 2021),
-            Uranus and Neptune (no published population below their completeness limits: none added); orbit
+            Uranus and Neptune (no supported faint population in reviewed sources: none added); orbit
             distribution of the known moons (MPC), planet-barycentric elements (pipeline/syn_outer.py)
 
 Products:
@@ -22,13 +22,13 @@ Products:
                                their planet-system barycentre, header populations[].center), H, p_V, rotation period,
                                colour class, the cell it fills and its place in that cell's stream. Every attribute is
                                labelled `synthetic`.
-  synthetic/cells.bin/.json    one record per cell: box, completeness limit, model and known counts, deficit, seed
+  synthetic/cells.bin/.json    one record per cell: box, fitted completeness proxy, model and eligible known counts, deficit, seed
                                inputs, how many synthetic objects it shows and where they start in objects.bin.
 Also docs/reports/synthetic-populations.json (verification numbers).
 
 Parameters (defaults in PARAMS; JSON overrides in the environment variable SYNTHETIC_PARAMS, e.g.
 '{"hFloor": {"mainbelt": 19.5}}'): the seed, the faint limit (H floor) per population, and optionally
-"completenessC": {population: C} to pin the completeness limit instead of refitting it to the catalogue.
+"completenessC": {population: C} to pin the completeness proxy instead of refitting it to the catalogue.
 """
 
 from __future__ import annotations
@@ -185,8 +185,8 @@ def population_masks(cat: dict) -> dict[str, np.ndarray]:
 
 
 def centaur_comets(cat: dict) -> int:
-    """Catalogued comets in the Centaur region (q > 5.2 au, a < 30 au; e.g. 29P): discovered, but without a nuclear H
-    they cannot be placed in an H bin, so they are not counted in the conditioning (reported)."""
+    """Catalogued comets in the Centaur region (q > 5.2 au, a < 30 au; e.g. 29P): excluded by the comet flag. Nuclear photometry is not qualified for bare-nucleus H here;
+    some have M2 laws in the comet product, which this generator does not read (audit C1)."""
     with np.errstate(invalid="ignore"):
         q = cat["a"] * (1.0 - cat["e"])
         return int(np.sum(cat["comet"] & np.isfinite(cat["a"]) & (q > CENTAUR_Q_MIN) & (cat["a"] < CENTAUR_A[1])))
@@ -225,7 +225,7 @@ def _mean_longitude(cat: dict, m: np.ndarray) -> np.ndarray:
 
 
 def angle_templates(cat: dict, masks: dict, lam_j: float, hlim_of: dict) -> dict:
-    """Sorted resonant-angle templates from the complete (H < H_lim) catalogue: Trojans lambda - lambda_J, Hildas
+    """Sorted resonant-angle templates from the bright (H < H_lim) catalogue, assumed representative: Trojans lambda - lambda_J, Hildas
     sigma = 3 lambda_J - 2 lambda - varpi."""
     out = {}
     for pop in ("trojan", "hilda"):
@@ -467,9 +467,95 @@ def build(cat: dict, p: dict | None = None, *, only: tuple[str, ...] | None = No
     return _order(res)
 
 
+# Text-only evidence from synthetic-rules-audit REPORT.md §4, computed C3 table.
+# Reproduced with scope/method in docs/reports/synthetic-limitations.md; these are sampled drift, not bounds.
+_AUDIT_DRIFT = {
+    "neo": "167,263.0 km; Earth direction 81.6184 arcsec; Sun-centre direction 0.017459 deg",
+    "hungaria": "418,600.3 km; Earth direction 192.9206 arcsec; Sun-centre direction 0.084968 deg",
+    "mainbelt": "1,416,336.6 km; Earth direction 430.8688 arcsec; Sun-centre direction 0.134512 deg",
+    "hilda": "198,297.8 km; Earth direction 49.2564 arcsec; Sun-centre direction 0.010702 deg",
+    "trojan": "439,220.9 km; Earth direction 118.8710 arcsec; Sun-centre direction 0.029740 deg",
+    "tno": "210,202.5 km; Earth direction 4.0673 arcsec; Sun-centre direction 0.001141 deg",
+    "centaur": "215,404.0 km; Earth direction 12.3348 arcsec; Sun-centre direction 0.003297 deg",
+    "irregular-jupiter": "7,943,358.2 km; Earth direction 2,033.2603 arcsec; planet-centre direction 27.285603 deg",
+    "irregular-saturn": "1,647,439.4 km; Earth direction 220.5650 arcsec; planet-centre direction 5.000635 deg",
+}
+_COMPLETENESS_UNCERTAINTY = (
+    "Completeness limit is a proxy fitted from a/H bins (histogram peaks or model deficits), not a detection probability. "
+    "Moon model deficits are fitted over H for the whole class and copied to each a bin; Uranus/Neptune have no faint model and no deficit cutoff. No pointing history, detection "
+    "efficiency or per-object observation veto is used; survey detectability was not evaluated for this synthetic orbit. "
+    "The Poisson deficit threshold does not include population-model normalization or systematic uncertainty."
+)
+
+
 def _order(res: dict) -> dict:
-    """Populations in POP_CODES order (the order of the cells and objects tables)."""
+    """Populations in POP_CODES order; attach text-only method and uncertainty disclosures."""
     res["populations"] = {k: res["populations"][k] for k in POP_CODES if k in res["populations"]}
+    tab = ss.tables()
+    for pop, r in res["populations"].items():
+        r["limit"]["uncertainty"] = _COMPLETENESS_UNCERTAINTY
+        m = r["extra"]
+        if pop not in MOONS:
+            m["motion"] = ("fixed two-body Kepler elements about the Sun (gmSun), not propagated through the app's "
+                           "catalogue force model; planetary perturbations are omitted.")
+        m["positionUncertainty"] = "Individual true position and omitted-force position budget for this object/viewpoint are unknown."
+        if pop in _AUDIT_DRIFT:
+            m["positionUncertainty"] += (
+                " Audit C3 table (docs/reports/synthetic-limitations.md): one representative trajectory's largest "
+                "sampled fixed-Kepler drift against independent integration over 2025-04-04 to 2028-04-04: "
+                + _AUDIT_DRIFT[pop] + "; not a bound for this object, the population or arbitrary observers. "
+                "Heliocentric comparison uses Sun and product perturbers' Newtonian forces (omits 1PN/J2/nongrav); "
+                "moon comparison uses host gravity and differential solar gravity (omits J2/other moons). "
+                "These historical samples do not certify another catalogue, epoch or window."
+            )
+        if pop in MOONS:
+            m["method"] = (f"{(tab['irregularMoons'][MOONS[pop]].get('model') or {}).get('source', 'No model')}: survey luminosity law conditioned on MPC known counts; orbit distribution uses bright "
+                           "known-member templates without a survey selection correction. " + m["orbitDistribution"])
+            spec = tab["irregularMoons"][MOONS[pop]].get("model")
+            if pop == "irregular-jupiter":
+                m["uncertainty"] = (f"Ashton et al. 2020 §3.5 normalization: {spec['nFaint']} within a factor of "
+                                    f"{spec['nFaintFactor']:g} at the faint anchor, {spec['nBright']} +/- "
+                                    f"{spec['nBrightSigma']} at the bright anchor; slope +/- {spec['alphaSigma']}. "
+                                    "The difference of anchors is not an independently measured unseen count. "
+                                    "Known-member orbit templates are not debiased; individual existence is unknown.")
+            elif pop == "irregular-saturn":
+                m["uncertainty"] = (f"Ashton et al. 2021 abstract/§3.5 normalization: {spec['nFaint']} +/- "
+                                    f"{spec['nFaintSigma']}; size slope q = {spec['q']} (+{spec['qPlus']} "
+                                    f"/-{spec['qMinus']}); these errors are not propagated into the deficit cutoff. "
+                                    "Known-member orbit templates are not debiased; individual existence is unknown.")
+            else:
+                m["method"] = "No supported faint population model in the sources reviewed; no synthetic moons added."
+                m["uncertainty"] = "No supported faint population model in the sources reviewed; no synthetic moons added."
+        else:
+            m["uncertainty"] = ("Conditional population approximation, not an exact unseen count. Albedo/colour and LCDB "
+                                "rotation templates are measured but not selection-corrected; no explicit H-dependent "
+                                "family model. Individual existence, shape and true orbit are unknown.")
+            if pop in ANGLES:
+                m["method"] = ("Catalogue counts continued with the cited faint magnitude slope; the bright catalogue "
+                               "is assumed representative in e/i and its cell proportions are extended to faint H. "
+                               "These orbit templates have no survey selection correction. "
+                               + ("Hungaria borrows the main-belt faint slope; no separately debiased faint Hungaria model."
+                                  if pop == "hungaria" else ""))
+            elif pop == "centaur":
+                m["method"] = ("Literature orbit model of Nesvorny et al. 2019 with independent Lawler et al. 2018 H law, "
+                               "normalized by Kurlander et al. 2025; magnitude-selected archive reweighted by 1/P(selected "
+                               "| distance modulus), under that law. This is not the survey's orbit-sensitive efficiency.")
+                m["uncertainty"] += (
+                    f" Kurlander et al. 2025 §5.3 rejects their joint distribution. {m['cataloguedCometsNotCounted']} "
+                    "catalogued comet-flagged Centaurs are excluded by the comet flag, not conditioned on; nuclear "
+                    "photometry was not qualified for bare-nucleus H. Audit C1 comet table found 18 with M2 nuclear-"
+                    "magnitude laws whose suitability for bare-nucleus H has not been established; they are not all "
+                    f"without nuclear photometry. {100 * (1 - m['realization']['sumWeightsOverModelSize']):.1f}% of model states "
+                    "are not recovered by the archive weighting. "
+                    f"Kurlander et al. 2025 normalization: {m['normalization']['nBelowHr']} "
+                    f"(+{m['normalization']['plus']}/-{m['normalization']['minus']}) "
+                    f"with H_r < {m['normalization']['hrMax']}; conditional on that joint model."
+                )
+            else:
+                m["method"] = (("Granvik et al. 2018 NEO model: " if pop == "neo" else "CFEPS L7 model (Petit et al. 2011; Gladman et al. 2012): ")
+                               + "sample from the cited debiased a/e/i/H realization in its supported range; "
+                               "conditioned on eligible catalogue counts, without applying its survey selection "
+                               "function to this orbit. Angular elements are samples, not measurements.")
     return res
 
 
@@ -511,7 +597,7 @@ def moon_population(pop: str, rows: list[dict], tab: dict, p: dict, templates: d
     hlim_exact = np.full(grid.n_a, np.inf if hlim is None else hlim)
     limit = {"method": "model-comparison",
              "rule": "first H bin (bright to faint, inside the model's range) where the known moons of the class "
-                     "number fewer than model - 2 sqrt(model)" if model else "no model below the completeness limit",
+                     "number fewer than model - 2 sqrt(model)" if model else "no supported faint model in the sources reviewed",
              "hLimV": hlim, "perBin": lim_rows, "calibration": cal,
              "hLimPerABin": [None if hlim is None else round(hlim, 4)] * grid.n_a}
     name = planet.capitalize()
@@ -521,7 +607,7 @@ def moon_population(pop: str, rows: list[dict], tab: dict, p: dict, templates: d
                   else {"none": spec["noModel"]}),
         "completenessStatement": spec["completenessStatement"],
         "knownMoons": len(sel), "knownMoonsAllClasses": len(rows), "appBodies": so.match_bodies(rows, bodies, naif),
-        "orbitDistribution": "ASSUMPTION: no debiased orbit model of irregular moons is published. f(a, e, i) is that of "
+        "orbitDistribution": "ASSUMPTION: no bias-corrected orbit distribution was found in the published sources reviewed by the synthetic-rules audit. f(a, e, i) is that of "
                              "the known moons of the class brighter than the limit (MPC osculating elements), in cells of "
                              "0.01-0.02 au x 0.1 x 5 deg; a, e, i uniform inside a cell; node, argument of pericentre "
                              "and mean anomaly uniform.",
@@ -529,10 +615,8 @@ def moon_population(pop: str, rows: list[dict], tab: dict, p: dict, templates: d
         "albedo": {"templatesPV": templates.get(planet, np.zeros(0)).round(4).tolist(),
                    "text": tab["irregularMoons"]["albedo"]["text"]},
         "colour": tab["irregularMoons"]["colour"],
-        "motion": "fixed Kepler ellipse about the planet-system barycentre (GM of the system, naif-gm-de440). Neglected: "
-                  "the Sun's perturbation (secular precession of node and pericentre by a few degrees a year, and its "
-                  "short-period terms, a few per cent of a at these distances), the planet's oblateness and the other "
-                  "moons.",
+        "motion": "fixed two-body Kepler elements about the planet-system barycentre (system GM, naif-gm-de440), "
+                  "translated with the host ephemeris; no solar perturbation, oblateness or other-moon forces.",
     }
     center = {"naifId": naif, "name": f"{name} system barycentre", "gm": gm[naif], "gmSource": "naif-gm-de440"}
     return {
@@ -595,8 +679,8 @@ def run(ctx: BuildContext) -> None:
                       "coreSha256": cat["coreSha256"], "physicalSha256": cat["physSha256"],
                       "sources": [s for s in cat_sources if s.startswith("jpl-sbdb")]},
         "populations": pops_hdr,
-        "labels": "Every attribute of a synthetic object is `synthetic` (source: its population's model, the "
-                  "completeness method, the catalogue snapshot, and the measured templates of its attributes). "
+        "labels": "Every known attribute of a synthetic object is `synthetic`; missing values are `unknown` (source: its population's model, the "
+                  "completeness proxy, the catalogue snapshot, and the measured but not selection-corrected attribute templates). "
                   "Real objects are unchanged by this stage (their `estimated` values stay population statistics "
                   "applied to a real object).",
         "seedRule": "cell stream: PCG64 seeded with the first 16 bytes (little-endian integer) of sha256('<algorithm>|<seed>|"
@@ -604,7 +688,10 @@ def run(ctx: BuildContext) -> None:
                     "attribute stream of model-realization populations); u0 = first 8 bytes of sha256(same string + "
                     "'|round') / 2^64",
         "yieldRule": "shown = the first floor(deficit + u0) candidates of the cell's stream that pass its current "
-                     "limits; a larger catalogue lowers the deficit and truncates the list from its end",
+                     "limits. Yield is aggregate, not one-to-one replacement of a discovery. With fixed model, limits and "
+                     "templates, increased eligible counts reduce group deficits (subject to cell rounding); catalogue "
+                     "refits can change limits, normalization, orbit and attribute templates and do not guarantee "
+                     "monotonic counts or stable identities.",
         "frame": "heliocentric osculating elements, ecliptic and equinox J2000 (IAU 1976 obliquity to ICRF), at epochEt; "
                  "populations with a `center` (irregular moons): osculating elements about that planet-system "
                  "barycentre with mu = center.gm, same axes",
@@ -625,8 +712,8 @@ def run(ctx: BuildContext) -> None:
         Field("peri", "f32", 1, {"unit": "deg", "label": lab, "method": "argument of perihelion"}),
         Field("M", "f32", 1, {"unit": "deg", "label": lab, "method": "mean anomaly at epochEt"}),
         Field("H", "f32", 1, {"unit": "mag", "label": lab, "method": "V-band absolute magnitude; G = 0.15 (Bowell et al. 1989 conventional value)"}),
-        Field("pV", "f32", 1, {"label": lab, "method": "quantile draw from the measured albedos of real objects of the same population near the same a (attributePools); irregular moons: of real irregular moons of the planet (Grav et al. 2015)"}),
-        Field("rotPeriod", "f32", 1, {"unit": "h", "label": lab, "method": "quantile draw from LCDB periods (U >= 2-) of real objects of similar diameter D = 1329 km / sqrt(pV) 10^(-H/5); NaN (unknown) for irregular moons"}),
+        Field("pV", "f32", 1, {"label": lab, "method": "quantile draw from measured but not selection-corrected albedo templates of real objects of the same population near the same a (attributePools); irregular moons: of real irregular moons of the planet (Grav et al. 2015)"}),
+        Field("rotPeriod", "f32", 1, {"unit": "h", "label": lab, "method": "quantile draw from measured but not selection-corrected LCDB periods (U >= 2-) of real objects of similar diameter D = 1329 km / sqrt(pV) 10^(-H/5); NaN (unknown) for irregular moons"}),
         Field("cell", "u32", 1, {"method": "row in synthetic/cells.bin"}),
         Field("k", "u32", 1, {"method": "candidate number in the cell's stream (0-based; valid candidates only for model realizations, raw stream index for catalogue-extrapolated populations)"}),
         Field("pop", "u8", 1, {"method": "population code (header populations[].code)"}),
@@ -635,15 +722,15 @@ def run(ctx: BuildContext) -> None:
     write_table(ctx, f"{DIR}/objects", ofields, {k: objs[k].astype(np.float32) if k in ("a", "e", "i", "node", "peri", "M", "H", "pV", "rotPeriod") else objs[k] for k in objs},
                 n_obj, STAGE, source_table=sorted({s for ph in pops_hdr for s in ph["sources"]}),
                 extra={**common, "cells": f"{DIR}/cells.json", "counts": {"synthetic": n_obj, "cells": n_cell}},
-                notes="Synthetic small bodies: objects that no survey has found yet, standing in for the undiscovered "
-                      "members of each (a, e, i, H) cell (the COMPLETE reality level). Not real objects: every value is "
-                      "labelled synthetic.")
+                notes="Synthetic small bodies: statistical stand-ins for conditioned model deficits in (a, e, i, H) cells "
+                      "(the COMPLETE reality level). No orbit-specific survey detectability or observation veto is "
+                      "evaluated. Known attributes are synthetic; missing rotation is unknown.")
     cfields = [Field("pop", "u8"), Field("ia", "u16"), Field("ie", "u16"), Field("ii", "u16"), Field("ih", "i32"),
                Field("aLo", "f32", 1, {"unit": "au"}), Field("aHi", "f32", 1, {"unit": "au"}), Field("eLo", "f32"),
                Field("eHi", "f32"), Field("iLo", "f32", 1, {"unit": "deg"}), Field("iHi", "f32", 1, {"unit": "deg"}),
                Field("hLo", "f32", 1, {"unit": "mag", "method": "conditioned H range [hLo, hHi): the cell's H bin above its limit"}),
                Field("hHi", "f32", 1, {"unit": "mag"}),
-               Field("hLim", "f32", 1, {"unit": "mag", "method": "completeness limit of the cell's a-bin"}),
+               Field("hLim", "f32", 1, {"unit": "mag", "method": "fitted completeness proxy of the cell's a-bin; not a detection probability or observation veto"}),
                Field("nModel", "f32", 1, {"method": "expected number of objects in the conditioned range (model)"}),
                Field("nObs", "u32", 1, {"method": "catalogued objects in the conditioned range"}),
                Field("rawDeficit", "f32", 1, {"method": "max(0, nModel - nObs)"}),
@@ -718,7 +805,7 @@ def _pop_header(pop: str, r: dict, src: dict, first_cell: int, first_obj: int) -
 
 def _distribution(grid: sm.Grid, known: sm.Known, hlim_a: np.ndarray, h_floor: float, cells: sm.Cells,
                   cell_of: np.ndarray, H_syn: np.ndarray, members: sm.Known | None) -> dict:
-    """Whole-population H distribution in H_BIN bins (inside the grid, H < floor): the debiased model (catalogue-
+    """Whole-population H distribution in H_BIN bins (inside the grid, H < floor): the population model (catalogue-
     extrapolated populations: the catalogue brighter than each a-bin's limit + the model cells; model populations:
     the realization), the catalogue, and the synthetic objects shown."""
     ia, ie, ii, ih = grid.index(known.a, known.e, known.i, known.H)
@@ -746,7 +833,7 @@ def _distribution(grid: sm.Grid, known: sm.Known, hlim_a: np.ndarray, h_floor: f
 def diagnostic_png(cat: dict, res: dict, path: Path) -> None:
     """DIAGNOSTIC figure (a data plot, not a rendering): catalogued objects in cyan, synthetic objects in orange.
     Left: positions at the epoch seen from the ecliptic north pole (|x|, |y| < 6 au), log density. Right: the a-H
-    plane (1.6-5.6 au) with the completeness limit of every a-bin (white): synthetic objects lie only fainter."""
+    plane (1.6-5.6 au) with the completeness proxy of every a-bin (white): synthetic objects lie only fainter."""
     from PIL import Image, ImageDraw
 
     def xy(a, e, i, node, peri, M):
@@ -797,7 +884,7 @@ def diagnostic_png(cat: dict, res: dict, path: Path) -> None:
     d = ImageDraw.Draw(img)
     d.text((8, 8), "DIAGNOSTIC (a data plot, not a rendering): catalogued objects cyan, synthetic objects orange, log density", fill=(230, 230, 230))
     d.text((8, 22), "Left: positions at the small-body epoch seen from ecliptic north, 12 x 12 au around the Sun", fill=(180, 180, 180))
-    d.text((N + 38, 22), f"Right: a {A0}-{A1} au (x) vs H {H0}-{H1} (y, fainter down); white: completeness limit per a-bin", fill=(180, 180, 180))
+    d.text((N + 38, 22), f"Right: a {A0}-{A1} au (x) vs H {H0}-{H1} (y, fainter down); white: completeness proxy per a-bin", fill=(180, 180, 180))
     for h in range(9, 21):
         y = 40 + (h - H0) / (H1 - H0) * N
         d.text((N + 32, y - 5), f"{h}", fill=(150, 150, 150))
@@ -867,7 +954,7 @@ def outer_diagnostic_png(cat: dict, res: dict, moons: dict[str, list[dict]], pat
 
 
 def distribution_svg(report: dict) -> str:
-    """Cumulative H distributions per population (log N(<H)): the debiased model, the catalogue, catalogue +
+    """Cumulative H distributions per population (log N(<H)): the population model, the catalogue, catalogue +
     synthetic. Plain SVG (no plotting library in the pipeline)."""
     names = {"neo": "NEOs (Granvik et al. 2018 model)", "hungaria": "Hungarias", "mainbelt": "Main belt",
              "hilda": "Hildas", "trojan": "Jupiter Trojans", "tno": "Trans-Neptunian (CFEPS L7 model)",
@@ -910,7 +997,7 @@ def distribution_svg(report: dict) -> str:
                        f'stroke-width="{wdt}"' + (f' stroke-dasharray="{dash}"' if dash else "") + "/>")
             out.append(f'<text x="{x0 + ML + 34}" y="{ly}">{lab} (total to the floor: {v[-1]:,.0f})</text>')
     out.append(f'<text x="8" y="{H - 6}" fill="#555">Cumulative number N(&lt;H) inside each population\'s grid, below its '
-               "H floor. Synthetic objects appear only fainter than the completeness limit of their a-bin. "
+               "H floor. Synthetic objects appear only fainter than the fitted completeness proxy of their a-bin. "
                "(pipeline stage synthetic; numbers in docs/reports/synthetic-populations.json)</text>")
     out.append("</svg>")
     return "\n".join(out)
@@ -918,7 +1005,7 @@ def distribution_svg(report: dict) -> str:
 
 def verification(res: dict, cells: dict, objs: dict) -> dict:
     """Per population and H bin: model, known and synthetic counts in the conditioned ranges (known + synthetic vs the
-    debiased model), the completeness guard, and the parameters."""
+    population model), the magnitude-proxy guard, and the parameters."""
     out: dict = {"populations": {}}
     for pop, r in res["populations"].items():
         c = r["cells"]

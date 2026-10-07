@@ -1,5 +1,5 @@
 {
- "_about": "Numbers transcribed by hand from the cited papers (PDFs downloaded with sha256 by pipeline.syn_sources; ids in 'source'). Used by the synthetic stage (pipeline/src/pipeline/stages/synthetic.py) to extend the catalogue below its completeness limit and to convert the Kuiper-belt model's g-band magnitudes to V. Everything else the synthetic stage uses comes from downloaded datasets (the SBDB snapshot, the NEO and Kuiper-belt model realizations, the smallbodies products).",
+ "_about": "Numbers transcribed by hand from the cited papers (PDFs downloaded with sha256 by pipeline.syn_sources; ids in 'source'). Used by the synthetic stage (pipeline/src/pipeline/stages/synthetic.py) to extend the catalogue below its fitted completeness proxy and to convert the Kuiper-belt model's g-band magnitudes to V. Everything else the synthetic stage uses comes from downloaded datasets (the SBDB snapshot, the NEO and Kuiper-belt model realizations, the smallbodies products).",
  "completeness": {
   "source": "hendler-malhotra-2020",
   "model": "H_lim(a) = -5 log10(a (a - 1 au)) + C (Eq. 5; a in au), C a free parameter per region",
@@ -51,7 +51,7 @@
   "note": "V - g = -(0.59 (g - r) + 0.01) = -0.423 for the mean CFEPS colour. The CFEPS g is MegaCam g'; the star-based SDSS transformation is applied to it as is (a difference of order 0.1 mag, below the model's own H precision)."
  },
  "irregularMoons": {
-  "_about": "Debiased populations of the irregular (outer) moons of the giant planets below the completeness of the discovery surveys. The known moons and their absolute magnitudes H_V are the Minor Planet Center's Natural Satellites Ephemeris Service elements (planet-barycentric osculating elements, ecliptic J2000; H is V band, as Ashton et al. 2025 Sec. 4.1 state). Each model is a luminosity function in the survey's own band and apparent magnitude; it is put on the MPC H_V scale with an offset measured on the survey's own detections of known moons (the median of H_MPC - m over the calibrators tabulated below; robust sigma from the median absolute deviation), which absorbs the observing geometry, the phase angle and the colour. Orbit distribution: no published debiased orbit model exists for irregular moons; the stage uses the (a, e, i) of the known moons brighter than the completeness limit (an assumption, labelled in the products), as the catalogue-extrapolated asteroid populations do.",
+  "_about": "Survey luminosity laws for irregular (outer) moons of the giant planets, conditioned by catalogue-count proxies; not debiased joint orbit/size models. The known moons and their absolute magnitudes H_V are the Minor Planet Center's Natural Satellites Ephemeris Service elements (planet-barycentric osculating elements, ecliptic J2000; H is V band, as Ashton et al. 2025 Sec. 4.1 state). Each model is a luminosity function in the survey's own band and apparent magnitude; it is put on the MPC H_V scale with an offset measured on the survey's own detections of known moons (the median of H_MPC - m over the calibrators tabulated below; robust sigma from the median absolute deviation), which absorbs the observing geometry, the phase angle and the colour. Orbit distribution: no bias-corrected orbit distribution was found in the published sources reviewed by the synthetic-rules audit; the stage uses the (a, e, i) of the known moons brighter than the completeness limit (an assumption, labelled in the products), as the catalogue-extrapolated asteroid populations do.",
   "jupiter": {
    "naifId": 5, "moonClass": "retrograde", "classRule": "inclination to the ecliptic > 90 deg",
    "model": {
@@ -88,7 +88,7 @@
   "uranus": {
    "naifId": 7, "moonClass": "all", "classRule": "every outer irregular moon",
    "model": null,
-   "noModel": "No debiased population fainter than the completeness limit is published: Sheppard et al. (2005) fit q = 1.8 +- 0.3 only for radii > 7 km, where their survey is complete, and Sheppard et al. (2024) report discoveries but no population estimate ('we expect many more smaller satellites exist, but current surveys have not gone deep enough', Sec. 5). The layer does not extrapolate beyond a measured range, so it adds no Uranian irregular moons.",
+   "noModel": "No supported population fainter than the quoted survey limit was found in the sources reviewed: Sheppard et al. (2005) fit q = 1.8 +- 0.3 only for radii > 7 km, where their survey is complete, and Sheppard et al. (2024) report discoveries but no population estimate ('we expect many more smaller satellites exist, but current surveys have not gone deep enough', Sec. 5). The layer does not extrapolate beyond a measured range, so it adds no Uranian irregular moons.",
    "calibration": {"source": "sheppard-2024-uranus-neptune", "band": "r", "table": "abstract (discovery magnitudes)", "moons": [["S/2023 U 1", 26.6]]},
    "completenessStatement": {"source": "sheppard-2024-uranus-neptune", "band": "r", "mag": 26.5, "diameterKm": 8, "albedo": 0.1, "text": "'The outer satellites of Uranus should be nearly complete to about 26.5 mags, corresponding to satellites of about 8 km in diameter assuming albedos of 0.1' (Sec. 2.2); earlier: m_R = 26.1 at 50% detection efficiency, radius ~7 km for albedo 0.04 (Sheppard et al. 2005, abstract)."},
    "aEdgesAu": [0.02, 0.40, 0.01]
@@ -96,7 +96,7 @@
   "neptune": {
    "naifId": 8, "moonClass": "all", "classRule": "every outer irregular moon",
    "model": null,
-   "noModel": "No debiased population fainter than the completeness limit is published (Sheppard et al. 2006 limit only; Sheppard et al. 2024 report discoveries but no population estimate). The layer adds no Neptunian irregular moons.",
+   "noModel": "No supported population fainter than the quoted survey limit was found in the sources reviewed (Sheppard et al. 2006 limit only; Sheppard et al. 2024 report discoveries but no population estimate). The layer adds no Neptunian irregular moons.",
    "calibration": {"source": "sheppard-2024-uranus-neptune", "band": "r", "table": "abstract (discovery magnitudes)", "moons": [["S/2021 N 1", 26.9], ["S/2002 N 5", 25.9]]},
    "completenessStatement": {"source": "sheppard-2024-uranus-neptune", "band": "r", "mag": 27.0, "diameterKm": 14, "albedo": 0.1, "text": "'the outer satellites of Neptune should be nearly complete to about 27 mags, corresponding to satellites of about 14 km in diameter assuming albedos of 0.1' (Sec. 2.1); earlier: m_R = 25.8 at 50% detection efficiency, radius ~17 km for albedo 0.04 (Sheppard et al. 2006, abstract)."},
    "aEdgesAu": [0.02, 0.60, 0.02]

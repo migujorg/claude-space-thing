@@ -10,10 +10,12 @@
 
 ## How it is used
 
-`synthetic` stage, population `neo` (`pipeline/src/pipeline/stages/synthetic.py`): the realization is the debiased model. In each (a, e, i, H) cell (a 0.25 au, e 0.1, i 10°, H 0.5 mag) the model count is the number of realization members; the catalogue's NEOs in the cell are subtracted, and the missing ones are shown as realization members, in an order fixed by the cell's seed (`docs/reports/synthetic-populations.md`). Their angles are used as given, as osculating elements at the small-body epoch. The completeness limit per a-bin is the first H bin in which the catalogue has significantly fewer NEOs than the model (2σ Poisson); no synthetic NEO is brighter.
+`synthetic` stage, population `neo` (`pipeline/src/pipeline/stages/synthetic.py`): the realization is the debiased model. In each (a, e, i, H) cell (a 0.25 au, e 0.1, i 10°, H 0.5 mag) the model count is the number of realization members; the catalogue's NEOs in the cell are subtracted, and the missing ones are shown as realization members, in an order fixed by the cell's seed (`docs/reports/synthetic-populations.md`). Their angles are used as given, as osculating elements at the small-body epoch. The completeness proxy per a-bin is the first H bin in which the catalogue has significantly fewer NEOs than the model (2σ Poisson); no synthetic NEO is brighter.
 
 ## Caveats
 
 - The model says nothing about H < 17: no synthetic NEO is brighter than 17.
 - One realization: its cell counts carry Poisson noise around the model's expectation.
 - The angles are not constrained by the model (they are uniform in the realization, not tied to an epoch), so a synthetic NEO's position along its orbit, and its node and perihelion, are arbitrary samples.
+
+Product-use scope: catalogue-count conditioning and a fitted H proxy do not establish detection probability for a generated orbit or guarantee consistency with all observations. Discovery yield is aggregate under fixed inputs; catalogue refits can change counts and identities. Source survey efficiencies and completeness statements above retain their published domains; the current generator does not apply their pointings or efficiencies as an object veto. [Audited limitations](../reports/synthetic-limitations.md).

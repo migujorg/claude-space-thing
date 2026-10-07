@@ -2968,7 +2968,7 @@
    "hFloor": 13.62,
    "limit": {
     "method": "model-comparison",
-    "rule": "no model below the completeness limit",
+    "rule": "no supported faint model in the sources reviewed",
     "hLimV": null,
     "perBin": [],
     "calibration": {
@@ -3240,7 +3240,7 @@
    "hFloor": 12.265,
    "limit": {
     "method": "model-comparison",
-    "rule": "no model below the completeness limit",
+    "rule": "no supported faint model in the sources reviewed",
     "hLimV": null,
     "perBin": [],
     "calibration": {
