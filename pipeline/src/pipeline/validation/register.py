@@ -24,6 +24,7 @@ from scipy import optimize
 from . import geometry as g
 
 VERBOSE = False
+USE_CACHE = True
 
 
 def model_components(res: dict[str, np.ndarray], sub: int) -> tuple[np.ndarray, np.ndarray]:
@@ -80,6 +81,14 @@ class Fit:
     residual_rms: float           # rms (obs - model), I/F
     camera: g.Camera
     coef: list[float]
+
+    def exact_json(self) -> dict:
+        """The pose actually used to resample, at full precision (no display rounding)."""
+        return {"cx": self.cx, "cy": self.cy, "rollDeg": self.roll_deg,
+                "flipped": self.flipped, "rss": self.rss,
+                "rssOtherParity": self.rss_other_parity, "centreSigmaPx": self.sigma_px,
+                "residualRmsIoverF": self.residual_rms, "modelAmplitudes": self.coef,
+                "cameraOrient": self.camera.row_major()}
 
     def to_json(self) -> dict:
         return {"targetCentrePx": [round(self.cx, 3), round(self.cy, 3)], "rollDeg": round(self.roll_deg, 4),
@@ -174,16 +183,11 @@ def refit_translation(obs: np.ndarray, targets: list[g.Target], primary: int, pi
                       roll_deg: float) -> tuple[float, float, float]:
     """(cx, cy, rss) with the roll held fixed (e.g. the common roll of several frames of one sequence). Results are
     cached in data/cache/validation/refit/ by a digest of every input."""
-    import hashlib
-
     from ..paths import CACHE
-    h = hashlib.sha256(np.ascontiguousarray(obs).tobytes())
-    for t in targets:
-        h.update(np.concatenate([t.pos, t.orient.ravel(), t.to_sun, t.radii]).tobytes())
-        h.update(b"rings" if t.rings is not None else b"-")
-    h.update(repr((primary, pitch, round(cx, 6), round(cy, 6), round(roll_deg, 6))).encode())
-    path = CACHE / "validation" / "refit" / f"{h.hexdigest()[:24]}.json"
-    cached = read_json_cache(path)
+    signature = fit_inputs(obs, targets, primary, pitch,
+                           operation="translation", start=[cx, cy, roll_deg])
+    path = CACHE / "validation" / "refit" / f"{input_digest(signature)}.json"
+    cached = read_json_cache(path) if USE_CACHE else None
     if cached is not None:
         return tuple(cached)
     rss = _rss_fn(obs, targets, primary, pitch, 1)
@@ -212,3 +216,28 @@ def write_json_cache(path, value) -> None:
     tmp = path.with_suffix(path.suffix + ".tmp")
     tmp.write_text(json.dumps(value), encoding="utf-8", newline="\n")
     os.replace(tmp, path)
+
+
+def fit_inputs(obs, targets, primary, pitch, **controls):
+    """Every input to the optimizer, including numerical implementation/environment."""
+    import hashlib
+    from pathlib import Path
+    from . import reproducibility as repro
+    pixels = np.ascontiguousarray(obs, dtype="<f8")
+    return {"pixels": {"sha256": hashlib.sha256(pixels.tobytes()).hexdigest(),
+                       "shape": list(pixels.shape), "dtype": "float64-le"},
+            "targets": [{"naif": t.naif, "pos": t.pos.tolist(), "orient": t.orient.tolist(),
+                         "toSun": t.to_sun.tolist(), "radii": t.radii.tolist(),
+                         "rings": None if t.rings is None else
+                         {"radiusKm": t.rings.radius_km.tolist(), "tau": t.rings.tau.tolist()}}
+                        for t in targets],
+            "primary": primary, "pitch": pitch, "controls": controls,
+            "runtime": repro.runtime(),
+            "code": {p.name: repro.file_record(p)["sha256"] for p in
+                     (Path(__file__), Path(g.__file__))}}
+
+
+def input_digest(value):
+    import hashlib
+    import json
+    return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":")).encode()).hexdigest()

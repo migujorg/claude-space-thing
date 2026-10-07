@@ -94,18 +94,25 @@ def _mjd_to_utc(mjd: float) -> str:
 
 
 def _earth_pck(ctx: BuildContext):
-    """Newest NAIF high-precision Earth PCK (ITRF93), fetched once, registered as a source."""
-    import requests
+    """Newest Pinned NAIF high-precision Earth PCK (ITRF93), fetched once, registered as a source."""
+    import os
+    from .reproducibility import EXPECTED_CASE, ReproductionError, check_file
+    expected = EXPECTED_CASE.get() or {}
+    source = next((s for s in expected.get("sources", []) if s["id"] == "naif-earth-pck-high-prec"), None)
+    name = os.environ.get("PIPELINE_VALIDATION_EARTH_PCK") or (source["version"] if source else None)
+    if not name or not re.fullmatch(r"earth_000101_\d{6}_\d{6}\.bpc", name):
+        raise ReproductionError("Himawari needs an explicit Earth PCK: pass --earth-pck earth_000101_...bpc "
+                                "for a new candidate; a committed rebuild uses its recorded source version")
     naif = "https://naif.jpl.nasa.gov/pub/naif/generic_kernels/pck/"
-    names = sorted(set(re.findall(r"earth_000101_\d{6}_\d{6}\.bpc", requests.get(naif, timeout=60).text)),
-                   key=lambda n: n[-10:-4])
-    path = download.fetch(naif + names[-1], "naif/pck")
+    path = download.fetch(naif + name, "naif/pck")
+    if source:
+        check_file(path, {"sha256": source["sha256"]})
     rec = download.record(path)
     ctx.add_source(SourceRecord(
         id="naif-earth-pck-high-prec", title="NAIF high-precision Earth orientation PCK (ITRF93)",
-        citation=f"NAIF/JPL binary PCK {names[-1]} (ITRF93; IAU 1976 precession, IAU 1980 nutation, JPL Earth "
+        citation=f"NAIF/JPL binary PCK {name} (ITRF93; IAU 1976 precession, IAU 1980 nutation, JPL Earth "
                  "orientation parameters, https://eop.jpl.nasa.gov/). Acton, C. H. (1996), PSS 44, 65-70.",
-        url=rec["url"], retrieved=rec["retrieved"], sha256=rec["sha256"], version=names[-1]))
+        url=rec["url"], retrieved=rec["retrieved"], sha256=rec["sha256"], version=name))
     return path
 
 
