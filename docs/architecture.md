@@ -177,8 +177,9 @@ contract's value times `I_current,c / I_ref,c` (rotation mean for zonal maps). A
 already measures the current geometry retains its own value, with the map/law integral at that geometry.
 Spheres keep their existing normalization. Relief remains omitted.
 
-When the albedo source states no single calibration latitude, `albedoMeasurementView` explicitly declares
-an `estimated` uniform mean over **all orientations**, rather than inventing a latitude. Averaging commutes
+For a compiled rotational/apparition/global albedo, `albedoMeasurementView` declares a `derived`
+mean over **all orientations** by definition. A single observation without a recoverable date/view
+introduces an assumed reference labelled `estimated` under §2.1. Averaging commutes
 with the law integral: the bare-law integral is multiplied by the ellipsoid's surface area over `4πR²`
 (Cauchy's mean projected area over `πR²`); with a zonal map use its surface-area-weighted mean instead.
 For an axisymmetric ellipsoid the exact normal-space Jacobian is `(abc)²/(n·diag(a²,b²,c²)n)²`, and its

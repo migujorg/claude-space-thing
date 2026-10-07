@@ -39,6 +39,15 @@ if [ "${SKIP_DOCTOR:-0}" != 1 ]; then
   fi
 fi
 
+echo "== App toolchain (required by albedo_reference)"
+(cd app
+if [ -d node_modules ]; then
+  npm install --no-audit --no-fund
+else
+  npm ci --no-audit --no-fund
+fi
+)
+
 if [ "${SKIP_BUILD:-0}" != 1 ]; then
   echo "== Building the data (profile $profile); run the same command again to resume if it stops"
   set +e
@@ -56,10 +65,5 @@ fi
 
 echo "== App (app/)"
 cd app
-if [ -d node_modules ]; then
-  npm install --no-audit --no-fund
-else
-  npm ci --no-audit --no-fund
-fi
 echo "== Starting the app at http://localhost:5173 (Ctrl-C stops it). Use Chrome or Edge (WebGPU)."
 exec npm run dev -- --open

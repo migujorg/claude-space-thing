@@ -26,6 +26,7 @@ from .paths import CACHE, OUT, RAW, REPO
 #: Hosts each stage downloads from (from the download ledger of a full build, plus services queried directly:
 #: Gaia TAP and XP bulk files, NASA GIBS, Planetary Computer).
 HOSTS: dict[str, tuple[str, ...]] = {
+    "albedo_reference": (),  # local numerical bridge; no download hosts
     "time": ("naif.jpl.nasa.gov",),
     "ephemeris": ("naif.jpl.nasa.gov",),
     "light": ("naif.jpl.nasa.gov", "lasp.colorado.edu", "files.cie.co.at", "svo2.cab.inta-csic.es",

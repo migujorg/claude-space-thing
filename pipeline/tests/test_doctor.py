@@ -5,7 +5,8 @@ from pipeline import config, doctor
 
 def test_every_stage_has_its_hosts():
     assert set(doctor.HOSTS) == set(config.STAGES)
-    assert all(doctor.HOSTS[s] for s in config.STAGES)
+    assert all(doctor.HOSTS[s] for s in config.STAGES if s != "albedo_reference")
+    assert doctor.HOSTS["albedo_reference"] == ()
 
 
 def test_offline_doctor_runs(capsys, tmp_path, monkeypatch):
