@@ -91,9 +91,11 @@ fn lawRadf(mu0: f32, mu: f32, g: f32, l0: vec4f, l1: vec4f, l2: vec4f) -> f32 {
   switch kind {
     case 1u: { return mu0 / (mu0 + mu); }
     case 2u: { return 2.0 * l0.y * mu0 / (mu0 + mu) + (1.0 - l0.y) * mu0; }
-    // No emission floor: the same published Minnaert law enters the CPU integral.
-    // Built k in [0.788, 0.9717] keeps this power finite even at mu = 2^-149.
-    case 3u: { return pow(mu0, l0.y) * pow(mu, l0.y - 1.0); }
+    // The emission cosine is bounded at 1e-3, as for Barkstrom below: with k < 1 the law is integrable over the
+    // disk but unbounded at a point, and the body pass evaluates it on limb fragments of partial coverage whose
+    // cosine is zero up to rounding (unbounded, those pixels were drawn brighter than the disk centre). The bound
+    // changes the disk integral by less than 1e-4 (render-law-twins.test.ts).
+    case 3u: { return pow(mu0, l0.y) * pow(max(mu, 1e-3), l0.y - 1.0); }
     case 4u: { return hapkeRadf(mu0, mu, g, l0, l1, l2); }
     case 6u: { return akimovDisk(mu0, mu, g); }
     case 7u: { return pow(mu0 * mu / (mu0 + mu), l0.y) / max(mu, 1e-3); }
