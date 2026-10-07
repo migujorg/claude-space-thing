@@ -109,8 +109,8 @@ export function emissionTables(data: Float32Array, nE: number, altitudesKm: numb
 }
 
 /**
- * ∫ ε(h(s)) ds over [s0, s1] in n steps, with h linear in s within a step and ε integrated exactly in altitude from
- * its cumulative C (the shader's aurora step): Σ (C(h₂) − C(h₁))·Δs/Δh, or ε(h̄)·Δs where Δh is tiny.
+ * ∫ ε(h(s)) ds over [s0, s1] in n steps, with h linear in s within a step, using the supplied cumulative C
+ * (the shader interpolates its table): Σ (C(h₂) − C(h₁))·Δs/Δh, or ε(h̄)·Δs where Δh is tiny.
  */
 export function slabIntegral(C: (h: number) => number, eps: (h: number) => number, hOf: (s: number) => number, s0: number, s1: number, n: number): number {
   const ds = (s1 - s0) / n;
