@@ -208,6 +208,19 @@ CENTAUR_PAPERS = (KURLANDER, MURTAGH, NESVORNY_2019)
 PAPERS = (HENDLER_MALHOTRA, MAEDA, HEINZE, YOSHIDA_TERAI, TERAI_YOSHIDA, PETIT, JESTER, *MOON_PAPERS, *CENTAUR_PAPERS)
 DATASETS = (GRANVIK, GRANVIK_README, L7, *NATSATS.values(), KURLANDER_ARCHIVE)
 
+# These citations explain why a reviewed model is inactive. None of its fitted
+# parameters feeds the current draw, normalization, seed or catalogue conditioning.
+RESONANT_MODEL_NOTES = {
+    "hilda": ("A published bias-corrected model exists (Vokrouhlický et al. (2025), "
+              "https://arxiv.org/abs/2503.04403), but is not used. "
+              "The publication does not tabulate the family orbital coefficients, all family magnitude coefficients "
+              "or spline end conditions, and does not specify a real-valued form of Eq. 4 below its fitted eccentricity offset."),
+    "trojan": ("A published bias-corrected model exists (Vokrouhlický et al. (2024), "
+               "https://arxiv.org/abs/2401.15537), but is not used. "
+               "The publication does not tabulate the coupled stability mask, complete family magnitude fits "
+               "or spline end conditions, and does not specify real-valued family densities below the offsets in Eqs. 10–12."),
+}
+
 
 def register(ctx: BuildContext) -> dict[str, str]:
     """Fetch every download and add its SourceRecord; returns {download id: source id}."""
@@ -217,6 +230,12 @@ def register(ctx: BuildContext) -> dict[str, str]:
         out[d.id] = ctx.add_source(d.source())
     for rec in centaur_nuclei()["sources"]:
         out[rec["id"]] = ctx.add_source(SourceRecord(**rec))
+    for table in (hilda_model(), trojan_model()):
+        # Local audited publication metadata; do not introduce a download or claim
+        # the paper's population parameters were used by the stage.
+        rec = SourceRecord(**table["source"], notes="Reviewed published bias-corrected model, inactive: "
+                           "cited only to explain missing inputs; no fitted parameters used in the synthetic draw.")
+        out[rec.id] = ctx.add_source(rec)
     return out
 
 
@@ -227,10 +246,15 @@ def tables() -> dict:
 def hilda_model() -> dict:
     """Published 2025 input transcription; inactive pending count review and missing family coefficients.
 
-    This is not registered or consumed by the build: it must not imply that the current product uses this model.
+    Only citation metadata is registered by the build to explain inactivity; fitted inputs are not consumed.
     Source, range, unknown coefficients and mapping requirements are retained in the table and source notes.
     """
     return json.loads((TABLES / "hilda_2025.json").read_text(encoding="utf-8"))
+
+
+def trojan_model() -> dict:
+    """Published 2024 inputs with explicit missing draw requirements; citation only in the active product."""
+    return json.loads((TABLES / "trojan_2024.json").read_text(encoding="utf-8"))
 
 
 def centaur_nuclei() -> dict:
