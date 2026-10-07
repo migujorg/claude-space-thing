@@ -19,7 +19,7 @@ const { env }: { env: Record<string, string | undefined> } = await import(/* @vi
 const shaderGuards = {
   hFloor: 1e-6, cotFloor: 1e-6, expFloor: -80, psiCut: Math.PI - 1e-4,
   psiDen: 1e-6, bcCut: 1e-6, hcMissing: 1e9,
-  akimovEps: 1e-4, akimovFloor: 1e-20, minnaertFloor: 0, akimovStable: false, bcStable: true,
+  akimovEps: 1e-4, akimovFloor: 1e-20, minnaertFloor: 1e-3, akimovStable: false, bcStable: true,
 };
 type Guards = typeof shaderGuards;
 
@@ -180,10 +180,17 @@ function integrate(radf: (mu0: number, mu: number, g: number) => number, alpha: 
 // recovered cos(beta) is amplified by g/(pi-g) = 179. The 48/96/384-node signed errors
 // are -4.294e-4/-5.935e-4/-3.799e-4. These are bounded passing assertions, not it.fails.
 const AKIMOV_F32_CRESCENT_BOUND = 7e-4;
+// The shader bounds Minnaert's emission cosine at 1e-3 (see the limb-fragment test below). On a crescent thinner
+// than 5 degrees the lit sliver lies at such cosines and the bound costs the disk integral up to this much
+// (measured maximum 2.19e-3, Uranus at 179 degrees; below 1e-4 at 170 degrees and under). The bound belongs to
+// the limb fragments, not to the law: evaluating those fragments at the mean cosine of their covered sliver
+// would remove both it and this allowance (root's backlog, job limb-fragments).
+const MINNAERT_BOUND_CRESCENT = 2.5e-3;
+const minnaertBoundLimited = (kind: string, phase: number) => kind === 'minnaert' && phase >= 175;
 
 describe('surface law twins', () => {
   it('pins every WGSL helper used by the transcription, and its external PI', () => {
-    expect(createHash('sha256').update(LAW_WGSL).digest('hex')).toBe('8d033e5f3fe6d941306dd9a15549eeabec2e7e9356533ef556c438a12a513a85');
+    expect(createHash('sha256').update(LAW_WGSL).digest('hex')).toBe('834affd6f08f33a0c1824972163c28999080e76bde22093de78d8729ede669f5');
     expect(COMMON.match(/const PI: f32 = [^;]+;/)?.[0]).toBe('const PI: f32 = 3.14159265358979;');
   });
   it.skipIf(!built)('has built spatial models to compare (otherwise download/build light first)', () => {
@@ -205,11 +212,25 @@ describe('surface law twins', () => {
     const cpuNormalization = lawDiskIntegral(law, alpha, undefined, 32)[0];
     expect(Math.abs(reference / cpuNormalization - 1)).toBeLessThan(1e-4);
   });
-  it.skipIf(!built)('Minnaert: the shader reproduces the published unfloored emission law', () => {
+  it.skipIf(!built)('Minnaert: the shader law, with its bound on the emission cosine, integrates to the published law', () => {
     for (const { model } of models.filter(m => m.model.kind === 'minnaert')) for (const phase of [...phaseDeg, ...extendedPhaseDeg]) {
       const alpha = deg(phase), law = getLaw(model, alpha);
       const cpu = integrate((mu0, mu, g) => lawRadf(law, mu0, mu, g), alpha, 48);
+      expect(Math.abs(integrate(shaderLaw(law), alpha, 48) / cpu - 1)).toBeLessThan(minnaertBoundLimited('minnaert', phase) ? MINNAERT_BOUND_CRESCENT : 1e-4);
+      // Without the bound the transcription is the published law at every phase: the allowance above is the bound's alone.
       expect(Math.abs(integrate(shaderLaw(law, { minnaertFloor: 0 }), alpha, 48) / cpu - 1)).toBeLessThan(1e-4);
+    }
+  });
+  // The body pass evaluates the law on limb fragments of partial coverage, where the ray grazes or just misses
+  // the surface and the emission cosine is zero up to float32 rounding. Minnaert's mu^(k-1) with k < 1 is
+  // integrable over the disk but unbounded at a point: sampled there it drew limb pixels brighter than the disk
+  // centre (7 October 2026: 56 pixels of the Uranus validation frame, +1.4 % in its disk flux). The shader bounds
+  // the cosine at 1e-3, as it does for Barkstrom.
+  it.skipIf(!built)('Minnaert: a limb fragment at a rounding-sized emission cosine is no brighter than at the bound', () => {
+    for (const { model } of models.filter(m => m.model.kind === 'minnaert')) {
+      const law = getLaw(model, 0), shader = shaderLaw(law), atBound = shader(1, 1e-3, 0);
+      for (const mu of [2 ** -149, 2 ** -126, 1e-12, 1e-7, 1e-4]) expect(shader(1, mu, 0)).toBe(atBound);
+      expect(shader(1, 2e-3, 0)).toBeLessThan(atBound);
     }
   });
   it.skipIf(!built)('sourced Minnaert emission powers stay finite through the entire positive f32 range', () => {
@@ -240,13 +261,15 @@ describe('surface law twins', () => {
   });
   for (const { id, name, model } of models) for (const phase of phasesFor(model)) {
     const limited = model.kind === 'akimov' && phase === 179;
+    const bounded = minnaertBoundLimited(model.kind, phase);
     it(`${name} (${id}) ${model.kind} at ${phase}°: ${limited
       ? 'f32 coordinate rounding amplified by the latitude exponent stays within 7e-4'
+      : bounded ? 'disk integrals agree within the stated cost of the limb bound, 2.5e-3'
       : 'disk integrals agree within 1e-4'}`, () => {
       const alpha = deg(phase), law = getLaw(model, alpha);
       const cpu = integrate((mu0, mu, g) => lawRadf(law, mu0, mu, g), alpha, 48);
       const gpu = integrate(shaderLaw(law), alpha, 48);
-      expect(Math.abs(gpu / cpu - 1)).toBeLessThan(limited ? AKIMOV_F32_CRESCENT_BOUND : 1e-4);
+      expect(Math.abs(gpu / cpu - 1)).toBeLessThan(limited ? AKIMOV_F32_CRESCENT_BOUND : bounded ? MINNAERT_BOUND_CRESCENT : 1e-4);
     });
   }
 });
