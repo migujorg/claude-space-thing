@@ -134,20 +134,24 @@ def resample_to_view(native: np.ndarray, cam_native: g.Camera, view: g.Camera, s
 
 def _fit_cached(case_id: str, product: str, sha: str, b: np.ndarray, targets: list[g.Target], pitch: float,
                 flips: tuple[bool, ...]) -> register.Fit:
-    """Pointing fit, cached in data/cache/validation/ by image digest, binning and FIT_VERSION."""
-    key = (f"{product}-{sha[:16]}-{b.shape[1]}x{b.shape[0]}-v{FIT_VERSION}-{''.join('m' if f else 'n' for f in flips)}"
-           + (f"-t{'-'.join(str(t.naif) for t in targets[1:])}" if len(targets) > 1 else ""))
-    path = CACHE / "validation" / case_id / f"{key}.json"
+    """Pointing fit cached by every numerical input, implementation and environment."""
+    signature = register.fit_inputs(b, targets, 0, pitch, operation="pointing", flips=flips,
+                                    imageSha256=sha, fitVersion=FIT_VERSION)
+    key = register.input_digest(signature)
+    path = CACHE / "validation" / case_id / f"{product}-{key}.json"
     tg = targets[0]
-    d = register.read_json_cache(path)
-    if d is not None:
-        cam = g.camera_for(tg, b.shape[1], b.shape[0], pitch, d["cx"], d["cy"], d["roll"])
+    d = register.read_json_cache(path) if register.USE_CACHE else None
+    if d is not None and "cameraOrient" in d:
+        # The optimizer may use an unwrapped angle; recomputing from roll % 360
+        # changes trig rounding. Replay the exact returned camera as well as pose.
+        cam = g.Camera(np.array(d["cameraOrient"], float).reshape(3, 3), b.shape[1], b.shape[0], pitch)
         return register.Fit(d["cx"], d["cy"], d["roll"], d["flipped"], d["rss"], d["rss_other"], d["sigma"],
                             d["resid"], cam, d["coef"])
     ft = register.fit_pointing(b, targets, 0, pitch, flips=flips)
     register.write_json_cache(path, {"cx": ft.cx, "cy": ft.cy, "roll": ft.roll_deg, "flipped": ft.flipped,
                                      "rss": ft.rss, "rss_other": ft.rss_other_parity, "sigma": ft.sigma_px,
-                                     "resid": ft.residual_rms, "coef": ft.coef})
+                                     "resid": ft.residual_rms, "coef": ft.coef,
+                                     "cameraOrient": ft.camera.row_major()})
     return ft
 
 
@@ -355,6 +359,7 @@ def prepare_frame_case(case: FrameCase, *, verbose: bool = True) -> Prepared:
                 flip = ft.flipped
             nat = a[: b.shape[0] * case.bin, : b.shape[1] * case.bin]
             nat = nat[:, ::-1] if flip else nat
+            free_fit_result = ft.exact_json()
             wcs_roll_note = None
             if case.reader == "lorri":        # roll from the mission's attitude (header WCS), translation refitted
                 ft, wcs_roll_note = _adopt_wcs_roll(case, path, nat, ft, tg, shift)
@@ -387,6 +392,12 @@ def prepare_frame_case(case: FrameCase, *, verbose: bool = True) -> Prepared:
                              "et": et, "exposureS": fr.exposure_s, "archiveUrl": im.data_url,
                              "labelUrl": im.label_url, "calibration": fr.notes, "horizonsSources": hids,
                              "fit": ft.to_json(),
+                             "fitInputs": register.fit_inputs(b, fit_targets, 0, case.pixel_rad * case.bin,
+                                                               operation="pointing", flips=flips,
+                                                               imageSha256=download.sha256_file(path),
+                                                               fitVersion=FIT_VERSION),
+                             "fitResult": ft.exact_json(),
+                             "freeFitResult": free_fit_result,
                              "registrationSigmaPx": max(MIN_REGISTRATION_PX, 3 * ft.sigma_px),
                              "aberrationShiftRad": float(np.linalg.norm(shift)), "pointingChecks": pc,
                              "rollSigmaDeg": roll_sigma})
@@ -418,6 +429,8 @@ def prepare_frame_case(case: FrameCase, *, verbose: bool = True) -> Prepared:
                 ft.camera = g.camera_for(tl[0], b.shape[1], b.shape[0], case.pixel_rad * case.bin, cx, cy, roll_c)
                 frames[k] = (fr, nat, g.camera_for(tl[0], nat.shape[1], nat.shape[0], case.pixel_rad,
                                                    cx * case.bin, cy * case.bin, roll_c))
+    for meta, ft in zip(img_meta, fits):
+        meta["fitResult"] = ft.exact_json()
     ref = case.reference_image
     view = fits[ref].camera
     refs = [resample_to_view(nat, cam_n, view, case.bin) for (fr, nat, cam_n) in frames]
@@ -707,6 +720,7 @@ def write_case(case_id: str, built: dict) -> Path:
     arr = np.stack(built["refs"]).astype("<f4")
     (d / "reference.bin").write_bytes(arr.tobytes())
     js = dict(built["json"])
+    lock = _clean(js.pop("reproducibility", None), digits=None)
     view = _clean(js.pop("view"), digits=None)             # geometry at full double precision
     js = _clean(js)
     out = {}
@@ -714,6 +728,8 @@ def write_case(case_id: str, built: dict) -> Path:
         out[k] = v
         if k == "observation":
             out["view"] = view
+    if lock is not None:
+        out["reproducibility"] = lock
     (d / "case.json").write_text(json.dumps(out, indent=1, ensure_ascii=False) + "\n", encoding="utf-8",
                                  newline="\n")
     preview(d / "preview.png", built["refs"], built["json"]["reference"]["bands"], built["rois"])
@@ -756,10 +772,43 @@ def preview(path: Path, refs: list[np.ndarray], bands: list[str], rois: list[roi
     img.save(path)
 
 
-def build_case(case) -> dict:
-    if isinstance(case, FrameCase):
-        return measure(prepare_frame_case(case))
-    return measure(case.prepare())
+def build_case(case, *, expected: dict | None = None) -> dict:
+    from . import reproducibility as repro
+    repro.require_single_thread()
+    repro.clear_process_caches()
+    generated = repro.generation_time(expected)
+    if expected is not None:
+        repro.preflight(expected)
+    lock = (expected or {}).get("reproducibility")
+    with repro.isolated_spectral_cache(), repro.expected_case(expected), repro.capture_inputs(lock["inputs"] if lock else None) as inputs:
+        # SPICE opens kernels in C, outside Python's file-open audit hook.
+        # Hash the exact declared kernel paths before their bytes are consumed.
+        for path in (ek.lsk(), ek.pck(), ek.planetary()):
+            repro.file_record(path)
+        p = prepare_frame_case(case) if isinstance(case, FrameCase) else case.prepare()
+        built = measure(p)
+        # Sources may already be in a process-local spectral cache. Explicitly
+        # read their pinned copies too so every case lock is self-contained.
+        ledger = download._load_ledger()
+        for src in built["json"]["sources"]:
+            path = repro.source_path(src, ledger)
+            if path and path.is_file():
+                actual = repro.file_record(path)
+                if src.get("sha256") and src["sha256"] != actual["sha256"]:
+                    raise repro.ReproductionError(f'{src["id"]}: actual input sha256 differs from source ledger')
+        if expected is not None:
+            repro.check_sources(expected, built["json"])
+    built["json"]["generated"] = generated
+    built["json"]["reproducibility"] = {
+        "schema": "validation-rebuild-v1", "artifactCreated": generated, "criterion": "exact scientific JSON and float32 reference bytes",
+        "inputs": inputs, "implementation": repro.implementation(), "runtime": repro.runtime(),
+        "fits": [{"product": m["product"], "inputs": m.get("fitInputs"), "freeResult": m.get("freeFitResult"), "result": m.get("fitResult")}
+                 for m in p.img_meta],
+        "optimizer": "deterministic 3-degree exhaustive roll/FFT translation seed, explicit Nelder-Mead simplex; "
+                     "no random seed or random draws; see hashed register.py for stopping criteria",
+        "uncertaintyCriterion": "no relaxed byte criterion: centreSigmaPx is centre-only, registrationSigmaPx "
+                                "includes the stated systematic floor, and no roll covariance is available"}
+    return built
 
 
 def write_index() -> Path:
