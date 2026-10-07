@@ -150,6 +150,7 @@ export class Inspector {
       loading,
       surfaces: m.data?.surfaces.filter((x) => x.bodyId === body.id) ?? [],
       shape: m.shapeStatus(body.id),
+      rings: m.data?.rings?.[String(body.id)] ?? null,
     });
     // The Sun is drawn from light.json, not from reflectance data.
     if (isSun) rows = [...rows.filter((r) => !['albedoXYZS', 'albedoV', 'phase'].includes(r.key)), ...sunRows(m.light, level)];

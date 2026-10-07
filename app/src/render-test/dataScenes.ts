@@ -1,7 +1,7 @@
 // Real-data scenes for the renderer test page: the pipeline's products under /data (rings.json,
 // photometry.json, light.json, bodies.json, surfaces/) with a synthetic viewing geometry chosen by URL
 // parameters. Nothing here describes the universe: every body number is read from the products.
-//   scene=rings-data&planet=699|799|899&B=obs elevation°&Bsun=Sun elevation°&phase=°&dist=km&fovdeg=°&map=1
+//   scene=rings-data&planet=599|699|799|899&B=obs elevation°&Bsun=Sun elevation°&phase=°&dist=km&fovdeg=°&map=1&et=s (TDB)
 //   scene=moon-data&sunlon=Sun selenographic longitude° (east +: waxing)&lib=lat,lon (observer)&rolo=0|1&hapke=0|1 (per-texel law)
 //   (both: nomodel=1 drops the reflectance model / disk model to show the not-measured treatment)
 //   scene=earth-data&sun=lat,lon (sub-solar)&obs=lat,lon (sub-observer)&dist=km&fovdeg=°&map|clouds|water|night|wind|atm=0
@@ -98,13 +98,17 @@ export async function buildDataScene(p: URLSearchParams): Promise<TestScene> {
     const pos = mul(toObs, -dist);
     const toSun = mul(sunDir, 9.54 * AU_KM);
     const refl = !noModel && rs.reflectance.label !== 'unknown' ? rs.reflectance.value : null;
+    const comps = !noModel && rs.components && rs.components.label !== 'unknown' ? rs.components.value : null;
     const surface = p.get('map') === '1' ? { albedo: await layer(`surfaces/${id}/albedo.json`) } : undefined;
     const body = bodyOf(pr, id, pos, toSun, poleFrame(N), {
       surface,
-      rings: rs.opticalDepth.value && p.get('norings') !== '1' ? {
-        normal: N, opticalDepth: rs.opticalDepth.value, reflectance: refl,
-        worstLabel: worse(rs.opticalDepth.label, refl ? rs.reflectance.label : 'measured'),
-      } : null,
+      rings: p.get('norings') === '1' ? null
+        // Ring components (Jupiter, Uranus, Neptune; ringComponents.ts) at TDB seconds `et` (default: the model epoch).
+        : comps ? { normal: N, opticalDepth: [], reflectance: null, components: comps, et: p.has('et') ? Number(p.get('et')) : undefined, worstLabel: rs.components!.label }
+        : rs.opticalDepth.value ? {
+          normal: N, opticalDepth: rs.opticalDepth.value, reflectance: refl,
+          worstLabel: worse(rs.opticalDepth.label, refl ? rs.reflectance.label : 'measured'),
+        } : null,
     });
     const fwd = mul(toObs, -1);
     const cam = { orient: lookAlong(fwd, N), fovY: rad(Number(p.get('fovdeg') ?? 40)), width: 0, height: 0 };
