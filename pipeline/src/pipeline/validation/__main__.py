@@ -9,6 +9,9 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from pathlib import Path
+import tempfile
+import os
 
 from . import build as vb
 from .cases import CASES as _FRAME_CASES
@@ -22,6 +25,14 @@ def main(argv: list[str] | None = None) -> int:
     sub = ap.add_subparsers(dest="cmd", required=True)
     b = sub.add_parser("build")
     b.add_argument("--only", default="", help="comma-separated case ids")
+    b.add_argument("--output", type=Path, help="write candidates under DIR/cases (leave committed cases untouched)")
+    b.add_argument("--unlocked", action="store_true", help="inspect changed inputs; requires --output")
+    b.add_argument("--earth-pck", help="explicit Earth PCK filename for a new Himawari candidate")
+    b.add_argument("--fresh-fit", action="store_true", help="ignore both optimizer caches")
+    v = sub.add_parser("verify", help="rebuild and compare without changing committed cases")
+    v.add_argument("--only", default="")
+    v.add_argument("--cases-dir", type=Path, help="validation root to verify; defaults to committed validation/")
+    v.add_argument("--fresh-fit", action="store_true")
     sub.add_parser("list")
     sub.add_parser("report")
     sub.add_parser("clean", help="delete the downloaded images; keep metadata, source documents and Horizons tables")
@@ -53,12 +64,64 @@ def main(argv: list[str] | None = None) -> int:
     if unknown:
         print(f"unknown cases {sorted(unknown)}; known: {list(CASES)}", file=sys.stderr)
         return 2
+    from . import reproducibility as repro, register
+    from ..paths import CACHE
+    if args.cmd == "build" and args.unlocked and args.output is None:
+        ap.error("--unlocked requires --output; committed cases are never unlocked in place")
+    if args.cmd == "build" and args.earth_pck:
+        os.environ["PIPELINE_VALIDATION_EARTH_PCK"] = args.earth_pck
+    if args.cmd == "build" and args.unlocked and args.output.resolve() == vb.VALIDATION.resolve():
+        ap.error("--unlocked output must differ from the committed validation directory")
+    register.USE_CACHE = not args.fresh_fit
+    committed = args.cases_dir if args.cmd == "verify" and args.cases_dir else vb.VALIDATION
+    destination = args.output if args.cmd == "build" and args.output else vb.VALIDATION
+    committed, destination = committed.resolve(), destination.resolve()
+    failed = False
+    CACHE.mkdir(parents=True, exist_ok=True)
     for cid in wanted:
-        built = vb.build_case(CASES[cid])
-        d = vb.write_case(cid, built)
-        print(f"[{cid}] wrote {d}")
-    vb.write_index()
-    return 0
+        old_dir = committed / "cases" / cid
+        old_path = old_dir / "case.json"
+        expected = json.loads(old_path.read_text()) if old_path.exists() else None
+        if args.cmd == "verify" and expected is None:
+            print(f"[{cid}] missing committed case", file=sys.stderr)
+            failed = True
+            continue
+        if args.cmd == "build" and args.unlocked:
+            expected = None
+        try:
+            built = vb.build_case(CASES[cid], expected=expected)
+            with tempfile.TemporaryDirectory(prefix="validation-verify-", dir=CACHE) as tmp:
+                original = vb.VALIDATION
+                try:
+                    vb.VALIDATION = Path(tmp)
+                    candidate = vb.write_case(cid, built)
+                finally:
+                    vb.VALIDATION = original
+                result = repro.compare_cases(old_dir, candidate) if expected is not None else None
+                if args.cmd == "verify":
+                    print(json.dumps({"id": cid, **result}, ensure_ascii=False))
+                    failed |= not result["reproduces"]
+                elif destination == committed and result and not result["reproduces"]:
+                    raise repro.ReproductionError("rebuild differs from committed scientific values/reference; "
+                                                  "inspect with build --output DIR (or --unlocked for changed inputs)")
+                else:
+                    try:
+                        vb.VALIDATION = destination
+                        d = vb.write_case(cid, built)
+                    finally:
+                        vb.VALIDATION = original
+                    print(f"[{cid}] wrote {d}")
+        except (repro.ReproductionError, FileNotFoundError) as exc:
+            print(f"[{cid}] cannot reproduce: {exc}", file=sys.stderr)
+            failed = True
+    if args.cmd == "build" and not failed:
+        original = vb.VALIDATION
+        try:
+            vb.VALIDATION = destination
+            vb.write_index()
+        finally:
+            vb.VALIDATION = original
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":

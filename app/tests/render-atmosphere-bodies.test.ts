@@ -4,7 +4,7 @@
 // Mars dust season lookup (fixture tables).
 import { describe, expect, it } from 'vitest';
 import {
-  atmosphereDiskFactors, marsDustScale, precomputeAtmosphere, ProfileGrid, rayleighPhase, skyIrradianceK, sunTransmittanceK, viewPath,
+  ATM_DISK_NODES, atmosphereDiskFactors, marsDustScale, precomputeAtmosphere, ProfileGrid, rayleighPhase, skyIrradianceK, sunTransmittanceK, viewPath,
 } from '../src/render/atmosphere';
 import type { AtmosphereBinding } from '../src/render/atmosphereGpu';
 import { cameraGeom, prepareFrame } from '../src/render/frame';
@@ -45,6 +45,33 @@ describe('atmosphere over a photometry-drawn body (fixture)', () => {
     expect(f.I0[1]).toBeCloseTo(2 / 3, 2);
     expect(f.Iatm[1]).toBeLessThan(f.I0[1]);
     expect(f.Iatm[1]).toBeGreaterThan(0.7 * f.I0[1]);
+  });
+
+  it('the disk grid of the factors: the disk\'s area and a Lambert disk integrate to their exact values', () => {
+    // The surface alone (I0) does not depend on the air, so it has exact values: 1 for a disk of unit radiance factor
+    // (its area over π), and (2/3)·Φ_L(α) for a Lambert disk. At the node count the frame uses (ATM_DISK_NODES) and at
+    // 16, the count it used with the square grid of cell centres this replaced, which gave an area of 1.0345 at 16
+    // across (0.9903 at 24) and a Lambert integral 5 % high at 90° and 39 % high at 150° (measured).
+    const dirOf = (deg: number): V3 => [Math.sin((deg * Math.PI) / 180), 0, Math.cos((deg * Math.PI) / 180)];
+    const unit = () => ({ rho: [1, 1, 1, 1], albedo: [1, 1, 1, 1] });
+    const lam = (_n: V3, mu0: number) => { const r = Math.max(mu0, 0); return { rho: [r, r, r, r], albedo: [1, 1, 1, 1] }; };
+    expect(ATM_DISK_NODES).toBe(24);
+    // Largest |integral / exact − 1| allowed, by node count and phase angle: what the grid's azimuths leave at the
+    // terminator's kink (measured: 0.14 %, 0.72 %, 0.80 %, 2.2 % at 16; 0.02 %, 0.31 %, 0.08 %, 0.45 % at 24).
+    const tol: Record<number, [number, number][]> = {
+      16: [[0, 1e-9], [36, 1e-3], [60, 2e-3], [90, 8e-3], [120, 9e-3], [150, 0.025]],
+      [ATM_DISK_NODES]: [[0, 1e-9], [36, 2e-4], [60, 3e-4], [90, 4e-3], [120, 1e-3], [150, 5e-3]],
+    };
+    for (const n of [16, ATM_DISK_NODES]) {
+      const area = atmosphereDiskFactors(m, tab, grid, [0, 0, 1], [0, 0, 1], unit, n).I0;
+      for (const v of area) expect(Math.abs(v - 1), `area, n ${n}`).toBeLessThan(1e-12);
+      for (const [deg, t] of tol[n]) {
+        const a = (deg * Math.PI) / 180;
+        const exact = (2 / 3) * (Math.sin(a) + (Math.PI - a) * Math.cos(a)) / Math.PI;
+        const I0 = atmosphereDiskFactors(m, tab, grid, dirOf(deg), [0, 0, 1], lam, n).I0;
+        for (const v of I0) expect(Math.abs(v / exact - 1), `Lambert disk at ${deg}°, n ${n}: ${v} against ${exact}`).toBeLessThan(t);
+      }
+    }
   });
 
   const eyeState = () => { const s = new AdaptationState(); s.update({ coneCdM2: 1e-5, rodCdM2: 1.4e-5, cornealFlux: 0 }, 0); return s; };
