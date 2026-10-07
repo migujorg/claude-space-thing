@@ -414,16 +414,16 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
     // its layers carry their own absolute calibration (surface reflectance, cloud optical thickness and air, each
     // in absolute units), and its disk albedo is the weather of one day, which a single disk value cannot fix.
     const physical = !earth && b.atmosphere?.surface && b.orient && irr && opts.atmospheres ? b.atmosphere.surface : null;
-    // Its tables once ready, for a disk at least a pixel across (a point's light is its disk photometry).
+    // Its tables once ready, even for a point: the point and glare carry the disk's integrated model light.
     const resolvedDisk = (2 * angR) / g.pixelAngle > 1;
     let physB: AtmosphereBinding | null = null;
-    if (physical && resolvedDisk) {
+    if (physical) {
       const got = opts.atmospheres!(b, [0, 0, 0, 0], null);
       if (got && 'error' in got) warnings.push(got.error);
       else if (got?.tables && got.grid) physB = got;
     }
-    // Fully resolved (smooth(1, 2, diameter px) = 1) it has no point part: the picture is the model's alone.
-    const modelDiskOnly = physB !== null && (2 * angR) / g.pixelAngle >= 2;
+    // With ready tables, both point and disk follow the model's continuation (reported below).
+    const modelReady = physB !== null;
     /** The scale of the model to the disk photometry, per channel, once it is drawn. */
     let modelScale: XYZS | null = null;
     // Disk-integrated p·Φ per channel: from the body's disk reflectance model (the Moon: ROLO) inside its
@@ -457,8 +457,8 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
           phi = x.phi;
           if (range) phaseEdge = ((alpha * 180) / Math.PI > range[1] ? range[1] : range[0]) * (Math.PI / 180);
           label = worse(label, 'estimated');
-          // A fully resolved model-drawn disk has no point part: its continuation is the model's (said below).
-          if (!modelDiskOnly) warnings.push(`${b.name}: phase extrapolated beyond measured range (${range?.[0]}–${range?.[1]}°) with the spatial law → estimated`);
+          // A model-drawn body carries its model's continuation at every angular size (said below).
+          if (!modelReady) warnings.push(`${b.name}: phase extrapolated beyond measured range (${range?.[0]}–${range?.[1]}°) with the spatial law → estimated`);
         } else {
           warnings.push(`${b.name}: ${ph.reason} → sunlit part drawn as not measured (night side black)`);
         }
@@ -531,7 +531,7 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
     let atmB: AtmosphereBinding | null = null;
     let onDisk = false;
     const groundAlbedo = b.albedoXYZS && irr ? [0, 1, 2, 3].map((c) => LAMBERT_ALBEDO_PER_GEOMETRIC_ALBEDO * (b.albedoXYZS![c] / irr[c])) : [0, 0, 0, 0];
-    // Only for a resolved disk (smooth(1, 2, diameter px) > 0): a point's light is its disk photometry.
+    // The same calibration and integrated light for a model-drawn body at every angular size.
     if (physical && physB && pPhi && irr) {
       // The model's radiance, L = (E_sun/π)·ρ_surface·μ0 under the air plus the air's own light (the shader's
       // ATM_OVER_PHOTOMETRY with the surface scale b.rad = E_sun/π·ρ, and the shell), times the factor of the rule
@@ -546,6 +546,13 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
       const own = [0, 1, 2, 3].map((c) => d[c] + physical.xyzs[c] * d[4 + c]);
       const scaleC = pRef.map((v, c) => (own[c] > 0 ? v / own[c] : 0)) as XYZS;
       modelScale = scaleC;
+      // ∫L dΩ = E☉(1 AU)·A_model(α)·scale·(R/Δ)²/d², including the shell beyond the surface limb.
+      // In range this is p·Φ exactly (up to roundoff); beyond it the model, with the edge's held factors,
+      // supplies the phase dependence for the point and off-frame glare as it does for the resolved disk.
+      // Reuse the 1° cache: slowly changing phases need no new integral until they enter another bin.
+      const current = aRef === alpha ? d : modelDisk(physB, alpha);
+      const modelPPhi = irr.map((v, c) => v * scaleC[c] * (current[c] + physical.xyzs[c] * current[4 + c])) as XYZS;
+      E = diskIlluminance(modelPPhi, dAU, R, D, 1);
       atmB = physB;
       K = irr.map((v, c) => (v * physical.xyzs[c] * scaleC[c]) / (Math.PI * dAU * dAU)) as XYZS;
       law = LAMBERT_LAW;
@@ -809,7 +816,8 @@ function atmTop(b: SceneBody): number {
 /**
  * Disk integrals of a body drawn from its atmosphere model (modelDiskXYZS: the air's light per channel, then the
  * surface term per unit reflectance) at phase angle a, from the same 1° bins, linear between them. A new bin costs
- * one integral (about 30 ms for Titan's 12 bins); inside a measured range of a few degrees there are few.
+ * one integral (about 30 ms for Titan's 12 spectral bins). The held edge and the current phase share this cache,
+ * including for points: at most four new integrals on a cold frame, one per crossed bin for a slow phase.
  */
 function modelDisk(bind: AtmosphereBinding, a: number): number[] {
   const binning = (Math.PI / 180) * ATM_FACTOR_BIN_DEG;

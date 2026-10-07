@@ -3,7 +3,8 @@
 // the model's disk scaled per channel to the disk photometry, architecture §4.3 and §4.4; the Earth with its layers
 // is the exception) and when the photometry still stands in, the model's disk integral (atmosphere.ts), and the
 // inspector's rows (inspectModel.ts atmosphereRows). The numbers of the real model are in render-titan.test.ts.
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import * as atmosphereMath from '../src/render/atmosphere';
 import { atmosphereFor } from '../src/app/extras';
 import { diskReflectanceSpectral, modelDiskXYZS, precomputeAtmosphere, ProfileGrid } from '../src/render/atmosphere';
 import type { AtmosphereBinding } from '../src/render/atmosphereGpu';
@@ -286,6 +287,20 @@ describe('the frame of a body drawn from its atmosphere model (fixture)', () => 
     expect(far.resolved[0].lit).toBe(false);
     expect(far.resolved[0].hatch).toBe(true);
     expect(far.warnings.some((w) => w.includes('sunlit part drawn as not measured'))).toBe(true);
+  });
+
+  it('reuses the model integral for a point as its phase moves slowly, by data rather than body id', () => {
+    const spy = vi.spyOn(atmosphereMath, 'modelDiskXYZS');
+    try {
+      const at = (a: number) => prepareFrame(scene(a, 2e7, 0.2, { id: 12345 }), g, eye, 1e-9,
+        { atmospheres: () => ({ ...binding(), key: 'point-cache-test' }) });
+      at(30.25);
+      expect(spy).toHaveBeenCalledTimes(4); // 5° and 6° calibration edge, 30° and 31° current phase.
+      at(30.26);
+      expect(spy).toHaveBeenCalledTimes(4);
+      at(31.25);
+      expect(spy).toHaveBeenCalledTimes(5); // Only 32° is new.
+    } finally { spy.mockRestore(); }
   });
 
   it('a body without a model-drawn disk keeps the point photometry bit for bit, with no table request', () => {

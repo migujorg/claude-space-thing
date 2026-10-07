@@ -628,9 +628,14 @@ inspector's "why" sentence says that the disk is scaled so; it does not show the
 - **At Strict** Titan's haze and photometry are both `estimated`, so neither is admitted and nothing of this applies.
 - **Until the tables are ready**, or if the atmosphere cannot be drawn, the disk photometry stands in with a
   Lambert law (beyond 5.7° extrapolated with it at Best estimate, with the usual warning).
-- **As a point** (under 1 px) Titan is its disk photometry, and between 1 and 2 px the two are blended. Inside the
-  range the two are now the same light. Beyond 5.7° the point is still the Lambert extrapolation, which knows
-  nothing of the haze's forward scattering: at 150° the model's disk reflects about 25 times what that point does.
+- **As a point**, and as a source of off-frame glare, a body drawn from its atmosphere model carries the model's
+  disk integral (including the shell) times the same per-channel factors as its disk, with the same label.
+  Inside the photometry's range this equals the photometry; beyond it the edge's factors are held and the point
+  follows the model's phase dependence (`estimated`). The point and disk therefore carry the same light through
+  their blend. This rule follows `SceneAtmosphere.surface`, not a body id; Earth's layers keep their exception.
+  The existing 1° integral cache is shared: with tables ready, a cold high-phase point needs at most four integrals
+  (two for the edge, two for the current phase; about 30 ms each for Titan), then none until a phase bin changes.
+  At 150° Titan's point now carries about 25 times the old Lambert continuation's Y flux.
 - **From close by** the frame's summed light exceeds p·Φ·(R/Δ)²: the near side of a sphere is nearer than its
   centre, a first-order effect in R/Δ (0.75·R/Δ for a Lambert sphere at zero phase) that the far-field contract does
   not contain and the picture should. Measured on the GPU: +0.9 % from 200 000 km, +0.05 % from 2 000 000 km.
@@ -765,8 +770,7 @@ an input to the scaling: beyond 5.7° the picture is this model times the factor
 
 **Not done for Titan:** the change of μs along a scattering path (the terminator), Saturnshine on the haze
 (planetshine lights the surface only), refraction, the methane bands at their 1 nm resolution, the detached
-haze and the north–south asymmetry, a point light from the model (the point stays the disk photometry, unknown
-beyond 5.7° at Strict), a phase function for Titan beyond 5.7° (the ISS curves above are a figure digitized in five
+haze and the north–south asymmetry, a measured phase function for Titan beyond 5.7° (the ISS curves above are a figure digitized in five
 filters, used only as a test; making them the photometry would end that test and is a separate decision), and the
 scaling anchored at the one measured phase: only 5.7° is measured, so the standing rule (the model carries the
 phase dependence away from the measurement, anchored at it) would hold the factors of 5.7° below it too and keep
