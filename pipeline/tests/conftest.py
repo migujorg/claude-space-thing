@@ -4,20 +4,124 @@ Offline runs (PIPELINE_OFFLINE=1, set in CI): no network beyond this machine. A 
 input into data/raw (or query an online service) is SKIPPED at its first connection attempt, naming the URL or
 host it wanted, instead of downloading: CI has no data (.github/workflows/ci.yml). Loopback stays open, so tests
 that serve fixtures from a local HTTP server still run. Tests that need built products skip themselves as before
-(skipif on the product path). Without the variable, tests fetch missing raw inputs as the stages do (cached in
-data/raw).
+(skipif on the product path). Shared raw inputs, intermediates and products are read only even in an online run:
+tests which exercise writers must redirect their paths to temporary directories.
 """
 
 from __future__ import annotations
 
 import os
 import socket
+import sys
+from functools import wraps
+from pathlib import Path
 from urllib.parse import urlsplit
 
 import pytest
 
 OFFLINE = os.environ.get("PIPELINE_OFFLINE") == "1"
 LOOPBACK = {"localhost", "127.0.0.1", "::1"}
+
+
+class SharedDataWriteError(AssertionError):
+    """A test tried to mutate an input shared with builds or another lane."""
+
+
+class DataWriteGuard:
+    """Audit Python filesystem mutations, including numpy file opens and symlink aliases.
+
+    Read opens have no path-resolution overhead. Existing-directory mkdir calls are harmless (paths.py
+    uses them on import); creation below those directories is forbidden. Roots are captured once, so a
+    test may redirect environment variables/module aliases without weakening protection of shared data.
+    """
+
+    def __init__(self, roots):
+        self.roots = tuple({q for p in roots for q in (Path(p).absolute(), Path(p).resolve())})
+        self.violations = []
+
+    def install(self):
+        sys.addaudithook(self)
+        # CPython's open audit event omits dir_fd; check it before resolving the relative path.
+        original = os.open
+
+        @wraps(original)
+        def guarded_open(path, flags, mode=0o777, *, dir_fd=None):
+            if dir_fd is not None and flags & (os.O_WRONLY | os.O_RDWR | os.O_CREAT | os.O_TRUNC | os.O_APPEND):
+                self.check(path, dir_fd)
+            return original(path, flags, mode, dir_fd=dir_fd)
+
+        os.open = guarded_open
+
+    def check(self, path, dir_fd=None, *, follow_leaf=True):
+        if isinstance(path, int):  # open/truncate may receive an already-open file descriptor
+            path = os.readlink(f"/proc/self/fd/{path}")
+        path = Path(os.fsdecode(path))
+        if not path.is_absolute() and dir_fd not in (None, -1):
+            path = Path(os.readlink(f"/proc/self/fd/{dir_fd}")) / path
+        path = path.resolve() if follow_leaf else path.parent.resolve() / path.name
+        if any(path == root or root in path.parents for root in self.roots):
+            message = f"test attempted to write shared pipeline data: {path}; redirect the writer to tmp_path"
+            self.violations.append(message)
+            raise SharedDataWriteError(message)
+
+    def __call__(self, event, args):
+        if event == "open":
+            path, mode, flags = args
+            if flags & (os.O_WRONLY | os.O_RDWR | os.O_CREAT | os.O_TRUNC | os.O_APPEND):
+                self.check(path)
+        elif event == "os.mkdir":
+            path, mode, dir_fd = args
+            if dir_fd == -1 and Path(os.fsdecode(path)).is_dir():
+                return
+            self.check(path, dir_fd, follow_leaf=False)
+        elif event in {"os.remove", "os.rmdir"}:
+            self.check(args[0], args[1], follow_leaf=False)
+        elif event in {"os.rename", "os.link"}:
+            self.check(args[0], args[2], follow_leaf=event == "os.link")
+            self.check(args[1], args[3], follow_leaf=False)
+        elif event == "os.symlink":
+            self.check(args[1], args[2], follow_leaf=False)
+        elif event in {"os.chmod", "os.utime"}:
+            self.check(args[0], args[-1])
+        elif event == "os.truncate":
+            self.check(args[0])
+
+
+def pytest_configure(config):
+    config.addinivalue_line("markers", "skip_group(group): skip accounting: missing-input or opt-in")
+    repo = Path(__file__).resolve().parents[2]
+    defaults = (repo / "data/raw", repo / "data/cache", repo / "app/public/data")
+    roots = [os.environ.get(key) or default for key, default in zip(
+        ("PIPELINE_RAW", "PIPELINE_CACHE", "PIPELINE_OUT"), defaults)]
+    config._data_write_guard = DataWriteGuard([*roots, *defaults])
+    config._data_write_guard.install()
+
+
+def pytest_runtest_setup(item):
+    item.config._data_write_guard.violations.clear()
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_makereport(item, call):
+    report = (yield).get_result()
+    # Even a writer that catches AssertionError must not turn an attempted mutation into a passing test.
+    violations = item.config._data_write_guard.violations
+    if report.passed and violations:
+        report.outcome = "failed"
+        report.longrepr = "\n".join(violations)
+    violations.clear()
+    if report.skipped:
+        marker = item.get_closest_marker("skip_group")
+        offline_missing = "raw input not present and the network is off" in str(report.longrepr)
+        report.skip_group = marker.args[0] if marker else "missing-input" if offline_missing else "unaccounted"
+
+
+def pytest_terminal_summary(terminalreporter):
+    counts = {"missing-input": 0, "opt-in": 0, "unaccounted": 0}
+    for report in terminalreporter.stats.get("skipped", []):
+        group = getattr(report, "skip_group", "unaccounted")
+        counts[group if group in counts else "unaccounted"] += 1
+    terminalreporter.write_line("pipeline skip groups: " + ", ".join(f"{k}={v}" for k, v in counts.items()))
 
 
 def _skip(what) -> None:
