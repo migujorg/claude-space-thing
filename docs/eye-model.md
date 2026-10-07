@@ -588,14 +588,52 @@ The paper's text gives about 45 c/deg at 25 cd/m², about 9 at 0.05 cd/m², abou
 about 2 near the limit of vision; all are tested. L_a is floored at the dark light (10⁻⁵ cd/m², R = 1.2).
 It is applied the way Ward Larson et al. do, as a variable-resolution filter.
 
-- L_a is the luminance of the ~1° foveal field around each pixel, plus the veil (theirs is the foveal
-  adaptation with the veil). Taking the fovea's local luminance matters: bright regions stay sharp and
-  dark ones blur. A global blur (Ferwerda et al. 1996) would blur both.
+- **L_a is the adaptation of the fovea looking at the pixel**: the frame's own statistic of §2, taken over
+  the 1° field around the pixel instead of over the frame (`eye/acuity.ts` `fovealAdaptation`),
+
+  L_a = exp( Σ w·ln(L_ret + L₀) / Σ w ) − L₀  over the 1° field,
+
+  with L_ret the retinal image (the unscattered scene plus the veil), w the fixation weight of §2 (the
+  scene luminance where it can be seen, plus the dark light L₀). It is local: bright regions stay sharp
+  and dark ones blur. A global blur (Ferwerda et al. 1996) would blur both.
+  - A uniform field gives its own retinal luminance. A small bright body in a dark field gives the
+    body's, as the frame's adaptation does. A dark region within 1° of a far brighter one gets the bright
+    region's acuity; that is §2's "faint extended features beside a far brighter one are shown as seen
+    while looking at the bright part".
+  - The weights are the light-weighted ones in both fixation modes of §2: the filter treats every pixel
+    as looked at in turn, whatever the frame's one adaptation state is taken from.
+  - The solar disk is not excluded as it is from the frame's fixations: the filter asks with what acuity
+    a pixel is shown, with the fovea on that pixel by construction. A field inside the disk would
+    otherwise have no weight at all.
+  - Where nothing in the 1° field can be seen against the veil, every weight is the dark light and L_a is
+    the geometric mean of the retinal image there, not the arithmetic mean it was.
 - The extended image is read from the level of an image pyramid (mip chain of EXT) whose texel is half
   a cycle at R: level log₂(1/(2·R·pixel angle)), linear between levels.
 - Point sources are not blurred: their image is the eye's point spread (§3), and their visibility has
   its own model (§6).
 - On in eye mode only: enhanced mode lifts eye limits.
+
+**What is published and what is ours.**
+
+- **Published:** acuity as a function of the fovea's adaptation luminance, and that it has to be the
+  fovea's adaptation and not the pixel's own value: "It is very important to use the foveal data and not
+  the original pixel value, since it is the fovea's adaptation that determines acuity" (Ward Larson et
+  al. 1997, §5.3, with Eq. 15; the fit is to Shlaer 1937).
+- **Replaced:** what that adaptation is. Ward Larson et al. take the mean luminance of the 1° field plus
+  the veil (their Eq. 12). This model's adaptation at a fixation is §2's: the eye adapts to what it looks
+  at by its light, not by its area. The filter uses that. It adds no assumption to §2's; it stops the
+  filter from using a different one for the same fovea.
+- Until October 2026 the filter used their mean, u·⟨L⟩ over 1° plus the veil at the pixel, while the
+  frame's adaptation followed the light. A small body in a dark field was then blurred with the acuity
+  of a dark-adapted fovea by an eye adapted to the body: for Pluto 3′ across at a 1° field the mean was
+  about 1 % of its luminance and the cell 2.8′, as large as the disk, where 7.4 cd/m² gives 0.70′.
+
+**On the GPU.** The adaptation pass (§2) already forms Σ w·ln(L_ret + L₀) and Σ w for every block of
+8 × 8 px. It keeps the two sums as a texture, a mip chain pools them, and the composite reads the level
+whose texel is 1°, linear between levels and bilinear within one, and takes the ratio there. The pool
+is therefore a box between 0.7° and 1.4° wide with soft edges, not a disc of 1°. The texture's sides are
+powers of two, so that no level drops a row or column of blocks. Where a block is itself coarser than
+1° (fields wider than about 76° on 720 lines) the finest level is used.
 
 At a 50° field on 1080 lines (0.046°/px, Nyquist 10.8 c/deg) the blur starts below ~0.08 cd/m² (the
 moonlit range) and reaches ~5 px at the dark light. With a narrower field it starts earlier. The
