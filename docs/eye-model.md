@@ -630,9 +630,12 @@ It is applied the way Ward Larson et al. do, as a variable-resolution filter.
 
 **On the GPU.** The adaptation pass (§2) already forms Σ w·ln(L_ret + L₀) and Σ w for every block of
 8 × 8 px. It keeps the two sums as a texture, a mip chain pools them, and the composite reads the level
-whose texel is 1°, linear between levels and bilinear within one, and takes the ratio there. The pool
-is therefore a box between 0.7° and 1.4° wide with soft edges, not a disc of 1°. The texture's sides are
-powers of two, so that no level drops a row or column of blocks. Where a block is itself coarser than
+whose texel is 1° and takes the ratio there: linear between the two levels whose texels are just under
+and just over 1°, bilinear within each. The pool is therefore a soft-edged box 1° to 2° wide, not a disc
+of 1°. Ward Larson et al.'s has the same shape: their foveal image is the picture reduced with a box
+filter to pixels 1° square, and the acuity at a point is interpolated from "the four closest (veiled)
+foveal samples" (their §4.2 and §5.3). The texture's sides are powers of two, so that no level drops a
+row or column of blocks. Where a block is itself coarser than
 1° (fields wider than about 76° on 720 lines) the finest level is used.
 
 At a 50° field on 1080 lines (0.046°/px, Nyquist 10.8 c/deg) the blur starts below ~0.08 cd/m² (the
@@ -773,8 +776,8 @@ checks that the Sun's light on the bodies is unaffected.
   location.
 - **Watson (2013)** is extrapolated beyond its 6 mm fit range for dark-adapted pupils (≈7.9 mm); the
   resulting core (~0.8′) is sub-pixel at normal fields of view.
-- **Acuity loss at low luminance** (§5b) uses the physical local luminance. A rod bleach does not
-  lower acuity further.
+- **Acuity loss at low luminance** (§5b) uses the physical luminance of the retinal image (the fovea's
+  adaptation of §5b). A rod bleach does not lower acuity further.
 - **Ricco summation for the brightness of a point** is our extension of a threshold result. It is
   exact at threshold by construction; above threshold it assumes brightness pools like detection. Since
   October 2026 only point sources use it; a resolved body carries no weight (§6.3).
@@ -804,12 +807,22 @@ checks that the Sun's light on the bodies is unaffected.
   4 cd/m²) the same surface is at 3.6 cd/m². On ours a surface at 0.2 A is at 1.0 cd/m², at 0.38 A
   (Ganymede beside Jupiter) at 7.9, against 36 at A. As a point Callisto is bright, because points are
   judged at their own fixation.
-- **The acuity filter spreads dim small disks** (§5b). It takes the acuity of the average luminance of
-  the 1° field around a pixel. For a small body in a dark field that average is dark, while the frame is
-  adapted to the body by its light. Pluto 3′ across at a 1° field is shown at mean level 78 of 255 with
-  its light over 7724 px; with the filter off, at 113 over 1144 px. Charon: 63 against 112. Triton: 84
-  against 109. At 6′ Pluto is at 105 against 108. The filter's foveal luminance should follow the same
-  rule as the frame's adaptation (the average over the 1° field weighted by light); not done.
+- **The acuity filter and dim small disks** (§5b). Until October 2026 the filter took the acuity of the
+  mean luminance of the 1° field around a pixel. Around a small body that mean is dark, while the frame
+  was adapted to the body by its light. Pluto 3′ across at a 1° field was shown at mean level 78 of 255
+  with its light over 7.1 times its own area. With the fovea's adaptation of §5b it is at 110 over 2.0
+  times its area (filter off: 113 over 1.1). Charon: 104 over 2.1, from 63 over 7.5. Triton: 103 over
+  1.3, from 84 over 2.0. Counted are the pixels above 8/255, on the GPU.
+  - What is left is the model's statement. At 7 cd/m² Shlaer's acuity is 43 cycles per degree, a cell
+    of 0.70′, a quarter of that disk's diameter.
+  - The lit area is twice the disk's, not once, for two reasons. The pyramid is read with a bilinear
+    tap, so an edge is spread over about one cell to each side (Ward Larson et al.'s filter has the same
+    shape). And at 5 to 7 cd/m² the tone reproduction shows light down to 1.3 % of the adaptation
+    luminance at level 8/255, where at 291 cd/m² it is 18 %: the count takes in the whole foot of that
+    blur. The app's own functions on a uniform disk give 2.25 times for Pluto's case.
+  - The image pyramid itself (not the block sums of §5b) has the sides the frame gives it. Where a level
+    has an odd side the next one drops its last row or column, so at cells of 32 px and more on 720
+    lines the bottom 16 lines of the frame are read from the row above them. Not changed.
   - The same filter, with the old weight stored per pixel of the sharp silhouette, drew a grey arc
     outside the sunlit limb of a dimmed disk. The arc went with the weight.
 - **A disk 2 to 3 px across beside a brighter body is darkened** because pixel coverage is averaged
