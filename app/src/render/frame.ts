@@ -207,6 +207,16 @@ const angle = (a: V3, b: V3) => 2 * Math.asin(Math.min(1, 0.5 * len(sub(normaliz
  */
 export const SIGMA_MIN_PX = 0.6;
 /**
+ * σ of a point splat in pixels: the observer's optical point spread, never narrower than SIGMA_MIN_PX.
+ * @param coreSigmaDeg equivalent σ of the eye's optical core (EyeFrame.coreSigmaDeg)
+ * @param pixelAngle angle of a pixel at the view centre, rad
+ * @param opticalCore EyeSettings.opticalCore: false for an imager at the frame's own sampling, whose point spread
+ *   is the reconstruction minimum at every field
+ */
+export function splatSigmaPx(coreSigmaDeg: number, pixelAngle: number, opticalCore: boolean): number {
+  return Math.max(opticalCore ? ((coreSigmaDeg * Math.PI) / 180) / pixelAngle : 0, SIGMA_MIN_PX);
+}
+/**
  * Relative margin by which a body's own point is drawn nearer than the nearest point of its disk. A numerical
  * tolerance, not a property of anything: the disk's depth is computed per fragment in float32 (2⁻²⁴ ≈ 6·10⁻⁸
  * relative), the point's here in float64.

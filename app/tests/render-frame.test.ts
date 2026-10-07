@@ -1,7 +1,7 @@
 // Frame preparation: resolved ↔ point transition conserves the disk-integrated illuminance, missing
 // data is never filled in, and the Sun without limb darkening is a point of the correct illuminance.
 import { describe, expect, it } from 'vitest';
-import { cameraGeom, prepareFrame, SIGMA_MIN_PX } from '../src/render/frame';
+import { cameraGeom, prepareFrame, SIGMA_MIN_PX, splatSigmaPx } from '../src/render/frame';
 import { AdaptationState, computeEyeFrame } from '../src/eye/model';
 import { DEFAULT_EYE_SETTINGS } from '../src/eye/settings';
 import { diskIlluminance, lambertPhase, lambertRadianceFactor, type XYZS } from '../src/render/photometry';
@@ -234,16 +234,16 @@ describe('Sun shield (viewing aid)', () => {
 describe('point or disk: decided by the eye\'s point spread as drawn (docs/eye-model.md §6.3)', () => {
   const eye = () => computeEyeFrame(DEFAULT_EYE_SETTINGS, eyeState(), 'eye', 0, null);
   /** The splat the renderer draws (renderer.ts): σ in px and its footprint in sr. */
-  const splat = (e: ReturnType<typeof eye>, pixelAngle: number) => {
-    const sigmaPx = Math.max(((e.coreSigmaDeg * Math.PI) / 180) / pixelAngle, SIGMA_MIN_PX);
+  const splat = (e: ReturnType<typeof eye>, pixelAngle: number, opticalCore = true) => {
+    const sigmaPx = splatSigmaPx(e.coreSigmaDeg, pixelAngle, opticalCore);
     return { sigmaPx, footprintSr: 2 * Math.PI * sigmaPx * sigmaPx * pixelAngle * pixelAngle };
   };
   /** Distance at which a sphere of radius R (km) has the angular diameter `diam` (rad). */
   const distFor = (R: number, diam: number) => R / Math.sin(diam / 2);
   /** Resolved share of the test body seen under the angular diameter `diam` (rad): K over the full K. */
-  const resolvedShare = (e: ReturnType<typeof eye>, fovDeg: number, diam: number) => {
+  const resolvedShare = (e: ReturnType<typeof eye>, fovDeg: number, diam: number, opticalCore = true) => {
     const g = cameraGeom(snap([], fovDeg), W, H, 1e-7);
-    const p = prepareFrame(snap([body(distFor(6000, diam))], fovDeg), g, e, splat(e, g.pixelAngle).footprintSr);
+    const p = prepareFrame(snap([body(distFor(6000, diam))], fovDeg), g, e, splat(e, g.pixelAngle, opticalCore).footprintSr);
     const Kfull = lambertRadianceFactor(albedo, 5, 1);
     return { share: p.resolved.length ? p.resolved[0].K[1] / Kfull[1] : 0, p, g };
   };
@@ -284,6 +284,25 @@ describe('point or disk: decided by the eye\'s point spread as drawn (docs/eye-m
     }
     for (const row of shares) row.forEach((v, k) => expect(v).toBeCloseTo(shares[0][k], 9));
     expect(shares[0][1]).toBeCloseTo(0.5, 9);
+  });
+
+  it('an observer without the eye\'s optical core (the validation\'s imager): 1 to 2 pixels at every field', () => {
+    const e = eye();
+    expect(DEFAULT_EYE_SETTINGS.opticalCore).toBe(true);
+    const smooth = (x: number) => { const t = Math.min(1, Math.max(0, x - 1)); return t * t * (3 - 2 * t); };
+    // The EPOXI case's view is 3.5′ wide on 256 px; 1° on 720 lines is the app's narrowest field.
+    for (const fovDeg of [0.0587, 1, 3, 50]) {
+      const g = cameraGeom(snap([], fovDeg), W, H, 1e-7);
+      expect(splat(e, g.pixelAngle, false).sigmaPx).toBe(SIGMA_MIN_PX);
+      for (const diamPx of [0.5, 1, 1.5, 2, 20]) {
+        expect(resolvedShare(e, fovDeg, diamPx * g.pixelAngle, false).share).toBeCloseTo(smooth(diamPx), 9);
+      }
+    }
+    // A disk 10 px across at a 1° field (0.83′) is a point to an eye: it is under the eye's point spread.
+    const g = cameraGeom(snap([], 1), W, H, 1e-7);
+    expect(10 * g.pixelAngle).toBeLessThan(((e.coreSigmaDeg * Math.PI) / 180) / SIGMA_MIN_PX);
+    expect(resolvedShare(e, 1, 10 * g.pixelAngle, true).share).toBe(0);
+    expect(resolvedShare(e, 1, 10 * g.pixelAngle, false).share).toBeCloseTo(1, 12);
   });
 
   it('the point of a body in the switch is drawn nearer than every point of its own disk, and no nearer than that needs', () => {

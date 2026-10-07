@@ -513,6 +513,13 @@ s = 0.6·d/σ,  resolved share f = smoothstep(1, 2, s),  point share 1 − f.
 - The Sun follows the same rule.
 - In the switch the body's point is drawn at the depth of the body's nearest point, so that its own disk
   does not hide the core of its splat.
+- **The validation runs with another observer.** It compares the HDR buffer, before the eye model, with a
+  spacecraft camera's image (docs/reports/validation.md). Its observer is an imager at the frame's own
+  sampling, not an eye, and a body must be in that buffer whenever the frame resolves it. So the
+  validation runner sets `EyeSettings.opticalCore` to false: the splat is then the reconstruction minimum
+  and the switch is 1 to 2 px at every field. The setting changes nothing else in the model. With the eye
+  as observer, the Earth and the Moon of the EPOXI case (0.9′ and 0.24′ across in a view 3.5′ wide) are
+  points, and its three rows read zero. The app and the scene suite always run with the eye.
 
 The two numbers 1 and 2 are the original pixel rule; no constant was added. The published summation
 diameters for photopic foveal vision fall on the range this gives (2.4′ to 2.95′ for detection at

@@ -2,7 +2,7 @@
 // 3.6′ across and about 400 cd/m², was drawn black at a 1° field while the frame was adapted to its own light:
 // its luminance carried a Ricco weight A_t/A_R, and the adaptation did not.
 import { describe, expect, it } from 'vitest';
-import { cameraGeom, prepareFrame, SIGMA_MIN_PX } from '../src/render/frame';
+import { cameraGeom, prepareFrame, splatSigmaPx } from '../src/render/frame';
 import { AdaptationState, computeEyeFrame } from '../src/eye/model';
 import { DEFAULT_EYE_SETTINGS } from '../src/eye/settings';
 import { extendedDisplay, extendedPerceived } from '../src/eye/extended';
@@ -51,7 +51,7 @@ describe('a sunlit disk the eye is adapted to', () => {
       for (const fovDeg of fields) {
         const g = cameraGeom(snap([], fovDeg), W, H, 1e-7);
         // The point splat as the renderer draws it (renderer.ts): the eye's optical core, or the reconstruction minimum.
-        const sigmaPx = Math.max(((eye.coreSigmaDeg * Math.PI) / 180) / g.pixelAngle, SIGMA_MIN_PX);
+        const sigmaPx = splatSigmaPx(eye.coreSigmaDeg, g.pixelAngle, DEFAULT_EYE_SETTINGS.opticalCore);
         const footprintSr = 2 * Math.PI * sigmaPx * sigmaPx * g.pixelAngle * g.pixelAngle;
         for (const diamPx of sizesPx) {
           const p = prepareFrame(snap([body((2 * 2600) / (diamPx * g.pixelAngle))], fovDeg), g, eye, footprintSr);

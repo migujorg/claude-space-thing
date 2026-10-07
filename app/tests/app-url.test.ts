@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { formatUrlParams, parseIsoUtc, parseUrlParams } from '../src/app/url';
+import scenesJson from '../e2e/scenes.json';
 
 describe('URL parameters', () => {
   it('parses the documented parameters', () => {
@@ -40,5 +41,23 @@ describe('URL parameters', () => {
     expect(parseIsoUtc('2026-09-30')).toBe(Date.UTC(2026, 8, 30));
     expect(parseIsoUtc('2026-09-30T12:00:00+02:00')).toBe(Date.UTC(2026, 8, 30, 10));
     expect(parseIsoUtc('30/09/2026')).toBeNull();
+  });
+});
+
+describe('the regression scenes (e2e/scenes.json)', () => {
+  const suite = scenesJson as unknown as { defaults: Record<string, string>; scenes: { id: string; params: Record<string, string> }[] };
+  // Every parameter url.ts reads. None of them reaches the eye settings: the observer of a scene is the app's,
+  // an eye with its optical point spread (EyeSettings.opticalCore). Only the validation runner turns that off.
+  const KNOWN = ['t', 'target', 'dist', 'az', 'el', 'look', 'exists', 'view', 'boost', 'fov', 'labels', 'orbits', 'tint', 'ui', 'system',
+    'smallbodies', 'sbfield', 'shield', 'adapt', 'adaptfrom'];
+  it('are URL queries of documented parameters only, and all of them parse', () => {
+    expect(suite.scenes.length).toBeGreaterThan(20);
+    for (const scene of suite.scenes) {
+      const params = { ...suite.defaults, ...scene.params };
+      for (const k of Object.keys(params)) expect(KNOWN, `${scene.id}: ${k}`).toContain(k);
+      const { view, errors } = parseUrlParams(new URLSearchParams(params).toString());
+      expect(errors, scene.id).toEqual([]);
+      expect(Object.keys(view).some((k) => /eye|core|optic/i.test(k)), scene.id).toBe(false);
+    }
   });
 });
