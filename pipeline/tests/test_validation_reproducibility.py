@@ -170,3 +170,19 @@ def test_unlocked_output_cannot_alias_committed_directory(tmp_path,monkeypatch):
     with pytest.raises(SystemExit) as e:
         main(['build','--unlocked','--output',str(tmp_path)])
     assert e.value.code==2
+
+
+def test_spectral_intermediate_cache_is_private_and_discarded(tmp_path,monkeypatch):
+    from pipeline.validation import reproducibility as r
+    from pipeline.photometry import earth
+    from pipeline import paths
+    shared=tmp_path/'old-cache'; shared.mkdir()
+    sentinel=shared/'historical.json'; sentinel.write_text('historical values')
+    monkeypatch.setattr(earth,'CACHE',shared)
+    monkeypatch.setattr(paths,'CACHE',tmp_path)
+    with r.isolated_spectral_cache():
+        fresh=earth.CACHE
+        assert fresh!=shared and not (fresh/'historical.json').exists()
+        (fresh/'derived.json').write_text('computed this run')
+    assert earth.CACHE==shared and sentinel.read_text()=='historical values'
+    assert not fresh.exists()

@@ -112,11 +112,16 @@ def capture_inputs(expected=None):
 def runtime():
     # Build configuration captures BLAS/LAPACK implementation as well as versions.
     from numpy._core import _multiarray_umath
+    import scipy
+    import zlib
+    from PIL import features
     return {'python': platform.python_version(), 'machine': platform.machine(),
+            'libc': list(platform.libc_ver()), 'floatRounds': sys.float_info.rounds,
+            'pngCompression': {'pythonZlib': zlib.ZLIB_RUNTIME_VERSION, 'pillowZlib': features.version('zlib')},
             'system': platform.system(),
             'libraries': {p: version(p) for p in ('numpy', 'scipy', 'spiceypy', 'astropy',
                                                   'colour-science', 'pillow')},
-            'numpyConfig': np.show_config(mode='dicts'),
+            'numpyConfig': np.show_config(mode='dicts'), 'scipyConfig': scipy.show_config(mode='dicts'),
             'cpuFeatures': _multiarray_umath.__cpu_features__,
             'threads': {k: os.environ.get(k) for k in THREAD_VARS}}
 
@@ -222,7 +227,27 @@ def compare_cases(old_dir, new_dir):
     if 'reproducibility' in a:
         keys += ('reproducibility', 'sources')
     different = [k for k in keys if a.get(k) != b.get(k)]
+    fits = []
+    images = {m['product']: m for m in b.get('observation', {}).get('images', [])}
+    for m in a.get('observation', {}).get('images', []):
+        n = images.get(m['product'], {})
+        f, h = m.get('fit'), n.get('fit')
+        if not f or not h:
+            continue
+        displacement = np.array(h['targetCentrePx'])-np.array(f['targetCentrePx'])
+        norm = float(np.linalg.norm(displacement))
+        sigma = m.get('registrationSigmaPx')
+        fits.append({'product': m['product'], 'centreDeltaPx': displacement.tolist(),
+                     'centreDistancePx': norm,
+                     'centreDistanceInRegistrationSigma': norm/sigma if sigma else None,
+                     'rollDeltaDeg': (h['rollDeg']-f['rollDeg']+180.)%360.-180.,
+                     'rssDelta': h['rss']-f['rss'], 'parityChanged': h['mirroredDisplayOrder'] != f['mirroredDisplayOrder'],
+                     'fitIdentical': f == h})
+    ca, cb = a.get('view', {}).get('camera', {}), b.get('view', {}).get('camera', {})
+    view_delta = (float(np.max(np.abs(np.array(ca['orient'])-np.array(cb['orient']))))
+                  if ca.get('orient') and cb.get('orient') else None)
     return {'reproduces': not different and refs['identical'], 'criterion': 'exact scientific JSON and reference bytes',
+            'fits': fits, 'maxCameraOrientDifference': view_delta,
             'caseBytesIdentical': file_record(old_dir/'case.json') == file_record(new_dir/'case.json'),
             'previewBytesIdentical': file_record(old_dir/'preview.png') == file_record(new_dir/'preview.png'),
             'differentSections': different, 'reference': refs, 'regions': regions}
@@ -235,3 +260,24 @@ def expected_case(case):
         yield
     finally:
         EXPECTED_CASE.reset(token)
+
+
+@contextmanager
+def isolated_spectral_cache():
+    """Recompute Earth spectral intermediates instead of trusting unversioned caches.
+
+    The ordinary light stage's Earth cache hashes raw files but omits code/library
+    versions. Validation must not inherit a historical result from that cache.
+    Keep the shared cache intact and discard this build's intermediate afterwards.
+    """
+    import tempfile
+    from ..paths import CACHE
+    from ..photometry import earth
+    CACHE.mkdir(parents=True, exist_ok=True)
+    previous = earth.CACHE
+    with tempfile.TemporaryDirectory(prefix="validation-spectrum-", dir=CACHE) as tmp:
+        earth.CACHE = Path(tmp)
+        try:
+            yield
+        finally:
+            earth.CACHE = previous

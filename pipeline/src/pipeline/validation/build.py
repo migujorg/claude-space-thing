@@ -775,7 +775,7 @@ def build_case(case, *, expected: dict | None = None) -> dict:
     if expected is not None:
         repro.preflight(expected)
     lock = (expected or {}).get("reproducibility")
-    with repro.expected_case(expected), repro.capture_inputs(lock["inputs"] if lock else None) as inputs:
+    with repro.isolated_spectral_cache(), repro.expected_case(expected), repro.capture_inputs(lock["inputs"] if lock else None) as inputs:
         p = prepare_frame_case(case) if isinstance(case, FrameCase) else case.prepare()
         built = measure(p)
         # Sources may already be in a process-local spectral cache. Explicitly

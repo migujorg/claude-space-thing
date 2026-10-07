@@ -75,6 +75,7 @@ def main(argv: list[str] | None = None) -> int:
     register.USE_CACHE = not args.fresh_fit
     committed = args.cases_dir if args.cmd == "verify" and args.cases_dir else vb.VALIDATION
     destination = args.output if args.cmd == "build" and args.output else vb.VALIDATION
+    committed, destination = committed.resolve(), destination.resolve()
     failed = False
     CACHE.mkdir(parents=True, exist_ok=True)
     for cid in wanted:
