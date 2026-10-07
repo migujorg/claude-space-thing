@@ -8,7 +8,7 @@ import { diskIlluminance, diskModelPPhi, evalPhase, extrapolatePhase, LAMBERT_AL
 import { LAMBERT_LAW, LAW, lawDiskIntegral, lawRadf, mapDiskIntegral, NormalizationCache, photometricFrame, resolveLaw, TEXEL_LAW, type ResolvedLaw, type ZonalProfile } from './spatial';
 import { sampleLevel0, type Level0Map } from './surface';
 import { MAX_POPULATION_NODES, NIGHT_LAMP, type CloudPopulation } from './earth';
-import { ATM_DISK_NODES, atmosphereDiskFactors, marsDustScale, modelDiskXYZS } from './atmosphere';
+import { atmosphereDiskFactors, marsDustScale, modelDiskXYZS } from './atmosphere';
 import type { AtmosphereBinding } from './atmosphereGpu';
 import { texelRadf, type TexelHapke } from './texelLaw';
 import { planetshineSources, type PlanetshineSource } from './planetshine';
@@ -583,7 +583,7 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
           }
         }
         // Factors by phase angle only (a uniform surface: the map's share in the ratio I0/Iatm is second order),
-        // in 1° bins, linear between bins: a new bin costs one integral (about 10 ms), whatever the rotation.
+        // in 1° bins, linear between bins: a new bin costs one integral (a few ms), whatever the rotation.
         const binning = (Math.PI / 180) * ATM_FACTOR_BIN_DEG;
         const i0 = Math.min(Math.floor(aRef / binning), Math.round(Math.PI / binning) - 1);
         const at = (i: number): number[] => {
@@ -596,7 +596,7 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
             const r = atmosphereDiskFactors(atmB!.model, atmB!.tables!, atmB!.grid!, [Math.sin(a), 0, Math.cos(a)], [0, 0, 1], (_nv, mu0, mu) => {
               const rr = mu0 > 0 ? lawRadf(lawA, mu0, mu, a) : 0;
               return { rho: [rr, rr, rr, rr], albedo: [1, 1, 1, 1] };
-            }, ATM_DISK_NODES);
+            }, 16);
             f = [...r.I0, ...r.Iatm, ...r.Apath, ...r.Ashell];
             if (atmCache.size > 4096) atmCache.clear();
             atmCache.set(key, f);
@@ -818,7 +818,7 @@ function modelDisk(bind: AtmosphereBinding, a: number): number[] {
     const key = `model|${bind.key}|${i}`;
     let f = atmCache.get(key);
     if (!f) {
-      const d = modelDiskXYZS(bind.model, bind.tables!, bind.grid!, [Math.sin(i * binning), 0, Math.cos(i * binning)], [0, 0, 1], ATM_DISK_NODES);
+      const d = modelDiskXYZS(bind.model, bind.tables!, bind.grid!, [Math.sin(i * binning), 0, Math.cos(i * binning)], [0, 0, 1]);
       f = [...d.air, ...d.surface];
       if (atmCache.size > 4096) atmCache.clear();
       atmCache.set(key, f);

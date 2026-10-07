@@ -916,71 +916,46 @@ export function marsDustScale(body: { dustColumn?: { value: { lsDeg: number[]; g
 }
 
 /**
- * Node count of the renderer's disk integrals under an atmosphere (frame.ts: the renormalization factors and the
- * model's own disk integral): n/2 Gauss–Legendre nodes in μ × n azimuths on the disk, n/2 radii × n azimuths on the
- * annulus beyond it. A numerical tolerance: on a Lambert disk the surface integral is exact at zero phase and within
- * 0.02 % at 60°, 0.31 % at 90°, 0.08 % at 120° and 0.45 % at 150° of its exact value (the azimuths at the
- * terminator's kink; 0.14 %, 0.72 %, 0.80 % and 2.2 % with 16 nodes, 0.17 % at most with 32), at 1.75 times the paths
- * of the 16 × 16 square grid it replaced (tests/render-atmosphere-bodies.test.ts).
- */
-export const ATM_DISK_NODES = 24;
-
-/**
- * The polar grid of a disk integral (1/π)∫ f dA over the unit disk seen from direction o (unit, body → observer):
- * n/2 Gauss–Legendre nodes in μ = √(1 − r²) (dA/π = 2μ dμ dφ/2π) × n azimuths. Per point the outward normal
- * (a unit vector; μ is its cosine with o) and the weight; the weights sum to 1, the disk's area over π, exactly. A
- * square grid of cell centres miscounts that area by its edge cells (+3.5 % at 16 across, −1.0 % at 24, +1.0 % at
- * 32), and a nearly uniform disk's integral follows; a crescent's is worse (a Lambert disk at 150°: +39 % at 16).
- * Also returns the basis (e1, e2) of the disk plane.
- */
-function diskGrid(o: V3, n: number): { e1: V3; e2: V3; points: { nv: V3; mu: number; dA: number }[] } {
-  const h: V3 = Math.abs(o[2]) < 0.9 ? [0, 0, 1] : [1, 0, 0];
-  const e1n = [o[1] * h[2] - o[2] * h[1], o[2] * h[0] - o[0] * h[2], o[0] * h[1] - o[1] * h[0]];
-  const l1 = Math.hypot(e1n[0], e1n[1], e1n[2]);
-  const e1: V3 = [e1n[0] / l1, e1n[1] / l1, e1n[2] / l1];
-  const e2: V3 = [o[1] * e1[2] - o[2] * e1[1], o[2] * e1[0] - o[0] * e1[2], o[0] * e1[1] - o[1] * e1[0]];
-  const nb = Math.max(8, Math.round(n / 2)), nt = n;
-  const gl = gaussLegendre01(nb);
-  const points: { nv: V3; mu: number; dA: number }[] = [];
-  for (let i = 0; i < nb; i++) {
-    const mu = gl.mu[i], rr = Math.sqrt(1 - mu * mu);
-    const dA = (2 * mu * gl.w[i]) / nt;
-    for (let j = 0; j < nt; j++) {
-      const t = (2 * Math.PI * (j + 0.5)) / nt;
-      const x = rr * Math.cos(t), y = rr * Math.sin(t);
-      points.push({ nv: [x * e1[0] + y * e2[0] + mu * o[0], x * e1[1] + y * e2[1] + mu * o[1], x * e1[2] + y * e2[2] + mu * o[2]], mu, dA });
-    }
-  }
-  return { e1, e2, points };
-}
-
-/**
  * A body drawn entirely from its atmosphere (Titan: docs/rendering-earth.md §8 "Titan"), per bin: the disk-integrated
  * reflectance A_k = (1/πR²)∫(πL/E) dA of the air over a Lambert surface of reflectance surface[k] below it, seen
  * from direction o (unit, body → observer) with the Sun along s, R the bottom radius, as the renderer composes a
  * pixel (path radiance + T_view·(surface·μ0·T_sun + surface·E_sky)) plus the air beyond the disk edge (the shell
  * pipeline's chords). At o = s this is the geometric albedo; in general A_gΦ(α). The parts are returned too.
- * `steps` march steps per path (the shader's b.atm.y). The disk is integrated on the polar grid of diskGrid, the
- * annulus on n/2 radii × n azimuths; the disk part is within 0.02 % of its limit from n = 24 (measured on Titan's
- * tables, α ≤ 60°; tests/render-titan-scene.test.ts holds a fixture to 0.1 %).
+ * `steps` march steps per path (the shader's b.atm.y). The disk is integrated on a polar grid: n/2 Gauss–Legendre
+ * nodes in μ = √(1 − r²) (dA/π = 2μ dμ dφ/2π) × n azimuths; the annulus on n/2 radii × n azimuths. A square grid
+ * of cell centres miscounts the disk's area by its edge cells (+3.5 % at 16 across, −1.0 % at 24, +1.0 % at 32),
+ * which the integral of a nearly uniform disk follows; on the polar grid the disk part is within 0.02 % of its
+ * limit from n = 24 (measured on Titan's tables, α ≤ 60°; tests/render-titan-scene.test.ts holds a fixture to 0.1 %).
  */
 export function diskReflectanceSpectral(
   m: AtmosphereModel, tab: AtmosphereTables, G: ProfileGrid, o: V3, s: V3, surface: number[], n = 24, steps = 32,
 ): { A: Float64Array; path: Float64Array; ground: Float64Array; shell: Float64Array } {
   const K = tab.K;
   const path = new Float64Array(K), ground = new Float64Array(K), shell = new Float64Array(K);
-  const { e1, e2, points } = diskGrid(o, n);
+  const h: V3 = Math.abs(o[2]) < 0.9 ? [0, 0, 1] : [1, 0, 0];
+  const e1n = [o[1] * h[2] - o[2] * h[1], o[2] * h[0] - o[0] * h[2], o[0] * h[1] - o[1] * h[0]];
+  const l1 = Math.hypot(e1n[0], e1n[1], e1n[2]);
+  const e1: V3 = [e1n[0] / l1, e1n[1] / l1, e1n[2] / l1];
+  const e2: V3 = [o[1] * e1[2] - o[2] * e1[1], o[2] * e1[0] - o[0] * e1[2], o[0] * e1[1] - o[1] * e1[0]];
   const ts = new Float64Array(K), es = new Float64Array(K);
   const nb = Math.max(8, Math.round(n / 2)), nt = n;
-  for (const { nv, dA } of points) {
-    const mu0 = nv[0] * s[0] + nv[1] * s[1] + nv[2] * s[2];
-    const p: V3 = [nv[0] * m.bottomKm, nv[1] * m.bottomKm, nv[2] * m.bottomKm];
-    const vp = viewPath(m, tab, G, p, o, s, -1, steps);
-    sunTransmittanceK(m, tab, 0, mu0, ts);
-    skyIrradianceK(m, tab, 0, mu0, es);
-    for (let k = 0; k < K; k++) {
-      path[k] += Math.PI * vp.L[k] * dA;
-      ground[k] += surface[k] * (Math.max(mu0, 0) * ts[k] + es[k]) * vp.Td[k] * dA;
+  const gl = gaussLegendre01(nb);
+  for (let i = 0; i < nb; i++) {
+    const mu = gl.mu[i], rr = Math.sqrt(1 - mu * mu);
+    const dA = (2 * mu * gl.w[i]) / nt;
+    for (let j = 0; j < nt; j++) {
+      const t = (2 * Math.PI * (j + 0.5)) / nt;
+      const x = rr * Math.cos(t), y = rr * Math.sin(t);
+      const nv: V3 = [x * e1[0] + y * e2[0] + mu * o[0], x * e1[1] + y * e2[1] + mu * o[1], x * e1[2] + y * e2[2] + mu * o[2]];
+      const mu0 = nv[0] * s[0] + nv[1] * s[1] + nv[2] * s[2];
+      const p: V3 = [nv[0] * m.bottomKm, nv[1] * m.bottomKm, nv[2] * m.bottomKm];
+      const vp = viewPath(m, tab, G, p, o, s, -1, steps);
+      sunTransmittanceK(m, tab, 0, mu0, ts);
+      skyIrradianceK(m, tab, 0, mu0, es);
+      for (let k = 0; k < K; k++) {
+        path[k] += Math.PI * vp.L[k] * dA;
+        ground[k] += surface[k] * (Math.max(mu0, 0) * ts[k] + es[k]) * vp.Td[k] * dA;
+      }
     }
   }
   const R = m.bottomKm, Hk = m.topKm - m.bottomKm;
@@ -1011,7 +986,7 @@ export function diskReflectanceSpectral(
  * reflectance in the channel (the body's radiance prefactor over E☉/π). The disk-integrated reflectance drawn is
  * air[c] + ρ_c·surface[c]: the model's own value, against which frame.ts scales it to the disk photometry.
  */
-export function modelDiskXYZS(m: AtmosphereModel, tab: AtmosphereTables, G: ProfileGrid, o: V3, s: V3, n = ATM_DISK_NODES, steps = 32): { air: number[]; surface: number[] } {
+export function modelDiskXYZS(m: AtmosphereModel, tab: AtmosphereTables, G: ProfileGrid, o: V3, s: V3, n = 24, steps = 32): { air: number[]; surface: number[] } {
   const d = diskReflectanceSpectral(m, tab, G, o, s, m.wavelengthsNm.map(() => 1), n, steps);
   const air = [0, 0, 0, 0], surface = [0, 0, 0, 0];
   for (let c = 0; c < 4; c++) for (let k = 0; k < tab.K; k++) {
@@ -1023,9 +998,8 @@ export function modelDiskXYZS(m: AtmosphereModel, tab: AtmosphereTables, G: Prof
 
 /**
  * The disk integrals that renormalize a body drawn from its disk photometry once its atmosphere is added
- * (docs/rendering-earth.md §8): over the polar grid of diskGrid (n/2 × n points; frame.ts uses ATM_DISK_NODES) on
- * the disk seen from direction o (unit, body → observer) with the Sun along s, for a surface radiance factor f (per
- * channel, law × map, without air):
+ * (docs/rendering-earth.md §8): over a grid of n × n points on the disk seen from direction o (unit, body →
+ * observer) with the Sun along s, for a surface radiance factor f (per channel, law × map, without air):
  * - I0: ∫ f (the surface alone),
  * - Iatm: ∫ Σ_k w[c][k]·(f·T_sun,k + M·E_sky,k)·T_view,k (the surface under the air; skylight as Lambert),
  * - Apath: ∫ Σ_k w[c][k]·π·L_path,k (the light of the air itself),
@@ -1036,13 +1010,24 @@ export function modelDiskXYZS(m: AtmosphereModel, tab: AtmosphereTables, G: Prof
  */
 export function atmosphereDiskFactors(
   m: AtmosphereModel, tab: AtmosphereTables, G: ProfileGrid, o: V3, s: V3,
-  f: (n: V3, mu0: number, mu: number) => { rho: number[]; albedo: number[] }, n = ATM_DISK_NODES, shellSteps = 32,
+  f: (n: V3, mu0: number, mu: number) => { rho: number[]; albedo: number[] }, n = 24, shellSteps = 32,
 ): { I0: number[]; Iatm: number[]; Apath: number[]; Ashell: number[] } {
   const K = tab.K;
   const I0 = [0, 0, 0, 0], Iatm = [0, 0, 0, 0], Apath = [0, 0, 0, 0], Ashell = [0, 0, 0, 0];
-  const { e1, e2, points } = diskGrid(o, n);
+  // Basis of the disk plane.
+  const h: V3 = Math.abs(o[2]) < 0.9 ? [0, 0, 1] : [1, 0, 0];
+  const e1n = [o[1] * h[2] - o[2] * h[1], o[2] * h[0] - o[0] * h[2], o[0] * h[1] - o[1] * h[0]];
+  const l1 = Math.hypot(e1n[0], e1n[1], e1n[2]);
+  const e1: V3 = [e1n[0] / l1, e1n[1] / l1, e1n[2] / l1];
+  const e2: V3 = [o[1] * e1[2] - o[2] * e1[1], o[2] * e1[0] - o[0] * e1[2], o[0] * e1[1] - o[1] * e1[0]];
   const ts = new Float64Array(K), es = new Float64Array(K);
-  for (const { nv, mu, dA } of points) {
+  const dA = (2 / n) * (2 / n) / Math.PI;
+  for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) {
+    const x = -1 + (2 * (i + 0.5)) / n, y = -1 + (2 * (j + 0.5)) / n;
+    const r2 = x * x + y * y;
+    if (r2 >= 1) continue;
+    const mu = Math.sqrt(1 - r2);
+    const nv: V3 = [x * e1[0] + y * e2[0] + mu * o[0], x * e1[1] + y * e2[1] + mu * o[1], x * e1[2] + y * e2[2] + mu * o[2]];
     const mu0 = nv[0] * s[0] + nv[1] * s[1] + nv[2] * s[2];
     const sf = f(nv, mu0, mu);
     const p: V3 = [nv[0] * m.bottomKm, nv[1] * m.bottomKm, nv[2] * m.bottomKm];
