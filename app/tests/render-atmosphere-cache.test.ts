@@ -33,8 +33,9 @@ it('keys the kept table by every model input and the computation, independent of
   expect(await atmosphereTableKey(model, 'changed computation')).not.toBe(key);
 });
 
-it('a fresh cache reads identical full tables without computing them again, under 100 ms of process CPU', async () => {
+it.each(['hillaire', 'orders'] as const)('a fresh cache reads identical %s tables without computing them again, under 100 ms of process CPU', async (solver) => {
   const model = fixtureRayleighAtmosphere();
+  model.multipleScattering = solver;
   const disk = store();
   let calls = 0;
   const compute = async () => { calls++; return precomputeAtmosphere(model); };
@@ -45,6 +46,7 @@ it('a fresh cache reads identical full tables without computing them again, unde
   expect((elapsed.user + elapsed.system) / 1000).toBeLessThan(100);
   expect(calls).toBe(1);
   expect(kept).toEqual(original);
+  console.log(`[atmosphere-cache] ${solver} persistent hit: ${((elapsed.user + elapsed.system) / 1000).toFixed(3)} ms process CPU; ${Object.values(kept).reduce((sum: number, v) => sum + (v instanceof Float32Array ? v.byteLength : 0), 0)} table bytes; float32 difference 0`);
   // Two simultaneous requests share even the first computation.
   const memory = new AtmosphereTableCache(null);
   const [a, b] = await Promise.all([memory.get(model, compute), memory.get(model, compute)]);

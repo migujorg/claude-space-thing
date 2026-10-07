@@ -190,7 +190,7 @@ it.skipIf(!built)('requests only atmosphere tables that can contribute to canoni
   state.update({ coneCdM2: 1e-5, rodCdM2: 1.4e-5, cornealFlux: 0 }, 0);
   const eye = computeEyeFrame(DEFAULT_EYE_SETTINGS, state, 'eye', 0, null);
   const costs = new Map<number, number>();
-  const noTables = new Set(['earth-day-strict', 'jupiter-galileans', 'ganymede-narrow-field',
+  const noTables = new Set(['earth-day-strict', 'moon-quarter', 'jupiter-galileans', 'ganymede-narrow-field',
     'uranus-epsilon-estimate', 'uranus', 'neptune', 'starfield', 'starfield-enhanced', 'sun-1au',
     'comet-lemmon', 'mercury-map', 'starfield-dark-2min', 'starfield-dark-12min',
     'starfield-dark-30min', 'hyperion-fallback', 'jupiter-double-shadow']);
