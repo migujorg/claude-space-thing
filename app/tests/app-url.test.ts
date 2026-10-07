@@ -27,6 +27,14 @@ describe('URL parameters', () => {
     expect(bad.view).toEqual({});
     expect(bad.errors).toHaveLength(2);
   });
+  it('look: local azimuth and elevation at the camera place', () => {
+    expect(parseUrlParams('target=399&dist=6771&look=0,-15').view).toEqual({ target: 399, dist: 6771, look: { azDeg: 0, elDeg: -15 } });
+    const v = { target: 399, dist: 6771, az: 180, el: 0, look: { azDeg: 90.5, elDeg: -17.25 } };
+    expect(parseUrlParams(formatUrlParams(v)).view).toEqual(v);
+    const bad = parseUrlParams('look=10&look2=1');
+    expect(bad.view).toEqual({});
+    expect(parseUrlParams('look=0,95').errors).toHaveLength(1);
+  });
   it('treats times without a zone as UTC, never local', () => {
     expect(parseIsoUtc('2026-09-30 12:00')).toBe(Date.UTC(2026, 8, 30, 12));
     expect(parseIsoUtc('2026-09-30')).toBe(Date.UTC(2026, 8, 30));
