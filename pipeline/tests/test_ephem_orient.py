@@ -29,9 +29,16 @@ def coverage(header) -> tuple[float, float]:
 
 @pytest.fixture(scope="module")
 def kernels():
-    pck = RAW / "naif" / "pck"
-    ks = [sorted(pck.glob("earth_*_predict.bpc"))[-1], sorted(pck.glob("earth_000101_*.bpc"))[-1],
-          pck / "moon_pa_de440_200625.bpc", RAW / "naif" / "fk-satellites" / "moon_de440_250416.tf"]
+    """The kernel files the products were copied from (named by their SourceRecords), not the newest in data/raw:
+    NAIF reissues the Earth files, and the products agree to 1e-12 only with the files they were copied from."""
+    sources = {s["id"]: s for s in json.loads((OUT / "sources.json").read_text(encoding="utf-8"))}
+    ks = []
+    for sid in ("naif-earth-pck-predict", "naif-earth-pck-high-prec", "naif-moon-pa-de440", "naif-moon-fk-de440"):
+        name = sources[sid]["version"]
+        path = RAW / "naif" / ("fk-satellites" if name.endswith(".tf") else "pck") / name
+        if not path.exists():
+            pytest.skip(f"{name}, which the orientation products were copied from, is not in data/raw")
+        ks.append(path)
     for k in ks:  # high-precision after the predict file: it takes priority, as in orient/earth
         sp.furnsh(str(k))
     yield ks
