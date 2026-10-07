@@ -1,0 +1,276 @@
+{
+  "_about": "Research input, NOT active in the synthetic stage. All numbers transcribed from the source; formal fit errors, not full systematic uncertainties. Unknown coefficients stay null. See docs/sources/vokrouhlicky-2025-hildas.md.",
+  "activation": "blocked-count-review",
+  "source": {
+    "id": "vokrouhlicky-2025-hildas",
+    "title": "Orbital and absolute magnitude distribution of Hilda population",
+    "citation": "Vokrouhlický, D., Nesvorný, D., Brož, M., Bottke, W. F., Deienno, R., Fuls, C. D. & Shelly, F. C. (2025). AJ 169, 242; arXiv:2503.04403v1.",
+    "url": "https://arxiv.org/pdf/2503.04403",
+    "version": "arXiv v1 (2025-03-06)",
+    "retrieved": "2026-10-07T15:25:24.390569+00:00",
+    "sha256": "cd6aaf6d785f0840c7089265258ae88a47347dc6849e458006f38d24c0d28ce9"
+  },
+  "domain": {
+    "source": "vokrouhlicky-2025-hildas",
+    "section": "Table 1; §3.2; §5.3",
+    "HFit": [
+      7.5,
+      18.0
+    ],
+    "HReliableMax": 17.0,
+    "band": "V",
+    "aProperAu": [
+      3.95,
+      4.05
+    ],
+    "eProper": [
+      0.0,
+      0.32
+    ],
+    "sinIProper": [
+      0.0,
+      0.35
+    ],
+    "varpiProperDeg": [
+      0.0,
+      360.0
+    ],
+    "coordinateWarning": "Appendix B model proper parameters; not Appendix C numerical proper elements.",
+    "unsupported": "H > 17 has limited constraints; no model extension here. Existing catalogue treatment remains active for all H."
+  },
+  "background": {
+    "source": "vokrouhlicky-2025-hildas",
+    "section": "Eq. 4; Table 2",
+    "density": "(p-c)^alpha exp(-0.5 ((p-cBar)/sigma)^beta); normalized on the published domain",
+    "parameterOrder": [
+      "c",
+      "cBar",
+      "alpha",
+      "sigma",
+      "beta"
+    ],
+    "aProper": {
+      "median": [
+        3.95,
+        3.95,
+        1.58,
+        0.044,
+        3.73
+      ],
+      "sigma": [
+        null,
+        null,
+        0.12,
+        0.002,
+        0.22
+      ],
+      "unit": "au for c, cBar and sigma; others dimensionless"
+    },
+    "eProper": {
+      "median": [
+        0.0,
+        0.12,
+        1.05,
+        0.11,
+        3.87
+      ],
+      "sigma": [
+        null,
+        null,
+        0.05,
+        0.03,
+        0.24
+      ],
+      "unit": "dimensionless"
+    },
+    "sinIProper": {
+      "median": [
+        0.0,
+        0.0,
+        1.65,
+        0.011,
+        0.79
+      ],
+      "sigma": [
+        null,
+        null,
+        0.21,
+        0.006,
+        0.09
+      ],
+      "unit": "dimensionless"
+    },
+    "varpiProper": "uniform",
+    "magnitude": {
+      "knotsH": [
+        7.5,
+        9.5,
+        12.0,
+        14.5,
+        16.0,
+        17.0
+      ],
+      "meanSlopes": [
+        0.47,
+        0.36,
+        0.29,
+        0.37,
+        0.33
+      ],
+      "slopeSigma": [
+        0.24,
+        0.08,
+        0.02,
+        0.01,
+        0.01
+      ],
+      "normalization": {
+        "value": 1605,
+        "sigma": 36,
+        "label": "measured",
+        "unit": "objects",
+        "source": "vokrouhlicky-2025-hildas"
+      },
+      "referenceH": 16.0,
+      "form": "cubic splines of log10 N(<H); slopes are segment means of the cumulative distribution",
+      "interpolation": null,
+      "missing": "Explicit spline boundary conditions / implementation not supplied in this paper."
+    }
+  },
+  "familyTotalAtH16": {
+    "value": 1451,
+    "sigma": 65,
+    "label": "measured",
+    "unit": "objects",
+    "source": "vokrouhlicky-2025-hildas",
+    "referenceH": 16.0,
+    "components": [
+      "Hilda",
+      "Schubart",
+      "Potomac"
+    ],
+    "section": "§5.3"
+  },
+  "families": {
+    "Hilda": {
+      "source": "vokrouhlicky-2025-hildas",
+      "section": "§3.1, §5.3, Table 3",
+      "parentNumber": 153,
+      "hcmMembers": 1066,
+      "hcmCutoffMPerS": 90,
+      "hcmNote": "Observed membership, not the fitted bias-corrected component normalization.",
+      "orbitalCoefficients": null,
+      "normalization": {
+        "value": null,
+        "sigma": null,
+        "label": "unknown",
+        "unit": "objects",
+        "source": "vokrouhlicky-2025-hildas"
+      },
+      "referenceH": 16.0,
+      "knotsH": null,
+      "magnitudeSlopes": null,
+      "slopeSigma": null,
+      "orbitalForm": "Gaussian a_p and sin I_p; broad Gaussian e_p plus concentration near 0.2"
+    },
+    "Schubart": {
+      "source": "vokrouhlicky-2025-hildas",
+      "section": "§3.1, §5.3, Table 3",
+      "parentNumber": 1911,
+      "hcmMembers": 1882,
+      "hcmCutoffMPerS": 60,
+      "hcmNote": "Observed membership, not the fitted bias-corrected component normalization.",
+      "orbitalCoefficients": null,
+      "normalization": {
+        "value": 738,
+        "sigma": 22,
+        "label": "measured",
+        "unit": "objects",
+        "source": "vokrouhlicky-2025-hildas"
+      },
+      "referenceH": 16.0,
+      "knotsH": [
+        12.0,
+        14.0,
+        15.0,
+        16.0,
+        17.0
+      ],
+      "magnitudeSlopes": [
+        1.0,
+        0.62,
+        0.63,
+        0.44
+      ],
+      "slopeSigma": [
+        0.18,
+        0.04,
+        0.02,
+        0.02
+      ],
+      "orbitalForm": "Asymmetric a_p; two peaks in e_p; sin I_p Gaussian plus high-inclination leg"
+    },
+    "Potomac": {
+      "source": "vokrouhlicky-2025-hildas",
+      "section": "§3.1, §5.3, Table 3",
+      "parentNumber": 1345,
+      "hcmMembers": 506,
+      "hcmCutoffMPerS": 140,
+      "hcmNote": "Observed membership, not the fitted bias-corrected component normalization.",
+      "orbitalCoefficients": null,
+      "normalization": {
+        "value": null,
+        "sigma": null,
+        "label": "unknown",
+        "unit": "objects",
+        "source": "vokrouhlicky-2025-hildas"
+      },
+      "referenceH": 16.0,
+      "knotsH": null,
+      "magnitudeSlopes": null,
+      "slopeSigma": null,
+      "orbitalForm": "Gaussian a_p and sin I_p; deficient low-e_p fragments"
+    }
+  },
+  "osculatingMapping": {
+    "source": "vokrouhlicky-2025-hildas",
+    "section": "Appendices B and D",
+    "implemented": false,
+    "referenceFrame": "solar-system invariable",
+    "framePoleDeg": [
+      1.5773756,
+      17.47808416
+    ],
+    "kappa": {
+      "value": 1.47,
+      "section": "B.2; Eq. B12"
+    },
+    "kappaPrime": {
+      "value": 1.47,
+      "section": "B.2; Eq. B13"
+    },
+    "eccentricity": "e exp(i varpi) = kappa e_J exp(i varpi_J) + e_p exp(i varpi_p) (approximate B12); B11 is the alternative canonical mapping",
+    "inclination": "sin I exp(i node) = kappaPrime sin I_J exp(i node_J) + sin I_p exp(i node_p) (B13)",
+    "semimajorAxisAndLongitude": "Appendix B.3: uniform polar angle on the averaged Hamiltonian level curve, both longitude branches",
+    "required": "Jupiter elements in the same frame at the product epoch; numerical Hamiltonian B8-B9 and canonical transform B3-B7; Appendix D frame rotation; not independent a and angle marginals",
+    "uncertainty": "Median kappa replaces orbit-dependent values ~1 to 2.5; approximate timescale decoupling; not an individual osculating uncertainty budget."
+  },
+  "catalogue": {
+    "doi": "10.5281/zenodo.14959240",
+    "url": "https://zenodo.org/api/records/14959240/files/astorb_astdys_wise_akari_sloan.dat_WITH_PROPER_ELMTS/content",
+    "sizeBytes": 7978464,
+    "sha256": "f848747042bfa62fcbd223555980a43dca320b48fd9ddd47a1c74480a6c6f53e",
+    "modelParameters": false,
+    "section": "Appendix C numerical proper elements; publisher label file columns 34-43",
+    "members": 6393
+  },
+  "uncertainty": "Table 2 errors are formal; §5.4 notes model choice uncertainty requires additional variants. §5.3 notes Hilda/Potomac template undershoot and family members assigned to background.",
+  "notProvided": [
+    "Debiased faint model past the reliable magnitude reach",
+    "Debiased albedo, colour and rotation laws",
+    "Numerical coefficients of all three fixed family orbital templates",
+    "All Hilda/Potomac family magnitude coefficients",
+    "An individual synthetic-object covariance",
+    "Survey veto for an arbitrary generated orbit"
+  ]
+}
