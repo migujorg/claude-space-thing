@@ -3,7 +3,7 @@
  "id": "saturn-cassini-wac-2016",
  "title": "Saturn and its rings, Cassini ISS wide-angle camera, 2016-04-25",
  "summary": "Saturn's northern hemisphere, the lit north face of the main rings and the planet's shadow across them, 2.97 million km from Saturn at phase 54.6° (sub-spacecraft latitude +28.7°, Sun +26.1°); RED, GRN and BL1 frames taken within 74 s.",
- "generated": "2026-10-07T08:18:36+00:00",
+ "generated": "2026-10-07T08:18:00+00:00",
  "observation": {
   "observer": "Cassini",
   "observerHorizonsId": "@-82",
@@ -291,9 +291,9 @@
    "target": 699,
    "rect": [
     1,
-    120,
+    119,
     6,
-    125
+    124
    ],
    "pixels": 25,
    "geometry": {
@@ -301,28 +301,28 @@
      "lit surface": 1.0
     },
     "incidenceDeg": {
-     "mean": 54.853,
-     "min": 53.027,
-     "max": 56.705
+     "mean": 54.992,
+     "min": 53.149,
+     "max": 56.861
     },
     "emissionDeg": {
-     "mean": 1.476,
+     "mean": 1.433,
      "min": 0.042,
-     "max": 3.039
+     "max": 2.911
     },
     "phaseDeg": {
-     "mean": 54.549,
-     "min": 54.511,
-     "max": 54.587
+     "mean": 54.547,
+     "min": 54.509,
+     "max": 54.584
     },
     "latitudeDeg": {
-     "mean": 24.501,
-     "min": 22.815,
-     "max": 26.178
+     "mean": 23.829,
+     "min": 22.145,
+     "max": 25.504
     },
     "eastLongitudeDeg": {
-     "mean": 83.654,
-     "spreadDeg": 1.07
+     "mean": 83.694,
+     "spreadDeg": 1.063
     }
    },
    "bands": [
@@ -330,19 +330,19 @@
      "filter": "cassini.wac.RED",
      "product": "W1840258828_1",
      "iof": {
-      "mean": 0.3226979,
-      "std": 0.007793584,
+      "mean": 0.3207919,
+      "std": 0.007800005,
       "n": 25,
       "nInRect": 25
      },
      "sigmaRel": {
       "calibration": 0.1,
-      "noise": 0.00483,
-      "registration": 0.01734
+      "noise": 0.00486,
+      "registration": 0.01746
      },
      "bandRadiance": {
-      "value": 0.001621576,
-      "sigma": 0.0001647644,
+      "value": 0.001611999,
+      "sigma": 0.0001638263,
       "unit": "W m-2 sr-1 nm-1",
       "bandSolarIrradiance1AU": 1.586454
      }
@@ -351,19 +351,19 @@
      "filter": "cassini.wac.GRN",
      "product": "W1840258865_1",
      "iof": {
-      "mean": 0.285708,
-      "std": 0.006955822,
+      "mean": 0.2837923,
+      "std": 0.00705136,
       "n": 25,
       "nInRect": 25
      },
      "sigmaRel": {
       "calibration": 0.1,
-      "noise": 0.00487,
-      "registration": 0.00683
+      "noise": 0.00497,
+      "registration": 0.00698
      },
      "bandRadiance": {
-      "value": 0.001654353,
-      "sigma": 0.0001660157,
+      "value": 0.00164326,
+      "sigma": 0.0001649279,
       "unit": "W m-2 sr-1 nm-1",
       "bandSolarIrradiance1AU": 1.828066
      }
@@ -372,19 +372,19 @@
      "filter": "cassini.wac.BL1",
      "product": "W1840258902_1",
      "iof": {
-      "mean": 0.1897688,
-      "std": 0.00413763,
+      "mean": 0.1885668,
+      "std": 0.004200528,
       "n": 25,
       "nInRect": 25
      },
      "sigmaRel": {
       "calibration": 0.1,
-      "noise": 0.00436,
-      "registration": 0.00585
+      "noise": 0.00446,
+      "registration": 0.00597
      },
      "bandRadiance": {
-      "value": 0.001175582,
-      "sigma": 0.0001178707,
+      "value": 0.001168136,
+      "sigma": 0.0001171376,
       "unit": "W m-2 sr-1 nm-1",
       "bandSolarIrradiance1AU": 1.955754
      }
@@ -393,44 +393,44 @@
    "expected": {
     "type": "value",
     "XYZS": [
-     116.1003,
-     118.4767,
-     81.68022,
-     232.3686
+     115.3598,
+     117.706,
+     81.1609,
+     230.8612
     ],
     "sigma": [
-     11.64623,
-     11.87858,
-     8.187621,
-     23.29196
+     11.57261,
+     11.80172,
+     8.136348,
+     23.14082
     ],
     "tolerance": [
-     23.29246,
-     23.75716,
-     16.37524,
-     46.58392
+     23.14522,
+     23.60343,
+     16.2727,
+     46.28165
     ],
     "comparison": "|renderer mean XYZS over rect − XYZS| ≤ tolerance, per channel",
     "label": "estimated",
     "method": "XYZS radiance of r(λ) = p̃(λ)·ρ(λ) (validation/photometry.py): p̃ = the disk-integrated geometric-albedo spectrum of NAIF 699 (the light stage's input, label estimated); ρ from 3 band I/F value(s); Sun at 10.02462 AU (TSIS-1 HSRS, CIE 1931 2° and 1951 scotopic observers).",
     "budget": {
      "calibration": [
-      11.61003,
-      11.84767,
-      8.168022,
-      23.23686
+      11.53598,
+      11.7706,
+      8.11609,
+      23.08612
      ],
      "noiseAndRegistration": [
-      0.886198,
-      0.7554561,
-      0.5586123,
-      1.268379
+      0.891229,
+      0.7643876,
+      0.5669677,
+      1.287318
      ],
      "spectralModel": [
-      0.2375544,
-      0.4034804,
-      0.09226027,
-      0.9771708
+      0.2285191,
+      0.3861401,
+      0.08827461,
+      0.9335152
      ],
      "spectralModelMethod": "linear vs monotone-cubic interpolation of ρ between band centres"
     },
@@ -440,9 +440,9 @@
      647.11
     ],
     "rho": [
-     0.5296527,
-     0.5869021,
-     0.610979
+     0.5262981,
+     0.5829669,
+     0.6073703
     ],
     "colorCriterion": "Band centres 465.916, 569.832, 647.111 nm. Colour is 'derived' only if the bands bracket ≥ 99 % of every channel's sunlight-weighted observer integrand (here 29.8 % for the worst channel) and no gap between band centres inside the central 98 % range (411-673 nm) exceeds half the narrowest observer-function FWHM (27 nm; widest gap here 104 nm). Result: estimated."
    }
@@ -617,9 +617,9 @@
    "target": 699,
    "rect": [
     48,
-    135,
+    134,
     52,
-    139
+    138
    ],
    "pixels": 16,
    "geometry": {
@@ -627,28 +627,28 @@
      "lit surface": 1.0
     },
     "incidenceDeg": {
-     "mean": 85.42,
-     "min": 83.855,
-     "max": 87.021
+     "mean": 85.479,
+     "min": 83.9,
+     "max": 87.093
     },
     "emissionDeg": {
-     "mean": 34.827,
-     "min": 32.943,
-     "max": 36.74
+     "mean": 34.587,
+     "min": 32.73,
+     "max": 36.474
     },
     "phaseDeg": {
-     "mean": 53.958,
-     "min": 53.928,
-     "max": 53.988
+     "mean": 53.956,
+     "min": 53.926,
+     "max": 53.986
     },
     "latitudeDeg": {
-     "mean": 27.146,
-     "min": 25.459,
-     "max": 28.836
+     "mean": 26.528,
+     "min": 24.844,
+     "max": 28.215
     },
     "eastLongitudeDeg": {
-     "mean": 44.483,
-     "spreadDeg": 1.073
+     "mean": 44.837,
+     "spreadDeg": 1.062
     }
    },
    "bands": [
@@ -656,19 +656,19 @@
      "filter": "cassini.wac.RED",
      "product": "W1840258828_1",
      "iof": {
-      "mean": 0.04966151,
-      "std": 0.007384969,
+      "mean": 0.0493353,
+      "std": 0.007415851,
       "n": 16,
       "nInRect": 16
      },
      "sigmaRel": {
       "calibration": 0.1,
-      "noise": 0.03718,
-      "registration": 0.06625
+      "noise": 0.03758,
+      "registration": 0.0664
      },
      "bandRadiance": {
-      "value": 0.000249552,
-      "sigma": 3.133988e-05,
+      "value": 0.0002479128,
+      "sigma": 3.118352e-05,
       "unit": "W m-2 sr-1 nm-1",
       "bandSolarIrradiance1AU": 1.586454
      }
@@ -677,19 +677,19 @@
      "filter": "cassini.wac.GRN",
      "product": "W1840258865_1",
      "iof": {
-      "mean": 0.04845648,
-      "std": 0.007035763,
+      "mean": 0.04812708,
+      "std": 0.006985838,
       "n": 16,
       "nInRect": 16
      },
      "sigmaRel": {
       "calibration": 0.1,
-      "noise": 0.0363,
-      "registration": 0.06439
+      "noise": 0.03629,
+      "registration": 0.0644
      },
      "bandRadiance": {
-      "value": 0.0002805806,
-      "sigma": 3.489133e-05,
+      "value": 0.0002786733,
+      "sigma": 3.465455e-05,
       "unit": "W m-2 sr-1 nm-1",
       "bandSolarIrradiance1AU": 1.828066
      }
@@ -698,19 +698,19 @@
      "filter": "cassini.wac.BL1",
      "product": "W1840258902_1",
      "iof": {
-      "mean": 0.04029875,
-      "std": 0.005464512,
+      "mean": 0.03992171,
+      "std": 0.005447447,
       "n": 16,
       "nInRect": 16
      },
      "sigmaRel": {
       "calibration": 0.1,
-      "noise": 0.0339,
-      "registration": 0.06056
+      "noise": 0.03411,
+      "registration": 0.06085
      },
      "bandRadiance": {
-      "value": 0.0002496432,
-      "sigma": 3.038742e-05,
+      "value": 0.0002473075,
+      "sigma": 3.015364e-05,
       "unit": "W m-2 sr-1 nm-1",
       "bandSolarIrradiance1AU": 1.955754
      }
@@ -719,44 +719,44 @@
    "expected": {
     "type": "value",
     "XYZS": [
-     19.74791,
-     20.70036,
-     17.11559,
-     45.02295
+     19.60637,
+     20.54869,
+     16.95779,
+     44.64525
     ],
     "sigma": [
-     2.178222,
-     2.320494,
-     2.049206,
-     5.061953
+     2.163228,
+     2.303808,
+     2.033382,
+     5.022642
     ],
     "tolerance": [
-     4.356445,
-     4.640989,
-     4.098413,
-     10.12391
+     4.326457,
+     4.607616,
+     4.066765,
+     10.04528
     ],
     "comparison": "|renderer mean XYZS over rect − XYZS| ≤ tolerance, per channel",
     "label": "estimated",
     "method": "XYZS radiance of r(λ) = p̃(λ)·ρ(λ) (validation/photometry.py): p̃ = the disk-integrated geometric-albedo spectrum of NAIF 699 (the light stage's input, label estimated); ρ from 3 band I/F value(s); Sun at 10.02462 AU (TSIS-1 HSRS, CIE 1931 2° and 1951 scotopic observers).",
     "budget": {
      "calibration": [
-      1.974791,
-      2.070036,
-      1.711559,
-      4.502295
+      1.960637,
+      2.054869,
+      1.695779,
+      4.464525
      ],
      "noiseAndRegistration": [
-      0.9176392,
-      1.044814,
-      1.126673,
-      2.303439
+      0.9126582,
+      1.038218,
+      1.121875,
+      2.291993
      ],
      "spectralModel": [
-      0.05283635,
-      0.08948302,
-      0.02045862,
-      0.2164999
+      0.05012387,
+      0.08454326,
+      0.01932565,
+      0.2042596
      ],
      "spectralModelMethod": "linear vs monotone-cubic interpolation of ρ between band centres"
     },
@@ -766,9 +766,9 @@
      647.11
     ],
     "rho": [
-     0.1124755,
-     0.09953944,
-     0.09402643
+     0.1114232,
+     0.09886278,
+     0.09340881
     ],
     "colorCriterion": "Band centres 465.916, 569.832, 647.111 nm. Colour is 'derived' only if the bands bracket ≥ 99 % of every channel's sunlight-weighted observer integrand (here 29.8 % for the worst channel) and no gap between band centres inside the central 98 % range (411-673 nm) exceeds half the narrowest observer-function FWHM (27 nm; widest gap here 104 nm). Result: estimated."
    }
@@ -1257,9 +1257,9 @@
    "target": 699,
    "rect": [
     91,
-    142,
+    141,
     96,
-    147
+    146
    ],
    "pixels": 25,
    "geometry": {
@@ -1272,19 +1272,19 @@
      "filter": "cassini.wac.RED",
      "product": "W1840258828_1",
      "iof": {
-      "mean": 0.002720709,
-      "std": 4.017856e-05,
+      "mean": 0.002723061,
+      "std": 4.522567e-05,
       "n": 25,
       "nInRect": 25
      },
      "sigmaRel": {
       "calibration": 0.1,
-      "noise": 0.00295,
-      "registration": 0.0028
+      "noise": 0.00332,
+      "registration": 0.00188
      },
      "bandRadiance": {
-      "value": 1.367172e-05,
-      "sigma": 1.368302e-06,
+      "value": 1.368354e-05,
+      "sigma": 1.36935e-06,
       "unit": "W m-2 sr-1 nm-1",
       "bandSolarIrradiance1AU": 1.586454
      }
@@ -1293,19 +1293,19 @@
      "filter": "cassini.wac.GRN",
      "product": "W1840258865_1",
      "iof": {
-      "mean": 0.002159032,
-      "std": 0.0001208682,
+      "mean": 0.002157087,
+      "std": 0.0001277656,
       "n": 25,
       "nInRect": 25
      },
      "sigmaRel": {
       "calibration": 0.1,
-      "noise": 0.0112,
-      "registration": 0.00206
+      "noise": 0.01185,
+      "registration": 0.00603
      },
      "bandRadiance": {
-      "value": 1.250158e-05,
-      "sigma": 1.258234e-06,
+      "value": 1.249031e-05,
+      "sigma": 1.260015e-06,
       "unit": "W m-2 sr-1 nm-1",
       "bandSolarIrradiance1AU": 1.828066
      }
@@ -1314,19 +1314,19 @@
      "filter": "cassini.wac.BL1",
      "product": "W1840258902_1",
      "iof": {
-      "mean": 0.001630129,
-      "std": 5.885618e-05,
+      "mean": 0.001638462,
+      "std": 5.750737e-05,
       "n": 25,
       "nInRect": 25
      },
      "sigmaRel": {
       "calibration": 0.1,
-      "noise": 0.00722,
-      "registration": 0.00313
+      "noise": 0.00702,
+      "registration": 0.00241
      },
      "bandRadiance": {
-      "value": 1.009834e-05,
-      "sigma": 1.012957e-06,
+      "value": 1.014996e-05,
+      "sigma": 1.017788e-06,
       "unit": "W m-2 sr-1 nm-1",
       "bandSolarIrradiance1AU": 1.955754
      }
@@ -1335,14 +1335,14 @@
    "expected": {
     "type": "upper-limit",
     "upperLimitXYZS": [
-     1.157011,
-     1.194631,
-     1.246394,
-     2.837586
+     1.162152,
+     1.199939,
+     1.251933,
+     2.850195
     ],
     "comparison": "every channel of the renderer's mean radiance over rect ≤ upperLimitXYZS",
     "label": "derived",
-    "method": "Largest band I/F in the window + 2 × its pixel standard deviation (I/F 0.0028), converted with a solar (grey) spectrum. The camera's scattered light and the calibration's zero level make this an upper limit on the true sky."
+    "method": "Largest band I/F in the window + 2 × its pixel standard deviation (I/F 0.00281), converted with a solar (grey) spectrum. The camera's scattered light and the calibration's zero level make this an upper limit on the true sky."
    }
   },
   {
