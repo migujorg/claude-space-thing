@@ -83,6 +83,18 @@ with instant adaptation, and after a pass is skipped for one to three frames (no
 older veil) the same set comes back. The four `adapt=realtime` scenes stay as they are or gain stars as their
 pigments regenerate, as they should; no star in them goes back and forth.
 
+The check is a script, to be run after any change to the cull, the point path or the veil:
+
+```sh
+cd app
+node scripts/point-census.mjs --gpu hardware --perturb   # every scene: 300 frames, then seven perturbations
+node scripts/point-census.mjs --frames 40 --only pluto-charon   # SwiftShader, where a frame takes seconds
+```
+
+It compares the lists by identity, not by count. A scene with instant adaptation fails if any star's verdict
+differs between two consecutive frames, or if the settled set after a perturbation is not the first one. A
+real-time scene fails only if a star goes back and forth. Exit 1 on a failure.
+
 ## Running
 
 ```sh
