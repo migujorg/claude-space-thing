@@ -2,12 +2,12 @@
 // No server, browser, downloads or shared data writes. Builds tiny ESM bundles into /tmp.
 // --verify separately checks all 86,400 XYZS outputs against converged quadrature (about two minutes).
 // --current-only / --old-only select one variant; --baseline=1847844 measures the original fixed-order code.
+// --trace and --giant-only are diagnostic modes; --giant-only is not the required nine-body check.
 // --check fails if any warm sample run exceeds median 0.5 ms or p99 2 ms; use on an idle machine.
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createRequire } from 'node:module';
 import { execFileSync } from 'node:child_process';
 import { build } from 'esbuild';
 import { createHash } from 'node:crypto';
@@ -18,9 +18,8 @@ function git(args) {
 }
 const app = fileURLToPath(new URL('..', import.meta.url));
 const runs = Number(process.argv.find(s => s.startsWith('--runs='))?.split('=')[1] ?? 3);
+if (process.argv.includes('--check') && process.argv.includes('--giant-only')) throw new Error('--giant-only cannot qualify the nine-body cost check');
 const baseline = process.argv.find(s => s.startsWith('--baseline='))?.split('=')[1] ?? '18b70e2';
-const clockPath = process.argv.find(s => s.startsWith('--cpu-clock='))?.slice('--cpu-clock='.length);
-const cpuClock = clockPath ? createRequire(import.meta.url)(clockPath).clockMs : undefined;
 const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'law-motion-'));
 globalThis.__lawWork = [];
 const phot = JSON.parse(fs.readFileSync(path.join(app, 'public/data/photometry.json')));
@@ -76,7 +75,7 @@ function frame(lib, set, z, step, f, verify) {
 const quantile = (a, q) => a[Math.min(a.length - 1, Math.floor(q * a.length))];
 let failed = false, failedAccuracy = false;
 try {
-  console.log(JSON.stringify({ benchmark: 'normalization through prepareFrame lawIntegral', frames: 600, runs, baseline, checkedClock: cpuClock ? 'thread CPU' : 'wall', bodies: sets.map(s => ({ scene: s.scene, ids: s.ids })), inputHashes: { photometry: createHash('sha256').update(fs.readFileSync(path.join(app, 'public/data/photometry.json'))).digest('hex'), tiles: Object.fromEntries([...tiles].map(([id, data]) => [id, data.map(bytes => createHash('sha256').update(new Uint8Array(bytes)).digest('hex'))])) }, note: 'Cold frame excluded from warm percentiles; warm frames include every real geometry query, no prefilled orbit cache.' }));
+  console.log(JSON.stringify({ benchmark: 'normalization through prepareFrame lawIntegral', frames: 600, runs, baseline, bodies: sets.map(s => ({ scene: s.scene, ids: s.ids })), inputHashes: { photometry: createHash('sha256').update(fs.readFileSync(path.join(app, 'public/data/photometry.json'))).digest('hex'), tiles: Object.fromEntries([...tiles].map(([id, data]) => [id, data.map(bytes => createHash('sha256').update(new Uint8Array(bytes)).digest('hex'))])) }, note: 'Cold frame excluded from warm percentiles; warm frames include every real geometry query, no prefilled orbit cache.' }));
   // Fresh bundles per run reset the exact cache and all cold table construction.
   const variants = process.argv.includes('--current-only') ? [['current', null]] : process.argv.includes('--old-only') ? [['old', baseline]] : [['current', null], ['old', baseline]];
   for (let run = 0; run < runs; run++) for (const [tag, ref] of variants) {
@@ -85,17 +84,15 @@ try {
       const z = profile(lib, set.ids[0]);
       const start = performance.now(); let checksum = frame(lib, set, z, step, 0);
       const cold = performance.now() - start;
-      const times = [], cpuTimes = [], slow = [];
+      const times = [], slow = [];
       for (let f = 1; f <= 600; f++) {
         globalThis.__lawWork = [];
-        const before = performance.now(), cpuBefore = cpuClock?.(); checksum += frame(lib, set, z, step, f);
-        if (cpuClock) cpuTimes.push(cpuClock() - cpuBefore);
+        const before = performance.now(); checksum += frame(lib, set, z, step, f);
         const elapsed = performance.now() - before; times.push(elapsed); if (elapsed > 2) slow.push({ f, ms: elapsed, phaseDeg: Math.acos(Math.cos(0.2 + step * f)) * 180 / Math.PI, ...(process.argv.includes('--trace') ? { work: globalThis.__lawWork } : {}) });
       }
-      times.sort((a, b) => a - b); cpuTimes.sort((a, b) => a - b);
+      times.sort((a, b) => a - b);
       const median = quantile(times, 0.5), p99 = quantile(times, 0.99);
-      const cpuMedian = cpuClock ? quantile(cpuTimes, 0.5) : undefined, cpuP99 = cpuClock ? quantile(cpuTimes, 0.99) : undefined;
-      const pass = cpuClock ? cpuMedian <= 0.5 && cpuP99 <= 2 : median <= 0.5 && p99 <= 2;
+      const pass = median <= 0.5 && p99 <= 2;
       if (tag === 'current' && !pass) failed = true;
       let verification;
       if (process.argv.includes('--verify') && tag === 'current') {
@@ -111,7 +108,7 @@ try {
         if (!accuracyPass) failedAccuracy = true;
         verification = { count, maxRelative, worst, accuracyPass };
       }
-      console.log(JSON.stringify({ tag, ref: ref ?? git(['rev-parse', '--short', 'HEAD']).trim(), run: run + 1, scene: set.scene, stepRad: step, coldMs: cold, medianMs: median, p99Ms: p99, maxMs: times.at(-1), cpuMedianMs: cpuMedian, cpuP99Ms: cpuP99, pass, checksum, verification, slowest: slow.sort((a,b) => b.ms-a.ms).slice(0, 10) }));
+      console.log(JSON.stringify({ tag, ref: ref ?? git(['rev-parse', '--short', 'HEAD']).trim(), run: run + 1, scene: set.scene, stepRad: step, coldMs: cold, medianMs: median, p99Ms: p99, maxMs: times.at(-1), pass, checksum, verification, slowest: slow.sort((a,b) => b.ms-a.ms).slice(0, 10) }));
     }
   }
 } finally { fs.rmSync(temp, { recursive: true, force: true }); }
