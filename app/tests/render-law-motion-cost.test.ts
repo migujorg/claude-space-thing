@@ -14,9 +14,21 @@ const built = fs.existsSync(path);
 const photometry: Record<string, BodyPhotometry> = built ? JSON.parse(fs.readFileSync(path, 'utf8')) : {};
 const { env }: { env: Record<string, string | undefined> } = await import(/* @vite-ignore */ 'node:process' as string);
 
-/** One lookup's budget. A frame has 16 ms; the fixed-order rule takes about 2 ms. 100 ms leaves room for a
- * loaded test machine and still fails a stall of a second by an order of magnitude. */
-const LOOKUP_BUDGET_MS = 100;
+/**
+ * Budgets in CPU time of this test's own process (process.cpuUsage), not wall time: on 7 October the first
+ * version of this test measured wall time and failed in the landing gate, where the suite's other workers and
+ * eight lanes shared the machine (425 ms of wall time for a lookup that takes 14-26 ms alone).
+ * - The first lookup of a body may set up what later lookups reuse (the giants' zonal spectrum: 14-26 ms).
+ *   250 ms fails the 1.5-2.5 s table of 7 October by a factor of six and leaves ten times the normal cost.
+ * - A lookup at a moving phase happens in every frame: the median of five is held under 20 ms (normal 0.03 to
+ *   2 ms; the regression was 100 ms for Mars and 800 ms for Pluto under their maps).
+ */
+const FIRST_LOOKUP_BUDGET_MS = 250;
+const MOVING_LOOKUP_BUDGET_MS = 20;
+const { cpuUsage }: { cpuUsage(previous?: { user: number; system: number }): { user: number; system: number } } =
+  await import(/* @vite-ignore */ 'node:process' as string);
+const cpuMs = (f: () => unknown): number => { const t = cpuUsage(); f(); const d = cpuUsage(t); return (d.user + d.system) / 1000; };
+const median = (v: number[]) => v.slice().sort((a, b) => a - b)[v.length >> 1];
 const tile = (id: string, t: number) => new URL(`../public/data/surfaces/${id}/albedo/0/0/${t}.bin`, import.meta.url);
 function zonalOf(id: string): ZonalProfile | null {
   if (![0, 1].every((t) => fs.existsSync(tile(id, t)))) return null;
@@ -26,39 +38,40 @@ function zonalOf(id: string): ZonalProfile | null {
   }));
 }
 const models = Object.entries(photometry).flatMap(([id, p]) => (p.spatialModel?.value ? [{ id, model: p.spatialModel.value }] : []));
-const timed = <T>(f: () => T): [T, number] => { const t = performance.now(); const v = f(); return [v, performance.now() - t]; };
-
 describe('normalization lookups have a bounded cost on the main thread', () => {
   it.skipIf(!built)('every built law, without a map: the first lookup and lookups at moving phases', () => {
     for (const { id, model } of models) for (const deg of [0.5, 16, 90, 150]) {
       const a = (deg * Math.PI) / 180, r = resolveLaw(model, a);
       if ('error' in r) continue;
       const cache = new MotionNormalization();
-      const [, first] = timed(() => cache.get(r.law, a));
-      expect(first, `${id} ${model.kind} at ${deg}°, first use`).toBeLessThan(LOOKUP_BUDGET_MS);
-      for (let i = 1; i <= 3; i++) {
-        const [, next] = timed(() => cache.get(r.law, a + i * 1e-4));
-        expect(next, `${id} ${model.kind} at ${deg}°, moving`).toBeLessThan(LOOKUP_BUDGET_MS);
-      }
+      expect(cpuMs(() => cache.get(r.law, a)), `${id} ${model.kind} at ${deg}°, first use`).toBeLessThan(FIRST_LOOKUP_BUDGET_MS);
+      const moving = [1, 2, 3, 4, 5].map((i) => cpuMs(() => cache.get(r.law, a + i * 1e-4)));
+      expect(median(moving), `${id} ${model.kind} at ${deg}°, moving`).toBeLessThan(MOVING_LOOKUP_BUDGET_MS);
     }
-  }, 60000);
+  }, 120000);
   it.skipIf(!built)('every built law under its own map: the first lookup and lookups at moving phases and poles', () => {
     let mapped = 0;
     for (const { id, model } of models) {
       const profile = zonalOf(id);
       if (!profile) continue;
       mapped++;
-      const cache = new MotionNormalization();
-      for (const deg of [16, 90]) for (let i = 0; i < 3; i++) {
-        const a = (deg * Math.PI) / 180 + i * 1e-4, r = resolveLaw(model, a);
-        if ('error' in r) continue;
-        const t = 0.4 + 0.01 * i, pole: [number, number, number] = [Math.sin(t) * 0.6, Math.sin(t) * 0.8, Math.cos(t)];
-        const [, ms] = timed(() => cache.get(r.law, a, { profile, pole }));
-        expect(ms, `${id} ${model.kind} at ${deg}° with its map, lookup ${i}`).toBeLessThan(LOOKUP_BUDGET_MS);
+      for (const deg of [16, 90]) {
+        const cache = new MotionNormalization();
+        const at = (i: number) => {
+          const a = (deg * Math.PI) / 180 + i * 1e-4, r = resolveLaw(model, a);
+          if ('error' in r) return null;
+          const t = 0.4 + 0.01 * i, pole: [number, number, number] = [Math.sin(t) * 0.6, Math.sin(t) * 0.8, Math.cos(t)];
+          return cpuMs(() => cache.get(r.law, a, { profile, pole }));
+        };
+        const first = at(0);
+        if (first === null) continue;
+        expect(first, `${id} ${model.kind} at ${deg}° with its map, first use`).toBeLessThan(FIRST_LOOKUP_BUDGET_MS);
+        const moving = [1, 2, 3, 4, 5].map(at).filter((v): v is number => v !== null);
+        expect(median(moving), `${id} ${model.kind} at ${deg}° with its map, moving`).toBeLessThan(MOVING_LOOKUP_BUDGET_MS);
       }
     }
     expect(mapped).toBeGreaterThan(0);
-  }, 60000);
+  }, 120000);
   it.skipIf(!built)('a cached value stands for every phase of its cell within 2e-5, at the opposition peak and in a thin crescent', () => {
     for (const { id, model } of models.filter((m) => m.model.kind === 'hapke')) {
       const cache = new MotionNormalization();

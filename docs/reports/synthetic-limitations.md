@@ -1,0 +1,29 @@
+# What the synthetic products establish
+
+The synthetic-rules audit read the generators and evaluated the built products; its `REPORT.md` §§1–4 and briefs 8, 9, 11, audit head `0266dd9`, are the source of this summary. Audit artifacts are retained in the root session's lane `synthetic-rules-audit` (`audit_counts.py`/`counts.json`, `motion_audit.py`/`motion.json`, `SOURCES.md`). This text transcribes that evidence; it does not claim to rerun the numerical integration or independently verify its scientific sources.
+
+The magnitude guard passes, but the completeness limit is a **proxy fitted from a/H bins**, not a measured detection probability. Catalogue extrapolations use histogram peaks; realization populations use deficits relative to a model; moons fit the whole class over H and copy its limit into a bins. No generator consumes pointing history, efficiency maps, negative observations or a per-object veto. Cell and a/H-group subtraction establishes conditional population accounting, not an exact unseen count or “never contradicts an observation.” Discovery yield is **aggregate, not one-to-one**. With fixed model, limits and templates, eligible known counts reduce deficits within rounding; real catalogue releases can refit limits, normalization, slopes and templates, changing identities and counts.
+
+Moon luminosity laws are survey corrected, but orbital distributions are templates of bright known members. No bias-corrected unseen orbit distribution was found in the published sources reviewed; this is a search-bounded finding. The extrapolated asteroid populations likewise assume bright catalogue e/i proportions apply at faint H; Hungaria borrows the main-belt faint slope. Physical albedo/colour and LCDB rotation pools are measured but not selection-corrected; no explicit H-dependent family model is implemented. The Centaur literature orbit model plus independent H law inherits a joint distribution rejected by the cited Kurlander survey (§5.3). All **44** comet-flagged Centaur-region objects are excluded by the comet flag; **18** have M2 nuclear-magnitude laws in the built comet product, whose bare-nucleus suitability is not established (audit C1 comet table). Exclusion is not evidence of no nuclear photometry, nor a count of proven duplicates.
+
+## Sampled propagation drift (C3)
+
+Transcribed from the audit's **C3 table, REPORT §4**, not selected by rendering or validation score. Window: **2025-04-04 to 2028-04-04**, small-body epoch ET **844344000**, 2026-10-04 TDB. For each population the representative is nearest the marginal a/e/i medians after IQR scaling (moons restricted to retrogrades). These historical stored rows are diagnostic identifiers, not stable identities across rebuilds.
+
+| Population | Stored row | Largest sampled drift (km) | Earth direction (arcsec) | Centre direction (degrees) |
+|---|---:|---:|---:|---:|
+| neo | 361344 | 167,263.0 | 81.6184 | 0.017459 |
+| hungaria | 778187 | 418,600.3 | 192.9206 | 0.084968 |
+| mainbelt | 1760152 | 1,416,336.6 | 430.8688 | 0.134512 |
+| hilda | 2777428 | 198,297.8 | 49.2564 | 0.010702 |
+| trojan | 2831087 | 439,220.9 | 118.8710 | 0.029740 |
+| tno | 2918652 | 210,202.5 | 4.0673 | 0.001141 |
+| centaur | 2958846 | 215,404.0 | 12.3348 | 0.003297 |
+| irregular-jupiter | 2969859 | 7,943,358.2 | 2,033.2603 | 27.285603 |
+| irregular-saturn | 2970087 | 1,647,439.4 | 220.5650 | 5.000635 |
+
+The comparison is simultaneous geometric position against independent DOP853 integration, not light-time arithmetic or a measured true orbit. Heliocentric cases use the Sun and product perturbers' direct/indirect Newtonian forces, omitting 1PN, J2 and nongravitational terms. Moons use host gravity plus differential solar acceleration, omitting J2 and other moons. DE442s native Chebyshev positions provide perturber positions. “Centre” is the Sun for heliocentric populations and physical planet centre for moons. Each column's maximum can occur at a different time. Daily samples include both endpoints and the epoch; a tighter half-day integration checks convergence. The audit's solver tolerance/convergence details remain in its REPORT §4 and motion artifacts.
+
+These nine trajectories are **not a bound** for all synthetic objects, arbitrary observers, other catalogues, epochs or windows. Individual true positions and per-object/viewpoint budgets are **unknown**. CPU/GPU agreement with the same fixed Kepler law and small light-time arithmetic error do not bound missing-force drift. The moons' direction errors matter for Enhanced mode, orbit overlays and object tracking; they are too faint to imply naked-eye visibility from Earth.
+
+The implementation currently uses fixed two-body elements for both heliocentric synthetic objects and moons; the latter are translated with their host ephemeris. Heliocentric synthetic states bypass the app's catalogue force model. A future force-model lane must change both CPU and GPU motion and update this text; disclosing the sampled drift is not a substitute for that work. Neither this report nor the metadata relaxes the NORTH_STAR promises.

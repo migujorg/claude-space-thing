@@ -321,5 +321,5 @@
 <polyline points="545.0,1238.0 557.6,1238.0 570.2,1238.0 582.7,1238.0 595.3,1238.0 607.8,1238.0 620.4,1238.0 633.0,1238.0 645.5,1238.0 658.1,1238.0 670.6,1238.0 683.2,1162.1 695.8,1162.1 708.3,1041.9 720.9,1025.0 733.4,1025.0 746.0,1010.4" fill="none" stroke="#d95f02" stroke-width="1.6"/>
 <line x1="440" x2="462" y1="1024" y2="1024" stroke="#d95f02" stroke-width="1.6"/>
 <text x="466" y="1028">catalogue + synthetic (total to the floor: 8)</text>
-<text x="8" y="1290" fill="#555">Cumulative number N(&lt;H) inside each population's grid, below its H floor. Synthetic objects appear only fainter than the completeness limit of their a-bin. (pipeline stage synthetic; numbers in docs/reports/synthetic-populations.json)</text>
+<text x="8" y="1290" fill="#555">Cumulative number N(&lt;H) inside each population's grid, below its H floor. Synthetic objects appear only fainter than the fitted completeness proxy of their a-bin (not a detection probability). (pipeline stage synthetic; numbers in docs/reports/synthetic-populations.json)</text>
 </svg>

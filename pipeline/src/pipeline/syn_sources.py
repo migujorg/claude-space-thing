@@ -125,7 +125,7 @@ NATSATS = {
 }
 ASHTON_2020 = Download(
     id="ashton-2020-jupiter", url="https://arxiv.org/pdf/2009.03382v1", subdir=_P, name="arXiv-2009.03382v1.pdf",
-    title="Ashton et al. (2020): debiased population of km-scale retrograde jovian irregular moons (CFHT shift and stack)",
+    title="Ashton et al. (2020): debiased luminosity law of km-scale retrograde jovian irregular moons (CFHT shift and stack)",
     citation="Ashton, E., Beaudoin, M. & Gladman, B. (2020). The population of kilometer-scale retrograde jovian "
              "irregular moons. Planetary Science Journal 1, 52. DOI:10.3847/PSJ/abad95 (arXiv:2009.03382).",
     license="CC BY 4.0 (published version)", notes=_ARXIV)
@@ -184,7 +184,7 @@ KURLANDER_ARCHIVE = Download(
           "numpy array reconstruction). The notebook gives the model size n_literature_obs = 26116868.")
 KURLANDER = Download(
     id="kurlander-2025-centaurs", url="https://arxiv.org/pdf/2412.01687v1", subdir=_P, name="arXiv-2412.01687v1.pdf",
-    title="Kurlander et al. (2025): debiased Centaur population from Pan-STARRS1 (21,400 with H_r < 13.7)",
+    title="Kurlander et al. (2025): normalized literature Centaur model from Pan-STARRS1 (21,400 with H_r < 13.7)",
     citation=KURLANDER_ARCHIVE.citation.split("For: ")[1] + " (arXiv:2412.01687).",
     license="CC BY 4.0 (published version)", notes=_ARXIV)
 MURTAGH = Download(
