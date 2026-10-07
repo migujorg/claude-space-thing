@@ -79,7 +79,7 @@ FRENCH = Download(
              "masses of Cressida, Cordelia, and Ophelia. Icarus 411, 115957. DOI:10.1016/j.icarus.2024.115957 "
              "(manuscript arXiv:2401.04634v1).",
     notes="Tables 5 and 6 transcribed to photometry/tables/french_2024_uranus_ring_{orbits,modes}.csv "
-          "(docs/sources/uranus-rings.md).")
+          "(docs/reports/rings.md).")
 HEDMAN_CHANCIA = Download(
     id="hedman-chancia-2021", url="https://arxiv.org/pdf/2104.14482v2", subdir="papers", name="arXiv-2104.14482v2.pdf",
     title="Uranus's narrow dusty ringlets in Voyager 2 high-phase images (Table 3: peak normal I/F, NEW)",

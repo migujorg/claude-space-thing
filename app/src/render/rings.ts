@@ -29,7 +29,7 @@
 
 import type { SceneBody, SceneRings } from './scene';
 import type { Label, RingReflectance } from '../data/schema';
-import { packComponentRecords, packComponents, phaseValue, type PackedComponents } from './ringComponents';
+import { geometrySupported, packComponentRecords, packComponents, phaseValue, type PackedComponents } from './ringComponents';
 import { AU_KM } from './constants';
 import { dot, len, normalize, prepareBody, type M3, type V3 } from './raycast';
 import type { XYZS } from './photometry';
@@ -446,8 +446,11 @@ export function prepareRings(b: SceneBody, sunIrradianceXYZS_1AU: XYZS | null, s
   const m = r.reflectance;
   const alphaDeg = (Math.acos(Math.max(-1, Math.min(1, dot(toObs, sunDir)))) * 180) / Math.PI;
   if (comps) {
-    const dark = comps.components.filter((c) => !c.layer && !c.thin && c.profile.opticalDepthKnown).map((c) => c.name);
-    if (dark.length) out.warnings.push(`${b.name} rings: reflectance not measured for ${dark.join(', ')} → absorbs and casts shadows only, covered material hatched as not measured`);
+    const et = r.et ?? comps.epochEt;
+    const unsupported = comps.components.filter((c) => !geometrySupported(c, et)).map((c) => c.name);
+    if (unsupported.length) out.warnings.push(`${b.name} rings: geometry not measured at this time for ${unsupported.join(', ')} → no light or extinction; radial annotation hatched as not measured`);
+    const dark = comps.components.filter((c) => geometrySupported(c, et) && !c.layer && !c.thin && c.profile.opticalDepthKnown).map((c) => c.name);
+    if (dark.length) out.warnings.push(`${b.name} rings: reflectance not measured for ${dark.join(', ')} → absorption only where geometry is valid, covered material hatched as not measured`);
     const outside = Object.values(comps.phaseFunctions).filter((t) => !phaseValue(t, alphaDeg)).map((t) => t.name);
     if (outside.length) out.warnings.push(`${b.name} rings: phase angle ${alphaDeg.toFixed(2)}° outside the measured range of ${outside.join('; ')} → that light not measured (hatched)`);
   } else if (!m) out.warnings.push(`${b.name} rings: reflectance not measured → rings absorb and cast shadows only; their material is hatched as not measured`);

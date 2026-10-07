@@ -224,7 +224,7 @@ describe.skipIf(!hasComponents)('ring components: real light-stage products', ()
     const m = rings!['799'].components!.value!;
     const narrow = m.components.slice(0, 10);
     expect(narrow).toHaveLength(10);
-    let known = 0, unknown = 0;
+    let known = 0, unknown = 0, invalidDraws = 0;
     for (let j = 0; j <= 100; j++) {
       const et = window.startEt + (window.endEt - window.startEt) * j / 100;
       const records = packComponentRecords(packComponents(m), et);
@@ -235,8 +235,8 @@ describe.skipIf(!hasComponents)('ring components: real light-stage products', ()
         expect((records[k * CMP_RECORD_VEC4 * 4 + 15] & 16) === 0).toBe(supported);
         for (let lon = 0; lon < 720; lon++) {
           const b = bandAt(m, c, lon * Math.PI / 360, et);
-          if (b) { expect(b.W).toBeGreaterThan(0); expect(supported).toBe(true); known++; }
-          else { unknown++; if (!supported) expect(b).toBeNull(); }
+          if (b) { if (!(b.W > 0) || !supported) invalidDraws++; known++; }
+          else { unknown++; }
         }
         if (!supported) {
           const single = { ...m, components: [c] };
@@ -250,6 +250,8 @@ describe.skipIf(!hasComponents)('ring components: real light-stage products', ()
         }
       }
     }
+    expect(invalidDraws).toBe(0);
+    expect(known + unknown).toBe(101 * 720 * 10);
     console.log(`Uranus manifest-window geometry: ${known} valid, ${unknown} unknown samples`);
   });
 
@@ -272,6 +274,35 @@ describe.skipIf(!hasComponents)('ring components: real light-stage products', ()
       expect(out.unknownCoverage).toBe(1);
       expect(packComponentRecords(packComponents(single), et)[15] & 16).toBe(16);
     }
+  });
+
+  it('retains valid γ geometry but rejects fitted crossings even inside the observation span', () => {
+    const m = rings!['799'].components!.value!;
+    const c = m.components.find((c) => c.id === 'uranus-gamma')!;
+    const v = c.geometryValidity!;
+    const single = { ...m, components: [c] }, ts = [componentTable(c)];
+    let valid = 0, crossed = 0;
+    for (let j = 0; j <= 100; j++) {
+      const et = v.startEt + (v.endEt - v.startEt) * j / 100;
+      for (let lon = 0; lon < 720; lon++) {
+        const lam = lon * Math.PI / 360, t = (et - m.epochEt) / DAY_S;
+        const ri = edgeRadius(c.inner, lam, t), ro = edgeRadius(c.outer, lam, t);
+        const b = bandAt(m, c, lam, et);
+        if (ro > ri) { expect(b!.W).toBeCloseTo(ro - ri, 9); valid++; }
+        else {
+          crossed++;
+          expect(b).toBeNull();
+          const out = componentsIF(single, ts, (ri + ro) / 2, lam, et, 1, 0.5, 0.5, true, 5);
+          expect(out.iof).toEqual([0, 0, 0, 0]);
+          expect(out.tau).toBe(0);
+          expect(out.unknownCoverage).toBeGreaterThan(0);
+          expect(componentsTransmission(single, ts, (ri + ro) / 2, lam, et, 1, 0.5)).toBe(1);
+        }
+      }
+    }
+    expect(valid).toBeGreaterThan(0);
+    expect(crossed).toBeGreaterThan(0);
+    console.log(`γ observation-support geometry: ${valid} valid, ${crossed} crossed samples`);
   });
 
   it.each([599, 799, 899])('system %i is estimated, packs without truncation, and is withheld at Strict', (id) => {
@@ -302,6 +333,11 @@ describe.skipIf(!hasComponents)('ring components: real light-stage products', ()
         expect(sb.rings?.components).toBe(m);
         expect(sb.rings?.et).toBe(m.epochEt);
         expect(prepareRings(sb, [1, 1, 1, 1], 1000, 1e-5).draw?.cmp?.packed.count).toBe(m.components.length);
+        const unsupported = m.components.find((c) => c.geometryValidity);
+        if (unsupported) {
+          sb.rings!.et = unsupported.geometryValidity!.endEt + 1;
+          expect(prepareRings(sb, [1, 1, 1, 1], 1000, 1e-5).warnings.join(' ')).toContain('geometry not measured at this time');
+        }
       }
     }
   });

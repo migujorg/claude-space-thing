@@ -70,7 +70,7 @@ def test_moving_geometry_has_sourced_support_span(built, key):
         assert c["provenance"]["geometry"]["value"]["geometryValidity"] == validity
 
 
-def test_uranus_widths_over_actual_manifest_window(built):
+def test_uranus_support_is_independent_of_actual_manifest_window(built):
     import json
     import os
     from pathlib import Path
@@ -79,15 +79,11 @@ def test_uranus_widths_over_actual_manifest_window(built):
         pytest.skip("manifest not built: actual time window unavailable")
     window = json.loads(manifest.read_text())["window"]
     model = _model(built[1], "799")
-    lon = np.arange(0.0, 360.0, 0.5)
     for c in model["components"][:10]:
         span = c["geometryValidity"]
-        for et in np.linspace(window["startEt"], window["endEt"], 101):
-            raw = rc.edge_radius(c["outer"], lon, (et - model["epochEt"]) / rc.DAY) - \
-                  rc.edge_radius(c["inner"], lon, (et - model["epochEt"]) / rc.DAY)
-            # Unsupported epochs and nonpositive widths have no physical geometry to draw.
-            drawn = (span["startEt"] <= et <= span["endEt"]) & (raw > 0)
-            assert np.all(raw[drawn] > 0), c["id"]
+        # The build window must not redefine the source's support. Runtime width/draw gating is tested by
+        # app/tests/render-ring-components.test.ts against this actual manifest, including zero light/extinction.
+        assert span != window
         assert span["startEt"] == rings_uranus.GEOMETRY_VALIDITY["startEt"]
         assert span["endEt"] == rings_uranus.GEOMETRY_VALIDITY["endEt"]
 
@@ -241,7 +237,7 @@ def test_neptune_arc_drift_from_voyager(built):
 
 
 def test_neptune_arc_brightness_vs_earlier_epochs(built):
-    """Fraternité in 2016 (the profile shown at all times) vs 71 ± 10 m (2007, Renner et al. 2014): within 2σ."""
+    """Fraternité's 2016 profile (estimated at other supported dates) vs 71 ± 10 m in 2007: within 2σ."""
     peak = built[2]["899-components"]["arc_peak_ks_m"]
     assert abs(peak - 71.0) < 2 * math.hypot(10.0, 18.0)
 
