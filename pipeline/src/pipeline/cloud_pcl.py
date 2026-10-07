@@ -54,8 +54,9 @@ P17_CITATION = ("Platnick, S., Meyer, K. G., King, M. D., Wind, G., Amarasinghe,
                 "on Geoscience and Remote Sensing 55, 502-525. doi:10.1109/TGRS.2016.2610522.")
 
 # Platnick et al., MODIS C6/C6.1 Cloud Optical Properties User Guide, §1.1.2, p. 5: θ0 < 81.36°.
-# https://modis-images.gsfc.nasa.gov/_docs/C6MOD06OPUserGuide.pdf
-# The transcribed MODIS population retains this source domain; it is not the VIIRS layer's day limit.
+# https://atmosphere-imager.gsfc.nasa.gov/sites/default/files/ModAtmo/MODISCloudOpticalPropertyUserGuideFinal_v1.1_1.pdf
+# Pincus et al. (2023) §2.1/Table 1 reports 81.3731° for COSP. Neither guide value filters this
+# already-aggregated histogram; this MODIS guide value is not the VIIRS layer's day limit.
 MODIS_COP_DAY_SZA_MAX_DEG = 81.36
 
 IMAGE_SIZE = (2067, 2518)              # width, height of Fig. 7's raster
@@ -240,9 +241,10 @@ def table(ctx) -> tuple[dict, str]:
                     "distribution is assumed for them.",
                     "One month (July 2021), global, MODIS rather than VIIRS (the continuity algorithm is designed to "
                     "match); no regional dependence.",
-                    f"Heritage MODIS optical retrieval daytime domain: SZA < {MODIS_COP_DAY_SZA_MAX_DEG}° "
-                    "(MODIS C6/C6.1 Cloud Optical Properties User Guide §1.1.2, p. 5). The histogram is transcribed "
-                    "as published; the VIIRS CLDPROP layer's separate 80° day limit does not refilter it.",
+                    f"The heritage MODIS optical guide states SZA < {MODIS_COP_DAY_SZA_MAX_DEG}° "
+                    "(MODIS C6/C6.1 Cloud Optical Properties User Guide §1.1.2, p. 5); Pincus et al. (2023) "
+                    "§2.1/Table 1 reports 81.3731° for COSP. The histogram is transcribed as published; "
+                    "the VIIRS CLDPROP layer's separate day limit does not refilter it.",
                     "A partly cloudy pixel's τ is retrieved as if the pixel were overcast, so it is the plane-parallel "
                     "τ that reproduces the pixel's mean reflectance: the right quantity to spread over the whole "
                     "sample."],
