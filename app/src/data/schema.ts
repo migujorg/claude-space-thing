@@ -793,10 +793,16 @@ export interface SurfaceLevelInfo {
  * 'relative-reflectance': XYZS normal reflectance relative to its disk mean (albedo layers).
  * 'height': metres above the reference ellipsoid. 'photometric-parameters': model constants per texel.
  * Earth only (all dated, float16 with NaN = unknown per channel):
- * 'cloud-properties': [cloudFraction, opticalThickness, cloudTopHeightM, iceFraction] of one day's daytime overpass;
- * 'cloud-optical-thickness-moments' (layer 'cloudTau', the same samples): [tauRetrievedFraction, lnTauMoment1,
- * lnTauMoment2, iceTauFraction], per-sample averages (exact at every level): meanLnTau = m1 / f, varLnTau =
- * m2 / f − meanLnTau², ice share = iceTauFraction / f; cloudFraction − f is cloud without an optical thickness;
+ * 'cloud-properties' (layer 'clouds'): [cloudFraction, opticalThickness, cloudTopHeightM, iceFraction] of a mosaic of
+ * one UTC day's 13:30 local hours (`epoch.mosaic`: 15° strips one hour apart, a 24-hour cut at 150° W); cloudFraction
+ * counts every cloud class of the source, opticalThickness and iceFraction are of the cloud with a measured thickness;
+ * 'cloud-optical-thickness-moments' (the same cells): [tauRetrievedFraction, lnTauMoment1, lnTauMoment2,
+ * iceTauFraction], area-weighted sums (exact at every level): meanLnTau = m1 / f, varLnTau = m2 / f − meanLnTau²,
+ * ice share = iceTauFraction / f. Two layers of this kind: 'cloudTau' holds the cloud whose thickness was retrieved
+ * from sunlight (label derived; Strict), 'cloudTauEstimated' that cloud together with the cloud whose thickness is
+ * the provider's estimate (label estimated; bound in its place at Best and Complete, app/extras.ts;
+ * `constants.geometricTest` says which cells). cloudFraction − f of the layer in use is cloud of unmeasured
+ * thickness at that level: drawn as not measured, never given a statistic;
  * 'emitted-radiance': [dnbRadiance (nW cm⁻² sr⁻¹), censoredFraction]; `constants.toXYZS` converts to luminance;
  * 'surface-water': [waterFraction, seaIceFraction] (where the renderer adds Fresnel reflection and glint);
  * 'surface-wind': [windSpeed10mAscending, windSpeed10mDailyMean, passes] in m/s at 10 m (for the Cox & Munk glint
@@ -886,6 +892,25 @@ export interface SurfaceLayerHeader {
     observed?: string;
     changes?: string;
     perFilter?: Record<string, { start: string; end: string }>;
+    /** Earliest and latest observation of the layer's samples (ISO UTC), where the layer is a mosaic of moments. */
+    observedSpan?: { earliest: string; latest: string };
+    /**
+     * Earth's cloud layers: a mosaic of moments, not one. Each longitude comes from the hourly file nearest
+     * `localSolarHour` of one UTC day: strips `stripWidthDeg` wide, hard cuts `hoursBetweenNeighbourStrips` apart,
+     * and a cut of `dayCut.hours` at `dayCut.lonDeg`. Per strip: the file's UTC hour, its longitudes, the satellites
+     * with their cell counts and observation times (seconds from the file's nominal hour) and the cells per class.
+     */
+    mosaic?: {
+      what: string;
+      localSolarHour: number;
+      stripWidthDeg: number;
+      hoursBetweenNeighbourStrips: number;
+      dayCut: { lonDeg: number; hours: number; what: string };
+      cuts: string;
+      strips: { fileHourUtc: number; lonWest: number; lonEast: number; referenceTime: string;
+        sources: Record<string, { cells: number; secondsFromNominal: [number, number] | null }>; cells: Record<string, number> }[];
+      secondsFromNominalHour: { geostationary: [number, number] | null; polarOrbiter: [number, number] | null };
+    };
   };
   /**
    * Albedo layers: how the texels were normalized so that the cos²φ-weighted disk average is 1 per channel

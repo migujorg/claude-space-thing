@@ -164,7 +164,7 @@ export async function buildDataScene(p: URLSearchParams): Promise<TestScene> {
     const pos = mul(toObs, -dist);
     const toSun = mul(bf(sLat, sLon), AU_KM);
     const I: Mat3 = [1, 0, 0, 0, 1, 0, 0, 0, 1];
-    const [albedo, clouds, water, night, wind, cloudTau] = await Promise.all(['albedo', 'clouds', 'water', 'night', 'wind', 'cloudTau'].map((l) => layer(`surfaces/399/${l}.json`)));
+    const [albedo, clouds, water, night, wind, cloudTau, cloudTauEstimated] = await Promise.all(['albedo', 'clouds', 'water', 'night', 'wind', 'cloudTau', 'cloudTauEstimated'].map((l) => layer(`surfaces/399/${l}.json`)));
     const off = (k: string) => p.get(k) === '0';
     const atmFile = off('atm') ? null : await json<AtmosphereFile>('atmospheres.json');
     const atmBody = atmFile?.bodies['399'];
@@ -172,7 +172,8 @@ export async function buildDataScene(p: URLSearchParams): Promise<TestScene> {
       surface: {
         albedo: off('map') ? undefined : albedo,
         clouds: off('clouds') ? undefined : clouds,
-        cloudTau: off('clouds') || off('cloudtau') ? undefined : cloudTau,
+        // estimated=0: the measured thickness alone (as at Strict); else the layer with the provider's estimates, as at Best.
+        cloudTau: off('clouds') || off('cloudtau') ? undefined : off('estimated') ? cloudTau : cloudTauEstimated ?? cloudTau,
         // unmeasured=0: the cloud without a retrieval stays unknown (as at Strict).
         cloudTauUnmeasured: off('clouds') || off('cloudtau') || off('unmeasured') ? undefined : unmeasuredTauPopulation(cloudTau?.header) ?? undefined,
         water: off('water') ? undefined : water,
