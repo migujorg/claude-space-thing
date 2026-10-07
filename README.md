@@ -11,21 +11,23 @@ You need [uv](https://docs.astral.sh/uv/getting-started/installation/) (it fetch
 powershell -ExecutionPolicy Bypass -File .\run.ps1        # Windows
 ```
 
-The script checks the machine (`pipeline doctor`), builds the data with the **standard** profile, installs the app's packages and opens the app at http://localhost:5173. Pass `minimal` or `full` to choose another profile, e.g. `./run.sh full`. Nothing is committed but code: the first build downloads everything from the data archives and takes hours (table below). It can be interrupted at any time. Run the same command again and it resumes: finished stages are kept and interrupted downloads continue where they stopped. If a stage fails (a host is down, say), the others still build, the app starts with what exists, and the next run retries only what is missing. When everything is up to date, a later run starts the app within a minute.
+The script checks the machine (`pipeline doctor`), builds the data with the **standard** profile, installs the app's packages and opens the app at http://localhost:5173. The rendering scripts start their own server on `127.0.0.1` at a free port and never use 5173 unless explicitly pointed at the app with `--base` ([why](app/e2e/README.md#the-scripts-own-server)). Pass `minimal` or `full` to choose another profile, e.g. `./run.sh full`. Nothing is committed but code: the first build downloads everything from the data archives and takes hours (table below). It can be interrupted at any time. Run the same command again and it resumes: finished stages are kept and interrupted downloads continue where they stopped. If a stage fails (a host is down, say), the others still build, the app starts with what exists, and the next run retries only what is missing. When everything is up to date, a later run starts the app within a minute.
 
 In the app press `?` for keys. Click anything to see its provenance; `X` cycles the reality level (Strict / Best estimate / Complete), `V` toggles naked-eye vs enhanced view, `/` searches. `E` opens Moments: eclipses, Galilean-moon phenomena, Saturn's ring-plane crossings, oppositions and elongations, and near-Earth-object approaches inside the data window, computed by the app from the loaded ephemerides, each with a "go there" camera and its provenance.
 
+With the full data, the app also draws Earth’s airglow and aurora, Titan’s Huygens-based haze, and the giant planets’ rings. Best estimate and Complete admit the estimated ring components, including Uranus’s current-date constant-width estimates; Strict uses the measured occultation profiles, with unknown reflectance marked as such. Complete adds synthetic Centaurs and irregular moons of Jupiter and Saturn. Sources and remaining gaps are in [`docs/milestones.md`](docs/milestones.md#resumed-work-landed-on-rc-by-2026-10-07).
+
 ## Build profiles
 
-The data is built by `cd pipeline && uv run python -m pipeline build --profile <name>` (the run scripts do this). A profile chooses which stages run and at what size, never what a product means. Products it leaves out are simply absent, and the app says so in its Data panel (`M`).
+The data is built by `cd pipeline && uv run python -m pipeline build --profile <name>` (the run scripts do this). The pipeline has 14 stages. A profile chooses which stages run and at what size, never what a product means. Products it leaves out are simply absent, and the app says so in its Data panel (`M`).
 
 | profile | cold download | kept in data/raw | disk needed | products | cold build | forced rebuild | stages |
 |---|---|---|---|---|---|---|---|
 | minimal | 2.2 GB | 2.1 GB | 2.6 GB | 0.2 GB | 31 min | 2 min | time, ephemeris, light, bodies, stars |
-| standard | 49 GB | 8.2 GB | 20 GB | 3.1 GB | 4.1 h | 81 min | all; surfaces.maxLevel=3, shapes.damit=false |
-| full | 51 GB | 8.2 GB | 23 GB | 6.2 GB | 4.2 h | 83 min | all |
+| standard | 49 GB | 8.4 GB | 20 GB | 3.1 GB | 4.2 h | 82 min | all; surfaces.maxLevel=3, shapes.damit=false |
+| full | 51 GB | 8.4 GB | 23 GB | 6.2 GB | 4.3 h | 84 min | all |
 
-- **minimal**: the Sun, planets, all 459 moons, rings, atmospheres and the naked-eye star field. It has no surface maps, shape models, small bodies, deep stars or diffuse sky.
+- **minimal**: the Sun, planets, all 460 moons, rings, atmospheres and the naked-eye star field. It has no surface maps, shape models, small bodies, deep stars, diffuse sky or nightglow.
 - **standard**: everything. Surface maps stop at pyramid level 3 (4096 × 2048 texels; the Moon at 2.7 km per texel), and the DAMIT collection of asteroid lightcurve models is left out.
 - **full**: everything at the sources' full resolution.
 
@@ -49,11 +51,12 @@ Per stage (`python -m pipeline costs` prints this table; the numbers live in `pi
 | bodies | 40 MB | 40 MB | 40 MB | 1 MB | < 1 min | < 1 min |  |
 | smallbodies | 1.6 GB | 1.6 GB | 2.0 GB | 0.2 GB | 18 min | 3 min | JPL SBDB is queried one request at a time, as JPL asks |
 | sbphotometry | 2 MB | 2 MB | 2 MB | < 1 MB | < 1 min | < 1 min |  |
-| synthetic | 30 MB | 30 MB | 0.2 GB | 0.1 GB | 2 min | 1 min |  |
+| synthetic | 0.1 GB | 0.1 GB | 0.3 GB | 0.1 GB | 2 min | 2 min | includes the 0.11 GB Centaur-model archive (Zenodo) of Kurlander et al. 2025 |
 | comets | 20 MB | 20 MB | 50 MB | 2 MB | 5 min | 5 min | propagates every comet with M1/K1 day by day through the window; a few Horizons queries |
 | stars | 0.9 GB | 0.9 GB | 1.0 GB | 24 MB | 20 min | 1 min | XP spectra of the 440 702 selected sources by source_id (207 queries on ARI's Gaia TAP, 0.6 GB); stars.xpSource=bulk streams all 114 GB of ESA's bulk files instead |
 | deepstars | 22 GB | 1.1 GB | 3.0 GB | 0.8 GB | 85 min | 4 min | 192 Gaia archive queries (1.0 GB) + XP spectra of 15.3 M sources (3158 queries, 21 GB, reduced on the fly, 0.5 GB cache; ~55 min at 4 queries at a time); fetched again if data/cache is deleted |
 | sky | 0.1 GB | 0.1 GB | 0.2 GB | 40 MB | 30 min | 2 min | 96 all-sky aggregation queries on the Gaia archive (10-19 min per 48); 18 MB of corona papers and sunspot-number files |
+| nightglow | 0.1 GB | 0.1 GB | 0.1 GB | 6 MB | 4 min | 1 min | PALACE airglow model (2.7 MB), OVATION Prime coefficients (57 MB), OMNI 2 solar wind, IGRF-14, papers; field-line tracing of the magnetic grid takes most of the time |
 
 Useful commands (in `pipeline/`, prefixed with `uv run python -m pipeline`):
 

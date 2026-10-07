@@ -6,8 +6,10 @@ Remote archive query speed and request limits can still determine build time.
 
 Run `./run-workstation.sh` to resume the full-resolution build and then serve
 the app at http://localhost:5173. `SKIP_BUILD=1 ./run-workstation.sh` serves
-existing data immediately. Eight Gaia XP workers are used within the existing
-archive host limits. The original run.sh remains available.
+existing data immediately. Rendering scripts start their own Vite server on
+`127.0.0.1` at a free port and never use 5173 unless given the app’s address
+with `--base` ([why](app/e2e/README.md#the-scripts-own-server)). Eight Gaia XP
+workers are used within the existing archive host limits. The original run.sh remains available.
 The workstation runner schedules four independent stage processes concurrently,
 starting every ready stage as its dependencies finish. Each worker has its own
 SPICE state and build context; one coordinator merges successful results and
@@ -16,8 +18,8 @@ all worker/prefetch processes, and destination leases prevent duplicate or
 overlapping downloads of the same raw file. The download ledger already uses
 cross-process locking.
 
-An additional 24-worker prefetch process downloads independent Moon, Mars,
-Pluto/Charon, and shape inputs while stages compute. Its status is in
+The separate `scripts/workstation_prefetch.py` helper uses 24 workers to download
+independent Moon, Mars, Pluto/Charon, and shape inputs while stages compute. Its status is in
 data/cache/prefetch-status.json; stage status is in data/cache/parallel-status.json.
 Stage logs are under data/cache/parallel/<run timestamp>/.
 
@@ -88,11 +90,13 @@ keep the build and server alive independently of the terminal. Check them with
 `systemctl --user status space-thing-build space-thing-app` and follow the setup
 log with `tail -f data/cache/logs/workstation-setup.log`.
 
-After a reboot, restore all five services from their existing checkpoints with
+After a reboot, restore the app and resumable workers from their checkpoints with
 `pipeline/.venv/bin/python scripts/resume-workstation.py`. This also restores
 the independent bulk download queue, spectrum reduction, and bandwidth controller.
 The services survive terminal closure but are transient and must be restored
 after a reboot. The script leaves services that are already active running.
+Its completed-build shortcut still requires exactly 13 stages; the pipeline now has 14, so the
+current full manifest does not select its app-only recovery path.
 
 The DAMIT export is pinned to the official October 4 snapshot; the prior
 September 30 URL is no longer published and returned HTTP 404.
