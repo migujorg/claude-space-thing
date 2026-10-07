@@ -46,7 +46,8 @@ def test_capabilities_reuses_the_pinned_snapshot(tmp_path, monkeypatch, build_da
 
 
 @pytest.mark.parametrize("build_day", ["2026-10-04", "2027-01-15"])
-def test_mcd43_search_uses_the_pinned_day_and_granules(tmp_path, monkeypatch, build_day):
+@pytest.mark.parametrize("drift", ["id", "band_url", "day"])
+def test_mcd43_search_uses_the_pinned_day_and_granules(tmp_path, monkeypatch, build_day, drift):
     _clock(monkeypatch, build_day)
     items = [{"id": f"MCD43A4.A2026257.h{i:03d}.061.processing",
               "properties": {"datetime": "2026-09-14T00:00:00Z"},
@@ -55,20 +56,30 @@ def test_mcd43_search_uses_the_pinned_day_and_granules(tmp_path, monkeypatch, bu
     identity = [(f["id"], [f["assets"][b]["href"] for b, _ in se.MCD_BANDS]) for f in items]
     digest = hashlib.sha256(json.dumps(identity, separators=(",", ":")).encode()).hexdigest()
     monkeypatch.setattr(se, "MCD_GRANULES_SHA256", digest, raising=False)
-    p = tmp_path / "items.json"
-    p.write_text(json.dumps({"features": items, "links": []}))
+    # A service may change pagination and ordering without changing the granule selection.
+    p, second = tmp_path / "items.json", tmp_path / "items-2.json"
+    p.write_text(json.dumps({"features": list(reversed(items[:125])),
+                            "links": [{"rel": "next", "href": "https://example.org/page2"}]}))
+    second.write_text(json.dumps({"features": list(reversed(items[125:])), "links": []}))
     calls = []
     def fetch(url, subdir, name, **kwargs):
-        calls.append((name, kwargs.get("params")))
-        return p
+        calls.append((url, name, kwargs.get("params")))
+        return second if url == "https://example.org/page2" else p
     monkeypatch.setattr(se, "fetch", fetch)
     doy, selected, paths = se.mcd43_items()
-    assert doy == "A2026257" and selected == items and paths == [p]
-    assert calls == [("stac-A2026257-0.json", {"collections": se.MCD_COLLECTION,
-                     "datetime": "2026-09-14T00:00:00Z", "limit": "1000"})]
-    # A reprocessed granule of the same day must not silently change the input.
-    items[0]["id"] += "-reprocessed"
-    p.write_text(json.dumps({"features": items, "links": []}))
+    assert doy == "A2026257" and selected == items and paths == [p, second]
+    assert calls == [(se.PC_STAC, "stac-A2026257-0.json", {"collections": se.MCD_COLLECTION,
+                     "datetime": "2026-09-14T00:00:00Z", "limit": "1000"}),
+                     ("https://example.org/page2", "stac-A2026257-1.json", None)]
+    # A different processing stamp, asset, or observation day must fail closed.
+    if drift == "id":
+        items[0]["id"] += "-reprocessed"
+    elif drift == "band_url":
+        items[0]["assets"][se.MCD_BANDS[0][0]]["href"] += "-reprocessed"
+    else:
+        items[0]["properties"]["datetime"] = "2026-09-15T00:00:00Z"
+    p.write_text(json.dumps({"features": items[:125],
+                            "links": [{"rel": "next", "href": "https://example.org/page2"}]}))
     with pytest.raises(ValueError, match="granule pin"):
         se.mcd43_items()
 
