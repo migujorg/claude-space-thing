@@ -325,13 +325,28 @@ def _g(v, d=4):
     return "—" if v is None or not math.isfinite(v) else f"{v:.{d}g}"
 
 
+def rendered_by(run: dict) -> str:
+    """Which WebGPU adapter rendered the run and on what machine, when the runner recorded them (scripts/validate.mjs
+    `gpu` and `host`; runs before that option were SwiftShader and say nothing)."""
+    gpu, host = run.get("gpu"), run.get("host")
+    if not gpu:
+        return ""
+    a = gpu.get("adapter") or {}
+    name = " ".join(x for x in (a.get("vendor"), a.get("architecture")) if x) or "unnamed adapter"
+    kind = {"swiftshader": "SwiftShader (software WebGPU)", "hardware": "the machine's GPU"}.get(gpu.get("mode"),
+                                                                                                 str(gpu.get("mode")))
+    where = f", on {host['cpu']} ({host['threads']} threads)" if host and host.get("cpu") else ""
+    return f", rendered by {kind}, adapter `{name}`{where}"
+
+
 def run_section(run: dict, interpretation: str) -> str:
     """§7: the renderer's run (`npm run validate`, app/shots/validation/report.json): Y per ROI and the verdicts."""
     o = run["options"]
+    cmd = "cd app && npm run validate" + (" -- --gpu hardware" if (run.get("gpu") or {}).get("mode") == "hardware" else "")
     L = ["## 7. The renderer against the cases\n",
          f"Run of {run['generatedAt'][:16].replace('T', ' ')} UTC (git {run.get('git')}, data built "
          f"{(run.get('dataGeneratedAt') or '?')[:16].replace('T', ' ')}), reality level {o['reality']}, "
-         f"{o['ss']} × {o['ss']} samples per pixel: `cd app && npm run validate` (the full table, with X, Z, S, is in "
+         f"{o['ss']} × {o['ss']} samples per pixel{rendered_by(run)}: `{cmd}` (the full table, with X, Z, S, is in "
          "`app/shots/validation/report.md`). Y in cd/m²; the verdict covers X, Y, Z and S (failing channels named).",
          "", "| case | ROI | expected Y ± 2σ | rendered Y | rendered / expected | σ | verdict |", "|---|---|---|---|---|---|---|"]
     tally = {True: 0, False: 0, None: 0}

@@ -18,6 +18,7 @@ import { chromium } from 'playwright';
 import { createServer } from 'vite';
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { cpus } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { adapterLabel, encodePng, gpuLaunchArgs, gpuMismatch, pageAdapterInfo } from './e2e-lib.mjs';
@@ -130,6 +131,8 @@ const report = {
   dataGeneratedAt,
   options: { ss, reality, hdr: opt('hdr') ?? 'auto' },
   gpu,
+  // The machine that rendered: docs/reports/validation.md §7 names it in its run line (SwiftShader runs on the CPU).
+  host: { cpu: cpus()[0]?.model ?? null, threads: cpus().length },
   dataMissing,
   consoleErrors,
   doc: 'docs/reports/validation.md (the cases), app/e2e/README.md (this runner)',

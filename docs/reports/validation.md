@@ -618,7 +618,7 @@ These offsets are the missions' attitude-knowledge errors plus ours; the fits th
 
 ## 7. The renderer against the cases
 
-Run of 2026-09-30 22:03 UTC (git 228cc84, data built 2026-09-30 22:01), reality level best, 1 × 1 samples per pixel: `cd app && npm run validate` (the full table, with X, Z, S, is in `app/shots/validation/report.md`). Y in cd/m²; the verdict covers X, Y, Z and S (failing channels named).
+Run of 2026-10-05 01:45 UTC (git b3c6e09, data built 2026-10-05 01:44), reality level best, 1 × 1 samples per pixel, rendered by SwiftShader (software WebGPU), adapter `google swiftshader`, on AMD Ryzen 9 9950X3D 16-Core Processor (32 threads): `cd app && npm run validate` (the full table, with X, Z, S, is in `app/shots/validation/report.md`). Y in cd/m²; the verdict covers X, Y, Z and S (failing channels named).
 
 | case | ROI | expected Y ± 2σ | rendered Y | rendered / expected | σ | verdict |
 |---|---|---|---|---|---|---|
@@ -628,20 +628,20 @@ Run of 2026-09-30 22:03 UTC (git 228cc84, data built 2026-09-30 22:01), reality 
 | `callisto-nh-lorri-2007` | disk-integrated | 64.85 ± 3.8 | 52.6 | 0.811 | -6.4 | **fail** (XYS) |
 | `callisto-nh-lorri-2007` | sky-near | ≤ 1.197 | 0 | — | — | pass |
 | `callisto-nh-lorri-2007` | sky-far | ≤ 0.2372 | 0 | — | — | pass |
-| `earth-himawari9-2026` | disk-centre | 4678 ± 6e+02 | 9707 | 2.075 | +16.9 | **fail** (XYZS) |
-| `earth-himawari9-2026` | limb | 6411 ± 7.7e+02 | 6347 | 0.990 | -0.2 | pass |
-| `earth-himawari9-2026` | terminator | 2169 ± 2.3e+02 | 1228 | 0.566 | -8.2 | **fail** (XYZS) |
-| `earth-himawari9-2026` | near-centre-130E | 6032 ± 6.3e+02 | 7544 | 1.251 | +4.8 | **fail** (XYZS) |
-| `earth-himawari9-2026` | near-centre-150E | 2.274e+04 ± 2.5e+03 | 2.758e+04 | 1.213 | +3.8 | **fail** (XYS) |
-| `earth-himawari9-2026` | near-centre-141E-12S | 4779 ± 6.2e+02 | 5770 | 1.207 | +3.2 | **fail** (XYZS) |
+| `earth-himawari9-2026` | disk-centre | 4678 ± 6e+02 | 6878 | 1.470 | +7.4 | **fail** (XYZS) |
+| `earth-himawari9-2026` | limb | 6411 ± 7.7e+02 | 6410 | 1.000 | -0.0 | **fail** (Z) |
+| `earth-himawari9-2026` | terminator | 2169 ± 2.3e+02 | 1230 | 0.567 | -8.2 | **fail** (XYZS) |
+| `earth-himawari9-2026` | near-centre-130E | 6032 ± 6.3e+02 | 7789 | 1.291 | +5.6 | **fail** (XYZS) |
+| `earth-himawari9-2026` | near-centre-150E | 2.274e+04 ± 2.5e+03 | 2.295e+04 | 1.009 | +0.2 | pass |
+| `earth-himawari9-2026` | near-centre-141E-12S | 4779 ± 6.2e+02 | 6495 | 1.359 | +5.6 | **fail** (XYZS) |
 | `earth-himawari9-2026` | sky-near | ≤ 12.88 | 0.0006613 | — | — | pass |
 | `earth-himawari9-2026` | sky-far | ≤ 43.94 | 0 | — | — | pass |
-| `earth-moon-epoxi-2008` | earth-disk-integrated | 1616 ± 1.6e+02 | 1726 | 1.068 | +1.4 | pass |
+| `earth-moon-epoxi-2008` | earth-disk-integrated | 1616 ± 1.6e+02 | 1515 | 0.938 | -1.2 | pass |
 | `earth-moon-epoxi-2008` | moon-disk-integrated | 164.1 ± 17 | 153 | 0.933 | -1.3 | pass |
-| `earth-moon-epoxi-2008` | earth-centre | 3260 ± 4.8e+02 | 3296 | 1.011 | +0.1 | pass |
+| `earth-moon-epoxi-2008` | earth-centre | 3260 ± 4.8e+02 | 3004 | 0.921 | -1.1 | pass |
 | `earth-moon-epoxi-2008` | sky-near | ≤ 183.6 | 0 | — | — | pass |
 | `earth-moon-epoxi-2008` | sky-far | — | 0 | — | — | not compared |
-| `earth-moon-epoxi-2008` | moon-disk-integrated / earth-disk-integrated | 0.1016 ± 0.0014 | 0.08865 | — | — | **fail** (XYS) |
+| `earth-moon-epoxi-2008` | moon-disk-integrated / earth-disk-integrated | 0.1016 ± 0.0014 | 0.101 | — | — | pass |
 | `europa-nh-lorri-2007` | disk-centre | 721.1 ± 43 | 651.6 | 0.904 | -3.2 | **fail** (XY) |
 | `europa-nh-lorri-2007` | limb | 843.4 ± 48 | 754 | 0.894 | -3.8 | **fail** (XY) |
 | `europa-nh-lorri-2007` | terminator | 219.9 ± 44 | 166.3 | 0.756 | -2.4 | **fail** (XY) |
@@ -696,8 +696,8 @@ Run of 2026-09-30 22:03 UTC (git 228cc84, data built 2026-09-30 22:01), reality 
 **39 pass, 25 fail, 5 not compared.** How each body was drawn:
 
 * `callisto-nh-lorri-2007`: Callisto: disk photometry, disk model rotation-slices-v1, spatial model, map albedo.
-* `earth-himawari9-2026`: Earth: disk photometry, map albedo, map clouds, map water, map night, map wind, atmosphere.
-* `earth-moon-epoxi-2008`: Earth: disk photometry, map albedo, map clouds, map water, map night, map wind, atmosphere; Moon: disk photometry, disk model rolo-v1, map albedo, map height, map photometry.
+* `earth-himawari9-2026`: Earth: disk photometry, map albedo, map clouds, map cloudTau, map water, map night, map wind, partly-cloudy τ statistic for the cloud without a retrieval (estimated), atmosphere.
+* `earth-moon-epoxi-2008`: Earth: disk photometry, map albedo, map clouds, map cloudTau, map water, map night, map wind, partly-cloudy τ statistic for the cloud without a retrieval (estimated), atmosphere; Moon: disk photometry, disk model rolo-v1, map albedo, map height, map photometry.
 * `europa-nh-lorri-2007`: Europa: disk photometry, disk model rotation-slices-v1, spatial model, map albedo.
 * `ganymede-nh-lorri-2007`: Ganymede: disk photometry, disk model rotation-slices-v1, spatial model, map albedo.
 * `io-nh-lorri-2007`: Io: disk photometry, disk model rotation-slices-v1, spatial model, map albedo.
