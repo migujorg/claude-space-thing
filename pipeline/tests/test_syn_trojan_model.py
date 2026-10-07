@@ -98,3 +98,12 @@ def test_inactive_resonant_models_are_explained_by_product_without_changing_draw
         table = ss.hilda_model() if pop == 'hilda' else ss.trojan_model()
         assert table['source']['id'] in syn._pop_sources(pop)
     assert 'Vokrouhlický' not in res['populations']['mainbelt']['extra']['method']
+
+
+def test_inactive_citations_use_product_date_format_without_losing_retrieval_instant():
+    for table in (ss.hilda_model(), ss.trojan_model()):
+        rec = ss.inactive_resonant_source(table)
+        assert rec.retrieved == '2026-10-07'
+        assert table['source']['retrieved'] in rec.notes
+        assert 'no fitted parameters used' in rec.notes
+        assert rec.sha256 == table['source']['sha256']

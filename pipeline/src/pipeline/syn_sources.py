@@ -17,6 +17,7 @@ import json
 import pickle
 import re
 import zipfile
+from datetime import datetime
 from pathlib import Path
 
 import numpy as np
@@ -222,6 +223,16 @@ RESONANT_MODEL_NOTES = {
 }
 
 
+def inactive_resonant_source(table: dict) -> SourceRecord:
+    """Citation only; product retrieval dates use YYYY-MM-DD, research retains the instant."""
+    source = dict(table["source"])
+    instant = source["retrieved"]
+    source["retrieved"] = datetime.fromisoformat(instant).date().isoformat()
+    return SourceRecord(**source, notes="Reviewed published bias-corrected model, inactive: "
+                        "cited only to explain missing inputs; no fitted parameters used in the synthetic draw. "
+                        f"Research retrieval instant: {instant}.")
+
+
 def register(ctx: BuildContext) -> dict[str, str]:
     """Fetch every download and add its SourceRecord; returns {download id: source id}."""
     from .photometry.moons import GRAV       # irregular-moon albedos (transcribed by the light stage)
@@ -233,8 +244,7 @@ def register(ctx: BuildContext) -> dict[str, str]:
     for table in (hilda_model(), trojan_model()):
         # Local audited publication metadata; do not introduce a download or claim
         # the paper's population parameters were used by the stage.
-        rec = SourceRecord(**table["source"], notes="Reviewed published bias-corrected model, inactive: "
-                           "cited only to explain missing inputs; no fitted parameters used in the synthetic draw.")
+        rec = inactive_resonant_source(table)
         out[rec.id] = ctx.add_source(rec)
     return out
 
