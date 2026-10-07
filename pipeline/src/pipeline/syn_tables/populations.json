@@ -49,5 +49,92 @@
   "gMinusRText": "'a color of (g - r) = 0.70, corresponding to the mean (g - r) color of our full CFEPS sample' (Sec. 2, arXiv v1 p. 4, lines 72-73).",
   "transformation": {"source": "jester-2005-sdss", "text": "Table 1, all stars with R-I < 1.15: V = g - 0.59 (g - r) - 0.01 (rms 0.01).", "k": 0.59, "c": -0.01},
   "note": "V - g = -(0.59 (g - r) + 0.01) = -0.423 for the mean CFEPS colour. The CFEPS g is MegaCam g'; the star-based SDSS transformation is applied to it as is (a difference of order 0.1 mag, below the model's own H precision)."
+ },
+ "irregularMoons": {
+  "_about": "Debiased populations of the irregular (outer) moons of the giant planets below the completeness of the discovery surveys. The known moons and their absolute magnitudes H_V are the Minor Planet Center's Natural Satellites Ephemeris Service elements (planet-barycentric osculating elements, ecliptic J2000; H is V band, as Ashton et al. 2025 Sec. 4.1 state). Each model is a luminosity function in the survey's own band and apparent magnitude; it is put on the MPC H_V scale with an offset measured on the survey's own detections of known moons (the median of H_MPC - m over the calibrators tabulated below; robust sigma from the median absolute deviation), which absorbs the observing geometry, the phase angle and the colour. Orbit distribution: no published debiased orbit model exists for irregular moons; the stage uses the (a, e, i) of the known moons brighter than the completeness limit (an assumption, labelled in the products), as the catalogue-extrapolated asteroid populations do.",
+  "jupiter": {
+   "naifId": 5, "moonClass": "retrograde", "classRule": "inclination to the ecliptic > 90 deg",
+   "model": {
+    "source": "ashton-2020-jupiter", "band": "r",
+    "kind": "power-law segment between two anchored cumulative counts",
+    "magRange": [24.0, 25.7], "nBright": 160, "nBrightSigma": 60, "nFaint": 600, "nFaintFactor": 2.0, "alpha": 0.29, "alphaSigma": 0.15,
+    "text": "Retrograde jovian irregulars: '160 +- 60 retrograde jovian moons with m_r < 24' and '600 retrograde jovian irregulars (within a factor of 2) down to 25.7th magnitude' (Sec. 3.5); differential luminosity function of the debiased detections from m_r = 23.75 to 25.75 with alpha = 0.29 +- 0.15 (Sec. 3.4, abstract); characterisation limit (50% detection efficiency) m_r = 25.7 (Sec. 3.1). The model here: 440 = 600 - 160 moons between m_r 24.0 and 25.7, distributed as dN/dm ~ 10^(0.29 m). Prograde jovian irregulars are not in this model (the paper debiases the retrograde population only)."
+   },
+   "calibration": {
+    "source": "ashton-2020-jupiter", "band": "r", "table": "Table 1 (characterised detections with a known designation)",
+    "moons": [["Hermippe", 21.8], ["Erinome", 22.4], ["S/2003 J 16", 22.8], ["J59", 23.2], ["J52", 23.6], ["J69", 23.8], ["J51", 24.2]],
+    "note": "'J59' etc. are the MPC numbers (Jupiter LIX, LII, LXIX, LI). S/2003 J 16 and Jupiter LXIX were identified off their nominal positions (table note)."
+   },
+   "completenessStatement": {"source": "sheppard-2024-uranus-neptune", "text": "'Jupiter's outer satellites are complete to about 2 km' (Sec. 1, citing Sheppard et al. 2023; albedo 0.1). Not used as a number: the limit is found by comparing the catalogue with the model."},
+   "aEdgesAu": [0.04, 0.30, 0.01]
+  },
+  "saturn": {
+   "naifId": 6, "moonClass": "all", "classRule": "every outer irregular moon",
+   "model": {
+    "source": "ashton-2021-saturn", "band": "w",
+    "kind": "power law anchored at the faint end",
+    "magRange": [25.7, 26.3], "nFaint": 150, "nFaintSigma": 30, "q": 4.9, "qPlus": 0.7, "qMinus": 0.6,
+    "text": "'we estimate that there are 150 +- 30 moons down to D = 2.8 km' (abstract; Sec. 3.5: the deep sample, m_w = 26.3); 'differential power-law index q = 4.9 (+0.7 -0.6)' fitted to the debiased deep detections 'from D = 3.8 km down to 2.8 km (m_w = 25.7-26.3)' (Sec. 3.6). With one albedo for all moons, D ~ 10^(-m/5), so N(<m) ~ 10^(alpha m) with alpha = (q - 1)/5 = 0.78."
+   },
+   "calibration": {
+    "source": "ashton-2021-saturn", "band": "w", "table": "Tables 1 and 2 (characterised detections with a known designation; Phoebe excluded: saturated, approximate magnitude)",
+    "moons": [["Paaliaq", 21.6], ["Erriapus", 23.4], ["S/2004 S 32", 24.9], ["S/2004 S 25", 25.1], ["Greip", 25.3], ["Skoll", 25.4], ["Fenrir", 25.5], ["S/2004 S 23", 25.8], ["S/2004 S 12", 26.1], ["S/2004 S 21", 26.1], ["Farbauti", 26.2],
+              ["Ymir", 22.2], ["Kiviuq", 22.3], ["Ijiraq", 23.2], ["Suttungr", 24.5], ["Mundilfari", 24.5], ["Narvi", 24.6], ["Bebhionn", 24.6], ["Kari", 24.6], ["S/2007 S 2", 25.0], ["Loge", 25.1], ["Aegir", 25.2], ["S/2004 S 27", 25.2], ["S/2004 S 35", 25.2], ["Hati", 25.3], ["S/2004 S 26", 25.4], ["Fornjot", 25.5], ["S/2004 S 38", 25.5], ["S/2004 S 29", 25.6], ["S/2006 S 3", 25.7], ["S/2004 S 20", 25.7], ["S/2004 S 34", 26.2]],
+    "note": "Moons numbered since 2021 appear in the MPC list under their number only; those designations do not match and are not used."
+   },
+   "completenessStatement": {"source": "ashton-2021-saturn", "text": "'the irregular moons of Saturn are very likely fully complete down to D = 5 km and nearly fully complete down to D = 3.5 km' (Sec. 3.4, in 2021). Sheppard et al. (2024, Sec. 1): 'Saturn to about 3 km'. Not used as a number."},
+   "aEdgesAu": [0.04, 0.30, 0.01]
+  },
+  "uranus": {
+   "naifId": 7, "moonClass": "all", "classRule": "every outer irregular moon",
+   "model": null,
+   "noModel": "No debiased population fainter than the completeness limit is published: Sheppard et al. (2005) fit q = 1.8 +- 0.3 only for radii > 7 km, where their survey is complete, and Sheppard et al. (2024) report discoveries but no population estimate ('we expect many more smaller satellites exist, but current surveys have not gone deep enough', Sec. 5). The layer does not extrapolate beyond a measured range, so it adds no Uranian irregular moons.",
+   "calibration": {"source": "sheppard-2024-uranus-neptune", "band": "r", "table": "abstract (discovery magnitudes)", "moons": [["S/2023 U 1", 26.6]]},
+   "completenessStatement": {"source": "sheppard-2024-uranus-neptune", "band": "r", "mag": 26.5, "diameterKm": 8, "albedo": 0.1, "text": "'The outer satellites of Uranus should be nearly complete to about 26.5 mags, corresponding to satellites of about 8 km in diameter assuming albedos of 0.1' (Sec. 2.2); earlier: m_R = 26.1 at 50% detection efficiency, radius ~7 km for albedo 0.04 (Sheppard et al. 2005, abstract)."},
+   "aEdgesAu": [0.02, 0.40, 0.01]
+  },
+  "neptune": {
+   "naifId": 8, "moonClass": "all", "classRule": "every outer irregular moon",
+   "model": null,
+   "noModel": "No debiased population fainter than the completeness limit is published (Sheppard et al. 2006 limit only; Sheppard et al. 2024 report discoveries but no population estimate). The layer adds no Neptunian irregular moons.",
+   "calibration": {"source": "sheppard-2024-uranus-neptune", "band": "r", "table": "abstract (discovery magnitudes)", "moons": [["S/2021 N 1", 26.9], ["S/2002 N 5", 25.9]]},
+   "completenessStatement": {"source": "sheppard-2024-uranus-neptune", "band": "r", "mag": 27.0, "diameterKm": 14, "albedo": 0.1, "text": "'the outer satellites of Neptune should be nearly complete to about 27 mags, corresponding to satellites of about 14 km in diameter assuming albedos of 0.1' (Sec. 2.1); earlier: m_R = 25.8 at 50% detection efficiency, radius ~17 km for albedo 0.04 (Sheppard et al. 2006, abstract)."},
+   "aEdgesAu": [0.02, 0.60, 0.02]
+  },
+  "albedo": {
+   "source": "grav-2015", "table": "Table 3 (p. 7 of arXiv:1505.07820v1): NEOWISE thermal-model visible albedo, per cent (Phoebe: the first of its two fits, as the light stage)",
+   "pVPercent": {
+    "jupiter": [["Pasiphae", 4.4, 0.6], ["Sinope", 4.2, 0.6], ["Carme", 3.5, 0.6], ["Ananke", 3.8, 0.6], ["Callirrhoe", 5.2, 1.6], ["Kalyke", 2.9, 1.4], ["Praxidike", 2.9, 0.6]],
+    "saturn": [["Phoebe", 10.0, 0.5], ["Albiorix", 6.2, 2.8], ["Siarnaq", 5.0, 1.7]]
+   },
+   "text": "Measured visible albedos of real irregular moons of the same planet and class: the seven retrograde jovians NEOWISE measured (Ashton et al. 2020 use 0.04, 'the average retrograde jovian albedo from Grav et al. 2015'); for Saturn, Phoebe, Albiorix and Siarnaq (Ashton et al. 2025 take their median, 0.06). Kalyke and Praxidike, Albiorix and Siarnaq come from stacked W3 or W4 detections only."
+  },
+  "colour": "No machine-readable colours of irregular moons are transcribed (photometry stage, grav-2015 note); a synthetic irregular moon is grey (the solar colour), as the real irregular moons are drawn."
+ },
+ "centaurs": {
+  "definition": {"qMinAu": 5.2, "aMaxAu": 30.0, "text": "Perihelion beyond Jupiter (q > 5.2 au) and a < 30 au, the region of the model population in the archive below (its members span q 5.200-29.4 au, a 5.37-30.0 au) and of Kurlander et al. (2025, Sec. 1.2: 'q > 5.2 au; a < 30 au as defined by the Minor Planet Center')."},
+  "archive": {
+   "source": "kurlander-2025-archive", "file": "Survey-Debiasing-1.0.1/literature_states_keps_and_H.pkl",
+   "contents": "(states, keps, H): states (N, 7) = heliocentric x, y, z [au], vx, vy, vz [au/day], apparent magnitude m; keps = (a [au], e, i [deg], argument of perihelion [deg], node [deg], M); H = H_r. N = 856 822.",
+   "selection": {"mMin": 21.0, "mMax": 23.5, "text": "'We apply our selection function to the model Centaurs in the parameter space in which our debiasing objects were distributed (our debiasing zone of 21 < m < 23.5)' (Kurlander et al. 2025 Sec. 4.4)."},
+   "modelSize": 26116868, "modelSizeText": "'n_literature_obs = 26116868 # Size of the original population (including m < 21, m > 23.5)' (archive notebook).",
+   "text": "The literature Centaur model of Kurlander et al. (2025 Sec. 4.4): the orbital distribution of the Nesvorny et al. (2019) dynamical model (extending Nesvorny & Vokrouhlicky 2016) combined with the Lawler et al. (2018) absolute-magnitude distribution, H drawn independently of the orbit. The archive keeps only the members with 21 < m < 23.5. Undoing that selection exactly: a member with distance modulus d = m - H is kept with probability P(d) = F(23.5 - d) - F(21 - d), F the H distribution's cumulative fraction, so weighting each member by 1/P(d) recovers the whole model (Horvitz-Thompson); the stage checks that the weights sum to modelSize."
+  },
+  "hLaw": {
+   "source": "kurlander-2025-centaurs", "band": "r", "alphaBright": 0.9, "alphaFaint": 0.4, "hBreak": 7.7, "hMax": 13.7,
+   "text": "'the absolute magnitude distribution for the scattered disk and Centaurs from Lawler et al. (2018), in which a knee power law transitions from a slope of alpha_bright = 0.9 to a slope of alpha_faint = 0.4 at H = 7.7, and is restricted to H < 13.7' (Sec. 4.4). Read as a differential law dN/dH ~ 10^(alpha H), continuous at the knee: the archive's H values, at fixed distance modulus, follow it (the stage checks this)."
+  },
+  "normalization": {
+   "source": "kurlander-2025-centaurs", "nBelowHr": 21400, "plus": 3400, "minus": 2800, "hrMax": 13.7,
+   "text": "'estimate an intrinsic population of 21,400 (+3,400 -2,800) Centaurs with H_r < 13.7' (abstract; Sec. 4.4: binomial estimate from 44 debiasing-zone discoveries with p = 0.209% of the selected literature population).",
+   "crossCheck": {"source": "nesvorny-2019-ossos-centaurs", "n": 21000, "sigma": 8000, "text": "'The population of Centaurs is estimated to be 21,000 +- 8,000 for D > 10 km' (abstract; H_r < 13.7 for a 6% albedo, a < 30 au, q > 7.5 au)."}
+  },
+  "colour": {
+   "source": "murtagh-2025-lsst-centaurs", "gMinusR": {"Bienor-like (less red)": 0.56, "Pholus-like (red)": 1.00}, "fraction": {"Bienor-like (less red)": 0.75, "Pholus-like (red)": 0.25},
+   "text": "LSST g - r of the model Centaurs from the reflectance spectra of (54598) Bienor and (5145) Pholus (Table 2), in the 3:1 less-red:red ratio of Wong & Brown (2017) (Sec. 2.3.3). Mean g - r = 0.67; V - r = 0.41 (g - r) - 0.01 (Jester et al. 2005, as for the Kuiper belt) = 0.265: H_V = H_r + 0.265. The LSST g and r filters are taken as SDSS g and r (a difference of order 0.02 mag)."
+  },
+  "angles": {"source": "murtagh-2025-lsst-centaurs", "text": "'As the output angular elements are uncorrelated with each other, and in order to avoid clustering of the orbits, the angular elements omega, Omega, and M are randomized U[0, 360)' (Sec. 2.3.1). The stage does the same: (a, e, i) from the reweighted model, angles uniform."},
+  "realizationSeed": "centaur-realization-v1",
+  "realizationText": "One realization of the model: 21 400 members with H_r < 13.7 (the normalization), each with (a, e, i) drawn from the archive's members with probability proportional to 1/P(d) (systematic resampling), H_r from the knee law by inverse transform, angles uniform. PCG64 seeded from sha256(realizationSeed): fixed, independent of the catalogue and of the stage seed (the model, like the NEO and Kuiper-belt realizations, is a fixed input)."
  }
 }

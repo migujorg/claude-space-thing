@@ -291,3 +291,12 @@ export const CAT02 = {
   dOffset: 42,
   dWidth: 92,
 } as const;
+
+/**
+ * Display P3 primaries: SMPTE EG 432-1:2010, Digital Source Processing — Color Processing for D-Cinema.
+ * CSS Color Module Level 4 §10.4 (predefined display-p3): DCI-P3 primaries, D65 white, sRGB transfer curve.
+ */
+export const DISPLAY_P3 = { r: [0.68, 0.32] as [number, number], g: [0.265, 0.69] as [number, number], b: [0.15, 0.06] as [number, number] };
+
+/** Hunt–Pointer–Estevez XYZ → LMS. Hunt (2004), The Reproduction of Colour, 6th ed.; Fairchild (2013), Color Appearance Models, 3rd ed., ch. 12, The Hunt model. */
+export const XYZ_TO_HPE = [0.38971, 0.68898, -0.07868, -0.22981, 1.1834, 0.04641, 0, 0, 1] as const;

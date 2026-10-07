@@ -1,8 +1,7 @@
 """Audit manifest-listed JSON, without opening binary catalogues or surface tiles.
 
-Known failures are exact (product, JSON path, rule) entries, never path globs.
-Each has a strict xfail: fixing it requires removing its entry. A second test
-rejects every unlisted violation, including other violations at a known path.
+Every inline provenance value must use the canonical Sourced envelope.
+Only the explicitly named binary/header metadata shapes are excluded.
 """
 
 from __future__ import annotations
@@ -139,45 +138,6 @@ def _product_violations(product, root, source_ids, counts):
                 yield Violation(product, path, issue)
 
 
-# Inline physical payloads must use Sourced; unlike the metadata above, their
-# values live in JSON. These entries identify existing writer bugs, not waivers.
-# Populated only from the disk audit, with a reason and stable name per path.
-def _known(product, path, name, reason):
-    return pytest.param(Violation(product, path, "missing-value"), id=name,
-                        marks=pytest.mark.xfail(strict=True, reason=reason))
-
-
-# Catalogue row ids from the audited 2026-10-04 product. Enumerated, never
-# discovered from the current build: a new row or changed schema must be reviewed.
-KNOWN_COMET_ROWS = (
-    "1", "7", "9", "11", "12", "15", "16", "24", "25", "29", "31", "33", "34",
-    "44", "45", "46", "49", "50", "62", "74", "79", "82", "87", "88", "90",
-    "93", "96", "98", "108", "110", "121", "127", "138", "511", "512", "518",
-    "520", "528", "552", "1152", "1157", "1163", "1170", "1171", "1174",
-    "1179", "1188", "1190", "1210", "1216",
-)
-COMET_ROW_REASON = ("stages/comets.py:280-282 emits inline per-comet composition ratios "
-                    "beside label/sources without the required Sourced.value envelope")
-COMET_MODEL_REASON = ("stages/comets.py:237-267 emits an inline physical model payload "
-                      "beside label/sources without the required Sourced.value envelope")
-KNOWN_FAILURES = (
-    *(_known("comets/list.json", ("measured", row), f"comet-measured-row-{row}", COMET_ROW_REASON)
-      for row in KNOWN_COMET_ROWS),
-    _known("comets/model.json", ("waterFromMagnitude",), "comet-water-law", COMET_MODEL_REASON),
-    _known("comets/model.json", ("composition",), "comet-population-composition", COMET_MODEL_REASON),
-    _known("comets/model.json", ("gFactors",), "comet-g-factors", COMET_MODEL_REASON),
-    _known("comets/model.json", ("bandRatiosToC2",), "comet-band-ratios", COMET_MODEL_REASON),
-    _known("comets/model.json", ("haser",), "comet-haser-model", COMET_MODEL_REASON),
-    _known("comets/model.json", ("oxygen",), "comet-oxygen-model", COMET_MODEL_REASON),
-    _known("comets/model.json", ("coPlus",), "comet-co-plus-model", COMET_MODEL_REASON),
-    _known("comets/model.json", ("solarWind",), "comet-solar-wind", COMET_MODEL_REASON),
-    _known("comets/model.json", ("grains",), "comet-grain-model", COMET_MODEL_REASON),
-    _known("surfaces/399/cloudTau.json", ("constants", "unmeasuredTau"), "earth-unmeasured-cloud-tau",
-           "surf_earth.py:_unmeasured_tau returns an inline estimated population statistic "
-           "beside label/sources without the required Sourced.value envelope"),
-)
-
-
 @pytest.fixture(scope="module")
 def audit():
     manifest = OUT / "manifest.json"
@@ -204,17 +164,7 @@ def audit():
 
 def test_no_unlisted_product_provenance_violations(audit):
     _, violations = audit
-    known = {entry.values[0] for entry in KNOWN_FAILURES}
-    unexpected = violations - known
-    assert not unexpected, "Unlisted provenance violations:\n" + "\n".join(sorted(map(str, unexpected)))
-
-
-@pytest.mark.parametrize("violation", KNOWN_FAILURES)
-def test_known_product_provenance_violation(audit, violation):
-    products, violations = audit
-    if violation.product not in products:
-        pytest.skip(f"known violation's product is not in this build: {violation.product}")
-    assert violation not in violations, str(violation)
+    assert not violations, "Provenance violations:\n" + "\n".join(sorted(map(str, violations)))
 
 
 @pytest.mark.parametrize("value, rule", [

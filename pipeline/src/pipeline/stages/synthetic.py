@@ -10,11 +10,17 @@ and numbers: docs/reports/synthetic-populations.md):
   hilda     3.7 <= a < 4.2 au, q >= 1.3 au: the same, slope of Terai & Yoshida (2018)
   trojan    5.05 <= a < 5.35 au: the same, slope of Yoshida & Terai (2017)
   tno       a >= 30 au: the CFEPS L7 Kuiper-belt model realization (H_g <= 8.5 -> H_V <= 8.08)
+  centaur   q > 5.2 au, 5.35 <= a < 30 au: one realization of the Kurlander et al. (2025) Centaur model (Nesvorny et al.
+            2019 orbits, Lawler et al. 2018 H law, 21 400 with H_r < 13.7), reweighted for the archive's selection
+  irregular-<planet>  the irregular moons of Jupiter (retrograde; Ashton et al. 2020), Saturn (Ashton et al. 2021),
+            Uranus and Neptune (no published population below their completeness limits: none added); orbit
+            distribution of the known moons (MPC), planet-barycentric elements (pipeline/syn_outer.py)
 
 Products:
   synthetic/objects.bin/.json  one record per synthetic object: osculating heliocentric ecliptic-J2000 elements at
-                               the small-body epoch (smallbodies/core.json epochEt), H, p_V, rotation period, colour
-                               class, the cell it fills and its place in that cell's stream. Every attribute is
+                               the small-body epoch (smallbodies/core.json epochEt; irregular moons: elements about
+                               their planet-system barycentre, header populations[].center), H, p_V, rotation period,
+                               colour class, the cell it fills and its place in that cell's stream. Every attribute is
                                labelled `synthetic`.
   synthetic/cells.bin/.json    one record per cell: box, completeness limit, model and known counts, deficit, seed
                                inputs, how many synthetic objects it shows and where they start in objects.bin.
@@ -38,6 +44,7 @@ from pathlib import Path
 import numpy as np
 
 from .. import syn_model as sm
+from .. import syn_outer as so
 from .. import syn_sources as ss
 from ..download import sha256_file
 from ..ephem_kernels import planetary
@@ -46,12 +53,13 @@ from ..paths import OUT
 from ..sb_table import LABEL_CODE, Field, read_table, write_table
 from ..schema import BuildContext
 
-DEPENDS: tuple[str, ...] = ("smallbodies",)
+DEPENDS: tuple[str, ...] = ("smallbodies", "bodies")
 STAGE = "synthetic"
 DIR = "synthetic"
 REPORT = Path(__file__).resolve().parents[4] / "docs" / "reports" / "synthetic-populations.json"
 FIGURE = REPORT.parent / "img" / "synthetic-h-distributions.svg"
 DIAGNOSTIC = REPORT.parent / "img" / "synthetic-diagnostic-known-vs-synthetic.png"
+OUTER_DIAGNOSTIC = REPORT.parent / "img" / "synthetic-diagnostic-centaurs-moons.png"
 J2000_JD = 2451545.0
 DAY = 86400.0
 AU_KM = 149597870.7                      # IAU 2012 Resolution B2
@@ -66,7 +74,12 @@ PARAMS = {
     "hFloor": {"mainbelt": 20.0, "hungaria": 20.0},
     "minTemplates": {"albedo": 200, "rotation": 50},
 }
-POP_CODES = {"neo": 0, "hungaria": 1, "mainbelt": 2, "hilda": 3, "trojan": 4, "tno": 5}
+POP_CODES = {"neo": 0, "hungaria": 1, "mainbelt": 2, "hilda": 3, "trojan": 4, "tno": 5, "centaur": 6,
+             "irregular-jupiter": 7, "irregular-saturn": 8, "irregular-uranus": 9, "irregular-neptune": 10}
+MOONS = {"irregular-jupiter": "jupiter", "irregular-saturn": "saturn", "irregular-uranus": "uranus",
+         "irregular-neptune": "neptune"}
+CENTAUR_A = (5.35, 30.0)                 # above the Trojan grid's upper edge, below the Kuiper-belt grid
+CENTAUR_Q_MIN = 5.2
 _MB_GRID = dict(e_width=0.05, i_width=2.5, n_e=14, n_i=36)
 GRIDS = {
     "neo": sm.Grid(sm.uniform_edges(0.25, 4.25, 0.25), 0.1, 10.0, 10, 18),
@@ -76,7 +89,17 @@ GRIDS = {
     "trojan": sm.Grid(sm.uniform_edges(5.05, 5.35, 0.02), **_MB_GRID),
     "tno": sm.Grid(sm.uniform_edges(30.0, 50.0, 1.0) + sm.uniform_edges(50.0, 100.0, 5.0)[1:]
                    + (125.0, 150.0, 175.0, 200.0) + sm.uniform_edges(200.0, 800.0, 100.0)[1:], 0.1, 5.0, 10, 18),
+    "centaur": sm.Grid((CENTAUR_A[0],) + sm.uniform_edges(6.0, CENTAUR_A[1], 1.0), 0.1, 5.0, 9, 36),
 }
+
+
+def moon_grid(spec: dict) -> sm.Grid:
+    """Planet-barycentric (a, e, i, H) cells of an irregular-moon population: a in au (table aEdgesAu = lo, hi, step),
+    e bins of 0.1, i bins of 5 deg over 0-180."""
+    lo, hi, step = spec["aEdgesAu"]
+    return sm.Grid(sm.uniform_edges(lo, hi, step), 0.1, 5.0, 10, 36)
+
+
 # Region over which C of H_lim(a) is fitted (Hendler & Malhotra 2020, Table 1 regions).
 FIT_RANGE = {"hungaria": (1.78, 2.0), "mainbelt": (2.12, 3.25), "hilda": (3.92, 4.004), "trojan": (5.095, 5.319)}
 ANGLES = {"hungaria": "uniform", "mainbelt": "uniform", "hilda": "hilda", "trojan": "trojan"}
@@ -106,12 +129,21 @@ def _floors(tab: dict, p: dict) -> dict[str, float]:
         "trojan": round(sfd["jupiterTrojans"]["validHr"][1] + sfd["jupiterTrojans"]["vMinusR"], 3),
         "tno": round(8.5 + v_minus_g, 3),   # L7: H_g <= 8.5 (model page)
         "mainbelt": mb_max, "hungaria": mb_max,
+        "centaur": round(tab["centaurs"]["hLaw"]["hMax"] + centaur_v_minus_r(tab), 3),   # the model's H_r < 13.7
     }
+    # irregular moons: the faint end of each planet's model, set in build() (it depends on the MPC calibration)
     for k, v in p.get("hFloor", {}).items():
         if k in ("mainbelt", "hungaria") and v > mb_max:
             raise ValueError(f"hFloor.{k} = {v}: beyond the measured slope range (H_V <= {mb_max})")
+        if k == "centaur" and v > f["centaur"]:
+            raise ValueError(f"hFloor.centaur = {v}: beyond the model's range (H_V <= {f['centaur']})")
         f[k] = float(v)
     return f
+
+
+def centaur_v_minus_r(tab: dict) -> float:
+    """V - r of the model Centaurs (Murtagh et al. 2025 colours, Jester et al. 2005 transformation)."""
+    return so.centaur_colour(tab["centaurs"])[1]
 
 
 # ---------------------------------------------------------------------------------------------- catalogue
@@ -131,7 +163,8 @@ def load_catalogue(root: Path = OUT / "smallbodies") -> dict:
     ok = ~comet & np.isfinite(el["a"]) & np.isfinite(H)
     ph, phys = read_table(root / "physical.json")
     return {"header": hdr, "mu": mu, "obliquity": obl, "a": el["a"] / AU_KM, "e": el["e"], "i": el["i"],
-            "node": el["node"], "peri": el["peri"], "M": el["M"], "H": H, "ok": ok, "colorClass": core["colorClass"],
+            "node": el["node"], "peri": el["peri"], "M": el["M"], "H": H, "ok": ok, "comet": comet,
+            "colorClass": core["colorClass"],
             "diameterFromH": core["diameterFromH"].astype(np.float64), "physHeader": ph, "phys": phys,
             "coreSha256": sha256_file(root / "core.bin"), "physSha256": sha256_file(root / "physical.bin")}
 
@@ -147,7 +180,16 @@ def population_masks(cat: dict) -> dict[str, np.ndarray]:
             "hilda": ok & (q >= Q_MIN_AU) & (a >= 3.7) & (a < 4.2),
             "trojan": ok & (q >= Q_MIN_AU) & (a >= 5.05) & (a < 5.35),
             "tno": ok & (a >= 30.0),
+            "centaur": ok & (q > CENTAUR_Q_MIN) & (a >= CENTAUR_A[0]) & (a < CENTAUR_A[1]),
         }
+
+
+def centaur_comets(cat: dict) -> int:
+    """Catalogued comets in the Centaur region (q > 5.2 au, a < 30 au; e.g. 29P): discovered, but without a nuclear H
+    they cannot be placed in an H bin, so they are not counted in the conditioning (reported)."""
+    with np.errstate(invalid="ignore"):
+        q = cat["a"] * (1.0 - cat["e"])
+        return int(np.sum(cat["comet"] & np.isfinite(cat["a"]) & (q > CENTAUR_Q_MIN) & (cat["a"] < CENTAUR_A[1])))
 
 
 def _known(cat: dict, m: np.ndarray) -> sm.Known:
@@ -256,11 +298,35 @@ def attributes(pop: str, a: np.ndarray, H: np.ndarray, u_pv: np.ndarray, u_rot: 
     return {"pV": pv, "colorClass": cc, "diameter": D, "rotPeriod": per}
 
 
+GREY = 255      # colorClass of an object without a class: drawn in the solar colour (grey)
+
+
+def moon_albedo_templates(tab: dict) -> dict[str, np.ndarray]:
+    """Measured visible albedos of real irregular moons per planet (Grav et al. 2015 Table 3, NEOWISE), sorted (ties
+    by name) for quantile draws."""
+    return {planet: np.array([p / 100.0 for p, _ in sorted((p, n) for n, p, _ in rows)])
+            for planet, rows in tab["irregularMoons"]["albedo"]["pVPercent"].items()}
+
+
+def moon_attributes(planet: str, H: np.ndarray, u_pv: np.ndarray, templates: dict[str, np.ndarray]) -> dict:
+    """p_V: a quantile draw from the measured albedos of real irregular moons of the planet; colour: grey (no class;
+    no irregular-moon colours are transcribed); rotation period: unknown (NaN)."""
+    t = templates.get(planet)
+    if t is None or t.size == 0:
+        if H.size:
+            raise ValueError(f"no measured albedos of irregular moons of {planet}")
+        t = np.array([np.nan])
+    pv = t[np.minimum((u_pv * t.size).astype(np.int64), t.size - 1)] if H.size else np.zeros(0)
+    return {"pV": pv, "colorClass": np.full(H.size, GREY, dtype=np.int64), "diameter": sm.diameter_km(H, pv),
+            "rotPeriod": np.full(H.size, np.nan)}
+
+
 # ---------------------------------------------------------------------------------------------- populations
 def build(cat: dict, p: dict | None = None, *, only: tuple[str, ...] | None = None, granvik: np.ndarray | None = None,
-          l7: tuple | None = None) -> dict:
+          l7: tuple | None = None, moons: dict[str, list[dict]] | None = None,
+          centaur_archive: dict[str, np.ndarray] | None = None, bodies: list[dict] | None = None) -> dict:
     """Every population (or `only` some): cells, objects and diagnostics. Pure given its inputs (tests call it on
-    modified catalogues)."""
+    modified catalogues, or with `moons` = MPC rows per planet with some moons removed)."""
     p = p or params()
     tab = ss.tables()
     floors = _floors(tab, p)
@@ -270,6 +336,24 @@ def build(cat: dict, p: dict | None = None, *, only: tuple[str, ...] | None = No
     sfd = tab["sfd"]
     pops = only or tuple(POP_CODES)
     res: dict = {"floors": floors, "seed": seed, "populations": {}}
+    if any(x in MOONS for x in pops):
+        moons = moons if moons is not None else {MOONS[x]: ss.read_natsats(MOONS[x]) for x in pops if x in MOONS}
+        bodies = bodies if bodies is not None else json.loads((OUT / "bodies.json").read_text(encoding="utf-8"))
+        templates = moon_albedo_templates(tab)
+        gm = {q["naifId"]: q["gm"] for q in cat["header"]["forceModel"]["perturbers"]}
+        res["moonRows"] = moons
+        for pop in pops:
+            if pop in MOONS:
+                t0 = time.time()
+                r = moon_population(pop, moons[MOONS[pop]], tab, p, templates, bodies, gm)
+                r["seconds"] = round(time.time() - t0, 1)
+                res["populations"][pop] = r
+                floors[pop] = r["hFloor"]
+        pops = tuple(x for x in pops if x not in MOONS)
+        if not pops:
+            res["attributePools"] = {}
+            res["planets"] = None
+            return _order(res)
     fits: dict = {}
     hlim_of: dict = {}
     for pop in ("hungaria", "mainbelt", "hilda", "trojan"):
@@ -326,6 +410,21 @@ def build(cat: dict, p: dict | None = None, *, only: tuple[str, ...] | None = No
                 model_id = ss.GRANVIK.id
                 ang = G[:, 3:6]
                 extra = {"members": int(G.shape[0]), "hRange": [17.0, 25.0]}
+            elif pop == "centaur":
+                arch = centaur_archive if centaur_archive is not None else ss.read_centaur_archive()
+                ct = tab["centaurs"]
+                mem, cdiag = so.centaur_realization(arch, ct)
+                members = sm.Known(mem["a"], mem["e"], mem["i"], mem["H"])
+                model_id = f"{ss.KURLANDER_ARCHIVE.id}+{ss.KURLANDER.id}"
+                ang = np.stack([mem["node"], mem["peri"], mem["M"]], axis=1)
+                extra = {"members": int(mem["a"].size), "realization": cdiag, "hLawCheck": so.knee_check(arch, ct),
+                         "definition": ct["definition"]["text"], "gridARangeAu": list(CENTAUR_A),
+                         "normalization": {k: ct["normalization"][k] for k in ("nBelowHr", "plus", "minus", "hrMax", "source")},
+                         "crossCheck": ct["normalization"]["crossCheck"]["text"],
+                         "angles": ct["angles"]["text"],
+                         "cataloguedCometsNotCounted": centaur_comets(cat),
+                         "notModelled": "Centaurs with a < 5.35 au (inside the Trojan grid) and a >= 30 au (the Kuiper-belt "
+                                        "grid); the model has no members below a = 5.37 au."}
             else:
                 hdr, L, comp = l7 if l7 is not None else ss.read_l7()
                 kb = tab["kuiperBeltColour"]
@@ -365,7 +464,83 @@ def build(cat: dict, p: dict | None = None, *, only: tuple[str, ...] | None = No
             "distribution": _distribution(grid, known, hlim_exact, floors[pop], cells, objs["cell"], el["H"],
                                           members if pop not in ANGLES else None),
         }
+    return _order(res)
+
+
+def _order(res: dict) -> dict:
+    """Populations in POP_CODES order (the order of the cells and objects tables)."""
+    res["populations"] = {k: res["populations"][k] for k in POP_CODES if k in res["populations"]}
     return res
+
+
+def moon_population(pop: str, rows: list[dict], tab: dict, p: dict, templates: dict, bodies: list[dict],
+                    gm: dict[int, float]) -> dict:
+    """The irregular moons of one planet (syn_outer module docstring): the known moons (MPC) of the modelled class,
+    the model on the H_V scale, the completeness limit, the cells below it and their objects. Elements are
+    planet-barycentric osculating elements (ecliptic J2000) at epochEt with uniform angles."""
+    planet = MOONS[pop]
+    spec = tab["irregularMoons"][planet]
+    naif = spec["naifId"]
+    grid = moon_grid(spec)
+    retro = spec["moonClass"] == "retrograde"
+    sel = [r for r in rows if r["i"] > 90.0 or not retro]
+    known = sm.Known(*(np.array([r[k] for r in sel], dtype=np.float64) for k in ("a", "e", "i", "H")))
+    cal = so.calibrate(spec["calibration"]["moons"], rows)
+    model = so.moon_model(spec["model"], cal["offset"])
+    if model:
+        floor = float(p.get("hFloor", {}).get(pop, model.h_hi))
+        if floor > model.h_hi + 1e-9:
+            raise ValueError(f"hFloor.{pop} = {floor}: beyond the model's range (H_V <= {model.h_hi:.3f})")
+        hlim, lim_rows = so.moon_limit(known.H, model)
+        model_src = spec["model"]["source"]
+    else:
+        floor = spec["completenessStatement"]["mag"] + cal["offset"]
+        hlim, lim_rows = None, []
+        model_src = spec["completenessStatement"]["source"]
+    model_id = f"{ss.NATSATS[planet].id}+{model_src}"
+    if model and hlim is not None and hlim < floor:
+        cells, gobs, tdiag = so.template_cells(grid, known, known.H < hlim, model, hlim, floor)
+    else:
+        cells, gobs, tdiag = sm.cells_from_rows([]), {}, {"templateMoons": 0, "templateCells": 0}
+    tot = sm.condition(cells, gobs)
+    prefix = f"{sm.ALGORITHM}|{p['seed']}|{model_id}"
+    objs = sm.sample_extrapolated(grid, cells, sm.SlopeLaw(model.alpha if model else 0.0), 0.0, prefix)
+    node, peri, M = assign_angles("uniform", objs["u"], 0.0, {})
+    el = {"a": objs["a"], "e": objs["e"], "i": objs["i"], "node": node, "peri": peri, "M": M, "H": objs["H"]}
+    attrs = moon_attributes(planet, el["H"], objs["u_pv"], templates)
+    hlim_exact = np.full(grid.n_a, np.inf if hlim is None else hlim)
+    limit = {"method": "model-comparison",
+             "rule": "first H bin (bright to faint, inside the model's range) where the known moons of the class "
+                     "number fewer than model - 2 sqrt(model)" if model else "no model below the completeness limit",
+             "hLimV": hlim, "perBin": lim_rows, "calibration": cal,
+             "hLimPerABin": [None if hlim is None else round(hlim, 4)] * grid.n_a}
+    name = planet.capitalize()
+    extra = {
+        "planet": name, "moonClass": spec["moonClass"], "classRule": spec["classRule"],
+        "model": ({**model.to_json(), "text": spec["model"]["text"], "source": spec["model"]["source"]} if model
+                  else {"none": spec["noModel"]}),
+        "completenessStatement": spec["completenessStatement"],
+        "knownMoons": len(sel), "knownMoonsAllClasses": len(rows), "appBodies": so.match_bodies(rows, bodies, naif),
+        "orbitDistribution": "ASSUMPTION: no debiased orbit model of irregular moons is published. f(a, e, i) is that of "
+                             "the known moons of the class brighter than the limit (MPC osculating elements), in cells of "
+                             "0.01-0.02 au x 0.1 x 5 deg; a, e, i uniform inside a cell; node, argument of pericentre "
+                             "and mean anomaly uniform.",
+        "template": tdiag,
+        "albedo": {"templatesPV": templates.get(planet, np.zeros(0)).round(4).tolist(),
+                   "text": tab["irregularMoons"]["albedo"]["text"]},
+        "colour": tab["irregularMoons"]["colour"],
+        "motion": "fixed Kepler ellipse about the planet-system barycentre (GM of the system, naif-gm-de440). Neglected: "
+                  "the Sun's perturbation (secular precession of node and pericentre by a few degrees a year, and its "
+                  "short-period terms, a few per cent of a at these distances), the planet's oblateness and the other "
+                  "moons.",
+    }
+    center = {"naifId": naif, "name": f"{name} system barycentre", "gm": gm[naif], "gmSource": "naif-gm-de440"}
+    return {
+        "code": POP_CODES[pop], "modelId": model_id, "grid": grid, "cells": cells, "objects": {**el, **attrs},
+        "cellOf": objs["cell"], "k": objs["k"], "limit": limit, "extra": extra, "totals": tot, "hFloor": round(floor, 4),
+        "prefix": prefix, "knownInGrid": int(known.a.size), "hlim": hlim_exact, "center": center,
+        "distribution": _distribution(grid, known, hlim_exact, floor, cells, objs["cell"], el["H"], None),
+    }
 
 
 # ---------------------------------------------------------------------------------------------- stage
@@ -430,7 +605,11 @@ def run(ctx: BuildContext) -> None:
                     "'|round') / 2^64",
         "yieldRule": "shown = the first floor(deficit + u0) candidates of the cell's stream that pass its current "
                      "limits; a larger catalogue lowers the deficit and truncates the list from its end",
-        "frame": "heliocentric osculating elements, ecliptic and equinox J2000 (IAU 1976 obliquity to ICRF), at epochEt",
+        "frame": "heliocentric osculating elements, ecliptic and equinox J2000 (IAU 1976 obliquity to ICRF), at epochEt; "
+                 "populations with a `center` (irregular moons): osculating elements about that planet-system "
+                 "barycentre with mu = center.gm, same axes",
+        "grey": {"colorClass": GREY, "method": "colorClass 255: no class; the object is drawn in the solar colour "
+                                              "(grey), an assumption (irregular moons: no transcribed colours)"},
         "gmSun": cat["mu"], "obliquityArcsec": core_hdr["forceModel"]["obliquityArcsec"], "auKm": AU_KM,
         "slopeParameterG": {"value": SLOPE_G, "source": "bowell-1989",
                             "method": "The conventional slope parameter of the H-G law (Bowell et al. 1989), the value "
@@ -441,17 +620,17 @@ def run(ctx: BuildContext) -> None:
     }
     lab = "synthetic"
     ofields = [
-        Field("a", "f32", 1, {"unit": "au", "label": lab}), Field("e", "f32", 1, {"label": lab}),
+        Field("a", "f32", 1, {"unit": "au", "label": lab, "method": "semimajor axis (about the Sun; about the planet-system barycentre for populations with a center)"}), Field("e", "f32", 1, {"label": lab}),
         Field("i", "f32", 1, {"unit": "deg", "label": lab}), Field("node", "f32", 1, {"unit": "deg", "label": lab}),
         Field("peri", "f32", 1, {"unit": "deg", "label": lab, "method": "argument of perihelion"}),
         Field("M", "f32", 1, {"unit": "deg", "label": lab, "method": "mean anomaly at epochEt"}),
         Field("H", "f32", 1, {"unit": "mag", "label": lab, "method": "V-band absolute magnitude; G = 0.15 (Bowell et al. 1989 conventional value)"}),
-        Field("pV", "f32", 1, {"label": lab, "method": "quantile draw from the measured albedos of real objects of the same population near the same a (attributePools)"}),
-        Field("rotPeriod", "f32", 1, {"unit": "h", "label": lab, "method": "quantile draw from LCDB periods (U >= 2-) of real objects of similar diameter D = 1329 km / sqrt(pV) 10^(-H/5)"}),
+        Field("pV", "f32", 1, {"label": lab, "method": "quantile draw from the measured albedos of real objects of the same population near the same a (attributePools); irregular moons: of real irregular moons of the planet (Grav et al. 2015)"}),
+        Field("rotPeriod", "f32", 1, {"unit": "h", "label": lab, "method": "quantile draw from LCDB periods (U >= 2-) of real objects of similar diameter D = 1329 km / sqrt(pV) 10^(-H/5); NaN (unknown) for irregular moons"}),
         Field("cell", "u32", 1, {"method": "row in synthetic/cells.bin"}),
         Field("k", "u32", 1, {"method": "candidate number in the cell's stream (0-based; valid candidates only for model realizations, raw stream index for catalogue-extrapolated populations)"}),
         Field("pop", "u8", 1, {"method": "population code (header populations[].code)"}),
-        Field("colorClass", "u8", 1, {"label": lab, "method": "index into smallbodies/core.json colorClasses: the class of the albedo template"}),
+        Field("colorClass", "u8", 1, {"label": lab, "method": "index into smallbodies/core.json colorClasses: the class of the albedo template; 255 = no class, grey (header grey)"}),
     ]
     write_table(ctx, f"{DIR}/objects", ofields, {k: objs[k].astype(np.float32) if k in ("a", "e", "i", "node", "peri", "M", "H", "pV", "rotPeriod") else objs[k] for k in objs},
                 n_obj, STAGE, source_table=sorted({s for ph in pops_hdr for s in ph["sources"]}),
@@ -483,29 +662,58 @@ def run(ctx: BuildContext) -> None:
         REPORT.write_text(json.dumps(report, indent=1, allow_nan=False), encoding="utf-8", newline="\n")
         FIGURE.write_text(distribution_svg(report), encoding="utf-8", newline="\n")
         diagnostic_png(cat, res, DIAGNOSTIC)
+        if {"centaur", "irregular-jupiter", "irregular-saturn"} <= set(res["populations"]):
+            outer_diagnostic_png(cat, res, res["moonRows"], OUTER_DIAGNOSTIC)
     else:
         print(f"[synthetic] {REPORT.name} and its figures not rewritten (build.writeRepoFiles is off)")
     per_pop = ", ".join(f"{k} {int(v['cells'].n_shown.sum())}" for k, v in res["populations"].items())
     print(f"[synthetic] {n_obj} synthetic objects in {n_cell} cells ({per_pop}); {time.time() - t_stage:.0f} s")
+    for pop, r in res["populations"].items():
+        if pop in MOONS:
+            m = r["extra"]["appBodies"]
+            print(f"[synthetic] {pop}: limit H_V {r['limit']['hLimV']}, {r['extra']['knownMoons']} known of the class; "
+                  f"MPC irregulars {m['mpcIrregulars']}, in bodies.json {m['inBodies']}, MPC not in bodies "
+                  f"{m['mpcNotInBodies']}, provisional bodies not in the MPC list {m['provisionalBodiesNotInMpcList']}")
 
 
-def _pop_header(pop: str, r: dict, src: dict, first_cell: int, first_obj: int) -> dict:
-    srcs = {"neo": [ss.GRANVIK.id], "tno": [ss.L7.id, ss.PETIT.id, ss.JESTER.id]}.get(pop, [])
+MOON_SOURCES = {
+    "jupiter": [ss.ASHTON_2020.id, ss.ASHTON_2025.id, ss.SHEPPARD_2024.id],
+    "saturn": [ss.ASHTON_2021.id, ss.ASHTON_2025.id, ss.SHEPPARD_2024.id],
+    "uranus": [ss.SHEPPARD_2024.id, ss.SHEPPARD_2005.id, ss.ASHTON_2025.id],
+    "neptune": [ss.SHEPPARD_2024.id, ss.SHEPPARD_2006.id, ss.ASHTON_2025.id],
+}
+
+
+def _pop_sources(pop: str) -> list[str]:
+    if pop in MOONS:
+        planet = MOONS[pop]
+        return [ss.NATSATS[planet].id, *MOON_SOURCES[planet], "grav-2015", "naif-gm-de440", "bowell-1989"]
+    srcs = {"neo": [ss.GRANVIK.id], "tno": [ss.L7.id, ss.PETIT.id, ss.JESTER.id],
+            "centaur": [ss.KURLANDER_ARCHIVE.id, ss.KURLANDER.id, ss.MURTAGH.id, ss.NESVORNY_2019.id, ss.JESTER.id]
+            }.get(pop, [])
     if pop in ANGLES:
         srcs = ["jpl-sbdb-orbits", ss.HENDLER_MALHOTRA.id,
                 {"hungaria": ss.MAEDA.id, "mainbelt": ss.MAEDA.id, "hilda": ss.TERAI_YOSHIDA.id,
                  "trojan": ss.YOSHIDA_TERAI.id}[pop]]
     else:
         srcs = srcs + ["jpl-sbdb-orbits"]
-    srcs += ["neowise-v2", "jpl-sbdb-physical", "lcdb-2023-10", "smallbody-class-colors", "bowell-1989"]
+    return srcs + ["neowise-v2", "jpl-sbdb-physical", "lcdb-2023-10", "smallbody-class-colors", "bowell-1989"]
+
+
+def _pop_header(pop: str, r: dict, src: dict, first_cell: int, first_obj: int) -> dict:
     c = r["cells"]
     t = r["totals"]
-    return {
-        "name": pop, "code": r["code"], "modelId": r["modelId"], "sources": srcs, "prefix": r["prefix"],
+    h = {
+        "name": pop, "code": r["code"], "modelId": r["modelId"], "sources": _pop_sources(pop), "prefix": r["prefix"],
         "grid": r["grid"].to_json(), "hFloor": r["hFloor"], "limit": r["limit"], "model": r["extra"],
         "firstCell": first_cell, "cells": c.n, "firstObject": first_obj, "objects": int(c.n_shown.sum()),
         "knownInGrid": r["knownInGrid"], "totals": {**t, "shown": int(c.n_shown.sum())}, "seconds": r["seconds"],
     }
+    if "center" in r:
+        h["center"] = r["center"]
+        h["frame"] = (f"osculating elements about the {r['center']['name']} (NAIF {r['center']['naifId']}), ecliptic and "
+                      "equinox J2000, mu = GM of the planet system; a in au")
+    return h
 
 
 def _distribution(grid: sm.Grid, known: sm.Known, hlim_a: np.ndarray, h_floor: float, cells: sm.Cells,
@@ -548,8 +756,8 @@ def diagnostic_png(cat: dict, res: dict, path: Path) -> None:
     masks = population_masks(cat)
     kn = cat["ok"] & (cat["e"] < 1)
     kx, ky = xy(cat["a"][kn], cat["e"][kn], cat["i"][kn], cat["node"][kn], cat["peri"][kn], cat["M"][kn])
-    so = [r["objects"] for r in res["populations"].values()]
-    cat_syn = {k: np.concatenate([o[k] for o in so]) for k in ("a", "e", "i", "node", "peri", "M", "H")}
+    helio = [r["objects"] for pop, r in res["populations"].items() if pop not in MOONS]   # moons: planet-centred
+    cat_syn = {k: np.concatenate([o[k] for o in helio]) for k in ("a", "e", "i", "node", "peri", "M", "H")}
     sx, sy = xy(cat_syn["a"], cat_syn["e"], cat_syn["i"], cat_syn["node"], cat_syn["peri"], cat_syn["M"])
 
     def layer(h):
@@ -602,12 +810,73 @@ def diagnostic_png(cat: dict, res: dict, path: Path) -> None:
     img.quantize(colors=128, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.NONE).save(path, optimize=True)
 
 
+def outer_diagnostic_png(cat: dict, res: dict, moons: dict[str, list[dict]], path: Path) -> None:
+    """DIAGNOSTIC figure (a data plot, not a rendering) of the outer populations: catalogued / known objects cyan,
+    synthetic ones orange. Left: Centaurs at the epoch seen from the ecliptic north pole (|x|, |y| < 32 au). Middle
+    and right: Jupiter's retrograde and Saturn's irregular moons in the (a, i) plane (known: MPC; the cells of the
+    synthetic ones are those of the known moons brighter than the limit, the orbit-distribution assumption)."""
+    from PIL import Image, ImageDraw
+
+    N, G = 600, 40
+    img = Image.new("RGB", (3 * N + 4 * G, N + 3 * G), (0, 0, 0))
+    d = ImageDraw.Draw(img)
+    cyan, orange, grey = (77, 204, 255), (255, 140, 30), (150, 150, 150)
+
+    def dots(x0, y0, xs, ys, col, r):
+        for x, y in zip(xs, ys):
+            if 0 <= x < N and 0 <= y < N:
+                d.ellipse([x0 + x - r, y0 + y - r, x0 + x + r, y0 + y + r], fill=col)
+
+    # Centaurs
+    x0, y0, ext = G, 2 * G, 32.0
+    kn = population_masks(cat)["centaur"]
+    kx, _ = sm.elements_to_icrf(cat["a"][kn], cat["e"][kn], cat["i"][kn], cat["node"][kn], cat["peri"][kn], cat["M"][kn],
+                                cat["mu"], AU_KM, 0.0)
+    so = res["populations"]["centaur"]["objects"]
+    sx, _ = sm.elements_to_icrf(so["a"], so["e"], so["i"], so["node"], so["peri"], so["M"], cat["mu"], AU_KM, 0.0)
+    to_px = lambda v: (v / AU_KM + ext) / (2 * ext) * N
+    d.rectangle([x0, y0, x0 + N, y0 + N], outline=(60, 60, 60))
+    dots(x0, y0, to_px(sx[:, 0]), N - to_px(sx[:, 1]), orange, 1)
+    dots(x0, y0, to_px(kx[:, 0]), N - to_px(kx[:, 1]), cyan, 2)
+    d.text((x0, y0 - 16), f"Centaurs from ecliptic north, |x|, |y| < {ext:.0f} au: {int(kn.sum())} catalogued, "
+                          f"{so['a'].size} synthetic", fill=(220, 220, 220))
+    for k, (pop, title) in enumerate((("irregular-jupiter", "Jupiter, retrograde"), ("irregular-saturn", "Saturn"))):
+        x0 = G + (k + 1) * (N + G)
+        r = res["populations"][pop]
+        planet = MOONS[pop]
+        retro = r["extra"]["moonClass"] == "retrograde"
+        known = [m for m in moons[planet] if m["i"] > 90 or not retro]
+        a_lo, a_hi = 0.04, 0.20
+        i_lo, i_hi = (130.0, 180.0) if retro else (20.0, 180.0)
+        px = lambda a: (np.asarray(a) - a_lo) / (a_hi - a_lo) * N
+        py = lambda i: N - (np.asarray(i) - i_lo) / (i_hi - i_lo) * N
+        d.rectangle([x0, y0, x0 + N, y0 + N], outline=(60, 60, 60))
+        o = r["objects"]
+        dots(x0, y0, px(o["a"]), py(o["i"]), orange, 2)
+        dots(x0, y0, px([m["a"] for m in known]), py([m["i"] for m in known]), cyan, 3)
+        d.text((x0, y0 - 16), f"{title} irregular moons, a {a_lo}-{a_hi} au (x) vs i {i_lo:.0f}-{i_hi:.0f} deg (y): "
+                              f"{len(known)} known, {o['a'].size} synthetic", fill=(220, 220, 220))
+        for a in np.arange(0.05, a_hi + 1e-9, 0.05):
+            d.text((x0 + px(a) - 10, y0 + N + 4), f"{a:.2f}", fill=grey)
+        for i in np.arange(i_lo, i_hi + 1e-9, 10.0 if retro else 20.0):
+            d.text((x0 - 26, y0 + py(i) - 5), f"{i:.0f}", fill=grey)
+    d.text((G, 8), "DIAGNOSTIC (a data plot, not a rendering): catalogued / known objects cyan, synthetic objects orange "
+                   "(pipeline stage synthetic)", fill=(230, 230, 230))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    img.save(path, optimize=True)
+
+
 def distribution_svg(report: dict) -> str:
     """Cumulative H distributions per population (log N(<H)): the debiased model, the catalogue, catalogue +
     synthetic. Plain SVG (no plotting library in the pipeline)."""
     names = {"neo": "NEOs (Granvik et al. 2018 model)", "hungaria": "Hungarias", "mainbelt": "Main belt",
-             "hilda": "Hildas", "trojan": "Jupiter Trojans", "tno": "Trans-Neptunian (CFEPS L7 model)"}
-    W, H, PW, PH, ML, MB, MT = 1140, 640, 380, 320, 52, 34, 26
+             "hilda": "Hildas", "trojan": "Jupiter Trojans", "tno": "Trans-Neptunian (CFEPS L7 model)",
+             "centaur": "Centaurs (Kurlander et al. 2025 model)",
+             "irregular-jupiter": "Jupiter's retrograde irregular moons", "irregular-saturn": "Saturn's irregular moons",
+             "irregular-uranus": "Uranus's irregular moons (no model)",
+             "irregular-neptune": "Neptune's irregular moons (no model)"}
+    PW, PH, ML, MB, MT = 380, 320, 52, 34, 26
+    W, H = 3 * PW, PH * math.ceil(len(report["populations"]) / 3) + 16    # + a line for the note
     out = [f'<svg xmlns="http://www.w3.org/2000/svg" width="{W}" height="{H}" viewBox="0 0 {W} {H}" '
            'font-family="sans-serif" font-size="11">', f'<rect width="{W}" height="{H}" fill="white"/>']
     for k, (pop, r) in enumerate(report["populations"].items()):

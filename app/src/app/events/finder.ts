@@ -7,6 +7,8 @@
 // Times are TDB seconds past J2000. Root finding: a coarse scan (step chosen per phenomenon, far below its
 // duration), then bisection on sign changes and golden-section search on minima, to ~0.1 s.
 
+import { SECONDS_PER_DAY } from '../../core/constants';
+
 import { AU_KM, C_KM_S } from '../../core/constants';
 import type { Mat3, Vec3 } from '../ports';
 
@@ -679,7 +681,7 @@ export function ringPlaneEvents(g: Geometry): SkyEvent[] {
       data: extra,
     };
   };
-  const day = 86400;
+  const day = SECONDS_PER_DAY;
   const e = scan(earthB, w.startEt, w.endEt, day);
   const s = scan(sunB, w.startEt, w.endEt, day);
   for (let i = 0; i < s.v.length - 1; i++) {
@@ -708,7 +710,7 @@ export const PLANETS: Record<number, string> = { 199: 'Mercury', 299: 'Venus', 4
 export function planetEvents(g: Geometry): SkyEvent[] {
   const w = g.inp.window;
   const out: SkyEvent[] = [];
-  const day = 86400;
+  const day = SECONDS_PER_DAY;
   // Ecliptic north: the direction of the Earth–Moon barycentre's orbital angular momentum (from the ephemeris).
   const tm = 0.5 * (w.startEt + w.endEt);
   const r0 = sub(g.pos(EMB, tm), g.pos(SUN, tm)), r1 = sub(g.pos(EMB, tm + 3600), g.pos(SUN, tm + 3600));

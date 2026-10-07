@@ -14,6 +14,7 @@
 //
 // The same code runs on the CPU (this file: tests, probes) and on the GPU (coronaWgsl), like zodiacal.ts.
 
+import { DAYS_PER_JULIAN_YEAR, J2000_CALENDAR_YEAR, SECONDS_PER_DAY } from '../../core/constants';
 import type { CoronaModel } from '../../data/schema';
 import { eclipticToIcrf, type V3, type XYZS } from './zodiacal';
 
@@ -73,7 +74,7 @@ export function parseCorona(m: CoronaModel, sunPole: V3): CoronaParams {
 }
 
 /** Decimal year of TDB seconds past J2000 (as the pipeline: 2000 + (days + 0.5) / 365.25). */
-export const decimalYear = (et: number): number => 2000 + (et / 86400 + 0.5) / 365.25;
+export const decimalYear = (et: number): number => J2000_CALENDAR_YEAR + (et / SECONDS_PER_DAY + 0.5) / DAYS_PER_JULIAN_YEAR;
 
 /** van de Hulst's (Mitchell's) phase: 0 at minimum, 1 at maximum, linear in time between. */
 export function cyclePhase(p: CoronaParams, et: number): number {

@@ -15708,5 +15708,5 @@
    "maxLevel": 5
   }
  ],
- "description": "stateCommon -> SmallBodyPropagator.propagateOne(grid0 = epochEt) must reproduce `python` (same scheme) and stay within toleranceKm of `horizons` (JPL Horizons heliocentric ICRF, TDB)."
+ "description": "A reference for stated inputs. epochEt is this reference's own epoch (the catalogue epoch of the build it was made from), forceModel the model at that epoch, coreRow the row in that build's SBDB snapshot: none of them describes the build under test. stateCommon -> SmallBodyPropagator.propagateOne(grid0 = epochEt) with forceModel must reproduce `python` (same scheme) and stay within toleranceKm of `horizons` (JPL Horizons heliocentric ICRF, TDB)."
 }

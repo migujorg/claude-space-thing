@@ -3,8 +3,11 @@
 // model. Reading synthetic/objects + cells, and their float64 two-body positions. Pure, no DOM/GPU.
 //
 // Their orbits are statistical samples (osculating elements at the small-body epoch), so they move on fixed Kepler
-// ellipses about the Sun: planetary perturbations would change nothing a synthetic object could claim.
+// ellipses about the Sun: planetary perturbations would change nothing a synthetic object could claim. Synthetic
+// irregular moons (populations with a `center`) move on fixed Kepler ellipses about their planet-system barycentre
+// (GM of the system); their heliocentric state adds the barycentre's, which the caller supplies (CenterState).
 
+import { D_H_CONSTANT_KM } from './constants';
 import type { SyntheticCellsHeader, SyntheticObjectsHeader, SyntheticPopulation } from '../data/schema';
 import { BinaryTable } from '../data/binaryTable';
 
@@ -25,6 +28,9 @@ export interface SyntheticCatalog {
   /** Population by objects.pop code. */
   populations: Map<number, SyntheticPopulation>;
 }
+
+/** Heliocentric ICRF state (km, km/s) of a NAIF body at et, or null: the centre of a planet-centred population. */
+export type CenterState = (naifId: number, et: number) => { pos: Vec3; vel: Vec3 } | null;
 
 const DEG = Math.PI / 180;
 
@@ -77,13 +83,35 @@ export function keplerE(M: number, e: number): number {
   return E;
 }
 
-/** Heliocentric ICRF state (km, km/s) of synthetic object j at et: two-body motion of its elements. */
-export function syntheticState(s: SyntheticCatalog, j: number, et: number): { pos: Vec3; vel: Vec3 } | null {
+/** The centre of object j's orbit: the planet-system barycentre of a population with a `center`, else null (the Sun). */
+export function syntheticCenter(s: SyntheticCatalog, j: number): { naifId: number; name: string; gm: number } | null {
+  return syntheticPopulation(s, j)?.center ?? null;
+}
+
+/**
+ * Heliocentric ICRF state (km, km/s) of synthetic object j at et: two-body motion of its elements. An object of a
+ * planet-centred population needs `center` (the barycentre's heliocentric state); without it, null.
+ */
+export function syntheticState(s: SyntheticCatalog, j: number, et: number, center?: CenterState): { pos: Vec3; vel: Vec3 } | null {
+  const rel = syntheticRelativeState(s, j, et);
+  if (!rel) return null;
+  const c = syntheticCenter(s, j);
+  if (!c) return rel;
+  const cs = center?.(c.naifId, et);
+  if (!cs) return null;
+  return {
+    pos: [cs.pos[0] + rel.pos[0], cs.pos[1] + rel.pos[1], cs.pos[2] + rel.pos[2]],
+    vel: [cs.vel[0] + rel.vel[0], cs.vel[1] + rel.vel[1], cs.vel[2] + rel.vel[2]],
+  };
+}
+
+/** State of synthetic object j relative to the centre of its orbit (the Sun, or its planet-system barycentre). */
+export function syntheticRelativeState(s: SyntheticCatalog, j: number, et: number): { pos: Vec3; vel: Vec3 } | null {
   if (!(j >= 0 && j < s.count)) return null;
   const el = syntheticElements(s, j);
   if (!(el.e >= 0 && el.e < 1 && el.aAu > 0)) return null;
   const a = el.aAu * s.auKm;
-  const n = Math.sqrt(s.mu / (a * a * a));
+  const n = Math.sqrt(syntheticMu(s, j) / (a * a * a));
   const E = keplerE(el.M * DEG + n * (et - s.epochEt), el.e);
   const ci = Math.cos(el.i * DEG), si = Math.sin(el.i * DEG);
   const cO = Math.cos(el.node * DEG), sO = Math.sin(el.node * DEG);
@@ -103,10 +131,32 @@ export function syntheticState(s: SyntheticCatalog, j: number, et: number): { po
   };
 }
 
+/** GM of the centre of object j's orbit (km^3/s^2). */
+export function syntheticMu(s: SyntheticCatalog, j: number): number {
+  return syntheticCenter(s, j)?.gm ?? s.mu;
+}
+
 /** Orbital period (s). */
 export function syntheticPeriod(s: SyntheticCatalog, j: number): number {
   const a = s.table.get('a', j) * s.auKm;
-  return 2 * Math.PI * Math.sqrt((a * a * a) / s.mu);
+  return 2 * Math.PI * Math.sqrt((a * a * a) / syntheticMu(s, j));
+}
+
+/**
+ * The CenterState of a planetary ephemeris: the barycentre's position minus the Sun's (heliocentric, as the small-body
+ * states), velocity by a central difference over ±1 s (the GPU kernel uses the same difference).
+ */
+export function centerStateFrom(eph: { positionSSB(id: number, et: number): readonly number[] | null }, sunId: number): CenterState {
+  return (id, et) => {
+    const p = eph.positionSSB(id, et), s = eph.positionSSB(sunId, et);
+    const pa = eph.positionSSB(id, et - 1), pb = eph.positionSSB(id, et + 1);
+    const sa = eph.positionSSB(sunId, et - 1), sb = eph.positionSSB(sunId, et + 1);
+    if (!p || !s || !pa || !pb || !sa || !sb) return null;
+    return {
+      pos: [p[0] - s[0], p[1] - s[1], p[2] - s[2]],
+      vel: [0, 1, 2].map((k) => (pb[k] - sb[k] - (pa[k] - sa[k])) / 2) as Vec3,
+    };
+  };
 }
 
 export function syntheticPopulation(s: SyntheticCatalog, j: number): SyntheticPopulation | null {
@@ -115,7 +165,7 @@ export function syntheticPopulation(s: SyntheticCatalog, j: number): SyntheticPo
 
 /** Diameter (km) from H and p_V (Pravec & Harris 2007 Eq. 3, the relation the pipeline uses). */
 export function diameterFromH(H: number, pV: number): number {
-  return (1329 / Math.sqrt(pV)) * 10 ** (-H / 5);
+  return (D_H_CONSTANT_KM / Math.sqrt(pV)) * 10 ** (-H / 5);
 }
 
 export interface SyntheticCell {

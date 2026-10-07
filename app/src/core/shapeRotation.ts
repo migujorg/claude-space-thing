@@ -12,13 +12,12 @@
 //     the phase angle, so this convention is an assumption (the orientation is labelled estimated).
 
 import type { IauRotation } from '../data/schema';
-import { J2000_JD, RAD_PER_DEG, SECONDS_PER_DAY } from './constants';
+import { J2000_JD, OBLIQUITY_J2000_DEG, RAD_PER_DEG, SECONDS_PER_DAY } from './constants';
 import { bodyToIcrf } from './rotation';
 import type { Mat3 } from './vec';
 import { frameRotation, mat3Mul, mat3Transpose } from './vec';
 
-/** Obliquity of the J2000 ecliptic (IAU 1976, SPICE ECLIPJ2000): 84381.448″. */
-export const OBLIQUITY_J2000_DEG = 84381.448 / 3600;
+export { OBLIQUITY_J2000_DEG } from './constants';
 
 /** Ecliptic J2000 → ICRF (row-major, v_icrf = M · v_ecl). */
 export const ECLIPTIC_TO_ICRF: Mat3 = mat3Transpose(frameRotation(1, OBLIQUITY_J2000_DEG * RAD_PER_DEG));

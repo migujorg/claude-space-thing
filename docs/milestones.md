@@ -64,11 +64,19 @@ Gaia DR3 stars with spectra-derived colors, the brightest stars from Hipparcos, 
 - **Shape models** drawn as meshes (56 measured spacecraft/radar shapes, 16,098 DAMIT models) with orientation from each model's own frame or spin state, self-shadowing and energy normalized to the measured albedo (docs/rendering-shapes.md).
 - **Validation runner** (`npm run validate`) against 11 calibrated observations (docs/reports/validation.md); validation cases test the model and are never used to select or tune it.
 
-## M6 — The complete solar system  *(first layer done)*
+## M6 — The complete solar system  *(small bodies, Centaurs and irregular moons done)*
 
 The synthetic layer (NORTH_STAR 3.3) for small bodies: 2,948,454 synthetic objects — NEOs (Granvik et al. 2018), Hungarias, main belt and Hildas (catalogue + measured SFD slopes: Maeda et al. 2021, Terai & Yoshida 2018), Jupiter Trojans (Yoshida & Terai 2017), TNOs (CFEPS L7) — filling only each (a, e, i, H) cell's deficit below the survey completeness limit refitted to the current catalogue (Hendler & Malhotra 2020 form). Deterministic per-cell streams make it yield to discoveries: removing N catalogued objects adds ~N synthetic ones and keeps the rest. Every synthetic value is labelled `synthetic`; the inspector explains which model/cell/deficit an object stands in for. `Complete` is now the default level. From inside the main belt it still looks empty to the naked eye — the brightest synthetic object is V 14.1 (docs/reports/synthetic-populations.md).
 
-Next populations: irregular moons, Centaurs, comets' reservoirs, interplanetary dust (already modelled optically as zodiacal light).
+Centaurs and irregular moons (implemented 2026-10-01; docs/reports/synthetic-populations.md §12):
+
+- **Centaurs:** 20 937 synthetic Centaurs (q > 5.2 au, 5.35–30 au). They come from one realization of the Kurlander et al. (2025) debiased model: 21 400 with H_r < 13.7, Nesvorný et al. (2019) orbits, Lawler et al. (2018) H law. Their archive keeps only magnitude-selected members; the selection is undone exactly by 1/P weights, which add up to 99 % of the stated model size, and the archive follows the stated H law (χ² 0.92 per bin). The layer is conditioned on the SBDB Centaurs per a-bin, without overlapping the Trojan and Kuiper-belt grids.
+- **Irregular moons:** 435 retrograde moons of Jupiter (Ashton et al. 2020, below H_V 17.63) and 23 of Saturn (Ashton et al. 2021, the last 0.3 mag the 2023 discoveries have not reached). Each survey's magnitudes are put on the MPC H_V scale with its own photometry of known moons. The moons move on planet-centred orbits, on the GPU (centre per object) and the CPU.
+  - Their orbit distribution is the known moons' (an assumption, labelled as such): no debiased orbit model exists.
+  - Uranus and Neptune get none: their catalogues are complete to the deepest surveys (Sheppard et al. 2024), and no population below that is published.
+- Yield-to-discovery and determinism tests cover both. The earlier 2.95 M objects are byte-identical.
+
+Next populations: comets' reservoirs, interplanetary dust (already modelled optically as zodiacal light), and irregular moons below the Uranus and Neptune limits once a debiased population is published.
 
 ## Moments — real events in the data window  *(done)*
 

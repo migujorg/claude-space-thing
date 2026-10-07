@@ -1005,8 +1005,15 @@ export interface SmallBodyPhysicalHeader extends SmallBodyTableHeader {
 
 /** A population of the synthetic layer (synthetic/objects.json `populations`; pipeline stage synthetic). */
 export interface SyntheticPopulation {
-  /** neo, hungaria, mainbelt, hilda, trojan, tno */
+  /** neo, hungaria, mainbelt, hilda, trojan, tno, centaur, irregular-jupiter, irregular-saturn, irregular-uranus, irregular-neptune */
   name: string;
+  /**
+   * Planet-centred populations (irregular moons): the elements are osculating elements about this NAIF body (a
+   * planet-system barycentre), ecliptic J2000 axes, mu = gm (km^3/s^2). Absent: heliocentric (mu = gmSun).
+   */
+  center?: { naifId: number; name: string; gm: number; gmSource?: string };
+  /** How the population's elements are referred (planet-centred populations). */
+  frame?: string;
   /** objects.pop / cells.pop value. */
   code: number;
   /** The model (source id, or 'catalogue+<completeness source>+<slope source>'). */
@@ -1049,6 +1056,8 @@ export interface SyntheticObjectsHeader extends SmallBodyTableHeader {
   /** Slope parameter of the H-G magnitude law used for every synthetic object. */
   slopeParameterG?: { value: number; source: string; method: string };
   attributePools?: Record<string, unknown>;
+  /** colorClass value of objects without a class (drawn in the solar colour, grey) and why. */
+  grey?: { colorClass: number; method: string };
 }
 
 /** synthetic/cells.json: one record per (population, a, e, i, H) cell. */
@@ -1127,18 +1136,18 @@ export interface CometHaserTable {
 export interface CometModelProduct {
   description: string;
   sun: { vMag: number; vMagSources: string[]; irradianceXYZS1Au: [number, number, number, number]; gmKm3S2: number; gmSources: string[] };
-  waterFromMagnitude: { a: number; b: number; qH2OPerQOH: number; rmsDex: number; rRangeAu: [number, number]; label: Label; sources: string[]; method: string };
-  composition: { population: Record<'C2' | 'CN' | 'C3' | 'afrho', CometRatioStat>; label: Label; sources: string[]; method: string };
-  gFactors: { C2: number; C3: number; CN: { vKmS: number[]; value: number[] }; unit: string; label: Label; sources: string[] };
-  bandRatiosToC2: { 'C2(1)': CometRatioStat; CH?: CometRatioStat; label: Label; sources: string[]; method: string };
-  haser: { velocityKmS: number; species: Record<'C2' | 'CN' | 'C3' | 'OH', CometHaserTable>; scaling: string; sources: string[]; label: Label; method: string };
-  oxygen: { photonsPerH2O: number; branching: Record<'6300' | '6364', number>; photonEnergyErg: Record<'6300' | '6364', number>; label: Label; sources: string[] };
-  coPlus: { gTotalErgPerSIon1Au: number; share: Record<string, number>; coPerH2O: number; label: Label; sources: string[]; method: string };
-  solarWind: { medianKmS: number; p16KmS: number; p84KmS: number; hours: number; label: Label; sources: string[]; method: string };
-  grains: {
+  waterFromMagnitude: Sourced<{ a: number; b: number; qH2OPerQOH: number; rmsDex: number; rRangeAu: [number, number] }>;
+  composition: Sourced<{ population: Record<'C2' | 'CN' | 'C3' | 'afrho', CometRatioStat> }>;
+  gFactors: Sourced<{ C2: number; C3: number; CN: { vKmS: number[]; value: number[] } }>;
+  bandRatiosToC2: Sourced<{ 'C2(1)': CometRatioStat; CH?: CometRatioStat }>;
+  haser: Sourced<{ velocityKmS: number; species: Record<'C2' | 'CN' | 'C3' | 'OH', CometHaserTable>; scaling: string }>;
+  oxygen: Sourced<{ photonsPerH2O: number; branching: Record<'6300' | '6364', number>; photonEnergyErg: Record<'6300' | '6364', number> }>;
+  coPlus: Sourced<{ gTotalErgPerSIon1Au: number; share: Record<string, number>; coPerH2O: number }>;
+  solarWind: Sourced<{ medianKmS: number; p16KmS: number; p84KmS: number; hours: number }>;
+  grains: Sourced<{
     betaMin: number; betaMax: number; radiusMinM: number; radiusMaxM: number; crossSectionBetaExponent: number; sizeIndex: number;
-    densityKgM3: number; qPr: number; ejection: { v0KmS: number; gamma: number; Gamma: number }; label: Label; sources: string[];
-  };
+    densityKgM3: number; qPr: number; ejection: { v0KmS: number; gamma: number; Gamma: number };
+  }>;
   dustPhase: { phaseDeg: number[]; value: number[]; label: Label; sources: string[]; method: string };
   components: {
     dust: Record<'longPeriod' | 'shortPeriod', CometSpectralComponent & { normalizedGradientPer100nm: number }>;
@@ -1169,15 +1178,15 @@ export interface CometListEntry {
 }
 
 /** Measured composition of one comet (log10 ratios to Q(OH); afrho: log10 Afrho[cm]/Q(OH)). */
-export interface CometMeasuredActivity {
+export type CometMeasuredActivity = Sourced<{
   key: string;
   C2?: number;
   CN?: number;
   C3?: number;
   afrho?: number;
-  label: Label;
-  sources: string[];
-}
+  n: Partial<Record<'C2' | 'CN' | 'C3' | 'afrho', number>>;
+  rRangeAu: [number, number];
+}>;
 
 /** comets/list.json */
 export interface CometListProduct {
