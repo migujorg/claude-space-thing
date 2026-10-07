@@ -462,7 +462,7 @@ export async function loadAll(opts: LoadOptions): Promise<LoadedData> {
     if (sky.maps) for (const l of Object.values(sky.maps.layers)) visit(l.sources);
     if (sky.zodiacal) for (const a of [sky.zodiacal.at1AU, sky.zodiacal.s10ToXYZS, sky.zodiacal.cloud, sky.zodiacal.scattering]) visit(a?.sources);
     for (const r of Object.values(rings ?? {})) {
-      for (const a of [r.opticalDepth, r.reflectance, r.components]) visit(a?.sources);
+      for (const a of [r.opticalDepth, r.opticalDepthEstimate, r.reflectance, r.components]) visit(a?.sources);
       const m = r.components?.value;
       if (m) {
         for (const c of m.components) for (const pv of Object.values(c.provenance)) visit(pv.sources);
