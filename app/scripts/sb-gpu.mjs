@@ -6,7 +6,7 @@
 //   node scripts/sb-gpu.mjs --query "mode=timing" --json out/sb-timing.json
 //   node scripts/sb-gpu.mjs --query "mode=render&scene=above" --out ../docs/reports/img/smallbodies-above.png
 import { chromium } from 'playwright';
-import { createServer } from 'vite';
+import { startLocalServer } from './local-server.mjs';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -25,9 +25,7 @@ const gpuMode = args.gpu ?? 'swiftshader';
 // always needed: no GPU watchdog (one dispatch can take minutes on SwiftShader) and a larger JS heap (the catalogue).
 const launchArgs = [...gpuLaunchArgs(gpuMode), '--disable-gpu-watchdog', '--js-flags=--max-old-space-size=8192'];
 
-const server = await createServer({ root, server: { port: 0, strictPort: false }, logLevel: 'error' });
-await server.listen();
-const base = `http://localhost:${server.httpServer.address().port}`;
+const { server, base } = await startLocalServer(root);
 const browser = await chromium.launch({ headless: true, args: launchArgs });
 let failed = false;
 try {
