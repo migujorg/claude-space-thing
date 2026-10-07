@@ -1277,7 +1277,9 @@ fn splatOf(px: vec2f, ndc: vec2f) -> vec3f {
   let e = pts[2u * ii + 1u];
   let judged = q.z < 0.0;                       // the cull's verdict stands: this source is displayed
   let p = vec4f(ndcFromFrag(F, q.xy), max(q.z, 0.0), q.w);
-  let offPx = corners[vi] * (E.misc2.x + 1.0);   // a pixel wider than the cut-off: the fragment decides (splatAt)
+  // The quad is 1/16 px wider than the cut-off, so that vertex snapping (to 1/16 px at the coarsest a device may
+  // have) cannot drop a pixel centre inside the cut-off: the fragment decides (splatAt).
+  let offPx = corners[vi] * (E.misc2.x + 0.0625);
   var o: PV;
   o.pos = vec4f(p.xy + offPx * 2.0 * F.size.zw, p.z, 1.0);
   o.c = splatOf(q.xy, p.xy);
@@ -1359,7 +1361,7 @@ struct LV {
   var corners = array<vec2f, 6>(vec2f(-1.0, -1.0), vec2f(1.0, -1.0), vec2f(-1.0, 1.0), vec2f(-1.0, 1.0), vec2f(1.0, -1.0), vec2f(1.0, 1.0));
   let q = pts[2u * ii];
   let ndc = ndcFromFrag(F, q.xy);
-  let offPx = corners[vi] * (E.misc2.x + 1.0);
+  let offPx = corners[vi] * (E.misc2.x + 0.0625);   // as in vs: the fragment decides
   var o: LV;
   o.pos = vec4f(ndc + offPx * 2.0 * F.size.zw, q.z, 1.0);
   o.c = splatOf(q.xy, ndc);
