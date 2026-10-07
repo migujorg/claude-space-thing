@@ -323,3 +323,20 @@ def source_path(source, ledger):
     pool = consumed or candidates
     matching = [path for path, rec in pool if rec.get('sha256') == source.get('sha256')]
     return matching[0] if matching else pool[0][0]
+
+
+def clear_process_caches():
+    """Each case must read its own numerical dependencies, regardless of CLI order.
+
+    For example, albedo._radii reads a second copy of pck00011 only on its first
+    call. Inheriting that result from a preceding case hides a file dependency.
+    """
+    from functools import _lru_cache_wrapper
+    seen = set()
+    for name, module in list(sys.modules.items()):
+        if not name.startswith('pipeline.') or module is None:
+            continue
+        for value in list(vars(module).values()):
+            if isinstance(value, _lru_cache_wrapper) and id(value) not in seen:
+                value.cache_clear()
+                seen.add(id(value))

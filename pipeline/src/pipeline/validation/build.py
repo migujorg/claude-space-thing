@@ -141,14 +141,17 @@ def _fit_cached(case_id: str, product: str, sha: str, b: np.ndarray, targets: li
     path = CACHE / "validation" / case_id / f"{product}-{key}.json"
     tg = targets[0]
     d = register.read_json_cache(path) if register.USE_CACHE else None
-    if d is not None:
-        cam = g.camera_for(tg, b.shape[1], b.shape[0], pitch, d["cx"], d["cy"], d["roll"])
+    if d is not None and "cameraOrient" in d:
+        # The optimizer may use an unwrapped angle; recomputing from roll % 360
+        # changes trig rounding. Replay the exact returned camera as well as pose.
+        cam = g.Camera(np.array(d["cameraOrient"], float).reshape(3, 3), b.shape[1], b.shape[0], pitch)
         return register.Fit(d["cx"], d["cy"], d["roll"], d["flipped"], d["rss"], d["rss_other"], d["sigma"],
                             d["resid"], cam, d["coef"])
     ft = register.fit_pointing(b, targets, 0, pitch, flips=flips)
     register.write_json_cache(path, {"cx": ft.cx, "cy": ft.cy, "roll": ft.roll_deg, "flipped": ft.flipped,
                                      "rss": ft.rss, "rss_other": ft.rss_other_parity, "sigma": ft.sigma_px,
-                                     "resid": ft.residual_rms, "coef": ft.coef})
+                                     "resid": ft.residual_rms, "coef": ft.coef,
+                                     "cameraOrient": ft.camera.row_major()})
     return ft
 
 
@@ -772,6 +775,7 @@ def preview(path: Path, refs: list[np.ndarray], bands: list[str], rois: list[roi
 def build_case(case, *, expected: dict | None = None) -> dict:
     from . import reproducibility as repro
     repro.require_single_thread()
+    repro.clear_process_caches()
     generated = repro.generation_time(expected)
     if expected is not None:
         repro.preflight(expected)

@@ -233,3 +233,36 @@ def test_source_lookup_prefers_consumed_identical_copy(tmp_path,monkeypatch):
     with r.capture_inputs():
         (tmp_path/'used.txt').read_bytes()
         assert r.source_path({'url':'https://example.invalid/query','sha256':sha},ledger)==tmp_path/'used.txt'
+
+
+def test_cached_fit_preserves_exact_camera_for_wrapped_roll(tmp_path,monkeypatch):
+    monkeypatch.setattr(build,'CACHE',tmp_path)
+    t=target(); pitch=.001; raw_roll=-21.123456789
+    cam=g.camera_for(t,4,4,pitch,2.,2.,raw_roll)
+    # An optimizer can return a camera differing by an ulp from reconstructing
+    # its wrapped angle (observed for Pluto). Preserve its returned result.
+    cam.M[0,0]=np.nextafter(cam.M[0,0],1.)
+    ft=register.Fit(2.,2.,raw_roll%360.,False,1.,2.,.1,.01,cam,[1.])
+    monkeypatch.setattr(register,'fit_pointing',lambda *a,**kw:ft)
+    args=('case','image','abc',np.zeros((4,4)),[t],pitch,(False,))
+    cold=build._fit_cached(*args).camera.M.copy()
+    warm=build._fit_cached(*args).camera.M
+    assert np.array_equal(cold,warm), 'normalizing a cached angle must not recompute its camera at different bits'
+
+
+def test_case_build_clears_process_local_numerical_caches(monkeypatch):
+    import sys
+    from functools import lru_cache
+    from types import ModuleType
+    from pipeline.validation import reproducibility as r
+    module=ModuleType('pipeline.fixture_cached_inputs')
+    calls=[]
+    @lru_cache()
+    def read_input():
+        calls.append(1)
+        return len(calls)
+    module.read_input=read_input
+    monkeypatch.setitem(sys.modules,module.__name__,module)
+    assert read_input()==read_input()==1
+    r.clear_process_caches()
+    assert read_input()==2
