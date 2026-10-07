@@ -70,8 +70,6 @@ describe('a sunlit disk the eye is adapted to', () => {
       // Pattanaik's reference black (5A/32) and what the display shows for it.
       const blackCdM2 = (PATTANAIK.refWhiteFactor / PATTANAIK.refBlackDivisor) * v.eye.Acone;
       const blackLd = inverseDisplay(v.eye.map.gain * v.eye.refs.black + v.eye.map.offset, v.eye.display);
-      // What the frame gives the composite for this body: nothing that depends on its size.
-      expect(v.body.riccoWeight).toBe(1);
       const perceived = extendedPerceived(v.eye, { Y: v.L, S: v.L * SP }, v.u).Y;
       const shown = extendedDisplay(v.eye, { Y: v.L, S: v.L * SP }, v.u);
       if (!(perceived > blackCdM2 && shown.Ld > blackLd)) {

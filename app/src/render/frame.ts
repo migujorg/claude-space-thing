@@ -63,11 +63,6 @@ export interface ResolvedBody {
   sunDir: V3;
   sunDistKm: number;
   sunRadiusKm: number;
-  /**
-   * Always 1. Written to the W target, which nothing reads: a resolved body carries no Ricco weight
-   * (docs/eye-model.md §6.3). The field, the target and their plumbing are to be removed together.
-   */
-  riccoWeight: number;
   occluders: [V3, number][];
   hatch: boolean;
   tint: [number, number, number, number] | null;
@@ -739,7 +734,7 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
         bodyToWorld: orient ?? [1, 0, 0, 0, 1, 0, 0, 0, 1], radiiKm: radii,
         planetshine, ring: ringFor(b),
         sunDir, sunDistKm: toSunLen, sunRadiusKm: sunR,
-        riccoWeight: 1, occluders, hatch, tint,
+        occluders, hatch, tint,
         earth: orient ? earth : null,
         atmosphere: orient && atmB && b.atmosphere && irr
           ? {

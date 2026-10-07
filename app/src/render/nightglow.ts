@@ -817,8 +817,7 @@ fn pixelRay(b: Body, xy: vec2f) -> PixelRay {
 
 struct NOut {
   @location(0) ext: vec4f,
-  @location(1) w: f32,
-  @location(2) mask: f32,
+  @location(1) mask: f32,
   @builtin(frag_depth) depth: f32,
 };
 
@@ -842,7 +841,6 @@ struct NOut {
   if (all(v == vec4f(0.0))) { discard; }
   var o: NOut;
   o.ext = v;
-  o.w = 1.0;
   o.mask = 0.0;
   o.depth = depthOf(max(pr.tCam + sNear, 0.0) + 1e-3, pr.d);
   return o;
@@ -902,11 +900,10 @@ export class NightglowGpu {
   private dummyArr: GPUTexture;
   private sampler: GPUSampler;
 
-  constructor(private readonly device: GPUDevice, hdrFormat: GPUTextureFormat, weightFormat: GPUTextureFormat) {
+  constructor(private readonly device: GPUDevice, hdrFormat: GPUTextureFormat) {
     const d = device;
     const m = d.createShaderModule({ code: NIGHTGLOW_SHADER, label: 'nightglow' });
     const add: GPUBlendState = { color: { operation: 'add', srcFactor: 'one', dstFactor: 'one' }, alpha: { operation: 'add', srcFactor: 'one', dstFactor: 'one' } };
-    const min: GPUBlendState = { color: { operation: 'min', srcFactor: 'one', dstFactor: 'one' }, alpha: { operation: 'min', srcFactor: 'one', dstFactor: 'one' } };
     const max: GPUBlendState = { color: { operation: 'max', srcFactor: 'one', dstFactor: 'one' }, alpha: { operation: 'max', srcFactor: 'one', dstFactor: 'one' } };
     this.lowPipe = d.createRenderPipeline({
       label: 'nightglow (emission)', layout: 'auto',
@@ -917,7 +914,7 @@ export class NightglowGpu {
     this.pipe = d.createRenderPipeline({
       label: 'nightglow (composite)', layout: 'auto',
       vertex: { module: m, entryPoint: 'vsNight' },
-      fragment: { module: m, entryPoint: 'fsNightComposite', targets: [{ format: hdrFormat, blend: add }, { format: weightFormat, blend: min }, { format: 'r8unorm', blend: max }] },
+      fragment: { module: m, entryPoint: 'fsNightComposite', targets: [{ format: hdrFormat, blend: add }, { format: 'r8unorm', blend: max }] },
       primitive: { topology: 'triangle-list' },
       depthStencil: { format: 'depth32float', depthWriteEnabled: false, depthCompare: 'greater' },
     });
