@@ -17,7 +17,7 @@
 // An optically thick haze (Titan) takes its multiple scattering from successive orders of scattering instead
 // (atmosphereMs.ts; AtmosphereModel.multipleScattering = 'orders').
 
-import { atLevel, clipPhase, FOURIER_N, ordersOfScattering, VIEW_N } from './atmosphereMs';
+import { atLevel, clipPhase, FOURIER_N, gaussLegendre01, ordersOfScattering, VIEW_N } from './atmosphereMs';
 
 /** One constituent's optical properties on the model's altitude grid (per km), per wavelength bin. */
 export interface AtmosphereSpecies {
@@ -921,7 +921,11 @@ export function marsDustScale(body: { dustColumn?: { value: { lsDeg: number[]; g
  * from direction o (unit, body → observer) with the Sun along s, R the bottom radius, as the renderer composes a
  * pixel (path radiance + T_view·(surface·μ0·T_sun + surface·E_sky)) plus the air beyond the disk edge (the shell
  * pipeline's chords). At o = s this is the geometric albedo; in general A_gΦ(α). The parts are returned too.
- * n × n disk points, n/2 × n annulus points, `steps` march steps per path (the shader's b.atm.y).
+ * `steps` march steps per path (the shader's b.atm.y). The disk is integrated on a polar grid: n/2 Gauss–Legendre
+ * nodes in μ = √(1 − r²) (dA/π = 2μ dμ dφ/2π) × n azimuths; the annulus on n/2 radii × n azimuths. A square grid
+ * of cell centres miscounts the disk's area by its edge cells (+3.5 % at 16 across, −1.0 % at 24, +1.0 % at 32),
+ * which the integral of a nearly uniform disk follows; on the polar grid the disk part is within 0.02 % of its
+ * limit from n = 24 (measured on Titan's tables, α ≤ 60°; tests/render-titan-scene.test.ts holds a fixture to 0.1 %).
  */
 export function diskReflectanceSpectral(
   m: AtmosphereModel, tab: AtmosphereTables, G: ProfileGrid, o: V3, s: V3, surface: number[], n = 24, steps = 32,
@@ -934,24 +938,27 @@ export function diskReflectanceSpectral(
   const e1: V3 = [e1n[0] / l1, e1n[1] / l1, e1n[2] / l1];
   const e2: V3 = [o[1] * e1[2] - o[2] * e1[1], o[2] * e1[0] - o[0] * e1[2], o[0] * e1[1] - o[1] * e1[0]];
   const ts = new Float64Array(K), es = new Float64Array(K);
-  const dA = (2 / n) * (2 / n) / Math.PI;
-  for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) {
-    const x = -1 + (2 * (i + 0.5)) / n, y = -1 + (2 * (j + 0.5)) / n;
-    const r2 = x * x + y * y;
-    if (r2 >= 1) continue;
-    const mu = Math.sqrt(1 - r2);
-    const nv: V3 = [x * e1[0] + y * e2[0] + mu * o[0], x * e1[1] + y * e2[1] + mu * o[1], x * e1[2] + y * e2[2] + mu * o[2]];
-    const mu0 = nv[0] * s[0] + nv[1] * s[1] + nv[2] * s[2];
-    const p: V3 = [nv[0] * m.bottomKm, nv[1] * m.bottomKm, nv[2] * m.bottomKm];
-    const vp = viewPath(m, tab, G, p, o, s, -1, steps);
-    sunTransmittanceK(m, tab, 0, mu0, ts);
-    skyIrradianceK(m, tab, 0, mu0, es);
-    for (let k = 0; k < K; k++) {
-      path[k] += Math.PI * vp.L[k] * dA;
-      ground[k] += surface[k] * (Math.max(mu0, 0) * ts[k] + es[k]) * vp.Td[k] * dA;
+  const nb = Math.max(8, Math.round(n / 2)), nt = n;
+  const gl = gaussLegendre01(nb);
+  for (let i = 0; i < nb; i++) {
+    const mu = gl.mu[i], rr = Math.sqrt(1 - mu * mu);
+    const dA = (2 * mu * gl.w[i]) / nt;
+    for (let j = 0; j < nt; j++) {
+      const t = (2 * Math.PI * (j + 0.5)) / nt;
+      const x = rr * Math.cos(t), y = rr * Math.sin(t);
+      const nv: V3 = [x * e1[0] + y * e2[0] + mu * o[0], x * e1[1] + y * e2[1] + mu * o[1], x * e1[2] + y * e2[2] + mu * o[2]];
+      const mu0 = nv[0] * s[0] + nv[1] * s[1] + nv[2] * s[2];
+      const p: V3 = [nv[0] * m.bottomKm, nv[1] * m.bottomKm, nv[2] * m.bottomKm];
+      const vp = viewPath(m, tab, G, p, o, s, -1, steps);
+      sunTransmittanceK(m, tab, 0, mu0, ts);
+      skyIrradianceK(m, tab, 0, mu0, es);
+      for (let k = 0; k < K; k++) {
+        path[k] += Math.PI * vp.L[k] * dA;
+        ground[k] += surface[k] * (Math.max(mu0, 0) * ts[k] + es[k]) * vp.Td[k] * dA;
+      }
     }
   }
-  const R = m.bottomKm, Hk = m.topKm - m.bottomKm, nb = Math.max(8, Math.round(n / 2)), nt = n;
+  const R = m.bottomKm, Hk = m.topKm - m.bottomKm;
   for (let i = 0; i < nb; i++) {
     const x = (i + 0.5) / nb;
     const b = R + Hk * x * x;
@@ -969,6 +976,24 @@ export function diskReflectanceSpectral(
   const A = new Float64Array(K);
   for (let k = 0; k < K; k++) A[k] = path[k] + ground[k] + shell[k];
   return { A, path, ground, shell };
+}
+
+/**
+ * diskReflectanceSpectral folded to X, Y, Z, S the way the shaders compose a pixel of a body drawn from its
+ * atmosphere model (ATM_OVER_PHOTOMETRY and the shell, shaders.ts): `air`, the air's own light over the disk and
+ * beyond its edge, per unit of the air's sunlight scale (Atm.sunE); `surface`, the surface term (sunlight and
+ * skylight through the air, seen through the view path's δ-scaled transmittance) per unit of the surface's
+ * reflectance in the channel (the body's radiance prefactor over E☉/π). The disk-integrated reflectance drawn is
+ * air[c] + ρ_c·surface[c]: the model's own value, against which frame.ts scales it to the disk photometry.
+ */
+export function modelDiskXYZS(m: AtmosphereModel, tab: AtmosphereTables, G: ProfileGrid, o: V3, s: V3, n = 24, steps = 32): { air: number[]; surface: number[] } {
+  const d = diskReflectanceSpectral(m, tab, G, o, s, m.wavelengthsNm.map(() => 1), n, steps);
+  const air = [0, 0, 0, 0], surface = [0, 0, 0, 0];
+  for (let c = 0; c < 4; c++) for (let k = 0; k < tab.K; k++) {
+    air[c] += m.weights[c][k] * (d.path[k] + d.shell[k]);
+    surface[c] += m.weights[c][k] * d.ground[k];
+  }
+  return { air, surface };
 }
 
 /**

@@ -70,8 +70,8 @@ export function surfaceRefs(layers: SurfaceLayer[], dataRoot: string): Map<numbe
  * A body's atmosphere from atmospheres.json when every known value it needs is admitted at the level, else null.
  * Extinction must be known. A single-scattering albedo or phase function that is unknown does not withhold it:
  * the renderer draws no light for it and marks the air beyond the disk "not measured". A body with a surface
- * reflectance under its air (Titan) is drawn from the model when that reflectance is admitted too
- * (SceneAtmosphere.surface); otherwise it keeps its disk photometry.
+ * reflectance under its air (Titan) is drawn from the model, scaled to its disk photometry (frame.ts), when that
+ * reflectance is admitted too (SceneAtmosphere.surface); otherwise it keeps its disk photometry.
  */
 export function atmosphereFor(file: AtmosphereFile | null | undefined, id: number, level: ExistsLevel): SceneBody['atmosphere'] {
   const b = file?.bodies[String(id)];
@@ -172,7 +172,8 @@ export function applyExtras(sb: SceneBody, body: Body, extras: SceneExtras | und
     if (surface.albedo || surface.height) sb.surface = surface;
   }
   // Other bodies with an atmosphere (Mars, Venus, Pluto) keep their disk photometry; the renderer renormalizes it
-  // under the air (docs/rendering-earth.md §8). Titan, with its surface reflectance, is drawn from its model.
+  // under the air (docs/rendering-earth.md §8). Titan, with its surface reflectance, is drawn from its model, which
+  // the renderer scales to the disk photometry.
   if (atm && !sb.atmosphere && lit && !sb.surfaceUnknown) {
     sb.atmosphere = atm;
     used.push(atm.worstLabel);

@@ -111,7 +111,7 @@ export class Inspector {
     // A body drawn from its atmosphere model (extras.ts atmosphereFor → SceneAtmosphere.surface: Titan).
     const atm = !isSun && !sb ? atmosphereFor(m.data?.atmospheres, body.id, level) : null;
     const atmWhy = atm?.surface
-      ? ` Its resolved disk is drawn from its atmosphere model (${atm.worstLabel}): the haze and gas of atmospheres.json over the surface reflectance under them, by radiative transfer, not scaled to the disk photometry, which gives its light only as a point.`
+      ? ` Its resolved disk is drawn from its atmosphere model (${atm.worstLabel}): the haze and gas of atmospheres.json over the surface reflectance under them, by radiative transfer, scaled in each of X, Y, Z and S so that the disk's light is the disk photometry (measured over model; beyond the photometry's phase range the factors of its edge are held, an estimate).`
       : '';
     this.setWhy(isSun || sb ? '' : whyLine(f, level) + shapeWhy + atmWhy);
 

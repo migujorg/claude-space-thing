@@ -1,12 +1,15 @@
 // A body drawn from its atmosphere model (Titan; docs/rendering-earth.md §8 "Titan"), on TEST FIXTURES — not data:
 // when the app attaches the surface under the air (extras.ts atmosphereFor), what the frame then draws (frame.ts:
-// the model's own disk, not scaled to the disk photometry) and when the photometry still stands in, and the
+// the model's disk scaled per channel to the disk photometry, architecture §4.3 and §4.4; the Earth with its layers
+// is the exception) and when the photometry still stands in, the model's disk integral (atmosphere.ts), and the
 // inspector's rows (inspectModel.ts atmosphereRows). The numbers of the real model are in render-titan.test.ts.
 import { describe, expect, it } from 'vitest';
 import { atmosphereFor } from '../src/app/extras';
-import { precomputeAtmosphere, ProfileGrid } from '../src/render/atmosphere';
+import { diskReflectanceSpectral, modelDiskXYZS, precomputeAtmosphere, ProfileGrid } from '../src/render/atmosphere';
 import type { AtmosphereBinding } from '../src/render/atmosphereGpu';
 import { cameraGeom, prepareFrame } from '../src/render/frame';
+import { PROVENANCE_TINT } from '../src/render/overlays';
+import { lambertPhase } from '../src/render/photometry';
 import { LAMBERT_LAW } from '../src/render/spatial';
 import { AdaptationState, computeEyeFrame } from '../src/eye/model';
 import { DEFAULT_EYE_SETTINGS } from '../src/eye/settings';
@@ -75,25 +78,74 @@ describe('a body with a surface reflectance under its air (fixture)', () => {
   });
 });
 
-// ---- frame: what is drawn -------------------------------------------------------------------------------------------
+// ---- the model's disk integral ---------------------------------------------------------------------------------------
 const W = 1280, H = 720;
 const R = 2575;
 const m = fixtureRayleighAtmosphere({ bottomKm: R, topKm: R + 100 });
 const tab = precomputeAtmosphere(m);
 const grid = new ProfileGrid(m, 512);
+const dir = (deg: number): V3 => [Math.sin((deg * Math.PI) / 180), 0, Math.cos((deg * Math.PI) / 180)];
+
+describe('the disk integral of a body drawn from its atmosphere model (fixture)', () => {
+  it('does not depend on its grid: 24 to 48 points across agree with 96 within 0.1 %, to 120° phase', () => {
+    // Measured: within 0.05 %. The square grid of cell centres this replaced was off by −1.0 % at 24 and +1.0 % at 32
+    // (its count of cells inside the disk), which a normalization would have put on the screen.
+    const surface = m.wavelengthsNm.map(() => 0.1);
+    for (const a of [0, 5.7, 60, 120]) {
+      const fine = diskReflectanceSpectral(m, tab, grid, dir(a), [0, 0, 1], surface, 96);
+      for (const n of [24, 32, 48]) {
+        const d = diskReflectanceSpectral(m, tab, grid, dir(a), [0, 0, 1], surface, n);
+        // The disk (surface and air over it) and the whole, at the bluest bin (the most air) and the reddest.
+        for (const k of [0, m.wavelengthsNm.length - 1]) {
+          expect(Math.abs((d.path[k] + d.ground[k]) / (fine.path[k] + fine.ground[k]) - 1), `disk, α ${a}°, n ${n}, bin ${k}`).toBeLessThan(1e-3);
+          expect(Math.abs(d.A[k] / fine.A[k] - 1), `whole, α ${a}°, n ${n}, bin ${k}`).toBeLessThan(1e-3);
+        }
+      }
+    }
+  });
+
+  it('under transparent air is the Lambert sphere: ρ·(2/3)·Φ_L(α)', () => {
+    const clear = fixtureRayleighAtmosphere({ bottomKm: R, topKm: R + 100, beta550: 1e-12 });
+    const ct = precomputeAtmosphere(clear);
+    const cg = new ProfileGrid(clear, 512);
+    for (const a of [0, 5.7, 60, 120]) {
+      const d = diskReflectanceSpectral(clear, ct, cg, dir(a), [0, 0, 1], clear.wavelengthsNm.map(() => 0.1), 24);
+      const exact = 0.1 * (2 / 3) * lambertPhase((a * Math.PI) / 180);
+      expect(Math.abs(d.A[3] / exact - 1), `α ${a}°`).toBeLessThan(1e-3);
+      expect(d.shell[3]).toBeLessThan(1e-9);
+    }
+  });
+
+  it('folds to X, Y, Z, S as the shaders compose the pixel: the air per unit sunlight, the surface per unit reflectance', () => {
+    const ones = m.wavelengthsNm.map(() => 1);
+    const d = diskReflectanceSpectral(m, tab, grid, dir(5.7), [0, 0, 1], ones, 24);
+    const f = modelDiskXYZS(m, tab, grid, dir(5.7), [0, 0, 1], 24);
+    for (let c = 0; c < 4; c++) {
+      let air = 0, sfc = 0;
+      for (let k = 0; k < m.wavelengthsNm.length; k++) { air += m.weights[c][k] * (d.path[k] + d.shell[k]); sfc += m.weights[c][k] * d.ground[k]; }
+      expect(f.air[c]).toBeCloseTo(air, 12);
+      expect(f.surface[c]).toBeCloseTo(sfc, 12);
+    }
+  });
+});
+
+// ---- frame: what is drawn -------------------------------------------------------------------------------------------
 const irr: XYZS = [1.2e5, 1.3e5, 1.1e5, 2.9e5]; // test values
 const rho: XYZS = [0.11, 0.1, 0.07, 0.09];
 const D_AU = 9.5;
+const PHASE_COEFF = 0.003772;
+const phiOf = (deg: number) => 10 ** (-0.4 * PHASE_COEFF * deg);
 
-function scene(phaseDeg: number, dist: number, p = 0.2, extra: Partial<SceneBody> = {}): SceneSnapshot {
+function scene(phaseDeg: number, dist: number, p: number | XYZS = 0.2, extra: Partial<SceneBody> = {}): SceneSnapshot {
   const a = (phaseDeg * Math.PI) / 180;
   const toSun: V3 = [D_AU * AU_KM * Math.sin(a), 0, D_AU * AU_KM * Math.cos(a)];
   const pos: V3 = [0, 0, -dist];
+  const pc = typeof p === 'number' ? [p, p, p, p] : p;
   const b: SceneBody = {
     id: 606, name: 'Fixture', pos, toSun, orient: [1, 0, 0, 0, 1, 0, 0, 0, 1], radii: [R, R, R],
     // Disk photometry measured to 5.7° only, like Titan's.
-    albedoXYZS: irr.map((v) => p * v) as XYZS, phase: { kind: 'poly-mag', coeffs: [0, 0.003772], minDeg: 0, maxDeg: 5.7 }, surfaceUnknown: false,
-    worstLabel: 'estimated', selected: false,
+    albedoXYZS: irr.map((v, c) => pc[c] * v) as XYZS, phase: { kind: 'poly-mag', coeffs: [0, PHASE_COEFF], minDeg: 0, maxDeg: 5.7 }, surfaceUnknown: false,
+    worstLabel: 'measured', selected: false, allowPhaseExtrapolation: true,
     atmosphere: {
       wavelengthsNm: m.wavelengthsNm, foldWeights: [], body: { altitudesKm: [0], topAltitudeKm: 100 } as never, worstLabel: 'estimated',
       surface: { reflectance: m.wavelengthsNm.map(() => 0.1), xyzs: rho },
@@ -110,26 +162,97 @@ const binding = () => ({ model: m, tables: tab, grid, key: 'fixture' }) as unkno
 const eyeState = () => { const s = new AdaptationState(); s.update({ coneCdM2: 1e-5, rodCdM2: 1.4e-5, cornealFlux: 0 }, 0); return s; };
 const eye = computeEyeFrame(DEFAULT_EYE_SETTINGS, eyeState(), 'eye', 0, null);
 const g = cameraGeom(scene(0, 40000), W, H, 1e-7);
-const kModel = irr.map((v, c) => (v * rho[c]) / (Math.PI * D_AU * D_AU));
+/** Sunlight over π at the body: the scale of the air's light, and of the surface per unit reflectance. */
+const sunOverPi = irr.map((v) => v / (Math.PI * D_AU * D_AU));
+/**
+ * The disk-integrated reflectance (X, Y, Z, S) a frame draws, from its two scales (the surface's K and the air's
+ * sunE) and the model's disk integrals on a finer grid than the frame's: Σ over the pixel's terms as the shaders
+ * compose them (modelDiskXYZS).
+ */
+function drawn(r: ReturnType<typeof prepareFrame>['resolved'][0], phaseDeg: number): number[] {
+  const d = modelDiskXYZS(m, tab, grid, dir(phaseDeg), [0, 0, 1], 64);
+  return [0, 1, 2, 3].map((c) => (r.atmosphere!.sunE[c] / sunOverPi[c]) * d.air[c] + (r.K[c] / sunOverPi[c]) * d.surface[c]);
+}
+const scaleLine = (f: ReturnType<typeof prepareFrame>) => f.warnings.filter((w) => w.startsWith('Fixture: atmosphere model scaled'));
 
 describe('the frame of a body drawn from its atmosphere model (fixture)', () => {
-  it('a resolved disk is the model\'s own at any phase: sunlight on the surface reflectance, the air on top, no photometry', () => {
-    for (const phaseDeg of [0, 5.7, 60, 150]) {
-      // Two different disk photometries: what is drawn does not depend on them.
-      const frames = [0.2, 0.4].map((p) => prepareFrame(scene(phaseDeg, 40000, p), g, eye, 1e-9, { atmospheres: () => binding() }));
-      for (const f of frames) {
+  it('inside the photometry\'s range the drawn disk reflects the measured p·Φ(α) in every channel', () => {
+    // Two disk photometries, one of them coloured: the picture follows the measurement, whatever the model gives.
+    const photometries: (number | XYZS)[] = [0.2, [0.21, 0.2, 0.12, 0.16]];
+    for (const phaseDeg of [0, 0.5, 3, 5.6]) {
+      for (const p of photometries) {
+        const f = prepareFrame(scene(phaseDeg, 40000, p), g, eye, 1e-9, { atmospheres: () => binding() });
         const r = f.resolved[0];
         expect(r.lit).toBe(true);
         expect(r.hatch).toBe(false);
         expect(r.law).toBe(LAMBERT_LAW);
         expect(r.atmosphere?.onDisk).toBe(true);
-        r.K.forEach((v, c) => expect(v).toBeCloseTo(kModel[c], 9));
-        // The air's sunlight: E☉/π at the body's distance, unscaled.
-        r.atmosphere!.sunE.forEach((v, c) => expect(v).toBeCloseTo(irr[c] / (Math.PI * D_AU * D_AU), 9));
+        const A = drawn(r, phaseDeg);
+        const pc = typeof p === 'number' ? [p, p, p, p] : p;
+        // 0.2 %: the 1° phase bins of the frame's disk integrals and its coarser grid (numerical).
+        A.forEach((v, c) => expect(Math.abs(v / (pc[c] * phiOf(phaseDeg)) - 1), `α ${phaseDeg}°, channel ${c}`).toBeLessThan(2e-3));
+        // One factor per channel on the whole model: the surface under the air and the air's own light alike.
+        const fac = r.K.map((v, c) => v / (sunOverPi[c] * rho[c]));
+        r.atmosphere!.sunE.forEach((v, c) => expect(v / sunOverPi[c]).toBeCloseTo(fac[c], 12));
         expect(f.points).toHaveLength(0);
-        expect(f.warnings.filter((w) => w.startsWith('Fixture'))).toEqual([]);
+        // The factors are said, per channel, and nothing else is warned.
+        const line = scaleLine(f);
+        expect(line).toHaveLength(1);
+        expect(line[0]).toContain(`×${fac[0].toFixed(3)} X, ${fac[1].toFixed(3)} Y, ${fac[2].toFixed(3)} Z, ${fac[3].toFixed(3)} S`);
+        expect(line[0]).not.toContain('estimated');
+        expect(f.warnings.filter((w) => w.startsWith('Fixture'))).toHaveLength(1);
       }
     }
+  });
+
+  it('the factor is the measurement over the model: it follows the photometry, and no number of the model moves', () => {
+    const a = prepareFrame(scene(3, 40000, 0.2), g, eye, 1e-9, { atmospheres: () => binding() }).resolved[0];
+    const b2 = prepareFrame(scene(3, 40000, 0.4), g, eye, 1e-9, { atmospheres: () => binding() }).resolved[0];
+    a.K.forEach((v, c) => expect(b2.K[c] / v).toBeCloseTo(2, 12));
+    a.atmosphere!.sunE.forEach((v, c) => expect(b2.atmosphere!.sunE[c] / v).toBeCloseTo(2, 12));
+    // A photometry equal to the model's own disk integral leaves the model as it is (factor 1).
+    const d = modelDiskXYZS(m, tab, grid, dir(3), [0, 0, 1]);
+    const own = [0, 1, 2, 3].map((c) => (d.air[c] + rho[c] * d.surface[c]) / phiOf(3)) as XYZS;
+    const same = prepareFrame(scene(3, 40000, own), g, eye, 1e-9, { atmospheres: () => binding() }).resolved[0];
+    same.K.forEach((v, c) => expect(Math.abs(v / (sunOverPi[c] * rho[c]) - 1)).toBeLessThan(1e-9));
+  });
+
+  it('beyond the measured range the factors of the range\'s edge are held, and the result is labelled estimated', () => {
+    const edge = prepareFrame(scene(5.7, 40000), g, eye, 1e-9, { atmospheres: () => binding() }).resolved[0];
+    const facEdge = edge.K.map((v, c) => v / (sunOverPi[c] * rho[c]));
+    for (const phaseDeg of [6, 60, 150]) {
+      const s = scene(phaseDeg, 40000);
+      s.view.overlays.provenanceTint = true;
+      const f = prepareFrame(s, g, eye, 1e-9, { atmospheres: () => binding() });
+      const r = f.resolved[0];
+      expect(r.lit).toBe(true);
+      expect(r.hatch).toBe(false);
+      r.K.forEach((v, c) => expect(v / (sunOverPi[c] * rho[c])).toBeCloseTo(facEdge[c], 12));
+      r.atmosphere!.sunE.forEach((v, c) => expect(v / sunOverPi[c]).toBeCloseTo(facEdge[c], 12));
+      // The body's label was measured: the continuation makes it estimated (tint), and the line says so.
+      expect(r.tint?.slice(0, 3)).toEqual([...PROVENANCE_TINT.estimated]);
+      const line = scaleLine(f);
+      expect(line).toHaveLength(1);
+      expect(line[0]).toContain('beyond the measured range (0–5.7°)');
+      expect(line[0]).toContain(`×${facEdge[0].toFixed(3)} X`);
+      expect(line[0]).toContain('→ estimated');
+      // Fully resolved: no point part, so the spatial law's continuation is not in the picture and is not announced.
+      expect(f.points).toHaveLength(0);
+      expect(f.warnings.filter((w) => w.startsWith('Fixture'))).toHaveLength(1);
+    }
+  });
+
+  it('at Strict (no continuation allowed) a phase beyond the range is not measured: marked, the model not drawn', () => {
+    const f = prepareFrame(scene(60, 40000, 0.2, { allowPhaseExtrapolation: false }), g, eye, 1e-9, { atmospheres: () => binding() });
+    const r = f.resolved[0];
+    expect(r.lit).toBe(false);
+    expect(r.hatch).toBe(true);
+    expect(r.atmosphere).toBeNull();
+    expect(f.warnings.filter((w) => w.startsWith('Fixture'))).toEqual(['Fixture: phase angle 60.0° outside the curve\'s validity 0–5.7° → sunlit part drawn as not measured (night side black)']);
+    // Inside the range the same body is drawn, scaled, without an estimate.
+    const inRange = prepareFrame(scene(3, 40000, 0.2, { allowPhaseExtrapolation: false }), g, eye, 1e-9, { atmospheres: () => binding() });
+    expect(inRange.resolved[0].lit).toBe(true);
+    expect(scaleLine(inRange)).toHaveLength(1);
   });
 
   it('until its tables are ready the disk photometry stands in, inside its phase range, without the air', () => {
@@ -139,14 +262,17 @@ describe('the frame of a body drawn from its atmosphere model (fixture)', () => 
     expect(r.atmosphere).toBeNull();
     expect(r.lit).toBe(true);
     // K = p·Φ(α)·E☉/(π d² I(α)) with the Lambert disk integral I ≈ 2/3 near opposition: not the model's scale.
-    const phi = 10 ** (-0.4 * 0.003772 * 3);
-    expect(r.K[1]).toBeGreaterThan((0.98 * (p * phi * irr[1])) / (Math.PI * D_AU * D_AU * (2 / 3)));
-    expect(r.K[1]).toBeLessThan((1.02 * (p * phi * irr[1])) / (Math.PI * D_AU * D_AU * (2 / 3)));
-    // Beyond the range, with no extrapolation allowed, there is nothing to stand in: marked, and said.
-    const far = prepareFrame(scene(60, 40000, p), g, eye, 1e-9, { atmospheres: () => null });
+    expect(r.K[1]).toBeGreaterThan((0.98 * (p * phiOf(3) * irr[1])) / (Math.PI * D_AU * D_AU * (2 / 3)));
+    expect(r.K[1]).toBeLessThan((1.02 * (p * phiOf(3) * irr[1])) / (Math.PI * D_AU * D_AU * (2 / 3)));
+    expect(scaleLine(f)).toHaveLength(0);
+    // Beyond the range the stand-in is the spatial law's continuation (Best), or nothing (Strict): marked, and said.
+    const best = prepareFrame(scene(60, 40000, p), g, eye, 1e-9, { atmospheres: () => null });
+    expect(best.resolved[0].lit).toBe(true);
+    expect(best.warnings.some((w) => w.includes('phase extrapolated beyond measured range (0–5.7°) with the spatial law → estimated'))).toBe(true);
+    const far = prepareFrame(scene(60, 40000, p, { allowPhaseExtrapolation: false }), g, eye, 1e-9, { atmospheres: () => null });
     expect(far.resolved[0].lit).toBe(false);
     expect(far.resolved[0].hatch).toBe(true);
-    expect(far.warnings.some((w) => w.includes('a resolved disk is drawn from its atmosphere model'))).toBe(true);
+    expect(far.warnings.some((w) => w.includes('sunlit part drawn as not measured'))).toBe(true);
   });
 
   it('under a pixel across it is the point of its disk photometry', () => {
@@ -155,7 +281,50 @@ describe('the frame of a body drawn from its atmosphere model (fixture)', () => 
     expect(f.resolved).toHaveLength(0);
     expect(f.points).toHaveLength(1);
     // E = p·Φ(α)·E☉·(1/d²)(R/Δ)² (architecture §4.3).
-    const phi = 10 ** (-0.4 * 0.003772 * 3);
-    expect(f.points[0].E[1]).toBeCloseTo((0.2 * irr[1] * phi * R * R) / (D_AU * D_AU * 4e8 * 4e8), 12);
+    expect(f.points[0].E[1]).toBeCloseTo((0.2 * irr[1] * phiOf(3) * R * R) / (D_AU * D_AU * 4e8 * 4e8), 12);
+  });
+
+  it('between one and two pixels the point part and the disk part are the same measured light, inside the range', () => {
+    // Diameter 1.5 px: smooth(1, 2, 1.5) = 0.5 of the disk resolved.
+    const dist = (2 * R) / (1.5 * g.pixelAngle);
+    const s = scene(3, dist);
+    const f = prepareFrame(s, g, eye, 1e-9, { atmospheres: () => binding() });
+    expect(f.resolved).toHaveLength(1);
+    expect(f.points).toHaveLength(1);
+    const half = f.resolved[0];
+    const A = drawn(half, 3);
+    // The resolved half reflects half of p·Φ, the point carries the other half as illuminance.
+    A.forEach((v, c) => expect(Math.abs(v / (0.5 * 0.2 * phiOf(3)) - 1), `channel ${c}`).toBeLessThan(2e-3));
+    f.points[0].E.forEach((v, c) => expect(Math.abs(v / ((0.5 * 0.2 * irr[c] * phiOf(3) * R * R) / (D_AU * D_AU * dist * dist)) - 1)).toBeLessThan(1e-5));
+  });
+});
+
+// ---- the exception: the Earth with its layers -------------------------------------------------------------------------
+describe('the Earth drawn with its layers is not scaled to its disk photometry (fixture)', () => {
+  // Earth mode (frame.ts earthMode): an albedo map of surface-only absolute reflectance with its cloud layer bound.
+  const earthLayers = {
+    albedo: { header: { normalization: { absoluteDiskMean: { X: 0.03, Y: 0.03, Z: 0.03, S: 0.03 } } } },
+    clouds: {},
+  } as unknown as SceneBody['surface'];
+  const surfaces = () => ({ albedo: { base: 0, maxLevel: 0, zonal: null }, clouds: { base: 0, maxLevel: 0 } });
+  const air = { wavelengthsNm: m.wavelengthsNm, foldWeights: [], body: { altitudesKm: [0], topAltitudeKm: 100 } as never, worstLabel: 'estimated' as const };
+
+  it('its surface and its air keep the absolute scale E☉/(π d²) at every phase, whatever the disk photometry says', () => {
+    for (const atmosphere of [air, { ...air, surface: { reflectance: m.wavelengthsNm.map(() => 0.1), xyzs: rho } }]) {
+      for (const phaseDeg of [0, 3, 60, 150]) {
+        for (const p of [0.2, 0.4]) {
+          const s = scene(phaseDeg, 40000, p, { surface: earthLayers, atmosphere, phase: { kind: 'lambert' } });
+          const f = prepareFrame(s, g, eye, 1e-9, { atmospheres: () => binding(), surfaces });
+          const r = f.resolved[0];
+          expect(r.earth).not.toBeNull();
+          expect(r.lit).toBe(true);
+          expect(r.law).toBe(LAMBERT_LAW);
+          r.K.forEach((v, c) => expect(v).toBeCloseTo(sunOverPi[c], 9));
+          expect(r.atmosphere?.onDisk).toBe(true);
+          r.atmosphere!.sunE.forEach((v, c) => expect(v).toBeCloseTo(sunOverPi[c], 9));
+          expect(f.warnings.filter((w) => w.includes('scaled'))).toEqual([]);
+        }
+      }
+    }
   });
 });
