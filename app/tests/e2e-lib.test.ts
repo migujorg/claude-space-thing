@@ -37,6 +37,7 @@ interface Lib {
   THUMB_H: number;
   GPU_MODES: string[];
   gpuLaunchArgs(mode?: string): string[];
+  runServerOptions(): { port: number; strictPort: boolean; hmr: boolean; watch: null };
   isSoftwareAdapter(info: Adapter | null): boolean;
   adapterLabel(info: Adapter | null): string;
   gpuMismatch(mode: string, info: Adapter | null): string | null;
@@ -145,6 +146,9 @@ describe('the --gpu option', () => {
     expect(args).toContain('--enable-unsafe-webgpu');
     expect(args.join(' ')).not.toMatch(/swiftshader/);
     expect(() => lib.gpuLaunchArgs('gpu')).toThrow(/--gpu gpu: expected swiftshader or hardware/);
+  });
+  it('a run\'s own server does not watch files or reload pages: a data rebuild or an edit cannot lose the scene being measured', () => {
+    expect(lib.runServerOptions()).toEqual({ port: 0, strictPort: false, hmr: false, watch: null });
   });
 
   it('tells a software adapter from a hardware one', () => {

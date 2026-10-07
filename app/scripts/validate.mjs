@@ -21,7 +21,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { cpus } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { adapterLabel, encodePng, gpuLaunchArgs, gpuMismatch, pageAdapterInfo } from './e2e-lib.mjs';
+import { adapterLabel, encodePng, gpuLaunchArgs, gpuMismatch, pageAdapterInfo, runServerOptions } from './e2e-lib.mjs';
 import { markdownReport } from './validate-lib.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -60,7 +60,7 @@ mkdirSync(OUT, { recursive: true });
 let server;
 let base = opt('base');
 if (!base) {
-  server = await createServer({ root: ROOT, server: { port: 0, strictPort: false }, logLevel: 'error' });
+  server = await createServer({ root: ROOT, server: runServerOptions(), logLevel: 'error' });
   await server.listen();
   base = `http://localhost:${server.httpServer.address().port}`;
 }

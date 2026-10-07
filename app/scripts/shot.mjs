@@ -10,7 +10,7 @@ import { createServer } from 'vite';
 import { mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { adapterLabel, gpuLaunchArgs, gpuMismatch, pageAdapterInfo } from './e2e-lib.mjs';
+import { adapterLabel, gpuLaunchArgs, gpuMismatch, pageAdapterInfo, runServerOptions } from './e2e-lib.mjs';
 
 const args = Object.fromEntries(
   process.argv.slice(2).reduce((acc, a, i, arr) => (a.startsWith('--') ? [...acc, [a.slice(2), arr[i + 1]?.startsWith('--') ? 'true' : arr[i + 1]]] : acc), []),
@@ -30,7 +30,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 let server;
 let base = args.base;
 if (!base) {
-  server = await createServer({ root, server: { port: 0, strictPort: false }, logLevel: 'error' });
+  server = await createServer({ root, server: runServerOptions(), logLevel: 'error' });
   await server.listen();
   const addr = server.httpServer.address();
   base = `http://localhost:${addr.port}`;

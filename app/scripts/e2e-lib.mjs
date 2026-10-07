@@ -20,6 +20,16 @@ export function sceneQuery(suite, scene) {
 export const GPU_MODES = ['swiftshader', 'hardware'];
 
 /**
+ * Options of the Vite server a run starts for itself (createServer({ root, server: runServerOptions() })): a free
+ * port, and neither the file watcher nor hot reloading. A run renders the tree as it found it. With the watcher
+ * on, a file changing under `public/` (a data product being rebuilt) or `src/` reloads every open page, and the
+ * scene being measured is lost ("Execution context was destroyed, most likely because of a navigation").
+ */
+export function runServerOptions() {
+  return { port: 0, strictPort: false, hmr: false, watch: null };
+}
+
+/**
  * Chromium arguments for headless WebGPU.
  * - `swiftshader`: the software adapter. Runs anywhere, and is what the committed baseline was accepted on.
  * - `hardware`: Dawn on the system's Vulkan drivers. `--use-angle=vulkan` with `--enable-features=Vulkan` is what
