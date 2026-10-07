@@ -24,7 +24,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   acceptanceNotes, adapterLabel, compareScene, decodePng, encodePng, extractStats, gpuLaunchArgs, gpuMismatch, gridFromThumb, hdrFormatOf, mergeBaseline,
-  pageAdapterInfo, pageStarsDrawnFrames, runServerOptions, sceneQuery, starsFramesNote, statsTable, thumbFromLinear, THUMB_H, THUMB_W,
+  pageAdapterInfo, pageStarsDrawnFrames, runServerOptions, sceneQuery, starsFramesFailure, starsFramesNote, statsTable, thumbFromLinear, THUMB_H, THUMB_W,
 } from './e2e-lib.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -73,6 +73,12 @@ function writeBaseline(rs, meta) {
   const bad = rs.filter((r) => r.error || !r.stats);
   if (bad.length) {
     console.log(`Not accepting: ${bad.map((r) => r.id).join(', ')} did not render.`);
+    process.exit(1);
+  }
+  // A settled scene of an always-adapted eye is one frame; a star count that changes between frames is not a baseline.
+  const unsteady = rs.filter((r) => starsFramesFailure(r.starsDrawnFrames, r.stats.starsDrawn, r.query));
+  if (unsteady.length) {
+    for (const r of unsteady) console.log(`Not accepting ${r.id}: ${starsFramesFailure(r.starsDrawnFrames, r.stats.starsDrawn, r.query)}`);
     process.exit(1);
   }
   mkdirSync(BASE_DIR, { recursive: true });
@@ -230,7 +236,8 @@ await server?.close();
 const gpu = { mode: gpuMode, adapter: results.find((r) => r.adapter)?.adapter ?? null };
 const notes = compare ? acceptanceNotes(baseline, results.map((r) => r.id), dataInfo, gpu) : [];
 for (const r of results) {
-  const unsteady = starsFramesNote(r.starsDrawnFrames, r.stats?.starsDrawn);
+  // A failure where the eye is always adapted (below); a note where the adaptation runs in real time.
+  const unsteady = starsFramesFailure(r.starsDrawnFrames, r.stats?.starsDrawn, r.query) ? null : starsFramesNote(r.starsDrawnFrames, r.stats?.starsDrawn);
   if (unsteady) notes.push(`${r.id}: ${unsteady}`);
 }
 for (const r of results) {
@@ -245,6 +252,11 @@ for (const r of results) {
   }
   const scene = suite.scenes.find((s) => s.id === r.id);
   r.compare = compareScene(r, ref, scene?.tolerance);
+  const unsteady = starsFramesFailure(r.starsDrawnFrames, r.stats?.starsDrawn, r.query);
+  if (unsteady) {
+    r.compare.failures.push(unsteady);
+    r.compare.pass = false;
+  }
 }
 
 const report = {

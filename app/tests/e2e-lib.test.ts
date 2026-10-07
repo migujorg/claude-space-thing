@@ -57,6 +57,7 @@ interface Lib {
   sceneAcceptance(baseline: Baseline | null, id: string): Partial<Meta>;
   acceptanceNotes(baseline: Baseline | null, ids: string[], data: Meta['data'], gpu: Gpu): string[];
   starsFramesNote(values: number[] | undefined, compared: number | null | undefined): string | null;
+  starsFramesFailure(values: number[] | undefined, compared: number | null | undefined, query: string | undefined): string | null;
 }
 interface Adapter { vendor: string; architecture: string; device: string; description: string; fallback: boolean; float32Blendable: boolean }
 interface Gpu { mode: string; adapter: Adapter | null }
@@ -249,5 +250,17 @@ describe('the --gpu option', () => {
     expect(lib.starsFramesNote([1015], 1015)).toBeNull();
     expect(lib.starsFramesNote([965, 1043], 965)).toBe('starsDrawn changes from frame to frame: 965, 1043; the stats hold 965');
     expect(lib.starsFramesNote([2631, 2632, 2634, 2635, 2636, 2639, 2643], 2635)).toBe('starsDrawn changes from frame to frame: 2631 … 2643 (7 values); the stats hold 2635');
+  });
+
+  it('a star count that changes between frames fails a scene whose eye is always adapted, and only such a scene', () => {
+    const instant = 't=2026-10-15T00:00:00Z&smallbodies=0&adapt=instant&target=999&dist=60000';
+    const realtime = 't=2026-10-15T00:00:00Z&smallbodies=0&adapt=realtime&target=999&adaptfrom=10000,600,1800';
+    expect(lib.starsFramesFailure([667], 667, instant)).toBeNull();
+    expect(lib.starsFramesFailure(undefined, 667, instant)).toBeNull();   // not sampled (SwiftShader)
+    expect(lib.starsFramesFailure([913, 1096], 913, instant)).toBe('starsDrawn changes from frame to frame: 913, 1096; the stats hold 913 (the eye is always adapted in this scene: the settled frame must be one frame)');
+    expect(lib.starsFramesFailure([2624, 2626, 2629], 2626, realtime)).toBeNull();
+    expect(lib.starsFramesNote([2624, 2626, 2629], 2626)).not.toBeNull();
+    expect(lib.starsFramesFailure([1, 2], 1, 'target=999&adapt=instantly')).toBeNull();
+    expect(lib.starsFramesFailure([1, 2], 1, undefined)).toBeNull();
   });
 });

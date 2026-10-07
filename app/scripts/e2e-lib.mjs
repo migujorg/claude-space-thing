@@ -148,9 +148,11 @@ export function acceptanceNotes(baseline, ids, dataInfo, gpu) {
 
 /**
  * Runs in the page: the distinct values `renderer.starsDrawn` takes over `frames` animation frames, ascending.
- * The star cull judges each star against the light of the frame before (stars included), and in some scenes the
- * count alternates between two values on consecutive frames. On SwiftShader a frame takes about a second and a
- * script reads the same one every run; on a GPU it takes ~10 ms and the read lands on either.
+ * A settled scene whose eye is always adapted (adapt=instant) has one value: every point source in the frame is in
+ * the point image, so the veil the stars are judged against does not depend on which stars were drawn the frame
+ * before (render/shaders.ts CULL_SHADER). Until that was so, the count alternated between two values on consecutive
+ * frames in 9 of the 26 scenes, and a GPU run, whose frames take ~10 ms, read either. A scene whose adaptation runs
+ * in real time (adapt=realtime) moves by a few stars as its pigments regenerate.
  */
 export async function pageStarsDrawnFrames(frames) {
   const seen = new Set();
@@ -167,6 +169,17 @@ export function starsFramesNote(values, compared) {
   if (!values || values.length < 2) return null;
   const list = values.length <= 6 ? values.join(', ') : `${values[0]} … ${values[values.length - 1]} (${values.length} values)`;
   return `starsDrawn changes from frame to frame: ${list}; the stats hold ${compared ?? 'none'}`;
+}
+
+/**
+ * The same as a failure, for a scene whose eye is always adapted (`adapt=instant` in its URL): nothing in such a
+ * scene changes between frames, so a count that does means a verdict depends on an earlier frame again. Null for a
+ * steady count and for a scene whose adaptation runs in real time.
+ */
+export function starsFramesFailure(values, compared, query) {
+  if (!/(^|&)adapt=instant(&|$)/.test(query ?? '')) return null;
+  const note = starsFramesNote(values, compared);
+  return note ? `${note} (the eye is always adapted in this scene: the settled frame must be one frame)` : null;
 }
 
 // ---- tolerances ----------------------------------------------------------------------------------------------
