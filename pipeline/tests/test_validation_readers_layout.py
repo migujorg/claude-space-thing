@@ -130,6 +130,7 @@ def _old_voyager(img, lbl):
 
 @pytest.mark.parametrize("case,image", [(c, im) for c in (NEPTUNE, URANUS) for im in c.images],
                          ids=[im.product for c in (NEPTUNE, URANUS) for im in c.images])
+@pytest.mark.skip_group("missing-input")
 def test_voyager_real_frames_are_bit_identical(case, image, no_clock):
     img = RAW / "validation" / case.id / image.data_url.rsplit("/", 1)[-1]
     lbl = img.with_suffix(".LBL")
@@ -179,6 +180,7 @@ def test_epoxi_refuses_missing_or_malformed_quality_map(tmp_path, flags, reason)
 
 
 @pytest.mark.parametrize("image", EARTH_MOON.images, ids=lambda im: im.product)
+@pytest.mark.skip_group("missing-input")
 def test_epoxi_real_frames_mask_only_invalid_flags(image):
     path = RAW / "validation" / EARTH_MOON.id / image.data_url.rsplit("/", 1)[-1]
     if not path.exists():
