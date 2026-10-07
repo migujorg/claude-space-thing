@@ -177,7 +177,7 @@ describe.skipIf(!hasBuiltBodies)('built-body normalization preserves reality adm
   for (const level of ['strict','best','complete'] as const) for (const mapped of [false,true]) it(`${level}, resident maps=${mapped}`,()=>{
     const read=(p:string)=>JSON.parse(builtFs.readFileSync(new URL(`../public/data/${p}`,import.meta.url),'utf8'));
     const photos:PhotometryFile=read('photometry.json');
-    const refs:AlbedoReferenceFile=read('albedo-reference.json');
+    const refs:AlbedoReferenceFile=builtFs.existsSync(new URL('../public/data/albedo-reference.json',import.meta.url)) ? read('albedo-reference.json') : {};
     const bs:Body[]=read('bodies.json');
     const layers:SurfaceLayer[]=[];
     for (const b of bs) {

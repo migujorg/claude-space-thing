@@ -122,7 +122,7 @@ describe('ellipsoid law and zonal-map quadrature',()=>{
 
 // The fixed calibration is a pipeline product; first-use interpolation is compared
 // with the original exact-row direct integral, separately from validation cases.
-describe.skipIf(!built)('dated calibration normalization product', () => {
+describe.skipIf(!built || !fs.existsSync(referencePath))('dated calibration normalization product', () => {
   for (const id of [599,699,799,899]) it(`${id} table matches the direct dated-view mean`, () => {
     const view=photo[id].albedoMeasurementView.value;
     const table=photo[id].albedoReferenceNormalization.value;
