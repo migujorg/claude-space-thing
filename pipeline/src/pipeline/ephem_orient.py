@@ -16,18 +16,21 @@ computed by SPICE from the kernels (pxform), not typed in.
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 import numpy as np
 import spiceypy as sp
 from jplephem.daf import DAF
 
 from . import download
-from .download import fetch, record
+from .download import fetch, record, sha256_file
 from .ephem_spk import Segment, read_pck
 from .output import write_bin, write_json
+from .paths import OUT, RAW
 from .schema import BuildContext, SourceRecord
 
 NAIF = "https://naif.jpl.nasa.gov/pub/naif/generic_kernels"
@@ -41,6 +44,13 @@ SRC_MOON_PA = "naif-moon-pa-de440"
 SRC_MOON_FK = "naif-moon-fk-de440"
 MOON_FK = "moon_de440_250416.tf"
 MOON_PCK = "moon_pa_de440_200625.bpc"
+# Chosen 2026-10-07: the high-precision kernel in the existing build; retain its raw copy
+# because NAIF removes superseded daily files. Move name and digest together, deliberately.
+EARTH_HP = "earth_000101_270102_261006.bpc"
+EARTH_HP_SHA256 = "0a1081571316a22d437d583d2319b3c38eb387ababc8e7a66fd55c5dec1bfdac"
+# Chosen 2026-10-07: the existing build's long-term prediction beyond the high-precision coverage.
+EARTH_PRED = "earth_2026_260806_2126_predict.bpc"
+EARTH_PRED_SHA256 = "9f565ab5aaccd33afe54f3a1b20cb8b136636c31a0bd4c0986fac722b931c280"
 
 FRAME_NAMES = {1: "J2000", 17: "ECLIPJ2000"}
 
@@ -55,18 +65,105 @@ class OrientSeg:
     uncertainty: str | None = None
 
 
-def _latest(pattern: str, key) -> str:
-    """Newest file name in NAIF's pck/ directory matching `pattern` (NAIF renames files as data arrive)."""
-    r = download.request("GET", f"{NAIF}/pck/", timeout=60)
-    names = sorted(set(re.findall(pattern, r.text)), key=key)
+def _latest(pattern: str, key, *, listing: str | None = None) -> str:
+    """Select a candidate for deliberate pin review only; earth() never consults this selector."""
+    if listing is None:
+        listing = download.request("GET", f"{NAIF}/pck/", timeout=60).text
+    names = sorted(set(re.findall(pattern, listing)), key=key)
     if not names:
         raise ValueError(f"no file matching {pattern} in {NAIF}/pck/")
     return names[-1]
 
 
+def _pinned_earth(name: str, digest: str) -> Path:
+    """Check the raw bytes AND ledger before using a pin; never refetch a different cached file."""
+    instruction = (f"Earth orientation pin {name} (sha256 {digest}). Restore the pinned raw file in "
+                   f"{RAW / 'naif/pck'} and its _downloads.json ledger entry from a kept copy, or deliberately "
+                   "update the name and SHA256 constants in pipeline.ephem_orient after running "
+                   "python -m pipeline.ephem_orient inspect-earth-pins and recording why. NAIF removes "
+                   "superseded high-precision files; a newer kernel is never substituted.")
+    cached = RAW / "naif/pck" / name
+    if cached.exists() and sha256_file(cached) != digest:
+        raise ValueError(f"{instruction} Cached file sha256 mismatch.")
+    try:
+        path = fetch(f"{NAIF}/pck/{name}", "naif/pck")
+    except (download.requests.RequestException, FileNotFoundError) as e:
+        raise ValueError(f"{instruction} Pinned file unavailable: {e}") from e
+    if path.name != name or sha256_file(path) != digest:
+        raise ValueError(f"{instruction} Fetched file name or sha256 mismatch.")
+    if record(path)["sha256"] != digest:
+        raise ValueError(f"{instruction} Download ledger sha256 mismatch.")
+    return path
+
+
 def _comments(path: Path) -> str:
     with path.open("rb") as f:
         return DAF(f).comments()
+
+
+def _datum_utc(name: str, comments: str) -> str:
+    m = re.search(r"UTC Epoch of last datum:\s*(\d{4} \w{3} \d\d \d\d:\d\d:\d\d\.\d+) UTC", comments)
+    if not m:
+        raise ValueError(f"{name}: no 'UTC Epoch of last datum' in the comments")
+    return m.group(1)
+
+
+def inspect_earth_pins() -> dict:
+    """List and fetch current candidates into temporary files; change no pins, raw ledger or products.
+
+    Requires the current pin's retained raw file, the cached naif0012 LSK and a built manifest window.
+    Print with `python -m pipeline.ephem_orient inspect-earth-pins`; any update is a separate code edit.
+    """
+    old = RAW / "naif/pck" / EARTH_HP
+    if not old.exists() or sha256_file(old) != EARTH_HP_SHA256:
+        raise ValueError(f"Restore the pinned raw file {old} (sha256 {EARTH_HP_SHA256}) to compare EOP epochs.")
+    old_utc = _datum_utc(EARTH_HP, _comments(old))
+    window = json.loads((OUT / "manifest.json").read_text(encoding="utf-8"))["window"]
+    listing = download.request("GET", f"{NAIF}/pck/", timeout=60).text
+    listed, candidates = {}, {}
+    with TemporaryDirectory(prefix="earth-pin-review-") as tmp:
+        for role, pattern, key in (
+            ("HP", r"earth_000101_\d{6}_\d{6}\.bpc", lambda n: n[-10:-4]),
+            ("PRED", r"earth_\d{4}_\d{6}_\d{4}_predict\.bpc", lambda n: n.split("_")[2]),
+        ):
+            names = sorted(set(re.findall(pattern, listing)), key=key)
+            if not names:
+                raise ValueError(f"no file matching {pattern} in {NAIF}/pck/")
+            listed[role] = names
+            name = _latest(pattern, key, listing=listing)
+            path = Path(tmp) / name
+            # Use the pipeline's retry and host limits, but keep the candidate outside the raw ledger.
+            with download.request("GET", f"{NAIF}/pck/{name}", stream=True, timeout=120) as response:
+                with path.open("wb") as f:
+                    for chunk in response.iter_content(1 << 20):
+                        f.write(chunk)
+                length = response.headers.get("Content-Length")
+                if length and path.stat().st_size != int(length):
+                    raise ValueError(f"{name}: short candidate download")
+            comments = _comments(path)
+            candidates[role] = {"name": name, "sha256": sha256_file(path), "bytes": path.stat().st_size,
+                                "lastDatumUtc": _datum_utc(name, comments)}
+            if role == "HP":
+                hp_segments = read_pck(path)
+            else:
+                predicts = re.search(r"\$\s+Predicts to\s+([^\n]+)", comments)
+                candidates[role]["sourceEopPredictsTo"] = predicts.group(1).strip() if predicts else None
+    lsk_path = RAW / "naif/lsk/naif0012.tls"
+    sp.furnsh(str(lsk_path))
+    try:
+        old_et = sp.str2et(old_utc + " UTC")
+        new_et = sp.str2et(candidates["HP"]["lastDatumUtc"] + " UTC")
+        lo = max(window["startEt"], old_et, min(s.start for s in hp_segments))
+        hi = min(window["endEt"], new_et, max(s.end for s in hp_segments))
+        newly_measured = [sp.et2utc(e, "ISOC", 3) + "Z" for e in (lo, hi)] if lo < hi else None
+        candidates["HP"]["coverageEndUtc"] = sp.et2utc(max(s.end for s in hp_segments), "ISOC", 3) + "Z"
+    finally:
+        sp.unload(str(lsk_path))
+    return {"listedKernels": listed, "candidates": candidates, "pinnedMeasuredThroughUtc": old_utc,
+            "newlyMeasuredWindowUtc": newly_measured,
+            "nextStep": "Deliberately edit EARTH_HP/EARTH_PRED and their SHA256 constants together, explain "
+                        "why in the comments/commit, retain the raw files and ledger, then rebuild bodies. "
+                        "New kernels may also revise orientation on already measured dates."}
 
 
 def _overlap(seg: Segment, a: float, b: float) -> Segment | None:
@@ -94,17 +191,14 @@ def _pieces(path: Path, a: float, b: float) -> list[Segment]:
 
 
 def earth(ctx: BuildContext, t0: float, t1: float, lsk_path: Path) -> tuple[list[OrientSeg], dict]:
-    hp_name = _latest(r"earth_000101_\d{6}_\d{6}\.bpc", key=lambda n: n[-10:-4])
-    pr_name = _latest(r"earth_\d{4}_\d{6}_\d{4}_predict\.bpc", key=lambda n: n.split("_")[2])
-    hp = fetch(f"{NAIF}/pck/{hp_name}", "naif/pck")
-    pr = fetch(f"{NAIF}/pck/{pr_name}", "naif/pck")
+    hp_name, pr_name = EARTH_HP, EARTH_PRED
+    hp = _pinned_earth(hp_name, EARTH_HP_SHA256)
+    pr = _pinned_earth(pr_name, EARTH_PRED_SHA256)
     hp_c, pr_c = _comments(hp), _comments(pr)
-    m = re.search(r"UTC Epoch of last datum:\s*(\d{4} \w{3} \d\d \d\d:\d\d:\d\d\.\d+) UTC", hp_c)
-    if not m:
-        raise ValueError(f"{hp_name}: no 'UTC Epoch of last datum' in the comments")
+    datum_utc = _datum_utc(hp_name, hp_c)
     sp.furnsh(str(lsk_path))
     try:
-        last_datum = sp.str2et(m.group(1) + " UTC")
+        last_datum = sp.str2et(datum_utc + " UTC")
     finally:
         sp.unload(str(lsk_path))
     hp_end = max(s.end for s in read_pck(hp))
@@ -131,7 +225,7 @@ def earth(ctx: BuildContext, t0: float, t1: float, lsk_path: Path) -> tuple[list
             if lo < hi:
                 p = _overlap(s, lo, hi)
                 segs.append(OrientSeg(399, p, label, [SRC_EARTH_HP], hp_method + (
-                    "" if label == "measured" else f" Epochs after the last EOP datum ({m.group(1)} UTC): predicted."),
+                    "" if label == "measured" else f" Epochs after the last EOP datum ({datum_utc} UTC): predicted."),
                     unc))
     if t1 > hp_end:
         for s in _pieces(pr, hp_end, t1):
@@ -214,3 +308,12 @@ def body_to_j2000(header: dict, data: np.ndarray, body: int, et: float) -> np.nd
         b2p = np.array(header["bodies"][str(body)]["bodyToPck"]).reshape(3, 3)
         return ref @ tipm.T @ b2p
     return None
+
+
+if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Review current NAIF Earth kernels without changing the build.")
+    parser.add_argument("command", choices=["inspect-earth-pins"])
+    parser.parse_args()
+    print(json.dumps(inspect_earth_pins(), indent=2))

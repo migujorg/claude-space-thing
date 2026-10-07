@@ -1324,10 +1324,10 @@
    "note": null,
    "target": 399,
    "rect": [
-    250,
-    1,
-    255,
-    6
+    248,
+    3,
+    253,
+    8
    ],
    "pixels": 25,
    "geometry": {
@@ -1340,19 +1340,19 @@
      "filter": "hriv.Violet",
      "product": "HV08052902_1000117_001",
      "iof": {
-      "mean": 0.0005512348,
-      "std": 0.0007949569,
-      "n": 15,
+      "mean": 0.0003449168,
+      "std": 0.0005922316,
+      "n": 25,
       "nInRect": 25
      },
      "sigmaRel": {
       "calibration": 0.05,
-      "noise": 0.37236,
-      "registration": 0.18155
+      "noise": 0.34341,
+      "registration": 0.25875
      },
      "bandRadiance": {
-      "value": 0.0001783863,
-      "sigma": 7.443471e-05,
+      "value": 0.0001116193,
+      "sigma": 4.8317e-05,
       "unit": "W m-2 sr-1 nm-1",
       "bandSolarIrradiance1AU": 1.044551
      }
@@ -1361,19 +1361,19 @@
      "filter": "hriv.Blue",
      "product": "HV08052902_1000115_001",
      "iof": {
-      "mean": 0.0007155334,
-      "std": 0.00109849,
-      "n": 20,
+      "mean": 8.642148e-05,
+      "std": 5.48341e-05,
+      "n": 25,
       "nInRect": 25
      },
      "sigmaRel": {
       "calibration": 0.05,
-      "noise": 0.34328,
-      "registration": 0.14316
+      "noise": 0.1269,
+      "registration": 1.49034
      },
      "bandRadiance": {
-      "value": 0.0004248448,
-      "sigma": 0.0001594368,
+      "value": 5.131238e-05,
+      "sigma": 7.679227e-05,
       "unit": "W m-2 sr-1 nm-1",
       "bandSolarIrradiance1AU": 1.916483
      }
@@ -1382,19 +1382,19 @@
      "filter": "hriv.Green",
      "product": "HV08052902_1000116_001",
      "iof": {
-      "mean": 0.004504,
-      "std": 0.01539403,
-      "n": 17,
+      "mean": -7.504897e-06,
+      "std": 5.186503e-05,
+      "n": 25,
       "nInRect": 25
      },
      "sigmaRel": {
       "calibration": 0.05,
-      "noise": 0.82895,
-      "registration": 0.31927
+      "noise": 1.38217,
+      "registration": 16.09302
      },
      "bandRadiance": {
-      "value": 0.002611646,
-      "sigma": 0.002323624,
+      "value": -4.351717e-06,
+      "sigma": null,
       "unit": "W m-2 sr-1 nm-1",
       "bandSolarIrradiance1AU": 1.871632
      }
@@ -1403,19 +1403,19 @@
      "filter": "hriv.Orange",
      "product": "HV08052902_1000121_001",
      "iof": {
-      "mean": 0.0006830631,
-      "std": 0.00113236,
-      "n": 17,
+      "mean": 7.404509e-06,
+      "std": 3.526549e-05,
+      "n": 25,
       "nInRect": 25
      },
      "sigmaRel": {
       "calibration": 0.05,
-      "noise": 0.40207,
-      "registration": 0.1459
+      "noise": 0.95254,
+      "registration": 17.0918
      },
      "bandRadiance": {
-      "value": 0.0003370354,
-      "sigma": 0.0001451386,
+      "value": 3.653516e-06,
+      "sigma": 6.254234e-05,
       "unit": "W m-2 sr-1 nm-1",
       "bandSolarIrradiance1AU": 1.592646
      }
@@ -1424,28 +1424,35 @@
      "filter": "hriv.Red",
      "product": "HV08052902_1000119_001",
      "iof": {
-      "mean": 0.0004475349,
-      "std": 0.0009057178,
-      "n": 19,
+      "mean": -3.158987e-07,
+      "std": 3.964362e-05,
+      "n": 25,
       "nInRect": 25
      },
      "sigmaRel": {
       "calibration": 0.05,
-      "noise": 0.46429,
-      "registration": 0.21505
+      "noise": 25.09895,
+      "registration": 92.4209
      },
      "bandRadiance": {
-      "value": 0.0001770374,
-      "sigma": 9.101726e-05,
+      "value": -1.249643e-07,
+      "sigma": null,
       "unit": "W m-2 sr-1 nm-1",
       "bandSolarIrradiance1AU": 1.276858
      }
     }
    ],
    "expected": {
-    "type": "none",
-    "label": "unknown",
-    "method": "no valid sky pixels in this window (not recorded by the instrument)"
+    "type": "upper-limit",
+    "upperLimitXYZS": [
+     61.78902,
+     63.79806,
+     66.56242,
+     151.5384
+    ],
+    "comparison": "every channel of the renderer's mean radiance over rect ≤ upperLimitXYZS",
+    "label": "derived",
+    "method": "Largest band I/F in the window + 2 × its pixel standard deviation (I/F 0.00153), converted with a solar (grey) spectrum. The camera's scattered light and the calibration's zero level make this an upper limit on the true sky."
    }
   }
  ],
