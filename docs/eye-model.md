@@ -860,21 +860,23 @@ checks that the Sun's light on the bodies is unaffected.
   - **Not right yet: below an odd side the real texel is larger than the nominal 2^m px by which the
     level is chosen, and the two axes differ.** Real texels in pixels, x × y, to two decimals:
 
-    | Nominal | 1280 × 720 | 1283 × 723 | 1375 × 138 | 250 × 250 |
+    | Nominal | 1280 × 720 | 1283 × 723 | 5500 × 552 | 1000 × 1000 |
     |---|---|---|---|---|
     | 2 | 2 × 2 | 2 × 2 | 2 × 2 | 2 × 2 |
-    | 4 | 4 × 4 | 4 × 3.99 | 4 × 4.06 | 4.03 × 4.03 |
-    | 8 | 8 × 8 | 8.02 × 8.03 | 7.99 × 8.12 | 8.06 × 8.06 |
-    | 16 | 16 × 16 | 16.04 × 16.07 | 15.99 × 17.25 | 16.67 × 16.67 |
-    | 32 | 32 × 32.73 | 32.08 × 32.86 | 31.98 × 34.5 | 35.71 × 35.71 |
-    | 64 | 64 × 65.45 | 64.15 × 65.73 | 65.48 × 69 | 83.33 × 83.33 |
-    | 128 | 128 × 144 | 128.3 × 144.6 | 137.5 × 138 | 250 × 250 |
-    | 256 | 256 × 360 | 256.6 × 361.5 | 275 × 138 | |
-    | 512 | 640 × 720 | 641.5 × 723 | 687.5 × 138 | |
+    | 4 | 4 × 4 | 4 × 3.99 | 4 × 4 | 4 × 4 |
+    | 8 | 8 × 8 | 8.02 × 8.03 | 8.01 × 8 | 8 × 8 |
+    | 16 | 16 × 16 | 16.04 × 16.07 | 16.03 × 16.24 | 16.13 × 16.13 |
+    | 32 | 32 × 32.73 | 32.08 × 32.86 | 32.16 × 32.47 | 32.26 × 32.26 |
+    | 64 | 64 × 65.45 | 64.15 × 65.73 | 64.71 × 69 | 66.67 × 66.67 |
+    | 128 | 128 × 144 | 128.3 × 144.6 | 130.95 × 138 | 142.86 × 142.86 |
+    | 256 | 256 × 360 | 256.6 × 361.5 | 261.9 × 276 | 333.33 × 333.33 |
+    | 512 | 640 × 720 | 641.5 × 723 | 550 × 552 | 1000 × 1000 |
 
-    Frames of 256 × 256 and 512 × 512 are exact at every level. One real size per level would be a
-    second approximation, since the axes differ; choosing by the nominal size keeps an even frame's
-    picture as it was.
+    1280 × 720 is the scene suite's frame and 1283 × 723 an odd one. 5500 × 552 and 1000 × 1000 are
+    validation frames (the validation renders each case at four times its size); its other frames,
+    2048 × 2048 and 1024 × 1024, are exact at every level. One real size per level would be a second
+    approximation, since the axes differ; choosing by the nominal size keeps an even frame's picture as
+    it was.
   - **When each level is read.** The cell reaches the nominal size below this adaptation of the fovea
     (cd/m², 720 lines; a level is read from half its texel on, linearly):
 

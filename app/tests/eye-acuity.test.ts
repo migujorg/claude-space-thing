@@ -141,8 +141,9 @@ describe('the filter\'s image chain: every level tiles the frame (docs/eye-model
   }
   const sum = (a: Float32Array) => { let s = 0; for (const v of a) s += v; return s; };
   const random = (n: number, seed: number) => { const a = new Float32Array(n); let s = seed; for (let i = 0; i < n; i++) { s = (s * 1103515245 + 12345) % 2147483648; a[i] = s / 2147483648; } return a; };
-  // The suite's frame, an odd one, the validation's frames, and small odd ones of both parities per axis.
-  const FRAMES: [number, number][] = [[1280, 720], [1283, 723], [1375, 138], [250, 250], [256, 256], [512, 512], [161, 91], [37, 64], [3, 5], [1, 1]];
+  // The suite's frame, an odd one, the validation's two frames that are not powers of two (it renders a case at
+  // four times its size) with two of its cases' own sizes, powers of two, and small ones of both parities per axis.
+  const FRAMES: [number, number][] = [[1280, 720], [1283, 723], [5500, 552], [1000, 1000], [1375, 138], [250, 250], [256, 256], [512, 512], [161, 91], [37, 64], [3, 5], [1, 1]];
 
   it('the light of a level is the light of the level below, at odd and even sides', () => {
     for (const [W, H] of FRAMES) {
