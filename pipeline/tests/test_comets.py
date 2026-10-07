@@ -80,6 +80,21 @@ def stage_env(tmp_path, monkeypatch):
     return ctx, repo_paths, cat, peaks, horizons
 
 
+@pytest.mark.parametrize("existing", [False, True])
+def test_stage_never_writes_committed_reference(stage_env, existing):
+    ctx, paths, _, peaks, _ = stage_env
+    if not existing:
+        paths[2].unlink()
+    comets.run(ctx)
+    # A different build's showcase/epoch must not replace a committed reference.
+    peaks[0]["peakEt"] += comets.DAY
+    comets.run(ctx)
+    if existing:
+        assert paths[2].read_bytes() == b"previous repository file\n"
+    else:
+        assert not paths[2].exists()
+
+
 def test_stage_preserves_repo_files_when_disabled(stage_env, tmp_path, capsys):
     ctx, paths, _, _, horizons = stage_env
     ctx.params["build.writeRepoFiles"] = False
