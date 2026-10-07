@@ -1535,6 +1535,9 @@
    "photometry/phase.py": "b9c1bd25d35fa338eb2ec33681af65f8ef2bb03bafed2df63ffb572e98de49d5",
    "photometry/rolo.py": "2a198b0e595e85b08697bef186b15a43848577436820af6f7070ec989081a727",
    "photometry/solar.py": "f3011a872979c913acbc9a599aae526becece68d8a36608ba1c4781038d0724c",
+   "photometry/tables/karkoschka_disk_radii.json": "ecfa1112d80caa2c0622a751bd3281daea956660c618cb6a3df8662945a41975",
+   "photometry/tables/kieffer_stone_2005_rolo.json": "bdd36e43792ed1593f801bdd9bc8ebc245b5c46b85734439a529d1962d3938aa",
+   "photometry/tables/mallama_hilton_2018.json": "bb6bd5294803986d4ae2db15840c1711a9a8d5c40cfb94ec84680530ad34b996",
    "photometry/tables/mayorga_2020_table5.csv": "2150366fac948e4a41b9c2eb77bdf743bda07cb18e07aa86733a60eeabf21d98",
    "schema.py": "6694d90ccede50d9e9f96600bad70bcc377096bd8bd1cf37e925aed99e72b6a8",
    "surf_color.py": "307a7810f16975b1406c5b9b46453c40e7962eec537dbea1e37e38cd01c97fb5",
@@ -1547,7 +1550,7 @@
    "validation/reader_lorri.py": "1c54c93694f5087f7d10cb1952d3d2697cfdfe6c878a7b0ad5dc2a37a3af4360",
    "validation/readers.py": "accd15f368c916bfc90718ffd054e0d8de847ac5ff2f424621f394656436314e",
    "validation/register.py": "a0ff6e331124d934cef23cafe644cd3f5006aaadb4dcc7c95644ba2e6502f6cb",
-   "validation/reproducibility.py": "97cbb95848d598c80a304bd88769f5eea57b68d3ba23acb83e29369e16ccb49f",
+   "validation/reproducibility.py": "e46e503f2f46241559e46309e7ac41a9fd63e25da598ff0a57ff5a56b7317127",
    "validation/roi.py": "31aee0aa13d8298342baf6481604a28cd8e927423d79874ce8461d21c523dca0",
    "validation/sources.py": "8f694035817ea9a98135de43e466f36e4f02631aa37a32663c3f075ad5cb9045"
   },
