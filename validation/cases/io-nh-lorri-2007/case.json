@@ -1188,7 +1188,248 @@
    }
   }
  ],
- "ratios": [],
+ "ratios": [
+  {
+   "numerator": "limb",
+   "denominator": "disk-centre",
+   "ratioXYZS": [
+    1.246431,
+    1.246431,
+    1.246431,
+    1.246431
+   ],
+   "sigma": [
+    0.016962,
+    0.016962,
+    0.016962,
+    0.016962
+   ],
+   "tolerance": [
+    0.033924,
+    0.033924,
+    0.033924,
+    0.033924
+   ],
+   "bands": [
+    {
+     "filter": "lorri.Pan",
+     "ratio": 1.246431,
+     "sigma": 0.01695918
+    }
+   ],
+   "comparison": "|renderer mean(numerator rect) / mean(denominator rect) − ratioXYZS| ≤ tolerance, per channel",
+   "method": "same body, frames and filters: shared calibration and multiplicative spectral factors cancel; per-band sigma from noise and registration alone, including disk background uncertainty. XYZS retains differential linear/PCHIP ratio spread where local band colours differ",
+   "label": "estimated",
+   "budget": {
+    "noiseAndRegistration": [
+     0.016962,
+     0.016962,
+     0.016962,
+     0.016962
+    ],
+    "spectralModel": [
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "formula": "sigma(R_c) = |R_c| * hypot(u_a,c / L_a,c, u_b,c / L_b,c); u = each ROI's noiseAndRegistration; total sigma = hypot(sigma(R_c), abs(R_PCHIP - R_linear)); tolerance = 2 total sigma",
+    "correlation": "Shared absolute calibration and a common multiplicative spectral factor cancel (exactly for one band). For multiple bands, apply linear and PCHIP to both ROIs before dividing; their ratio difference is retained as the non-cancelling spectral term. Noise and registration are propagated independently, as in the region budgets; no cross-ROI covariance is measured. Additive background level uncertainty remains in disk noise and does not cancel."
+   }
+  },
+  {
+   "numerator": "terminator",
+   "denominator": "disk-centre",
+   "ratioXYZS": [
+    0.2172573,
+    0.2172573,
+    0.2172573,
+    0.2172573
+   ],
+   "sigma": [
+    0.02218911,
+    0.02218911,
+    0.02218911,
+    0.02218911
+   ],
+   "tolerance": [
+    0.04437823,
+    0.04437823,
+    0.04437823,
+    0.04437823
+   ],
+   "bands": [
+    {
+     "filter": "lorri.Pan",
+     "ratio": 0.2172573,
+     "sigma": 0.02218916
+    }
+   ],
+   "comparison": "|renderer mean(numerator rect) / mean(denominator rect) − ratioXYZS| ≤ tolerance, per channel",
+   "method": "same body, frames and filters: shared calibration and multiplicative spectral factors cancel; per-band sigma from noise and registration alone, including disk background uncertainty. XYZS retains differential linear/PCHIP ratio spread where local band colours differ",
+   "label": "estimated",
+   "budget": {
+    "noiseAndRegistration": [
+     0.02218911,
+     0.02218911,
+     0.02218911,
+     0.02218911
+    ],
+    "spectralModel": [
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "formula": "sigma(R_c) = |R_c| * hypot(u_a,c / L_a,c, u_b,c / L_b,c); u = each ROI's noiseAndRegistration; total sigma = hypot(sigma(R_c), abs(R_PCHIP - R_linear)); tolerance = 2 total sigma",
+    "correlation": "Shared absolute calibration and a common multiplicative spectral factor cancel (exactly for one band). For multiple bands, apply linear and PCHIP to both ROIs before dividing; their ratio difference is retained as the non-cancelling spectral term. Noise and registration are propagated independently, as in the region budgets; no cross-ROI covariance is measured. Additive background level uncertainty remains in disk noise and does not cancel."
+   }
+  },
+  {
+   "numerator": "disk-centre",
+   "denominator": "disk-integrated",
+   "ratioXYZS": [
+    1.934978,
+    1.934978,
+    1.934978,
+    1.934978
+   ],
+   "sigma": [
+    0.02483947,
+    0.02483947,
+    0.02483947,
+    0.02483947
+   ],
+   "tolerance": [
+    0.04967893,
+    0.04967893,
+    0.04967893,
+    0.04967893
+   ],
+   "bands": [
+    {
+     "filter": "lorri.Pan",
+     "ratio": 1.934978,
+     "sigma": 0.02483761
+    }
+   ],
+   "comparison": "|renderer mean(numerator rect) / mean(denominator rect) − ratioXYZS| ≤ tolerance, per channel",
+   "method": "same body, frames and filters: shared calibration and multiplicative spectral factors cancel; per-band sigma from noise and registration alone, including disk background uncertainty. XYZS retains differential linear/PCHIP ratio spread where local band colours differ",
+   "label": "estimated",
+   "budget": {
+    "noiseAndRegistration": [
+     0.02483947,
+     0.02483947,
+     0.02483947,
+     0.02483947
+    ],
+    "spectralModel": [
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "formula": "sigma(R_c) = |R_c| * hypot(u_a,c / L_a,c, u_b,c / L_b,c); u = each ROI's noiseAndRegistration; total sigma = hypot(sigma(R_c), abs(R_PCHIP - R_linear)); tolerance = 2 total sigma",
+    "correlation": "Shared absolute calibration and a common multiplicative spectral factor cancel (exactly for one band). For multiple bands, apply linear and PCHIP to both ROIs before dividing; their ratio difference is retained as the non-cancelling spectral term. Noise and registration are propagated independently, as in the region budgets; no cross-ROI covariance is measured. Additive background level uncertainty remains in disk noise and does not cancel."
+   }
+  },
+  {
+   "numerator": "limb",
+   "denominator": "disk-integrated",
+   "ratioXYZS": [
+    2.411818,
+    2.411818,
+    2.411818,
+    2.411818
+   ],
+   "sigma": [
+    0.0122314,
+    0.0122314,
+    0.0122314,
+    0.0122314
+   ],
+   "tolerance": [
+    0.02446281,
+    0.02446281,
+    0.02446281,
+    0.02446281
+   ],
+   "bands": [
+    {
+     "filter": "lorri.Pan",
+     "ratio": 2.411818,
+     "sigma": 0.01222109
+    }
+   ],
+   "comparison": "|renderer mean(numerator rect) / mean(denominator rect) − ratioXYZS| ≤ tolerance, per channel",
+   "method": "same body, frames and filters: shared calibration and multiplicative spectral factors cancel; per-band sigma from noise and registration alone, including disk background uncertainty. XYZS retains differential linear/PCHIP ratio spread where local band colours differ",
+   "label": "estimated",
+   "budget": {
+    "noiseAndRegistration": [
+     0.0122314,
+     0.0122314,
+     0.0122314,
+     0.0122314
+    ],
+    "spectralModel": [
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "formula": "sigma(R_c) = |R_c| * hypot(u_a,c / L_a,c, u_b,c / L_b,c); u = each ROI's noiseAndRegistration; total sigma = hypot(sigma(R_c), abs(R_PCHIP - R_linear)); tolerance = 2 total sigma",
+    "correlation": "Shared absolute calibration and a common multiplicative spectral factor cancel (exactly for one band). For multiple bands, apply linear and PCHIP to both ROIs before dividing; their ratio difference is retained as the non-cancelling spectral term. Noise and registration are propagated independently, as in the region budgets; no cross-ROI covariance is measured. Additive background level uncertainty remains in disk noise and does not cancel."
+   }
+  },
+  {
+   "numerator": "terminator",
+   "denominator": "disk-integrated",
+   "ratioXYZS": [
+    0.4203882,
+    0.4203882,
+    0.4203882,
+    0.4203882
+   ],
+   "sigma": [
+    0.04260599,
+    0.04260599,
+    0.04260599,
+    0.04260599
+   ],
+   "tolerance": [
+    0.08521198,
+    0.08521198,
+    0.08521198,
+    0.08521198
+   ],
+   "bands": [
+    {
+     "filter": "lorri.Pan",
+     "ratio": 0.4203882,
+     "sigma": 0.04260611
+    }
+   ],
+   "comparison": "|renderer mean(numerator rect) / mean(denominator rect) − ratioXYZS| ≤ tolerance, per channel",
+   "method": "same body, frames and filters: shared calibration and multiplicative spectral factors cancel; per-band sigma from noise and registration alone, including disk background uncertainty. XYZS retains differential linear/PCHIP ratio spread where local band colours differ",
+   "label": "estimated",
+   "budget": {
+    "noiseAndRegistration": [
+     0.04260599,
+     0.04260599,
+     0.04260599,
+     0.04260599
+    ],
+    "spectralModel": [
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "formula": "sigma(R_c) = |R_c| * hypot(u_a,c / L_a,c, u_b,c / L_b,c); u = each ROI's noiseAndRegistration; total sigma = hypot(sigma(R_c), abs(R_PCHIP - R_linear)); tolerance = 2 total sigma",
+    "correlation": "Shared absolute calibration and a common multiplicative spectral factor cancel (exactly for one band). For multiple bands, apply linear and PCHIP to both ROIs before dividing; their ratio difference is retained as the non-cancelling spectral term. Noise and registration are propagated independently, as in the region budgets; no cross-ROI covariance is measured. Additive background level uncertainty remains in disk noise and does not cancel."
+   }
+  }
+ ],
  "appProducts": {
   "rings.json opticalDepth sources": null,
   "shape spectrum sources": [
@@ -1556,11 +1797,11 @@
    "schema.py": "6694d90ccede50d9e9f96600bad70bcc377096bd8bd1cf37e925aed99e72b6a8",
    "surf_color.py": "307a7810f16975b1406c5b9b46453c40e7962eec537dbea1e37e38cd01c97fb5",
    "validation/__init__.py": "0624a235c97b37ed0a6f00a7425b92251faa28e9cf70930e6981c098f482b05b",
-   "validation/build.py": "1658b71850eef1b731a13fb0a813fcb8a864f9a8907a5c24d475ec6e6ee2e05d",
+   "validation/build.py": "1a175932b3d707dcda1e1765eaf57f6a5820f5065ea633650aab4ba7257bc064",
    "validation/cases.py": "4606e31fd8add5d8bda5d5c0e9d53a59d6c33a1aa917856d062d538c4d4e2805",
    "validation/checks.py": "591f3cc261753ddfd3ca5975cd8d3c03d72bbb936f475f625162a2349ef67c29",
    "validation/geometry.py": "fd02da9796633f7aa9a69823b0534162cf0c00f8bce63cba6fd80e3d3bbf8db7",
-   "validation/photometry.py": "356ede5cc53bc52a3b785cb2c098ddf0f18b6189c7f93796c79a1ec6c73e2421",
+   "validation/photometry.py": "7296ba9cb618e5d876da2016e322765748cde0ccfdcd6ca4ae579e4a7c222d3e",
    "validation/reader_lorri.py": "1c54c93694f5087f7d10cb1952d3d2697cfdfe6c878a7b0ad5dc2a37a3af4360",
    "validation/readers.py": "accd15f368c916bfc90718ffd054e0d8de847ac5ff2f424621f394656436314e",
    "validation/register.py": "a0ff6e331124d934cef23cafe644cd3f5006aaadb4dcc7c95644ba2e6502f6cb",

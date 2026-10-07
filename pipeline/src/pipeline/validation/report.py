@@ -142,8 +142,11 @@ angle *without* rendering: it tells in advance whether a disagreement is in the 
    sky-near / sky-far (upper limits).
 6. **Same-frame spatial ratios** use R_c = L_a,c/L_b,c and σ(R_c) = |R_c| ·
    hypot(u_a,c/L_a,c, u_b,c/L_b,c), where u is the ROI's noise-and-registration budget above.
-   Tolerance is 2σ. Shared multiplicative calibration and the adopted same-body spectral conversion cancel;
-   this tests spatial brightness conditional on that conversion, not unmeasured local spectra. The two ROI
+   Per-band tolerance is 2σ. Shared calibration and a common multiplicative spectral factor cancel, exactly
+   for one band. With multiple bands, different local colours can leave a non-cancelling interpolation term:
+   apply the existing linear and PCHIP conversions to both ROIs, then take |R_PCHIP − R_linear| as 1σ,
+   following the region budget's spectral convention. XYZS total σ is its quadrature sum with the formula above.
+   Proportional band spectra cancel this term too. No interpolation convention is selected by these tests. The two ROI
    errors are treated independently as in the region budgets: no measured cross-ROI covariance is available.
    Disk background uncertainty is additive, band dependent and already in disk noise; it remains. The
    cross-body Moon/Earth ratio retains its distinct spectral terms. Missing regions are never manufactured.
@@ -670,6 +673,8 @@ def run_section(run: dict, interpretation: str) -> str:
          f"{o['ss']} × {o['ss']} samples per pixel{rendered_by(run)}: `{cmd}` (the full table, with X, Z, S, is in "
          "`app/shots/validation/report.md`). Y in cd/m²; the verdict covers X, Y, Z and S (failing channels named).",
          "", "| case | ROI | expected Y ± 2σ | rendered Y | rendered / expected | σ | verdict |", "|---|---|---|---|---|---|---|"]
+    if run.get("ratioReassessment"):
+        L[3:3] = ["", run["ratioReassessment"], ""]
     for c in run["cases"]:
         if c.get("error") and not c.get("rois"):
             L.append(f"| `{c['id']}` | — | — | — | — | — | did not render: {c['error'][:120]} |")

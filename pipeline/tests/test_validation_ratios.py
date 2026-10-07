@@ -35,3 +35,24 @@ def test_scene_dependence_propagates_to_ratios():
     rows = [row("centre", "disk-centre", 1., .1, 0.), row("limb", "limb", 1., .1, 0.)]
     rows[0]["sceneDependence"] = {"reason": "different epoch", "sources": ["test-source"]}
     assert build._ratios(SimpleNamespace(ratios=[]), rows)[0]["sceneDependence"] == rows[0]["sceneDependence"]
+
+
+def test_cross_body_ratio_keeps_its_distinct_spectral_terms():
+    rows = [row("moon", "disk-integrated", 10., 1., 0., 301),
+            row("earth", "disk-integrated", 100., 2., 0., 399)]
+    ratio = build._ratios(SimpleNamespace(ratios=[("moon", "earth")]), rows)[0]
+    np.testing.assert_allclose(ratio["sigma"], .1*np.hypot(np.hypot(.1, .17), np.hypot(.02, .17)))
+
+
+def test_unknown_region_stays_unknown_and_produces_no_ratio():
+    rows = [row("centre", "disk-centre", 100., 3., 4.), row("limb", "limb", 50., 1.5, 2.)]
+    rows[1]["expected"] = {"type": "none", "label": "unknown"}
+    assert build._ratios(SimpleNamespace(ratios=[]), rows) == []
+
+
+def test_multiband_spectral_term_cancels_only_for_proportional_spectra():
+    from pipeline.validation import photometry as vp
+    centers = np.array([400., 550., 700.])
+    a = np.array([.2, .5, .1])
+    np.testing.assert_allclose(vp.ratio_spectral_spread(a, 2*a, centers, vp.FLAT), 0., atol=1e-14)
+    assert np.any(vp.ratio_spectral_spread(a, np.array([.2, .3, .3]), centers, vp.FLAT) > 0)

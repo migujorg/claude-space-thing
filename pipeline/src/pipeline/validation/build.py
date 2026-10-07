@@ -721,6 +721,13 @@ def _ratios(p: Prepared, roi_json: list[dict]) -> list[dict]:
             return independent if spatial else np.hypot(independent, np.array(bu["spectralModel"]))
         r = va / vb
         sr = np.abs(r) * np.hypot(noncal(a) / va, noncal(b) / vb)
+        noise_registration = sr.copy()
+        spectral = np.zeros(4)
+        if spatial and len(a["bands"]) > 1:
+            shape = p.shape if a["target"] == p.targets[0].naif else p.shapes.get(a["target"], vp.FLAT)
+            centers = sorted(vp.effective_wavelength(band["filter"], shape.wl, shape.p) for band in a["bands"])
+            spectral = vp.ratio_spectral_spread(a["expected"]["rho"], b["expected"]["rho"], centers, shape)
+            sr = np.hypot(noise_registration, spectral)
         band = []
         for ba, bb in zip(a["bands"], b["bands"]):
             ra = ba["iof"]["mean"] / bb["iof"]["mean"]
@@ -736,17 +743,21 @@ def _ratios(p: Prepared, roi_json: list[dict]) -> list[dict]:
         if spatial:
             out[-1].update({
                 "label": "estimated" if "estimated" in (a["expected"]["label"], b["expected"]["label"]) else "derived",
-                "budget": {"noiseAndRegistration": sr.tolist(),
+                "budget": {"noiseAndRegistration": noise_registration.tolist(),
+                           "spectralModel": spectral.tolist(),
                            "formula": "sigma(R_c) = |R_c| * hypot(u_a,c / L_a,c, u_b,c / L_b,c); "
-                                      "u = each ROI's noiseAndRegistration; tolerance = 2 sigma(R)",
-                           "correlation": "Shared absolute calibration and the same-body spectral conversion "
-                                          "cancel. The test is conditional on that common spectral conversion, "
-                                          "not an independent measurement of local colour. Noise and registration "
+                                      "u = each ROI's noiseAndRegistration; total sigma = hypot(sigma(R_c), "
+                                      "abs(R_PCHIP - R_linear)); tolerance = 2 total sigma",
+                           "correlation": "Shared absolute calibration and a common multiplicative spectral factor "
+                                          "cancel (exactly for one band). For multiple bands, apply linear and "
+                                          "PCHIP to both ROIs before dividing; their ratio difference is retained "
+                                          "as the non-cancelling spectral term. Noise and registration "
                                           "are propagated independently, as in the region budgets; no cross-ROI "
                                           "covariance is measured. Additive background level uncertainty remains "
                                           "in disk noise and does not cancel."},
-                "method": "same body, frames and filters: shared calibration and spectral conversion cancel; "
-                          "sigma from noise and registration alone, including measured disk background uncertainty"})
+                "method": "same body, frames and filters: shared calibration and multiplicative spectral factors cancel; "
+                          "per-band sigma from noise and registration alone, including disk background uncertainty. "
+                          "XYZS retains differential linear/PCHIP ratio spread where local band colours differ"})
         dependence = a.get("sceneDependence") or b.get("sceneDependence")
         if dependence:
             out[-1]["sceneDependence"] = dependence

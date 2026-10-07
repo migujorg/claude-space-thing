@@ -1366,7 +1366,124 @@
    }
   }
  ],
- "ratios": [],
+ "ratios": [
+  {
+   "numerator": "limb",
+   "denominator": "disk-centre",
+   "ratioXYZS": [
+    1.357622,
+    1.370579,
+    1.511641,
+    1.462919
+   ],
+   "sigma": [
+    0.06373189,
+    0.06523062,
+    0.06434958,
+    0.05226562
+   ],
+   "tolerance": [
+    0.1274638,
+    0.1304612,
+    0.1286992,
+    0.1045312
+   ],
+   "bands": [
+    {
+     "filter": "ahi9.B01",
+     "ratio": 1.517367,
+     "sigma": 0.06950073
+    },
+    {
+     "filter": "ahi9.B02",
+     "ratio": 1.44744,
+     "sigma": 0.08536105
+    },
+    {
+     "filter": "ahi9.B03",
+     "ratio": 1.205862,
+     "sigma": 0.1180923
+    }
+   ],
+   "comparison": "|renderer mean(numerator rect) / mean(denominator rect) − ratioXYZS| ≤ tolerance, per channel",
+   "method": "same body, frames and filters: shared calibration and multiplicative spectral factors cancel; per-band sigma from noise and registration alone, including disk background uncertainty. XYZS retains differential linear/PCHIP ratio spread where local band colours differ",
+   "label": "estimated",
+   "budget": {
+    "noiseAndRegistration": [
+     0.06350245,
+     0.06495159,
+     0.06434951,
+     0.0522391
+    ],
+    "spectralModel": [
+     0.005403063,
+     0.006026974,
+     9.584586e-05,
+     0.001664875
+    ],
+    "formula": "sigma(R_c) = |R_c| * hypot(u_a,c / L_a,c, u_b,c / L_b,c); u = each ROI's noiseAndRegistration; total sigma = hypot(sigma(R_c), abs(R_PCHIP - R_linear)); tolerance = 2 total sigma",
+    "correlation": "Shared absolute calibration and a common multiplicative spectral factor cancel (exactly for one band). For multiple bands, apply linear and PCHIP to both ROIs before dividing; their ratio difference is retained as the non-cancelling spectral term. Noise and registration are propagated independently, as in the region budgets; no cross-ROI covariance is measured. Additive background level uncertainty remains in disk noise and does not cancel."
+   }
+  },
+  {
+   "numerator": "terminator",
+   "denominator": "disk-centre",
+   "ratioXYZS": [
+    0.460383,
+    0.4636292,
+    0.4513631,
+    0.4585576
+   ],
+   "sigma": [
+    0.01908377,
+    0.01981062,
+    0.01837255,
+    0.01510712
+   ],
+   "tolerance": [
+    0.03816754,
+    0.03962124,
+    0.0367451,
+    0.03021424
+   ],
+   "bands": [
+    {
+     "filter": "ahi9.B01",
+     "ratio": 0.4501697,
+     "sigma": 0.01975326
+    },
+    {
+     "filter": "ahi9.B02",
+     "ratio": 0.4658346,
+     "sigma": 0.02456966
+    },
+    {
+     "filter": "ahi9.B03",
+     "ratio": 0.4626903,
+     "sigma": 0.03622231
+    }
+   ],
+   "comparison": "|renderer mean(numerator rect) / mean(denominator rect) − ratioXYZS| ≤ tolerance, per channel",
+   "method": "same body, frames and filters: shared calibration and multiplicative spectral factors cancel; per-band sigma from noise and registration alone, including disk background uncertainty. XYZS retains differential linear/PCHIP ratio spread where local band colours differ",
+   "label": "estimated",
+   "budget": {
+    "noiseAndRegistration": [
+     0.0183864,
+     0.01899334,
+     0.01837121,
+     0.01497688
+    ],
+    "spectralModel": [
+     0.005111812,
+     0.005631498,
+     0.0002218775,
+     0.001979392
+    ],
+    "formula": "sigma(R_c) = |R_c| * hypot(u_a,c / L_a,c, u_b,c / L_b,c); u = each ROI's noiseAndRegistration; total sigma = hypot(sigma(R_c), abs(R_PCHIP - R_linear)); tolerance = 2 total sigma",
+    "correlation": "Shared absolute calibration and a common multiplicative spectral factor cancel (exactly for one band). For multiple bands, apply linear and PCHIP to both ROIs before dividing; their ratio difference is retained as the non-cancelling spectral term. Noise and registration are propagated independently, as in the region budgets; no cross-ROI covariance is measured. Additive background level uncertainty remains in disk noise and does not cancel."
+   }
+  }
+ ],
  "appProducts": {
   "rings.json opticalDepth sources": null,
   "shape spectrum sources": [
@@ -1810,12 +1927,12 @@
    "schema.py": "6694d90ccede50d9e9f96600bad70bcc377096bd8bd1cf37e925aed99e72b6a8",
    "surf_color.py": "307a7810f16975b1406c5b9b46453c40e7962eec537dbea1e37e38cd01c97fb5",
    "validation/__init__.py": "0624a235c97b37ed0a6f00a7425b92251faa28e9cf70930e6981c098f482b05b",
-   "validation/build.py": "1658b71850eef1b731a13fb0a813fcb8a864f9a8907a5c24d475ec6e6ee2e05d",
+   "validation/build.py": "1a175932b3d707dcda1e1765eaf57f6a5820f5065ea633650aab4ba7257bc064",
    "validation/cases.py": "4606e31fd8add5d8bda5d5c0e9d53a59d6c33a1aa917856d062d538c4d4e2805",
    "validation/checks.py": "591f3cc261753ddfd3ca5975cd8d3c03d72bbb936f475f625162a2349ef67c29",
    "validation/geometry.py": "fd02da9796633f7aa9a69823b0534162cf0c00f8bce63cba6fd80e3d3bbf8db7",
    "validation/himawari.py": "8e802d56b3eed0f18e681ad6c58390b05346b71ac3943968c2c875ead3d4aff5",
-   "validation/photometry.py": "356ede5cc53bc52a3b785cb2c098ddf0f18b6189c7f93796c79a1ec6c73e2421",
+   "validation/photometry.py": "7296ba9cb618e5d876da2016e322765748cde0ccfdcd6ca4ae579e4a7c222d3e",
    "validation/readers.py": "accd15f368c916bfc90718ffd054e0d8de847ac5ff2f424621f394656436314e",
    "validation/register.py": "a0ff6e331124d934cef23cafe644cd3f5006aaadb4dcc7c95644ba2e6502f6cb",
    "validation/reproducibility.py": "e46e503f2f46241559e46309e7ac41a9fd63e25da598ff0a57ff5a56b7317127",
