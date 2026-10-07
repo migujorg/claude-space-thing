@@ -368,6 +368,8 @@ def test_renewal_writes_no_locks_if_any_case_changes(tmp_path, monkeypatch):
     monkeypatch.setattr(paths, 'CACHE', tmp_path / 'cache')
     monkeypatch.setattr(build, 'VALIDATION', tmp_path)
     monkeypatch.setattr(cli, 'CASES', {'first': object(), 'second': object()})
+    monkeypatch.setenv('SOURCE_DATE_EPOCH', '1234')
+    monkeypatch.setenv('PIPELINE_VALIDATION_EARTH_PCK', 'ignored-by-renewal')
     monkeypatch.setattr(build, 'preview', lambda path, *args: path.write_bytes(b'preview fixture'))
     for key in r.THREAD_VARS:
         monkeypatch.setenv(key, '1')
@@ -406,3 +408,14 @@ def test_tables_lock_only_actual_reads_from_static_closure():
     assert 'photometry/tables/salo_french_2010_table4.csv' not in lock
     assert r.implementation({'id': 'neptune-voyager2-1989',
                              'reproducibility': {'implementation': lock}}) == lock
+
+
+def test_import_initialization_tables_stay_locked_before_capture():
+    from pipeline.validation import reproducibility as r
+    from pipeline.photometry import phase, rolo
+    # Both modules have already initialized; their constants are still inputs.
+    closure = r.implementation({'id': 'earth-moon-epoxi-2008'}, tables=set())
+    assert {'photometry/tables/kieffer_stone_2005_rolo.json',
+            'photometry/tables/mallama_hilton_2018.json',
+            'photometry/tables/karkoschka_disk_radii.json'} <= set(closure)
+    assert 'photometry/tables/salo_french_2010_table4.csv' not in closure

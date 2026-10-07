@@ -193,6 +193,19 @@ def implementation(case=None, *, tables=None):
         reader_files, _ = walker('__validation__')
         files = sorted(set(files) | set(reader_files))
     candidates = set(files)
+    # Module initialization precedes capture (and modules may already be loaded).
+    # Top-level bytecode constants name its eagerly read tables. Do not descend
+    # into function code: those table reads are captured during the case build.
+    def strings(value):
+        if isinstance(value, str):
+            yield value
+        elif isinstance(value, tuple):
+            for member in value:
+                yield from strings(member)
+    eager_names = {value for path in files if path.suffix == '.py'
+                   for constant in compile(path.read_text(encoding='utf-8'), str(path), 'exec').co_consts
+                   for value in strings(constant)}
+    eager_tables = {path for path in files if path.suffix != '.py' and path.name in eager_names}
     if tables is None:
         # The code hash detects changes that introduce/remove a table read; the
         # rebuild capture checks that the actual set still matches the lock.
@@ -200,7 +213,7 @@ def implementation(case=None, *, tables=None):
                   if Path(name).suffix != '.py'}
     if not set(tables) <= candidates:
         raise ReproductionError('read table outside static import/table closure')
-    files = sorted({p for p in files if p.suffix == '.py'} | set(tables))
+    files = sorted({p for p in files if p.suffix == '.py'} | set(tables) | eager_tables)
     return {p.relative_to(root).as_posix(): file_record(p)['sha256'] for p in files}
 
 

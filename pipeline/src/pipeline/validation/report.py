@@ -330,7 +330,7 @@ def findings(cases: list[dict]) -> str:
           "tolerance = 2σ, fitted target centre = the view's projection of the target).", ""]
     L += ["**Rebuild locks.** Each case's `reproducibility` lock hashes the static import closure of its "
           "build path (the stage fingerprint walker, with the selected instrument reader or Himawari prepare "
-          "module), and only the source tables actually read in that build. Shared modules are hashed as "
+          "module), with source tables read during module initialization or that case build. Shared modules are hashed as "
           "whole files; unrelated stages and their tables are excluded. Raw inputs retain exact byte hashes. "
           "Product dependencies hash canonically serialized consumed fields, including presence, nulls, "
           "labels and source IDs where read: ring profile radii/depths/sources and disk-photometry values/labels. "
