@@ -224,6 +224,15 @@ def tables() -> dict:
     return json.loads((TABLES / "populations.json").read_text(encoding="utf-8"))
 
 
+def hilda_model() -> dict:
+    """Published 2025 input transcription; inactive pending count review and missing family coefficients.
+
+    This is not registered or consumed by the build: it must not imply that the current product uses this model.
+    Source, range, unknown coefficients and mapping requirements are retained in the table and source notes.
+    """
+    return json.loads((TABLES / "hilda_2025.json").read_text(encoding="utf-8"))
+
+
 def centaur_nuclei() -> dict:
     """Qualified nuclear photometry, bounds and unknowns; transcription/source scope in docs/sources/centaur-nuclei.md."""
     return json.loads((TABLES / "centaur_nuclei.json").read_text(encoding="utf-8"))

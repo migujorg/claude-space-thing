@@ -153,14 +153,16 @@ export interface EarthSample {
   /** 10 m wind speed over open water (m/s); NaN or absent: unknown (no glint, and marked unknown in the glint zone). */
   windSpeed?: number;
   /**
-   * The cloudTau layer (per-sample averages over the texel's samples; NaN = unknown): the share of samples with an
-   * optical-thickness retrieval f_τ ≤ cloudFraction, Σ ln τ / N, Σ (ln τ)² / N, and the share with an ice-phase
-   * retrieval. When known it replaces opticalThickness and iceFraction (cloudLogNormal).
+   * The bound thickness layer, cloudTau or cloudTauEstimated (area-weighted sums over the texel's cells; NaN =
+   * unknown): the share of the texel that is cloud with a thickness f_τ ≤ cloudFraction, Σ a·ln τ, Σ a·(ln τ)², and
+   * the share that is ice cloud with a thickness. When known it replaces opticalThickness and iceFraction
+   * (cloudLogNormal).
    */
   tauMoments?: { fTau: number; m1: number; m2: number; iceTau: number };
   /**
-   * The τ population given to the cloud without a retrieval (cloudFraction − f_τ), when the reality level
-   * admits it (unmeasuredTauPopulation; estimated). Absent or null: that cloud stays unknown.
+   * A τ population for the cloud without a thickness (cloudFraction − f_τ), from a statistic in the cloudTau
+   * header (unmeasuredTauPopulation; estimated). The present cloud layers carry none: absent or null, that cloud
+   * stays unknown, which is the rule at every reality level (docs/rendering-earth.md §2).
    */
   unmeasuredTau?: CloudPopulation | null;
 }
@@ -172,7 +174,8 @@ export interface CloudPopulation {
 }
 
 /**
- * The cloudTau header's statistic for cloud without a retrieval: constants.unmeasuredTau, the measured τ
+ * A cloudTau header's statistic for cloud without a retrieval, where a header has one (the present Earth layers do
+ * not: their cloud without a thickness is not measured at any level): constants.unmeasuredTau, the measured τ
  * distribution of MODIS partly cloudy pixels (Pincus et al. 2023, Fig. 7; docs/rendering-earth.md §3), as
  * constants.use.unmeasuredShare prescribes. The partly-cloudy, all-heights histogram
  * (statistics.floorCellsZero.partlyCloudyAllHeights) is used bin by bin, τ_k = exp(tauBinLnCentre[k]). No
@@ -301,9 +304,10 @@ export function earthParts(s: EarthSample, mu0: number, mu: number, glint?: Glin
   if (!fin(C)) { C = 0; gap = 1; }
   C = Math.min(Math.max(C, 0), 1);
   // The cloud's optical thickness, as populations of τ nodes (each node a sub-pixel of its own, independent pixels):
-  // with the cloudTau moments, the retrieved share f_τ as a log-normal in τ (three nodes), and the rest of the cloud,
-  // C − f_τ, from the partly-cloudy statistic where the level admits it (liquid; estimated), else no reflected light,
-  // marked unknown. Without the moments, the clouds layer's mean τ over the whole cloud (unknown where NaN).
+  // with the thickness layer's moments, the share f_τ as a log-normal in τ (three nodes); the rest of the cloud,
+  // C − f_τ, has no thickness: no reflected light, marked unknown (a population for it is taken only where a header
+  // provides one; the present layers provide none). Without the moments, the clouds layer's mean τ over the whole
+  // cloud (unknown where NaN).
   const ln = cloudLogNormal(s.tauMoments, C);
   const pops: { w: number; taus: number[]; wts: number[]; fice: number }[] = [];
   if (ln) {
