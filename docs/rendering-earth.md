@@ -507,7 +507,17 @@ atmospheres.json has Mars (CO₂ + dust), Venus (the haze above 60 km), Pluto (h
 haze + methane, over a surface reflectance). The giant planets have scale heights only, so they get no
 atmosphere. Mars, Venus and Pluto are drawn from their disk photometry, which already contains the light of their
 air. The same tables (§4) add the air, and the surface is renormalised so that the measurement is kept. Titan is
-drawn from its model alone (below, "Titan").
+drawn from its atmosphere model, which is scaled per channel so that the measurement is kept too (below, "Titan").
+
+**The rule** (architecture §4.3, §4.4; frame.ts). Disk photometry is the absolute calibration of a body's
+brightness and colour, and whatever draws the resolved disk supplies only the spatial pattern: a surface law and
+maps, a surface under measured air, or a physical atmosphere model. Wherever the photometry is admitted at the
+reality level and covers the phase angle, the drawn disk's integral is the measured p·Φ(α) in X, Y, Z and S. Beyond
+the measured phase range the scale found at the range's edge is kept at Best estimate and Complete (an assumption:
+the result is `estimated`, with a warning), and at Strict the sunlit part is marked not measured. There is one
+exception, the Earth drawn with its layers (§1–§6): it is never scaled to its disk photometry. Its layers carry
+their own absolute calibration (surface reflectance, cloud optical thickness and the air, each in absolute units),
+and its disk albedo is the weather of one day, which one disk value cannot fix; §6 reports the ratio instead.
 
 **Renormalisation** (frame.ts, `atmosphereDiskFactors` in atmosphere.ts). Four disk integrals per channel,
 as reflectances (1/πR²)∫ρ dA, for the body's law on a uniform surface:
@@ -563,7 +573,7 @@ extrapolated disk could not contain.
 | Mars | CO₂ Rayleigh; dust, double HG, ω 0.71–0.98 | Over the disk to α ≈ 65°: haze softens the terminator and lowers contrast. At α = 36° the surface scale is ×0.62 / 0.57 / 0.18 / 0.41 (X, Y, Z, S; with the δ-scaled view transmittance): the blue of the disk is mostly dust light. Beyond, the surface scale of the nearest phase where the estimated curve still exceeds the air (3.). |
 | Venus | the cloud and upper haze above 60 km | Beyond the disk only. Near inferior conjunction (α = 172°) the haze alone outshines the measured p·Φ: not drawn. |
 | Pluto | haze (tabulated Mie phase, ω 0.944) | Over the disk; the haze is 1–2 % of the disk at low phase and forms a ring at high phase. |
-| Titan | N₂ Rayleigh; DISR haze (three components, two phase functions); methane; surface reflectance | Drawn from the model, not renormalised: see below. |
+| Titan | N₂ Rayleigh; DISR haze (three components, two phase functions); methane; surface reflectance | Drawn from the model, scaled per channel to the disk photometry (×0.99, 0.99, 0.89, 0.95 beyond 5.7°): see below. |
 
 **Mars dust.** atmospheres.json gives the annual global-mean column and a table of global-mean column
 optical depth by solar longitude (5° bins; Montabone et al. 2015, 2020 climatology), with L_s against
@@ -572,24 +582,48 @@ the dust extinction by the bin's mean over the annual mean. Each bin has its own
 the worker when the season changes). The latitude dependence of the column is left out: the tables are
 spherically symmetric.
 
-**Titan: drawn from its atmosphere model.** atmospheres.json gives Titan's air in full: N₂ Rayleigh, the
-Huygens DISR haze (extinction of Tomasko et al. 2008; single-scattering albedo of Doose et al. 2016, below
-80 km and above 200 km; phase functions of Tomasko et al., below and above 80 km), methane absorption, and the
-Lambert reflectance of the surface under it (docs/reports/atmospheres.md, "Titan"). Its disk is therefore not
-taken from its disk photometry: extras.ts attaches the surface (`SceneAtmosphere.surface`) when the surface
-reflectance and every component are admitted, and frame.ts draws the resolved disk like Earth's, absolute:
-the surface scale is K = E☉/(πd²)·ρ_c with ρ_c the surface's X, Y, Z, S equivalents and a Lambert law, the shader
-(`ATM_OVER_PHOTOMETRY`) adds the sunlight and skylight through the air and the air's own light over and beyond
-the disk, and nothing is renormalised. The measured brightness and colour are thus a test of the data, not an
-input (results below). Until the tables are ready, or if the atmosphere cannot be drawn, the disk photometry
-stands in (beyond its phase range, 0–5.7°, extrapolated with a Lambert law at Best estimate, with the usual
-warning). An unresolved Titan (under 1 px) is still drawn from its disk photometry, and between 1 and 2 px the
-two are blended, so a growing disk switches from Karkoschka's measurement to the model: at 5.7° the model's disk
-is +2 % in X and Y, +13 % in Z and +6 % in S (below, "Against the measurements"). This is an exception to
-architecture §4.3, which asks that a resolved disk's integral reproduce p·Φ(α): inside the photometry's range
-Titan's does not, in Z by more than the measurement's uncertainty. Beyond 5.7° the point is the Lambert
-extrapolation, which knows nothing of the haze's forward scattering: at 150° the model's disk reflects about 25
-times what that point does.
+**Titan: drawn from its atmosphere model, scaled to its disk photometry.** atmospheres.json gives Titan's air in
+full: N₂ Rayleigh, the Huygens DISR haze (extinction of Tomasko et al. 2008; single-scattering albedo of Doose et
+al. 2016, below 80 km and above 200 km; phase functions of Tomasko et al., below and above 80 km), methane
+absorption, and the Lambert reflectance of the surface under it (docs/reports/atmospheres.md, "Titan"). extras.ts
+attaches the surface (`SceneAtmosphere.surface`) when the surface reflectance and every component are admitted,
+and frame.ts then draws the resolved disk from the model: the surface scale is K = E☉/(πd²)·ρ_c with ρ_c the
+surface's X, Y, Z, S equivalents and a Lambert law, and the shader (`ATM_OVER_PHOTOMETRY`, and the shell beyond the
+limb) adds the sunlight and skylight through the air and the air's own light, scaled by the Sun's E☉/(πd²).
+
+By the rule above the model gives the pattern and the photometry the level. Every term of the model's radiance is
+proportional, per channel, to one of those two scales, so frame.ts multiplies both by one factor per channel,
+
+    f_c = p_c·Φ(α) / A_c(α),
+
+the measured disk reflectance of photometry.json over the model's own disk integral A_c (`modelDiskXYZS` in
+atmosphere.ts: the CPU twin of what the shaders compose, on a polar grid, in 1° phase bins interpolated linearly;
+about 30 ms per new bin). No number of the model is adjusted and no factor is stored: f is computed at run time
+from the tables in use, and the renderer says it in a warning line (`renderer.stats.warnings`: the scene suite's
+and the validation's reports, the render-test page, `debugState()`), for example "Titan: atmosphere model scaled to
+the disk photometry at 3°, ×0.99 X, 0.99 Y, 0.88 Z, 0.95 S (measured p·Φ over the model's disk integral)". The
+inspector's "why" sentence says that the disk is scaled so; it does not show the numbers.
+
+- **Inside the photometry's range** (0–5.7°) the factors run from ×0.982, 0.994, 0.810, 0.934 (X, Y, Z, S) at 0° to
+  ×0.988, 0.987, 0.893, 0.951 at 5.7° (docs/reports/atmospheres.md, "What is drawn"). Only 5.7° is a measurement
+  (Karkoschka's 1995 albedo); the values below it are the phase function's assumed linear rise of 2 % in every
+  channel to zero phase (label `estimated`), which the scaling puts in place of the model's own backscatter peak in
+  the blue (the model's Z rises by 12 % from 5.7° to 0°).
+- **Beyond 5.7°** the photometry says nothing. At Best estimate and Complete the factors of 5.7° are held at every
+  phase, the body's label becomes `estimated`, and the line says so ("… as at 5.7°, ×0.99 X, 0.99 Y, 0.89 Z, 0.95 S:
+  phase 61° is beyond the measured range (0–5.7°) and the factors of its edge are held → estimated"). This is the
+  standing continuation of a phase curve (rendering-m2.md §2) with the model's disk integral in the place of the
+  spatial law's. A body whose model were admitted at Strict would be marked not measured there, as any body beyond
+  its phase curve is.
+- **At Strict** Titan's haze and photometry are both `estimated`, so neither is admitted and nothing of this applies.
+- **Until the tables are ready**, or if the atmosphere cannot be drawn, the disk photometry stands in with a
+  Lambert law (beyond 5.7° extrapolated with it at Best estimate, with the usual warning).
+- **As a point** (under 1 px) Titan is its disk photometry, and between 1 and 2 px the two are blended. Inside the
+  range the two are now the same light. Beyond 5.7° the point is still the Lambert extrapolation, which knows
+  nothing of the haze's forward scattering: at 150° the model's disk reflects about 25 times what that point does.
+- **From close by** the frame's summed light exceeds p·Φ·(R/Δ)²: the near side of a sphere is nearer than its
+  centre, a first-order effect in R/Δ (0.75·R/Δ for a Lambert sphere at zero phase) that the far-field contract does
+  not contain and the picture should. Measured on the GPU: +0.9 % from 200 000 km, +0.05 % from 2 000 000 km.
 
 **Why not Hillaire's table.** The haze is optically thick (τ ≈ 8 at 550 nm, ω 0.84–1, asymmetry 0.73–0.80).
 Hillaire's per-point estimate (isotropic orders ≥ 2, infinite-series closure) gives a disk 22 % (550 nm) and 48 %
@@ -641,21 +675,43 @@ resolution (about 11°).
 
 **Accuracy** (`app/tests/render-titan.test.ts`; docs/reports/atmospheres.md "The renderer"). Against the Monte
 Carlo solution of the same model (`titan_rt.py`, every sample its own bin), the disk-integrated A_gΦ of the CPU
-twin is, as the median over the 48 samples, 1.04 times the reference at 6°, 1.01 at 60°, 0.98 at 90°, 0.95 at
-120°, 0.89 at 150° and 0.94 at 166°. The reference's noise is 2–4 % per sample and phase bin, so the spread
-between samples (0.99–1.08 at 6°, 0.82–0.95 at 150°) is partly its noise; the medians are good to about 0.6 %.
-Split at the solid limb (550 and 750 nm; the reference's noise on each part is 2–10 %): the disk is 3–6 % too
-bright at 6° and 22–26 % too dark at 150°, where it is the thin crescent; the air beyond the disk is within 6 %
-from 60° to 120° and 5–14 % too dark at 150–166°, where it is nearly all the light (at 6°, where it is a tenth
-of the light, it is +19 % at 550 nm and −12 % at 750 nm, 3 and 1 times the noise). The local-spherical-symmetry
-assumption misses the light that reaches the terminator from the sunlit side.
+twin is, as the median over the 48 samples, 1.03 times the reference at 6°, 1.00 at 60°, 0.97 at 90°, 0.94 at
+120°, 0.88 at 150° and 0.94 at 166°. The reference's noise is 2–4 % per sample and phase bin, so the spread
+between samples (0.98–1.07 at 6°, 0.81–0.95 at 150°) is partly its noise; the medians are good to about 0.6 %.
+Split at the solid limb (550 and 750 nm; the reference's noise on the whole is 1–4 % there, more on each part):
+the disk is 2–5 % too bright at 6° and 28–31 % too dark at 150°, where it is the thin crescent; the air beyond the
+disk is within 6 % from 30° to 120° and 5–14 % too dark at 150–166°, where it is nearly all the light (at 6°,
+where it is a tenth of the light, it is +19 % at 550 nm and −12 % at 750 nm). The local-spherical-symmetry
+assumption misses the light that reaches the terminator from the sunlit side. Inside the photometry's range the
+scaling removes this error from the disk's integral; beyond it the error stays in the picture, on top of the held
+factors.
 
-**The shaders against the CPU twin.** The disk-integrated light of rendered frames (the HDR buffer summed over
-a 512 × 512 view, Titan 330 px across, SwiftShader, 2026-10-04) is 1.003–1.004 of the CPU twin's at 6°, 1.002
-at 30°, 0.997 at 60°, 0.989 at 90°, 0.982–0.985 at 120°, 0.988–0.991 at 150° and 0.983–0.991 at 166° (X, Y, Z,
-S): the shaders draw what the twin computes to within 2 %, so the twin's numbers stand for the picture.
+The twin's disk integral is taken on a polar grid (Gauss–Legendre in μ, uniform in azimuth). The square grid of
+cell centres it replaced miscounted the disk's area by its edge cells (+3.5 % at 16 across, −1.0 % at 24, +1.0 % at
+32), and the integral of a nearly uniform disk followed: the numbers of this section were 0.6 % higher at small
+phase before 2026-10-07, and the thin crescent's disk part at 150° 8 % higher. `atmosphereDiskFactors` (the
+renormalisation of Mars, Venus and Pluto, above) still uses the square grid at 16 across: on Mars's tables the
+air's own light over the disk comes out 3.4–3.8 % too high, which draws Mars 1.1 % (Y) to 2.0 % (Z) darker than
+its photometry at opposition (measured with a Lambert surface; not changed here).
 
-**The two scenes** (app/e2e/scenes.json; rendered 2026-10-04, no baseline accepted yet). `titan-haze` (61°,
+**The shaders against the CPU twin, and the drawn disk against the measurement.** The disk-integrated light of
+rendered frames (the HDR buffer summed over a 512 × 512 view, Titan 330 px across, from 2 000 000 km; the
+workstation's GPU, `nvidia blackwell`, rgba32float, 2026-10-07) over the twin's on a fine grid times the frame's
+factors is 1.0003, 1.0005, 0.9986, 1.0001 (X, Y, Z, S) at 0°, 1.0005–1.0007 from 1° to 30°, 1.0002 at 60°,
+0.9998–0.9999 at 90°, 0.9997–0.9998 at 120°, 0.9998–1.0001 at 150° and 0.9978–0.9989 at 166°: the shaders draw
+what the twin computes to within 0.07 % up to 150° and 0.2 % at 166° (where the twin's grid is the coarser of the
+two), so the twin's numbers stand for the picture. Against the measured p·Φ(α) the same frames give 1.0000,
+1.0003, 0.9981, 0.9998 at 0° (at exactly 0° the model's backscatter peak is narrower than the ±0.07° the phase
+angle varies across the disk from that distance), 1.0003, 1.0003, 1.0001, 1.0003 at 1°, 1.0004, 1.0004, 1.0002,
+1.0004 at 3° and 1.0005, 1.0005, 1.0003, 1.0004 at 5.6°. From 200 000 km the frames are 0.9 % brighter at small
+phase and 0.4 % at 60°, up to 0.4 % fainter from 90° to 150° and 0.5–1.3 % fainter at 166°: the finite distance
+of the item above, not a difference between the shaders and the twin (the aerial-perspective columns change the
+sum by 0.04 % or less). The figures of 2026-10-04 (within 2 % of the twin, SwiftShader, from 200 000 km) held both
+that effect and the square grid's error.
+
+**The two scenes** (app/e2e/scenes.json; baselines accepted on the workstation's GPU, 2026-10-07; both carry the
+factors of 5.7°, ×0.99, 0.99, 0.89, 0.95, so against the unscaled model of 2026-10-04 the picture is 1 % fainter
+in X and Y and 11 % in Z: a little more orange). `titan-haze` (61°,
 from 12 000 km): a tan-orange disk, brightest toward the sub-solar point, with no sharp terminator (the light
 fades over about a quarter of the radius and wraps past the cusps), the haze visible to about 150 km beyond the
 solid limb with a blue-grey outer fringe, the night side black. `titan-haze-ring` (170°, from 12 000 km): the
@@ -675,25 +731,30 @@ transmittances folded per channel (a per-channel product in place of the spectra
 δ-scaled transmittance, the surface gives under 0.01 % of the disk's light at 550 nm and 0.3 % at 750 nm (at 6°);
 the rest of its light reaches the eye scattered by the haze, inside the orders' solution.
 
-**Against the measurements** (pass: within twice the observation's 1σ). Karkoschka's (1998) full-disk albedo at
-5.7° (absolute calibration ±4 %): the model itself, solved by the reference, has X, Y, Z, S = 0.994 ± 0.005,
-0.990 ± 0.005, 1.090 ± 0.009, 1.028 ± 0.006 of it (± the Monte Carlo noise); the CPU twin with the app's 12 bins
-1.017, 1.018, 1.126, 1.057; the rendered frame 1.022, 1.023, 1.130, 1.062. X, Y and S pass, Z fails. The
-brightness is right and the colour is not: the reflected sunlight has x, y = (0.3717, 0.3745) against the
-measured (0.3811, 0.3838), Δu′v′ = 0.006, bluer and less orange than Titan, and Z/Y is 10 % high, where a
-calibration error common to all wavelengths cancels. 93 % of the model's Z comes from below 500 nm, where Doose
-et al. give no haze albedo and it is extrapolated. At exact opposition the model is bluer still (Z rises by 12 %
-from 5.7° to 0°, Y by 1 %: the backscatter peak of the 355 and 430 nm phase functions), against the 2 % in every
-channel that the photometry assumes. Cassini ISS phase curves (García Muñoz et al. 2017; CISSCAL ~10 %): the
-medians of measured / rendered pass in every range from 0° to 160° in BL1, GRN, CB1, RED and CB2 (0.82–1.09),
-with BL1 (455 nm) at 0.82–0.88 up to 90°, the same blue excess seen by a second instrument; at 160–170° the
-rendering is 22–30 % brighter than measured (BL1, GRN and CB1 fail) — its forward scattering through the upper
-haze is too strong, as in the exact solution. Nothing in the model was changed for these results.
+**The model alone against the measurements** (pass: within twice the observation's 1σ). This is the finding about
+the DISR model; since the scaling above it is no longer what the picture shows inside the photometry's range.
+Karkoschka's (1998) full-disk albedo at 5.7° (absolute calibration ±4 %): the model itself, solved by the
+reference, has X, Y, Z, S = 0.994 ± 0.005, 0.990 ± 0.005, 1.090 ± 0.009, 1.028 ± 0.006 of it (± the Monte Carlo
+noise); the CPU twin with the app's 12 bins 1.012, 1.012, 1.119, 1.051 (the reciprocals of the factors at 5.7°);
+the shaders' frame is 1.0006 of the twin. X, Y and S pass, Z fails. The brightness is right and the colour is not:
+the model's reflected sunlight has x, y = (0.3717, 0.3746) against the measured (0.3811, 0.3838), Δu′v′ = 0.006,
+bluer and less orange than Titan, and Z/Y is 10 % high, where a calibration error common to all wavelengths
+cancels. 93 % of the model's Z comes from below 500 nm, where Doose et al. give no haze albedo and it is
+extrapolated: the likely cause. At exact opposition the model is bluer still (Z rises by 12 % from 5.7° to 0°, Y
+by 1 %: the backscatter peak of the 355 and 430 nm phase functions), against the 2 % in every channel that the
+photometry assumes. Cassini ISS phase curves (García Muñoz et al. 2017; CISSCAL ~10 %): the medians of measured /
+model (the twin, unscaled) pass in every range from 0° to 160° in BL1, GRN, CB1, RED and CB2 (0.83–1.11), with BL1
+(455 nm) at 0.83–0.87 up to 90°, the same blue excess seen by a second instrument; at 160–170° the model is
+20–30 % brighter than measured (BL1, GRN and CB1 fail) — its forward scattering through the upper haze is too
+strong, as in the exact solution. Nothing in the model was changed for these results, and the ISS curves are not
+an input to the scaling: beyond 5.7° the picture is this model times the factors of 5.7°, so the excess at
+160–170° is drawn.
 
 **Not done for Titan:** the change of μs along a scattering path (the terminator), Saturnshine on the haze
 (planetshine lights the surface only), refraction, the methane bands at their 1 nm resolution, the detached
 haze and the north–south asymmetry, a point light from the model (the point stays the disk photometry, unknown
-beyond 5.7° at Strict).
+beyond 5.7° at Strict), a phase function for Titan beyond 5.7° (the ISS curves above are a figure digitized in five
+filters, used only as a test; making them the photometry would end that test and is a separate decision).
 
 **Altitude reference.** The drawn ellipsoid (bodies.json radii) is taken as the profile's lower boundary.
 For Venus this puts the haze 60 km (1 %) lower than it is: the disk is drawn at the solid radius, as it
