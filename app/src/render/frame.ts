@@ -4,8 +4,8 @@
 
 import type { SceneAtmosphere, SceneBody, SceneSnapshot } from './scene';
 import { AU_KM } from './constants';
-import { diskIlluminance, diskModelPPhi, evalPhase, extrapolatePhase, LAMBERT_ALBEDO_PER_GEOMETRIC_ALBEDO, lambertPhase, limbDarkenedI0, meanRadius, phaseRangeDeg, type XYZS } from './photometry';
-import { LAMBERT_LAW, LAW, lawDiskIntegral, lawRadf, mapDiskIntegral, NormalizationCache, photometricFrame, resolveLaw, TEXEL_LAW, type ResolvedLaw, type ZonalProfile } from './spatial';
+import { diskIlluminance, diskModelPPhi, evalPhase, extrapolatePhase, LAMBERT_ALBEDO_PER_GEOMETRIC_ALBEDO, limbDarkenedI0, meanRadius, phaseRangeDeg, type XYZS } from './photometry';
+import { LAMBERT_LAW, lawRadf, MotionNormalization, mapDiskIntegral, NormalizationCache, photometricFrame, resolveLaw, TEXEL_LAW, type ResolvedLaw, type ZonalProfile } from './spatial';
 import { sampleLevel0, type Level0Map } from './surface';
 import { MAX_POPULATION_NODES, NIGHT_LAMP, type CloudPopulation } from './earth';
 import { ATM_DISK_NODES, atmosphereDiskFactors, marsDustScale, modelDiskXYZS } from './atmosphere';
@@ -203,8 +203,7 @@ const normCache = new NormalizationCache();
 /** Disk renormalization factors under an atmosphere (I0, Iatm, Apath, Ashell per channel), by phase bin. */
 const ATM_FACTOR_BIN_DEG = 1;
 const atmCache = new Map<string, number[]>();
-const zonalIds = new WeakMap<ZonalProfile, number>();
-let nextZonalId = 1;
+const motionNormalization = new MotionNormalization();
 const lawKey = (l: ResolvedLaw) => `${l.kind}:${l.p}:${l.b}:${l.c}:${l.bs0}:${l.hs}:${l.bc0}:${l.hc}:${l.thetaBar}:${l.K}:${l.hFn}`;
 
 /**
@@ -224,19 +223,9 @@ function lawBond(law: ResolvedLaw): XYZS {
   });
 }
 
-/** Disk integral I(α) of a law, optionally weighted by a map's zonal mean (cached; exact for plain Lambert). */
-function lawIntegral(law: ResolvedLaw, alpha: number, zonal?: { profile: ZonalProfile; pole: V3 }): XYZS {
-  if (law.kind === LAW.lambert && !zonal) {
-    const v = (2 / 3) * lambertPhase(alpha);
-    return [v, v, v, v];
-  }
-  let key = `${lawKey(law)}|${alpha.toFixed(5)}`;
-  if (zonal) {
-    let id = zonalIds.get(zonal.profile);
-    if (!id) zonalIds.set(zonal.profile, (id = nextZonalId++));
-    key += `|${id}|${zonal.pole.map((v) => v.toFixed(3)).join(',')}`;
-  }
-  return normCache.get(key, () => lawDiskIntegral(law, alpha, zonal, law.kind === LAW.hapke ? 24 : 32));
+/** The same motion-normalization entry point used by prepareFrame and the opt-in benchmark. */
+export function lawIntegral(law: ResolvedLaw, alpha: number, zonal?: { profile: ZonalProfile; pole: V3 }): XYZS {
+  return motionNormalization.get(law, alpha, zonal);
 }
 
 const worse = (a: Label, b: Label): Label => (LABEL_ORDER.indexOf(a) >= LABEL_ORDER.indexOf(b) ? a : b);
