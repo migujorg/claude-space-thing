@@ -137,7 +137,7 @@ dipole continuation, spherical start points and vertical columns introduce model
 
 Columns per erg cm⁻² s⁻¹ (R), evaluated at mean energies 0.2, 1.7 and 7 keV: 427.8 nm 86, 195, 247;
 557.7 nm 679, 1667, 1952; 630.0 nm 3320, 487, 75. Peak heights of the blue/green emission 210 km at 0.2 keV, 126 km at 1.7 keV, 106 km at 7 keV, 94 km
-at 30 keV. Electrons above ~20 keV deposit up to 3 % of their energy below 86 km, which is not in the table.
+at 30 keV. The table is truncated at 86 km, so emission below that altitude is absent.
 
 **Line groups and attenuation.** The table holds the three groups' volume emission rates; the renderer multiplies the
 path integral of each group by its luminance per R, folded per 40 nm bin with the atmosphere's transmittance.
