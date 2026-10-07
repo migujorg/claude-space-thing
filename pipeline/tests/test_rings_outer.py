@@ -55,7 +55,41 @@ def test_component_models_are_complete_and_labelled(built, key):
         lam = np.arange(0.0, 360.0, 1.0)
         for t_days in (0.0, 3650.0, -3650.0):
             w = rc.edge_radius(comp["outer"], lam, t_days) - rc.edge_radius(comp["inner"], lam, t_days)
-            assert np.all(w > -rc.MIN_WIDTH_KM), comp["id"]
+            assert np.all(w > 0), comp["id"]
+
+
+@pytest.mark.parametrize("key", ["799", "899"])
+def test_moving_geometry_has_sourced_support_span(built, key):
+    model = _model(built[1], key)
+    moving = [c for c in model["components"] if c["id"] in
+              {f"uranus-{r}" for r in rings_uranus.RINGS} or "arcs" in c]
+    assert len(moving) == (10 if key == "799" else 1)
+    for c in moving:
+        validity = c["geometryValidity"]
+        assert validity["startEt"] < validity["endEt"] and validity["basis"]
+        assert c["provenance"]["geometry"]["value"]["geometryValidity"] == validity
+
+
+def test_uranus_widths_over_actual_manifest_window(built):
+    import json
+    import os
+    from pathlib import Path
+    manifest = Path(os.environ["PIPELINE_OUT"]) / "manifest.json"
+    if not manifest.exists():
+        pytest.skip("manifest not built: actual time window unavailable")
+    window = json.loads(manifest.read_text())["window"]
+    model = _model(built[1], "799")
+    lon = np.arange(0.0, 360.0, 0.5)
+    for c in model["components"][:10]:
+        span = c["geometryValidity"]
+        for et in np.linspace(window["startEt"], window["endEt"], 101):
+            raw = rc.edge_radius(c["outer"], lon, (et - model["epochEt"]) / rc.DAY) - \
+                  rc.edge_radius(c["inner"], lon, (et - model["epochEt"]) / rc.DAY)
+            # Unsupported epochs and nonpositive widths have no physical geometry to draw.
+            drawn = (span["startEt"] <= et <= span["endEt"]) & (raw > 0)
+            assert np.all(raw[drawn] > 0), c["id"]
+        assert span["startEt"] == rings_uranus.GEOMETRY_VALIDITY["startEt"]
+        assert span["endEt"] == rings_uranus.GEOMETRY_VALIDITY["endEt"]
 
 
 def test_tiled_bins_cover_the_band_exactly():

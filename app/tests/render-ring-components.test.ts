@@ -57,7 +57,7 @@ describe('ring components: geometry', () => {
     expect(edgeRadius(em, 15 * DEG, 1)).toBeCloseTo(1000 - 3, 9);   // argument 0 → r − A
   });
 
-  it('bands scale τ with width and widen to the minimum width when the edges cross', () => {
+  it('bands scale τ with width and reject crossed edges as unknown', () => {
     const c = comp({ values: [1, 1], inner: edge(1000, { ae: 10 }), outer: edge(1100, { ae: 50 }) });
     c.profile.widthScaling = true;
     const m = model([c]);
@@ -66,7 +66,35 @@ describe('ring components: geometry', () => {
     expect(apo.W).toBeCloseTo(1100 + 50 - (1000 + 10), 1);
     expect(peri.s * peri.W).toBeCloseTo(100, 9);                    // τ·W conserved
     const crossed = comp({ values: [1], inner: edge(1000), outer: edge(999.9) });
-    expect(bandAt(model([crossed]), crossed, 0, 0).W).toBeCloseTo(0.5, 9);
+    expect(bandAt(model([crossed]), crossed, 0, 0)).toBeNull();
+    const mCrossed = model([crossed]);
+    const light = componentsIF(mCrossed, [componentTable(crossed)], 1000, 0, 0, 10, 0.5, 0.5, true, 5);
+    expect(light.iof).toEqual([0, 0, 0, 0]);
+    expect(light.tau).toBe(0);
+    expect(light.unknownCoverage).toBeGreaterThan(0);
+    expect(componentsTransmission(mCrossed, [componentTable(crossed)], 1000, 0, 0, 10, 0.5)).toBe(1);
+  });
+
+  it('geometry outside its supporting observation span is unknown, hatched and emits no light or extinction', () => {
+    const c = comp({ values: [1] });
+    Object.assign(c, { geometryValidity: { startEt: -10, endEt: 10, basis: 'test observation span' } });
+    const m = model([c]);
+    const ts = [componentTable(c)];
+    expect(bandAt(m, c, 0, 10)).not.toBeNull();
+    for (const et of [-11, 11]) {
+      expect(bandAt(m, c, 0, et)).toBeNull();
+      const light = componentsIF(m, ts, 1050, 0, et, 10, 0.5, 0.5, true, 5);
+      expect(light.iof).toEqual([0, 0, 0, 0]);
+      expect(light.tau).toBe(0);
+      expect(light.unknownCoverage).toBe(1);
+      expect(componentsTransmission(m, ts, 1050, 0, et, 10, 0.5)).toBe(1);
+      expect(packComponentRecords(packComponents(m), et)[15] & 16).toBe(16);
+    }
+  });
+
+  it('a valid sub-kilometre width is retained without a physical floor', () => {
+    const c = comp({ values: [1], outer: edge(1000.1) });
+    expect(bandAt(model([c]), c, 0, 0)?.W).toBeCloseTo(0.1, 9);
   });
 
   it('longitudes are measured from the ascending node of the equator on the ICRF equator', () => {
