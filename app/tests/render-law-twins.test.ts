@@ -4,8 +4,10 @@
 // fusion, reassociation or denormal handling. The entire LAW_WGSL and its external PI are pinned.
 import { describe, expect, it } from 'vitest';
 import type { BodyPhotometry, SpatialPhotometricModel } from '../src/data/schema';
-import { LAW_WGSL } from '../src/render/shaders-m2';
+import { ANGLE_WGSL, LAW_WGSL, RING_COMMON, RING_SHADER } from '../src/render/shaders-m2';
 import { COMMON } from '../src/render/shaders';
+import { BODY_SHADER, ATM_BODY_SHADER, EARTH_BODY_SHADER } from '../src/render/shaders';
+import { MESH_SHADER } from '../src/render/meshes/shaders';
 import { gaussLegendre, LAMBERT_LAW, LAW, lawDiskIntegral, lawRadf, resolveLaw, type ResolvedLaw } from '../src/render/spatial';
 
 // As in core-data.ts, use typed dynamic imports: the app does not require @types/node.
@@ -14,6 +16,54 @@ const { createHash }: { createHash(s: string): { update(s: string): { digest(s: 
 const fs: { existsSync(p: URL): boolean; readFileSync(p: URL, enc: 'utf8'): string } =
   await import(/* @vite-ignore */ 'node:fs' as string);
 const { env }: { env: Record<string, string | undefined> } = await import(/* @vite-ignore */ 'node:process' as string);
+
+type Direction = [number, number, number];
+/** Float32 vector operations, in WGSL order (including input uniforms). */
+function shaderVectorPair(aIn: Direction, bIn: Direction) {
+  const f = Math.fround, a = aIn.map(f), b = bIn.map(f);
+  const mul = (x: number, y: number) => f(x * y);
+  const dot = f(f(mul(a[0], b[0]) + mul(a[1], b[1])) + mul(a[2], b[2]));
+  const cross = [
+    f(mul(a[1], b[2]) - mul(a[2], b[1])),
+    f(mul(a[2], b[0]) - mul(a[0], b[2])),
+    f(mul(a[0], b[1]) - mul(a[1], b[0])),
+  ];
+  const sine = f(Math.sqrt(f(f(mul(cross[0], cross[0]) + mul(cross[1], cross[1])) + mul(cross[2], cross[2]))));
+  return { dot, sine };
+}
+function shaderVectorAngle(a: Direction, b: Direction) {
+  const { sine, dot } = shaderVectorPair(a, b);
+  return Math.fround(Math.atan2(sine, dot));
+}
+
+describe('float32 vector angle', () => {
+  it('pins the vector helper independently of the unchanged spatial-law hash', () => {
+    expect(ANGLE_WGSL).toBe('\nfn vectorAngle(a: vec3f, b: vec3f) -> f32 {\n  return atan2(length(cross(a, b)), dot(a, b));\n}\n');
+    expect(RING_COMMON.startsWith(ANGLE_WGSL)).toBe(true);
+    for (const shader of [BODY_SHADER, ATM_BODY_SHADER, EARTH_BODY_SHADER, MESH_SHADER, RING_SHADER(COMMON)]) {
+      expect(shader.split('fn vectorAngle(')).toHaveLength(2);
+      expect(shader).not.toMatch(/acos\(clamp\(dot\(S, V\)/);
+      expect(shader).toContain('vectorAngle(S, V)');
+    }
+    const sky = fs.readFileSync(new URL('../src/render/sky/background.ts', import.meta.url), 'utf8');
+    expect(sky).toContain('COMMON + ANGLE_WGSL + zodiacalWgsl(m)');
+    expect(sky).toContain('let eps = vectorAngle(d, Z.sunDir.xyz);');
+  });
+  for (const degrees of [1e-5, 1e-4, 1e-3, 1e-2]) for (const opposite of [false, true]) {
+    it(`${degrees}° ${opposite ? 'from 180°' : 'from zero'}: relative angle error < 1e-3`, () => {
+      const small = degrees * Math.PI / 180, trueAngle = opposite ? Math.PI - small : small;
+      // Axis aligned unit vectors isolate angle recovery from prior vector quantization.
+      // At arbitrary orientations, input f32 directions themselves have O(1e-7 rad) error.
+      const a: Direction = [1, 0, 0], b: Direction = [Math.cos(trueAngle), Math.sin(trueAngle), 0];
+      const angle = shaderVectorAngle(a, b);
+      expect(Math.abs(angle / trueAngle - 1)).toBeLessThan(1e-3);
+      // Near pi, the output angle's f32 ulp is 2^-22 rad: it cannot retain the tiny
+      // supplement to 0.1%. The cross product still retains it to that accuracy.
+      expect(Math.abs(shaderVectorPair(a, b).sine / Math.sin(small) - 1)).toBeLessThan(1e-3);
+      expect(Math.abs(angle - trueAngle)).toBeLessThan(opposite ? 2 ** -23 : small * 1e-3);
+    });
+  }
+});
 
 // Numerical guard variants are for one-at-a-time attribution only; the default is the shader.
 const shaderGuards = {

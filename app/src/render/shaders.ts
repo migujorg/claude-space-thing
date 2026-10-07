@@ -707,7 +707,7 @@ struct FOut {
       }
     } else {` : ''}
     if (mu0 > 0.0 && mu > 0.0) {
-      let gph = acos(clamp(dot(S, V), -1.0, 1.0));
+      let gph = vectorAngle(S, V);
       var r4: vec4f;
       if (abs(b.law0.x - ${LAW.texelHapke}.0) < 0.5) {
         // Per-texel law (the Moon's Hapke maps): parameters of the texel under this point.
