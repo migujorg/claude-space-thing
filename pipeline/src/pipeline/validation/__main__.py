@@ -12,6 +12,8 @@ import sys
 from pathlib import Path
 import tempfile
 import os
+import subprocess
+import datetime as dt
 
 from . import build as vb
 from .cases import CASES as _FRAME_CASES
@@ -33,6 +35,8 @@ def main(argv: list[str] | None = None) -> int:
     v.add_argument("--only", default="")
     v.add_argument("--cases-dir", type=Path, help="validation root to verify; defaults to committed validation/")
     v.add_argument("--fresh-fit", action="store_true")
+    renewal = sub.add_parser("renew-locks", help="rebuild all pinned cases; write only locks after exact comparison")
+    renewal.add_argument("--fresh-fit", action="store_true")
     sub.add_parser("list")
     sub.add_parser("report")
     sub.add_parser("clean", help="delete the downloaded images; keep metadata, source documents and Horizons tables")
@@ -59,7 +63,12 @@ def main(argv: list[str] | None = None) -> int:
         for cid, c in CASES.items():
             print(f"{cid:34s} {c.title}")
         return 0
-    wanted = [s for s in args.only.split(",") if s] or list(CASES)
+    renewing = args.cmd == "renew-locks"
+    if renewing and any(os.environ.get(k) != '1' for k in ('OPENBLAS_NUM_THREADS', 'OMP_NUM_THREADS', 'MKL_NUM_THREADS')):
+        environment = dict(os.environ, OPENBLAS_NUM_THREADS='1', OMP_NUM_THREADS='1', MKL_NUM_THREADS='1')
+        return subprocess.run([sys.executable, '-m', 'pipeline.validation', *(argv or sys.argv[1:])],
+                              env=environment, check=False).returncode
+    wanted = [s for s in getattr(args, 'only', '').split(",") if s] or list(CASES)
     unknown = set(wanted) - set(CASES)
     if unknown:
         print(f"unknown cases {sorted(unknown)}; known: {list(CASES)}", file=sys.stderr)
@@ -77,19 +86,26 @@ def main(argv: list[str] | None = None) -> int:
     destination = args.output if args.cmd == "build" and args.output else vb.VALIDATION
     committed, destination = committed.resolve(), destination.resolve()
     failed = False
+    renewals = []
     CACHE.mkdir(parents=True, exist_ok=True)
     for cid in wanted:
         old_dir = committed / "cases" / cid
         old_path = old_dir / "case.json"
         expected = json.loads(old_path.read_text()) if old_path.exists() else None
-        if args.cmd == "verify" and expected is None:
+        if args.cmd in ("verify", "renew-locks") and expected is None:
             print(f"[{cid}] missing committed case", file=sys.stderr)
             failed = True
             continue
         if args.cmd == "build" and args.unlocked:
             expected = None
         try:
-            built = vb.build_case(CASES[cid], expected=expected)
+            if renewing:
+                os.environ['SOURCE_DATE_EPOCH'] = str(int(dt.datetime.fromisoformat(expected['generated']).timestamp()))
+                # Keep the recorded source as the authoritative Earth kernel pin.
+                os.environ.pop('PIPELINE_VALIDATION_EARTH_PCK', None)
+                built = vb.build_case(CASES[cid], expected=expected, renew=True)
+            else:
+                built = vb.build_case(CASES[cid], expected=expected)
             with tempfile.TemporaryDirectory(prefix="validation-verify-", dir=CACHE) as tmp:
                 original = vb.VALIDATION
                 try:
@@ -98,7 +114,12 @@ def main(argv: list[str] | None = None) -> int:
                 finally:
                     vb.VALIDATION = original
                 result = repro.compare_cases(old_dir, candidate) if expected is not None else None
-                if args.cmd == "verify":
+                if renewing:
+                    repro.assert_renewal(old_dir, candidate)
+                    expected['reproducibility'] = json.loads((candidate / 'case.json').read_text())['reproducibility']
+                    renewals.append((old_path, expected))
+                    print(f"[{cid}] exact JSON, reference and preview; lock renewal ready")
+                elif args.cmd == "verify":
                     print(json.dumps({"id": cid, **result}, ensure_ascii=False))
                     failed |= not result["reproduces"]
                 elif destination == committed and result and not result["reproduces"]:
@@ -114,6 +135,10 @@ def main(argv: list[str] | None = None) -> int:
         except (repro.ReproductionError, FileNotFoundError) as exc:
             print(f"[{cid}] cannot reproduce: {exc}", file=sys.stderr)
             failed = True
+    if renewing and not failed:
+        for path, case in renewals:
+            path.write_text(json.dumps(case, indent=1, ensure_ascii=False) + '\n', encoding='utf-8', newline='\n')
+        print(f"renewed {len(renewals)} locks; scientific JSON/reference/preview unchanged")
     if args.cmd == "build" and not failed:
         original = vb.VALIDATION
         try:
