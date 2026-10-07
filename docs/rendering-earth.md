@@ -1,6 +1,6 @@
 # Earth: surface, clouds, sea, night lights and atmosphere
 
-Earth is drawn from its measured layers instead of from its disk photometry: the surface, its clouds and
+Earth is drawn from its dated surface layers and derived cloud aggregates instead of from its disk photometry: the surface, its clouds and
 their optical thickness, open water with its sun glint, sea ice, night lights, and the air above them. This
 file covers each part: what it computes, from which data, and with which published model. The eye model is in
 [eye-model.md](eye-model.md); the other renderer parts are in [rendering-m2.md](rendering-m2.md).
@@ -129,11 +129,18 @@ layer's resolution and swath gaps (§3; clear water where the wind is unknown ge
 
 **The `cloudTau` layer.** It is built from the
 same 16 samples per texel as `clouds` (the rebuilt `clouds` tiles are bit-identical to the previous build),
-float16 × 4:
+float16 × 4. Both layers' counts, fractions, means and log moments, including their region provenance, are
+**derived** from measured L2 retrievals (architecture §2.1). VIIRS CLDPROP v1.1 cloud-top heights use NOAA
+Enterprise ACHA with CLAVR-x cloud-top phase, as documented in the CLDPROP L2 User Guide v1.2, §§3.1–3.1.2.
+The label correction admits the same cloud layers at Strict, Best and Complete; the current app still withholds
+Earth's surface/cloud rendering at Strict because its atmosphere and albedo inputs are estimated.
 
 - `tauRetrievedFraction` f_τ is the share of samples with an optical-thickness retrieval, 0 ≤ f_τ ≤
-  cloudFraction. The cloudy share without a thickness is cloudFraction − f_τ; its thickness is unknown. GIBS
-  serves no cloud mask and no partly-cloudy thickness (CLDPROP's `_PCL` fields), so nothing finer can be said.
+  cloudFraction. The cloudy share without a thickness is cloudFraction − f_τ; its thickness is unknown. A sample
+  with height and no thickness counts as cloud. These VIIRS GIBS inputs cannot distinguish partly cloudy pixels
+  from pixels restored to clear sky by the optical algorithm or failed optical retrievals. GIBS serves no cloud
+  mask or partly-cloudy thickness (CLDPROP's `_PCL` fields) for these VIIRS inputs; it does serve PCL thickness
+  for MODIS Aqua and Terra, which are different observations.
 - `lnTauMoment1` = Σ ln τ_i / N and `lnTauMoment2` = Σ (ln τ_i)² / N are taken over the retrieved samples, with N
   all samples of the texel. So mean ln τ = m1 / f_τ, and var ln τ = m2 / f_τ − (mean ln τ)².
 - `iceTauFraction` is the share of samples with an ice-phase retrieval.
@@ -170,8 +177,8 @@ moments also holds per texel at coarse levels.
   multiple reflection, glint through thin cloud). Against a 400-point integral of the plane albedo it is within
   0.05 % for σ(ln τ) = 0.5 and within 0.6 % for σ = 1 (τ ≥ 3); for σ = 1.4 on thin cloud it reaches 1–3 %. The
   ice share among the retrievals (iceTauFraction/f_τ) sets g.
-- The rest of the cloud, cloudFraction − f_τ, has no measured thickness for its own samples. GIBS serves no
-  partly-cloudy thickness for them.
+- The rest of the cloud, cloudFraction − f_τ, has no measured thickness for its own samples. VIIRS GIBS serves
+  no partly-cloudy thickness for them.
   - At Strict it gets no τ: it reflects nothing and is marked unknown (hatched where it is over half the pixel).
   - At Best and Complete it is a second population, with the measured partly-cloudy τ distribution of the
     header's `unmeasuredTau` statistic (below), labelled **estimated** in the body's worst label and tint.
@@ -216,9 +223,11 @@ was drawn as clear air over a black surface. That air reached the ground, wherea
 its top, so 0.71 was too bright for the wrong reason.
 
 **A statistic for the unmeasured share (`cloudTau.json` → `constants.unmeasuredTau`; for Best estimate).**
-Most cloudy samples without a retrieval are pixels that the clear-sky restoral flags as partly cloudy or cloud
-edge. MODIS and VIIRS do retrieve them, but report the result in `_PCL` fields, and for VIIRS NOAA-20 GIBS
-serves none of these. The table is the measured global τ distribution of MODIS partly cloudy pixels: July 2021,
+Cloudy samples without a thickness retrieval can be partly cloudy, restored to clear sky by the optical
+algorithm, or failed optical retrievals; the two VIIRS GIBS layers cannot distinguish these populations.
+MODIS and VIIRS report successful partly-cloudy retrievals in `_PCL` fields. GIBS serves PCL thickness for
+MODIS Aqua and Terra, but not VIIRS NOAA-20. The MOD06 population behind the statistic includes CSR = 1, 3;
+CLDPROP v1.1 omits CSR = 3. The table is derived from the observed global τ histogram of MODIS partly cloudy pixels: July 2021,
 MODIS C6.1 Level-3 COSP product, read from Fig. 7 of Pincus et al. (2023) (docs/sources/pincus-2023-modis-cosp.md;
 `pipeline/src/pipeline/cloud_pcl.py`).
 
@@ -232,7 +241,8 @@ MODIS C6.1 Level-3 COSP product, read from Fig. 7 of Pincus et al. (2023) (docs/
   For comparison, fully cloudy pixels in the same figure have τ_g = 6.9, and our own VIIRS retrievals of the
   day have τ_g = 8.3.
 - **How to apply it** (`constants.use.unmeasuredShare`): at Best, give the share cloudFraction − f_τ this
-  distribution as a separate population, labelled **estimated**; at Strict it stays unknown.
+  distribution as a separate population, labelled **estimated**; at Strict it stays unknown. The mixture of
+  retrieved cloud and this assumed population is also **estimated**.
   - The plane albedo is R̄ = Σ_k p_k R(τ_k) over the seven bins, with τ_k = exp(`tauBinLnCentre[k]`); this
     assumes no shape. Alternatively, use a log-normal with these μ and σ through the same 3-point rule as the
     retrieved part.
