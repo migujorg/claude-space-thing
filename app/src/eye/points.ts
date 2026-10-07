@@ -168,3 +168,139 @@ export function pointVisible(eye: EyeFrame, E: { Y: number; S: number }, bg: { Y
   const o = pointObserver(eye, bg);
   return blackwellEquivalent(E.Y, E.S, o.mesopic.m) >= o.thresholdBwLux;
 }
+
+// ── A source's own light in its background, exactly ───────────────────────────────────────────────────────────
+// What the level-kR veil texture holds of ONE source, read at that source: the number the cull has to take out of
+// the texture so that a source alone on a dark background is judged against zero. It is not the kernel at zero
+// distance (ownVeilPerPixel): the splat has a width, level kR is read and not level 0, and the value moves with
+// the source's place in the texels (tests/eye-points.test.ts states by how much).
+//
+// Every stage between the splat and the read is a product of the same operation along x and along y:
+//   the splat          Gaussian samples at the pixel centres within ±extent of the centre (a square cut-off, one
+//                      solid angle for the whole splat);
+//   down               the mean of two texels, a texel beyond the edge counting as zero;
+//   blurH, blurV       seven taps, zero beyond the edge;
+//   accum's upsample   each texel takes 3/4 of its parent and 1/4 of the parent's neighbour, zero beyond the edge;
+//   the read           linear between two texels of level kR, indices clamped; texel t of level k covers the
+//                      pixels [t·2^k, (t+1)·2^k).
+// So level k's part of the texture at the source is rho_k(x)·rho_k(y), and the whole is
+//   N · Σ_{k ≥ kR} w_k · rho_k(x) · rho_k(y)      per unit illuminance and per pixel solid angle,
+// with N the splat's normalisation. Nothing is fitted and no texture is read.
+//
+// STATUS (7 October 2026): this is the reference for the exact term (lane own-light, job E). The shaders still draw
+// a round splat with one solid angle per pixel and subtract ownVeilPerPixel; they take this form in phase 2.
+
+/** The retina pyramid's blur: a discrete Gaussian of σ = 1 texel, seven taps (shaders.ts PYRAMID_SHADER W0..W3). */
+export const VEIL_BLUR_TAPS: readonly number[] = [0.39905027, 0.24203623, 0.05400558, 0.00443305];
+
+/** A point source's splat: a Gaussian of sigmaPx sampled at pixel centres, cut where |dx| or |dy| exceeds extentPx. */
+export interface PointSplat {
+  sigmaPx: number;
+  extentPx: number;
+}
+
+/** erf(x) to double precision: the series below 2.5, the continued fraction of erfc above. */
+export function erf(x: number): number {
+  const ax = Math.abs(x);
+  let r: number;
+  if (ax < 2.5) {
+    let sum = ax, term = ax;
+    for (let n = 1; n < 90; n++) {
+      term *= (-ax * ax) / n;
+      sum += term / (2 * n + 1);
+    }
+    r = (2 / Math.sqrt(Math.PI)) * sum;
+  } else {
+    let f = 0;
+    for (let n = 60; n >= 1; n--) f = n / 2 / (ax + f);
+    r = 1 - Math.exp(-ax * ax) / (Math.sqrt(Math.PI) * (ax + f));
+  }
+  return x < 0 ? -r : r;
+}
+
+/**
+ * The splat's normalisation, per px²: the integral of the cut Gaussian over the square is 1. The samples of one
+ * splat sum to 1 only on average over sub-pixel positions: between 0.990 and 1.005 at σ = 0.6 px with the cut-off
+ * at 3σ, because the cut-off is hard and a pixel centre crossing it carries e^−4.5 of the peak (the round cut-off
+ * the shaders use today gives 0.986 to 1.005). The own-light term uses the samples themselves, so it is exact
+ * whatever they sum to.
+ */
+export function splatNorm(splat: PointSplat): number {
+  const e = erf(splat.extentPx / (splat.sigmaPx * Math.SQRT2));
+  return 1 / (2 * Math.PI * splat.sigmaPx * splat.sigmaPx * e * e);
+}
+
+/**
+ * One axis of the exact own-light term: rho[k] for every level k ≥ kR that has weight (0 elsewhere), for a splat
+ * centred at c (px along this axis; pixel i covers [i, i+1)) in a frame n0 pixels long. Unnormalised: the splat's
+ * samples are exp(−d²/2σ²).
+ *
+ * rho[k] = 2^−k · Σ_pixels g_i · Σ_j l_k[j] · tap(|a_k + j − (i >> k)|): the splat's sample g_i falls in texel i >> k
+ * of level k, the blur brings it to the three texels a_k … a_k + 2 the read reaches, and l_k are that read's weights
+ * on them (two texels of level kR, carried up one upsampling per level).
+ */
+export function ownVeilAxis(c: number, n0: number, splat: PointSplat, kR: number, weights: readonly number[]): number[] {
+  const K = weights.length;
+  const rho = new Array<number>(K).fill(0);
+  const p0 = Math.max(0, Math.ceil(c - splat.extentPx - 0.5));
+  const p1 = Math.min(n0 - 1, Math.floor(c + splat.extentPx - 0.5));
+  if (p1 < p0 || kR >= K) return rho;
+  const g: number[] = [];
+  for (let i = p0; i <= p1; i++) {
+    const d = i + 0.5 - c;
+    g.push(Math.abs(d) <= splat.extentPx ? Math.exp(-(d * d) / (2 * splat.sigmaPx * splat.sigmaPx)) : 0);
+  }
+  // The read: two texels of level kR.
+  let n = Math.max(1, Math.ceil(n0 / 2 ** kR));
+  const cc = c / 2 ** kR - 0.5;
+  const i0 = Math.floor(cc), fr = cc - i0;
+  const clampTexel = (t: number) => Math.min(Math.max(t, 0), n - 1);
+  let a = clampTexel(i0);
+  let l = [1 - fr, 0, 0];
+  l[clampTexel(i0 + 1) - a] += fr;
+  for (let k = kR; k < K; k++) {
+    if (k > kR) {
+      // One more upsampling of the accumulation: texel t reads its parent t >> 1 (3/4) and the parent's neighbour
+      // on t's side (1/4); a texel beyond the level's edge holds nothing.
+      n = Math.max(1, Math.ceil(n / 2));
+      const b = (a - 1) >> 1;
+      const m = [0, 0, 0];
+      for (let j = 0; j < 3; j++) {
+        if (l[j] === 0) continue;
+        const t = a + j;
+        const parent = t >> 1, neighbour = t & 1 ? parent + 1 : parent - 1;
+        if (parent >= 0 && parent < n) m[parent - b] += 0.75 * l[j];
+        if (neighbour >= 0 && neighbour < n) m[neighbour - b] += 0.25 * l[j];
+      }
+      a = b;
+      l = m;
+    }
+    if (!(weights[k] > 0)) continue;
+    let r = 0;
+    for (let i = 0; i < g.length; i++) {
+      const o = ((p0 + i) >> k) - a;
+      if (o < -3 || o > 5) continue;
+      let q = 0;
+      for (let j = 0; j < 3; j++) {
+        const d = Math.abs(j - o);
+        if (d <= 3) q += l[j] * VEIL_BLUR_TAPS[d];
+      }
+      r += g[i] * q;
+    }
+    rho[k] = r / 2 ** k;
+  }
+  return rho;
+}
+
+/**
+ * What the level-kR veil texture holds of a source at (x, y) px, read at the source, per unit illuminance and per
+ * pixel solid angle (multiply by E/Ω for cd/m²): N · Σ_{k ≥ kR} w_k · rho_k(x) · rho_k(y). The centre may lie
+ * outside the frame: only the part of the splat inside it is in the point image.
+ */
+export function ownVeilExact(x: number, y: number, W: number, H: number, splat: PointSplat, kR: number, weights: readonly number[]): number {
+  const rx = ownVeilAxis(x, W, splat, kR, weights);
+  const ry = ownVeilAxis(y, H, splat, kR, weights);
+  let s = 0;
+  for (let k = kR; k < weights.length; k++) s += weights[k] * rx[k] * ry[k];
+  return s * splatNorm(splat);
+}
