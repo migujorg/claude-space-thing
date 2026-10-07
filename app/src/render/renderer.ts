@@ -239,12 +239,12 @@ export class Renderer {
     this.clampUB = ub(16);
     this.limbsUB = ub(LIMBS_UB_BYTES);
     this.reduceUB = ub(16);
-    this.args = d.createBuffer({ size: 16, usage: GPUBufferUsage.INDIRECT | GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
+    this.args = d.createBuffer({ size: 16, usage: GPUBufferUsage.INDIRECT | GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC });
     this.srcs = d.createBuffer({ size: MAX_GLARE_SOURCES * 32, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
     this.result = d.createBuffer({ size: 32, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC });
     this.readback = d.createBuffer({ size: 32, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
     this.sunPointBuf = d.createBuffer({ size: 32, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
-    this.visible = d.createBuffer({ size: 32, usage: GPUBufferUsage.STORAGE });
+    this.visible = d.createBuffer({ size: 32, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC });
     this.surfUB = ub(32);
     this.texelUB = ub(6 * 16);
     this.dummyStorage = d.createBuffer({ size: 256, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
@@ -417,7 +417,7 @@ export class Renderer {
     }
     this.maxVisible = Math.max(1, Math.min(catalog.count + (this.extraPts?.count ?? 0), MAX_VISIBLE_STARS));
     this.visible.destroy();
-    this.visible = this.device.createBuffer({ size: this.maxVisible * 32, usage: GPUBufferUsage.STORAGE });
+    this.visible = this.device.createBuffer({ size: this.maxVisible * 32, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC });
   }
 
   /**
@@ -437,7 +437,7 @@ export class Renderer {
     (this.extraPts ??= new ExtraPointSources(this.device)).set(src);
     this.maxVisible = Math.max(1, Math.min(this.starCount + this.extraPts.count, MAX_VISIBLE_STARS));
     this.visible.destroy();
-    this.visible = this.device.createBuffer({ size: this.maxVisible * 32, usage: GPUBufferUsage.STORAGE });
+    this.visible = this.device.createBuffer({ size: this.maxVisible * 32, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC });
   }
 
   /** The physical model of comets (comets/model.json); null removes it. See ./comets. */
@@ -549,6 +549,29 @@ export class Renderer {
     return (this.hdrReadback ??= new HdrReadback(this.device)).read(t.ext, [0, 0, t.W, t.H], 1 / this.hdrPreExposure);
   }
   // ── end of the validation hook ─────────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Test hook (the frame-to-frame census of the scene suite, app/e2e/README.md): the stars and extra point sources
+   * the last rendered frame's cull kept, 8 float32 per point (ndc.x, ndc.y, 0, 0, then X, Y, Z, S in lux), in no
+   * particular order, with that frame's index. Read-only, outside render().
+   */
+  async readPointList(): Promise<{ frame: number; count: number; data: Float32Array }> {
+    const d = this.device;
+    const frame = this.frameIndex;
+    const bytes = this.visible.size;
+    const buf = d.createBuffer({ size: 16 + bytes, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ });
+    const enc = d.createCommandEncoder();
+    enc.copyBufferToBuffer(this.args, 0, buf, 0, 16);
+    enc.copyBufferToBuffer(this.visible, 0, buf, 16, bytes);
+    d.queue.submit([enc.finish()]);
+    await buf.mapAsync(GPUMapMode.READ);
+    const raw = buf.getMappedRange();
+    const count = Math.min(new Uint32Array(raw, 0, 4)[1], bytes / 32);
+    const data = new Float32Array(raw.slice(16, 16 + count * 32));
+    buf.unmap();
+    buf.destroy();
+    return { frame, count, data };
+  }
 
   private destroyTargets(): void {
     const t = this.targets;
