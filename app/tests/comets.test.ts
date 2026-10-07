@@ -1,10 +1,12 @@
 // Comets as they would look (render/comets): photometric consistency of the coma, and tail geometry.
 //
-// Fixture: app/tests/fixtures/comet_reference.json, written by the pipeline's comets stage: the comet model
+// Committed reference: app/tests/fixtures/comet_reference.json, regenerated explicitly with
+// `python -m pipeline.stages.comets --write-fixture`. Ordinary builds preserve it. It carries the comet model
 // (comets/model.json) and the showcase comet C/2025 A6 (Lemmon) at three epochs around its peak — our propagated
 // heliocentric state and DE442s Earth, next to JPL Horizons' T-mag (the same M1/K1 law), r, Delta and the position
 // angles PsAng (anti-sunward radius vector: the ion-tail indicator) and PsAMV (negative heliocentric velocity: the
 // dust-tail indicator).
+// All comparisons use the reference's own states/epochs and model; no built product or catalogue row is read.
 
 import { describe, expect, it } from 'vitest';
 import type { CometMeasuredActivity, CometModelProduct } from '../src/data/schema';

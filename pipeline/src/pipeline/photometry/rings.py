@@ -227,6 +227,14 @@ URANUS_REFLECTANCE_UNKNOWN = (
     "only, and Karkoschka's (2001, Icarus 151, 51) HST ring photometry is not openly accessible here.")
 
 
+COMPONENTS_METHOD = (
+    "Ring components (schema RingComponentModel, docs/reports/rings.md): each ring a band between precessing "
+    "keplerian edges with normal modes, or a vertically extended dust torus; normal optical depth vs the fractional "
+    "position across the band, with the provenance of geometry, optical depth and reflectance kept per component. "
+    "Brightness: a classical single-scattering layer for macroscopic particles plus a thin dust term, each with a "
+    "tabulated phase function (phaseFunctions). The label is the worst of the components' labels.")
+
+
 def rings_json(ctx: BuildContext | None = None) -> tuple[dict, dict]:
     out, diag = {}, {}
     js, srcs, prof = saturn_profile(ctx)
@@ -287,6 +295,9 @@ def rings_json(ctx: BuildContext | None = None) -> tuple[dict, dict]:
         "reflectance": unknown(URANUS_REFLECTANCE_UNKNOWN),
     }
     diag["799"] = prof
+    from . import rings_uranus
+    comp, diag["799-components"] = rings_uranus.build(ctx)
+    out["799"]["components"] = sourced(comp["model"], comp["label"], comp["sources"], method=COMPONENTS_METHOD)
     js, srcs, prof = voyager_profile(VG_NEPTUNE, "ring system", ctx, 5.0)
     ob = js["observation"]
     out["899"] = {
@@ -302,6 +313,9 @@ def rings_json(ctx: BuildContext | None = None) -> tuple[dict, dict]:
         "reflectance": unknown("No machine-readable measurement of Neptune's ring reflectance was available."),
     }
     diag["899"] = prof
+    from . import rings_neptune
+    comp, diag["899-components"] = rings_neptune.build(ctx, (prof, srcs))
+    out["899"]["components"] = sourced(comp["model"], comp["label"], comp["sources"], method=COMPONENTS_METHOD)
     out["599"] = {
         "planet": 599,
         "opticalDepth": unknown("Jupiter's faint dust rings (normal optical depth of order 1e-6; Throop et al. 2004, "
@@ -309,4 +323,7 @@ def rings_json(ctx: BuildContext | None = None) -> tuple[dict, dict]:
         "reflectance": unknown("Jupiter's rings are seen mainly in forward-scattered light; no machine-readable "
                                "brightness profile was available."),
     }
+    from . import rings_jupiter
+    comp, diag["599-components"] = rings_jupiter.build(ctx)
+    out["599"]["components"] = sourced(comp["model"], comp["label"], comp["sources"], method=COMPONENTS_METHOD)
     return out, diag

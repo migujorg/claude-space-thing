@@ -89,7 +89,20 @@ export function poleOf(m: Mat3): [number, number, number] {
   return [m[2], m[5], m[8]];
 }
 
-function ringsFor(sys: RingSystem, orient: Mat3, level: ExistsLevel): SceneRings | null {
+function ringsFor(sys: RingSystem, orient: Mat3, level: ExistsLevel, et: number | undefined): SceneRings | null {
+  // Ring components (Jupiter, Uranus, Neptune: ringComponents.ts) replace the classic radial profile when admitted;
+  // the classic profile (opticalDepth, reflectance) stays for Saturn and for a level that does not admit them.
+  const comps = allowedValue(sys.components, level);
+  if (comps) {
+    return {
+      normal: poleOf(orient),
+      opticalDepth: [],
+      reflectance: null,
+      components: comps,
+      et,
+      worstLabel: sys.components!.label,
+    };
+  }
   const od = allowedValue(sys.opticalDepth, level);
   if (!od) return null;
   const refl = allowedValue(sys.reflectance, level);
@@ -105,7 +118,15 @@ function ringsFor(sys: RingSystem, orient: Mat3, level: ExistsLevel): SceneRings
  * Adds the admitted extras to a scene body in place and returns the worst label among what was added.
  * Maps and rings need the body-fixed frame, so they are only added when `sb.orient` is set.
  */
-export function applyExtras(sb: SceneBody, body: Body, extras: SceneExtras | undefined, level: ExistsLevel, lit: boolean): Label[] {
+export function applyExtras(
+  sb: SceneBody,
+  body: Body,
+  extras: SceneExtras | undefined,
+  level: ExistsLevel,
+  lit: boolean,
+  /** Emission time (TDB seconds past J2000) the body is seen at: time-varying ring structure (precession, arcs). */
+  emitEt?: number,
+): Label[] {
   const used: Label[] = [];
   const p = body.photometry;
   const disk = lit ? allowedValue(p?.diskReflectanceModel, level) : null;
@@ -169,7 +190,7 @@ export function applyExtras(sb: SceneBody, body: Body, extras: SceneExtras | und
   }
   const sys = extras.rings?.[String(body.id)];
   if (sys) {
-    const r = ringsFor(sys, sb.orient, level);
+    const r = ringsFor(sys, sb.orient, level, emitEt);
     sb.rings = r;
     if (r) used.push(r.worstLabel);
   }
