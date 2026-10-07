@@ -233,14 +233,14 @@ def estimate_method(ring: str, ctx: BuildContext | None) -> str:
               f"Band centred on that ellipse, constant published mean width {w:g} km "
               f"({'PDS RMS/Nicholson et al. 2018 review; coarse, error unspecified' if ring == 'lambda' else 'Table 14; error unspecified'}). "
               f"Last accepted COR datum {row['last_datum']}; years beyond it at any requested et = "
-              f"(et - {_date_et(row['last_datum']):g}) / (86400 * 365.25). ")
+              f"(et - {_date_et(row['last_datum']):.17g}) / (86400 * 365.25). ")
     method += f"Semimajor-axis formal sigma {fit['a_err']} km, fit RMS {fit['rms_km']} km (not added independently to phase error). "
     if ctx:
         for name, et in (("start", ctx.start_et), ("end", ctx.end_et)):
             years = (et - _date_et(row["last_datum"])) / (rc.DAY * JULIAN_YEAR_DAYS)
             d = formal_displacements(ring, et)
             disp = lambda k: f"{d[k]:.6f} km" if d[k] is not None else "undefined (term fixed zero, orientation not fitted)"
-            method += (f"Data-window {name} ET {et:g}: {years:.6f} years beyond last datum; formal 1-sigma radial "
+            method += (f"Data-window {name} ET {et:.17g}: {years:.6f} years beyond last datum; formal 1-sigma radial "
                        f"apse-phase displacement {disp('radial')}, vertical node-phase displacement {disp('vertical')}. ")
     method += ("Diagonal phase proxy: amplitude*sin(hypot(sigma_angle0, delta_days*sigma_rate)), from transcribed "
                "Table 5 errors; missing angle/rate covariance prevents an exact propagated sigma. These constrain "

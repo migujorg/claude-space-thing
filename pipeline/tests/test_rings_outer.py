@@ -346,3 +346,10 @@ def test_all_cor_formal_phase_displacements_match_research_worked_numbers(ring, 
                 assert d[axis] is None
             else:
                 assert d[axis] == pytest.approx(values[j], abs=5e-7)
+
+
+def test_uranus_method_preserves_exact_window_and_reference_epochs():
+    method = rings_uranus.estimate_method('epsilon', BuildContext(796998128., 891692528.))
+    assert 'Data-window start ET 796998128:' in method
+    assert 'Data-window end ET 891692528:' in method
+    assert '(et - 211982400) / (86400 * 365.25)' in method
