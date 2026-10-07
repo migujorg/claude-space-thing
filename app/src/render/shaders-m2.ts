@@ -657,8 +657,7 @@ fn planetShadow(R: Ring, X: vec3f) -> f32 {
 
 struct FOut {
   @location(0) ext: vec4f,
-  @location(1) w: f32,
-  @location(2) mask: f32,
+  @location(1) mask: f32,
   @builtin(frag_depth) depth: f32,
 };
 
@@ -853,7 +852,6 @@ fn cmpTorus(R: Ring, o: vec3f, d: vec3f, tMax: f32, alphaDeg: f32) -> TorusOut {
   }
   var o: FOut;
   o.ext = toStore(F, L);
-  o.w = 1.0;
   // "Not measured": τ unknown there, or ring material whose reflectance is unknown (no model, phase angle
   // outside its domain, or radii it does not cover).
   let unknown = a.knownTau < 0.5 || (a.tau > 1e-3 && !reflKnown);
@@ -941,7 +939,6 @@ fn fsComponents(R: Ring, X: vec3f, t: f32, dir: vec3f, r: f32, fw: f32) -> FOut 
   if (tNear >= 1e29) { discard; }
   var o: FOut;
   o.ext = toStore(F, L * R.esun);
-  o.w = 1.0;
   o.mask = clamp(unk, 0.0, 1.0);
   o.depth = F.proj.z / max(tNear * dot(dir, -F.back.xyz), F.proj.z);
   return o;

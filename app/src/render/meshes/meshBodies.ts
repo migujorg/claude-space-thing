@@ -57,14 +57,12 @@ export class MeshBodies {
   constructor(
     private readonly device: GPUDevice,
     hdrFormat: GPUTextureFormat,
-    weightFormat: GPUTextureFormat,
     budgetMiB = 512,
     fetchFn?: FetchFn,
   ) {
     const d = device;
     this.store = new MeshStore(d, budgetMiB * 2 ** 20, fetchFn);
     const add: GPUBlendState = { color: { operation: 'add', srcFactor: 'one', dstFactor: 'one' }, alpha: { operation: 'add', srcFactor: 'one', dstFactor: 'one' } };
-    const min: GPUBlendState = { color: { operation: 'min', srcFactor: 'one', dstFactor: 'one' }, alpha: { operation: 'min', srcFactor: 'one', dstFactor: 'one' } };
     const max: GPUBlendState = { color: { operation: 'max', srcFactor: 'one', dstFactor: 'one' }, alpha: { operation: 'max', srcFactor: 'one', dstFactor: 'one' } };
     const m = d.createShaderModule({ code: MESH_SHADER, label: 'mesh bodies' });
     const main = d.createRenderPipelineAsync({
@@ -73,7 +71,7 @@ export class MeshBodies {
         { arrayStride: 12, attributes: [{ shaderLocation: 0, offset: 0, format: 'float32x3' }] },
         { arrayStride: 8, attributes: [{ shaderLocation: 1, offset: 0, format: 'snorm16x4' }] },
       ] },
-      fragment: { module: m, entryPoint: 'fs', targets: [{ format: hdrFormat, blend: add }, { format: weightFormat, blend: min }, { format: 'r8unorm', blend: max }] },
+      fragment: { module: m, entryPoint: 'fs', targets: [{ format: hdrFormat, blend: add }, { format: 'r8unorm', blend: max }] },
       // Closed, outward meshes (counter-clockwise seen from outside): back faces are culled.
       primitive: { topology: 'triangle-list', cullMode: 'back', frontFace: 'ccw' },
       depthStencil: { format: 'depth32float', depthWriteEnabled: true, depthCompare: 'greater' },
