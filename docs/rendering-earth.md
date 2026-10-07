@@ -461,11 +461,11 @@ claim, so it is not marked: marking it would hatch most of the night side.
 | Model | A (X, Y, Z, S) | Ratio to measured |
 |---|---|---|
 | Surface + clouds, no atmosphere (level 1) | 0.179 0.178 0.182 0.180 | 0.74 0.75 0.59 0.67 |
-| + atmosphere, glint, sky reflection (level 0) | 0.215 0.214 0.271 0.243 | 0.89 0.90 0.88 0.91 |
+| + atmosphere, glint, sky reflection and lower-air transmission (level 0) | 0.218 0.217 0.276 0.247 | 0.91 0.91 0.90 0.92 |
 | Measured p·Φ(2.42°) | 0.241 0.238 0.308 0.269 | 1 |
 
-With the atmosphere the colour matches: all four channels come out 0.88–0.91 of the measurement (with the
-δ-scaled view transmittance). The remaining 9–12 % is within the photometry's stated variability: the disk reflectance changes by 10–20 %
+With the atmosphere the colour matches: all four channels come out 0.90–0.92 of the measurement (with the
+δ-scaled view transmittance). The remaining 8–10 % is within the photometry's stated variability: the disk reflectance changes by 10–20 %
 with clouds and the hemisphere in view, and the clouds here are from a different day, 2026-09-28. Model
 approximations also contribute:
 
