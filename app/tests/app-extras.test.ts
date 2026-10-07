@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { applyExtras, poleOf, surfaceRefs, type SceneExtras } from '../src/app/extras';
 import type { Body, RingSystem } from '../src/data/schema';
+import { ringAverage, ringProfile } from '../src/render/rings';
 import type { SurfaceLayer } from '../src/data/surfaces';
 import type { Mat3, SceneBody } from '../src/render/scene';
 
@@ -24,6 +25,30 @@ describe('scene extras', () => {
     reflectance: { value: { kind: 'single-scattering-v1' } as never, label: 'estimated', sources: ['r'] },
   };
   const extras: SceneExtras = { surfaces, rings: { '1': ring } };
+
+  it.each(['strict', 'best', 'complete'] as const)('chooses the admitted optical-depth profile at %s', (level) => {
+    const estimate = { ...ring.opticalDepth, value: [{ ...ring.opticalDepth.value![0], normalTau: [0, null] }], label: 'estimated' as const };
+    const sys = { ...ring, reflectance: { value: null, label: 'unknown' as const, sources: [] }, opticalDepthEstimate: estimate };
+    const sb = scene();
+    applyExtras(sb, body(1), { surfaces, rings: { '1': sys } }, level, true);
+    expect(sb.rings?.opticalDepth[0].normalTau).toEqual(level === 'strict' ? [0.5, null] : [0, null]);
+    expect(sb.rings?.worstLabel).toBe(level === 'strict' ? 'measured' : 'estimated');
+  });
+
+  it('reads Neptune unconstrained bins as unknown material at Strict', () => {
+    // PDS PN1P01's unconstrained interval is 51200–51395 km in 5 km bins.
+    // The pipeline test compares its nulls with the raw archive; this reader test isolates their admission/upload.
+    const radiusKm = Array.from({ length: 44 }, (_, i) => 51190 + 5 * i);
+    const normalTau = radiusKm.map((r) => r >= 51200 && r <= 51395 ? null : 0);
+    const neptune: RingSystem = { ...ring, planet: 899,
+      opticalDepth: { ...ring.opticalDepth, value: [{ name: 'ring system', radiusKm, normalTau, observation: {} as never }] } };
+    const product = { '899': neptune };
+    const sb = { ...scene(), id: 899 };
+    applyExtras(sb, body(899), { surfaces: new Map(), rings: product }, 'strict', true);
+    const f = ringAverage(ringProfile(sb.rings!), 51220, 51370);
+    expect(f.knownTau).toBe(0);
+    expect(f.tau).toBe(0);
+  });
 
   it('albedo maps carry their worst label; height keeps its own', () => {
     expect(surfaces.get(1)!.albedo!.label).toBe('estimated');
