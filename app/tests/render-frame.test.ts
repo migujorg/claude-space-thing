@@ -1,7 +1,7 @@
 // Frame preparation: resolved ↔ point transition conserves the disk-integrated illuminance, missing
 // data is never filled in, and the Sun without limb darkening is a point of the correct illuminance.
 import { describe, expect, it } from 'vitest';
-import { cameraGeom, prepareFrame } from '../src/render/frame';
+import { cameraGeom, prepareFrame, SIGMA_MIN_PX } from '../src/render/frame';
 import { AdaptationState, computeEyeFrame } from '../src/eye/model';
 import { DEFAULT_EYE_SETTINGS } from '../src/eye/settings';
 import { diskIlluminance, lambertPhase, lambertRadianceFactor, type XYZS } from '../src/render/photometry';
@@ -228,5 +228,94 @@ describe('Sun shield (viewing aid)', () => {
     expect(E(on, xPlanet)).toBeGreaterThan(0);
     expect(off.points.some((q) => Math.abs(q.ndc[0]) < 1e-9)).toBe(true);
     expect(on.points.some((q) => Math.abs(q.ndc[0]) < 1e-9)).toBe(false);
+  });
+});
+
+describe('point or disk: decided by the eye\'s point spread as drawn (docs/eye-model.md §6.3)', () => {
+  const eye = () => computeEyeFrame(DEFAULT_EYE_SETTINGS, eyeState(), 'eye', 0, null);
+  /** The splat the renderer draws (renderer.ts): σ in px and its footprint in sr. */
+  const splat = (e: ReturnType<typeof eye>, pixelAngle: number) => {
+    const sigmaPx = Math.max(((e.coreSigmaDeg * Math.PI) / 180) / pixelAngle, SIGMA_MIN_PX);
+    return { sigmaPx, footprintSr: 2 * Math.PI * sigmaPx * sigmaPx * pixelAngle * pixelAngle };
+  };
+  /** Distance at which a sphere of radius R (km) has the angular diameter `diam` (rad). */
+  const distFor = (R: number, diam: number) => R / Math.sin(diam / 2);
+  /** Resolved share of the test body seen under the angular diameter `diam` (rad): K over the full K. */
+  const resolvedShare = (e: ReturnType<typeof eye>, fovDeg: number, diam: number) => {
+    const g = cameraGeom(snap([], fovDeg), W, H, 1e-7);
+    const p = prepareFrame(snap([body(distFor(6000, diam))], fovDeg), g, e, splat(e, g.pixelAngle).footprintSr);
+    const Kfull = lambertRadianceFactor(albedo, 5, 1);
+    return { share: p.resolved.length ? p.resolved[0].K[1] / Kfull[1] : 0, p, g };
+  };
+
+  it('where the splat is the reconstruction minimum, the switch is 1 to 2 pixels', () => {
+    const e = eye();
+    for (const fovDeg of [20, 50, 90]) {
+      const g = cameraGeom(snap([], fovDeg), W, H, 1e-7);
+      expect(splat(e, g.pixelAngle).sigmaPx).toBe(SIGMA_MIN_PX);
+      const smooth = (x: number) => { const t = Math.min(1, Math.max(0, x - 1)); return t * t * (3 - 2 * t); };
+      for (const diamPx of [0.5, 1, 1.2, 1.5, 1.8, 2, 3]) {
+        const { share } = resolvedShare(e, fovDeg, diamPx * g.pixelAngle);
+        expect(share).toBeCloseTo(smooth(diamPx), 9);
+      }
+    }
+  });
+
+  it('where the screen resolves the eye\'s optical core, the switch is at the same angular size at every field', () => {
+    const e = eye();
+    const sigma = (e.coreSigmaDeg * Math.PI) / 180;   // rad
+    // 1.67 to 3.33 σ: the 1 to 2 px of a splat of σ = 0.6 px, in the splat's own units.
+    const lo = sigma / SIGMA_MIN_PX, hi = (2 * sigma) / SIGMA_MIN_PX;
+    const shares: number[][] = [];
+    for (const fovDeg of [1, 3, 6]) {
+      const g = cameraGeom(snap([], fovDeg), W, H, 1e-7);
+      expect(splat(e, g.pixelAngle).sigmaPx).toBeGreaterThan(SIGMA_MIN_PX);
+      const at = (diam: number) => resolvedShare(e, fovDeg, diam);
+      // Under the eye's point spread: a point, however many pixels the disk covers.
+      const small = at(0.99 * lo);
+      expect((0.99 * lo) / g.pixelAngle).toBeGreaterThan(2);
+      expect(small.p.resolved.length).toBe(0);
+      expect(small.p.points.length).toBe(1);
+      // Above it: a disk with no point part.
+      const large = at(1.01 * hi);
+      expect(large.share).toBeCloseTo(1, 12);
+      expect(large.p.points.length).toBe(0);
+      shares.push([1.2, 1.5, 1.8].map((k) => at(k * lo).share));
+    }
+    for (const row of shares) row.forEach((v, k) => expect(v).toBeCloseTo(shares[0][k], 9));
+    expect(shares[0][1]).toBeCloseTo(0.5, 9);
+  });
+
+  it('the point of a body in the switch is drawn nearer than every point of its own disk, and no nearer than that needs', () => {
+    const e = eye();
+    for (const fovDeg of [1, 50]) {
+      const g = cameraGeom(snap([], fovDeg), W, H, 1e-7);
+      const s = splat(e, g.pixelAngle);
+      const dist = distFor(6000, 1.5 * (s.sigmaPx / SIGMA_MIN_PX) * g.pixelAngle);
+      const p = prepareFrame(snap([body(dist, { radii: [6000, 6000, 5000] })], fovDeg), g, e, s.footprintSr);
+      expect(p.resolved.length).toBe(1);
+      expect(p.points.length).toBe(1);
+      // Reversed depth: near / (distance along the view axis); larger is nearer. The disk's nearest point is at dist − 6000.
+      const nearestSurface = g.near / (dist - 6000);
+      expect(p.points[0].depth).toBeGreaterThan(nearestSurface);
+      expect(p.points[0].depth / nearestSurface - 1).toBeLessThan(1e-5);
+    }
+  });
+
+  it('the Sun switches by the same rule', () => {
+    const e = eye();
+    const limb = [[0.3, 0.93, -0.23], [0.3, 0.93, -0.23], [0.3, 0.93, -0.23], [0.3, 0.93, -0.23]];
+    for (const fovDeg of [1, 50]) {
+      const g = cameraGeom(snap([], fovDeg), W, H, 1e-7);
+      const s = splat(e, g.pixelAngle);
+      for (const k of [0.8, 1.5, 2.5]) {
+        const dist = distFor(695700, k * (s.sigmaPx / SIGMA_MIN_PX) * g.pixelAngle);
+        const sn = snap([], fovDeg, { pos: [0, 0, -dist], radius: 695700, irradianceXYZS_1AU: [1.2e5, 1.28e5, 1.1e5, 2.9e5] as XYZS, limbDarkening: limb });
+        const sun = prepareFrame(sn, g, e, s.footprintSr).sun!;
+        const b = resolvedShare(e, fovDeg, k * (s.sigmaPx / SIGMA_MIN_PX) * g.pixelAngle);
+        expect(sun.resolvedFraction).toBeCloseTo(b.share, 9);
+        expect(sun.point === null).toBe(k >= 2);
+      }
+    }
   });
 });

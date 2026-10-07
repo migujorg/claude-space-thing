@@ -1,7 +1,7 @@
 // WebGPU renderer: light in absolute photometric units → human-eye model → display.
 //
 // Frame outline (docs/eye-model.md has the physics; this file the plumbing):
-//   1. bodies   → EXT (XYZS luminance, additive), W (Ricco weight, min), MASK (not-measured map gaps and
+//   1. bodies   → EXT (XYZS luminance, additive), W (written as 1, unread), MASK (not-measured map gaps and
 //                 ring regions), depth (reversed-Z, ∞ far); surface maps are virtual-textured (surfaceGpu.ts);
 //                 then rings (ray–plane, lit/unlit faces, planet shadow), depth-tested, not depth-writing
 //   1b. comets  → EXT: comae (enclosed-light tables; below the Ricco area → body points) and dust/ion-tail
@@ -30,7 +30,7 @@ import { AtmosphereGpu, ATM_UB_BYTES, type ApColumns, type AtmosphereBinding } f
 import type { RingPrep } from './rings';
 import type { BackgroundTargets } from './sky/background';
 import { LAW } from './spatial';
-import { cameraGeom, prepareFrame, type PreparedFrame } from './frame';
+import { cameraGeom, prepareFrame, SIGMA_MIN_PX, type PreparedFrame } from './frame';
 import { ExtraPointSources, type PointSourceBuffer } from './extraPoints';
 import { MeshBodies } from './meshes/meshBodies';
 import { HdrReadback, type HdrImage, type HdrRect, type HdrRegionStats } from './hdrReadback';  // validation hook
@@ -48,12 +48,6 @@ import { CIE191, CRUMEY, PATTANAIK } from '../eye/constants';
 
 /** Near plane of the reversed-Z infinite projection, km (0.1 mm). */
 const NEAR_KM = 1e-7;
-/**
- * Smallest σ (pixels) of a point-source splat. A reconstruction-filter choice, not an eye constant:
- * at σ ≥ 0.6 px the discrete sum of the Gaussian over the pixel grid equals its integral to 2·10⁻³
- * for every sub-pixel position (Poisson summation: 2·exp(−2π²σ²)), so splats conserve energy.
- */
-const SIGMA_MIN_PX = 0.6;
 /** Point-splat radius in units of σ. */
 const SPLAT_EXTENT_SIGMA = 3;
 const MAX_GLARE_SOURCES = 32;
@@ -1019,7 +1013,6 @@ export class Renderer {
           { binding: 1, resource: { buffer: this.eyeUB } },
           { binding: 2, resource: t.ext.createView() },
           { binding: 3, resource: t.ptDisp.createView() },
-          { binding: 4, resource: t.w.createView() },
           { binding: 5, resource: paintView },
           { binding: 6, resource: { buffer: this.srcs } },
           { binding: 7, resource: t.acu.createView() },
@@ -1499,7 +1492,6 @@ export class Renderer {
         { binding: 0, resource: { buffer: this.frameUB } },
         { binding: 1, resource: { buffer: this.eyeUB } },
         { binding: 2, resource: t.ext.createView() },
-        { binding: 3, resource: t.w.createView() },
         { binding: 4, resource: t.ptEx.createView() },
         { binding: 5, resource: L[0].lvl.createView() },
       ]);
