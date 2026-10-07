@@ -279,6 +279,55 @@ describe.skipIf(!hasComponents)('ring components: real light-stage products', ()
     console.log(`Uranus manifest-window geometry: ${known} valid, ${unknown} unknown samples`);
   });
 
+  it('all ten rings use positive constant-mean-width COR estimates at 2026-10-01 at Best and Complete', () => {
+    const original = rings!['799'].components!.value!;
+    const et = 844084800; // 2026-10-01 00:00:00 TDB, same at-ring date as the research calculations
+    const widths = [2.316, 2.684, 3.231, 7.277, 8.516, 2.227, 3.258, 4.977, 2.3, 58.574];
+    const chosen = componentsAt(original, et);
+    const rec = packComponentRecords(packComponents(chosen), et);
+    chosen.components.slice(0, 10).forEach((c, k) => {
+      expect(c.provenance.geometry.label).toBe('estimated');
+      expect(c.centrelineEstimate!.meanWidthKm).toBe(widths[k]);
+      expect(rec[k * CMP_RECORD_VEC4 * 4 + 15] & 16).toBe(0);
+      expect(c.inner.modes).toHaveLength(1);
+      expect(c.outer.modes).toHaveLength(1);
+      const cor = c.centrelineEstimate!.centreline;
+      const days = (et - original.epochEt) / DAY_S;
+      for (let lon = 0; lon < 360; lon++) {
+        const b = bandAt(chosen, c, lon * DEG, et)!;
+        expect(b.W).toBeCloseTo(widths[k], 9);
+        expect((b.rIn + b.rOut) / 2).toBeCloseTo(edgeRadius(cor, lon * DEG, days), 9);
+      }
+      expect(c.provenance.reflectance).toEqual(original.components[k].provenance.reflectance);
+      const strict = componentsAt(original, et, false);
+      expect(bandAt(strict, strict.components[k], 0, et)).toBeNull();
+    });
+    const eps = chosen.components[9];
+    const days = (et - original.epochEt) / DAY_S;
+    const apse = ((eps.inner.varpi0Deg + eps.inner.varpiDotDegPerDay * days) % 360 + 360) % 360;
+    expect(days).toBe(14864.5);
+    expect(apse).toBeCloseTo(51.21710875000281, 9); // research calculations.json worked epsilon phase
+    expect(edgeRadius(eps.centrelineEstimate!.centreline, apse * DEG, days)).toBeCloseTo(51149.279 - 405.894, 8);
+    for (const level of ['strict', 'best', 'complete'] as const) {
+      const sb: SceneBody = {
+        id: 799, name: 'Uranus', pos: [0, 0, 200000], toSun: [0, 0, -1e9],
+        orient: [1, 0, 0, 0, 1, 0, 0, 0, 1], radii: [1000, 1000, 1000],
+        albedoXYZS: null, phase: null, surfaceUnknown: true, worstLabel: 'measured', selected: false,
+      };
+      applyExtras(sb, { id: 799 } as Body, { rings, surfaces: new Map() }, level, false, et);
+      const frame = prepareRings(sb, [1, 1, 1, 1], 1000, 1e-5);
+      if (level === 'strict') {
+        expect(frame.draw?.cmp).toBeNull();
+        expect(frame.warnings.join(' ')).toContain('reflectance not measured');
+      } else {
+        expect(frame.draw!.cmp!.packed.model).toBe(chosen);
+        expect(frame.warnings.filter((x) => x.includes('geometry estimated'))).toHaveLength(10);
+        expect(frame.warnings.join(' ')).toContain('λ ring');
+        expect(frame.warnings.join(' ')).toContain('reflectance not measured');
+      }
+    }
+  });
+
   it('Adams arcs stop emitting outside their motion support, including at all current-window dates', () => {
     const m = rings!['899'].components!.value!;
     const c = m.components.find((c) => c.arcs)!;
@@ -360,7 +409,7 @@ describe.skipIf(!hasComponents)('ring components: real light-stage products', ()
         const unsupported = m.components.find((c) => c.geometryValidity);
         if (unsupported) {
           sb.rings!.et = unsupported.geometryValidity!.endEt + 1;
-          expect(prepareRings(sb, [1, 1, 1, 1], 1000, 1e-5).warnings.join(' ')).toContain('geometry not measured at this time');
+          expect(prepareRings(sb, [1, 1, 1, 1], 1000, 1e-5).warnings.join(' ')).toContain(id === 799 ? 'geometry estimated' : 'geometry not measured at this time');
         }
       }
     }
