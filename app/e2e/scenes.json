@@ -64,8 +64,9 @@
     "look": "0,-15",
     "fov": "30",
     "adapt": "realtime",
-    "adaptfrom": "10000,600,60"
-   }, "tolerance": {"starsRel": 0.15}, "toleranceWhy": "A real-time scene: its eye is 60 s out of daylight plus the wall-clock seconds the scene took to become ready, which vary with the machine's load (3 to 9 s on 2026-10-07). Eleven renders on unchanged code that day gave 37 to 41 stars (38, 38, 40, 41, 38, 41, 38, 40, 41, 38, 37) with the adaptation equal to nine digits, against a baseline of 37 at the default 5 %. The allowance covers that measured spread and nothing else; it goes when the suite runs real-time scenes on a simulated clock."
+    "adaptfrom": "10000,600,60",
+    "adapttime": "60"
+   }
   },
   {
    "id": "aurora-2025-11-12",
@@ -270,6 +271,7 @@
     "dist": "3000000000",
     "labels": "0",
     "adaptfrom": "10000,600,120",
+    "adapttime": "120",
     "adapt": "realtime"
    }
   },
@@ -281,6 +283,7 @@
     "dist": "3000000000",
     "labels": "0",
     "adaptfrom": "10000,600,720",
+    "adapttime": "720",
     "adapt": "realtime"
    }
   },
@@ -292,6 +295,7 @@
     "dist": "3000000000",
     "labels": "0",
     "adaptfrom": "10000,600,1800",
+    "adapttime": "1800",
     "adapt": "realtime"
    }
   },

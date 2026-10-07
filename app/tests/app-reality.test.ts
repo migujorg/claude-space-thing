@@ -101,6 +101,7 @@ describe('badge', () => {
   });
   it('real-time eye adaptation is the default; instant adaptation is badged', () => {
     expect(d.instantAdaptation).toBe(false);
+    expect(badgeParts({ ...d, adaptationTimeS: 0 }, d)).toEqual(['EYE CLOCK HELD: 0 s after history']);
     expect(badgeParts({ ...d, instantAdaptation: true }, d)).toEqual(['INSTANT ADAPTATION: eye always fully adapted']);
   });
 });

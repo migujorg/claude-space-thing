@@ -2,9 +2,13 @@
 //   ?t=<ISO UTC>&target=<NAIF id>&dist=<km from target center>&az=<deg>&el=<deg>
 //    &exists=strict|best|complete&view=eye|enhanced&boost=<stops>&fov=<deg, vertical>
 //    &labels=0|1&orbits=0|1&tint=0|1&ui=0|1&system=jup,sat|all&smallbodies=0|1&sbfield=0|1&shield=0|1
-//    &adapt=instant|realtime&adaptfrom=<cd/m²>,<exposure s>,<elapsed s>
+//    &adapt=instant|realtime&adaptfrom=<cd/m²>,<exposure s>,<elapsed s>&adapttime=<elapsed s>
 // adapt: how the eye adapts over time (default realtime). adaptfrom: a defined eye history for tests and
 // demonstrations, e.g. adaptfrom=10000,600,300 = 10 min in daylight, then 5 min looking at this view.
+// adapttime: with realtime adaptation and adaptfrom, sample the history at exactly this nonnegative elapsed
+// time in the current view (overrides adaptfrom's third value), holding it through loading and readback.
+// Omit it for the interactive real-time clock. "Settled" then means light/data convergence at that instant,
+// not more elapsed adaptation time. E.g. adapt=realtime&adaptfrom=10000,600,60&adapttime=60.
 // target may also be an SBDB SPK-ID (>= 1000000, e.g. 20099942 for 99942 Apophis): a small body, resolved once the
 // small-body catalogue and its name index are in. smallbodies=0 skips loading the small-body catalogue.
 // `system` names moon systems (ephem/sat-<key>) to load before the first frame instead of in the background;
@@ -45,6 +49,8 @@ export interface UrlView {
   adapt?: 'instant' | 'realtime';
   /** Eye history (RealityState.adaptationHistory). */
   adaptFrom?: { luminanceCdM2: number; exposureS: number; elapsedS: number };
+  /** Fixed elapsed seconds in the current view after adaptFrom; holds the eye clock. */
+  adaptTimeS?: number;
   /** View direction at the camera's place: local azimuth and elevation (deg), see the header. */
   look?: { azDeg: number; elDeg: number };
 }
@@ -126,6 +132,11 @@ export function parseUrlParams(search: string): { view: UrlView; errors: string[
     if (x.length === 3 && x.every((v) => Number.isFinite(v) && v >= 0)) view.adaptFrom = { luminanceCdM2: x[0], exposureS: x[1], elapsedS: x[2] };
     else errors.push(`Ignoring adaptfrom=${af}: expected <cd/m²>,<exposure s>,<elapsed s>.`);
   }
+  const at = num('adapttime', (x) => x >= 0);
+  if (at !== undefined) {
+    if (!view.adaptFrom || view.adapt === 'instant') errors.push('Ignoring adapttime: requires adaptfrom and realtime adaptation.');
+    else view.adaptTimeS = at;
+  }
   const lk = p.get('look');
   if (lk !== null) {
     const x = lk.split(',').map(Number);
@@ -152,6 +163,7 @@ export function formatUrlParams(v: UrlView): string {
   if (v.system?.length) p.set('system', v.system.join(','));
   if (v.adapt !== undefined) p.set('adapt', v.adapt);
   if (v.adaptFrom) p.set('adaptfrom', `${v.adaptFrom.luminanceCdM2},${v.adaptFrom.exposureS},${v.adaptFrom.elapsedS}`);
+  if (v.adaptTimeS !== undefined) p.set('adapttime', String(v.adaptTimeS));
   if (v.look) p.set('look', `${v.look.azDeg.toFixed(2)},${v.look.elDeg.toFixed(2)}`);
   // ':' is legal in a query string; keep ISO times readable.
   return p.toString().replace(/%3A/gi, ':');
