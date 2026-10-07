@@ -2457,7 +2457,15 @@
     ]
    },
    "consoleErrors": [],
-   "readyMs": 8578
+   "readyMs": 8578,
+   "accepted": {
+    "acceptedAt": "2026-10-07T08:49:35.354Z",
+    "git": "1a26b29",
+    "data": {
+     "manifestGeneratedAt": "2026-10-07T08:12:30+00:00",
+     "manifestSha256": "8c78b727edabc39ff7562b966a1ba221b92bbd5c0a256e11e47bd4b2f385a67c"
+    }
+   }
   },
   "titan-haze-ring": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=instant&target=606&dist=12000&az=170&el=0",
@@ -2699,7 +2707,15 @@
     ]
    },
    "consoleErrors": [],
-   "readyMs": 8066
+   "readyMs": 8066,
+   "accepted": {
+    "acceptedAt": "2026-10-07T08:49:35.354Z",
+    "git": "1a26b29",
+    "data": {
+     "manifestGeneratedAt": "2026-10-07T08:12:30+00:00",
+     "manifestSha256": "8c78b727edabc39ff7562b966a1ba221b92bbd5c0a256e11e47bd4b2f385a67c"
+    }
+   }
   }
  }
 }
