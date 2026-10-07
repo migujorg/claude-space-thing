@@ -5,10 +5,11 @@ import { EXISTS_TEXT, LABEL_TEXT, labelAllowed, whyLine } from '../app/reality';
 import { angularRadius, rayEllipsoid } from '../app/picking';
 import { dot, len, scale } from '../app/vec';
 import type { Label } from '../data/schema';
+import type { RendererStats } from '../render/scene';
 import { chip, legend } from './chips';
 import { clear, h, setText, toggleClass } from './dom';
 import { formatAngle, formatDistance, formatDuration } from './format';
-import { attributeRows, derivedLabel, shapeRow, sunRows, sunWhy, type AttrRow } from './inspectModel';
+import { attributeRows, derivedLabel, rendererLines, shapeRow, sunRows, sunWhy, type AttrRow } from './inspectModel';
 import { buildSun } from '../app/snapshot';
 import { atmosphereFor } from '../app/extras';
 import { sbRow } from '../app/smallbodies';
@@ -24,6 +25,8 @@ export class Inspector {
   readonly el: HTMLElement;
   private live = new Map<string, LiveCell>();
   private why = h('div', { class: 'st-why' });
+  /** The renderer's own lines about the selected body in this frame (inspectModel.ts rendererLines). */
+  private did = h('div', { class: 'st-why st-hide' });
   private lastLive = 0;
   private id: number | null = null;
   /** What the attribute rows were built from; a change (load state, orientation source) triggers a rebuild. */
@@ -103,6 +106,7 @@ export class Inspector {
         liveRow('seen', 'Seen as of', 'UTC when the light you see left the body'),
       ),
       this.why,
+      this.did,
     );
     const isSun = body.id === m.sunId;
     // The Sun's and small bodies' lines depend on this frame: set in updateLive.
@@ -111,7 +115,7 @@ export class Inspector {
     // A body drawn from its atmosphere model (extras.ts atmosphereFor → SceneAtmosphere.surface: Titan).
     const atm = !isSun && !sb ? atmosphereFor(m.data?.atmospheres, body.id, level) : null;
     const atmWhy = atm?.surface
-      ? ` Its resolved disk is drawn from its atmosphere model (${atm.worstLabel}): the haze and gas of atmospheres.json over the surface reflectance under them, by radiative transfer, scaled in each of X, Y, Z and S so that the disk's light is the disk photometry (measured over model; beyond the photometry's phase range the factors of its edge are held, an estimate).`
+      ? ` Its resolved disk is drawn from its atmosphere model (${atm.worstLabel}): the haze and gas of atmospheres.json over the surface reflectance under them, by radiative transfer, scaled in each of X, Y, Z and S so that the disk's light is the disk photometry (measured over model; beyond the photometry's phase range the factors of its edge are held, an estimate). The factors of this frame are in the renderer's line below.`
       : '';
     this.setWhy(isSun || sb ? '' : whyLine(f, level) + shapeWhy + atmWhy);
 
@@ -223,12 +227,17 @@ export class Inspector {
     setText(this.why, `Why does it look like this? ${line}${enh}`);
   }
 
-  update(): void {
+  update(stats?: RendererStats | null): void {
     if (!this.visible) return;
     const now = performance.now();
     if (now - this.lastLive < 200) return;
     this.lastLive = now;
     this.updateLive(false);
+    // What the renderer says it did with this body in the frame on screen (its warning lines begin with the name).
+    const name = this.id !== null ? this.model.byId.get(this.id)?.name : undefined;
+    const lines = name ? rendererLines(stats?.warnings, name) : [];
+    setText(this.did, lines.length ? `The renderer, this frame: ${lines.join('; ')}.` : '');
+    toggleClass(this.did, 'st-hide', lines.length === 0);
   }
 
   private updateSmallBodyWhy(id: number): void {

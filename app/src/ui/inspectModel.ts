@@ -186,6 +186,16 @@ export function atmosphereRows(file: AtmosphereFile | null, id: number, level: E
 }
 
 /**
+ * The renderer's own lines about a body in the frame on screen (RendererStats.warnings; frame.ts and rings.ts begin
+ * each with the body's name: "Titan: …", "Saturn rings: …"), without the name. What the renderer says it did with the
+ * body, e.g. the factors a model was scaled by or a phase curve continued beyond its range.
+ */
+export function rendererLines(warnings: readonly string[] | undefined, name: string): string[] {
+  return (warnings ?? []).filter((w) => w.startsWith(`${name}: `) || w.startsWith(`${name} `))
+    .map((w) => w.slice(name.length).replace(/^:/, '').trimStart());
+}
+
+/**
  * The shape model row: drawn (the mesh replaces the ellipsoid; its shape and orientation labels) or why not
  * (loading, a label not admitted at the level, an orientation that cannot be placed).
  */

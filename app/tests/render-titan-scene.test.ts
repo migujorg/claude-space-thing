@@ -16,7 +16,7 @@ import { DEFAULT_EYE_SETTINGS } from '../src/eye/settings';
 import { AU_KM } from '../src/render/constants';
 import type { AtmosphereFile, Label } from '../src/data/schema';
 import type { SceneBody, SceneSnapshot } from '../src/render/scene';
-import { atmosphereRows } from '../src/ui/inspectModel';
+import { atmosphereRows, rendererLines } from '../src/ui/inspectModel';
 import { fixtureRayleighAtmosphere } from './fixtures/atmosphere';
 
 type V3 = [number, number, number];
@@ -75,6 +75,19 @@ describe('a body with a surface reflectance under its air (fixture)', () => {
     expect(atmosphereRows(f, 1, 'strict').map((r) => !!r.withheld)).toEqual([true, false, true]);
     expect(atmosphereRows(f, 2, 'best')).toEqual([]);
     expect(atmosphereRows(null, 1, 'best')).toEqual([]);
+  });
+
+  it('the inspector shows the renderer\'s own lines about the selected body, and only those', () => {
+    const warnings = [
+      'Titan: atmosphere model scaled to the disk photometry at 3°, ×0.99 X, 0.99 Y, 0.88 Z, 0.95 S (measured p·Φ over the model\'s disk integral)',
+      'Titania: phase extrapolated beyond measured range (0–35°) with the spatial law → estimated',
+      'Saturn rings: phase angle 147.75° outside the reflectance model\'s 0.25–47° → ring brightness not measured (hatched)',
+      'Saturn: Barkstrom law outside its fitted range → Lambert spatial distribution',
+    ];
+    expect(rendererLines(warnings, 'Titan')).toEqual([warnings[0].slice('Titan: '.length)]);
+    expect(rendererLines(warnings, 'Saturn')).toEqual([warnings[2].slice('Saturn '.length), warnings[3].slice('Saturn: '.length)]);
+    expect(rendererLines(warnings, 'Rhea')).toEqual([]);
+    expect(rendererLines(undefined, 'Titan')).toEqual([]);
   });
 });
 
