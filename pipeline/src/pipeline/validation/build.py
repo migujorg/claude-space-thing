@@ -464,7 +464,7 @@ def _rel(x: float, ref: float) -> float:
 def measure(p: Prepared, sub: int = 4) -> dict:
     tref = p.targets[0]
     res = g.cast(p.view, p.targets, sub=sub)
-    rois = roi.select(p.roi_specs, res, sub)
+    rois = roi.select(p.roi_specs, res, sub, refs=p.refs)
     cls_pix, _ = g.uniform_class(res["cls"], res["tgt"], sub)
     with g.kernels():
         sub_pts = [(t.sub_point(-t.pos), t.sub_point(t.to_sun)) for t in p.targets]
