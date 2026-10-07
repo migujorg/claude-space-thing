@@ -539,7 +539,15 @@ as reflectances (1/πR²)∫ρ dA, for the body's law on a uniform surface:
 
 The surface scale K is multiplied by (1 − (Apath + Ashell)/pΦ)·I0/Iatm, so the rendered body (surface
 under the air, plus the air on and beyond the disk) still reflects the measured p·Φ(α). The integrals are
-cached in 1° phase bins, interpolated linearly, one integral of a few ms per new bin. The map's weighting
+taken on a polar grid of the disk (`diskGrid` in atmosphere.ts: 12 Gauss–Legendre nodes in μ × 24 azimuths,
+`ATM_DISK_NODES`; the annulus beyond the disk on 12 radii × 24 azimuths) and cached in 1° phase bins,
+interpolated linearly, one integral of about 10 ms per new bin. With the real products the drawn disk's integral
+is then within 0.05 % of p·Φ in every channel for Mars at 0°, 36° and 60° and for Pluto at 0° and 1.7°
+(checked through `prepareFrame` against a 48 × 96 grid; Venus keeps its measured disk, below). Until this change
+the grid was the cell centres of a 16 × 16 square, which counts the disk's area 3.5 % too large and a Lambert
+disk's integral 0.8 % too large at zero phase, 5.5 % at 90° and 39 % at 150°: Mars was drawn from 0.2 % too
+bright (X) to 1.2 % too dark (Z) at opposition, 1.7–3.4 % too dark at 36° and 2.5–4.8 % at 60°, and Pluto
+0.2–0.4 % too bright. The map's weighting
 of the ratio I0/Iatm is left out: it is second order. The shader (`ATM_OVER_PHOTOMETRY`) draws the surface
 term × T_sun·T_view, the skylight term and the path radiance, per bin, folded to XYZS.
 
@@ -557,14 +565,15 @@ Four outcomes, each with a warning where it applies:
    scale is then taken at the nearest lower phase (1° bins) where the curve still exceeds the air and the
    surface's Bond albedo stays ≤ 1, and the air at α is drawn on top, as beyond the measured range. The
    warning names that phase. Examples:
-   - Mars, whose curve beyond the ~47° seen from Earth is estimated: at α = 100° the scale is taken at 58°.
+   - Mars, whose curve beyond the ~47° seen from Earth is estimated: at α = 100° the scale is taken at 72°
+     (dust at L_s = 0°, scale 0.89; 66° with the square grid, whose air came out too bright).
    - The Earth drawn from its disk photometry, whose curve is Mallama & Hilton's fit to a radiative-transfer
-     model: at 175° the scale is taken at 103°, and the sunlit air ring is drawn. Earth mode with its layers
-     does not use this.
+     model: at 175° the scale is taken at 107° (103° with the square grid), and the sunlit air ring is drawn.
+     Earth mode with its layers does not use this.
 4. **Not drawn**, when the air alone is brighter than a *measured* disk in any channel. Until M5 this was
    also Mars beyond α ≈ 65–70°, first in Z. (Apath + Ashell)/pΦ for X, Y, Z, S
-   is 0.37 / 0.40 / 0.58 / 0.48 at α = 0°, 0.61 / 0.65 / 0.94 / 0.78 at 60° and 0.94 / 1.00 / 1.49 / 1.22
-   at 95° (dust at L_s ≈ 0°, scale 0.95). In blue the dust (ω ≈ 0.8) is brighter than the dark surface, so
+   is 0.36 / 0.38 / 0.55 / 0.46 at α = 0°, 0.59 / 0.63 / 0.91 / 0.75 at 60° and 0.92 / 0.99 / 1.48 / 1.21
+   at 95° (dust at L_s = 0°, scale 0.89; on a 48 × 96 grid). In blue the dust (ω ≈ 0.8) is brighter than the dark surface, so
    the dust's light approaching the whole measured blue light at high phase is plausible, and the overshoot
    is within the climatology's spread. Two approximations also push that way: dust forward scattering of
    the surface's light sits in Hillaire's isotropic Ψ_ms, and the dust phase function has no wavelength
@@ -580,9 +589,9 @@ extrapolated disk could not contain.
 
 | Body | Components | Outcome in the test views |
 |---|---|---|
-| Mars | CO₂ Rayleigh; dust, double HG, ω 0.71–0.98 | Over the disk to α ≈ 65°: haze softens the terminator and lowers contrast. At α = 36° the surface scale is ×0.62 / 0.57 / 0.18 / 0.41 (X, Y, Z, S; with the δ-scaled view transmittance): the blue of the disk is mostly dust light. Beyond, the surface scale of the nearest phase where the estimated curve still exceeds the air (3.). |
+| Mars | CO₂ Rayleigh; dust, double HG, ω 0.71–0.98 | Over the disk to α ≈ 72°: haze softens the terminator and lowers contrast. At α = 36° the surface scale is ×0.44 / 0.40 / 0.16 / 0.31 (X, Y, Z, S; dust at L_s = 0°, scale 0.89; with the δ-scaled view transmittance): the blue of the disk is mostly dust light. Beyond, the surface scale of the nearest phase where the estimated curve still exceeds the air (3.). |
 | Venus | the cloud and upper haze above 60 km | Beyond the disk only. Near inferior conjunction (α = 172°) the haze alone outshines the measured p·Φ: not drawn. |
-| Pluto | haze (tabulated Mie phase, ω 0.944) | Over the disk; the haze is 1–2 % of the disk at low phase and forms a ring at high phase. |
+| Pluto | haze (tabulated Mie phase, ω 0.944) | Over the disk; the haze is 1.5 % (X, Y) to 3.9 % (Z) of the disk's light at low phase and forms a ring at high phase. |
 | Titan | N₂ Rayleigh; DISR haze (three components, two phase functions); methane; surface reflectance | Drawn from the model, scaled per channel to the disk photometry (×0.99, 0.99, 0.89, 0.95 beyond 5.7°): see below. |
 
 **Mars dust.** atmospheres.json gives the annual global-mean column and a table of global-mean column
@@ -701,11 +710,8 @@ The twin's disk integral is taken on a polar grid (Gauss–Legendre in μ, unifo
 cell centres it replaced miscounted the disk's area by its edge cells (+3.5 % at 16 across, −1.0 % at 24, +1.0 % at
 32), and the integral of a nearly uniform disk followed: the numbers of this section were 0.6 % higher at small
 phase before 2026-10-07, and the thin crescent's disk part at 150° 8 % higher. `atmosphereDiskFactors` (the
-renormalisation of Mars, Venus and Pluto, above) still uses the square grid at 16 across, which counts the disk's
-area 3.5 % too large and the air's own light over Mars's disk 3.4–3.8 % too high. Through `prepareFrame` with the
-real products (dust at L_s = 0°, scale 0.89) Mars's drawn disk is then from 0.2 % brighter (X) to 1.2 % darker (Z)
-than its photometry at opposition, 1.7–3.4 % darker at 36° and 2.5–4.8 % at 60°, and Pluto's 0.2–0.4 % brighter;
-Venus, whose disk keeps its photometry, is exact. Not changed here: it is a job of its own.
+renormalisation of Mars, Venus and Pluto, above) had the same square grid at 16 across and now shares the polar
+one.
 
 **The shaders against the CPU twin, and the drawn disk against the measurement.** The disk-integrated light of
 rendered frames (the HDR buffer summed over a 512 × 512 view, Titan 330 px across, from 2 000 000 km; the
