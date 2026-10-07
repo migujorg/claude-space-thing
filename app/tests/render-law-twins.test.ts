@@ -4,8 +4,10 @@
 // fusion, reassociation or denormal handling. The entire LAW_WGSL and its external PI are pinned.
 import { describe, expect, it } from 'vitest';
 import type { BodyPhotometry, SpatialPhotometricModel } from '../src/data/schema';
-import { LAW_WGSL } from '../src/render/shaders-m2';
+import { ANGLE_WGSL, LAW_WGSL, RING_COMMON, RING_SHADER } from '../src/render/shaders-m2';
 import { COMMON } from '../src/render/shaders';
+import { BODY_SHADER, ATM_BODY_SHADER, EARTH_BODY_SHADER } from '../src/render/shaders';
+import { MESH_SHADER } from '../src/render/meshes/shaders';
 import { gaussLegendre, LAMBERT_LAW, LAW, lawDiskIntegral, lawRadf, resolveLaw, type ResolvedLaw } from '../src/render/spatial';
 
 // As in core-data.ts, use typed dynamic imports: the app does not require @types/node.
@@ -30,10 +32,23 @@ function shaderVectorPair(aIn: Direction, bIn: Direction) {
   return { dot, sine };
 }
 function shaderVectorAngle(a: Direction, b: Direction) {
-  return Math.fround(Math.acos(Math.min(1, Math.max(-1, shaderVectorPair(a, b).dot))));
+  const { sine, dot } = shaderVectorPair(a, b);
+  return Math.fround(Math.atan2(sine, dot));
 }
 
 describe('float32 vector angle', () => {
+  it('pins the vector helper independently of the unchanged spatial-law hash', () => {
+    expect(ANGLE_WGSL).toBe('\nfn vectorAngle(a: vec3f, b: vec3f) -> f32 {\n  return atan2(length(cross(a, b)), dot(a, b));\n}\n');
+    expect(RING_COMMON.startsWith(ANGLE_WGSL)).toBe(true);
+    for (const shader of [BODY_SHADER, ATM_BODY_SHADER, EARTH_BODY_SHADER, MESH_SHADER, RING_SHADER(COMMON)]) {
+      expect(shader.split('fn vectorAngle(')).toHaveLength(2);
+      expect(shader).not.toMatch(/acos\(clamp\(dot\(S, V\)/);
+      expect(shader).toContain('vectorAngle(S, V)');
+    }
+    const sky = fs.readFileSync(new URL('../src/render/sky/background.ts', import.meta.url), 'utf8');
+    expect(sky).toContain('COMMON + ANGLE_WGSL + zodiacalWgsl(m)');
+    expect(sky).toContain('let eps = vectorAngle(d, Z.sunDir.xyz);');
+  });
   for (const degrees of [1e-5, 1e-4, 1e-3, 1e-2]) for (const opposite of [false, true]) {
     it(`${degrees}° ${opposite ? 'from 180°' : 'from zero'}: relative angle error < 1e-3`, () => {
       const small = degrees * Math.PI / 180, trueAngle = opposite ? Math.PI - small : small;
