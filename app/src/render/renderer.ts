@@ -31,7 +31,7 @@ import type { RingPrep } from './rings';
 import { CMP_RECORD_VEC4 } from './ringComponents';
 import type { BackgroundTargets } from './sky/background';
 import { LAW } from './spatial';
-import { cameraGeom, prepareFrame, SIGMA_MIN_PX, type PreparedFrame } from './frame';
+import { cameraGeom, prepareFrame, splatSigmaPx, type PreparedFrame } from './frame';
 import { ExtraPointSources, type PointSourceBuffer } from './extraPoints';
 import { MeshBodies } from './meshes/meshBodies';
 import { HdrReadback, type HdrImage, type HdrRect, type HdrRegionStats } from './hdrReadback';  // validation hook
@@ -676,7 +676,7 @@ export class Renderer {
     this.fieldDeg2 = (2 * Math.atan(g.tanX)) * (2 * Math.atan(g.tanY)) * DEG2_PER_SR;
 
     // Point-splat footprint: the eye's optical core (Watson 2013) or the reconstruction minimum.
-    const sigmaPx = Math.max(((eye.coreSigmaDeg * Math.PI) / 180) / g.pixelAngle, SIGMA_MIN_PX);
+    const sigmaPx = splatSigmaPx(eye.coreSigmaDeg, g.pixelAngle, this.settings.opticalCore);
     const extentPx = SPLAT_EXTENT_SIGMA * sigmaPx;
     const omegaCentre = ((2 * g.tanX) / t.W) * ((2 * g.tanY) / t.H);
     const footprintSr = 2 * Math.PI * sigmaPx * sigmaPx * omegaCentre;
