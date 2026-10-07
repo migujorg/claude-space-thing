@@ -161,12 +161,16 @@ async function accuracy(): Promise<unknown> {
   const dev = await device();
   const eph = await loadEphemeris();
   const all = await loadTables();
-  const fx = await json<{ objects: { label: string; category: string; coreRow: number }[] }>('/tests/fixtures/smallbody_reference.json');
+  // The verification objects of this build: their rows and names from the record the smallbodies stage wrote with
+  // these tables. (The committed reference's coreRow is a row of the SBDB snapshot it was made from.)
+  const fx = await json<{ objects: { name: string; category: string; coreRow: number }[] }>('/data/verification/smallbodies.json').catch(() => {
+    throw new Error('this build has no verification/smallbodies.json (it was made before the smallbodies stage wrote its build record): rebuild the smallbodies stage');
+  });
   const N = Number(params.get('n') ?? 1000);
   const full = readCore(all.coreHeader, all.core);
   const rand = rng(20260930);
   const rows: number[] = fx.objects.map((o) => o.coreRow);
-  const labels: string[] = fx.objects.map((o) => o.label);
+  const labels: string[] = fx.objects.map((o) => o.name);
   const seen = new Set(rows);
   while (rows.length < fx.objects.length + N) {
     const r = Math.floor(rand() * full.count);
@@ -245,7 +249,7 @@ async function accuracy(): Promise<unknown> {
     times.push(rec);
     log(`t = ${dd} d: ${last.steps} steps (+${last.backgroundSteps} bg, from ${last.restoredFrom ?? 'W'}), GPU ${gpuMs.toFixed(0)} ms; |dr| max ${max.toFixed(3)} km (${labels[worst]}), p99 ${q(0.99).toFixed(3)}, p50 ${q(0.5).toFixed(4)} km; |dv| max ${maxV.toExponential(2)} km/s`);
   }
-  const fixtureErr = fx.objects.map((o, k) => ({ label: o.label, category: o.category, maxKm: perObject[k], maxKmS: perObjectV[k] }));
+  const fixtureErr = fx.objects.map((o, k) => ({ label: o.name, category: o.category, maxKm: perObject[k], maxKmS: perObjectV[k] }));
   for (const f of fixtureErr) log(`  ${f.label.padEnd(30)} max |dr| ${f.maxKm.toFixed(3)} km  |dv| ${f.maxKmS.toExponential(2)} km/s`);
   const randErr = Array.from(perObject.subarray(fx.objects.length)).sort((a, b) => a - b);
   const rq = (p: number) => randErr[Math.min(randErr.length - 1, Math.floor(p * randErr.length))];
