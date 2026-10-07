@@ -61,3 +61,24 @@ it('CLI rejects malformed --ss before starting a server or browser', async () =>
     expect(r.stderr).not.toMatch(/listen|browserType\.launch/);
   }
 });
+
+it('invalid levels are excluded from convergence, verdict changes and promotion', async () => {
+  const { samplingSummary, canPromoteDefault } = await import(/* @vite-ignore */ '../scripts/validate-sampling.mjs' as string);
+  const runs = [1, 2, 3, 4, 6].map((ss) => ({ git: 'fixture', dataGeneratedAt: 'fixture', options: { ss }, cases: [
+    { id: 'earth', status: [3, 6].includes(ss) ? 'not rendered' : 'rendered', reason: 'WebGPU error',
+      rois: [{ id: 'disk', rendered: { mean: [3, 6].includes(ss) ? [0, 0, 0, 0] : [10, 10, 10, 10] },
+        pass: ![3, 6].includes(ss), failing: [] }], ratios: [] },
+    { id: 'other', status: 'rendered', rois: [{ id: 'disk', rendered: { mean: [ss === 4 ? 10.02 : 10, 10, 10, 10] }, pass: true, failing: [] }], ratios: [] },
+  ] }));
+  const summary = samplingSummary(runs);
+  expect(summary.verdictChanges).toEqual([]);
+  expect(summary.levels[4].cases.find((c) => c.id === 'earth').maxRelativePercent).toBeNull();
+  expect(summary.levels[3].cases.find((c) => c.id === 'earth').referenceSs).toBe(4);
+  expect(summary.levels[3].maxRelativePercent).toBeCloseTo(0.2);
+  expect(canPromoteDefault(runs[2])).toBe(false);
+  expect(canPromoteDefault(runs[3])).toBe(true);
+  const md = samplingMarkdown(runs);
+  expect(md).toContain('not rendered');
+  expect(md).toContain('largest relative difference');
+  expect(md).toContain('0.2 %');
+});

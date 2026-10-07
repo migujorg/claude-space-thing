@@ -271,3 +271,34 @@ def test_report_sampling_table_from_fixture_file(tmp_path, monkeypatch):
         report.convergence_section({**runs[3], "git": "other"})
     path.unlink()
     assert report.convergence_section(runs[3]) == ""
+
+
+def test_report_not_rendered_and_rejects_old_error_verdicts():
+    from pipeline.validation import report
+
+    q = {"id": "sky", "status": "not rendered", "reason": "WebGPU validation error",
+         "expectedType": "upper-limit", "upperLimit": [1, 1, 1, 1],
+         "rendered": {"mean": [None] * 4, "n": 0}, "pass": None, "failing": []}
+    c = {"id": "fixture", "status": "not rendered", "reason": q["reason"], "errors": [q["reason"]], "rois": [q]}
+    run = {"generatedAt": "fixture", "options": {"ss": 4, "reality": "best"}, "cases": [c]}
+    section = report.run_section(run, "")
+    assert "not rendered: WebGPU validation error" in section
+    assert "0 pass, 0 fail, 1 not rendered" in section
+    old = {**run, "cases": [{**c, "rois": [{**q, "pass": True}]}]}
+    with pytest.raises(ValueError, match="errors.*verdict"):
+        report.run_section(old, "")
+
+
+def test_report_convergence_omits_invalid_frame_statistics(tmp_path):
+    from pipeline.validation import report
+
+    runs = [{"generatedAt": "fixture", "git": "fixture", "options": {"ss": ss}, "cases": [
+        {"id": "earth", "status": "not rendered" if ss in [3, 6] else "rendered", "reason": "GPU error",
+         "rois": [{"id": "sky", "rendered": {"mean": [0, 0, 0, 0]}, "pass": None if ss in [3, 6] else True,
+                   "failing": []}], "ratios": []}]} for ss in [1, 2, 3, 4, 6]]
+    path = tmp_path / "sweep.json"
+    path.write_text(json.dumps({"schema": "validation-sampling-v1", "runs": runs}))
+    section = report.convergence_section(runs[3], path)
+    assert "not rendered" in section
+    assert "largest relative difference" in section
+    assert "verdict depends on sampling: none" in section.lower()
