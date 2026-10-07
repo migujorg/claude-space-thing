@@ -1,13 +1,24 @@
 {
- "acceptedAt": "2026-10-01T02:04:20.913Z",
- "git": "48c7878",
+ "acceptedAt": "2026-10-07T09:16:46.077Z",
+ "git": "59a4924",
  "data": {
-  "manifestGeneratedAt": "2026-10-01T01:21:52+00:00",
-  "manifestSha256": "64e1da3bb8bff5250e646d17b2c5654c7bd70a0a134efcdda0f856b0990d4e8a"
+  "manifestGeneratedAt": "2026-10-07T08:06:19+00:00",
+  "manifestSha256": "a918c7a5da2aba09411558d31bf3ad5b8a292fba3df167fb53953fc258c5432f"
  },
  "viewport": {
   "width": 1280,
   "height": 720
+ },
+ "gpu": {
+  "mode": "hardware",
+  "adapter": {
+   "vendor": "nvidia",
+   "architecture": "blackwell",
+   "device": "",
+   "description": "",
+   "fallback": false,
+   "float32Blendable": true
+  }
  },
  "scenes": {
   "earth-day": {
@@ -2245,6 +2256,110 @@
    },
    "consoleErrors": [],
    "readyMs": 63051
+  },
+  "night-limb-iss": {
+   "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=instant&target=399&dist=6771&az=180&el=0&look=0%2C-15&fov=30",
+   "stats": {
+    "adaptationLuminance": 0.001164251234284714,
+    "scotopicAdaptationLuminance": 0.001420263105297056,
+    "pupilDiameterMm": 7.7307025884690095,
+    "mesopicM": 0,
+    "limitingMagnitude": 5.536408639350507,
+    "starsDrawn": 584,
+    "bodiesDrawn": 0,
+    "bodies": [],
+    "points": [],
+    "bodiesInSnapshot": 75,
+    "sun": true,
+    "warnings": [
+     "Earth: phase extrapolated beyond measured range (0–170°) with the spatial law → estimated"
+    ],
+    "badge": [
+     "INSTANT ADAPTATION: eye always fully adapted"
+    ]
+   },
+   "consoleErrors": [],
+   "readyMs": 5242
+  },
+  "night-limb-iss-daylight-eye": {
+   "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=realtime&target=399&dist=6771&az=180&el=0&look=0%2C-15&fov=30&adaptfrom=10000%2C600%2C60",
+   "stats": {
+    "adaptationLuminance": 0.0011537607937027856,
+    "scotopicAdaptationLuminance": 0.0014155619094346206,
+    "pupilDiameterMm": 7.730804526689499,
+    "mesopicM": 0,
+    "limitingMagnitude": 4.54990449857907,
+    "starsDrawn": 37,
+    "bodiesDrawn": 0,
+    "bodies": [],
+    "points": [],
+    "bodiesInSnapshot": 75,
+    "sun": true,
+    "warnings": [
+     "Earth: phase extrapolated beyond measured range (0–170°) with the spatial law → estimated"
+    ],
+    "badge": []
+   },
+   "consoleErrors": [],
+   "readyMs": 3457
+  },
+  "aurora-2025-11-12": {
+   "query": "t=2025-11-12T01:00:00Z&smallbodies=0&adapt=instant&target=399&dist=6771&az=173.26110422279018&el=46.95923411082049&look=0%2C-89&fov=60",
+   "stats": {
+    "adaptationLuminance": 0.004588467622202696,
+    "scotopicAdaptationLuminance": 0.005618207346340363,
+    "pupilDiameterMm": 6.829124244838388,
+    "mesopicM": 0.015699558620145493,
+    "limitingMagnitude": 5.098956702527752,
+    "starsDrawn": 0,
+    "bodiesDrawn": 1,
+    "bodies": [
+     {
+      "id": 399,
+      "name": "Earth",
+      "worstLabel": "estimated",
+      "surfaceUnknown": false
+     }
+    ],
+    "points": [],
+    "bodiesInSnapshot": 75,
+    "sun": true,
+    "warnings": [],
+    "badge": [
+     "INSTANT ADAPTATION: eye always fully adapted"
+    ]
+   },
+   "consoleErrors": [],
+   "readyMs": 3563
+  },
+  "aurora-2025-11-14-quiet": {
+   "query": "t=2025-11-14T01:00:00Z&smallbodies=0&adapt=instant&target=399&dist=6771&az=173.2804022752983&el=46.43408307185946&look=0%2C-89&fov=60",
+   "stats": {
+    "adaptationLuminance": 0.0010192744589872093,
+    "scotopicAdaptationLuminance": 0.0009744495103227259,
+    "pupilDiameterMm": 7.170194392989929,
+    "mesopicM": 0,
+    "limitingMagnitude": 5.67816499298364,
+    "starsDrawn": 0,
+    "bodiesDrawn": 1,
+    "bodies": [
+     {
+      "id": 399,
+      "name": "Earth",
+      "worstLabel": "estimated",
+      "surfaceUnknown": false
+     }
+    ],
+    "points": [],
+    "bodiesInSnapshot": 75,
+    "sun": true,
+    "warnings": [],
+    "badge": [
+     "INSTANT ADAPTATION: eye always fully adapted"
+    ]
+   },
+   "consoleErrors": [],
+   "readyMs": 3850
   }
  }
 }
