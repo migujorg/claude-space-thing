@@ -15,7 +15,8 @@ def test_measurement_view_provenance_and_no_guessed_latitude():
             assert view["value"]["latitudeDeg"] == 0
             assert view["value"]["epoch"] == "1995-07-06/1995-07-10"
             assert view["label"] == ("estimated" if key == "599" else "measured")
-            assert view["sources"] == ["karkoschka-1998-pds"]
+            assert view["sources"] == (["karkoschka-1998-pds", "karkoschka-1994-text"]
+                                       if key == "599" else ["karkoschka-1998-pds"])
         elif key == "608":
             assert view["value"] is None and view["label"] == "unknown"
         else:

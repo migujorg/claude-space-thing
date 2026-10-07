@@ -44,7 +44,8 @@ def with_measurement_views(photometry: dict) -> dict:
         if key in ("599", "699"):
             entry["albedoMeasurementView"] = sourced(
                 {"kind": "latitude", "latitudeDeg": 0.0, "epoch": "1995-07-06/1995-07-10"},
-                "estimated" if key == "599" else "measured", ["karkoschka-1998-pds"],
+                "estimated" if key == "599" else "measured",
+                ["karkoschka-1998-pds", "karkoschka-1994-text"] if key == "599" else ["karkoschka-1998-pds"],
                 method=("Karkoschka 1998/PDS 1995LOW: 1995 July 6–10 full-disk spectrum. "
                         + ("Equator-on calibration reference, as represented by the equal-area disk radius "
                            "69140 km (Karkoschka 1994 Table III); this is an approximation of Jupiter's "
