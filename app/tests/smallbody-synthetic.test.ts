@@ -382,3 +382,41 @@ describe.skipIf(!built)('the built synthetic layer', () => {
     }
   });
 });
+
+describe('synthetic statement limits', () => {
+  it('calls the fitted cutoff a proxy and discloses unknown orbit detectability even with older headers', () => {
+    const { objects, cells } = moonTables();
+    const s = readSynthetic(objects.header, objects.buffer, cells.header, cells.buffer);
+    const f = syntheticFacts(s, 0, 'complete', 'fake epoch');
+    const limit = f.rows.find((r) => r.key === 'syn:limit')!;
+    expect(limit.name).toBe('Completeness proxy here');
+    expect(limit.uncertainty).toMatch(/not a detection probability/);
+    expect(limit.uncertainty).toMatch(/not evaluated for this synthetic orbit/);
+    expect(f.what).not.toMatch(/the debiased population|complete down to/);
+    expect(f.what).toMatch(/aggregate/);
+    expect(f.rows.find((r) => r.key === 'syn:orbit')!.uncertainty).toMatch(/unknown/);
+  });
+
+  it.skipIf(!built)('reads population limitations and sampled motion evidence into the object inspector', () => {
+    const h = JSON.parse(fs.readFileSync(DATA_DIR + 'synthetic/objects.json', 'utf8')) as SyntheticObjectsHeader;
+    const ch = JSON.parse(fs.readFileSync(DATA_DIR + 'synthetic/cells.json', 'utf8')) as SyntheticCellsHeader;
+    const buf = (name: string) => {
+      const b = fs.readFileSync(DATA_DIR + `synthetic/${name}.bin`);
+      return b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) as ArrayBuffer;
+    };
+    const s = readSynthetic(h, buf('objects'), ch, buf('cells'));
+    for (const p of h.populations.filter((p) => p.objects)) {
+      const f = syntheticFacts(s, p.firstObject, 'complete', h.epochTdb);
+      expect(f.rows.find((r) => r.key === 'syn:limit')!.uncertainty).toMatch(/proxy.*not a detection probability/);
+      const orbit = f.rows.find((r) => r.key === 'syn:orbit')!;
+      expect(orbit.uncertainty).toBe(p.model.positionUncertainty);
+      expect(orbit.uncertainty).toMatch(/C3.*not a bound/);
+      expect(orbit.method).toContain(String(p.model.motion));
+      expect(f.what).toMatch(/aggregate/);
+      const population = f.rows.find((r) => r.key === 'syn:population')!;
+      expect(population.uncertainty).toBe(p.model.uncertainty);
+      if (p.name === 'centaur') expect(population.uncertainty).toMatch(/44.*comet-flagged.*18.*suitability/);
+      if (p.center) expect(f.what).not.toMatch(/the debiased population|complete down to/);
+    }
+  });
+});
