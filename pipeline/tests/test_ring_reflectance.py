@@ -117,3 +117,14 @@ def test_rings_json_reflectance_shape():
         assert meas[key]["label"] == "measured" and meas[key]["label"] in LABEL_ORDER
     for prof in meas["radialProfiles"]["value"]:
         assert len(prof["iOverF"]) == prof["count"]
+
+
+def test_reflectance_keeps_estimated_cleaned_tau(model):
+    from pipeline.photometry import rings
+    _, _, cleaned = rings.saturn_profile(None)
+    ok = np.isfinite(cleaned.tau)
+    expected = np.interp(model.radius, cleaned.radius[ok], np.clip(cleaned.tau[ok], 0, None))
+    np.testing.assert_array_equal(model.tau, expected)
+    refl, _ = rr.model_json(None)
+    assert refl["reflectance"]["label"] == "estimated"
+    assert "opticalDepthEstimate" in refl["reflectance"]["method"]

@@ -417,6 +417,10 @@ def model_json(ctx: BuildContext | None) -> tuple[dict, RingModel]:
                *(cie.register_sources(ctx) if ctx else [cie.SOURCE_CMF, cie.SOURCE_SCOTOPIC])]
     ns = ", ".join(f"{REGIONS[k][0]} {v:.2f}" for k, v in m.n.items())
     method = (
+        "Uses the estimated cleaned UVIS profile (rings.json opticalDepthEstimate, saturn_profile), retained "
+        "as fitted: main-ring negative clamping and outside running-median removal/run selection; the full "
+        "assumptions and parameters are in opticalDepthEstimate.method. normalTau and all inversions/fits that "
+        "depend on it inherit estimated, regardless of which optical-depth profile the renderer admits. "
         "Classical single-scattering model of a many-particle-thick ring (Chandrasekhar 1960, Radiative Transfer; "
         "the reflection form is Salo & French 2010 Eq. 6, the transmission form is its diffuse-transmission "
         "counterpart), calibrated on measurements. (1) ϖP per channel for the C, B and A ring regions at α ≤ 6.3° "
