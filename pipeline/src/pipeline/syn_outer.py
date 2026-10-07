@@ -5,17 +5,18 @@ streams, yield) is the one of syn_model and docs/reports/synthetic-populations.m
 
   irregular moons   per planet, the debiased luminosity function of the deepest characterised survey, shifted onto the
                     MPC H_V scale by an offset measured on the survey's own photometry of known moons (calibrate). The
-                    completeness limit is the model-comparison rule of the model populations (moon_limit): the first
+                    fitted completeness proxy is the model-comparison rule of the model populations (moon_limit): the first
                     H bin, bright to faint, in which the known moons fall 2 sigma (Poisson) below the model. Below it,
                     each cell's model is the model's count in the H bin times the cell's share of the known moons
                     brighter than the limit (template_cells: the orbit distribution of the known moons, an assumption:
-                    no debiased orbit model of irregular moons exists). Elements are planet-barycentric (ecliptic
+                    no bias-corrected orbit distribution was found in the published sources reviewed). Elements are planet-barycentric (ecliptic
                     J2000); a planet without a published population below its completeness limit gets no moons.
   Centaurs          one realization of the Kurlander et al. (2025) literature model (Nesvorny et al. 2019 orbits,
                     Lawler et al. 2018 H law, 21 400 with H_r < 13.7): the archive keeps only members with 21 < m <
                     23.5, so each member is weighted by 1/P(selected | its distance modulus) (Horvitz-Thompson), which
-                    recovers the model's (a, e, i) distribution; H from the knee law, angles uniform (Murtagh et al.
-                    2025). It is then conditioned on the catalogue like the NEO and Kuiper-belt realizations.
+                    estimates the model's (a, e, i) distribution on reconstructible states; H from the knee law, angles uniform (Murtagh et al.
+                    2025). It is then conditioned on eligible asteroid counts like NEOs/TNOs; comet flags are excluded.
+                    The cited survey rejects the joint orbit/H model, though marginal distributions agree.
 """
 
 from __future__ import annotations

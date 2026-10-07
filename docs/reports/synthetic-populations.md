@@ -1,12 +1,12 @@
 # Synthetic populations: the COMPLETE level (M6)
 
-Status of milestone M6 (NORTH_STAR §3.3, docs/research/m6-populations.md). The pipeline stage `synthetic` adds 2 969 849 synthetic small bodies: objects no survey has found yet. They fill only what the catalogue is missing, cell by cell in (a, e, i, H). Sections 1–11 describe the asteroid and Kuiper-belt populations (2 948 454 objects); §12 adds the Centaurs and the irregular moons (21 395). The GPU field draws them at the Complete level only; Complete is now the default level. Every synthetic object carries the `synthetic` label on every attribute, with its population model, cell, deficit and seed as provenance.
+Status of milestone M6 (NORTH_STAR §3.3, docs/research/m6-populations.md). The pipeline stage `synthetic` adds 2 969 849 synthetic small bodies: statistical stand-ins for conditioned model deficits, cell by cell in (a, e, i, H). They are not individually established undiscovered objects. The fitted completeness guard is not a detection probability or observation veto; the generators do not establish all five NORTH_STAR §3.3 promises. See [the audited limitations and sampled drift](synthetic-limitations.md). Sections 1–11 describe the asteroid and Kuiper-belt populations (2 948 454 objects); §12 adds the Centaurs and the irregular moons (21 395). The GPU field draws them at the Complete level only; Complete is now the default level. Every known synthetic attribute carries the `synthetic` label; absent rotation is `unknown`, with its population model, cell, deficit and seed as provenance.
 
-Numbers here come from the 2026-09-30 build; `docs/reports/synthetic-populations.json` is written by the stage.
+Numbers and screenshots here are historical (2026-09-30 / 2026-10-01); captured inspector wording predates the disclosure corrections above. Current product metadata is the authority; `docs/reports/synthetic-populations.json` is written by the stage.
 
 ## 1. Populations
 
-| population | region | model | completeness limit | faint limit (H_V) | catalogued in grid | synthetic |
+| population | region | model | completeness proxy | faint limit (H_V) | catalogued in grid | synthetic |
 |---|---|---|---|---|---:|---:|
 | `neo` | q < 1.3 au | Granvik et al. (2018) realization, 802 000 NEOs with 17 < H < 25 | first H bin where the catalogue is 2σ below the model | 25.0 (the model's end) | 42 526 | 775 504 |
 | `hungaria` | 1.78 ≤ a < 2.0 au, q ≥ 1.3 | the catalogue plus a debiased slope (Maeda et al. 2021) | Hendler & Malhotra (2020), C = 20.42 ± 0.05 | 20.0 (parameter) | 38 714 | 6 036 |
@@ -21,7 +21,7 @@ Not modelled here: the region between the Hildas and the Trojans, and comets. No
 
 Sources: `granvik-2018-neo-model`, `cfeps-l7-synthetic-model`, `hendler-malhotra-2020`, `maeda-2021-hsc` (cross-checked by `heinze-2019-decam`), `yoshida-terai-2017-hsc`, `terai-yoshida-2018-hsc`, `petit-2011-cfeps`, `jester-2005-sdss`. Each has a note in docs/sources. The numbers taken from papers are transcribed in `pipeline/src/pipeline/syn_tables/populations.json` with section and table references. The PDFs are kept with their sha256.
 
-## 2. Completeness: where the catalogue stops being complete
+## 2. Completeness proxy from catalogue counts
 
 The main belt, Hungarias, Hildas and Trojans use the method of **Hendler & Malhotra (2020)**:
 
@@ -30,21 +30,21 @@ The main belt, Hungarias, Hildas and Trojans use the method of **Hendler & Malho
 
 C is **refitted to the current catalogue on every build**. For the main belt C = 21.357 today, against 20.28 for the paper's 2019 catalogue: the limit has moved one magnitude fainter (H_lim = 18.5 at 2.5 au, 17.5 at 3.0 au). This is how the layer yields to discoveries at the population level, as surveys deepen. The residual scatter of the per-bin limits about the curve is 0.15 mag (main belt) to 0.22 mag (Hungarias).
 
-For the model-realization populations (NEOs, TNOs), no single survey limit applies. So the limit per a-bin is the lower edge of the first H bin, from bright to faint, in which the catalogue has significantly fewer objects than the model (known < model − 2√model, any e and i). Brighter bins are treated as complete: within Poisson noise, the catalogue already holds everything the model predicts. **No synthetic object is ever brighter than the limit of its a-bin.** The stage asserts this on its output, and both test suites check it on the products (0 violations).
+For the model-realization populations (NEOs, TNOs), no single survey limit applies. So the limit per a-bin is the lower edge of the first H bin, from bright to faint, in which the catalogue has significantly fewer objects than the model (known < model − 2√model, any e and i). Brighter bins receive no samples under this proxy rule. Agreement of counts within the Poisson threshold does not establish measured completeness; model normalization and systematic uncertainty are omitted from that threshold. **No synthetic object is ever brighter than the limit of its a-bin.** The stage asserts this on its output, and both test suites check it on the products (0 violations).
 
-## 3. The debiased model per cell
+## 3. The conditional population model per cell
 
 Cells: a-bins of 0.02 au (NEOs 0.25 au; TNOs 1 au to 50 au, then 5, 25 and 100 au), e bins of 0.05 (NEO, TNO 0.1), i bins of 2.5° (NEO 10°, TNO 5°), H bins of 0.5 mag aligned on multiples of 0.5. The grid is fixed and does not depend on the catalogue.
 
 **Catalogue-extrapolated populations** (main belt, Hungarias, Hildas, Trojans):
 
-- *Normalization:* the catalogue's own count in the complete reference bin [H_lim − 1, H_lim − 0.5) of each a-bin. This is one bin brighter than the limit, because the peak method marks where incompleteness already starts.
+- *Normalization:* the catalogue's own count in the assumed representative bright reference bin [H_lim − 1, H_lim − 0.5) of each a-bin. This is one bin brighter than the limit, because the peak method marks where incompleteness already starts.
 - *Fainter than H_lim:* a published debiased slope, dN/dH ∝ 10^(αH):
-  - main belt and Hungarias: α = 0.23 ± 0.01 (Maeda et al. 2021, Subaru/HSC, H_V 16.94–20.55). The catalogue's own slope where it is complete at those magnitudes (a 2.12–2.3 au, H 17–18.5) is 0.25, and Heinze et al. (2019) find 0.218 ± 0.026 in apparent magnitude.
+  - main belt and Hungarias: α = 0.23 ± 0.01 (Maeda et al. 2021, Subaru/HSC, H_V 16.94–20.55). The catalogue's own slope where it is assumed representative at those magnitudes (a 2.12–2.3 au, H 17–18.5) is 0.25, and Heinze et al. (2019) find 0.218 ± 0.026 in apparent magnitude.
   - Hildas: α = 0.38 ± 0.02 (Terai & Yoshida 2018).
   - Trojans: α = 0.37 ± 0.01 (Yoshida & Terai 2017).
 - *Bright of the break:* in the outer belt the reference bin lies brighter than Maeda's slope break (H_V 16.94). There the catalogue's own slope, measured over [H_lim − 2, H_lim − 0.5) and pooled over ±0.04 au, is used up to the break (80 of 85 a-bins fitted; 5 fall back to 0.23).
-- *Orbit distribution:* f(e, i | a) is that of the complete (H < H_lim) catalogue in the same a-bin, so the cell model is f(e, i | a) × N(a, H). This assumes the (e, i) distribution does not depend on H within an a-bin (families differ).
+- *Orbit distribution:* f(e, i | a) is that of the bright (H < H_lim) catalogue, assumed representative without survey selection correction in the same a-bin, so the cell model is f(e, i | a) × N(a, H). This assumes the (e, i) distribution does not depend on H within an a-bin (families differ).
 
 **Model-realization populations** (NEOs, TNOs): the cell model is the number of realization members in the cell. For TNOs H_V = H_g − 0.423 (mean CFEPS g − r = 0.70; V = g − 0.59 (g − r) − 0.01, Jester et al. 2005). The L7 file's λN = 5.489 was read as radians (314.50°); Neptune's mean longitude at the L7 epoch from DE442s is 314.42°, a difference of 0.08°. Model members are moved two-body from the L7 epoch (2004-06-01) to the small-body epoch.
 
@@ -57,7 +57,7 @@ Per cell, over the conditioned H range [max(bin, H_lim), min(bin, floor)):
 
 Clipping cell by cell adds 0.4√N objects per nearly complete cell in expectation. The group scaling removes that bias, and deficit ≤ raw always. Summed over the main belt: raw deficit 2 004 980, deficit 1 987 565.
 
-The cell table records, for every cell: the box, the completeness limit, the model and catalogued counts, the raw and scaled deficits, the rounding offset u0, how many objects it shows and where they start. The inspector reads these to say what a synthetic object stands for (§8).
+The cell table records, for every cell: the box, the completeness proxy, the model and catalogued counts, the raw and scaled deficits, the rounding offset u0, how many objects it shows and where they start. The inspector reads these to say what a synthetic object stands for (§8).
 
 ## 5. Determinism and yield to discoveries
 
@@ -65,10 +65,10 @@ The cell table records, for every cell: the box, the completeness limit, the mod
   - Catalogue-extrapolated populations draw an ordered list of candidates, 10 uniforms each: a, e, i uniform in the cell box; H from the slope law inside the H bin; the angles; the albedo and rotation quantiles.
   - Model populations order their cell's model members by random keys.
 - **Shown objects.** The cell shows the first floor(deficit + u0) candidates that pass its current limits (H ≥ H_lim, q ≥ 1.3 au). u0 comes from sha256(same string + '|round'), which makes the rounding unbiased.
-- **When the catalogue grows,** the catalogued count rises, the deficit falls, and the list is truncated from its end. The remaining synthetic objects keep their places. If the limit itself moves fainter (C refitted), candidates brighter than the new limit drop out.
+- **Yield is aggregate, not one-to-one replacement.** With fixed model, limits and templates, eligible known counts reduce group deficits within cell rounding. Catalogue releases can refit the completeness proxy, reference normalization, slopes, orbit and attribute templates: monotonic population counts and stable per-object identities are not guaranteed. No discovery is matched to a particular synthetic orbit.
 - **Determinism.** Rerunning the stage gives byte-identical products (checked: sha256 of objects.bin and cells.bin across rebuilds), and the pytest checks it too. A different seed gives different objects.
 
-Yield test (scratch run on the real catalogue; the pytest runs the Trojan case). We removed N catalogued objects fainter than the limit + 0.6 mag, and compared the synthetic objects shown in the removed objects' (a, H) groups. First with the completeness limit pinned to the original fit (`completenessC`), which isolates the conditioning, then with C refitted:
+Yield test (scratch run on the real catalogue; the pytest runs the Trojan case). We removed N catalogued objects fainter than the limit + 0.6 mag, and compared the synthetic objects shown in the removed objects' (a, H) groups. First with the completeness proxy pinned to the original fit (`completenessC`), which isolates the conditioning, then with C refitted:
 
 | population | removed | + synthetic in their groups, C pinned | earlier objects kept | + synthetic, C refitted |
 |---|---:|---:|---:|---:|
@@ -102,7 +102,7 @@ Quantile draws keep an object's attributes nearly stable when the template sampl
 
 The faint limit (H floor) is a parameter per population: `SYNTHETIC_PARAMS='{"hFloor": {"mainbelt": 19.5}}'`. The defaults are:
 
-- **NEO 25.0, Hildas 18.25, Trojans 17.65, TNO 8.077:** the faint end of the model or of the survey that measured the slope. The layer never extrapolates beyond a measured range.
+- **NEO 25.0, Hildas 18.25, Trojans 17.65, TNO 8.077:** the faint end of the model or of the survey that measured the slope. The magnitude floors stay within the cited magnitude-law ranges; this does not certify the joint orbit/size model or Hungaria use of the main-belt slope.
 - **Main belt and Hungarias 20.0:** a budget choice inside Maeda's measured range. The stage refuses floors beyond H_V 20.55. Main-belt synthetic counts by floor: H 19.0 → 0.62 M, 19.5 → 1.18 M, 20.0 → 1.99 M, 20.5 → 3.09 M.
 
 The default gives catalogue + synthetic ≈ 4.5 M objects. On the GPU that is 32 bytes of elements per synthetic object and 32 bytes of point record per object: 189 MB for the layer, and a 145 MB records buffer. The records buffer is larger than the WebGPU default binding size of 128 MiB. The renderer requests the adapter's limits; where the device cannot bind it, the field draws no synthetic objects and says why (Data panel and a message). Tens of millions of objects would need the records split over several bindings. The design allows it, but it is not done.
@@ -135,11 +135,11 @@ Pick finds a synthetic object at Complete and returns nothing at Best. With the 
   - no resolved shape, and a navigation radius from D(H, p_V).
 - The HUD reads "N catalogued + M synthetic small bodies drawn / K withheld at Complete". The Data panel lists the layer per population.
 - **Complete is the default level** when the build has a synthetic layer and small bodies are enabled (reality.ts `defaultReality({ syntheticLayerAvailable })`, driven by the manifest; with `smallbodies=0` Best estimate stays the default). A level chosen by the user or the URL is kept.
-- The **inspector** of a synthetic object opens with "What this is", for example: "Not a real object. It stands in for one of ~N undiscovered main-belt asteroids in its cell (a …, e …, i …, H …). The model (…) expects X objects there; the catalogue has Y, complete down to H_lim at this a, so D are missing and S synthetic objects are shown in this cell. When surveys find more, …". It then lists the rows "Stands in for", "Survey completeness limit here", "Seed and place in the cell" (the stream string and candidate number), orbit, H, G, p_V, diameter and rotation, each with the `synthetic` chip, its method and sources.
+- The **inspector** of a synthetic object opens with "What this is", for example: "Not a real object. It stands in for one of ~N model-deficit main-belt asteroids in its cell (a …, e …, i …, H …). The model (…) expects X objects there; the catalogue has Y, with fitted completeness proxy H_lim at this a; the conditional deficit is D and S synthetic objects are shown. Yield is aggregate, not one-to-one replacement, and catalogue refits can change identities.". It shows a "Population model and limitations" row with method and uncertainty from the product, then lists "Stands in for", "Completeness proxy here", "Seed and place in the cell" (the stream string and candidate number), orbit, H, G, p_V, diameter and rotation, each with the `synthetic` chip, its method and sources.
 
 ## 9. Verification
 
-- **Catalogue + synthetic vs the debiased model**, per population and H bin (`img/synthetic-h-distributions.svg`, written by the stage; `wholePopulation` in the JSON). The cumulative N(<H) of catalogue + synthetic follows the model to:
+- **Catalogue + synthetic vs the population model**, per population and H bin (`img/synthetic-h-distributions.svg`, written by the stage; `wholePopulation` in the JSON). The cumulative N(<H) of catalogue + synthetic follows the model to:
   - 0.03 % (main belt, N(H < 20) 3 400 940 vs 3 400 726);
   - 0.1 % (Hungarias, Trojans) and 0.5 % (Hildas);
   - 3.5 % (NEOs) and 11 % (TNOs) at the bright end. There the catalogue is within 2σ of the model and no synthetic objects are added; by H ≥ 20 (NEO) and ≥ 6.5 (TNO) the difference is below 1 %.
@@ -153,13 +153,13 @@ Pick finds a synthetic object at Complete and returns nothing at Best. With the 
   - `img/synthetic-inside-belt-eye.png`: inside the main belt at 2.7 au, at Complete, naked eye, looking away from the Sun. It is still nearly empty. All 4.5 M small bodies are drawn with their brightness, but none reaches the eye's limit of V 7.6: the brightest catalogued one is V 7.8, the brightest synthetic one V 14.1. The 4650 points are stars.
   - `img/synthetic-diagnostic-known-vs-synthetic.png`, written by the stage: a DIAGNOSTIC data plot, not a rendering. Catalogued objects are cyan and synthetic objects orange, in log density.
     - Left: positions at the epoch seen from ecliptic north. You can see the synthetic NEOs inside 2 au, the belt, the two Trojan swarms 60° ahead of and behind Jupiter, and the Hildas.
-    - Right: the a–H plane with each a-bin's completeness limit in white. The synthetic objects lie only below the line (fainter), fill the belt down to the floor at H 20, and follow the Kirkwood gaps of the catalogue above them.
+    - Right: the a–H plane with each a-bin's completeness proxy in white. The synthetic objects lie only below the line (fainter), fill the belt down to the floor at H 20, and follow the Kirkwood gaps of the catalogue above them.
   - `img/synthetic-render-best-vs-complete.png`: the same diagnostic camera rendered twice. The camera is 3 au above the Sun, looking down at the belt beyond it, with an 8° field, the Sun and stars left out, and enhanced exposure of +24 stops (limiting V 25.7). Left, at Best, the catalogue alone draws 40 797 points; right, at Complete, catalogue + synthetic draw 62 125. The synthetic objects are fainter than the catalogue's by construction, so even this far beyond the eye they add a faint haze of points, not a new structure. The eye model renders such faint points scotopic (grey), so the test page's false-colour option (`syntint=1`) cannot separate them in a render. The data plot above does that.
   - `img/synthetic-app-inspector.png`: the app at its default level (Complete) with a synthetic main-belt asteroid selected, showing the inspector and the HUD counts.
 
 ## 10. Limitations
 
-- Synthetic orbits are statistical samples on fixed two-body ellipses. They are not integrated with planetary perturbations: that would add nothing a synthetic object could claim. Positions on the GPU are good to ~1e-7 of the distance, so there are no close-ups of synthetic objects.
+- Synthetic orbits are statistical samples on fixed two-body ellipses, outside the catalogue force-model integration path. GPU arithmetic agreement with that same Kepler law does not bound omitted-force position drift. Individual true positions and object/viewpoint position budgets are unknown; [audit C3](synthetic-limitations.md#sampled-propagation-drift-c3) gives representative discrepancies over the built window, including degree-scale moon errors. Perturbations matter for the time coherence of the sampled universe.
 - Within a cell, a, e and i are uniform. Within an a-bin, (e, i) comes from the bright catalogue; families and their different size distributions are not modelled separately.
 - The main-belt slope is one slope for the whole belt: Maeda's sample reaches R ≤ 3.0 au, and the outer belt and Hungarias use it by assumption. The slope's ±0.01 changes the synthetic main belt by −5.4 % / +5.6 % (1.88 M / 2.10 M at H 20).
 - The layer is conditioned on the SBDB snapshot. Its known counts include single-opposition objects: they were detected.
@@ -182,7 +182,7 @@ The app screenshot is the default view, followed in the page by `__app.select(id
 
 ## 12. Centaurs and irregular moons
 
-Added 2026-10-01: 20 937 synthetic Centaurs and 458 synthetic irregular moons (435 of Jupiter, 23 of Saturn, none of Uranus or Neptune). The rules are those of §§2–6: each cell gets only its deficit below a completeness limit measured against the current catalogue, the streams are per cell, and every attribute is `synthetic`. The 2 948 454 objects of §§1–11 are unchanged, byte for byte: the new populations come after them in `objects.bin` and `cells.bin`. Code: `pipeline/syn_outer.py`; the numbers taken from papers are transcribed with section and table references in `syn_tables/populations.json` (`centaurs`, `irregularMoons`).
+Added 2026-10-01: 20 937 synthetic Centaurs and 458 synthetic irregular moons (435 of Jupiter, 23 of Saturn, none of Uranus or Neptune). The rules are those of §§2–6: each cell gets only its deficit fainter than a completeness proxy fitted against eligible known counts, the streams are per cell, and every attribute is `synthetic`. The 2 948 454 objects of §§1–11 are unchanged, byte for byte: the new populations come after them in `objects.bin` and `cells.bin`. Code: `pipeline/syn_outer.py`; the numbers taken from papers are transcribed with section and table references in `syn_tables/populations.json` (`centaurs`, `irregularMoons`).
 
 | population | model | conditioned on | limit (H_V) | faint limit (H_V) | known | synthetic |
 |---|---|---|---|---|---:|---:|
@@ -196,18 +196,18 @@ New sources (notes in docs/sources): `kurlander-2025-archive` and `kurlander-202
 
 ### 12.1 Centaurs
 
-**The model.** The only published Centaur model with a debiased normalization that can be downloaded is the "literature population" of Kurlander et al. (2025). It combines the orbital distribution of the Nesvorný et al. (2019) dynamical model with H drawn from the Lawler et al. (2018) knee law (slope 0.9 → 0.4 at H_r 7.7, H_r < 13.7): 26 116 868 members, of which their Zenodo archive keeps the 856 822 with apparent magnitude 21 < m < 23.5. Their survey normalizes it to 21 400 Centaurs with H_r < 13.7 (Nesvorný et al. 2019 found 21 000 ± 8 000 from OSSOS). The archive's population is q > 5.2 au, a < 30 au (the MPC definition): the Gladman cuts (q > 7.35 au, T_J > 3.05) are not applied, so its Jupiter-crossing members are included.
+**The model.** The downloaded Centaur model with a survey-derived normalization is the "literature population" of Kurlander et al. (2025). It combines the orbital distribution of the Nesvorný et al. (2019) dynamical model with H drawn from the Lawler et al. (2018) knee law (slope 0.9 → 0.4 at H_r 7.7, H_r < 13.7): 26 116 868 members, of which their Zenodo archive keeps the 856 822 with apparent magnitude 21 < m < 23.5. Their survey normalizes it to 21 400 Centaurs with H_r < 13.7 (Nesvorný et al. 2019 found 21 000 ± 8 000 from OSSOS). The archive's population is q > 5.2 au, a < 30 au (the MPC definition): the Gladman cuts (q > 7.35 au, T_J > 3.05) are not applied, so its Jupiter-crossing members are included.
 
-**Undoing the archive's selection.** H was drawn independently of the orbit, so a member with distance modulus d = m − H was kept with probability P(d) = F(23.5 − d) − F(21 − d), with F the H law's cumulative fraction. Weighting each member by 1/P(d) recovers the whole model (a Horvitz–Thompson estimate). Two checks, both independent of the synthetic layer:
+**Undoing the archive's selection.** H was drawn independently of the orbit, so a member with distance modulus d = m − H was kept with probability P(d) = F(23.5 − d) − F(21 − d), with F the H law's cumulative fraction. Weighting by 1/P(d) estimates the reconstructible model under the assumed independent H law (Horvitz–Thompson); this is archive magnitude selection, not the survey’s orbit-sensitive detection efficiency. The cited survey rejects the model’s joint distribution (§5.3), though its marginals agree. Two checks, both independent of the synthetic layer:
 
 - **The H law is the one stated.** In slices of d, the members' H follow the law restricted to [21 − d, 23.5 − d]: χ² per bin 0.92 over 146 bins for the knee as a differential law (continuous dN/dH), against 61.8 for the other reading (cumulative law continuous at the knee). The first is used.
 - **The weights add up to the model.** Σ 1/P = 25 845 299 against the archive's 26 116 868 (0.990). The 1 % missing are model states that could never have been selected (r ≲ 5.6 au: always brighter than m = 21). The effective sample size is 118 078.
 
 **The realization.** 21 400 members (the normalization). Each takes (a, e, i) by systematic resampling of the archive's members with weights 1/P (21 125 distinct orbits), H_r from the knee law by inverse transform, and uniform angles, as Murtagh et al. (2025) do because the model's angles are uncorrelated. H_V = H_r + 0.265: V − r = 0.41 (g − r) − 0.01 (Jester et al. 2005), with g − r = 0.67 from the 3:1 mix of less-red (Bienor-like) and red (Pholus-like) colours of Murtagh et al. (2025). The realization is seeded from a fixed string in the tables. Like the NEO and Kuiper-belt realizations, it is a fixed input, independent of the catalogue and of the stage seed.
 
-**Conditioning.** As for the NEOs and TNOs (§§2–5). Cells are 1 au in a (5.35–6 au, then 6–30 au), 0.1 in e, 5° in i (0–180°) and 0.5 mag in H. The limit per a-bin is the first H bin in which the 441 catalogued Centaurs number fewer than model − 2√model. Inside 10 au the model never exceeds the catalogue by that much (it has few Centaurs there), so no synthetic Centaur has a < 10.18 au. Farther out the limit falls from H_V 13.5 at 10–11 au to 7.5–8.5 at 26–30 au. The conditioned cells hold a model of 21 176, with 240 catalogued in their groups: deficit 20 936, shown 20 937. Per H bin, catalogued + synthetic = model within 1 % where the model has more than 2 000 (H 12.5–13: 3 244 vs 3 254; 13–13.5: 5 049 vs 5 061). The 44 catalogued comets in the region (29P and others) have no nuclear H and are not counted (`cataloguedCometsNotCounted`).
+**Conditioning.** As for the NEOs and TNOs (§§2–5). Cells are 1 au in a (5.35–6 au, then 6–30 au), 0.1 in e, 5° in i (0–180°) and 0.5 mag in H. The limit per a-bin is the first H bin in which the 441 catalogued Centaurs number fewer than model − 2√model. Inside 10 au the model never exceeds the catalogue by that much (it has few Centaurs there), so no synthetic Centaur has a < 10.18 au. Farther out the limit falls from H_V 13.5 at 10–11 au to 7.5–8.5 at 26–30 au. The conditioned cells hold a model of 21 176, with 240 catalogued in their groups: deficit 20 936, shown 20 937. Per H bin, catalogued + synthetic = model within 1 % where the model has more than 2 000 (H 12.5–13: 3 244 vs 3 254; 13–13.5: 5 049 vs 5 061). All 44 catalogued comet-flagged objects in the region (29P and others) are excluded by the generator’s comet flag (`cataloguedCometsNotCounted`). It does not read or qualify their bare-nucleus photometry. Audit C1’s comet table finds 18 with M2 nuclear-magnitude laws in the built comet product; their suitability for bare-nucleus H is not established. “No nuclear H” is not an accurate description of all 44. See [the audit summary](synthetic-limitations.md).
 
-**No double counting.** The Centaur grid starts at a = 5.35 au, the Trojan grid's upper edge, so the 176 catalogued objects with q > 5.2 au and a < 5.35 au stay Trojans. It ends at 30.0 au, where the Kuiper-belt grid starts. The model has no members inside 5.37 au; 18 at a ≥ 30 au or q ≤ 5.2 au are dropped. The pytest checks that the grids do not overlap and that every synthetic Centaur has q > 5.2 au.
+**Non-overlapping a grids.** The Centaur grid starts at a = 5.35 au, the Trojan grid's upper edge, so the 176 catalogued objects with q > 5.2 au and a < 5.35 au stay Trojans. It ends at 30.0 au, where the Kuiper-belt grid starts. The model has no members inside 5.37 au; 18 at a ≥ 30 au or q ≤ 5.2 au are dropped. The pytest checks that the grids do not overlap and that every synthetic Centaur has q > 5.2 au.
 
 **Attributes.** p_V and colour class are quantile draws from the 34 measured Centaur albedos in the catalogue (NEOWISE/SBDB; p_V 0.041–0.215; 28 with the `population` colour class, three D, one each Ch, K and S). Rotation comes from LCDB by diameter (§6). Synthetic Centaurs have H_V 7.6–14.0 and D 4.6–168 km (median 11 km). The brightest could reach V ≈ 18.4 from the Earth at opposition, so none is visible to the eye.
 
@@ -219,14 +219,14 @@ New sources (notes in docs/sources): `kurlander-2025-archive` and `kurlander-202
 
 - **Jupiter** (Ashton et al. 2020; CFHT, 2010; characterisation limit m_r = 25.7): 160 ± 60 retrograde moons with m_r < 24 and 600 (within a factor of 2) with m_r < 25.7, differential slope α = 0.29 ± 0.15. The model is the 440 moons between m_r 24 and 25.7, with that slope. Prograde jovians are not in it (they were not debiased), so none are added.
 - **Saturn** (Ashton et al. 2021; CFHT, 2019): 150 ± 30 moons with D > 2.8 km (m_w 26.3), and q = 4.9 for D 3.8–2.8 km, i.e. N(<m) ∝ 10^(0.78 m) over m_w 25.7–26.3 (99 moons in that range).
-- **Uranus and Neptune** (Sheppard et al. 2005, 2006, 2024): the outer satellites are "nearly complete" to m_r ≈ 26.5 (D ≈ 8 km) and 27 (D ≈ 14 km). No population fainter than that is published (the only slope is measured above the limit). The layer does not extrapolate beyond a measured range, so it adds nothing there.
+- **Uranus and Neptune** (Sheppard et al. 2005, 2006, 2024): the outer satellites are "nearly complete" to m_r ≈ 26.5 (D ≈ 8 km) and 27 (D ≈ 14 km). No supported fainter population was found in the sources reviewed (the only slope is measured above the limit). The layer does not extrapolate beyond a measured range, so it adds nothing there.
 
 **Putting the models on the H_V scale.** The surveys give apparent magnitudes in their own bands. Their own photometry of known moons gives the offset to the MPC's H_V, and that offset absorbs the geometry, the phase angle and the colour:
 
 - Jupiter: H_V = m_r − 6.37 ± 0.06 (median of 7 moons in Ashton et al. 2020 Table 1, robust σ 0.13; Jupiter LI is a 1.7-mag outlier that the median ignores).
 - Saturn: H_V = m_w − 9.98 ± 0.05 (22 moons in Ashton et al. 2021 Tables 1–2, robust σ 0.17; 10 designations renumbered since 2021 are not matched).
 
-**Completeness limit.** The model-comparison rule of §2 is applied over H bins, to all known moons of the class, giving one limit per planet:
+**Completeness proxy.** The model-comparison rule of §2 is applied over H bins, to all known moons of the class, giving one limit per planet:
 
 | planet | H_V bin | model | known | 2σ short? |
 |---|---|---:|---:|---|
@@ -235,9 +235,9 @@ New sources (notes in docs/sources): `kurlander-2025-archive` and `kurlander-202
 | Saturn | 15.72–16.0 | 33.4 | 26 | no |
 | | 16.0–16.32 | 65.6 | 46 | yes → limit 16.0 |
 
-The limits lie fainter than the surveys' own statements of completeness. Sheppard et al. (2024) give Jupiter as "complete to about 2 km" and Saturn "to about 3 km" (albedo 0.1), i.e. H_V ≈ 16.6 and 15.7, so no synthetic moon is brighter than what they report as complete. Saturn's catalogue now holds 115 moons brighter than the model's faint end, against the model's 150 ± 30: the 2023 discoveries (Ashton et al. 2025, RNAAS 9, 57) have nearly caught up with the 2021 estimate, and only the last 0.3 mag is still short.
+The limits lie fainter than the surveys' own statements of completeness. Sheppard et al. (2024) give Jupiter as "complete to about 2 km" and Saturn "to about 3 km" (albedo 0.1), i.e. H_V ≈ 16.6 and 15.7, so no stored moon H is brighter than those quoted aggregate limits. This does not evaluate detection probability for its orbit, phase or survey field. Saturn's catalogue now holds 115 moons brighter than the model's faint end, against the model's 150 ± 30: the 2023 discoveries (Ashton et al. 2025, RNAAS 9, 57) have nearly caught up with the 2021 estimate, and only the last 0.3 mag is still short.
 
-**Orbits: an assumption about the unseen population.** The generator does not ingest a debiased orbit distribution for Jupiter's or Saturn's irregular moons. It uses bright known moons as templates: the MPC (a, e, i) of the modelled class with H_V brighter than the completeness limit and inside the grid (Jupiter: retrograde only; Saturn: all outer irregulars). The reported build has 91 jovian retrogrades in 42 cells and 69 saturnians in 60, in cells of 0.01 au × 0.1 × 5°. A cell's model is the luminosity model's count in the H bin times the cell's share of those bright templates (`syn_outer.template_cells`). Known moons are subtracted and the deficits conditioned before sampling. Within an occupied cell, a, e and i are uniform, and the node, argument of pericentre and mean anomaly are independently uniform over 0–360° (`syn_model.sample_extrapolated`, `synthetic.assign_angles`). The synthetic moons therefore occupy the bright known families' cells (see the diagnostic below); they are not copies of individual known orbits. The `synthetic/objects.json` header states the orbit assumption (`populations[].model.orbitDistribution`), and the inspector repeats it.
+**Orbits: an assumption about the unseen population.** The generator does not ingest a debiased orbit distribution for Jupiter's or Saturn's irregular moons. It uses bright known moons as templates: the MPC (a, e, i) of the modelled class with H_V brighter than the completeness proxy and inside the grid (Jupiter: retrograde only; Saturn: all outer irregulars). The reported build has 91 jovian retrogrades in 42 cells and 69 saturnians in 60, in cells of 0.01 au × 0.1 × 5°. A cell's model is the luminosity model's count in the H bin times the cell's share of those bright templates (`syn_outer.template_cells`). Known moons are subtracted and the deficits conditioned before sampling. Within an occupied cell, a, e and i are uniform, and the node, argument of pericentre and mean anomaly are independently uniform over 0–360° (`syn_model.sample_extrapolated`, `synthetic.assign_angles`). The synthetic moons therefore occupy the bright known families' cells (see the diagnostic below); they are not copies of individual known orbits. The `synthetic/objects.json` header states the orbit assumption (`populations[].model.orbitDistribution`), and the inspector repeats it.
 
 **Against NORTH_STAR §3.3 rule 1.** Carrying the bright templates' orbit distribution into the faint, unseen population assumes that its cell proportions remain the same. No survey selection correction is applied to the orbit templates. The cited debiased luminosity functions constrain the number and H distribution, but the generator's orbit distribution remains an assumption, rather than a debiased survey model. It therefore falls short of [the rule requiring size and orbit distributions corrected for survey bias](../../NORTH_STAR.md#33-missing-data-is-not-missing-reality). The `synthetic` labels and explicit method text disclose this limitation; they do not resolve it or relax the rule. See [the MPC source note](../sources/mpc-natsats.md#caveats).
 
@@ -249,11 +249,7 @@ The limits lie fainter than the surveys' own statements of completeness. Sheppar
 
 Synthetic jovian moons have D 0.8–2.3 km (V ≥ 24.3 from the Earth), saturnian ones D 2.3–3.7 km (V ≥ 25.5).
 
-**Motion.** The elements are about the planet-system barycentre (`populations[].center`: its NAIF id and the system GM from gm_de440). The moons move on fixed Kepler ellipses, with their angles at the small-body epoch, so a synthetic moon follows its planet. A synthetic moon's position is a statistical sample anyway, so these are neglected:
-
-- the Sun's perturbation: precession of the node and pericentre by a few degrees over the ±18-month window, and short-period terms of a few per cent of a;
-- the planet's oblateness;
-- the other moons.
+**Motion.** The elements are about the planet-system barycentre (`populations[].center`: its NAIF id and the system GM from gm_de440). Fixed two-body elements are translated with the host ephemeris. Solar perturbations, oblateness and other moons are omitted. The [C3 sampled drift table](synthetic-limitations.md#sampled-propagation-drift-c3) reports a Jovian representative maximum of 7,943,358.2 km and 27.285603° from the planet centre, and a Saturnian maximum of 1,647,439.4 km and 5.000635° over 2025-04-04 to 2028-04-04. These are sampled diagnostic discrepancies, not bounds for all objects or observers. The inspector displays them as historical evidence and states the individual position budget as unknown.
 
 ### 12.3 The app
 
@@ -284,7 +280,7 @@ Synthetic jovian moons have D 0.8–2.3 km (V ≥ 24.3 from the Earth), saturnia
 - The Centaur normalization is uncertain by +16/−13 % (Kurlander et al. 2025). Their survey also rejects the model's joint (a, e, i, H) distribution while accepting each marginal: it sees fewer Centaurs at a < 18 au, and more at 18–20.5 au, than the model. The synthetic Centaurs inherit the model's joint distribution.
 - The Jupiter model is uncertain by a factor of 2. Its normalization rests on one field 1.5° west of Jupiter, scaled by the known moons' sky distribution (a multiplier of 11 ± 5).
 - The Saturn deficit (22 moons) is smaller than the model's own ±30 uncertainty. It is shown because the rule is the same for every population.
-- Irregular-moon orbits are the known moons' (an assumption). Prograde jovians, and Uranian and Neptunian moons fainter than the completeness limits, are absent for want of a published population.
+- Irregular-moon orbits are the known moons' (an assumption). Prograde jovians, and Uranian and Neptunian moons fainter than the completeness proxys, are absent for want of a published population.
 - Centaurs with q > 5.2 au and a < 5.35 au are counted as Trojans. The Centaur-region comets are not counted in the conditioning.
 
 ### 12.6 Reproduce

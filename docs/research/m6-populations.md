@@ -1,5 +1,7 @@
 # M6 research: debiased population models for the synthetic layer
 
+Historical research and proposed algorithms, not evidence that the current generator satisfies NORTH_STAR. As audited on 2026-10-07, the implementation uses a/H completeness proxies and count conditioning without a pointing/efficiency veto; candidate retirement is aggregate, with no nearest-discovery matching or replacement log. Bright orbit/physical templates are not selection-corrected, and the Centaur joint model is rejected by its cited survey. [Current limitations and sampled propagation drift](../reports/synthetic-limitations.md).
+
 Status: research notes for M6 ("small bodies below survey completeness, drawn from debiased population models, yielding to discoveries"; NORTH_STAR 3.3). Written 2026-09-30.
 
 **How this was verified.** URLs were checked with HEAD or GET requests on 2026-09-30. Model numbers are quoted from the papers' abstracts or tables, retrieved from arXiv or the publisher. DOIs were checked against Crossref or DataCite. Label shorthand: **M** measured, **D** derived, **E** estimated, **S** synthetic, **U** unknown.
@@ -23,12 +25,12 @@ Status: research notes for M6 ("small bodies below survey completeness, drawn fr
   - Model: **H_lim(a) = −5 log₁₀(a·(a − 1 au)) + C**, with a in au.
   - Main-belt fit (MPCORB, Sept 2019): **C = 20.28 ± 0.03**, giving H_lim = 18.4 at 2.12 au and 15.9 at 3.25 au.
   - Median H_lim by region (their Table 1): Hungarias 18.38, inner belt 17.76, middle belt 17.01, outer belt 16.28, Hildas 15.69, Jupiter Trojans 13.88.
-  - The method takes the peak of the observed H histogram per a-bin, so completeness is already falling just brighter than H_lim (Bannister et al. 2016, AJ 152, 70, doi:10.3847/0004-6256/152/3/70, find a ~20% efficiency drop over 2 mag). Treat H_lim as the point where completeness starts to fall. **Recompute it from today's MPCORB at every build.** The recipe is simple, and the value rises every year, fast now that LSST is running.
+  - The method takes the peak of the observed H histogram per a-bin, so completeness is already falling just brighter than H_lim (Bannister et al. 2016, AJ 152, 70, doi:10.3847/0004-6256/152/3/70, find a ~20% efficiency drop over 2 mag). Treat H_lim as a histogram proxy, not a detection probability for an orbit. **Recompute it from today's MPCORB at every build.** The fitted value depends on the catalogue; monotonic deepening is not guaranteed.
 - **Size-frequency distribution:**
   - Bottke et al. 2005 (Icarus 175, 111, doi:10.1016/j.icarus.2004.10.026): the collisional-evolution SFD shape.
   - Faint end: Gladman et al. 2009 (Icarus 202, 104, doi:10.1016/j.icarus.2009.02.012); Heinze et al. 2019 (flux distribution and sky density of 25th-magnitude main-belt asteroids, AJ 158, 232, doi:10.3847/1538-3881/ab48fa); Maeda et al. 2021 (HSC, colour-separated SFDs, AJ 162, 280, doi:10.3847/1538-3881/ac2c6e).
   - Albedo per region: NEOWISE (Masiero et al. 2011, doi:10.1088/0004-637X/741/2/68).
-- **Orbit distribution:** use the **observed complete sample itself** (H < H_lim(a), about 466k objects in 2019 and more now) as the empirical orbit distribution. Resample it in proper elements (Nesvorný 2024 `proper_catalog24.tab`, M3 doc). The family/background fraction is part of that sample. Its extrapolation to faint H is E.
+- **Orbit distribution:** use the **bright observed sample, assumed representative itself** (H < H_lim(a), about 466k objects in 2019 and more now) as the empirical orbit distribution. Resample it in proper elements (Nesvorný 2024 `proper_catalog24.tab`, M3 doc). The family/background fraction is part of that sample. Its extrapolation to faint H is E.
 
 ### Jupiter Trojans, Hildas, and Neptune Trojans
 
@@ -81,7 +83,7 @@ For rendering, dust matters only as diffuse light: zodiacal light, dust bands, g
 
 ---
 
-## 2. Conditioning synthetic sampling on survey completeness
+## 2. Historical conditioning proposal (not the implemented detection model)
 
 **Unit of bookkeeping:** a cell c in (population, a, e, i, H), e.g. Δa = 0.01–0.05 au and ΔH = 0.25. For NEOs use NEOMOD's own binning. For TNOs use the class plus the (a, e, i, H) grid of the model.
 
@@ -91,12 +93,12 @@ For each cell:
 2. **Observed:** N_obs(c), from the current catalogue (M3), with H uncertainty handled by soft assignment across H bins.
 3. **Completeness:** C(c) = P(detected | object in c). Where it comes from:
    - NEOs: NEOMOD G96 detection efficiency, with ATLAS from Deienno 2025.
-   - Main belt, Hungarias, Hildas, Trojans: a completeness ramp built from Hendler–Malhotra H_lim(a), recomputed from current MPCORB, e.g. C = 1 for H < H_lim − 1 and a logistic fall-off above.
+   - Main belt, Hungarias, Hildas, Trojans: the current Hendler–Malhotra H_lim(a) fit is only a histogram proxy. A logistic ramp or C = 1 below an offset would introduce an unmeasured detection law; do not interpret it as a calibrated probability.
    - TNOs: the OSSOS/CFEPS survey simulator applied to the model. Known TNOs come from many surveys, so C for the *full* MPC catalogue is itself E. Use conservatively high C to avoid overfilling.
    - LSST era: Sorcha with the actual LSST visit history once it is public (DR1 ~2028). Until then, use the MPC catalogue H_lim(a) recomputed daily, which picks up Rubin discoveries.
 4. **Number of undiscovered objects:** draw U(c) ~ Poisson(N_model(c) · (1 − C(c))), or use its expectation for a smooth look.
    - Consistency check: if N_obs(c) > N_model(c) · C(c) by more than 3σ, the model is under-predicting that cell. Set U = 0 there and log it; never delete real objects.
-   - **Rule: never place a synthetic object where C(c) ≈ 1**, i.e. H < H_lim(a) − margin. That is the "surveys would have caught it" rule of NORTH_STAR 3.3.
+   - **Rule: never place a synthetic object where C(c) ≈ 1**, i.e. H < H_lim(a) − margin. A histogram H limit does not calibrate C ≈ 1 for an orbit. This proposal alone cannot establish the "surveys would have caught it" rule of NORTH_STAR 3.3.
 5. **Object-level veto** (stronger, optional for v2): propagate each candidate backwards over the survey pointing histories and reject it if it would have been detected. Candidate pointing sources:
    - MPC sky coverage (NEO surveys submit field centres and limiting magnitudes; format at `https://www.minorplanetcenter.net/iau/info/Coverage.html`; interactive tool at `/mpcops/pointings/sky_coverage/`; bulk raw-file access **not verified**).
    - OSSOS characterisation files.
@@ -124,15 +126,15 @@ For each cell:
 
 ## 3. Determinism and retiring synthetic objects when discoveries arrive
 
-1. **Candidate stream per cell, independent of the catalogue.** seed(c) = hash(model id + version, cell id). This generates an ordered list of candidates (c, k), k = 0, 1, 2, …. The candidates depend only on the model, never on the catalogue, so a new catalogue release cannot reshuffle the synthetic universe.
+1. **Candidate stream per cell, independent of the catalogue.** seed(c) = hash(model id + version, cell id). This generates an ordered list of candidates (c, k), k = 0, 1, 2, …. The candidates depend only on the model, never on the catalogue, but limits, normalization and attribute templates can change on refit; streams alone do not guarantee stable object identities.
 2. **How many to show:** the first U(c) candidates that pass the veto. With the expectation rule, U(c) = round(N_model(c)(1 − C(c))). With the Poisson rule, draw U from the same seeded stream.
 3. **When a new real object is discovered in cell c:**
    - N_obs rises and C(c) is recomputed.
-   - U(c) typically drops by about one. Retire the **candidate nearest to the discovery** in (a, e, i, H, λ) (Mahalanobis distance, deterministic tie-break on k) instead of the last one in the list. This minimises visual change and lets the real object replace its stand-in rather than stacking on top of it.
+   - U(c) typically drops by about one. Proposed, not implemented: retire the **candidate nearest to the discovery** in (a, e, i, H, λ) (Mahalanobis distance, deterministic tie-break on k) instead of the last one in the list. This minimises visual change and lets the real object replace its stand-in rather than stacking on top of it.
    - Record `replaced_by: <designation>` in the build diff.
 4. **Reproducibility:** manifest.json records model versions, the completeness recipe with its parameters (e.g. the fitted C of H_lim(a) per build), catalogue sha256s and seeds. Same inputs → same universe (NORTH_STAR 3.3).
 5. **Guard-rails:**
-   - Never let a synthetic object be brighter than the completeness-safe H for its cell.
+   - Never let a synthetic object be brighter than the fitted proxy H (this guard does not establish survey safety) for its cell.
    - Never give synthetic objects shapes. Render them as points, or as spheres labelled S in Enhanced mode.
    - Keep synthetic objects out of Strict and Best-estimate modes (architecture §5.2).
 
@@ -141,9 +143,9 @@ For each cell:
 ## Top recommendations
 
 1. **Start with NEOs.** Granvik 2018's downloadable 802k-object realisation plus NEOMOD2/3 numbers and albedos give measured-model populations. Condition them with the NEOMOD G96 efficiency and Deienno 2025's ATLAS completeness (88% at H < 17.75, 36% at H < 22.25). Get the NEOMOD Simulator from a machine where the SwRI site is reachable.
-2. **Main belt, Hildas, Trojans:** use the observed complete sample (H < H_lim(a)) as the orbit model. The completeness boundary H_lim(a) = −5 log₁₀(a(a−1)) + C is refit every build. The faint-end SFD comes from Bottke 2005 with Heinze 2019 and Maeda 2021, and albedos from NEOWISE.
+2. **Main belt, Hildas, Trojans:** use the bright observed sample, assumed representative (H < H_lim(a)) as the orbit model. The completeness boundary H_lim(a) = −5 log₁₀(a(a−1)) + C is refit every build. The faint-end SFD comes from Bottke 2005 with Heinze 2019 and Maeda 2021, and albedos from NEOWISE.
 3. **TNOs:** CFEPS L7 (66,038 objects, 1.7 MB, BSD-style) rotated to current Neptune longitude, plus the OSSOS survey simulator. Check `OSSOS/OSSOS_Models` (2026) first; it may supersede L7. Size distributions from Petit 2023 and Kavelaars 2021.
-4. **Retirement:** fixed, catalogue-independent candidate streams per cell. Show the first U(c) = N_model(1−C) candidates. When a discovery lands, drop the nearest candidate, and log every replacement.
+4. **Proposed retirement (not implemented):** fixed, catalogue-independent candidate streams per cell. Show the first U(c) = N_model(1−C) candidates. When a discovery lands, drop the nearest candidate, and log every replacement.
 5. **Scale:** a global synthetic catalogue to ~1 km (MBAs) or H < 25 (NEOs), plus deterministic on-demand local sampling for smaller sizes near the camera. Dust is rendered as line-of-sight light (M4), never as particles.
 
 ## Open issues
