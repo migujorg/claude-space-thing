@@ -141,8 +141,8 @@ rotation for maps with longitude structure. Relief is omitted.
 
 For an unequal-radii ellipsoid, I is the **reference-view ellipsoid integral**, as declared by
 `photometry.json` `albedoMeasurementView` (architecture §4.3). The denominator depends on the phase,
-radii, law, map and that fixed reference, never on the current frame's latitude. Jupiter and Saturn use
-the equator-on reference of their 1995 albedo; other unstated views use the explicitly estimated uniform
+radii, law, map and that fixed reference, never on the current frame's latitude. The dated 1995 giant spectra use
+their DE442s/IAU observation-date views; unrecoverable views use the explicitly estimated uniform
 orientation mean. No per-body flux factors are stored. At another latitude, keep this radiance scale and
 let the projected area and law change the flux; the point/glare receives `I_current/I_ref` times the
 contract value. An in-domain disk model gives its current-geometry photometry directly.

@@ -987,6 +987,8 @@ export class EllipsoidNormalization {
   private equatorNodes = new WeakMap<ZonalProfile, Map<number, { logCos: number; values: XYZS }[]>>();
   private floorNodes = new WeakMap<ZonalProfile, Map<string, { lo: number; hi: number; nodes: { cp: number; sp: number; weight: number; map: XYZS }[] }[]>>();
   private exact = new Map<string, XYZS>();
+  private tableMaps = new WeakMap<ZonalProfile, WeakMap<object, boolean>>();
+  private triaxial = new WeakMap<ZonalProfile, Map<string, XYZS>>();
 
   private profile(radii: V3, map?: ZonalProfile): ZonalProfile {
     const R = Math.cbrt(radii[0] * radii[1] * radii[2]);
@@ -1158,6 +1160,8 @@ export class EllipsoidNormalization {
     }
     const R=Math.cbrt(a*b*c), d=geometry.radii.map(v=>(v/R)**2);
     const key=JSON.stringify([law,alpha,d,axes]);
+    let mapCache: Map<string, XYZS> | undefined;
+    if (map) { mapCache=this.triaxial.get(map); if(!mapCache)this.triaxial.set(map,mapCache=new Map()); const hit=mapCache.get(key);if(hit)return hit; }
     if (!map) {const hit=this.exact.get(key);if(hit)return hit;}
     const delta=Math.PI-alpha;
     if (!(delta>0)) return [0,0,0,0];
@@ -1177,18 +1181,55 @@ export class EllipsoidNormalization {
       }
       return acc;
     };
-    let old=evaluate(32);
-    for(let n=64;n<=1024;n*=2) {const value=evaluate(n);if(value.every((v,k)=>Math.abs(v-old[k])<1e-5*Math.abs(v))) {if(!map){if(this.exact.size>512)this.exact.clear();this.exact.set(key,value);}return value;}old=value;}
-    throw new Error('Ellipsoid normal-space integral did not converge');
+    // Fixed order keeps the current-view point integral bounded on first use, as
+    // MotionNormalization does for Hapke maps. Smooth bare ellipsoids use 64;
+    // mapped triaxial bodies use the same finite rule rather than adaptive refinement.
+    const value=evaluate(law.kind === LAW.hapke ? 24 : 64);
+    const cache=mapCache ?? this.exact;
+    if(cache.size>512)cache.clear();cache.set(key,value);
+    return value;
   }
 
   reference(law: ResolvedLaw, alpha: number, radii: V3, view: AlbedoMeasurementView, map?: ZonalProfile): XYZS {
+    if (view.kind === 'latitude' && view.normalizationTable && alpha < Math.PI) {
+      const table = view.normalizationTable, resolved = resolveLaw(table.model, alpha);
+      let valid = !('error' in resolved) && JSON.stringify(resolved.law) === JSON.stringify(law);
+      if (map && valid) {
+        let byTable=this.tableMaps.get(map);
+        if(!byTable)this.tableMaps.set(map,byTable=new WeakMap());
+        let same=byTable.get(table);
+        if(same===undefined) {
+          same=!!table.zonalRows && table.zonalRows.length===map.mean.length
+            && table.zonalRows.every((v,k)=>Math.abs(v-map.mean[k])<1e-12);
+          byTable.set(table,same);
+        }
+        valid=same;
+      }
+      const t=Math.log(Math.PI/(Math.PI-alpha));
+      if(valid && t<=table.endLogCrescent) {
+        let lo=0,hi=table.cells.length-1;
+        while(lo<hi){const mid=(lo+hi)>>>1;if(table.cells[mid].hi<t)lo=mid+1;else hi=mid;}
+        const cell=table.cells[lo],v=map?cell.mapped:cell.bare;
+        if(v) {
+          const u=(t-cell.lo)/(cell.hi-cell.lo),bare=this.bare.get(law,alpha);
+          return bare.map((v0,k)=>v0*((1-u)*v[0][k]+u*v[1][k])) as XYZS;
+        }
+      }
+    }
     if (view.kind === 'latitude') {
-      const lat=view.latitudeDeg*Math.PI/180;
-      // Sun displacement is eastward at the measured latitude. Longitude is rotation-averaged.
-      const o:V3=[Math.cos(lat),0,Math.sin(lat)],s:V3=[o[0]*Math.cos(alpha),Math.sin(alpha),o[2]*Math.cos(alpha)];
-      const axes=photometricFrame(o,s),pole:V3=[axes[0][2],axes[1][2],axes[2][2]];
-      return this.get(law,alpha,{radii,pole,axes},map);
+      const views = view.views?.length ? view.views : [{...view, weight: 1}];
+      const result: XYZS = [0,0,0,0];
+      for (const at of views) {
+        const lat=at.latitudeDeg*Math.PI/180;
+        const o:V3=[Math.cos(lat),0,Math.sin(lat)],t=at.solarTangent ?? [0,1,0];
+        // Keep the observed Sun tangent as phase changes. At the observation
+        // phase this gives the recorded sub-solar latitude exactly.
+        const s=o.map((v,k)=>v*Math.cos(alpha)+t[k]*Math.sin(alpha)) as V3;
+        const axes=photometricFrame(o,s),pole:V3=[axes[0][2],axes[1][2],axes[2][2]];
+        const value=this.get(law,alpha,{radii,pole,axes},map);
+        for(let k=0;k<4;k++)result[k]+=at.weight*value[k];
+      }
+      return result;
     }
     // Average ALL orientations of the normal-space Jacobian (Cauchy's mean area),
     // with the zonal map when present. The average commutes with the law integral.

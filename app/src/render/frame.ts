@@ -517,8 +517,9 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
         // Denominator is pinned to the albedo reference, never the frame's latitude.
         I = referenceIntegral(law, alpha);
         if (!atThisGeometry && measurementView.kind === 'orientation-mean') {
-          label = worse(label, 'estimated');
-          warnings.push(`${b.name}: albedo measurement latitude unstated → uniform-orientation mean ellipsoid normalization (estimated)`);
+          const scaleLabel = b.albedoScaleLabel ?? 'estimated';
+          label = worse(label, scaleLabel);
+          warnings.push(`${b.name}: albedo measurement view unstated → uniform-orientation mean ellipsoid normalization (${scaleLabel}; product bounds its uncertainty)`);
         }
         // A point/glare carries its actual disk's rotation-mean flux at this view.
         if (atThisGeometry || resolvedShare((2 * angR) / g.pixelAngle) < 1 || !inFrame(c)) {

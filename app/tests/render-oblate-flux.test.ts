@@ -116,3 +116,29 @@ describe('ellipsoid law and zonal-map quadrature',()=>{
     expect(Math.abs(got[1]/surfaceSum(radii,law,alpha)-1)).toBeLessThan(5e-4);
   });
 });
+
+// The fixed calibration is a pipeline product; first-use interpolation is compared
+// with the original exact-row direct integral, separately from validation cases.
+describe.skipIf(!built)('dated calibration normalization product', () => {
+  for (const id of [599,699,799,899]) it(`${id} table matches the direct dated-view mean`, () => {
+    const view=photo[id].albedoMeasurementView.value;
+    expect(view.normalizationTable).toBeDefined();
+    const direct={...view,normalizationTable:undefined};
+    const radii=bodies.find((b: {id:number})=>b.id===id).radii.value as V3;
+    const tiles=[0,1].map(t=>{const v=fileBytes.readFileSync(new URL(`../public/data/surfaces/${id}/albedo/0/0/${t}.bin`,import.meta.url));return v.buffer.slice(v.byteOffset,v.byteOffset+v.byteLength) as ArrayBuffer;});
+    const map=zonalMeanOfLevel0(tiles);
+    const norm=new EllipsoidNormalization();
+    for(const profile of [undefined,map]) for(const deg of [0,6.8,30.1,59.9,90,120,150,175,179,179.5,179.9]) {
+      const alpha=deg*Math.PI/180,r=resolveLaw(photo[id].spatialModel.value,alpha),law='error' in r?LAMBERT_LAW:r.law;
+      const got=norm.reference(law,alpha,radii,view,profile),exact=norm.reference(law,alpha,radii,direct,profile);
+      for(let k=0;k<4;k++)expect(Math.abs(got[k]/exact[k]-1),`${id} ${deg}° map=${!!profile} c=${k}`).toBeLessThan(1e-4);
+    }
+  },60000);
+  it('a different law or different map cannot reuse a calibration table',()=>{
+    const id=799,view=photo[id].albedoMeasurementView.value;
+    const radii=bodies.find((b: {id:number})=>b.id===id).radii.value as V3;
+    const norm=new EllipsoidNormalization(),direct={...view,normalizationTable:undefined};
+    const map:ZonalProfile={rows:3,mean:Float64Array.from([1,1,1,1,2,2,2,2,1,1,1,1])};
+    expect(norm.reference(LAMBERT_LAW,.3,radii,view,map)).toEqual(norm.reference(LAMBERT_LAW,.3,radii,direct,map));
+  });
+});

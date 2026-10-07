@@ -139,3 +139,25 @@ describe('buildSnapshot', () => {
     expect(on.orbits).toHaveLength(1);
   });
 });
+
+// The measurement is the albedo. An uncertain calibration view is a bounded scale correction.
+describe('ellipsoid calibration at Strict and Best', () => {
+  for (const calibration of ['derived', 'bounded', 'estimated'] as const) for (const level of ['strict', 'best'] as const) {
+    it(`${calibration} view at ${level}`, () => {
+      const b = body(399, 'Planet', 'planet', {albedo: 'measured', phase: 'measured'});
+      b.radii.value = [10, 10, 9];
+      b.photometry!.albedoMeasurementView = {value: calibration === 'derived' ? {kind:'latitude', latitudeDeg: 40} : {kind:'orientation-mean'}, label: calibration === 'derived' ? 'derived' : 'estimated', sources: ['test']};
+      b.photometry!.albedoViewSpread = {value: {maxRelativeXYZS: [0.02,0.02,0.02,0.02], albedoSigmaRelative: calibration === 'bounded' ? 0.03 : 0.01, scaleLabel: calibration === 'estimated' ? 'estimated' : 'derived'}, label:'derived', sources:['test']};
+      const bs = [body(10,'Sun','star',{r:500}), b];
+      const world = computeWorld(0, [5e5,0,0], bs, eph, core, 10);
+      const s = buildSnapshot({world, camera: cam, reality:{...defaultReality(), exists:level},light:fakeLight(), selectedId:null, orbits:[],orientations:new IauOrientationSet(bs,fakeBodyToIcrf)});
+      const p = s.bodies.find(b => b.id === 399)!;
+      expect(p.albedoMeasurementView).toEqual(b.photometry!.albedoMeasurementView.value);
+      const hidden = calibration === 'estimated' && level === 'strict';
+      expect(p.surfaceUnknown).toBe(hidden);
+      expect(p.albedoXYZS === null).toBe(hidden);
+      expect(p.phase === null).toBe(hidden);
+      expect(p.worstLabel).toBe(calibration === 'estimated' && level === 'best' ? 'estimated' : 'derived');
+    });
+  }
+});

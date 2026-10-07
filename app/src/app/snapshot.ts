@@ -131,6 +131,27 @@ export function sceneBodyOf(
       used.push(mesh.worstLabel);
     } else extras!.shapes!.asPoint(sb.id);
   }
+  const calibration = g.body.photometry?.albedoMeasurementView;
+  const absoluteEarth = !!sb.surface?.clouds && !!sb.surface?.albedo?.header.normalization?.absoluteDiskMean;
+  const rCal = sb.radii;
+  if (sb.orient && rCal && !sb.shape && !sb.atmosphere?.surface && !absoluteEarth
+      && !(rCal[0] === rCal[1] && rCal[1] === rCal[2])) {
+    // The same mean is used at Strict and Best. The measurement stays labelled;
+    // only a correction whose bound exceeds its own uncertainty is estimated.
+    sb.albedoMeasurementView = calibration?.value ?? {kind: 'orientation-mean'};
+    const spread = g.body.photometry?.albedoViewSpread?.value;
+    sb.albedoScaleLabel = sb.albedoMeasurementView.kind === 'orientation-mean'
+      ? (sb.surface?.albedo ? spread?.mapScaleLabel ?? 'estimated' : spread?.scaleLabel ?? 'estimated')
+      : calibration?.label ?? 'estimated';
+    if (labelAllowed(sb.albedoScaleLabel, level)) used.push(sb.albedoScaleLabel);
+    else {
+      // Match an unadmitted phase function: no albedo/phase light, known shape
+      // retained as the existing hatched silhouette. No new Strict behaviour.
+      sb.albedoXYZS = null;
+      sb.phase = null;
+      sb.surfaceUnknown = true;
+    }
+  }
   if (used.length) sb.worstLabel = worstOf([sb.worstLabel, ...used]);
   return { body: sb };
 }

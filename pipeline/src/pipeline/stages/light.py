@@ -21,6 +21,8 @@ from __future__ import annotations
 
 import numpy as np
 
+from ..photometry.albedo import pck_radii
+
 from ..output import write_json
 from ..photometry import atmospheres, bodies, phase, rings, smallbody_colors, solar
 from ..schema import BuildContext, sourced, unknown
@@ -28,40 +30,238 @@ from ..schema import BuildContext, sourced, unknown
 DEPENDS: tuple[str, ...] = ()
 
 
-def with_measurement_views(photometry: dict) -> dict:
-    """Declare the albedo's calibration view, separately from the surface-law fit.
+# These dates and observer are from Karkoschka 1998 / PDS 1995LOW (source note).
+KARKOSCHKA_EPOCH = "1995-07-06/1995-07-10"
 
-    No source-stated view is silently inferred from a validation case. For an unstated
-    view, the renderer uses the explicitly estimated uniform-orientation mean (§4.3).
-    Jupiter's equal-area radius is an equator-on reference approximation; it is not
-    a claim that the actual 1995 sub-observer latitude was exactly zero.
+
+def dated_views(naif: int, ctx: BuildContext | None = None) -> dict:
+    """Integrate geometry over the source's observing-date interval, not the build window.
+
+    The source does not associate a UTC exposure with each tabulated spectrum. The
+    reference is the time mean of the stated five UTC dates; quadrature epochs below
+    are numerical nodes, explicitly not claimed exposure timestamps.
     """
+    import spiceypy as sp
+    from .. import ephem_kernels as ek
+    from ..validation.geometry import FRAMES, SUN_FROM
+    with ek.pool(ek.lsk(ctx), ek.pck(ctx), ek.planetary(ctx)):
+        start, end = sp.str2et("1995-07-06T00:00:00"), sp.str2et("1995-07-11T00:00:00")
+        nodes, weights = np.polynomial.legendre.leggauss(5)
+        views = []
+        for node, weight in zip(nodes, weights):
+            et = start + (node + 1) * (end - start) / 2
+            pos, lt = sp.spkpos(SUN_FROM[naif], et, "J2000", "LT", "EARTH")
+            M = np.asarray(sp.pxform(FRAMES[naif], "J2000", et - lt))
+            sun, _ = sp.spkpos("SUN", et - lt, "J2000", "LT", SUN_FROM[naif])
+            obs = M.T @ -np.asarray(pos); obs /= np.linalg.norm(obs)
+            sun = M.T @ np.asarray(sun); sun /= np.linalg.norm(sun)
+            ca = float(np.clip(obs @ sun, -1, 1)); phase = float(np.arccos(ca))
+            tangent = (sun - ca * obs) / np.sin(phase)
+            # Rotate around the pole to put the observer at longitude zero. Only
+            # relative solar longitude matters to a zonal map; no invented W.
+            lon = np.arctan2(obs[1], obs[0]); cl, sl = np.cos(lon), np.sin(lon)
+            tangent = [cl*tangent[0]+sl*tangent[1], -sl*tangent[0]+cl*tangent[1], tangent[2]]
+            views.append({"epoch": sp.et2utc(et, "ISOC", 3), "weight": float(weight/2),
+                          "latitudeDeg": float(np.degrees(np.arcsin(obs[2]))),
+                          "subSolarLatitudeDeg": float(np.degrees(np.arcsin(sun[2]))),
+                          "phaseAngleDeg": float(np.degrees(phase)),
+                          "solarTangent": [float(v) for v in tangent],
+                          "earthCentreParallaxBoundDeg": float(np.degrees(np.arcsin(
+                              max(sp.bodvrd("EARTH", "RADII", 3)[1]) / np.linalg.norm(pos))))})
+    mean = {k: sum(v["weight"]*v[k] for v in views)
+            for k in ("latitudeDeg", "subSolarLatitudeDeg", "phaseAngleDeg", "earthCentreParallaxBoundDeg")}
+    return {"kind": "latitude", "epoch": KARKOSCHKA_EPOCH, **mean, "views": views}
+
+
+def view_spread(naif: int, entry: dict, ctx: BuildContext | None = None) -> dict:
+    """A rigorous all-phase/all-orientation envelope, not an extrema grid scan.
+
+    Any nonnegative surface law weights the Gauss-map Jacobian times the zonal
+    map positively. Its normalized integral therefore lies between the extrema
+    of that weight. Divide by its orientation mean to bound a missing view's
+    scale at every phase. The bound can be conservative; it never understates
+    a view uncertainty or uses a validation case to choose a tolerance.
+    """
+    import hashlib
+    import json
+    from .. import ephem_kernels as ek
+    from ..paths import OUT
+    from ..photometry.albedo import pck_radii
+    r = np.asarray(pck_radii()[naif]); d = (r / np.cbrt(np.prod(r)))**2
+    jac_min, jac_max = float(np.prod(d)/max(d)**2), float(np.prod(d)/min(d)**2)
+    z, w = np.polynomial.legendre.leggauss(128)
+    phi = 2*np.pi*(np.arange(256)+.5)/256
+    normals = np.stack(np.broadcast_arrays(np.sqrt(1-z[:,None]**2)*np.cos(phi),
+                      np.sqrt(1-z[:,None]**2)*np.sin(phi), z[:,None]), axis=-1)
+    jac = np.prod(d) / np.sum(normals**2*d, axis=-1)**2
+    mean = float(np.sum(jac*w[:,None])/512)
+    bare = max(abs(jac_min/mean-1), abs(jac_max/mean-1))
+    out = {"maxRelativeXYZS": [bare]*4, "bareMaxRelative": bare,
+           "mapMaxRelativeXYZS": None, "albedoSigmaRelative": None, "scaleLabel": "estimated"}
+    sources = [ek.SRC_PCK]
+    # light can precede surfaces on a clean build. A map bound is certified only
+    # for the exact retained level-0 bytes, whose hashes the shell compares.
+    paths = [OUT / f"surfaces/{naif}/albedo/0/0/{i}.bin" for i in (0, 1)]
+    header = OUT / f"surfaces/{naif}/albedo.json"
+    if header.exists() and all(p.exists() for p in paths):
+        tiles = [np.frombuffer(p.read_bytes(), dtype="<f2").reshape(256,256,4) for p in paths]
+        texels = np.concatenate(tiles, axis=1).astype(np.float64)
+        texels[np.all(texels == 0, axis=2)] = 1
+        rows = np.mean(texels, axis=1)
+        lat = np.arcsin(d[2]*normals[:,:,2] / np.linalg.norm(normals*d,axis=-1))
+        xp = np.pi*(.5-(np.arange(256)+.5)/256)
+        weighted_mean = np.array([np.sum(jac*np.interp(lat,xp[::-1],rows[::-1,c])*w[:,None])/512 for c in range(4)])
+        spread = np.maximum(abs(jac_min*np.min(rows,axis=0)/weighted_mean-1),
+                            abs(jac_max*np.max(rows,axis=0)/weighted_mean-1))
+        out["mapMaxRelativeXYZS"] = spread.tolist()
+        out["mapTileSha256"] = [hashlib.sha256(p.read_bytes()).hexdigest() for p in paths]
+        sources += json.loads(header.read_text()).get("sources", [])
+    # Use numeric source-stated uncertainties; vague "a few percent" and a
+    # rotational range are not a 1-sigma error and do not qualify the exception.
+    if 601 <= naif <= 605:
+        from ..photometry.moons import filacchione_rows
+        t = filacchione_rows(naif)
+        out["albedoSigmaRelative"] = float(np.median(t["a0_err"]/t["a0"]))
+    if out["albedoSigmaRelative"] is not None and bare < out["albedoSigmaRelative"]:
+        out["scaleLabel"] = "derived"
+    if out["mapMaxRelativeXYZS"] is not None:
+        out["mapScaleLabel"] = ("derived" if out["albedoSigmaRelative"] is not None and
+                                max(out["mapMaxRelativeXYZS"]) < out["albedoSigmaRelative"] else "estimated")
+    return sourced(out, "derived", list(dict.fromkeys(sources)),
+                   method="All-phase bound: min/max of the Gauss-map area Jacobian times the exact level-0 zonal "
+                          "map divided by its uniform-orientation mean. Bare and mapped bounds are separate; "
+                          "a mapped bound applies only to the named tile SHA-256 values. This conservative "
+                          "envelope bounds the reference integral over every orientation for any positive law.")
+
+
+def reference_table(naif: int, entry: dict) -> dict | None:
+    """Precompute fixed dated calibration integrals, never a frame's geometry.
+
+    Independent NumPy normal-space quadrature; actual map rows are evaluated
+    piecewise-linearly at the position latitude. Refinement resolves their kinks.
+    Ratios to the bare spherical law remove the vanishing crescent power law.
+    """
+    import hashlib
+    from ..paths import OUT
+    model = entry.get("spatialModel", {}).get("value")
+    view = entry["albedoMeasurementView"]["value"]
+    if naif not in (599,699,799,899) or not model or view["kind"] != "latitude":
+        return None
+    d = (np.asarray(pck_radii()[naif])/np.cbrt(np.prod(pck_radii()[naif])))**2
+    paths = [OUT/f"surfaces/{naif}/albedo/0/0/{i}.bin" for i in (0,1)]
+    rows = None
+    if all(p.exists() for p in paths):
+        texels=np.concatenate([np.frombuffer(p.read_bytes(),dtype="<f2").reshape(256,256,4) for p in paths],axis=1).astype(float)
+        texels[np.all(texels==0,axis=2)] = 1
+        rows=texels.mean(axis=1)
+    grids = {}
+    def integral(alpha, n):
+        if n not in grids:
+            x,w=np.polynomial.legendre.leggauss(n)
+            u=x*np.pi/2; beta=u[:,None]; cb=np.cos(beta); sb=np.sin(beta)
+            grids[n]=(x,w,u,cb,sb)
+        x,w,u,cb,sb=grids[n]
+        delta=np.pi-alpha; eps=delta*(1+np.sin(u))/2
+        mu=cb*np.sin(eps); mu0=cb*np.sin(delta-eps)
+        nv=np.stack(np.broadcast_arrays(cb*np.cos(eps),sb,mu),axis=-1)
+        power=model["k"] if model["kind"]=="minnaert" else float(np.interp(np.degrees(alpha),model["B"]["alphaDeg"],model["B"]["values"]))
+        weighted=(mu0**power*mu**power if model["kind"]=="minnaert" else
+                  (mu0*mu/(mu0+mu))**power * mu/np.maximum(mu,1e-3))
+        weighted*=cb*w[:,None]*w[None,:]*delta*np.pi/8*np.cos(u)
+        bare=weighted.sum()
+        result=np.zeros(8)
+        for at in view["views"]:
+            lat=np.radians(at["latitudeDeg"]);o=np.array([np.cos(lat),0,np.sin(lat)])
+            xx=np.asarray(at["solarTangent"]); yy=np.cross(o,xx)
+            # Photometric basis is the source solar tangent, cross product, observer.
+            bf=nv @ np.stack([xx,yy,o])
+            jac=np.prod(d)/np.sum(bf**2*d,axis=-1)**2
+            ww=weighted*jac/bare*at["weight"]
+            result[:4]+=ww.sum()
+            if rows is not None:
+                z=d[2]*bf[:,:,2]/np.linalg.norm(bf*d,axis=-1)
+                rr=np.clip((.5-np.arcsin(np.clip(z,-1,1))/np.pi)*256-.5,0,255)
+                j=np.floor(rr).astype(int);t=rr-j
+                for c in range(4):
+                    values=rows[j,c]*(1-t)+rows[np.minimum(j+1,255),c]*t
+                    result[c+4]+=np.sum(ww*values)
+        return result
+    cache={}; max_quadrature_change=0.0
+    def value(t):
+        nonlocal max_quadrature_change
+        if t not in cache:
+            alpha=np.pi*(-np.expm1(-t));prev=integral(alpha,64)
+            for n in (128,256,512):
+                v=integral(alpha,n)
+                rel=np.max(abs(v[:4]/prev[:4]-1))
+                if rows is not None: rel=max(rel,float(np.max(abs(v[4:]/prev[4:]-1))))
+                if rel<1e-5: break
+                prev=v
+            max_quadrature_change=max(max_quadrature_change,float(rel));cache[t]=v
+        return cache[t]
+    end=float(np.log(np.pi/1e-4)); cells=[]
+    def visit(lo,hi,depth=0):
+        a,b=value(lo),value(hi);mid=(lo+hi)/2;m=value(mid)
+        # Quarter checks keep a narrow peak from hiding behind a midpoint.
+        probes=[(mid,m),((3*lo+hi)/4,value((3*lo+hi)/4)),((lo+3*hi)/4,value((lo+3*hi)/4))]
+        error=max(float(np.max(abs(((1-(t-lo)/(hi-lo))*a+(t-lo)/(hi-lo)*b)[:4]/v[:4]-1))) for t,v in probes)
+        if rows is not None:
+            error=max(error,max(float(np.max(abs(((1-(t-lo)/(hi-lo))*a+(t-lo)/(hi-lo)*b)[4:]/v[4:]-1))) for t,v in probes))
+        if error>3e-5 and depth<12:
+            visit(lo,mid,depth+1);visit(mid,hi,depth+1)
+        else: cells.append({"lo":lo,"hi":hi,"bare":[a[:4].tolist(),b[:4].tolist()],
+                            **({"mapped":[a[4:].tolist(),b[4:].tolist()]} if rows is not None else {})})
+    cuts=list(np.linspace(0,end,17))
+    if model["kind"]=="barkstrom":
+        cuts += [float(-np.log1p(-a/180)) for a in model["B"]["alphaDeg"] if 0<a<180]
+    cuts=sorted(set(cuts))
+    for lo,hi in zip(cuts,cuts[1:]):visit(lo,hi)
+    return {"model": model,"cells": cells,"endLogCrescent":end,
+            "quadratureMaxChange":max_quadrature_change,
+            **({"zonalRows":rows.reshape(-1).tolist(),"mapTileSha256":[hashlib.sha256(p.read_bytes()).hexdigest() for p in paths]} if rows is not None else {})}
+
+
+def with_measurement_views(photometry: dict, ctx: BuildContext | None = None) -> dict:
+    """Keep a dated calibration geometry separate from the measurement's label."""
     for key, entry in photometry.items():
         albedo = entry["geometricAlbedoXYZS"]
         if albedo["value"] is None:
             entry["albedoMeasurementView"] = unknown("No disk albedo is available to calibrate a measurement view.")
             continue
-        if key in ("599", "699"):
+        naif = int(key)
+        if naif in (599, 699, 799, 899, 606):
+            from .. import ephem_kernels as ek
             entry["albedoMeasurementView"] = sourced(
-                {"kind": "latitude", "latitudeDeg": 0.0, "epoch": "1995-07-06/1995-07-10"},
-                "estimated" if key == "599" else "measured",
-                ["karkoschka-1998-pds", "karkoschka-1994-text"] if key == "599" else ["karkoschka-1998-pds"],
-                method=("Karkoschka 1998/PDS 1995LOW: 1995 July 6–10 full-disk spectrum. "
-                        + ("Equator-on calibration reference, as represented by the equal-area disk radius "
-                           "69140 km (Karkoschka 1994 Table III); this is an approximation of Jupiter's "
-                           "ground-based view, not a measured sub-observer latitude of exactly zero."
-                           if key == "599" else
-                           "Saturn globe at zero ring tilt (rings edge-on), hence equator-on. "
-                           "Reference Sun displacement is eastward at the reference latitude; longitude averaged.")))
+                dated_views(naif, ctx), "derived",
+                ["karkoschka-1998-pds", ek.SRC_PLANETARY, ek.SRC_PCK, ek.SRC_LSK],
+                method="Karkoschka 1998/PDS 1995LOW, ESO La Silla, 1995 July 6–10. "
+                       "Earth centre observing direction (telescope parallax bounded in degrees in the value), "
+                       "DE442s system-barycentre directions with LT and IAU pck00011 at the light-emission epoch. "
+                       "Five-node time quadrature over the five stated UTC dates; nodes are not exposure dates. "
+                       "Sub-observer and sub-solar latitudes are planetocentric; the solar tangent retains the "
+                       "observed relative solar direction as the law's phase changes. "
+                       "Planet/satellite-centre offsets from the system barycentre are omitted; for Titan the "
+                       "parent-system direction is an approximation, not a recovered Cassini or Titan ephemeris.")
         else:
             entry["albedoMeasurementView"] = sourced(
-                {"kind": "orientation-mean", **({"epoch": "1995-07-06/1995-07-10"}
-                 if key in ("799", "899", "606") else {})},
-                "estimated", albedo["sources"],
-                method="The adopted albedo source does not specify one calibration sub-observer latitude. "
-                       "Explicit fallback: uniform mean over all orientations, using the ellipsoid's "
-                       "projected-area measure and the surface law (and zonal map if drawn), architecture §4.3. "
-                       "This is a normalization assumption, not a measurement of viewing latitude.")
+                {"kind": "orientation-mean"}, "estimated", albedo["sources"],
+                method="The adopted albedo is a global fitted/compiled mean without one recoverable calibration "
+                       "view in the retained inputs. Explicit fallback: uniform mean over orientations of the "
+                       "ellipsoid Gauss-map area measure and zonal map. This is a normalization assumption; "
+                       "albedoViewSpread bounds its effect separately from the measured albedo.")
+        if naif in pck_radii():
+            spread = view_spread(naif, entry, ctx)
+            entry["albedoViewSpread"] = spread
+            v = spread["value"]
+            text = (f"Calibration orientation envelope: bare ≤{100*v['bareMaxRelative']:.6g}% relative; "
+                    + (f"mapped XYZS ≤{[round(100*x,6) for x in v['mapMaxRelativeXYZS']]}% "
+                       if v["mapMaxRelativeXYZS"] is not None else "mapped envelope not certified; ")
+                    + "(all phases/orientations, conservative positive-weight bound). "
+                    + (f"Source albedo formal 1-sigma error {100*v['albedoSigmaRelative']:.6g}%."
+                       if v["albedoSigmaRelative"] is not None else "No numeric source-stated 1-sigma error used."))
+            for field in ("geometricAlbedoXYZS", "geometricAlbedoV"):
+                if field in entry:
+                    entry[field]["uncertainty"] = entry[field].get("uncertainty", "") + "; " + text
     return photometry
 
 
@@ -83,7 +283,13 @@ def run(ctx: BuildContext) -> None:
           + ", ".join(f"{v:.4f}" for v in diag["limb"]["F_over_I"]))
 
     results = bodies.build_all(ctx)
-    write_json(ctx, "photometry.json", with_measurement_views(bodies.photometry_json(results)), "light")
+    photometry = with_measurement_views(bodies.photometry_json(results), ctx)
+    for key, entry in photometry.items():
+        table = reference_table(int(key), entry)
+        if table is not None:
+            entry["albedoMeasurementView"]["value"]["normalizationTable"] = table
+            print(f"[light] {key} dated reference: {len(table['cells'])} cells, quadrature change {table['quadratureMaxChange']:.3g}")
+    write_json(ctx, "photometry.json", photometry, "light")
     for n, r in results.items():
         labels = (f"albedo:{r.entry['geometricAlbedoXYZS']['label']} phase:{r.entry['phaseFunction']['label']}")
         if r.xyzs is None:

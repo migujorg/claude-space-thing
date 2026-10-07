@@ -6,7 +6,7 @@
 import { describe, expect, it } from 'vitest';
 import { zonalMeanOfLevel0 } from '../src/render/surface';
 import type { BodyPhotometry } from '../src/data/schema';
-import { lawDiskIntegral, MotionNormalization, resolveLaw, type ZonalProfile } from '../src/render/spatial';
+import { lawDiskIntegral, MotionNormalization, EllipsoidNormalization, photometricFrame, LAMBERT_LAW, resolveLaw, type ZonalProfile } from '../src/render/spatial';
 const fs: { existsSync(p: URL): boolean; readFileSync(p: URL, enc: 'utf8'): string; readFileSync(p: URL): Uint8Array } =
   await import(/* @vite-ignore */ 'node:fs' as string);
 const path = new URL('../public/data/photometry.json', import.meta.url);
@@ -94,5 +94,32 @@ describe('normalization lookups have a bounded cost on the main thread', () => {
       }
     }
     if (env.LAW_MOTION_REPORT) console.log(JSON.stringify({ fixedOrderZonalHapkeWorstRelative: worst, bodies: scan, phases: scanPhases }));
+  }, 600000);
+});
+
+const bodiesPath = new URL('../public/data/bodies.json', import.meta.url);
+const unequal = built && fs.existsSync(bodiesPath) ? JSON.parse(fs.readFileSync(bodiesPath, 'utf8')).filter((b: {id:number;radii:{value:[number,number,number]}}) => b.radii.value && new Set(b.radii.value).size > 1 && photometry[b.id]) : [];
+describe('ellipsoid frame entry points, first use included', () => {
+  it.skipIf(!built)('every built unequal-radii body, reference/current/orientation mean, with and without its map', () => {
+    for (const body of unequal) for (const map of [undefined, zonalOf(String(body.id)) ?? undefined]) {
+      for (const deg of [0.5, 16, 90, 150]) {
+        const a = deg * Math.PI / 180, r = resolveLaw(photometry[body.id].spatialModel?.value, a);
+        const law = 'error' in r ? LAMBERT_LAW : r.law;
+        const cache = new EllipsoidNormalization();
+        const radii = body.radii.value;
+        const axes = photometricFrame([0.8, 0, 0.6], [0.8 * Math.cos(a), Math.sin(a), 0.6 * Math.cos(a)]);
+        const geometry = { radii, axes, pole: [axes[0][2], axes[1][2], axes[2][2]] as [number, number, number] };
+        for (const [entry, f] of [
+          ['reference', () => cache.reference(law, a, radii, photometry[body.id].albedoMeasurementView?.value ?? {kind: 'orientation-mean'}, map)],
+          ['current', () => cache.get(law, a, geometry, map)],
+          ['mean', () => cache.reference(law, a, radii, {kind: 'orientation-mean'}, map)],
+        ] as const) {
+          const [value, ms] = timed(f);
+          expect(value.every(Number.isFinite)).toBe(true);
+          expect(ms, `${body.id} ${entry} ${deg}° map=${!!map}, first use`).toBeLessThan(LOOKUP_BUDGET_MS);
+        }
+      }
+    }
+    expect(unequal.length).toBeGreaterThan(0);
   }, 600000);
 });

@@ -191,11 +191,41 @@ export interface Body {
 /** photometry.json: NAIF id (as string) → photometry. */
 export type PhotometryFile = Record<string, BodyPhotometry>;
 
-/** Reference of the disk albedo, not the frame currently being rendered.
- * An unstated latitude uses an estimated uniform-orientation mean, never a guessed view. */
+/** Reference of the albedo, independent of the frame. A dated interval carries
+ * quadrature views; their epochs are numerical nodes, not claimed exposure times. */
+export interface CalibrationLatitude {
+  latitudeDeg: number;
+  epoch?: string;
+  subSolarLatitudeDeg?: number;
+  phaseAngleDeg?: number;
+  /** Unit tangent of the source Sun direction at the observer, longitude-zero frame. */
+  solarTangent?: [number, number, number];
+  earthCentreParallaxBoundDeg?: number;
+}
 export type AlbedoMeasurementView =
-  | { kind: 'latitude'; latitudeDeg: number; epoch?: string }
+  | ({ kind: 'latitude'; views?: (CalibrationLatitude & {weight: number})[]; normalizationTable?: CalibrationNormalizationTable } & CalibrationLatitude)
   | { kind: 'orientation-mean'; epoch?: string };
+
+/** Pipeline-computed fixed calibration integral / bare-sphere integral. */
+export interface CalibrationNormalizationTable {
+  model: SpatialPhotometricModel;
+  endLogCrescent: number;
+  quadratureMaxChange: number;
+  cells: {lo: number; hi: number; bare: [number[], number[]]; mapped?: [number[], number[]]}[];
+  zonalRows?: number[];
+  mapTileSha256?: string[];
+}
+
+/** Positive-weight all-phase envelope for an unknown calibration orientation. */
+export interface AlbedoViewSpread {
+  maxRelativeXYZS: [number, number, number, number];
+  bareMaxRelative?: number;
+  mapMaxRelativeXYZS?: [number, number, number, number] | null;
+  mapTileSha256?: string[];
+  albedoSigmaRelative: number | null;
+  scaleLabel: 'derived' | 'estimated';
+  mapScaleLabel?: 'derived' | 'estimated';
+}
 
 export interface BodyPhotometry {
   /** See docs/architecture.md §4.3. Four numbers (X, Y, Z, scotopic) in "lux at 1 AU". */
@@ -203,6 +233,7 @@ export interface BodyPhotometry {
   /** Visual geometric albedo, for display. */
   geometricAlbedoV: Sourced<number>;
   albedoMeasurementView?: Sourced<AlbedoMeasurementView>;
+  albedoViewSpread?: Sourced<AlbedoViewSpread>;
   /** Disk-integrated phase function. */
   phaseFunction: Sourced<PhaseFunction>;
   /**
