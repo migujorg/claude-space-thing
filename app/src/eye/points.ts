@@ -169,6 +169,16 @@ export function pointBackground(texture: { Y: number; S: number }, own: { Y: num
   return { Y: Math.max(texture.Y - own.Y, 0) + analytic.Y + direct.Y, S: Math.max(texture.S - own.S, 0) + analytic.S + direct.S };
 }
 
+/**
+ * Occlusion belongs to the source, not to its splat's pixels: a point is hidden, whole, when the surface at its
+ * centre's pixel is nearer than it, and drawn whole otherwise (the cull for catalogue sources, POINT_SHADER vs for
+ * the points the renderer writes). A point's image on the retina is not clipped by the image of a body beside it:
+ * the two add. Reverse depth: larger is nearer; 0 is infinity, and no surface.
+ */
+export function pointHidden(surfaceDepthAtCentre: number, pointDepth: number): boolean {
+  return surfaceDepthAtCentre > pointDepth;
+}
+
 /** The verdict: is the point above the threshold of the eye looking at it, adapted to that background? */
 export function pointVisible(eye: EyeFrame, E: { Y: number; S: number }, bg: { Y: number; S: number }): boolean {
   const o = pointObserver(eye, bg);

@@ -1092,6 +1092,7 @@ ${BG}
 ${LIMB_WGSL(8)}
 @group(0) @binding(9) var<storage, read_write> unseen: array<vec4f>;
 @group(0) @binding(10) var extTex: texture_2d<f32>;            // resolved bodies and sky, this frame's (drawn before the cull)
+@group(0) @binding(12) var depthTex: texture_depth_2d;         // the bodies' depth (reverse: larger is nearer, 0 = nothing)
 struct Own { kR: u32, levels: u32, pad0: u32, pad1: u32, w: array<vec4f, 4> };   // the veil level read; the pyramid's level count and weights
 @group(0) @binding(11) var<uniform> own: Own;
 
@@ -1204,6 +1205,12 @@ fn ownVeil(px: vec2f, ndc: vec2f) -> f32 {
   // a source that passes is displayed, and the point shader does not judge it again. (The Sun's disk is drawn
   // after the cull: a source on it is judged against the Sun's analytic veil there.)
   let px = (ndc * vec2f(0.5, -0.5) + 0.5) * F.size.xy;
+  // Occlusion belongs to the source, not to its splat's pixels (eye/points.ts pointHidden): a source whose centre
+  // lies behind a body is hidden whole, in neither list, and one whose centre is clear is drawn whole. These
+  // sources are at infinity, so any surface at the centre's pixel is nearer. (A body with a drawn atmosphere has
+  // already dimmed or removed the source: limbTransmittance above. A centre outside the frame has no depth to
+  // ask: the part of its splat inside the frame is drawn.)
+  if (px.x >= 0.0 && px.y >= 0.0 && px.x < F.size.x && px.y < F.size.y && textureLoad(depthTex, vec2i(px), 0) > 0.0) { return; }
   let ownL = ownVeil(px, ndc);
   let bg = pointBackground(bgTex, extTex, px, e * ownL, normalize(u));
   // Judged by the eye looking at the star, adapted to that background (Crumey's condition), not to the
@@ -1255,6 +1262,7 @@ export const POINT_SHADER = COMMON + TONE + BG + /* wgsl */ `
 @group(0) @binding(2) var<storage, read> pts: array<vec4f>;
 @group(0) @binding(3) var bgTex: texture_2d<f32>;              // coarse physical veil (≥ Ricco scale)
 @group(0) @binding(4) var extTex: texture_2d<f32>;             // resolved bodies
+@group(0) @binding(6) var depthTex: texture_depth_2d;          // the bodies' depth (reverse: larger is nearer, 0 = nothing)
 ${SRCS(0, 5)}
 ${VEIL}
 
@@ -1282,6 +1290,12 @@ fn splatOf(px: vec2f, ndc: vec2f) -> vec3f {
   let offPx = corners[vi] * (E.misc2.x + 0.0625);
   var o: PV;
   o.pos = vec4f(p.xy + offPx * 2.0 * F.size.zw, p.z, 1.0);
+  // Occlusion belongs to the source (eye/points.ts pointHidden): a point written by the CPU (a body, the Sun) is
+  // hidden whole when the surface at its centre's pixel is nearer than it, and drawn whole otherwise; the point
+  // passes test no fragment against the depth. A source of the cull's lists was tested there.
+  if (!judged && q.x >= 0.0 && q.y >= 0.0 && q.x < F.size.x && q.y < F.size.y && textureLoad(depthTex, vec2i(q.xy), 0) > p.z) {
+    o.pos = vec4f(2.0, 2.0, 0.0, 1.0);
+  }
   o.c = splatOf(q.xy, p.xy);
   o.e = e;
   // Appearance (points.ts pointAppearance). Background: coarse veil + analytic veil + bodies.

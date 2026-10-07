@@ -341,12 +341,13 @@ export class Renderer {
     this.cullPipe = d.createComputePipeline({ label: 'star cull', layout: 'auto', compute: { module: mod(CULL_SHADER, 'cull'), entryPoint: 'main' } });
     this.clampPipe = d.createComputePipeline({ label: 'clamp args', layout: 'auto', compute: { module: mod(CLAMP_ARGS_SHADER, 'clamp'), entryPoint: 'main' } });
     const ptMod = mod(POINT_SHADER, 'points');
+    // No depth test in the point passes: occlusion is decided per source, at its centre (the cull for its lists,
+    // POINT_SHADER vs for the points written here), and a visible source's splat is not clipped by a body beside it.
     this.pointPipe = d.createRenderPipeline({
       label: 'points (retina)', layout: 'auto',
       vertex: { module: ptMod, entryPoint: 'vs' },
       fragment: { module: ptMod, entryPoint: 'fsPhys', targets: [{ format: hdrFormat, blend: add }, { format: hdrFormat, blend: add }] },
       primitive: { topology: 'triangle-list' },
-      depthStencil: { format: 'depth32float', depthWriteEnabled: false, depthCompare: 'greater-equal' },
     });
     // Sources the eye does not pick out: their light into PT, nothing into PTEX (same pass, so both targets).
     this.pointLightPipe = d.createRenderPipeline({
@@ -354,14 +355,12 @@ export class Renderer {
       vertex: { module: ptMod, entryPoint: 'vsLight' },
       fragment: { module: ptMod, entryPoint: 'fsLight', targets: [{ format: hdrFormat, blend: add }, { format: hdrFormat, writeMask: 0 }] },
       primitive: { topology: 'triangle-list' },
-      depthStencil: { format: 'depth32float', depthWriteEnabled: false, depthCompare: 'greater-equal' },
     });
     this.pointDispPipe = d.createRenderPipeline({
       label: 'points (display)', layout: 'auto',
       vertex: { module: ptMod, entryPoint: 'vs' },
       fragment: { module: ptMod, entryPoint: 'fsDisp', targets: [{ format: 'rgba16float', blend: add }] },
       primitive: { topology: 'triangle-list' },
-      depthStencil: { format: 'depth32float', depthWriteEnabled: false, depthCompare: 'greater-equal' },
     });
     const sunMod = mod(SUN_SHADER, 'sun');
     this.sunPipe = d.createRenderPipeline({
@@ -1050,11 +1049,12 @@ export class Renderer {
             { binding: 9, resource: { buffer: this.unseen } },
             { binding: 10, resource: t.ext.createView() },
             { binding: 11, resource: { buffer: this.ownUB } },
+            { binding: 12, resource: t.depth.createView() },
           ],
         }));
         pass.dispatchWorkgroups(gx, gy);
       }
-      this.extraPts?.cull(pass, this.cullPipe, { frameUB: this.frameUB, eyeUB: this.eyeUB, visible: this.visible, unseen: this.unseen, args: this.args, bgView, srcs: this.srcs, limbs: this.limbsUB, maxVisible: this.maxVisible, maxUnseen: this.maxUnseen, extView: t.ext.createView(), own: this.ownUB });
+      this.extraPts?.cull(pass, this.cullPipe, { frameUB: this.frameUB, eyeUB: this.eyeUB, visible: this.visible, unseen: this.unseen, args: this.args, bgView, srcs: this.srcs, limbs: this.limbsUB, maxVisible: this.maxVisible, maxUnseen: this.maxUnseen, extView: t.ext.createView(), own: this.ownUB, depthView: t.depth.createView() });
       d.queue.writeBuffer(this.clampUB, 0, new Uint32Array([this.maxVisible, this.maxUnseen, 0, 0]));
       pass.setPipeline(this.clampPipe);
       pass.setBindGroup(0, d.createBindGroup({ layout: this.clampPipe.getBindGroupLayout(0), entries: [{ binding: 0, resource: { buffer: this.args } }, { binding: 1, resource: { buffer: this.clampUB } }] }));
@@ -1069,7 +1069,6 @@ export class Renderer {
         label: pipe.label,
         timestampWrites: this.tsw(pipe.label),
         colorAttachments: targets.map((tx) => ({ view: tx.createView(), loadOp: load ? ('load' as const) : ('clear' as const), storeOp: 'store' as const, clearValue: [0, 0, 0, 0] })),
-        depthStencilAttachment: { view: t.depth.createView(), depthReadOnly: true },
       });
       pass.setPipeline(pipe);
       draw(pass);
@@ -1430,6 +1429,7 @@ export class Renderer {
         { binding: 3, resource: bg },
         { binding: 4, resource: this.targets!.ext.createView() },
         { binding: 5, resource: { buffer: this.srcs } },
+        { binding: 6, resource: this.targets!.depth.createView() },
       ],
     });
   }

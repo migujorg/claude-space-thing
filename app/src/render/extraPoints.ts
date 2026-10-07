@@ -32,6 +32,8 @@ export interface CullBindings {
   extView: GPUTextureView;
   /** The veil level and the pyramid's weights, for a source's own light in its background (CULL_SHADER Own). */
   own: GPUBuffer;
+  /** The bodies' depth, for the source's occlusion (decided at its centre). */
+  depthView: GPUTextureView;
 }
 
 export class ExtraPointSources {
@@ -75,6 +77,7 @@ export class ExtraPointSources {
         { binding: 9, resource: { buffer: b.unseen } },
         { binding: 10, resource: b.extView },
         { binding: 11, resource: { buffer: b.own } },
+        { binding: 12, resource: b.depthView },
       ],
     }));
     pass.dispatchWorkgroups(gx, gy);

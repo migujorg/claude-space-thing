@@ -23,7 +23,8 @@
 // at is read back (Renderer.readVeilLevel) with and without the source, and the cull's own-light value from the
 // list (Renderer.readPointList). What is left, as a fraction of the source's own light, must be under 1e-6 where
 // the HDR targets are float32 and under 1e-3 where they are half float. Options: --lux 1e-6 (the source's
-// illuminance), --query "fov=2", --size 1283x723.
+// illuminance), --query "fov=2", --size 1283x723, --line x0,y0,x1,y1,n (n places along a line in pixels, for
+// instance across a body's limb, where a source is either hidden whole or drawn whole).
 import { chromium } from 'playwright';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -45,6 +46,7 @@ const lone = flag('lone');
 const positions = Number(opt('positions', '24'));
 const lux = Number(opt('lux', '1e-6'));
 const size = opt('size') ? opt('size').split('x').map(Number) : null;
+const line = opt('line') ? opt('line').split(',').map(Number) : null;
 /** What may be left of a lone source's own light in its background, as a fraction of it, by the HDR targets' format. */
 const LONE_BOUND = { rgba32float: 1e-6, rgba16float: 1e-3 };
 const extra = opt('query', '');
@@ -193,7 +195,7 @@ const pagePerturb = async ({ settle, measure }) => {
     };
 
 /** Runs in the page: one source alone, at n places and at the frame's edges; the residual of its own light in its background. */
-const pageLone = async ({ n, lux }) => {
+const pageLone = async ({ n, lux, line }) => {
   const P = window.__app.sky.renderer;
   const R = P.r ?? P;
   const set = R.setStars.bind(R);
@@ -225,13 +227,16 @@ const pageLone = async ({ n, lux }) => {
   let seed = 987654321;
   const rnd = () => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 2 ** 32; };
   const pos = [];
-  for (let i = 0; i < n; i++) pos.push([8 + rnd() * (W - 16), 8 + rnd() * (H - 16)]);
-  pos.push([0.4, 0.3], [W - 0.3, H - 0.4], [1.7, H - 2.2], [W - 1.1, 3.3]);
+  if (line) for (let i = 0; i < line[4]; i++) pos.push([line[0] + ((line[2] - line[0]) * i) / (line[4] - 1), line[1] + ((line[3] - line[1]) * i) / (line[4] - 1)]);
+  else {
+    for (let i = 0; i < n; i++) pos.push([8 + rnd() * (W - 16), 8 + rnd() * (H - 16)]);
+    pos.push([0.4, 0.3], [W - 0.3, H - 0.4], [1.7, H - 2.2], [W - 1.1, 3.3]);
+  }
   const rows = [];
   for (const [x, y] of pos) {
     const a = await one(x, y, 1e-30), b = await one(x, y, lux);
-    if (!a || !b) { rows.push({ hidden: true }); continue; }
-    rows.push({ residual: (b.tex - b.own - a.tex) / b.own, ownOverBackground: b.own / Math.max(a.tex, 1e-30), level: b.level, levelMoved: a.level !== b.level });
+    if (!a || !b) { rows.push({ hidden: true, x, y }); continue; }
+    rows.push({ x, y, residual: (b.tex - b.own - a.tex) / b.own, ownOverBackground: b.own / Math.max(a.tex, 1e-30), level: b.level, levelMoved: a.level !== b.level });
   }
   return { rows, format: R.hdrFormat, size: [W, H] };
 };
@@ -255,7 +260,7 @@ try {
       adapter ??= adapterLabel(info);
       const wrong = gpuMismatch(mode, info);
       if (err || wrong) throw new Error(err ?? wrong);
-      if (lone) row.lone = await page.evaluate(pageLone, { n: positions, lux });
+      if (lone) row.lone = await page.evaluate(pageLone, { n: positions, lux, line });
       else {
         row.census = await page.evaluate(pageCensus, { frames, pixels });
         if (flag('perturb')) row.perturb = await page.evaluate(pagePerturb, { settle, measure });
@@ -273,6 +278,7 @@ try {
       rows.push(row);
       console.log(`${scene.id.padEnd(28)} ${row.lone.size.join('x')} ${row.lone.format} level ${ok[0]?.level}: ${ok.length} positions (${row.lone.rows.length - ok.length} hidden)  largest |residual| / own light ${worst.toExponential(2)} (bound ${bound})  own / background, median ${ok.map((r) => r.ownOverBackground).sort((a, b) => a - b)[ok.length >> 1]?.toExponential(1)}` +
         (moved ? `  the level read moved with the source at ${moved} positions: use a smaller --lux` : '') + (row.fail ? '  FAIL' : ''));
+      if (line) console.log('  along the line: ' + row.lone.rows.map((r) => `${r.x.toFixed(2)}: ${r.hidden ? 'hidden' : r.residual.toExponential(1)}`).join('  '));
       continue;
     }
     const c = row.census;

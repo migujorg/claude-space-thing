@@ -475,10 +475,25 @@ about 0.1 cd/m² at Io and Europa in the regression suite's frame, and beside Sa
 Enceladus. The moon is then a compact dot near the display's white, with little or no painted glare. With
 the old term its background came out as zero: it was shown as to an eye adapted to darkness, a clipped disk
 several pixels across in a wide painted halo, next to a planet the same frame is adapted to. Three limits
-remain. A splat cut by the frame's edge is handled (only the part inside is taken out), but a splat cut by a
-nearer body's depth is not: the term then takes out more than the point image holds (§10). The cull reads
-the veil of the frame before, so while the view moves the veil holds the source where it was. And the Sun as
-a point is drawn after the pyramid, so the veil holds none of it and nothing is taken out for it.
+remain. A splat cut by the frame's edge is handled (only the part inside is taken out). The cull reads the
+veil of the frame before, so while the view moves the veil holds the source where it was. And the Sun as a
+point is drawn after the pyramid, so the veil holds none of it and nothing is taken out for it.
+
+**Occlusion belongs to the source.** A point source is hidden whole when the surface at its centre's pixel is
+nearer than it, and drawn whole otherwise; its splat is never clipped fragment by fragment. A point's image
+on the retina is not cut by the image of a body beside it: the two add. So a star one pixel outside a limb
+keeps its whole splat, part of it over the disk, and a star whose centre is behind the limb is gone even
+where its splat would have reached past it: a point is a point. The cull decides this for catalogue sources
+(any surface at the centre is nearer than a star) and puts a hidden source in neither list, so it is neither
+counted nor splatted; the point shader's vertex stage decides it for unresolved bodies, against their own
+depth, so a moon in front of its planet is drawn and one behind it is not. A body with a drawn atmosphere
+dims a source behind its limb as before (the limb's transmittance along the chord, which is zero behind the
+solid body). A source whose centre is outside the frame has no depth to ask and the part of its splat inside
+the frame is drawn. The Sun's disk writes no depth: a source on it is not hidden but drowned (its analytic
+veil). Until 7 October 2026 each fragment of a splat was tested against the depth: a splat at a limb lost
+part of its light in the point image, the own-light term then took out more than was there (half the
+source's light at the limb, all of it behind the body), and stars behind a body without a drawn atmosphere
+were counted as drawn (836 of 2119 in the regression suite's strict Earth scene).
 
 The mesopic state m, the Ricco area, the cone summation area and the tone response (Pattanaik's
 observer with Hunt's rods, reference white and black, appearance rules) are all evaluated at that
@@ -741,11 +756,6 @@ checks that the Sun's light on the bodies is unaffected.
   shows the Sun's veil from just outside the frame). Starlight outside the frame does not scatter
   into it, so the veil darkens slightly within the pyramid's reach of the frame edges (visible only in
   dense star fields with enhanced mode). A guard band would fix it.
-- **A point's splat cut by a nearer body.** The point passes test each fragment against the depth buffer,
-  so a source within the splat's reach (two pixels at the smallest splat) of a nearer body's limb has part of
-  its splat missing from the point image. Its own-light term (§6) then takes out more than is there and its
-  background comes out too dark. A point's image on the retina is not clipped by the image of a body beside
-  it; occlusion belongs to the source, not to the fragments.
 - **One splat's light is right to a percent, not exactly.** The splat's normalisation is the integral's. The
   cut-off at 3σ is hard, so the samples of one splat sum to between 0.990 and 1.005 at σ = 0.6 px depending
   on where the source sits in the pixels (the mean is 1). The own-light term uses the samples themselves and

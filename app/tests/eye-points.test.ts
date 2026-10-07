@@ -3,7 +3,7 @@
 import { describe, expect, it } from 'vitest';
 import { AdaptationState, computeEyeFrame } from '../src/eye/model';
 import { DEFAULT_EYE_SETTINGS } from '../src/eye/settings';
-import { VEIL_BLUR_TAPS, backgroundLevel, erf, intendedDisplayLd, ownVeilAxis, ownVeilExact, ownVeilPerPixel, pointAppearance, pointBackground, pointObserver, pointVeil, pointVisible, splatNorm, veilKernelPerPixel, type PointSource, type PointSplat, type VeilLevel } from '../src/eye/points';
+import { VEIL_BLUR_TAPS, backgroundLevel, erf, intendedDisplayLd, ownVeilAxis, ownVeilExact, ownVeilPerPixel, pointAppearance, pointBackground, pointHidden, pointObserver, pointVeil, pointVisible, splatNorm, veilKernelPerPixel, type PointSource, type PointSplat, type VeilLevel } from '../src/eye/points';
 import { luxFromMagnitude, riccoArea } from '../src/eye/crumey';
 import { fitScatterKernel } from '../src/eye/glare';
 import { CRUMEY, HECHT1947, PATTANAIK } from '../src/eye/constants';
@@ -287,6 +287,19 @@ describe('one test for the cull and the display: the background includes the ext
     const bg = pointBackground({ Y: 5, S: 9 }, { Y: 2, S: 3 }, { Y: 0.5, S: 1 }, { Y: 10, S: 20 });
     expect(bg).toEqual({ Y: 13.5, S: 27 });
     expect(pointBackground({ Y: 1, S: 1 }, { Y: 2, S: 3 }, none, { Y: 10, S: 20 })).toEqual({ Y: 10, S: 20 });
+  });
+});
+
+describe('occlusion belongs to the source, not to its splat\'s pixels', () => {
+  // reverse depth, as the renderer stores it: larger is nearer; 0 is infinity, and no surface
+  it('a star (at infinity) is hidden where a body covers its centre, and nowhere else', () => {
+    expect(pointHidden(0.3, 0)).toBe(true);
+    expect(pointHidden(0, 0)).toBe(false);
+  });
+  it('a moon in front of its planet is drawn, behind it hidden, and its own disk at its own depth does not hide it', () => {
+    expect(pointHidden(0.3, 0.5)).toBe(false);
+    expect(pointHidden(0.5, 0.3)).toBe(true);
+    expect(pointHidden(0.5, 0.5)).toBe(false);
   });
 });
 
