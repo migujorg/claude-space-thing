@@ -104,6 +104,13 @@ def capture_inputs(expected=None):
         _ACTIVE.reset(token)
         for key, path in sorted(state['seen'].items()):
             out[key] = file_record(path)
+        if successful:
+            from .. import download
+            ledger = download._load_ledger()
+            for key, rec in out.items():
+                stored = ledger.get(key.removeprefix('raw/')) if key.startswith('raw/') else None
+                if stored and stored.get('sha256') != rec['sha256']:
+                    raise ReproductionError(f'{key}: actual input sha256 differs from download ledger')
         if successful and expected is not None and out != expected:
             changed = [k for k in sorted(set(out) | set(expected)) if out.get(k) != expected.get(k)]
             raise ReproductionError(f'rebuild input set/bytes differ: {", ".join(changed)}')
@@ -164,9 +171,8 @@ def preflight(case):
         # prepare, including newly fetched responses whose timestamps have changed.
         from .. import download
         ledger = download._load_ledger()
-        by_url = {v['url']: RAW / k for k, v in ledger.items()}
         for src in case.get('sources', []):
-            p = by_url.get(src['url'])
+            p = source_path(src, ledger)
             if p and p.exists() and src.get('sha256'):
                 actual = file_record(p)['sha256']
                 if actual != src['sha256']:
@@ -299,3 +305,21 @@ def generation_time(expected):
         return dt.datetime.fromtimestamp(int(value), dt.timezone.utc).isoformat(timespec='seconds')
     except (ValueError, OverflowError, OSError) as exc:
         raise ReproductionError('invalid SOURCE_DATE_EPOCH: expected Unix seconds') from exc
+
+
+def source_path(source, ledger):
+    """Resolve source copies by digest, preferring the file actually read this build.
+
+    A URL can name several archived responses (different service timestamps), or
+    identical copies downloaded for different cases. A URL alone is not identity.
+    """
+    candidates = [(RAW / key, rec) for key, rec in ledger.items()
+                  if rec['url'] == source['url'] and (RAW / key).is_file()]
+    if not candidates:
+        return None
+    state = _ACTIVE.get()
+    seen = set(state['seen'].values()) if state is not None else set()
+    consumed = [(path, rec) for path, rec in candidates if path in seen]
+    pool = consumed or candidates
+    matching = [path for path, rec in pool if rec.get('sha256') == source.get('sha256')]
+    return matching[0] if matching else pool[0][0]

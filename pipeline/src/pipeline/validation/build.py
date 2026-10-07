@@ -777,14 +777,17 @@ def build_case(case, *, expected: dict | None = None) -> dict:
         repro.preflight(expected)
     lock = (expected or {}).get("reproducibility")
     with repro.isolated_spectral_cache(), repro.expected_case(expected), repro.capture_inputs(lock["inputs"] if lock else None) as inputs:
+        # SPICE opens kernels in C, outside Python's file-open audit hook.
+        # Hash the exact declared kernel paths before their bytes are consumed.
+        for path in (ek.lsk(), ek.pck(), ek.planetary()):
+            repro.file_record(path)
         p = prepare_frame_case(case) if isinstance(case, FrameCase) else case.prepare()
         built = measure(p)
         # Sources may already be in a process-local spectral cache. Explicitly
         # read their pinned copies too so every case lock is self-contained.
         ledger = download._load_ledger()
-        by_url = {v["url"]: RAW / k for k, v in ledger.items()}
         for src in built["json"]["sources"]:
-            path = by_url.get(src["url"])
+            path = repro.source_path(src, ledger)
             if path and path.is_file():
                 actual = repro.file_record(path)
                 if src.get("sha256") and src["sha256"] != actual["sha256"]:

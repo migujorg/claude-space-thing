@@ -197,3 +197,39 @@ def test_generation_stamp_is_an_explicit_artifact_input(monkeypatch):
     monkeypatch.delenv('SOURCE_DATE_EPOCH')
     with pytest.raises(r.ReproductionError,match='SOURCE_DATE_EPOCH'):
         r.generation_time(None)
+
+
+def test_input_capture_refuses_stale_download_ledger(tmp_path,monkeypatch):
+    from pipeline.validation import reproducibility as r
+    from pipeline import download
+    monkeypatch.setattr(r,'RAW',tmp_path)
+    f=tmp_path/'frame.img'; f.write_bytes(b'changed on disk')
+    monkeypatch.setattr(download,'_load_ledger',lambda: {'frame.img':{'sha256':'old'}})
+    with pytest.raises(r.ReproductionError,match='frame.img.*ledger'):
+        with r.capture_inputs():
+            f.read_bytes()
+
+
+def test_source_lookup_disambiguates_archived_responses_by_digest(tmp_path,monkeypatch):
+    from pipeline.validation import reproducibility as r
+    monkeypatch.setattr(r,'RAW',tmp_path)
+    (tmp_path/'old.txt').write_bytes(b'old header')
+    (tmp_path/'new.txt').write_bytes(b'new header')
+    old=r.file_record(tmp_path/'old.txt')['sha256']; new=r.file_record(tmp_path/'new.txt')['sha256']
+    ledger={'old.txt':{'url':'https://example.invalid/query','sha256':old},
+            'new.txt':{'url':'https://example.invalid/query','sha256':new}}
+    assert r.source_path({'url':'https://example.invalid/query','sha256':old},ledger)==tmp_path/'old.txt'
+
+
+def test_source_lookup_prefers_consumed_identical_copy(tmp_path,monkeypatch):
+    from pipeline.validation import reproducibility as r
+    from pipeline import download
+    monkeypatch.setattr(r,'RAW',tmp_path)
+    for name in ('unused.txt','used.txt'):
+        (tmp_path/name).write_bytes(b'identical response')
+    sha=r.file_record(tmp_path/'used.txt')['sha256']
+    ledger={name:{'url':'https://example.invalid/query','sha256':sha} for name in ('unused.txt','used.txt')}
+    monkeypatch.setattr(download,'_load_ledger',lambda:ledger)
+    with r.capture_inputs():
+        (tmp_path/'used.txt').read_bytes()
+        assert r.source_path({'url':'https://example.invalid/query','sha256':sha},ledger)==tmp_path/'used.txt'
