@@ -182,4 +182,5 @@ def build_one(ctx: BuildContext, m: NhMap) -> dict:
 
 
 def build(ctx: BuildContext, work: Path) -> list[dict]:
-    return [build_one(ctx, m) for m in MAPS]
+    only = set(ctx.param("surfaces.bodies"))
+    return [build_one(ctx, m) for m in MAPS if not only or m.naif in only]

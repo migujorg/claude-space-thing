@@ -353,4 +353,5 @@ def build_one(ctx: BuildContext, pm: PanMap) -> dict:
 
 
 def build(ctx: BuildContext, work: Path, maps: list[PanMap] | None = None) -> list[dict]:
-    return [build_one(ctx, pm) for pm in (maps or MAPS)]
+    only = set(ctx.param("surfaces.bodies"))
+    return [build_one(ctx, pm) for pm in (maps or MAPS) if not only or pm.naif in only]
