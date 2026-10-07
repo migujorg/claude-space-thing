@@ -1,6 +1,16 @@
-# Outer-planet ring components
+# Giant-planet ring profiles and components
 
 The `light` stage builds `rings.json` from cited downloads and transcribed tables. This report describes the component slice; Saturn's calibrated model and checks remain in [planet-colors.md](planet-colors.md). No rendered-scene result is claimed here. The models enter Best estimate and Complete; Strict withholds the estimated component models, retaining the measured Uranus/Neptune occultation cuts with unknown brightness. All aspect labels and input IDs are in the product; raw-file hashes resolve through `sources.json`.
+
+## Saturn archive and reconstruction
+
+Saturn now has two separate sourced attributes. `opticalDepth` is measured: every archived Cassini UVIS β Cen 2008-231 τ is retained, including signed noise and the outer rise, with archive τ=-1 or note-flag bit 64 represented as null. `opticalDepthEstimate` is estimated: the existing `clean_saturn_tau` output rounded to four decimals, with the same observation geometry and maxTau lower-limit data. Best and Complete prefer the estimate through the ordinary label-admission rule; Strict falls back to the archive. Missing bins keep the existing unknown-material handling.
+
+The reconstruction detects the inner main-ring edge as the first run of at least 3 bins with τ > 5 photon σ and the outer edge as the last run of at least 20 bins with τ > 0.2. Inside those inclusive edges it clamps every -1 < τ < 0 to zero, regardless of significance. Outside, it separately subtracts each segment's running median (window min(201, segment_length | 1), SciPy nearest endpoint padding; nominal 2010 km). Only runs of at least two adjacent residuals strictly > 3σ survive as max(residual,0); every other outside bin becomes zero, including isolated significant positives and negative residuals. These thresholds and exact zeros are assumptions. The smooth beyond-F rise is **assumed** instrumental; no independent calibration or source substantiating that cause is supplied. The median includes F-ring material and can remove extended real opacity. The product method gives the conditional photon-noise formula, guards and diagnostics; it does not account for star/background-model systematics or reconstruction uncertainty. Validation has not selected or altered these rules.
+
+The fitted reflectance model continues using the cleaned reconstruction through `saturn_profile`; its `normalTau` and dependent HST inversions, Voyager modulation and unlit fits inherit `estimated`. Its numerical fitting and shader arithmetic are unchanged. Strict excludes that estimated brightness, so positive measured outer opacity produces extinction and unknown-reflectance material marking, not calibrated outer-ring radiance; Best removes the smooth outer opacity via the estimate.
+
+Neptune's PN1P01 archive marks 40 bins at 51,200–51,395 km unconstrained (mean signal 0 or opacity lower limit -9): they are now null, rather than measured zeros. Uranus's PU2P01XE array is unchanged from the archive. The archive comparisons and level selection are covered by pipeline and CPU app tests; no GPU/eye-model result is claimed by this change.
 
 ## Inputs, labels and unknowns
 

@@ -113,14 +113,16 @@ function ringsFor(sys: RingSystem, orient: Mat3, level: ExistsLevel, et: number 
       worstLabel: sys.components!.label,
     };
   }
-  const od = allowedValue(sys.opticalDepth, level);
+  const estimate = allowedValue(sys.opticalDepthEstimate, level);
+  const selected = estimate ? sys.opticalDepthEstimate! : sys.opticalDepth;
+  const od = estimate ?? allowedValue(sys.opticalDepth, level);
   if (!od) return null;
   const refl = allowedValue(sys.reflectance, level);
   return {
     normal: poleOf(orient),
     opticalDepth: od.map((p) => ({ radiusKm: p.radiusKm, normalTau: p.normalTau })),
     reflectance: refl,
-    worstLabel: worstOf([sys.opticalDepth.label, ...(refl ? [sys.reflectance.label] : [])]),
+    worstLabel: worstOf([selected.label, ...(refl ? [sys.reflectance.label] : [])]),
   };
 }
 
