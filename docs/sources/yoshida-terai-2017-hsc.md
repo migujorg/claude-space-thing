@@ -10,4 +10,6 @@
 
 ## How it is used
 
-The `synthetic` stage continues the Jupiter-Trojan catalogue beyond its completeness limit (C refitted per build, Hendler & Malhotra 2020) with α = 0.37, down to H_V = 17.4 + 0.25 = 17.65. That is the faint end of the measured range. It applies the L4 slope to both swarms.
+The `synthetic` stage continues the Jupiter-Trojan catalogue fainter than its fitted completeness proxy (C refitted per build, Hendler & Malhotra 2020) with α = 0.37, down to H_V = 17.4 + 0.25 = 17.65. That is the faint end of the measured range. It applies the L4 slope to both swarms.
+
+Product-use scope: catalogue-count conditioning and a fitted H proxy do not establish detection probability for a generated orbit or guarantee consistency with all observations. Discovery yield is aggregate under fixed inputs; catalogue refits can change counts and identities. Source survey efficiencies and completeness statements above retain their published domains; the current generator does not apply their pointings or efficiencies as an object veto. [Audited limitations](../reports/synthetic-limitations.md).

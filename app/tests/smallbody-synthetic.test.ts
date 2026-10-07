@@ -11,7 +11,7 @@ import type { LoadedData } from '../src/data/load';
 import type { Manifest, SmallBodyCoreHeader, SyntheticCellsHeader, SyntheticObjectsHeader } from '../src/data/schema';
 import type { SmallBodyProducts, SmallBodyTables } from '../src/data/smallbodies';
 import { BinaryTable } from '../src/data/binaryTable';
-import { syntheticFacts, syntheticWhy } from '../src/ui/syntheticInspect';
+import { syntheticFacts, syntheticPopulationFacts, syntheticWhy } from '../src/ui/syntheticInspect';
 import { body, FAKE_J2000_MS, FakeEphemerisSet, fakeCore, fakeLight } from './app-fakes';
 import { DAY, EPOCH, FAKE_GM, FakeField, fakeTables, makeTable, vCirc } from './sb-fixtures';
 import { DATA_DIR } from './core-data';
@@ -239,12 +239,12 @@ describe('synthetic objects in the app shell', () => {
     const { objects, cells } = syntheticTables();
     const s = readSynthetic(objects.header, objects.buffer, cells.header, cells.buffer);
     const f = syntheticFacts(s, 1, 'complete', 'fake epoch');
-    expect(f.what).toMatch(/^Not a real object\. It stands in for one of ~3\.1 undiscovered main-belt asteroid/);
-    expect(f.what).toMatch(/expects 5\.2 objects there; the catalogue has 2, complete down to H 18\.6/);
+    expect(f.what).toMatch(/^Not a real object\. It stands in for one of ~3\.1 model-deficit main-belt asteroid/);
+    expect(f.what).toMatch(/expects 5\.2 objects there; the catalogue has 2, with fitted completeness proxy H 18\.6/);
     expect(f.rows.every((r) => r.label === 'synthetic' && !r.withheld)).toBe(true);
     const seed = f.rows.find((r) => r.key === 'syn:seed')!;
     expect(seed.value).toBe("candidate 2 of the stream 'synthetic-v1|1|fake-model|0|0|0|38' (seed 1, algorithm synthetic-v1)");
-    expect(f.rows.map((r) => r.key)).toEqual(['syn:cell', 'syn:limit', 'syn:seed', 'syn:orbit', 'syn:H', 'syn:G', 'syn:pV', 'syn:D', 'syn:rot']);
+    expect(f.rows.map((r) => r.key)).toEqual(['syn:population', 'syn:cell', 'syn:limit', 'syn:seed', 'syn:orbit', 'syn:H', 'syn:G', 'syn:pV', 'syn:D', 'syn:rot']);
     expect(syntheticFacts(s, 1, 'best', undefined).rows.every((r) => r.withheld)).toBe(true);
     expect(syntheticWhy('best', true, true)).toMatch(/exists only at Complete/);
   });
@@ -253,12 +253,12 @@ describe('synthetic objects in the app shell', () => {
     const { objects, cells } = moonTables();
     const s = readSynthetic(objects.header, objects.buffer, cells.header, cells.buffer);
     const f = syntheticFacts(s, 0, 'complete', 'fake epoch');
-    expect(f.what).toMatch(/undiscovered retrograde irregular moons of Jupiter in its cell \(a 0\.12–0\.13 au about the Jupiter system barycentre/);
+    expect(f.what).toMatch(/model-deficit retrograde irregular moons of Jupiter in its cell \(a 0\.12–0\.13 au about the Jupiter system barycentre/);
     expect(f.what).toMatch(/Ashton et al\. \(2020\)/);
-    expect(f.what).toMatch(/the MPC list of known moons has 0, complete down to H 17\.63,/);
+    expect(f.what).toMatch(/the MPC list of known moons has 0, with fitted completeness proxy H 17\.63,/);
     const orbit = f.rows.find((r) => r.key === 'syn:orbit')!;
     expect(orbit.name).toMatch(/about the Jupiter system barycentre/);
-    expect(orbit.method).toMatch(/an assumption: no debiased orbit model of irregular moons exists.*fake motion text/);
+    expect(orbit.method).toMatch(/an assumption: no bias-corrected orbit distribution was found.*fake motion text/);
     expect(f.rows.find((r) => r.key === 'syn:limit')!.method).toMatch(/H_V = m − 6\.37 ± 0\.06, the median offset over the survey's photometry of 7 known moons/);
     // A missing population attribute must be shown as unknown, including below Complete.
     for (const level of ['complete', 'best'] as const) {
@@ -395,6 +395,17 @@ describe('synthetic statement limits', () => {
     expect(f.what).not.toMatch(/the debiased population|complete down to/);
     expect(f.what).toMatch(/aggregate/);
     expect(f.rows.find((r) => r.key === 'syn:orbit')!.uncertainty).toMatch(/unknown/);
+  });
+
+  it('keeps population disclosures sourced, including zero-object populations, and obeys the reality filter', () => {
+    const p = { ...MOON_POP, name: 'irregular-uranus', objects: 0,
+      model: { method: 'No supported faint model in the sources reviewed.', uncertainty: 'No samples; unknown unseen count.' } };
+    for (const level of ['complete', 'best'] as const) {
+      const rows = syntheticPopulationFacts(p, level);
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({ label: 'synthetic', sources: p.sources, withheld: level === 'best',
+        method: p.model.method, uncertainty: p.model.uncertainty });
+    }
   });
 
   it.skipIf(!built)('reads population limitations and sampled motion evidence into the object inspector', () => {

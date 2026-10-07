@@ -11,4 +11,6 @@
 
 ## How it is used
 
-The `synthetic` stage continues the Hilda-region catalogue (3.7–4.2 au, q ≥ 1.3 au) beyond its completeness limit with α = 0.38, down to H_V = 18.0 + 0.25 = 18.25.
+The `synthetic` stage continues the Hilda-region catalogue (3.7–4.2 au, q ≥ 1.3 au) fainter than its fitted completeness proxy with α = 0.38, down to H_V = 18.0 + 0.25 = 18.25.
+
+Product-use scope: catalogue-count conditioning and a fitted H proxy do not establish detection probability for a generated orbit or guarantee consistency with all observations. Discovery yield is aggregate under fixed inputs; catalogue refits can change counts and identities. Source survey efficiencies and completeness statements above retain their published domains; the current generator does not apply their pointings or efficiencies as an object veto. [Audited limitations](../reports/synthetic-limitations.md).

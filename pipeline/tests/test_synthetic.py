@@ -391,3 +391,19 @@ def test_product_statements_disclose_limits_and_motion():
     assert "comet-flagged" in centaur["model"]["uncertainty"]
     assert "suitability" in centaur["model"]["uncertainty"]
     assert "rejects their joint distribution" in centaur["model"]["uncertainty"]
+
+
+def test_all_population_metadata_including_no_model():
+    """The disclosure path also covers intentionally empty Uranus/Neptune populations."""
+    from pipeline.stages import synthetic as syn
+    res = {"populations": {pop: {"limit": {}, "extra": {"orbitDistribution": "template assumption",
+            "cataloguedCometsNotCounted": 44, "realization": {"sumWeightsOverModelSize": 0.99},
+            "normalization": {"nBelowHr": 21400, "plus": 3400, "minus": 2800, "hrMax": 13.7}}} for pop in syn.POP_CODES}}
+    result = syn._order(res)
+    assert list(result["populations"]) == list(syn.POP_CODES)
+    for pop, r in result["populations"].items():
+        assert "not a detection probability" in r["limit"]["uncertainty"]
+        assert "unknown" in r["extra"]["positionUncertainty"]
+        assert r["extra"]["method"] and r["extra"]["uncertainty"]
+        if pop not in syn.MOONS:
+            assert "fixed two-body" in r["extra"]["motion"]
