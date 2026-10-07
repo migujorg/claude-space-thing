@@ -7,7 +7,7 @@
 // --probe: directions whose sky-background luminance (the GPU maps + zodiacal model evaluated on the CPU twin,
 //          app/sky.ts probe) is printed.
 import { chromium } from 'playwright';
-import { createServer } from 'vite';
+import { startLocalServer } from './local-server.mjs';
 import { mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -26,9 +26,7 @@ const look = args.look ? args.look.split(',').map(Number) : null;
 const probes = args.probe ? args.probe.split(';').map((p) => p.split(',').map(Number)) : [];
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const server = await createServer({ root, server: { port: 0, strictPort: false, hmr: false, watch: { ignored: ['**/*'] } }, logLevel: 'error' });
-await server.listen();
-const base = `http://localhost:${server.httpServer.address().port}`;
+const { server, base } = await startLocalServer(root, { hmr: false, watch: { ignored: ['**/*'] } });
 const browser = await chromium.launch({
   headless: true,
   args: ['--enable-unsafe-webgpu', '--enable-features=Vulkan', '--use-webgpu-adapter=swiftshader', '--use-angle=swiftshader', '--ignore-gpu-blocklist'],

@@ -11,12 +11,12 @@
 //   npm run e2e -- --accept-last         make the last run (app/shots/e2e/report.json) the baseline, no rendering
 //   npm run e2e -- --no-compare          render and report only
 //   options: --jobs 1|2  --timeout <s per scene, default 600>  --retries <n, default 1: re-render a scene that timed
-//            out or lost its GPU device, alone>  --base http://localhost:5173 (use a running server)
+//            out or lost its GPU device, alone>  --base http://127.0.0.1:5173 (use a running server)
 //            --gpu swiftshader|hardware (default swiftshader; hardware = the machine's GPU through Vulkan, and a
 //            scene fails if the browser gave a software adapter instead)
 
 import { chromium } from 'playwright';
-import { createServer } from 'vite';
+import { startLocalServer } from './local-server.mjs';
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -104,9 +104,7 @@ mkdirSync(OUT, { recursive: true });
 let server;
 let base = opt('base');
 if (!base) {
-  server = await createServer({ root: ROOT, server: { port: 0, strictPort: false }, logLevel: 'error' });
-  await server.listen();
-  base = `http://localhost:${server.httpServer.address().port}`;
+  ({ server, base } = await startLocalServer(ROOT));
 }
 const browser = await chromium.launch({ headless: true, args: launchArgs });
 const vp = suite.viewport ?? { width: 1280, height: 720 };
