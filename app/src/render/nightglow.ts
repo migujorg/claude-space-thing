@@ -16,8 +16,9 @@
 // Aurora: the ray segments inside the shell and inside the auroral caps (dipole latitude ≥ 40°) are marched; per
 // step the precipitation (OVATION Prime 2010 at the step's magnetic latitude and local time) and the emission table
 // of its mean energy give the light of three line groups. Within a step the altitude is taken linear in path length
-// and the emission is integrated exactly in altitude from a cumulative table ((C(h₂) − C(h₁))·Δs/Δh), so layers
-// thinner than a step are neither missed nor aliased.
+// and the emission is integrated from a linearly interpolated cumulative table ((C(h₂) − C(h₁))·Δs/Δh). Coarse
+// steps preserve the tabulated column; partial altitude bins retain interpolation error, and nearly horizontal
+// steps use the midpoint rate.
 //
 // Cost: the emission is computed at 1/NIGHTGLOW_SCALE resolution in a pass of its own and added at full resolution
 // (bilinear), depth-tested at the shell's near entry.

@@ -159,10 +159,13 @@ is weighted by the uncovered share of the pixel), and:
   (×1/cos away from the nadir); at the limb a mesopause layer gives 51 times its zenith column (closed form 51.12,
   quadrature 51.13).
 - **Aurora:** the segments of the ray inside the shell (86–600 km) and inside the auroral caps (dipole latitude ≥ 40°,
-  a double cone about the dipole axis) are marched in 48 steps. Per step the precipitation at the midpoint's magnetic
+  a double cone about the dipole axis) are marched with a 48-step budget (rounded up per segment, at least four
+  steps per segment). Per step the precipitation at the midpoint's magnetic
   coordinates and MLT gives the energy flux and the mean energy (energy flux / number flux); the altitude is linear in
-  path length within a step and the emission is integrated exactly in altitude from the cumulative table,
-  (C(h₂) − C(h₁))·Δs/Δh, so the step does not skip a thin layer under that within-step linear-altitude approximation.
+  path length within a step and the emission is integrated from the linearly interpolated cumulative table,
+  (C(h₂) − C(h₁))·Δs/Δh. This preserves the tabulated column across coarse steps under the within-step
+  linear-altitude approximation; partial altitude bins retain interpolation error. Nearly horizontal steps
+  (|Δh| ≤ 0.05 km) use the midpoint emission rate instead.
 - **Lower atmosphere:** light from the far side below the atmosphere's top (86 km), or any light when the camera is
   inside the atmosphere, is attenuated with the atmosphere's transmittance table per 40 nm bin (Bruneton 2017's
   transmittance between two points) at the emission-weighted point of each layer and side.

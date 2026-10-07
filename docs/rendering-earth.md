@@ -584,9 +584,10 @@ resolution over the emission shell (to 600 km) and added after the atmosphere sh
 Earth's centre and ends on the ground where the pixel is on the disk. Airglow layers (Gaussian in altitude above the
 ellipsoid) are integrated on each side with 8 Gauss–Legendre nodes in x = √(r − r_t), which handles the face-on
 column and the limb's path enhancement alike; the night domain (solar zenith angle > 100° below the emission) is
-evaluated per node, the local time and ellipsoid radius at the ends of each layer crossing (linear between). The aurora is marched (48 steps) through the parts of the ray inside the shell and
+evaluated per node, the local time and ellipsoid radius at the ends of each layer crossing (linear between). The aurora is marched (48-step budget, rounded up and at least four steps per segment) through the parts of the ray inside the shell and
 the auroral caps; per step the precipitation at the step's magnetic coordinates and the emission's cumulative
-altitude table give column integrals for the within-step linear-altitude approximation. Light that crosses the lower atmosphere is attenuated
+altitude table give column integrals for the within-step linear-altitude approximation, with interpolation error
+inside altitude bins and a midpoint-rate approximation when |Δh| ≤ 0.05 km. Light that crosses the lower atmosphere is attenuated
 per 40 nm bin with §4's transmittance table. Neither emission lights the ground or clouds: the pass adds light
 along the view ray and sends no irradiance to earthShade. Scattering of this light in the lower atmosphere
 (path radiance) is also not modelled. The CPU model and product tests pass; WebGPU scene checks remain pending.
