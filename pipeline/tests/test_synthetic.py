@@ -401,7 +401,7 @@ def test_all_population_metadata_including_no_model():
     """The disclosure path also covers intentionally empty Uranus/Neptune populations."""
     from pipeline.stages import synthetic as syn
     res = {"populations": {pop: {"limit": {}, "extra": {"orbitDistribution": "template assumption",
-            "cataloguedCometsNotCounted": 44, "cataloguedCometsCounted": 0, "cometNuclei": {"rule": "Qualified H_V only"},
+            "cataloguedCometsNotCounted": 44, "cataloguedCometsCounted": 0, "cometNuclei": {"rule": "Qualified H_V only", "objects": []},
             "realization": {"sumWeightsOverModelSize": 0.99},
             "normalization": {"nBelowHr": 21400, "plus": 3400, "minus": 2800, "hrMax": 13.7}}} for pop in syn.POP_CODES}}
     result = syn._order(res)
@@ -442,3 +442,40 @@ def test_centaur_comet_nucleus_conditioning():
     assert count(known) == (count(empty)[0] - 1, count(empty)[1] - 1)
     assert known.H.tolist() == [12.2]
     assert [r['status'] for r in diag['objects']] == ['eligible', 'unqualified', 'outside-model-H', 'unqualified', 'unknown-model-band', 'unsourced']
+
+
+def test_centaur_classifier_parser_rejects_executable_pickle(tmp_path):
+    import pickle
+    from pipeline import syn_sources as ss
+    class Executable:
+        def __reduce__(self):
+            return eval, ("1 + 1",)
+    with pytest.raises(ValueError, match='global|opcode|format'):
+        ss.parse_centaur_classifier(pickle.dumps(Executable(), protocol=3))
+
+
+def test_centaur_source_selection_uses_state_and_domain(centaur_archive):
+    from pipeline import syn_sources as ss
+    classifier = ss.read_centaur_classifier()
+    states = centaur_archive['states']
+    result = ss.centaur_selection(classifier, states)
+    # Notebook and paper §4.4 report 54,638 selected literature states out of 26,116,868 original members.
+    assert int((result['status'] == 1).sum()) == 54638
+    assert np.all(np.isfinite(result['distance']))
+    assert classifier['points'].shape == (379485, 7)
+    probe = states[:2].copy()
+    probe[:, 6] = [20.99, 23.51]
+    assert ss.centaur_selection(classifier, probe)['status'].tolist() == [-1, -1]
+    # A nonfinite query must be unknown, never silently counted as undetected.
+    probe[0, 6] = 22.; probe[0, 0] = np.nan
+    assert ss.centaur_selection(classifier, probe)['status'][0] == -1
+
+
+def test_centaur_selection_changes_with_orbital_phase_at_equal_magnitude():
+    from pipeline import syn_sources as ss
+    # Circular orbits differing only in phase (arbitrary fixture units); the scalar magnitude is identical.
+    states = np.array([[1., 0., 0., 0., 1., 0., 22.], [0., 1., 0., -1., 0., 0., 22.]])
+    classifier = {'points': states, 'scale': np.ones(7), 'status': np.array([True, False])}
+    assert ss.centaur_selection(classifier, states)['status'].tolist() == [1, 0]
+    states[0, 6] = 21.; states[1, 6] = 23.5
+    assert ss.centaur_selection(classifier, states)['status'].tolist() == [-1, -1]

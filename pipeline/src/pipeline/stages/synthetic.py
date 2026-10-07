@@ -193,8 +193,7 @@ def population_masks(cat: dict) -> dict[str, np.ndarray]:
 
 
 def centaur_comets(cat: dict) -> int:
-    """Catalogued comets in the Centaur region (q > 5.2 au, a < 30 au; e.g. 29P): excluded by the comet flag. Nuclear photometry is not qualified for bare-nucleus H here;
-    some have M2 laws in the comet product, which this generator does not read (audit C1)."""
+    """Number of catalogue comet flags in the Centaur region, before nuclear-H qualification."""
     with np.errstate(invalid="ignore"):
         q = cat["a"] * (1.0 - cat["e"])
         return int(np.sum(cat["comet"] & np.isfinite(cat["a"]) & (q > CENTAUR_Q_MIN) & (cat["a"] < CENTAUR_A[1])))
@@ -219,6 +218,8 @@ def centaur_known(cat: dict, records: list[dict], h_floor: float) -> tuple[sm.Kn
         hv = rec.get("H_V", {})
         value = hv.get("value")
         if rec.get("kind") not in ("bare-nucleus", "coma-separated", "qualified-M2"):
+            status = "unqualified"
+        elif rec.get("kind") == "qualified-M2" and not rec.get("qualificationLimits"):
             status = "unqualified"
         elif value is None or hv.get("label") not in ("measured", "derived", "estimated"):
             status = "unknown-model-band"
@@ -611,6 +612,8 @@ def _order(res: dict) -> dict:
                     f" Kurlander et al. 2025 §5.3 rejects their joint distribution. {m['cataloguedCometsNotCounted']} "
                     "catalogued comet-flagged Centaurs are not conditioned on: named qualifications, bounds and "
                     "unknowns are in cometNuclei.objects. Catalogue M2 laws alone are not qualified bare-nucleus H. "
+                    f"{sum('nuclearLaw' in r['photometry'] for r in m['cometNuclei']['objects'])} catalogue M2 laws "
+                    "are retained; their bare-nucleus suitability remains unestablished. "
                     f"{m['cataloguedCometsCounted']} qualified nuclei counted. {100 * (1 - m['realization']['sumWeightsOverModelSize']):.1f}% of model states "
                     "are not recovered by the archive weighting. "
                     f"Kurlander et al. 2025 normalization: {m['normalization']['nBelowHr']} "
