@@ -68,7 +68,7 @@ MAYORGA = _arxiv(
     "satellites from Cassini: a test bed for cold terrestrial exoplanets. Astronomical Journal 160, 238. "
     "DOI:10.3847/1538-3881/abb8df (accepted manuscript arXiv:2009.05467v1).",
     "Cassini ISS WAC (3299 images) and NAC photometry of Io, Europa, Ganymede and Callisto during the 2000-2001 "
-    "Jupiter flyby, 0-135 deg phase, CISSCAL 3.9 calibration. Table 5 transcribed to "
+    "Jupiter flyby; machine-readable Table 3 spans 1.025-140.582 deg phase, CISSCAL 3.9 calibration. Table 5 transcribed to "
     "photometry/tables/mayorga_2020_table5.csv (docs/sources/mayorga-2020.md).")
 
 FILACCHIONE = _arxiv(
