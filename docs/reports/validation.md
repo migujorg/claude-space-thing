@@ -239,7 +239,7 @@ The Earth (phase 75°) and the Moon beside it, 11 hours before the Moon crossed 
 | moon-disk-integrated | disk-integrated | [116, 212, 154, 251] | i 78.5°, e 45.0°, α 75.2°, lat 2.6° | 0.00234, 0.00311, 0.00389, 0.0046, 0.00528 | 164.1 ± 16.57 | 162.3, 134.3, 344.3 | estimated |
 | earth-centre | disk-centre | [123, 121, 128, 126] | i 72.8°, e 4.0°, α 75.0°, lat -0.2° | 0.121, 0.0992, 0.0782, 0.0729, 0.0757 | 3260 ± 482.6 | 3205, 4304, 8629 | estimated |
 | sky-near | sky-near | [120, 75, 125, 80] |  | 0.0037, 7.865e-04, 1.504e-04, 8.490e-04, 0.00121 | ≤ 183.6 | ≤ 177.8, 191.5, 436.1 | derived |
-| sky-far | sky-far | [250, 1, 255, 6] |  | 5.512e-04, 7.155e-04, 0.0045, 6.831e-04, 4.475e-04 | — | — | unknown |
+| sky-far | sky-far | [248, 3, 253, 8] |  | 3.449e-04, 8.642e-05, -7.505e-06, 7.405e-06, -3.159e-07 | ≤ 63.8 | ≤ 61.79, 66.56, 151.5 | derived |
 
 App data preview (informational, no rendering: `photometry.json` disk brightness at this phase):
 
@@ -411,7 +411,7 @@ The whole disk of Neptune from 14.5 million km at phase 15.1°, in the VIOLET, G
 | terminator | terminator | [201, 147, 204, 150] | i 79.8°, e 65.4°, α 15.0°, lat -11.2° | 0.201, 0.184, 0.157 | 8.404 ± 6.505 | 7.258, 10.37, 23.13 | estimated |
 | disk-integrated | disk-integrated | [93, 83, 214, 203] | i 46.6°, e 45.1°, α 15.1°, lat -21.7° | 0.309, 0.255, 0.21 | 11.69 ± 2.368 | 10.09, 15.42, 33.34 | estimated |
 | sky-near | sky-near | [143, 80, 148, 85] |  | -0.00107, -2.675e-04, -5.395e-04 | ≤ 0.164 | ≤ 0.159, 0.171, 0.39 | derived |
-| sky-far | sky-far | [1, 1, 6, 6] |  | —, —, — | — | — | unknown |
+| sky-far | sky-far | [25, 13, 30, 18] |  | -0.00233, -5.125e-04, -0.00628 | ≤ 0.106 | ≤ 0.102, 0.11, 0.251 | derived |
 
 App data preview (informational, no rendering: `photometry.json` disk brightness at this phase):
 
@@ -514,8 +514,8 @@ The whole, nearly featureless disk of Uranus (south pole towards the Sun) from 1
 | limb | limb | [121, 155, 124, 158] | i 53.1°, e 67.0°, α 13.9°, lat -36.7° | 0.469, 0.501, 0.473, 0.431 | 54.33 ± 11.54 | 47.93, 60.78, 140.4 | estimated |
 | terminator | terminator | [226, 110, 229, 113] | i 79.4°, e 66.6°, α 13.7°, lat -10.8° | 0.222, 0.224, 0.22, 0.195 | 24.86 ± 8.466 | 21.89, 27.84, 64.04 | estimated |
 | disk-integrated | disk-integrated | [102, 56, 241, 195] | i 45.7°, e 44.6°, α 13.8°, lat -42.6° | 0.294, 0.321, 0.305, 0.269 | 34.63 ± 6.938 | 30.27, 38.67, 90.02 | estimated |
-| sky-near | sky-near | [239, 132, 244, 137] |  | 0.00241, 0.0017, 0.0045, 0.00385 | — | — | unknown |
-| sky-far | sky-far | [1, 1, 6, 6] |  | —, —, —, — | — | — | unknown |
+| sky-near | sky-near | [160, 193, 165, 198] |  | 0.00394, 0.00256, 0.00374, 0.00468 | ≤ 0.794 | ≤ 0.769, 0.829, 1.887 | derived |
+| sky-far | sky-far | [46, 236, 51, 241] |  | 5.074e-04, -0.00152, -8.368e-04, -0.00141 | ≤ 0.233 | ≤ 0.226, 0.243, 0.554 | derived |
 
 App data preview (informational, no rendering: `photometry.json` disk brightness at this phase):
 
@@ -618,7 +618,7 @@ These offsets are the missions' attitude-knowledge errors plus ours; the fits th
 
 ## 7. The renderer against the cases
 
-Run of 2026-10-07 09:46 UTC (git d665fd5, data built 2026-10-07 09:25), reality level best, 1 × 1 samples per pixel, rendered by the machine's GPU, adapter `nvidia blackwell`, on AMD Ryzen 9 9950X3D 16-Core Processor (32 threads): `cd app && npm run validate -- --gpu hardware` (the full table, with X, Z, S, is in `app/shots/validation/report.md`). Y in cd/m²; the verdict covers X, Y, Z and S (failing channels named).
+Run of 2026-10-07 10:45 UTC (git cae3826, data built 2026-10-07 10:41), reality level best, 1 × 1 samples per pixel, rendered by the machine's GPU, adapter `nvidia blackwell`, on AMD Ryzen 9 9950X3D 16-Core Processor (32 threads): `cd app && npm run validate -- --gpu hardware` (the full table, with X, Z, S, is in `app/shots/validation/report.md`). Y in cd/m²; the verdict covers X, Y, Z and S (failing channels named).
 
 | case | ROI | expected Y ± 2σ | rendered Y | rendered / expected | σ | verdict |
 |---|---|---|---|---|---|---|
@@ -636,28 +636,28 @@ Run of 2026-10-07 09:46 UTC (git d665fd5, data built 2026-10-07 09:25), reality 
 | `earth-himawari9-2026` | near-centre-141E-12S | 4779 ± 6.2e+02 | 6586 | 1.378 | +5.9 | **fail** (XYZS) |
 | `earth-himawari9-2026` | sky-near | ≤ 12.88 | 0.0006606 | — | — | pass |
 | `earth-himawari9-2026` | sky-far | ≤ 43.94 | 0 | — | — | pass |
-| `earth-moon-epoxi-2008` | earth-disk-integrated | 1616 ± 1.6e+02 | 1554 | 0.962 | -0.8 | pass |
+| `earth-moon-epoxi-2008` | earth-disk-integrated | 1616 ± 1.6e+02 | 1555 | 0.962 | -0.8 | pass |
 | `earth-moon-epoxi-2008` | moon-disk-integrated | 164.1 ± 17 | 152.5 | 0.929 | -1.4 | pass |
 | `earth-moon-epoxi-2008` | earth-centre | 3260 ± 4.8e+02 | 3194 | 0.980 | -0.3 | pass |
 | `earth-moon-epoxi-2008` | sky-near | ≤ 183.6 | 0 | — | — | pass |
-| `earth-moon-epoxi-2008` | sky-far | — | 0 | — | — | not compared |
-| `earth-moon-epoxi-2008` | moon-disk-integrated / earth-disk-integrated | 0.1016 ± 0.0014 | 0.0981 | — | — | **fail** (XY) |
-| `europa-nh-lorri-2007` | disk-centre | 721.1 ± 43 | 651.7 | 0.904 | -3.2 | **fail** (XY) |
-| `europa-nh-lorri-2007` | limb | 843.4 ± 48 | 754.4 | 0.894 | -3.7 | **fail** (XY) |
+| `earth-moon-epoxi-2008` | sky-far | ≤ 63.8 | 0 | — | — | pass |
+| `earth-moon-epoxi-2008` | moon-disk-integrated / earth-disk-integrated | 0.1016 ± 0.0014 | 0.09807 | — | — | **fail** (XY) |
+| `europa-nh-lorri-2007` | disk-centre | 721.1 ± 43 | 651.3 | 0.903 | -3.2 | **fail** (XY) |
+| `europa-nh-lorri-2007` | limb | 843.4 ± 48 | 754.1 | 0.894 | -3.8 | **fail** (XY) |
 | `europa-nh-lorri-2007` | terminator | 219.9 ± 44 | 167.1 | 0.760 | -2.4 | **fail** (XY) |
 | `europa-nh-lorri-2007` | disk-integrated | 407.4 ± 23 | 361.6 | 0.888 | -4.0 | **fail** (XY) |
 | `europa-nh-lorri-2007` | sky-near | ≤ 5.058 | 0 | — | — | pass |
 | `europa-nh-lorri-2007` | sky-far | ≤ 0.7535 | 0 | — | — | pass |
-| `ganymede-nh-lorri-2007` | disk-centre | 529.3 ± 41 | 427.6 | 0.808 | -5.0 | **fail** (XYS) |
-| `ganymede-nh-lorri-2007` | limb | 802.1 ± 35 | 699.4 | 0.872 | -6.0 | **fail** (XYS) |
-| `ganymede-nh-lorri-2007` | terminator | 155.7 ± 24 | 91.6 | 0.588 | -5.3 | **fail** (XYZS) |
+| `ganymede-nh-lorri-2007` | disk-centre | 529.3 ± 41 | 427 | 0.807 | -5.0 | **fail** (XYS) |
+| `ganymede-nh-lorri-2007` | limb | 802.1 ± 35 | 699.8 | 0.872 | -5.9 | **fail** (XYS) |
+| `ganymede-nh-lorri-2007` | terminator | 155.7 ± 24 | 91.29 | 0.586 | -5.4 | **fail** (XYZS) |
 | `ganymede-nh-lorri-2007` | disk-integrated | 299.2 ± 12 | 266.9 | 0.892 | -5.3 | **fail** (XY) |
 | `ganymede-nh-lorri-2007` | sky-near | ≤ 4.09 | 0 | — | — | pass |
 | `ganymede-nh-lorri-2007` | sky-far | ≤ 0.8382 | 0 | — | — | pass |
 | `io-nh-lorri-2007` | disk-centre | 673.7 ± 53 | 571.4 | 0.848 | -3.8 | **fail** (XY) |
-| `io-nh-lorri-2007` | limb | 839.7 ± 63 | 750.8 | 0.894 | -2.8 | **fail** (XY) |
-| `io-nh-lorri-2007` | terminator | 146.4 ± 32 | 128.3 | 0.877 | -1.1 | pass |
-| `io-nh-lorri-2007` | disk-integrated | 348.2 ± 26 | 308.3 | 0.886 | -3.1 | **fail** (XY) |
+| `io-nh-lorri-2007` | limb | 839.7 ± 63 | 750.7 | 0.894 | -2.8 | **fail** (XY) |
+| `io-nh-lorri-2007` | terminator | 146.4 ± 32 | 128.4 | 0.877 | -1.1 | pass |
+| `io-nh-lorri-2007` | disk-integrated | 348.2 ± 26 | 308.3 | 0.885 | -3.1 | **fail** (XY) |
 | `io-nh-lorri-2007` | sky-near | ≤ 6.166 | 0 | — | — | pass |
 | `io-nh-lorri-2007` | sky-far | ≤ 1.127 | 0 | — | — | pass |
 | `jupiter-nh-lorri-2007` | disk-centre | 1063 ± 2e+02 | 1289 | 1.212 | +2.2 | **fail** (XYZS) |
@@ -671,7 +671,7 @@ Run of 2026-10-07 09:46 UTC (git d665fd5, data built 2026-10-07 09:25), reality 
 | `neptune-voyager2-1989` | terminator | 8.404 ± 6.5 | 7.02 | 0.835 | -0.4 | pass |
 | `neptune-voyager2-1989` | disk-integrated | 11.69 ± 2.4 | 11.15 | 0.953 | -0.5 | pass |
 | `neptune-voyager2-1989` | sky-near | ≤ 0.164 | 0 | — | — | pass |
-| `neptune-voyager2-1989` | sky-far | — | 0 | — | — | not compared |
+| `neptune-voyager2-1989` | sky-far | ≤ 0.1058 | 0 | — | — | pass |
 | `pluto-nh-lorri-2015` | disk-centre | 19.49 ± 6.6 | 20.8 | 1.067 | +0.4 | pass |
 | `pluto-nh-lorri-2015` | limb | 19.32 ± 6.6 | 19.24 | 0.996 | -0.0 | pass |
 | `pluto-nh-lorri-2015` | terminator | 6.802 ± 2.7 | 6.238 | 0.917 | -0.4 | pass |
@@ -690,10 +690,10 @@ Run of 2026-10-07 09:46 UTC (git d665fd5, data built 2026-10-07 09:25), reality 
 | `uranus-voyager2-1986` | limb | 54.33 ± 12 | 57.92 | 1.066 | +0.6 | pass |
 | `uranus-voyager2-1986` | terminator | 24.86 ± 8.5 | 22.55 | 0.907 | -0.5 | pass |
 | `uranus-voyager2-1986` | disk-integrated | 34.63 ± 6.9 | 34.67 | 1.001 | +0.0 | pass |
-| `uranus-voyager2-1986` | sky-near | — | 0 | — | — | not compared |
-| `uranus-voyager2-1986` | sky-far | — | 0 | — | — | not compared |
+| `uranus-voyager2-1986` | sky-near | ≤ 0.7942 | 0 | — | — | pass |
+| `uranus-voyager2-1986` | sky-far | ≤ 0.2333 | 0 | — | — | pass |
 
-**40 pass, 25 fail, 4 not compared.** How each body was drawn:
+**44 pass, 25 fail, 0 not compared.** How each body was drawn:
 
 * `callisto-nh-lorri-2007`: Callisto: disk photometry, disk model rotation-slices-v1, spatial model, map albedo.
 * `earth-himawari9-2026`: Earth: disk photometry, map albedo, map clouds, map cloudTau, map water, map night, map wind, partly-cloudy τ statistic for the cloud without a retrieval (estimated), atmosphere.
