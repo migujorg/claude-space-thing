@@ -399,7 +399,7 @@ describe.skipIf(!built)('GPU investigation CPU evidence', () => {
       const earthSource = sources.find(b => b.id === 399)!;
       const shine = planetshineSources(earthSource, sources, light.sun.irradianceXYZS_1AU.value!);
       const results = [];
-      for (const [name, elevation] of [['centre', elev], ['ground', elev === -89 ? -89 : -32]] as [string, number][]) {
+      for (const [name, elevation] of [['centre', elev], ['ground', elev === -89 ? -89 : el === 0 ? -24 : -32]] as [string, number][]) {
         const dir = add(scale(horizontal, Math.cos(elevation * Math.PI / 180)), scale(up, Math.sin(elevation * Math.PI / 180)));
         const ray = nightglowRay(src.scene('best', ms)!, camera, dir, earth.radii!.value! as V3, R, sun);
         expect(ray.airglow[1]).toBeLessThan(0.02);
@@ -428,7 +428,7 @@ describe.skipIf(!built)('GPU investigation CPU evidence', () => {
         expect(inScatterY).toBeLessThan(1e-5);
         expect(planetshineUpperY).toBeLessThan(0.1);
         if (nightSurfaceY !== null) expect(nightSurfaceY).toBeLessThan(0.01);
-        results.push({ name, airglowY: ray.airglow[1], auroraY: ray.aurora[1], inScatterY, directSurfaceY: 0, planetshineUpperY,
+        results.push({ name, elevationDeg: elevation, airglowY: ray.airglow[1], auroraY: ray.aurora[1], inScatterY, directSurfaceY: 0, planetshineUpperY,
           nightSurfaceY, nightSurfaceNote: 'nearest stored level-4 texel before cloud/path attenuation; null = unknown or sky; planetshineUpperY assumes unit diffuse reflectance',
           ground: ray.ground, tangentKm: ray.tangentAltitudeKm });
       }

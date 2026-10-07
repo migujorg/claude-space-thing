@@ -254,7 +254,7 @@ The new `nightglowRay` CPU twin separates airglow and aurora before lower-atmosp
 shader's ground stop, cap/shell segments, 8-node quadrature and cumulative emission march, and tests a complete
 uniform vertical aurora against its column. The reported centre rays have tangent altitudes 165–183 km, above
 the lower atmosphere; the ground rays end on the near side. Their emission therefore needs no lower-air
-attenuation. Across the eight reported rows, airglow Y is 0.00009–0.00034 and aurora Y is 0–0.00231 cd/m².
+attenuation. Across the eight reported rows, airglow Y is 0.00009–0.00052 and aurora Y is 0–0.00231 cd/m².
 The atmosphere CPU twin gives zero in-scatter; ground-point normals receive no direct sunlight. Stored night
 light samples before clouds/attenuation are 0.00026–0.00171 cd/m². These surface samples are nearest texels,
 not a full CPU rendering of bilinear surface/cloud transport. Planetshine is bounded separately using the
