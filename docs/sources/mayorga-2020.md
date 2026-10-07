@@ -14,7 +14,7 @@
 - **Albedo spectrum:** piecewise-linear p(λ) with nodes at the filters' effective wavelengths, solved so that every photon-weighted band average equals c₀. It is held constant beyond the end nodes: below 420 nm for all four moons, beyond 752 nm for Europa and beyond 647 nm for Callisto. Label **estimated**, because the shape between nodes is an assumption. The disk radius is taken as the pck00011 mean radius; the paper used SPICE shapes.
 - **Phase function:** the GRN (568 nm) curve f(α)/f(0), tabulated over the adopted domain 0–130°; footnote a of Table 5 reports that the tabulated fits differ by at most 0.05% over that range and discourages extrapolation beyond the observations. Label **measured**. This adopted fit domain is separate from measurement coverage. The complete machine-readable Table 3 contains 36 measurements at 30–60°: 17 WAC GRN and 17 WAC CB2 measurements of Ganymede near 52–53°, plus one NAC GRN measurement each of Ganymede (52.935°) and Callisto (45.570°). It also contains 68 NAC GRN measurements above 135° (Io, Europa and Ganymede), reaching 140.582°. Coverage remains sparse and differs by moon and filter; see the recount below.
 - **Rotational variation** (`diskReflectanceModel`, kind `rotation-slices-v1`, label **estimated**): Table 4, transcribed to `pipeline/src/pipeline/photometry/tables/mayorga_2020_table4.csv` (all 17 rows, checked line by line). These are the albedos of six 60° longitude slices of a Lambertian sphere that the authors fitted with PlanetSlicer (Thorngren 2019) to the rotational light curves at 14–24° phase. The GRN slices, divided by their mean, give the factor F on p·Φ at the sub-observer and sub-solar longitudes (Eq. 4; PlanetSlicer's `getG` clipping). Slice j spans −180 + 60j to −120 + 60j degrees (PlanetSlicer's `getPhi`). The paper's longitudes run from −180 to 180 in an "E-W system" without naming the sign; east-positive (SPICE planetocentric, the paper used SpiceyPy) makes the leading hemisphere the brighter one for Io, Europa and Ganymede and the darker one for Callisto, as known from ground-based light curves, and the other sign would invert all four. The label is estimated because the Lambertian slice model is an assumption (the paper finds the moons non-Lambertian), the fit is at 14–24° phase (at 125° the paper finds the Io variation about twice as large), and one filter's slices are applied at all wavelengths.
-  - Check (validation, docs/reports/validation.md): at the four New Horizons LORRI views of 2007, F is 0.994, 0.836, 1.058 and 0.970 for Io, Europa, Ganymede and Callisto. With it, the rendered disk-integrated brightness is 0.885, 0.888 and 0.893 of LORRI's for Io, Europa and Ganymede, the same within 1 %, and 0.812 for Callisto. Without it, photometry alone gives 0.896, 1.063, 0.842 and 0.850, and the renderer with the USGS maps (whose longitude contrast then applied) 0.907, 0.943, 0.951 and 0.865. The common ~11 % between this data set and LORRI is bounded below ("The ~11 % offset against New Horizons LORRI").
+  - Check (validation, `docs/reports/validation.md`): at the four 2007 New Horizons LORRI views, F is 0.994, 0.836, 1.058 and 0.970 for Io, Europa, Ganymede and Callisto. The independent contract calculation and historical renderer comparison are recorded below ("The ~11 % offset against New Horizons LORRI"); the common deficit remains unresolved.
 - **Not represented:**
   - The small wavelength dependence of the phase curves.
   - A narrow opposition surge, which the fits do not resolve.
@@ -48,53 +48,48 @@ Callisto's intermediate GRN point is NAC image `N1356767122_1.IMG` at 45.5704749
 
 ## The ~11 % offset against New Horizons LORRI
 
-**Observed** (rendered / LORRI, disk-integrated, 2007):
+**Finding, not a calibration resolution:** most of the deficit is already present in disk photometry. The independent CPU calculation of the reflected-light contract (§4.3 of `docs/architecture.md`), including the emitted GRN phase table and rotation slices, gives the following values for the four 2007 LORRI cases. Y is the mean radiance over each enclosing validation rectangle, including sky, before the eye model; it is not the mean over the illuminated disk alone.
 
-| Body | Phase angle | Rendered / LORRI |
-|---|---|---|
-| Io | 35.6° | 0.885 |
-| Europa | 28.2° | 0.888 |
-| Ganymede | 29.0° | 0.893 |
-| Callisto | 46.5° | 0.812 |
-| Jupiter (same LORRI data set; Karkoschka albedo, ground-based phase curve) | 9.8° | 0.936 |
+| Body | Phase (°) | Contract Y (cd/m²) | LORRI-derived expected Y (cd/m²) | Contract / expected | Recorded rendered / contract |
+|---|---:|---:|---:|---:|---:|
+| Io | 35.629 | 310.076 | 348.169 | 0.890591 | 0.993951 |
+| Europa | 28.221 | 362.113 | 407.374 | 0.888896 | 0.998306 |
+| Ganymede | 29.006 | 266.467 | 299.208 | 0.890576 | 1.001624 |
+| Callisto | 46.490 | 53.443 | 64.852 | 0.824085 | 0.984220 |
 
-Each candidate cause was checked with data outside the validation frames. Jupiter is the exception, used only as a cross-check.
+These are the retained `galilean-dim` investigation's `numbers.json` results, checked against the emitted photometry. Its independent calculation and the app CPU implementation agree to floating-point precision. The first three contract/expected ratios average **0.890021**, with a **0.191%** max/min spread. Thus a common ~11% deficit precedes rendering; the recorded renderer residuals are much smaller. Callisto has a further **7.4%** deficit relative to that common ratio, plus a recorded renderer shortfall of about **1.6%** relative to its contract. The renderer values are historical report measurements, not a new GPU run. The CPU agreement checks arithmetic, not the correctness of either absolute scale or the assumed phase/rotation/spectral model.
 
-1. **Cassini side: aperture losses in the paper's photometry.**
-   - **PSF used:** the ISS WAC CL1/GRN extended PSF from the calibration volume (`COISS_0011/calib/xpsf/xpsf_wac_cl1_grn.img`: core by Birath 2006, extended wings by West 2018; fetched into `data/raw/cassini_iss_calib`).
-   - **Point sources:** with the paper's apertures (Table 1: 3.5–4.3 px, sky annulus starting at 7.5–7.8 px and 3 px wide), they are recovered to 95.0–95.4 %.
-   - **Resolved disks** (aperture 1.05 R, sky annulus from 1.1 R, 3 px wide):
+### LORRI calibration and exposure correction are supported
 
-     | Disk radius R | Recovered |
-     |---|---|
-     | 5 px | 86.5 % |
-     | 8 px | 90.9 % |
-     | 12 px | 94.0 % |
+[Weaver et al. (2020), Table 2, PDF p.18; §§3.2–3.3, pp.22–33](https://arxiv.org/pdf/2001.03524v1) gives the adopted diffuse solar-spectrum responsivity **RSOLAR = 234900** for 1×1 images. July 2016 HD 37962 measurements set the absolute throughput; HD 205905 agrees independently. The ground-measured response shape is retained, and the standard-star apertures are corrected to infinite aperture. The abstract and Table 5 (p.36) state about **2% (1σ)** absolute accuracy for solar-type spectra; pp.25–27 separately discuss a few-percent aperture-to-total uncertainty and about 10% for non-solar spectra. Monitoring M7 and NGC 3532 found sensitivity stable at about **1%** over 2006–2017. This supports applying the in-flight scale to 2007, but that application is an inference from stability, not an explicit instruction in the paper to replace the Jupiter archive headers. The inspected documents do not supply a separately quantified diffuse-only error.
 
-   - **Small disks** (aperture = base + 0.2 R): 94.7 % at R = 2.5 px and 86.7 % at R = 4.5 px.
-   - **Why this biases the albedos:** CISSCAL 3.9's absolute factors refer to the total flux. The 2018 analysis corrects its star photometry for light in the PSF wings (ISS Data User's Guide, COISS_0011 `document/iss_data_user_guide_180916.pdf`, "Absolute Calibration"). The paper applies no aperture correction.
-   - **Result:** its reflectances are probably low by 5–13 %, depending on how large each moon appeared. The paper does not give that per image. This caveat is now in the albedo's `uncertainty`.
-   - **Cassini-side factor:** 0.87–0.95.
-2. **LORRI side: absolute scale.**
-   - **The two RSOLAR values:** the 2007 archive headers carry the pre-flight RSOLAR, 2.664 × 10⁵. The cases use Weaver et al.'s (2020) in-flight 2.349 × 10⁵ (HD 37962, 2016), which is 13.4 % lower. Weaver et al. find the sensitivity stable to about 1 % over 2006–2017.
-   - **Jupiter cross-check** (same data set): it renders 0.936 with the in-flight value and would render 1.061 with the pre-flight one. Karkoschka's albedo is good to ±4 %, and Jupiter itself varies by a few percent.
-   - **Result:** with the in-flight value, LORRI reads 7 ± 5 % above the ground-based scale, i.e. a LORRI-side factor of 1/(1.02–1.12).
-   - **LORRI's own PSF** (aperture correction 0.10 mag outside 5 px for point sources) puts ≲ 2 % of the light of these 130–200 px disks outside the ROIs (disk + 6 px). That goes the other way.
-3. **Colour term: not the cause.** Y/LORRI band averages from the app's spectra are 0.969 / 0.981 / 0.997 / 1.022 (Io, Europa, Ganymede, Callisto). A steeper violet fall-off for Io, where the reconstruction is unconstrained, changes Io's by 0.4 %. Io, Europa and Ganymede share the offset to 1 % despite colour terms 3 % apart.
-4. **Phase-curve normalization: not the cause for Io, Europa and Ganymede.** Their different phase angles (28–36°) give the same offset, which a phase-curve error would not.
-   - Callisto, at 46.5°, is 8 % lower still. Table 3 has one nearby NAC GRN point at 45.570°, but no WAC GRN measurements between 21.550° and 100.060°. That lone intermediate-phase point does not determine the interpolation error at the LORRI viewing geometry.
-   - The Domingue & Verbiscer (1997) Hapke models (Voyager and telescopic data; `photometry/tables/domingue_verbiscer_1997_hapke.csv`), integrated over the disk, are 14–26 % brighter than the paper for Callisto at 46.5°. At small phase, however, they differ from it by −1 % to +37 % depending on the hemisphere, so they are no absolute reference.
-5. **Ground-based zero phase: a loose bound only.** JPL's compiled values in the Horizons headers are:
+The old **266400** responsivity is documented in the [New Horizons SOC Instrument Interface Control Document, Table 9-5, PDF pp.50–51; §9.3.9, p.60](https://opus.pds-rings.seti.org/holdings/volumes/NHxxLO_xxxx/NHPELO_2001/document/soc_inst_icd.pdf). Its ratio to 234900 is **1.1341**: reverting would raise model/reference ratios by 13.4%, close to the discrepancy. That numerical coincidence is a diagnostic, not evidence that the pre-flight scale is correct. Jupiter's comparison in the same validation data set is also a validation observation, not an independent calibration of LORRI.
 
-   | | Io | Europa | Ganymede | Callisto |
-   |---|---|---|---|---|
-   | JPL albedo | 0.63 | 0.67 | 0.43 | 0.17 |
-   | App albedo | 0.598 | 0.654 | 0.424 | 0.180 |
-   | JPL V(1,0) | −1.68 | −1.41 | −2.09 | −1.05 |
-   | App V(1,0) | −1.629 | −1.392 | −2.055 | −0.935 |
+[Spencer & Weaver (February 2020), slides 2–7](https://opus.pds-rings.seti.org/holdings/documents/NHxxLO_xxxx/LORRI-True-Exposure-Times.pdf) supports the adopted **+0.6 ms** correction to commanded/header exposure times. Two 2007 Io image pairs imply offsets of 0.58–0.59 ms; slide 6 records the adopted correction and FITS-pipeline update. Slide 7 explains the hardware/software timing difference, **0.616 ms**, for all exposures. Using 0.616 rather than 0.600 ms changes these four reference radiances by less than **0.45%**, too little to explain 11%. The slides give no formal ±0.01-ms uncertainty, and the update date alone does not establish that every product archived in 2020 already has corrected exposure keywords. The reader's archive-year condition is an implementation shortcut, not a documented product-by-product audit.
 
-   JPL's two compiled sets disagree with each other by up to 0.2 mag (Callisto), so they bound the Cassini scale only to about 5–10 %.
+### Cassini aperture losses remain a plausible, unquantified bias
 
-**Bound:** together, items 1 and 2 predict a rendered / LORRI ratio of 0.87–0.95 × 1/(1.02–1.12) = 0.78–0.93. The observed 0.885–0.893, and 0.812 for Callisto with its additional deficit, fall within that range. The offset is thus accounted for by known calibration systematics.
+[Mayorga et al. (2020), §§2.1–2.2/Table 1, pp.3–4](https://arxiv.org/pdf/2009.05467v1) uses CISSCAL 3.9 radiometric correction factors without rescaling to a reference spectrum. The empirical base apertures aim to collect **95%** of the light; the base sky annulus begins at the radius containing 99.7%, with a width of 3 pixels. Apertures grow by 0.2R for small disks and become 1.05R for resolved R > 5 pixels, with the inner sky annulus at 1.1R. No explicit total-flux aperture correction is described.
 
-**Nothing is changed in the data.** The aperture loss depends on per-image moon sizes that are not published. The LORRI-scale evidence rests on a validation frame (Jupiter). Correcting either would be tuning.
+The [Cassini ISS Data User's Guide (2018), §4.3, pp.92–95; §5, pp.128–148](https://opus.pds-rings.seti.org/holdings/volumes/COISS_0xxx/COISS_0011/document/iss_data_user_guide_180916.pdf) describes total-flux calibration: correcting stellar PSF wings and summing satellite light over the frame. Its Table 13 (p.148) gives WAC GRN scatter of **4.14%**; p.146 recommends a floor of about **3%** for the best-calibrated filters. These are empirical calibration estimates, not uncertainties on Mayorga's phase fits. A finite aperture against total-flux calibration makes lost moon light plausible. However, Table 3 omits the per-image disk radius, summation, exposure and aperture, and the paper does not pin calibration-file hashes. Neither research lane established actual losses for those images or verified the earlier **5–13%** estimate as an image-specific bound. This does not demonstrate that aperture loss explains the full common deficit. Mayorga's §4.5 comparisons (pp.16–17) concern normalized spectra and rotational-curve shapes, not an independent absolute-scale check.
+
+### Compiled ground magnitudes supply a loose comparison
+
+[Urban & Seidelmann (eds., 2013), *Explanatory Supplement*, Table 10.6, book p.413, as reproduced in the USNO errata, PDF p.5](https://aa.usno.navy.mil/downloads/exp_supp_errata.pdf) supplies the compiled V(1,0) magnitudes below. App predictions use emitted p_V and radius, the cited Willmer (2018) solar V magnitude, and longitude-averaged flux (rotation factor F = 1). Johnson V is a filter integral, distinct from photopic Y.
+
+| Body | App V(1,0) | Compiled V(1,0) | App / compiled flux |
+|---|---:|---:|---:|
+| Io | −1.6294 | −1.68 | 0.9545 |
+| Europa | −1.3917 | −1.41 | 0.9832 |
+| Ganymede | −2.0550 | −2.09 | 0.9683 |
+| Callisto | −0.9349 | −1.05 | 0.8994 |
+
+The retained `galilean-calibration/earth_comparison.json` calculation therefore differs by about **2–5%** for Io, Europa and Ganymede, and **10%** for Callisto. These rounded compilations are not independent precision photometry with an established uncertainty. Opposition behavior and historical zero-point conventions limit the comparison. It does not support a uniform 1/0.89 gain, but it cannot precisely exclude a bias at the spacecraft phases. Horizons apparent magnitudes are predictions from a published phase law, not new brightness measurements; the research lane reproduced them with the Supplement errata's coefficients. They cannot independently calibrate the app's phase/rotation model.
+
+### Phase, rotation and spectral transfer remain unresolved
+
+All four LORRI views lie between well-sampled Cassini phase clusters, as shown by the complete [machine-readable Mayorga Table 3, CDS J/AJ/160/238](https://cdsarc.cds.unistra.fr/ftp/J/AJ/160/238/table3.dat.gz) and the coverage recount above. Europa and Ganymede at 28–29° are already beyond their low-phase GRN samples (ending at 20.735° and 21.007°). Io's GRN gap is 20.565–61.684°. Ganymede has measurements near 52–53°; Callisto has one NAC GRN point at 45.570°, but its WAC GRN samples jump from 21.550° to 100.060°. That single nearby NAC point samples a different hemisphere and has no tabulated uncertainty; it does not establish the fit error at Callisto's LORRI view. Equal ratios at different phases do not exclude phase-fit or rotational-continuation errors. The rotation slices were fitted at 14–24° and continued to these views, and the spectrum is reconstructed between and beyond broadband filter nodes. Arithmetic colour-term checks do not establish the true spectrum at those geometries.
+
+**What would settle the scale:** an independently calibrated, full-aperture, disk-integrated visible spectrum of Europa near **28–30°** phase, with observer/Sun hemisphere geometry specified and absolute uncertainty **≤2–3%**, would distinguish the competing flux levels at the relevant phase. Reduce it against external standards and total encircled energy, then integrate through both Cassini GRN and LORRI passbands. A suitably matched archived Voyager or Galileo observation could serve if its independent absolute calibration is established. Recovering the actual Cassini image geometry and aperture losses would separately test that candidate bias.
+
+**No factor is applied.** The common deficit is located mainly before rendering, but its cause is not uniquely assigned: absolute calibration, sparsely sampled phase fits, rotation continuation and spectral transfer remain limited. Retain the source-supported LORRI calibration and published Cassini photometry until independent measurements or an image-specific re-reduction justify a change. Neither agreement with validation frames nor loose compiled magnitudes can select a calibration or a uniform 11% multiplier.
