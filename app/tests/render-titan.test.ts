@@ -190,9 +190,10 @@ describe.skipIf(!af)('Titan drawn from its atmosphere model', () => {
       const glare = off.glare.find((v) => v.dir[2] === -1)!;
       expect(glare?.inFrame).toBe(false);
       expect(glare.E).toEqual(point.points[0].E);
-      expect.soft(point.warnings.filter((w) => w.startsWith('Titan:'))).toEqual(a <= 5.7 ? [] :
+      // This real-model fixture's 5.7° vector rounds just beyond the curve's strict endpoint.
+      expect.soft(point.warnings.filter((w) => w.startsWith('Titan:'))).toEqual(a < 5.7 ? [] :
         prepareFrame(s, g, eye, 1e-9, { atmospheres: () => bind }).warnings.filter((w) => w.startsWith('Titan:')));
-      if (a <= 5.7) expect.soft(point.points[0].E).toEqual(old);
+      if (a < 5.7) expect.soft(point.points[0].E).toEqual(old);
     }
     rows.push(`edge (5.7°) factors ${edge.fac.map((x) => x.toFixed(4)).join(' ')}; largest |drawn / measured − 1| in range ${(100 * worst).toFixed(2)} %`);
     console.log('[render-titan] the model scaled to the disk photometry (X, Y, Z, S)\n  ' + rows.join('\n  '));

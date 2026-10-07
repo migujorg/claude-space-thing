@@ -637,10 +637,11 @@ inspector's "why" sentence says that the disk is scaled so; it does not show the
 - **At Strict** Titan's haze and photometry are both `estimated`, so neither is admitted and nothing of this applies.
 - **Until the tables are ready**, or if the atmosphere cannot be drawn, the disk photometry stands in with a
   Lambert law (beyond 5.7° extrapolated with it at Best estimate, with the usual warning).
-- **As a point**, and as a source of off-frame glare, a body drawn from its atmosphere model carries the model's
-  disk integral (including the shell) times the same per-channel factors as its disk, with the same label.
-  Inside the photometry's range this equals the photometry; beyond it the edge's factors are held and the point
-  follows the model's phase dependence (`estimated`). The point and disk therefore carry the same light through
+- **As a point**, and as a source of off-frame glare, a body drawn from its atmosphere model uses the disk
+  photometry directly inside its range, without model tables, an integral or a scaling line. Beyond it, the point
+  carries the model's disk integral (including the shell) times the disk's held edge factors, follows the model's
+  phase dependence (`estimated`), and reports the same continuation line as the disk when in view.
+  The point and disk therefore carry the same light through
   their blend. This rule follows `SceneAtmosphere.surface`, not a body id; Earth's layers keep their exception.
   The existing 1° integral cache is shared: with tables ready, a cold high-phase point needs at most four integrals
   (two for the edge, two for the current phase; about 30 ms each for Titan), then none until a phase bin changes.

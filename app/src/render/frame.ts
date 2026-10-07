@@ -414,16 +414,9 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
     // its layers carry their own absolute calibration (surface reflectance, cloud optical thickness and air, each
     // in absolute units), and its disk albedo is the weather of one day, which a single disk value cannot fix.
     const physical = !earth && b.atmosphere?.surface && b.orient && irr && opts.atmospheres ? b.atmosphere.surface : null;
-    // Its tables once ready, even for a point: the point and glare carry the disk's integrated model light.
+    // An in-range point is the disk photometry directly: it needs neither the model tables nor an integral.
+    // A disk needs the model's spatial pattern; beyond the range, a point also needs its phase dependence.
     const resolvedDisk = (2 * angR) / g.pixelAngle > 1;
-    let physB: AtmosphereBinding | null = null;
-    if (physical) {
-      const got = opts.atmospheres!(b, [0, 0, 0, 0], null);
-      if (got && 'error' in got) warnings.push(got.error);
-      else if (got?.tables && got.grid) physB = got;
-    }
-    // With ready tables, both point and disk follow the model's continuation (reported below).
-    const modelReady = physB !== null;
     /** The scale of the model to the disk photometry, per channel, once it is drawn. */
     let modelScale: XYZS | null = null;
     // Disk-integrated p·Φ per channel: from the body's disk reflectance model (the Moon: ROLO) inside its
@@ -457,13 +450,22 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
           phi = x.phi;
           if (range) phaseEdge = ((alpha * 180) / Math.PI > range[1] ? range[1] : range[0]) * (Math.PI / 180);
           label = worse(label, 'estimated');
-          // A model-drawn body carries its model's continuation at every angular size (said below).
-          if (!modelReady) warnings.push(`${b.name}: phase extrapolated beyond measured range (${range?.[0]}–${range?.[1]}°) with the spatial law → estimated`);
         } else {
           warnings.push(`${b.name}: ${ph.reason} → sunlit part drawn as not measured (night side black)`);
         }
       }
       if (phi !== null) pPhi = b.albedoXYZS.map((a) => a * phi!) as XYZS;
+    }
+    let physB: AtmosphereBinding | null = null;
+    if (physical && pPhi && (resolvedDisk || phaseEdge !== null)) {
+      const got = opts.atmospheres!(b, [0, 0, 0, 0], null);
+      if (got && 'error' in got) warnings.push(got.error);
+      else if (got?.tables && got.grid) physB = got;
+    }
+    // With ready tables, the model supplies the continuation for both representations (said below).
+    if (phaseEdge !== null && !physB) {
+      const range = phaseRangeDeg(b.phase!);
+      warnings.push(`${b.name}: phase extrapolated beyond measured range (${range?.[0]}–${range?.[1]}°) with the spatial law → estimated`);
     }
     let Idisk: XYZS | null = null;
     if (pPhi) {
@@ -547,12 +549,14 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
       const scaleC = pRef.map((v, c) => (own[c] > 0 ? v / own[c] : 0)) as XYZS;
       modelScale = scaleC;
       // ∫L dΩ = E☉(1 AU)·A_model(α)·scale·(R/Δ)²/d², including the shell beyond the surface limb.
-      // In range this is p·Φ exactly (up to roundoff); beyond it the model, with the edge's held factors,
+      // In range E already is p·Φ exactly; beyond it the model, with the edge's held factors,
       // supplies the phase dependence for the point and off-frame glare as it does for the resolved disk.
       // Reuse the 1° cache: slowly changing phases need no new integral until they enter another bin.
-      const current = aRef === alpha ? d : modelDisk(physB, alpha);
-      const modelPPhi = irr.map((v, c) => v * scaleC[c] * (current[c] + physical.xyzs[c] * current[4 + c])) as XYZS;
-      E = diskIlluminance(modelPPhi, dAU, R, D, 1);
+      if (edge?.ok) {
+        const current = aRef === alpha ? d : modelDisk(physB, alpha);
+        const modelPPhi = irr.map((v, c) => v * scaleC[c] * (current[c] + physical.xyzs[c] * current[4 + c])) as XYZS;
+        E = diskIlluminance(modelPPhi, dAU, R, D, 1);
+      }
       atmB = physB;
       K = irr.map((v, c) => (v * physical.xyzs[c] * scaleC[c]) / (Math.PI * dAU * dAU)) as XYZS;
       law = LAMBERT_LAW;

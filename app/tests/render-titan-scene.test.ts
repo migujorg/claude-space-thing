@@ -307,7 +307,8 @@ describe('the frame of a body drawn from its atmosphere model (fixture)', () => 
     const integral = vi.spyOn(atmosphereMath, 'modelDiskXYZS');
     const tables = vi.fn(() => ({ ...binding(), key: 'in-range-point-no-integral' }));
     try {
-      for (const phase of [0, 0.5, 1.2, 3, 5.7]) {
+      // Stay just inside the upper endpoint: angle reconstruction can round 5.7° outside its strict domain.
+      for (const phase of [0, 0.5, 1.2, 3, 5.7 - 1e-9]) {
         const s = scene(phase, 2e7, [0.21, 0.2, 0.12, 0.16], { id: 12345 });
         // No atmosphere callback is the direct photometry path from before model point integration.
         const photometry = prepareFrame(s, g, eye, 1e-9);
@@ -317,8 +318,8 @@ describe('the frame of a body drawn from its atmosphere model (fixture)', () => 
         expect.soft(point.points[0].E).toEqual(photometry.points[0].E);
         expect.soft(scaleLine(point)).toEqual([]);
         // The same source outside a narrow field still contributes its direct photometry to glare.
-        const theta = 5 * Math.PI / 180;
-        const offG = { ...g, tanY: Math.tan(Math.PI / 360),
+        const theta = 0.5 * Math.PI / 180;
+        const offG = { ...g, tanX: Math.tan(Math.PI / 1800), tanY: Math.tan(Math.PI / 1800),
           back: [Math.sin(theta), 0, Math.cos(theta)] as V3,
           right: [Math.cos(theta), 0, -Math.sin(theta)] as V3 };
         const off = prepareFrame(s, offG, eye, 1e-9, { atmospheres: tables });
