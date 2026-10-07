@@ -3,6 +3,7 @@ import { buildSnapshot, buildSun } from '../src/app/snapshot';
 import { IauOrientationSet } from '../src/app/orientation';
 import { computeWorld } from '../src/app/world';
 import { defaultReality } from '../src/app/reality';
+import { DEFAULT_EYE_SETTINGS } from '../src/eye/settings';
 import type { SceneCamera } from '../src/render/scene';
 import type { Vec3 } from '../src/app/ports';
 import { body, FakeEphemerisSet, fakeBodyToIcrf, fakeLight, makeApparent, ScratchEphemerisSet } from './app-fakes';
@@ -93,6 +94,13 @@ describe('buildSnapshot', () => {
     expect(enh.view.exposureBoostStops).toBe(3);
   });
 
+  it('the app\'s observer is an eye: its snapshot never overrides the eye settings, so the optical core is on', () => {
+    for (const view of ['eye', 'enhanced'] as const) {
+      const { s } = snap(0, [5e5, 0, 0], { ...defaultReality(), view });
+      expect(s.view.eye).toBeUndefined();
+    }
+    expect(DEFAULT_EYE_SETTINGS.opticalCore).toBe(true);
+  });
   it('omits bodies without ephemeris coverage (never extrapolates)', () => {
     const limited = new FakeEphemerisSet({ 10: () => [0, 0, 0], 399: planetAt }, { startEt: 0, endEt: 100 });
     const world = computeWorld(500, [1, 0, 0], bodies, limited, core, 10);
