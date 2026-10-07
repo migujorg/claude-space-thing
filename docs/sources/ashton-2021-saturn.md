@@ -13,3 +13,5 @@
 
 - The model spans only 0.6 mag (D 3.8–2.8 km). The layer adds nothing fainter than m_w 26.3 (H_V 16.32).
 - The authors' own 2021 statement, that the catalogue is "very likely fully complete down to D = 5 km and nearly fully complete down to D = 3.5 km", predates the 2023 discoveries. The stage compares the model with today's MPC list instead: the catalogue is short of the model only at H_V 16.0–16.32.
+
+Product-use scope: catalogue-count conditioning and a fitted H proxy do not establish detection probability for a generated orbit or guarantee consistency with all observations. Discovery yield is aggregate under fixed inputs; catalogue refits can change counts and identities. Source survey efficiencies and completeness statements above retain their published domains; the current generator does not apply their pointings or efficiencies as an object veto. [Audited limitations](../reports/synthetic-limitations.md).

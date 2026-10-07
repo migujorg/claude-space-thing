@@ -17,7 +17,7 @@ All output goes to `app/shots/e2e/`, which git ignores.
 |---|---|
 | `<id>.png` | Screenshot of the page, with the UI. For people. |
 | `<id>.thumb.png` | 64×36 thumbnail of the rendered image only, without UI overlays. Box-averaged in linear light. |
-| `report.json` | For each scene: renderer stats, a trimmed `debugState()`, the 16×9 lightness grid, console errors and warnings, the WebGPU adapter and HDR target format it rendered with, and the comparison. For the run: `gpu`, the mode asked for and the adapter. |
+| `report.json` | For each scene: renderer stats, a trimmed `debugState()`, the 16×9 lightness grid, console errors and warnings, the WebGPU adapter and HDR target format it rendered with, and the comparison, `readyMs` from navigation to observed `__frameReady`, and `timings` (sample counts, median and maximum in ms of CPU preparation, CPU frame submission work, GPU pass time when available, and CPU-start-to-GPU-completion `frameMs`). For the run: `gpu`, the mode asked for and the adapter, and `timingPolicy`. |
 | `stats.txt` | The stats table that is also printed to the console. |
 
 ## What is compared
@@ -55,6 +55,12 @@ This check catches blank frames and gross regressions such as a missing body, a 
 A scene that fails to render always fails. Examples: a `__frameError`, or a timeout waiting for `__frameReady`. SwiftShader shares the CPU and memory, so on a busy machine a scene can time out, or its GPU process can be killed. A lost GPU device sets `__frameError` at once, with the reason (`WebGPU device lost (unknown): …`), so the run does not wait for the timeout. Either way the scene is rendered once more, on its own, before it counts as failed (`--retries 0` turns that off).
 
 A scene also fails, without a retry, when the page reports a data product that the manifest lists as missing or unusable, for example when a worktree's `public/data` lacks the `shapes`, `comets` or `synthetic` link. Such a scene would silently draw ellipsoids in place of shape models and no comets, and it could not be accepted as a baseline.
+
+## Frame cost
+
+Every rendered scene, on either adapter, is sampled over 60 animation frames after `__frameReady`, before the screenshot. The console and `stats.txt` show `ready ms` and the median/maximum of `cpuPrepMs`, `cpuFrameMs` and `gpuFrameMs` (shown as `none` without timestamp queries); `report.json` also records `frameMs`. CPU preparation covers photometry, rings, tiles and meshes; CPU frame time covers render work through command encoding before submission. `frameMs` includes GPU completion, while GPU timestamps sum GPU passes and arrive asynchronously. With backpressure, multiple animation frames can observe the same last render; these are 60 rAF observations, not 60 distinct submissions. Sampling also keeps the existing 16-frame hardware star census. SwiftShader therefore needs 60 more animation frames per scene than before.
+
+`TIMING_POLICY` in `scripts/e2e-lib.mjs` states the budgets and their evidence. Median CPU preparation above **50 ms** fails the scene, including with `--no-compare`, and cannot be accepted with `--accept` or `--accept-last`. Missing/incomplete CPU measurements also fail. Normal preparation is 1–3 ms; at load average 9 on 7 October, fixed scenes measured 0.8–1.6 ms and regressed Pluto/Charon 758–1007 ms. The ceiling is over an order of magnitude from both; medians tolerate isolated scheduler/GC pauses, and maximum CPU/GPU times are recorded without gates. Readiness has **no hard performance ceiling**: fixed scenes took 5324–7932 ms under that load, regressions 17951/18047 ms, but earlier healthy GPU runs reached 17 s. Hardware readiness above **12000 ms**, or readiness above **twice a same-mode baseline**, prints a `WARNING` naming the scene, current time and baseline time/ratio when available. Warnings stay in each scene's `performance` report and do not change the exit code. Frame timing distributions are excluded from baseline acceptance; the existing baseline `readyMs` is retained only for these advisory comparisons, never compared exactly. A legacy `--accept-last` report without the 60-frame CPU measurements must be rerendered.
 
 ## Determinism
 

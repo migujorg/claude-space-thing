@@ -204,8 +204,7 @@ fn zodiPhase(theta: f32) -> f32 {
 fn zodiF(obs: vec3f, d: vec3f, s: f32, earthLon: f32) -> f32 {
   let x = obs + s * d;
   let r = length(x);
-  let cosT = -dot(x, d) / r;
-  return zodiDensity(x, earthLon) * zodiPhase(acos(clamp(cosT, -1.0, 1.0))) / (r * r);
+  return zodiDensity(x, earthLon) * zodiPhase(vectorAngle(-x, d)) / (r * r);
 }
 /** Scattered brightness (solar flux at 1 AU per sr) from obs (AU, helio-ecliptic) along unit d. */
 fn zodiI(obs: vec3f, d: vec3f, earthLon: f32) -> f32 {

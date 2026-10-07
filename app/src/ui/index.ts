@@ -95,13 +95,13 @@ export function mountUi(container: HTMLElement, model: AppModel, opts: { banner?
     update(_dt, stats) {
       applyHidden();
       if (model.uiHidden) {
-        top.update();
+        top.update(stats);
         return;
       }
       labels.update();
       hud.update(stats);
       inspector.update(stats);
-      top.update();
+      top.update(stats);
     },
     fatal(msg) {
       statusEl.textContent = msg;

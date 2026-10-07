@@ -65,7 +65,7 @@
     "fov": "30",
     "adapt": "realtime",
     "adaptfrom": "10000,600,60"
-   }
+   }, "tolerance": {"starsRel": 0.15}, "toleranceWhy": "A real-time scene: its eye is 60 s out of daylight plus the wall-clock seconds the scene took to become ready, which vary with the machine's load (3 to 9 s on 2026-10-07). Eleven renders on unchanged code that day gave 37 to 41 stars (38, 38, 40, 41, 38, 41, 38, 40, 41, 38, 37) with the adaptation equal to nine digits, against a baseline of 37 at the default 5 %. The allowance covers that measured spread and nothing else; it goes when the suite runs real-time scenes on a simulated clock."
   },
   {
    "id": "aurora-2025-11-12",
@@ -124,6 +124,20 @@
     "gridMaxAbs": 0.05
    },
    "toleranceWhy": "The disk is 43 px across and covers about a tenth of two grid cells. Drawn black (the defect found on 2026-10-07: a Ricco weight on its luminance and none on the adaptation, docs/eye-model.md \u00a76.3) it changes those cells by 0.13 and 0.11 (rendered with the code of both sides on the GPU), which the suite's default gridMaxAbs of 0.35 does not see; no counter differs."
+  },
+  {
+   "id": "pluto-narrow-field",
+   "title": "Pluto 3\u2032 across, alone in a 1\u00b0 field: a dim disk resolved with the acuity of an eye adapted to it",
+   "params": {
+    "t": "2026-10-07T08:00:00Z",
+    "target": "999",
+    "dist": "2720000",
+    "fov": "1"
+   },
+   "tolerance": {
+    "gridMaxAbs": 0.005
+   },
+   "toleranceWhy": "The disk is 36 px across and lies on the corner of four grid cells. Drawn with the acuity of the mean luminance of the 1\u00b0 field (the defect found on 2026-10-07: the filter's fovea was dark-adapted while the frame was adapted to the disk, docs/eye-model.md \u00a75b), its light spreads over seven times its area and changes those cells by 0.010, 0.008, 0.005 and 0.002 (rendered with the code of both sides on the GPU), which the suite's default gridMaxAbs of 0.35 does not see; no counter differs."
   },
   {
    "id": "saturn-rings",

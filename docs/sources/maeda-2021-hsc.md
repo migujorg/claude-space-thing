@@ -15,10 +15,12 @@ The unbiased sample has R ≤ 3.0 au and H_r ≤ 20.3 (Sec. 3.1). V − r = 0.25
 
 ## How it is used
 
-The `synthetic` stage continues the main-belt and Hungaria catalogue beyond its completeness limit with dN/dH ∝ 10^(0.23 H) for H_V ≥ 16.94. This is the measured range of the fit, and the default floor H_V = 20.0 lies inside it; the stage refuses floors beyond H_V 20.55. It does not use α1 as a number: brighter than the break, the catalogue is complete over most of the belt and is its own measurement. Only in the outer belt, where the reference bin lies just brighter than the break, does the stage use the catalogue's own local slope for the few tenths of a magnitude up to the break.
+The `synthetic` stage continues the main-belt and Hungaria catalogue fainter than its fitted completeness proxy with dN/dH ∝ 10^(0.23 H) for H_V ≥ 16.94. This is the measured range of the fit, and the default floor H_V = 20.0 lies inside it; the stage refuses floors beyond H_V 20.55. It does not use α1 as a number: brighter than the break, the bright catalogue is assumed representative over most of the belt and is its own measurement. Only in the outer belt, where the reference bin lies just brighter than the break, does the stage use the catalogue's own local slope for the few tenths of a magnitude up to the break.
 
 ## Cross-checks
 
-- The catalogue's own slope, where it is complete at these magnitudes (a = 2.12–2.3 au, H 17–18.5), is 0.25; at 2.3–2.5 au, H 17–18.25, it is 0.20. Both match α2.
+- The catalogue's own slope, where it is assumed representative at these magnitudes (a = 2.12–2.3 au, H 17–18.5), is 0.25; at 2.3–2.5 au, H 17–18.25, it is 0.20. Both match α2.
 - Heinze et al. (2019, `heinze-2019-decam`) find an apparent-magnitude slope of 0.218 ± 0.026 for R = 20–23.5, which also matches.
-- The paper's total N(H_V < 20) = 8.6 × 10^6 is normalised to ASTORB at H_V = 15.4 through α1, which is steeper than the complete catalogue's own counts between 15.4 and 17 (0.30–0.42). Anchored on the catalogue, the stage's model has N(H_V < 20) = 3.40 × 10^6 (docs/reports/synthetic-populations.md).
+- The paper's total N(H_V < 20) = 8.6 × 10^6 is normalised to ASTORB at H_V = 15.4 through α1, which is steeper than the bright catalogue's own counts between 15.4 and 17 (0.30–0.42). Anchored on the catalogue, the stage's model has N(H_V < 20) = 3.40 × 10^6 (docs/reports/synthetic-populations.md).
+
+Product-use scope: catalogue-count conditioning and a fitted H proxy do not establish detection probability for a generated orbit or guarantee consistency with all observations. Discovery yield is aggregate under fixed inputs; catalogue refits can change counts and identities. Source survey efficiencies and completeness statements above retain their published domains; the current generator does not apply their pointings or efficiencies as an object veto. [Audited limitations](../reports/synthetic-limitations.md).

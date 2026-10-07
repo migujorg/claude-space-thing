@@ -353,8 +353,8 @@
     "bodiesInSnapshot": 75,
     "sun": true,
     "warnings": [
-     "Neptune rings: geometry not measured at this time for Adams ring arcs (Fraternité, Égalité) → no light or extinction; radial annotation hatched as not measured",
-     "Neptune rings: reflectance not measured for Galle ring → absorption only where geometry is valid, covered material hatched as not measured"
+     "Neptune rings: geometry not measured at this time for Adams ring arcs (Fraternit\u00e9, \u00c9galit\u00e9) \u2192 no light or extinction; radial annotation hatched as not measured",
+     "Neptune rings: reflectance not measured for Galle ring \u2192 absorption only where geometry is valid, covered material hatched as not measured"
     ],
     "badge": [
      "INSTANT ADAPTATION: eye always fully adapted"
@@ -366,8 +366,8 @@
   "earth-day-strict": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=instant&target=399&dist=20000&az=0&el=0&exists=strict",
    "stats": {
-    "adaptationLuminance": 0.00001,
-    "scotopicAdaptationLuminance": 0.00001408,
+    "adaptationLuminance": 1e-05,
+    "scotopicAdaptationLuminance": 1.408e-05,
     "pupilDiameterMm": 7.889950841361138,
     "mesopicM": 0,
     "limitingMagnitude": 7.601985293005745,
@@ -695,10 +695,10 @@
     "bodiesInSnapshot": 75,
     "sun": true,
     "warnings": [
-     "Earth: orientation unknown → drawn as a sphere of mean radius",
-     "Neptune rings: reflectance not measured → rings absorb and cast shadows only; their material is hatched as not measured",
-     "Saturn rings: reflectance not measured → rings absorb and cast shadows only; their material is hatched as not measured",
-     "Sun: limb darkening unknown → drawn as an unresolved point of the correct illuminance (no uniform disk assumed)"
+     "Earth: orientation unknown \u2192 drawn as a sphere of mean radius",
+     "Neptune rings: reflectance not measured \u2192 rings absorb and cast shadows only; their material is hatched as not measured",
+     "Saturn rings: reflectance not measured \u2192 rings absorb and cast shadows only; their material is hatched as not measured",
+     "Sun: limb darkening unknown \u2192 drawn as an unresolved point of the correct illuminance (no uniform disk assumed)"
     ],
     "badge": [
      "STRICT: measured + derived only",
@@ -758,7 +758,7 @@
     "bodiesInSnapshot": 75,
     "sun": true,
     "warnings": [
-     "Earth: phase extrapolated beyond measured range (0–170°) with the spatial law → estimated"
+     "Earth: phase extrapolated beyond measured range (0\u2013170\u00b0) with the spatial law \u2192 estimated"
     ],
     "badge": [
      "INSTANT ADAPTATION: eye always fully adapted"
@@ -782,7 +782,7 @@
     "bodiesInSnapshot": 75,
     "sun": true,
     "warnings": [
-     "Earth: phase extrapolated beyond measured range (0–170°) with the spatial law → estimated"
+     "Earth: phase extrapolated beyond measured range (0\u2013170\u00b0) with the spatial law \u2192 estimated"
     ],
     "badge": [
      "INSTANT ADAPTATION: eye always fully adapted"
@@ -806,7 +806,7 @@
     "bodiesInSnapshot": 75,
     "sun": true,
     "warnings": [
-     "Earth: phase extrapolated beyond measured range (0–170°) with the spatial law → estimated"
+     "Earth: phase extrapolated beyond measured range (0\u2013170\u00b0) with the spatial law \u2192 estimated"
     ],
     "badge": []
    },
@@ -1084,7 +1084,7 @@
     "bodiesInSnapshot": 75,
     "sun": true,
     "warnings": [
-     "Sinope: phase extrapolated beyond measured range (0–12°) with the spatial law → estimated"
+     "Sinope: phase extrapolated beyond measured range (0\u201312\u00b0) with the spatial law \u2192 estimated"
     ],
     "badge": [
      "INSTANT ADAPTATION: eye always fully adapted"
@@ -1095,6 +1095,94 @@
    "accepted": {
     "acceptedAt": "2026-10-07T14:31:04.349Z",
     "git": "80108ca",
+    "data": {
+     "manifestGeneratedAt": "2026-10-07T11:04:06+00:00",
+     "manifestSha256": "9150581f09d62734360c2da516c2ee0e3589e068ab08f7009f6c24da931f3392"
+    },
+    "gpu": {
+     "mode": "hardware",
+     "adapter": {
+      "vendor": "nvidia",
+      "architecture": "blackwell",
+      "device": "",
+      "description": "",
+      "fallback": false,
+      "float32Blendable": true
+     }
+    }
+   }
+  },
+  "ganymede-narrow-field": {
+   "query": "t=2026-10-07T08:00:00Z&smallbodies=0&adapt=instant&target=503&dist=5000000&fov=1",
+   "stats": {
+    "adaptationLuminance": 291.40516217099395,
+    "scotopicAdaptationLuminance": 660.4549464714083,
+    "pupilDiameterMm": 5.954384073666982,
+    "mesopicM": 1,
+    "limitingMagnitude": -1.2032787789753399,
+    "starsDrawn": 0,
+    "bodiesDrawn": 1,
+    "bodies": [
+     {
+      "id": 503,
+      "name": "Ganymede",
+      "worstLabel": "estimated",
+      "surfaceUnknown": false
+     }
+    ],
+    "points": [],
+    "bodiesInSnapshot": 75,
+    "sun": true,
+    "warnings": [],
+    "badge": [
+     "INSTANT ADAPTATION: eye always fully adapted"
+    ]
+   },
+   "consoleErrors": [],
+   "readyMs": 7479
+  },
+  "pluto-narrow-field": {
+   "query": "t=2026-10-07T08:00:00Z&smallbodies=0&adapt=instant&target=999&dist=2720000&fov=1",
+   "stats": {
+    "adaptationLuminance": 7.429987144915728,
+    "scotopicAdaptationLuminance": 15.624134015494047,
+    "pupilDiameterMm": 7.897433702926044,
+    "mesopicM": 1,
+    "limitingMagnitude": 1.8324491769495976,
+    "starsDrawn": 1,
+    "bodiesDrawn": 3,
+    "bodies": [
+     {
+      "id": 901,
+      "name": "Charon",
+      "worstLabel": "estimated",
+      "surfaceUnknown": false
+     },
+     {
+      "id": 999,
+      "name": "Pluto",
+      "worstLabel": "estimated",
+      "surfaceUnknown": false
+     }
+    ],
+    "points": [
+     "902:derived:marker"
+    ],
+    "bodiesInSnapshot": 75,
+    "sun": true,
+    "warnings": [
+     "Charon: phase extrapolated beyond measured range (0\u20131.74\u00b0) with the spatial law \u2192 estimated",
+     "Pluto: phase extrapolated beyond measured range (0\u20131.74\u00b0) with the spatial law \u2192 estimated"
+    ],
+    "badge": [
+     "INSTANT ADAPTATION: eye always fully adapted"
+    ]
+   },
+   "consoleErrors": [],
+   "readyMs": 8809,
+   "accepted": {
+    "acceptedAt": "2026-10-07T13:38:57.673Z",
+    "git": "6ccaf4a",
     "data": {
      "manifestGeneratedAt": "2026-10-07T11:04:06+00:00",
      "manifestSha256": "9150581f09d62734360c2da516c2ee0e3589e068ab08f7009f6c24da931f3392"
@@ -1204,9 +1292,9 @@
     "bodiesInSnapshot": 75,
     "sun": true,
     "warnings": [
-     "Neptune rings: geometry not measured at this time for Adams ring arcs (Fraternité, Égalité) → no light or extinction; radial annotation hatched as not measured",
-     "Neptune rings: reflectance not measured for Galle ring → absorption only where geometry is valid, covered material hatched as not measured",
-     "Triton: phase extrapolated beyond measured range (0–1.26°) with the spatial law → estimated"
+     "Neptune rings: geometry not measured at this time for Adams ring arcs (Fraternit\u00e9, \u00c9galit\u00e9) \u2192 no light or extinction; radial annotation hatched as not measured",
+     "Neptune rings: reflectance not measured for Galle ring \u2192 absorption only where geometry is valid, covered material hatched as not measured",
+     "Triton: phase extrapolated beyond measured range (0\u20131.26\u00b0) with the spatial law \u2192 estimated"
     ],
     "badge": [
      "INSTANT ADAPTATION: eye always fully adapted"
@@ -1249,7 +1337,7 @@
     "bodiesInSnapshot": 75,
     "sun": true,
     "warnings": [
-     "Ariel: phase extrapolated beyond measured range (0–3.1°) with the spatial law → estimated"
+     "Ariel: phase extrapolated beyond measured range (0\u20133.1\u00b0) with the spatial law \u2192 estimated"
     ],
     "badge": [
      "INSTANT ADAPTATION: eye always fully adapted"
@@ -1296,8 +1384,8 @@
     "bodiesInSnapshot": 75,
     "sun": true,
     "warnings": [
-     "Uranus rings: geometry estimated from COR centreline fits with constant mean widths for ring 6, ring 5, ring 4, α ring, β ring, η ring, γ ring, δ ring, λ ring, ε ring; 20.07–30.51 years beyond last accepted data; fitted modes and width variation omitted; dynamical change is unbounded",
-     "Uranus rings: reflectance not measured for λ ring → absorption only where geometry is valid, covered material hatched as not measured"
+     "Uranus rings: geometry estimated from COR centreline fits with constant mean widths for ring 6, ring 5, ring 4, \u03b1 ring, \u03b2 ring, \u03b7 ring, \u03b3 ring, \u03b4 ring, \u03bb ring, \u03b5 ring; 20.07\u201330.51 years beyond last accepted data; fitted modes and width variation omitted; dynamical change is unbounded",
+     "Uranus rings: reflectance not measured for \u03bb ring \u2192 absorption only where geometry is valid, covered material hatched as not measured"
     ],
     "badge": [
      "INSTANT ADAPTATION: eye always fully adapted"
@@ -1362,9 +1450,9 @@
     "bodiesInSnapshot": 75,
     "sun": true,
     "warnings": [
-     "Neptune rings: geometry not measured at this time for Adams ring arcs (Fraternité, Égalité) → no light or extinction; radial annotation hatched as not measured",
-     "Neptune rings: phase angle 27.56° outside the measured range of Neptune's rings at low phase (constant, spectrally flat; not measured beyond 15.5°) → that light not measured (hatched)",
-     "Neptune rings: reflectance not measured for Galle ring → absorption only where geometry is valid, covered material hatched as not measured"
+     "Neptune rings: geometry not measured at this time for Adams ring arcs (Fraternit\u00e9, \u00c9galit\u00e9) \u2192 no light or extinction; radial annotation hatched as not measured",
+     "Neptune rings: phase angle 27.56\u00b0 outside the measured range of Neptune's rings at low phase (constant, spectrally flat; not measured beyond 15.5\u00b0) \u2192 that light not measured (hatched)",
+     "Neptune rings: reflectance not measured for Galle ring \u2192 absorption only where geometry is valid, covered material hatched as not measured"
     ],
     "badge": [
      "INSTANT ADAPTATION: eye always fully adapted"
@@ -1403,8 +1491,8 @@
     "bodiesInSnapshot": 75,
     "sun": true,
     "warnings": [
-     "Charon: phase extrapolated beyond measured range (0–1.74°) with the spatial law → estimated",
-     "Pluto: phase extrapolated beyond measured range (0–1.74°) with the spatial law → estimated"
+     "Charon: phase extrapolated beyond measured range (0\u20131.74\u00b0) with the spatial law \u2192 estimated",
+     "Pluto: phase extrapolated beyond measured range (0\u20131.74\u00b0) with the spatial law \u2192 estimated"
     ],
     "badge": [
      "INSTANT ADAPTATION: eye always fully adapted"
@@ -1435,7 +1523,7 @@
   "starfield": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=instant&target=999&dist=3000000000&labels=0",
    "stats": {
-    "adaptationLuminance": 0.000056480702519988256,
+    "adaptationLuminance": 5.6480702519988256e-05,
     "scotopicAdaptationLuminance": 0.00012046153522475927,
     "pupilDiameterMm": 7.835268764555614,
     "mesopicM": 0,
@@ -1454,8 +1542,8 @@
     "bodiesInSnapshot": 75,
     "sun": true,
     "warnings": [
-     "Charon: phase extrapolated beyond measured range (0–1.74°) with the spatial law → estimated",
-     "Pluto: phase extrapolated beyond measured range (0–1.74°) with the spatial law → estimated"
+     "Charon: phase extrapolated beyond measured range (0\u20131.74\u00b0) with the spatial law \u2192 estimated",
+     "Pluto: phase extrapolated beyond measured range (0\u20131.74\u00b0) with the spatial law \u2192 estimated"
     ],
     "badge": [
      "INSTANT ADAPTATION: eye always fully adapted"
@@ -1467,8 +1555,8 @@
   "starfield-enhanced": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=instant&target=999&dist=3000000000&labels=0&view=enhanced&boost=6",
    "stats": {
-    "adaptationLuminance": 0.00004266927907016036,
-    "scotopicAdaptationLuminance": 0.00008955819008632568,
+    "adaptationLuminance": 4.266927907016036e-05,
+    "scotopicAdaptationLuminance": 8.955819008632568e-05,
     "pupilDiameterMm": 7.835271107739185,
     "mesopicM": 0,
     "limitingMagnitude": 11.22390812693233,
@@ -1486,8 +1574,8 @@
     "bodiesInSnapshot": 75,
     "sun": true,
     "warnings": [
-     "Charon: phase extrapolated beyond measured range (0–1.74°) with the spatial law → estimated",
-     "Pluto: phase extrapolated beyond measured range (0–1.74°) with the spatial law → estimated"
+     "Charon: phase extrapolated beyond measured range (0\u20131.74\u00b0) with the spatial law \u2192 estimated",
+     "Pluto: phase extrapolated beyond measured range (0\u20131.74\u00b0) with the spatial law \u2192 estimated"
     ],
     "badge": [
      "ENHANCED +6 stops",
@@ -1575,9 +1663,9 @@
     "bodiesInSnapshot": 76,
     "sun": true,
     "warnings": [
-     "Neptune rings: geometry not measured at this time for Adams ring arcs (Fraternité, Égalité) → no light or extinction; radial annotation hatched as not measured",
-     "Neptune rings: reflectance not measured for Galle ring → absorption only where geometry is valid, covered material hatched as not measured",
-     "Triton: phase extrapolated beyond measured range (0–1.26°) with the spatial law → estimated"
+     "Neptune rings: geometry not measured at this time for Adams ring arcs (Fraternit\u00e9, \u00c9galit\u00e9) \u2192 no light or extinction; radial annotation hatched as not measured",
+     "Neptune rings: reflectance not measured for Galle ring \u2192 absorption only where geometry is valid, covered material hatched as not measured",
+     "Triton: phase extrapolated beyond measured range (0\u20131.26\u00b0) with the spatial law \u2192 estimated"
     ],
     "badge": [
      "INSTANT ADAPTATION: eye always fully adapted"
@@ -1672,8 +1760,8 @@
     "bodiesInSnapshot": 75,
     "sun": true,
     "warnings": [
-     "Uranus rings: geometry estimated from COR centreline fits with constant mean widths for ring 6, ring 5, ring 4, α ring, β ring, η ring, γ ring, δ ring, λ ring, ε ring; 20.07–30.51 years beyond last accepted data; fitted modes and width variation omitted; dynamical change is unbounded",
-     "Uranus rings: reflectance not measured for λ ring → absorption only where geometry is valid, covered material hatched as not measured"
+     "Uranus rings: geometry estimated from COR centreline fits with constant mean widths for ring 6, ring 5, ring 4, \u03b1 ring, \u03b2 ring, \u03b7 ring, \u03b3 ring, \u03b4 ring, \u03bb ring, \u03b5 ring; 20.07\u201330.51 years beyond last accepted data; fitted modes and width variation omitted; dynamical change is unbounded",
+     "Uranus rings: reflectance not measured for \u03bb ring \u2192 absorption only where geometry is valid, covered material hatched as not measured"
     ],
     "badge": [
      "INSTANT ADAPTATION: eye always fully adapted"
@@ -1721,7 +1809,7 @@
   "starfield-dark-2min": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=realtime&target=999&dist=3000000000&labels=0&adaptfrom=10000%2C600%2C120",
    "stats": {
-    "adaptationLuminance": 0.00006498327484961392,
+    "adaptationLuminance": 6.498327484961392e-05,
     "scotopicAdaptationLuminance": 0.0001396426345415019,
     "pupilDiameterMm": 7.835258707605631,
     "mesopicM": 0,
@@ -1740,8 +1828,8 @@
     "bodiesInSnapshot": 75,
     "sun": true,
     "warnings": [
-     "Charon: phase extrapolated beyond measured range (0–1.74°) with the spatial law → estimated",
-     "Pluto: phase extrapolated beyond measured range (0–1.74°) with the spatial law → estimated"
+     "Charon: phase extrapolated beyond measured range (0\u20131.74\u00b0) with the spatial law \u2192 estimated",
+     "Pluto: phase extrapolated beyond measured range (0\u20131.74\u00b0) with the spatial law \u2192 estimated"
     ],
     "badge": []
    },
@@ -1751,7 +1839,7 @@
   "starfield-dark-12min": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=realtime&target=999&dist=3000000000&labels=0&adaptfrom=10000%2C600%2C720",
    "stats": {
-    "adaptationLuminance": 0.00006424027902665678,
+    "adaptationLuminance": 6.424027902665678e-05,
     "scotopicAdaptationLuminance": 0.00013793688066500594,
     "pupilDiameterMm": 7.835260207340099,
     "mesopicM": 0,
@@ -1770,8 +1858,8 @@
     "bodiesInSnapshot": 75,
     "sun": true,
     "warnings": [
-     "Charon: phase extrapolated beyond measured range (0–1.74°) with the spatial law → estimated",
-     "Pluto: phase extrapolated beyond measured range (0–1.74°) with the spatial law → estimated"
+     "Charon: phase extrapolated beyond measured range (0\u20131.74\u00b0) with the spatial law \u2192 estimated",
+     "Pluto: phase extrapolated beyond measured range (0\u20131.74\u00b0) with the spatial law \u2192 estimated"
     ],
     "badge": []
    },
@@ -1781,7 +1869,7 @@
   "starfield-dark-30min": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=realtime&target=999&dist=3000000000&labels=0&adaptfrom=10000%2C600%2C1800",
    "stats": {
-    "adaptationLuminance": 0.00005725934880854658,
+    "adaptationLuminance": 5.725934880854658e-05,
     "scotopicAdaptationLuminance": 0.00012222108192547532,
     "pupilDiameterMm": 7.83527114422537,
     "mesopicM": 0,
@@ -1800,8 +1888,8 @@
     "bodiesInSnapshot": 75,
     "sun": true,
     "warnings": [
-     "Charon: phase extrapolated beyond measured range (0–1.74°) with the spatial law → estimated",
-     "Pluto: phase extrapolated beyond measured range (0–1.74°) with the spatial law → estimated"
+     "Charon: phase extrapolated beyond measured range (0\u20131.74\u00b0) with the spatial law \u2192 estimated",
+     "Pluto: phase extrapolated beyond measured range (0\u20131.74\u00b0) with the spatial law \u2192 estimated"
     ],
     "badge": []
    },
@@ -1861,8 +1949,8 @@
     "bodiesInSnapshot": 75,
     "sun": true,
     "warnings": [
-     "Uranus rings: geometry estimated from COR centreline fits with constant mean widths for ring 6, ring 5, ring 4, α ring, β ring, η ring, γ ring, δ ring, λ ring, ε ring; 20.07–30.51 years beyond last accepted data; fitted modes and width variation omitted; dynamical change is unbounded",
-     "Uranus rings: reflectance not measured for λ ring → absorption only where geometry is valid, covered material hatched as not measured"
+     "Uranus rings: geometry estimated from COR centreline fits with constant mean widths for ring 6, ring 5, ring 4, \u03b1 ring, \u03b2 ring, \u03b7 ring, \u03b3 ring, \u03b4 ring, \u03bb ring, \u03b5 ring; 20.07\u201330.51 years beyond last accepted data; fitted modes and width variation omitted; dynamical change is unbounded",
+     "Uranus rings: reflectance not measured for \u03bb ring \u2192 absorption only where geometry is valid, covered material hatched as not measured"
     ],
     "badge": [
      "INSTANT ADAPTATION: eye always fully adapted"
@@ -1922,7 +2010,7 @@
     "bodiesInSnapshot": 75,
     "sun": true,
     "warnings": [
-     "Titan: atmosphere model scaled to the disk photometry as at 5.7°, ×0.99 X, 0.99 Y, 0.89 Z, 0.95 S: phase 60.5° is beyond the measured range (0–5.7°) and the factors of its edge are held → estimated"
+     "Titan: atmosphere model scaled to the disk photometry as at 5.7\u00b0, \u00d70.99 X, 0.99 Y, 0.89 Z, 0.95 S: phase 60.5\u00b0 is beyond the measured range (0\u20135.7\u00b0) and the factors of its edge are held \u2192 estimated"
     ],
     "badge": [
      "INSTANT ADAPTATION: eye always fully adapted"
@@ -2169,21 +2257,21 @@
     "bodiesInSnapshot": 75,
     "sun": true,
     "warnings": [
-     "Ananke: phase extrapolated beyond measured range (0–12°) with the spatial law → estimated",
-     "Carme: phase extrapolated beyond measured range (0–12°) with the spatial law → estimated",
-     "Dione: phase extrapolated beyond measured range (0–120°) with the spatial law → estimated",
-     "Elara: phase extrapolated beyond measured range (0–12°) with the spatial law → estimated",
-     "Enceladus: phase extrapolated beyond measured range (0–120°) with the spatial law → estimated",
-     "Himalia: phase extrapolated beyond measured range (0–12°) with the spatial law → estimated",
-     "Leda: phase extrapolated beyond measured range (0–12°) with the spatial law → estimated",
-     "Lysithea: phase extrapolated beyond measured range (0–12°) with the spatial law → estimated",
-     "Mimas: phase extrapolated beyond measured range (0–120°) with the spatial law → estimated",
-     "Moon: phase extrapolated beyond measured range (1.55–120°) with the spatial law → estimated",
-     "Pasiphae: phase extrapolated beyond measured range (0–12°) with the spatial law → estimated",
-     "Saturn rings: phase angle 147.75° outside the reflectance model's 0.25–47° → ring brightness not measured (hatched)",
-     "Sinope: phase extrapolated beyond measured range (0–12°) with the spatial law → estimated",
-     "Tethys: phase extrapolated beyond measured range (0–120°) with the spatial law → estimated",
-     "Titan: atmosphere model scaled to the disk photometry as at 5.7°, ×0.99 X, 0.99 Y, 0.89 Z, 0.95 S: phase 170° is beyond the measured range (0–5.7°) and the factors of its edge are held → estimated"
+     "Ananke: phase extrapolated beyond measured range (0\u201312\u00b0) with the spatial law \u2192 estimated",
+     "Carme: phase extrapolated beyond measured range (0\u201312\u00b0) with the spatial law \u2192 estimated",
+     "Dione: phase extrapolated beyond measured range (0\u2013120\u00b0) with the spatial law \u2192 estimated",
+     "Elara: phase extrapolated beyond measured range (0\u201312\u00b0) with the spatial law \u2192 estimated",
+     "Enceladus: phase extrapolated beyond measured range (0\u2013120\u00b0) with the spatial law \u2192 estimated",
+     "Himalia: phase extrapolated beyond measured range (0\u201312\u00b0) with the spatial law \u2192 estimated",
+     "Leda: phase extrapolated beyond measured range (0\u201312\u00b0) with the spatial law \u2192 estimated",
+     "Lysithea: phase extrapolated beyond measured range (0\u201312\u00b0) with the spatial law \u2192 estimated",
+     "Mimas: phase extrapolated beyond measured range (0\u2013120\u00b0) with the spatial law \u2192 estimated",
+     "Moon: phase extrapolated beyond measured range (1.55\u2013120\u00b0) with the spatial law \u2192 estimated",
+     "Pasiphae: phase extrapolated beyond measured range (0\u201312\u00b0) with the spatial law \u2192 estimated",
+     "Saturn rings: phase angle 147.75\u00b0 outside the reflectance model's 0.25\u201347\u00b0 \u2192 ring brightness not measured (hatched)",
+     "Sinope: phase extrapolated beyond measured range (0\u201312\u00b0) with the spatial law \u2192 estimated",
+     "Tethys: phase extrapolated beyond measured range (0\u2013120\u00b0) with the spatial law \u2192 estimated",
+     "Titan: atmosphere model scaled to the disk photometry as at 5.7\u00b0, \u00d70.99 X, 0.99 Y, 0.89 Z, 0.95 S: phase 170\u00b0 is beyond the measured range (0\u20135.7\u00b0) and the factors of its edge are held \u2192 estimated"
     ],
     "badge": [
      "INSTANT ADAPTATION: eye always fully adapted"
@@ -2214,8 +2302,8 @@
   "hyperion-fallback": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=instant&target=607&dist=900&az=30&el=10",
    "stats": {
-    "adaptationLuminance": 0.00004474201208941943,
-    "scotopicAdaptationLuminance": 0.00009737804882239699,
+    "adaptationLuminance": 4.474201208941943e-05,
+    "scotopicAdaptationLuminance": 9.737804882239699e-05,
     "pupilDiameterMm": 7.841567061525589,
     "mesopicM": 0,
     "limitingMagnitude": 6.66951308614242,
@@ -2267,7 +2355,7 @@
     "bodiesInSnapshot": 75,
     "sun": true,
     "warnings": [
-     "Hyperion: orientation unknown → drawn as a sphere of mean radius"
+     "Hyperion: orientation unknown \u2192 drawn as a sphere of mean radius"
     ],
     "badge": [
      "INSTANT ADAPTATION: eye always fully adapted"
@@ -2324,8 +2412,8 @@
     "bodiesInSnapshot": 76,
     "sun": true,
     "warnings": [
-     "Charon: phase extrapolated beyond measured range (0–1.74°) with the spatial law → estimated",
-     "Pluto: phase extrapolated beyond measured range (0–1.74°) with the spatial law → estimated"
+     "Charon: phase extrapolated beyond measured range (0\u20131.74\u00b0) with the spatial law \u2192 estimated",
+     "Pluto: phase extrapolated beyond measured range (0\u20131.74\u00b0) with the spatial law \u2192 estimated"
     ],
     "badge": [
      "INSTANT ADAPTATION: eye always fully adapted"
@@ -2721,10 +2809,10 @@
     "bodiesInSnapshot": 75,
     "sun": true,
     "warnings": [
-     "Neptune rings: geometry not measured at this time for Adams ring arcs (Fraternité, Égalité) → no light or extinction; radial annotation hatched as not measured",
-     "Neptune rings: reflectance not measured for Galle ring → absorption only where geometry is valid, covered material hatched as not measured",
-     "Uranus rings: geometry estimated from COR centreline fits with constant mean widths for ring 6, ring 5, ring 4, α ring, β ring, η ring, γ ring, δ ring, λ ring, ε ring; 20.03–30.47 years beyond last accepted data; fitted modes and width variation omitted; dynamical change is unbounded",
-     "Uranus rings: reflectance not measured for λ ring → absorption only where geometry is valid, covered material hatched as not measured"
+     "Neptune rings: geometry not measured at this time for Adams ring arcs (Fraternit\u00e9, \u00c9galit\u00e9) \u2192 no light or extinction; radial annotation hatched as not measured",
+     "Neptune rings: reflectance not measured for Galle ring \u2192 absorption only where geometry is valid, covered material hatched as not measured",
+     "Uranus rings: geometry estimated from COR centreline fits with constant mean widths for ring 6, ring 5, ring 4, \u03b1 ring, \u03b2 ring, \u03b7 ring, \u03b3 ring, \u03b4 ring, \u03bb ring, \u03b5 ring; 20.03\u201330.47 years beyond last accepted data; fitted modes and width variation omitted; dynamical change is unbounded",
+     "Uranus rings: reflectance not measured for \u03bb ring \u2192 absorption only where geometry is valid, covered material hatched as not measured"
     ],
     "badge": [
      "INSTANT ADAPTATION: eye always fully adapted"
@@ -2799,7 +2887,7 @@
     "bodiesInSnapshot": 75,
     "sun": true,
     "warnings": [
-     "Moon: phase extrapolated beyond measured range (1.55–120°) with the spatial law → estimated"
+     "Moon: phase extrapolated beyond measured range (1.55\u2013120\u00b0) with the spatial law \u2192 estimated"
     ],
     "badge": [
      "INSTANT ADAPTATION: eye always fully adapted"
@@ -2858,8 +2946,8 @@
     "bodiesInSnapshot": 75,
     "sun": true,
     "warnings": [
-     "Ananke: phase extrapolated beyond measured range (0–12°) with the spatial law → estimated",
-     "Sinope: phase extrapolated beyond measured range (0–12°) with the spatial law → estimated"
+     "Ananke: phase extrapolated beyond measured range (0\u201312\u00b0) with the spatial law \u2192 estimated",
+     "Sinope: phase extrapolated beyond measured range (0\u201312\u00b0) with the spatial law \u2192 estimated"
     ],
     "badge": [
      "INSTANT ADAPTATION: eye always fully adapted"
@@ -2867,35 +2955,6 @@
    },
    "consoleErrors": [],
    "readyMs": 7353
-  },
-  "ganymede-narrow-field": {
-   "query": "t=2026-10-07T08:00:00Z&smallbodies=0&adapt=instant&target=503&dist=5000000&fov=1",
-   "stats": {
-    "adaptationLuminance": 291.40516217099395,
-    "scotopicAdaptationLuminance": 660.4549464714083,
-    "pupilDiameterMm": 5.954384073666982,
-    "mesopicM": 1,
-    "limitingMagnitude": -1.2032787789753399,
-    "starsDrawn": 0,
-    "bodiesDrawn": 1,
-    "bodies": [
-     {
-      "id": 503,
-      "name": "Ganymede",
-      "worstLabel": "estimated",
-      "surfaceUnknown": false
-     }
-    ],
-    "points": [],
-    "bodiesInSnapshot": 75,
-    "sun": true,
-    "warnings": [],
-    "badge": [
-     "INSTANT ADAPTATION: eye always fully adapted"
-    ]
-   },
-   "consoleErrors": [],
-   "readyMs": 7479
   }
  }
 }

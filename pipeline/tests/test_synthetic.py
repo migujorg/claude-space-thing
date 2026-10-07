@@ -363,3 +363,47 @@ def test_irregular_moons_yield_to_discoveries(cat):
                      for c, k in zip(r["cellOf"], r["k"])}
     assert not key(after) - key(base)
     assert after["limit"]["hLimV"] == base["limit"]["hLimV"]
+
+
+@pytest.mark.skipif(not HAVE_SYN, reason="synthetic products not built")
+def test_product_statements_disclose_limits_and_motion():
+    """Product metadata must distinguish fitted guards, aggregate yield and sampled drift from guarantees."""
+    import json
+    h = json.loads((OUT / "synthetic" / "objects.json").read_text())
+    assert "aggregate" in h["yieldRule"] and "not one-to-one" in h["yieldRule"]
+    for p in h["populations"]:
+        assert "proxy" in p["limit"]["uncertainty"]
+        assert "not a detection probability" in p["limit"]["uncertainty"]
+        assert "pointing" in p["limit"]["uncertainty"]
+        assert "unknown" in p["model"]["positionUncertainty"]
+        assert "fixed" in p["model"]["motion"]
+        if p["objects"]:
+            assert "C3" in p["model"]["positionUncertainty"]
+            assert "not a bound" in p["model"]["positionUncertainty"]
+        if p.get("center"):
+            assert "no bias-corrected orbit distribution was found" in p["model"]["orbitDistribution"]
+            if p["objects"]:
+                assert "normalization" in p["model"]["uncertainty"]
+    centaur = next(p for p in h["populations"] if p["name"] == "centaur")
+    assert centaur["model"]["cataloguedCometsNotCounted"] == 44
+    assert "44" in centaur["model"]["uncertainty"]
+    assert "18" in centaur["model"]["uncertainty"]
+    assert "comet-flagged" in centaur["model"]["uncertainty"]
+    assert "suitability" in centaur["model"]["uncertainty"]
+    assert "rejects their joint distribution" in centaur["model"]["uncertainty"]
+
+
+def test_all_population_metadata_including_no_model():
+    """The disclosure path also covers intentionally empty Uranus/Neptune populations."""
+    from pipeline.stages import synthetic as syn
+    res = {"populations": {pop: {"limit": {}, "extra": {"orbitDistribution": "template assumption",
+            "cataloguedCometsNotCounted": 44, "realization": {"sumWeightsOverModelSize": 0.99},
+            "normalization": {"nBelowHr": 21400, "plus": 3400, "minus": 2800, "hrMax": 13.7}}} for pop in syn.POP_CODES}}
+    result = syn._order(res)
+    assert list(result["populations"]) == list(syn.POP_CODES)
+    for pop, r in result["populations"].items():
+        assert "not a detection probability" in r["limit"]["uncertainty"]
+        assert "unknown" in r["extra"]["positionUncertainty"]
+        assert r["extra"]["method"] and r["extra"]["uncertainty"]
+        if pop not in syn.MOONS:
+            assert "fixed two-body" in r["extra"]["motion"]
