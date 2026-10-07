@@ -1,11 +1,17 @@
 // Low-light loss of spatial resolution (docs/eye-model.md §5b). Pure TS; the composite shader mirrors it.
 //
-// Foveal grating acuity against the local adaptation luminance, Ward Larson et al.'s (1997) fit to Shlaer
+// Foveal grating acuity against the adaptation luminance of the fovea, Ward Larson et al.'s (1997) fit to Shlaer
 // (1937), applied as they do: the image is resolved only down to the level of an image pyramid whose texel
-// is half a cycle at the acuity limit (their "mip map" variable-resolution filter), with the luminance of
-// the ~1° foveal field around each pixel (including the veil) as the adaptation.
+// is half a cycle at the acuity limit (their "mip map" variable-resolution filter).
+//
+// What the fovea is adapted to is this model's own rule, not theirs. They take the mean luminance of the 1° field
+// plus the veil (their Eq. 12). Here the eye adapts to what it looks at by its light (§2): the fovea's adaptation at
+// a pixel is the frame's adaptation statistic taken over the 1° field around that pixel (fovealAdaptation). Until
+// October 2026 the filter used their area mean, while the frame's adaptation used the light: a small bright body in
+// a dark field was then blurred with the acuity of a dark-adapted fovea by an eye adapted to the body.
 
 import { CRUMEY, WARD1997_ACUITY as W } from './constants';
+import { fixationAdaptation, type RetinalSample } from './fixation';
 
 /** Highest resolvable spatial frequency, cycles/degree, at adaptation luminance La (cd/m²; floored at the dark light). */
 export function acuityCyclesPerDeg(La: number): number {
@@ -19,4 +25,23 @@ export function acuityCyclesPerDeg(La: number): number {
  */
 export function acuityLevel(R: number, pixelDeg: number): number {
   return Math.max(0, Math.log2(1 / (2 * Math.max(R, 1e-6) * pixelDeg)));
+}
+
+/**
+ * The adaptation luminance (photopic, cd/m²) of the fovea looking at a pixel, for the acuity there: the frame's
+ * adaptation statistic (fixation.ts: the log-average of the retinal image weighted by the light that can be seen)
+ * over the samples of the 1° field around the pixel. A uniform field gives its own retinal luminance; a small
+ * bright body in a dark field gives the body's, not the field's mean.
+ */
+export function fovealAdaptation(field: RetinalSample[]): number {
+  return fixationAdaptation(field, 'brightness').coneCdM2;
+}
+
+/**
+ * Level (fractional, ≥ 0) of the adaptation pass's block-sum pyramid whose texel spans the 1° field: level 0
+ * holds one sum per block of `blockPx` pixels of `pixelDeg` degrees, each level doubles the texel. Where a block
+ * is already coarser than 1° the finest level is used.
+ */
+export function fovealFieldLevel(pixelDeg: number, blockPx: number): number {
+  return Math.max(0, Math.log2(1 / (blockPx * pixelDeg)));
 }
