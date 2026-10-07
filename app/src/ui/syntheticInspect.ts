@@ -1,7 +1,9 @@
 // Inspector view-model for a synthetic object (the COMPLETE level; pipeline stage synthetic): what it stands for
 // (its population model, cell, the numbers of the conditioning, its seed) and its attributes, every one labelled
-// synthetic when known, unknown when absent. Pure, no DOM. Every number comes from synthetic/objects + cells and their headers.
+// synthetic when known, unknown when absent. Pure, no DOM. Numbers come from synthetic/objects + cells and their
+// headers, or cited core constants.
 
+import { CFEPS_L7_HG_MAX, D_H_CONSTANT_KM } from '../core/constants';
 import type { SyntheticPopulation } from '../data/schema';
 import { SYNTHETIC_POP_TEXT } from '../app/smallbodies';
 import { EXISTS_TEXT, labelAllowed, type ExistsLevel } from '../app/reality';
@@ -14,11 +16,15 @@ const n0 = (x: number): string => Math.round(x).toLocaleString('en-US');
 /** Human description of a population model (its modelId and sources). */
 function modelText(p: SyntheticPopulation): string {
   const m = p.model as Record<string, unknown>;
-  if (p.name === 'neo') return `the debiased NEO model of Granvik et al. (2018): a realization of ${n0(Number(m.members ?? 0))} NEOs with 17 < H < 25; this object is one of its members`;
-  if (p.name === 'tno') return `the CFEPS L7 debiased Kuiper-belt model (Petit et al. 2011; Gladman et al. 2012): a realization of ${n0(Number(m.members ?? 0))} objects to H_g 8.5 (H_V = H_g ${fmt(Number(m.vMinusG ?? 0), 3)}); this object is one of its members, moved two-body from the model epoch`;
+  const hRange = Array.isArray(m.hRange) ? m.hRange : [];
+  const hBound = (k: number) => typeof hRange[k] === 'number' && Number.isFinite(hRange[k]) ? hRange[k] : 'unknown';
+  if (p.name === 'neo') return `the debiased NEO model of Granvik et al. (2018): a realization of ${n0(Number(m.members ?? 0))} NEOs with ${hBound(0)} < H < ${hBound(1)}; this object is one of its members`;
+  if (p.name === 'tno') return `the CFEPS L7 debiased Kuiper-belt model (Petit et al. 2011; Gladman et al. 2012): a realization of ${n0(Number(m.members ?? 0))} objects to H_g ${CFEPS_L7_HG_MAX} (H_V = H_g ${fmt(Number(m.vMinusG ?? 0), 3)}); this object is one of its members, moved two-body from the model epoch`;
   if (p.name === 'centaur') {
     const r = (m.realization ?? {}) as Record<string, number>;
-    return `the debiased Centaur population of Kurlander et al. (2025): ${n0(Number((m.normalization as Record<string, number> | undefined)?.nBelowHr ?? 0))} Centaurs with H_r < 13.7, orbits of the Nesvorný et al. (2019) dynamical model and the Lawler et al. (2018) H law; one realization of ${n0(Number(m.members ?? 0))} members (H_V = H_r + ${fmt(Number(r.vMinusR ?? 0), 3)}), the archive's magnitude selection undone by weighting each model orbit by 1/P(selected); this object is one of its members, with uniform angles (as Murtagh et al. 2025)`;
+    const hrMax = (m.normalization as Record<string, unknown> | undefined)?.hrMax;
+    const hrBound = typeof hrMax === 'number' && Number.isFinite(hrMax) ? hrMax : 'unknown';
+    return `the debiased Centaur population of Kurlander et al. (2025): ${n0(Number((m.normalization as Record<string, number> | undefined)?.nBelowHr ?? 0))} Centaurs with H_r < ${hrBound}, orbits of the Nesvorný et al. (2019) dynamical model and the Lawler et al. (2018) H law; one realization of ${n0(Number(m.members ?? 0))} members (H_V = H_r + ${fmt(Number(r.vMinusR ?? 0), 3)}), the archive's magnitude selection undone by weighting each model orbit by 1/P(selected); this object is one of its members, with uniform angles (as Murtagh et al. 2025)`;
   }
   if (p.center) {
     const mm = m.model as Record<string, unknown> | undefined;
@@ -92,7 +98,7 @@ export function syntheticFacts(s: SyntheticCatalog, j: number, level: ExistsLeve
   const pv = get('pV');
   if (Number.isFinite(pv)) {
     rows.push(row('pV', 'Geometric albedo p_V', fmt(pv, 3), cols.pV?.method));
-    rows.push(row('D', 'Diameter (from H and p_V)', `${fmt(diameterFromH(get('H'), pv), 3)} km`, 'D = 1329 km / √p_V · 10^(−H/5) (Pravec & Harris 2007).'));
+    rows.push(row('D', 'Diameter (from H and p_V)', `${fmt(diameterFromH(get('H'), pv), 3)} km`, `D = ${D_H_CONSTANT_KM} km / √p_V · 10^(−H/5) (Pravec & Harris 2007).`));
   }
   const rot = get('rotPeriod');
   if (Number.isFinite(rot)) rows.push(row('rot', 'Rotation period', `${fmt(rot, 4)} h`, cols.rotPeriod?.method));

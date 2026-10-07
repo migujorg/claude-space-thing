@@ -4,6 +4,8 @@
 // never extrapolates: the clock parks at the nearest edge, pauses, and remembers the request so the UI
 // can show an "outside data window" state until time is set back inside.
 
+import { SECONDS_PER_DAY, SECONDS_PER_HOUR, SECONDS_PER_MINUTE } from '../core/constants';
+
 export interface TimeWindow {
   startEt: number;
   endEt: number;
@@ -19,11 +21,11 @@ export interface RatePreset {
 /** Unit conversions only (s per min/h/day/week). */
 export const RATE_PRESETS: readonly RatePreset[] = [
   { id: 'real', label: 'real time', rate: 1 },
-  { id: 'min', label: '1 min/s', rate: 60 },
-  { id: 'hour', label: '1 h/s', rate: 3600 },
-  { id: 'day', label: '1 day/s', rate: 86400 },
-  { id: 'week', label: '1 week/s', rate: 7 * 86400 },
-  { id: 'month', label: '30 days/s', rate: 30 * 86400 },
+  { id: 'min', label: '1 min/s', rate: SECONDS_PER_MINUTE },
+  { id: 'hour', label: '1 h/s', rate: SECONDS_PER_HOUR },
+  { id: 'day', label: '1 day/s', rate: SECONDS_PER_DAY },
+  { id: 'week', label: '1 week/s', rate: 7 * SECONDS_PER_DAY },
+  { id: 'month', label: '30 days/s', rate: 30 * SECONDS_PER_DAY },
 ];
 
 export type Edge = 'start' | 'end';
