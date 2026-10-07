@@ -139,9 +139,12 @@ def test_integration_error_vs_adaptive_reference(model, fixture_data, des):
     ours, status, _ = sb_verify.propagate_along(model, np.array(o["stateCommon"]), hz["epochEt"], ep,
                                                 cat.ng[row:row + 1], cat.has_ng[row:row + 1])
     ref = sb_verify.reference(model, np.array(o["stateCommon"]), hz["epochEt"], ep, cat.ng[row], cat.has_ng[row])
-    err = np.nanmax(np.linalg.norm(ours[:, :3] - ref[:, :3], axis=1))
+    # Every epoch is compared: `reference` leaves NaN where the adaptive integration did not get to, and a maximum
+    # over the rest would say nothing about those.
+    assert (status == 0).all() and np.isfinite(ours).all() and np.isfinite(ref).all()
+    err = np.max(np.linalg.norm(ours[:, :3] - ref[:, :3], axis=1))
     print(f"{o['label']}: integration error {err:.4f} km")
-    assert (status == 0).all() and err < 1.0
+    assert err < 1.0
 
 
 @needs_kernel
@@ -166,3 +169,84 @@ def test_against_horizons(model, fixture_data):
         lines.append(f"{o['label']:30s} {err.max():10.3f} km (tolerance {o['toleranceKm']})")
         assert err.max() <= o["toleranceKm"], o["label"]
     print("\n".join(lines))
+
+
+# ---------------------------------------------------------------------------------------------- the verification
+# The stage fails its build when a verification object is not reproduced (stages/smallbodies.check_verification).
+# The chains of propagate_along run outward from the common epoch and leave every epoch beyond a stop without a
+# state (NaN). No verification object is expected to stop, so an epoch without a comparison is a failure, never a
+# value to leave out of the maximum.
+
+def _hand_result(cat, pdes: str, category: str, epochs, ours, horizons, status=None, same: bool = True):
+    row = sb_verify.find_row(cat, pdes)
+    status = np.zeros(len(epochs), dtype=np.int8) if status is None else status
+    return sb_verify.Result(f"object {pdes}", category, row, pdes, str(cat.s["orbit_id"][row]), "JPL#1", same,
+                            f"https://h/{pdes}", np.asarray(epochs, dtype=float), np.asarray(horizons, dtype=float),
+                            np.asarray(ours, dtype=float), status, float(cat.f["q"][row]), float(cat.f["e"][row]), 0,
+                            np.zeros(6), np.zeros(6))
+
+
+def test_verification_check_reports_each_kind_of_failure(fixture_data):
+    from pipeline.stages import smallbodies as sbs
+    _, cat = fixture_data
+    flags = np.zeros(cat.n, dtype=np.uint16)
+    epochs = 8.0e8 + 2 * 86400.0 * np.arange(40)
+    hz = np.random.default_rng(5).normal(size=(40, 6)) * 1e8
+    off = np.zeros((40, 6))
+    off[:, 0] = 3.0                                               # 3 km from Horizons at every epoch
+    good = _hand_result(cat, "1", "main belt", epochs, hz + off, hz)
+    assert good.uncompared.size == 0 and good.max_err_km == pytest.approx(3.0)
+    far = _hand_result(cat, "2", "main belt", epochs, hz + 5 * off, hz)          # 15 km > 10 km
+    other = _hand_result(cat, "4", "main belt", epochs, hz + off, hz, same=False)
+
+    stopped = hz + off                                             # forward chain stopped at epoch 30
+    stopped[30:] = np.nan
+    st = np.zeros(40, dtype=np.int8)
+    st[30] = dyn.COLLIDED
+    late = _hand_result(cat, "153", "Hilda", epochs, stopped, hz, st)
+    early = hz + off                                               # backward chain stopped: the first epochs
+    early[:4] = np.nan
+    st2 = np.zeros(40, dtype=np.int8)
+    st2[3] = dyn.NO_EPHEMERIS
+    start = _hand_result(cat, "624", "Trojan", epochs, early, hz, st2)
+    gap = hz.copy()                                                # Horizons without a state at one epoch
+    gap[7] = np.nan
+    nohz = _hand_result(cat, "433", "NEO", epochs, hz + off, gap)
+
+    # What is compared is within tolerance in all three: only the missing epochs are wrong.
+    for r, n in ((late, 10), (start, 4), (nohz, 1)):
+        assert r.uncompared.size == n and r.max_err_compared_km == pytest.approx(3.0)
+        assert not (r.max_err_km <= sbs.TOL_ENCOUNTER_KM), "an incomplete comparison must not pass any tolerance"
+
+    ver, fails = sbs.check_verification(cat, [good, far, other, late, start, nohz], flags)
+    assert [v["object"] for v in ver] == [r.label for r in (good, far, other, late, start, nohz)]
+    assert [v["uncomparedEpochs"] for v in ver] == [0, 0, 0, 10, 4, 1]
+    assert ver[0]["toleranceKm"] == sbs.TOL_DEFAULT_KM and ver[0]["maxErrKm"] == pytest.approx(3.0)
+    assert len(fails) == 5 and not any(f.startswith(good.label + ":") for f in fails)
+    by = {r.label: next(f for f in fails if f.startswith(r.label + ":")) for r in (far, other, late, start, nohz)}
+    assert "15.00 km > 10.0 km" in by[far.label]
+    assert "!=" in by[other.label]
+    assert "10 of 40 epochs" in by[late.label] and "COLLIDED" in by[late.label]
+    assert "4 of 40 epochs" in by[start.label] and "NO_EPHEMERIS" in by[start.label]
+    assert "1 of 40 epochs" in by[nohz.label] and "Horizons" in by[nohz.label]
+
+
+@needs_kernel
+def test_an_object_that_stops_inside_the_window_fails_the_verification(model, fixture_data):
+    """Through the real integrator: a body falling into the Sun (collision after about two months) stops there, and
+    the rest of its forward chain has no state. Everything before the stop agrees with the reference exactly."""
+    from pipeline.stages import smallbodies as sbs
+    hz, cat = fixture_data
+    c = hz["epochEt"]
+    s0 = np.array([AU, 0.0, 0.0, 0.0, 1.0, 0.0])                   # 1 au, 1 km/s sideways: q = 8.5e4 km, inside the Sun
+    epochs = c + 20 * 86400.0 * np.arange(-3, 7)                  # 60 d before to 120 d after the common epoch
+    ours, status, _ = sb_verify.propagate_along(model, s0, c, epochs, np.zeros((1, 9)), np.zeros(1, dtype=bool))
+    assert (status != dyn.OK).sum() == 1 and status[(status != dyn.OK).argmax()] == dyn.COLLIDED
+    n_lost = int((~np.isfinite(ours[:, 0])).sum())
+    assert 2 <= n_lost <= 4 and np.isfinite(ours[:6]).all()        # stopped after 60 d, before 100 d
+    reference = np.where(np.isfinite(ours), ours, 0.0)            # "Horizons" equal to ours wherever ours exists
+    r = _hand_result(cat, "1", "main belt", epochs, ours, reference, status)
+    assert r.max_err_compared_km == 0.0 and r.uncompared.size == n_lost
+    assert not (r.max_err_km <= sbs.TOL_DEFAULT_KM)
+    ver, fails = sbs.check_verification(cat, [r], np.zeros(cat.n, dtype=np.uint16))
+    assert len(fails) == 1 and f"{n_lost} of {epochs.size} epochs" in fails[0] and "COLLIDED" in fails[0]
