@@ -2,7 +2,8 @@
 
 Geometry (derived): the nine main rings' inner and outer edges (IER, OER) from French et al. (2024, Table 5): precessing,
 inclined keplerian ellipses at epoch TDB 1986 Jan 19 12:00 with the normal modes of their Table 6; the λ ring as a
-circle at its fitted semimajor axis. Positions at any time are propagated with the fitted precession and pattern speeds.
+circle at its fitted semimajor axis. Propagation is restricted to the supporting observation span; beyond it the
+geometry is unknown. Table 5 fits the edges separately, not as a rigid ring (Section 4.2).
 
 Optical depth: the Voyager 2 PPS occultation profiles of each ring (PDS VG_2801, 1 km; β Per ingress and egress for all
 nine rings, σ Sgr ingress and egress for δ, ε and λ), each placed at its cut with the PPS geometry files (ring
@@ -37,6 +38,16 @@ from .ring_reflectance import SALO_FRENCH
 
 _VG2801 = "https://pds-rings.seti.org/holdings/volumes/VG_28xx/VG_2801/"
 EPOCH_ET = rc.et_of_tdb_calendar(1986, 1, 19, 12.0)       # French et al. (2024) Table 5 epoch, TDB
+# Table 8 gives date-only observation bounds. Whole calendar days are used at that precision (TDB), rather than
+# implying measured sub-day limits. This is our no-extrapolation policy, NOT an author-stated validity warranty.
+GEOMETRY_VALIDITY = {
+    "startEt": rc.et_of_tdb_calendar(1977, 3, 10),
+    "endEt": rc.et_of_tdb_calendar(2006, 9, 21),
+    "basis": "Observation support, French et al. (2024) Table 8: 1977-03-10 through 2006-09-20 (whole days, "
+             "TDB at date precision). Pipeline policy: no extrapolation of the separately fitted Table 5/6 edge "
+             "elements; the paper does not state an extrapolation validity span. Nonpositive widths are unknown "
+             "even inside this interval.",
+}
 POLE_RA_DEC = (77.311327, 15.172795)                      # French et al. (2024) Table 13 fit 1 (angular momentum)
 RINGS = ("6", "5", "4", "alpha", "beta", "eta", "gamma", "delta", "lambda", "epsilon")
 PPS_CODE = {"6": "6", "5": "5", "4": "4", "alpha": "A", "beta": "B", "eta": "N", "gamma": "G", "delta": "D",
@@ -491,7 +502,8 @@ def build(ctx: BuildContext | None = None) -> tuple[dict, dict]:
     diag: dict = {"calibration": cal, "profiles": profiles, "checks": {}}
     geo_method = ("Inner and outer edges from French et al. (2024) Table 5 keplerian elements (IER, OER) and Table 6 "
                   "normal modes at epoch TDB 1986-01-19 12:00, propagated with the fitted apsidal, nodal and pattern "
-                  "speeds; the band lies in the ring's inclined plane (a sin i of its centreline).")
+                  "speeds only over the supporting Table 8 observation span (geometryValidity); nonpositive widths "
+                  "are unknown. The band lies in the ring's inclined plane (a sin i of its centreline).")
     for ring in RINGS:
         prof = profiles[ring]
         i_e, o_e = edges(ring)
@@ -520,6 +532,7 @@ def build(ctx: BuildContext | None = None) -> tuple[dict, dict]:
             id=f"uranus-{ring}", name=NAMES.get(ring, f"ring {ring}"), inner=i_e, outer=o_e,
             u_start=float(prof.u[0]), u_step=float(prof.u[1] - prof.u[0]), profile=prof.tau_ref,
             width_ref_km=prof.w_ref, width_scaling=ring != "lambda", optical_depth_known=True,
+            geometry_validity=GEOMETRY_VALIDITY,
             geometry=rc.Prov("derived" if ring != "lambda" else "estimated", [s_french], geo_method if ring != "lambda" else
                              f"Circular band ±{LAMBDA_HALF_WINDOW} km about the λ ring's fitted semimajor axis (French "
                              "et al. 2024 Table 5; its eccentricity and inclination were held at 0)."),

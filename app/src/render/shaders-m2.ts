@@ -419,7 +419,6 @@ const CMP_REC: u32 = 20u;
 const CMP_EDGE: u32 = 9u;
 const CMP_GN: u32 = 32u;
 const CMP_GX0: f32 = 0.125;
-const CMP_MINW: f32 = 0.5;
 
 fn cmpV(R: Ring, i: u32) -> vec4f { return ringProf[u32(R.cmp.x) + i]; }
 
@@ -454,12 +453,12 @@ struct CmpBand { rIn: f32, W: f32, s: f32 };
 /** Edges, width and τ scale of component k at lam (ringComponents.ts bandAt). */
 fn cmpBand(R: Ring, k: u32, lam: f32) -> CmpBand {
   let base = k * CMP_REC;
-  var rIn = cmpEdgeR(R, k, false, lam);
-  var rOut = cmpEdgeR(R, k, true, lam);
-  if (rOut - rIn < CMP_MINW) { let mid = 0.5 * (rIn + rOut); rIn = mid - 0.5 * CMP_MINW; rOut = mid + 0.5 * CMP_MINW; }
+  let rIn = cmpEdgeR(R, k, false, lam);
+  let rOut = cmpEdgeR(R, k, true, lam);
   let w = rOut - rIn;
   let h3 = cmpV(R, base + 3u);
   let flags = u32(h3.w);
+  if ((flags & 16u) != 0u || !(w > 0.0)) { return CmpBand(rIn, 0.0, 0.0); }
   var s = select(1.0, h3.z / w, (flags & 1u) != 0u);
   if ((flags & 4u) != 0u) {
     let a = cmpV(R, base + 5u);
@@ -585,6 +584,7 @@ fn cmpTransmission(R: Ring, X: vec3f, fw: f32, muRay: f32) -> f32 {
     let b6 = cmpV(R, base + 6u);
     if (r0 + fw < b6.x || r0 - fw > b6.y) { continue; }
     let bd = cmpBand(R, k, lam);
+    if (!(bd.W > 0.0)) { continue; }
     let ua = (r0 - 0.5 * fw - bd.rIn) / bd.W;
     let ub = (r0 + 0.5 * fw - bd.rIn) / bd.W;
     if (cmpSeg(R, k, 1u, ua, ub) <= 0.0) { continue; }
@@ -726,7 +726,7 @@ fn cmpTorus(R: Ring, o: vec3f, d: vec3f, tMax: f32, alphaDeg: f32) -> TorusOut {
     if ((u32(h3.w) & 8u) == 0u) { continue; }
     let h4 = cmpV(R, base + 4u);
     let D = cmpPhase(R, h4.z, alphaDeg);
-    let lightKnown = D.w >= 0.0;
+    let lightKnown = D.w >= 0.0 && (u32(h3.w) & 16u) == 0u;
     let b6 = cmpV(R, base + 6u);
     let zM = cmpTorusHalf(R, k);
     var t0 = 0.0;
@@ -746,6 +746,11 @@ fn cmpTorus(R: Ring, o: vec3f, d: vec3f, tMax: f32, alphaDeg: f32) -> TorusOut {
       t1 = min(t1, (-qb + sq) / qa);
     }
     if (t1 <= t0) { continue; }
+    if ((u32(h3.w) & 16u) != 0u) {
+      out.unknown = 1.0;
+      out.tNear = min(out.tNear, t0);
+      continue;
+    }
     let n = u32(clamp(ceil((t1 - t0) / 400.0), 4.0, CMP_TORUS_STEPS));
     let dt = (t1 - t0) / f32(n);
     let h2 = cmpV(R, base + 2u);
@@ -877,8 +882,17 @@ fn fsComponents(R: Ring, X: vec3f, t: f32, dir: vec3f, r: f32, fw: f32) -> FOut 
       let h2 = cmpV(R, base + 2u);
       let margin = fw + abs(h2.x) / max(abs(dN), 0.02);
       if (r + margin < b6.x || r - margin > b6.y) { continue; }
+      if ((flags & 16u) != 0u) {
+        // Conservative radial annotation on the reference plane, not a substituted physical band or arc.
+        unk += max(0.0, min(r + 0.5 * fw, b6.y) - max(r - 0.5 * fw, b6.x)) / fw;
+        continue;
+      }
       let hit = cmpPlane(R, k, X, dirN);
       let bd = cmpBand(R, k, hit.lam);
+      if (!(bd.W > 0.0)) {
+        unk += max(0.0, min(r + 0.5 * fw, b6.y) - max(r - 0.5 * fw, b6.x)) / fw;
+        continue;
+      }
       let ua = (hit.r - 0.5 * fw - bd.rIn) / bd.W;
       let ub = (hit.r + 0.5 * fw - bd.rIn) / bd.W;
       let T = cmpSeg(R, k, 0u, ua, ub);

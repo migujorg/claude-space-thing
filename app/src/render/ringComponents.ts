@@ -32,8 +32,6 @@ export const CMP_EDGE_VEC4 = 1 + G_NODES / 4;
 export const CMP_RECORD_VEC4 = 20;
 export const CMP_MAX_MODES = 11;
 export const CMP_MAX = 32;
-/** A band narrower than this (independently fitted edges can nearly cross) is drawn this wide (km). */
-export const MIN_WIDTH_KM = 0.5;
 export const DAY_S = 86400;
 const DEG = Math.PI / 180;
 
@@ -66,15 +64,18 @@ export function bandHeight(c: RingComponent, lam: number, tDays: number): number
 export interface Band { rIn: number; rOut: number; W: number; s: number }
 
 /** Edges, width and τ scale of a component at λ (radians), et (TDB s). */
-export function bandAt(model: RingComponentModel, c: RingComponent, lam: number, et: number): Band {
+export function geometrySupported(c: RingComponent, et: number): boolean {
+  const v = c.geometryValidity;
+  return c.provenance.geometry.label !== 'unknown' && Number.isFinite(et)
+    && (!v || (et >= v.startEt && et <= v.endEt));
+}
+
+export function bandAt(model: RingComponentModel, c: RingComponent, lam: number, et: number): Band | null {
+  if (!geometrySupported(c, et)) return null;
   const t = (et - model.epochEt) / DAY_S;
-  let rIn = edgeRadius(c.inner, lam, t), rOut = edgeRadius(c.outer, lam, t);
-  if (rOut - rIn < MIN_WIDTH_KM) {
-    const mid = 0.5 * (rIn + rOut);
-    rIn = mid - 0.5 * MIN_WIDTH_KM;
-    rOut = mid + 0.5 * MIN_WIDTH_KM;
-  }
+  const rIn = edgeRadius(c.inner, lam, t), rOut = edgeRadius(c.outer, lam, t);
   const W = rOut - rIn;
+  if (!(W > 0) || !Number.isFinite(W)) return null;
   let s = c.profile.widthScaling ? c.profile.widthRefKm / W : 1;
   if (c.arcs) s *= arcFactor(c, lam, et);
   return { rIn, rOut, W, s };
@@ -227,6 +228,12 @@ export function componentsIF(
   model.components.forEach((c, k) => {
     if (c.kind !== 'sheet') return;
     const b = bandAt(model, c, lam, et);
+    if (!b) {
+      // Annotation envelope only: these bounds do not substitute for unknown physical geometry.
+      const [lo, hi] = componentBounds(c);
+      out.unknownCoverage += Math.max(0, Math.min(r + fw / 2, hi) - Math.max(r - fw / 2, lo)) / fw;
+      return;
+    }
     const ua = (r - 0.5 * fw - b.rIn) / b.W, ub = (r + 0.5 * fw - b.rIn) / b.W;
     const t = tables[k];
     const T = tableSegment(t, 0, ua, ub);
@@ -264,6 +271,7 @@ export function componentsTransmission(
   model.components.forEach((c, k) => {
     if (c.kind !== 'sheet' || !c.profile.opticalDepthKnown) return;
     const b = bandAt(model, c, lam, et);
+    if (!b) return;
     const ua = (r - 0.5 * fw - b.rIn) / b.W, ub = (r + 0.5 * fw - b.rIn) / b.W;
     if (!(tableSegment(tables[k], 1, ua, ub) > 0)) return;
     T *= Math.max(0, 1 - (b.W / fw) * gAt(tables[k], ua, ub, b.s / Math.max(muRay, 1e-6))[0]);
@@ -274,13 +282,12 @@ export function componentsTransmission(
 /** Radial extent of a component over all longitudes and times (bounds for culling), km. */
 export function componentBounds(c: RingComponent): [number, number] {
   const ext = (e: RingComponentEdge, sgn: number) => e.a + sgn * (e.ae + e.modes.reduce((s, m) => s + Math.abs(m.amplitudeKm), 0));
-  const lo = ext(c.inner, -1), hi = ext(c.outer, 1);
-  const pad = MIN_WIDTH_KM;
+  const lo = Math.min(ext(c.inner, -1), ext(c.outer, -1));
+  const hi = Math.max(ext(c.inner, 1), ext(c.outer, 1));
   const W = hi - lo;
   const u0 = c.profile.uStart - 0.5 * c.profile.uStep, u1 = c.profile.uStart + (c.profile.values.length - 0.5) * c.profile.uStep;
   // The profile extends beyond the edges (u < 0, u > 1) by up to |u0|·W_max, (u1 − 1)·W_max.
-  const wMax = Math.max(W, c.outer.a - c.inner.a + c.outer.ae + c.inner.ae + 2 * pad);
-  return [lo + Math.min(0, u0) * wMax - pad, hi + Math.max(0, u1 - 1) * wMax + pad];
+  return [lo + Math.min(0, u0) * W, hi + Math.max(0, u1 - 1) * W];
 }
 
 // ── GPU packing ────────────────────────────────────────────────────────────────────────────────
@@ -291,7 +298,7 @@ export function componentBounds(c: RingComponent): [number, number] {
 // Record k (vec4 index k·CMP_RECORD_VEC4 + j):
 //   0: inner a, e, ϖ(t) [rad], number of inner modes      1: outer a, e, ϖ(t), number of outer modes
 //   2: a·sin i, node(t) [rad], u of the first bin edge, bin width in u
-//   3: bins, cumulative-table offset, widthRefKm, flags (1 width scaling, 2 optical depth known, 4 arcs, 8 torus)
+//   3: bins, cumulative-table offset, widthRefKm, flags (1 width scaling, 2 optical depth known, 4 arcs, 8 torus, 16 unknown geometry)
 //   4: layer table offset (−1: none), layer scale, thin table offset (−1: none), thin scale
 //   5: arc origin λ0 + n t + φStart [rad], arc step [rad], arc samples, arc table offset
 //   6: radial bounds rLo, rHi (km), vertical law (0 none, 1 inclined orbits, 2 broken power law), height scale at
@@ -384,7 +391,8 @@ export function packComponentRecords(p: PackedComponents, et: number): Float32Ar
     out.set([c.outer.a, c.outer.ae / c.outer.a, varpi(c.outer), modes.length - nIn], o + 4);
     const tb = p.tables[k];
     out.set([c.outer.aSinI, wrap((c.outer.node0Deg + c.outer.nodeDotDegPerDay * t) * DEG), tb.u0, tb.du], o + 8);
-    const flags = (c.profile.widthScaling ? 1 : 0) | (c.profile.opticalDepthKnown ? 2 : 0) | (c.arcs ? 4 : 0) | (c.kind === 'torus' ? 8 : 0);
+    const flags = (c.profile.widthScaling ? 1 : 0) | (c.profile.opticalDepthKnown ? 2 : 0) | (c.arcs ? 4 : 0)
+      | (c.kind === 'torus' ? 8 : 0) | (!geometrySupported(c, et) ? 16 : 0);
     out.set([tb.bins, p.cumRel[k], c.profile.widthRefKm, flags], o + 12);
     out.set([c.layer ? p.phaseRel[c.layer.phaseFunction] ?? -1 : -1, c.layer?.scale ?? 0,
       c.thin ? p.phaseRel[c.thin.phaseFunction] ?? -1 : -1, c.thin?.scale ?? 0], o + 16);

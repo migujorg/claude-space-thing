@@ -38,7 +38,6 @@ PHASE_GRID = (0.0, 0.5, 1.0, 1.5, 2.0, 3.0, 4.0, 5.0, 7.5, 10.0, 12.5, 15.0, 20.
               173.5, 175.0, 176.0, 177.0, 177.5, 178.0, 178.5, 179.0, 179.25, 179.5)
 
 J2000_JD = 2451545.0
-MIN_WIDTH_KM = 0.5      # a band narrower than this (edges fitted independently can nearly cross) is drawn this wide
 DAY = 86400.0
 
 
@@ -173,6 +172,7 @@ class Component:
     thin: dict | None = None
     arcs: dict | None = None
     vertical: dict | None = None
+    geometry_validity: dict | None = None  # observation-supported interval; not an extrapolation warranty
     notes: dict = field(default_factory=dict)
 
     def json(self) -> dict:
@@ -186,7 +186,9 @@ class Component:
             d["arcs"] = self.arcs
         if self.vertical:
             d["vertical"] = self.vertical
-        geometry = {k: d[k] for k in ("kind", "inner", "outer", "vertical") if k in d}
+        if self.geometry_validity:
+            d["geometryValidity"] = self.geometry_validity
+        geometry = {k: d[k] for k in ("kind", "inner", "outer", "vertical", "geometryValidity") if k in d}
         reflectance = {"layer": self.layer, "thin": self.thin}
         if self.arcs:
             geometry["arcs"] = {k: v for k, v in self.arcs.items() if k != "factor"}
@@ -214,7 +216,8 @@ FORMULA = ("Per component: r_in(λ,t), r_out(λ,t) from the edge ellipses (r = a
            "(unlit) + D_c(α)·τ/(4μ) (both faces); L_c = layer.scale·table, D_c = thin.scale·table (log-linear in "
            "α); radiance = I/F_c·E☉,c(d)/π. Components with opticalDepthKnown false scatter (thin) but do not "
            "absorb. Torus components (vertical) spread τ over height with the stated law and are integrated along "
-           "the line of sight (single scattering).")
+           "the line of sight (single scattering). Outside geometryValidity or where W <= 0, geometry is unknown: "
+           "no light or extinction, only a not-measured annotation over the component's radial bounds. No width floor.")
 
 
 def worst_label(*labels: str) -> str:

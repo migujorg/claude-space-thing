@@ -62,9 +62,9 @@ describe('ring components: geometry', () => {
     c.profile.widthScaling = true;
     const m = model([c]);
     const peri = bandAt(m, c, 0, 0), apo = bandAt(m, c, Math.PI, 0);
-    expect(peri.W).toBeCloseTo(1100 - 50 - (1000 - 10), 1);
-    expect(apo.W).toBeCloseTo(1100 + 50 - (1000 + 10), 1);
-    expect(peri.s * peri.W).toBeCloseTo(100, 9);                    // τ·W conserved
+    expect(peri!.W).toBeCloseTo(1100 - 50 - (1000 - 10), 1);
+    expect(apo!.W).toBeCloseTo(1100 + 50 - (1000 + 10), 1);
+    expect(peri!.s * peri!.W).toBeCloseTo(100, 9);                    // τ·W conserved
     const crossed = comp({ values: [1], inner: edge(1000), outer: edge(999.9) });
     expect(bandAt(model([crossed]), crossed, 0, 0)).toBeNull();
     const mCrossed = model([crossed]);
@@ -219,6 +219,61 @@ const hasComponents = ['599', '799', '899'].every((id) => rings?.[id]?.component
 if (!hasComponents) console.warn('[ring tests] Outer-ring components not built; run the light stage.');
 
 describe.skipIf(!hasComponents)('ring components: real light-stage products', () => {
+  it('all ten Uranus narrow rings are either positive-width or withheld across the actual manifest window', () => {
+    const window = JSON.parse(fs.readFileSync(DATA_DIR + 'manifest.json', 'utf8')).window;
+    const m = rings!['799'].components!.value!;
+    const narrow = m.components.slice(0, 10);
+    expect(narrow).toHaveLength(10);
+    let known = 0, unknown = 0;
+    for (let j = 0; j <= 100; j++) {
+      const et = window.startEt + (window.endEt - window.startEt) * j / 100;
+      const records = packComponentRecords(packComponents(m), et);
+      for (const [k, c] of narrow.entries()) {
+        expect(c.geometryValidity).toBeDefined();
+        const span = c.geometryValidity!;
+        const supported = et >= span.startEt && et <= span.endEt;
+        expect((records[k * CMP_RECORD_VEC4 * 4 + 15] & 16) === 0).toBe(supported);
+        for (let lon = 0; lon < 720; lon++) {
+          const b = bandAt(m, c, lon * Math.PI / 360, et);
+          if (b) { expect(b.W).toBeGreaterThan(0); expect(supported).toBe(true); known++; }
+          else { unknown++; if (!supported) expect(b).toBeNull(); }
+        }
+        if (!supported) {
+          const single = { ...m, components: [c] };
+          const ts = [componentTable(c)];
+          const r = (c.inner.a + c.outer.a) / 2;
+          const out = componentsIF(single, ts, r, 0, et, 1, 0.5, 0.5, true, 5);
+          expect(out.iof).toEqual([0, 0, 0, 0]);
+          expect(out.tau).toBe(0);
+          expect(out.unknownCoverage).toBeGreaterThan(0);
+          expect(componentsTransmission(single, ts, r, 0, et, 1, 0.5)).toBe(1);
+        }
+      }
+    }
+    console.log(`Uranus manifest-window geometry: ${known} valid, ${unknown} unknown samples`);
+  });
+
+  it('Adams arcs stop emitting outside their motion support, including at all current-window dates', () => {
+    const m = rings!['899'].components!.value!;
+    const c = m.components.find((c) => c.arcs)!;
+    expect(c.geometryValidity).toBeDefined();
+    const span = c.geometryValidity!;
+    const single = { ...m, components: [c] }, ts = [componentTable(c)];
+    const r = (c.inner.a + c.outer.a) / 2;
+    const peak = c.arcs!.factor.indexOf(Math.max(...c.arcs!.factor));
+    const lam = (c.arcs!.lambda0Deg + c.arcs!.phiStartDeg + peak * c.arcs!.phiStepDeg) * DEG;
+    expect(bandAt(single, c, lam, span.endEt)).not.toBeNull();
+    expect(componentsIF(single, ts, r, lam, span.endEt, 1, 0.5, 0.5, true, 5).iof[1]).toBeGreaterThan(0);
+    const window = JSON.parse(fs.readFileSync(DATA_DIR + 'manifest.json', 'utf8')).window;
+    for (const et of [span.startEt - 1, span.endEt + 1, window.startEt, window.endEt]) {
+      expect(bandAt(single, c, lam, et)).toBeNull();
+      const out = componentsIF(single, ts, r, lam, et, 1, 0.5, 0.5, true, 5);
+      expect(out.iof).toEqual([0, 0, 0, 0]);
+      expect(out.unknownCoverage).toBe(1);
+      expect(packComponentRecords(packComponents(single), et)[15] & 16).toBe(16);
+    }
+  });
+
   it.each([599, 799, 899])('system %i is estimated, packs without truncation, and is withheld at Strict', (id) => {
     const sys = rings![String(id)];
     const m = sys.components!.value!;

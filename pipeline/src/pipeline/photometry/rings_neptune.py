@@ -67,6 +67,15 @@ ARC_L0_DEG = 217.43
 ARC_N_DEG_D = 820.11178
 VOYAGER_FR_DEG = 251.88            # Porco et al. (1995) via Souami et al.: Fraternité's centre at JD 2447757.0 (TDB)
 VOYAGER_FR_ET = rc.et_of_jd_tdb(2447757.0)
+# Sect. 3.2 measures an average motion from Voyager (1989) to SPHERE (2016). It states no future validity span.
+# Preserve the measured rate but decline extrapolation of the longitude AND the single-epoch Fig. 3b morphology.
+ARC_GEOMETRY_VALIDITY = {
+    "startEt": VOYAGER_FR_ET, "endEt": ARC_EPOCH_ET,
+    "basis": "Observation support of mean motion: Souami et al. (2022) Sect. 3.2, Voyager JD 2447757.0 TDB "
+             "to the Table 1 SPHERE reference frame (2016-08-23, light-time corrected). Pipeline policy: no "
+             "extrapolation beyond those anchors; not an author-stated validity warranty. Fig. 3b morphology "
+             "is measured only in 2016; retaining it inside this interval is estimated.",
+}
 
 ADAMS_A_KM = 62932.37              # Porco (1991): semimajor axis from the arcs' mean motion (de Pater et al. 2019)
 ADAMS_W_KM = 15.0                  # Table 5.1: radial width (in arcs)
@@ -190,6 +199,7 @@ def build(ctx: BuildContext | None, pps) -> tuple[dict, dict]:
         id="neptune-adams-arcs", name="Adams ring arcs (Fraternité, Égalité)",
         inner=rc.edge(ADAMS_A_KM - w / 2), outer=rc.edge(ADAMS_A_KM + w / 2), u_start=u0, u_step=du,
         profile=np.full(nb, ref / (w * 1000.0)), width_ref_km=w, width_scaling=False, optical_depth_known=False,
+        geometry_validity=ARC_GEOMETRY_VALIDITY,
         geometry=rc.Prov("estimated", [s_sou, s_dp],
                          f"In the Adams ring band; longitudes from Fraternité's centre at {ARC_L0_DEG}° (Souami et al. "
                          "2022, 2016-08-23 at Neptune) moving at the measured n = 820.11178 °/day (± 0.00003 °/day: "
