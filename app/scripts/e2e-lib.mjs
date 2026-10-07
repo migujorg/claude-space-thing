@@ -173,14 +173,88 @@ export function starsFramesNote(values, compared) {
 }
 
 /**
- * The same as a failure, for a scene whose eye is always adapted (`adapt=instant` in its URL): nothing in such a
- * scene changes between frames, so a count that does means a verdict depends on an earlier frame again. Null for a
- * steady count and for a scene whose adaptation runs in real time.
+ * A changing count fails an instant or held-clock scene: its settled frame must be independent of earlier frames.
+ * Unheld real-time scenes can gain stars as pigments recover. Held-clock scenes also require a sampled count.
  */
 export function starsFramesFailure(values, compared, query) {
-  if (!/(^|&)adapt=instant(&|$)/.test(query ?? '')) return null;
+  const q = new URLSearchParams(query ?? '');
+  const instant = q.get('adapt') === 'instant';
+  const time = q.get('adapttime');
+  const held = time !== null && time !== '' && Number.isFinite(Number(time)) && Number(time) >= 0 && q.has('adaptfrom') && !instant;
+  if (!instant && !held) return null;
+  if (held && !values?.length) return 'starsDrawn samples unavailable for a scene with its eye clock held';
   const note = starsFramesNote(values, compared);
-  return note ? `${note} (the eye is always adapted in this scene: the settled frame must be one frame)` : null;
+  return note ? `${note} (${held ? `eye clock held at ${Number(time)} s` : 'the eye is always adapted in this scene'}: the settled frame must be one frame)` : null;
+}
+
+// ---- timings (operational budgets, independent of the scientific model and baseline tolerances) -------------
+
+/**
+ * 7 October 2026, workstation at load average 9: fixed preparation 0.8–1.6 ms (normally 1–3 ms), regressed
+ * Pluto/Charon 758–1007 ms. 50 ms leaves >16× normal headroom and is >15× below the regression. Gate the
+ * median, never the maximum: a single preemption/GC pause on a loaded machine must not fail the scene.
+ * Fixed readiness was 5324–7932 ms, regressed Uranus/Jupiter 17951/18047 ms. A hard readiness ceiling is
+ * unsafe: healthy GPU runs previously reached 17 s (README). 12 s is therefore a WARNING, as is >2× a
+ * same-mode baseline. SwiftShader normally takes 7–86 s, so only the relative readiness warning applies.
+ */
+export const TIMING_POLICY = Object.freeze({ frames: 60, cpuPrepMedianCeilingMs: 50, hardwareReadyWarningMs: 12_000, readyWarningRatio: 2 });
+
+/**
+ * Runs in the page, with no module dependencies. Sample the settled scene's existing animation loop; do not
+ * drive nextFrame()/settled(), which would add rendering work. Renderer stats are a live object: copy the
+ * timing scalars each rAF. With GPU backpressure several rAFs may observe the same last completed render;
+ * these are animation-frame observations, not a claim of 60 distinct GPU submissions. GPU timestamps and
+ * frameMs (CPU start to GPU completion) arrive asynchronously and may be a frame or two old.
+ * Keep a star census over the first 16 frames on either adapter in the same sampling window.
+ */
+export async function pageFrameSamples({ frames, starFrames = 0, timeoutMs }) {
+  const samples = [], seen = new Set();
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`Timeout sampling ${frames} animation frames`)), timeoutMs);
+  });
+  try {
+    return await Promise.race([timeout, (async () => {
+      const stats = window.__app?.debugState?.()?.renderer;
+      for (let i = 0; i < frames; i++) {
+        await new Promise(requestAnimationFrame);
+        if (window.__frameError) throw new Error(window.__frameError);
+        samples.push({ cpuPrepMs: stats?.cpuPrepMs, cpuFrameMs: stats?.cpuFrameMs, frameMs: stats?.frameMs, gpuFrameMs: stats?.gpuFrameMs });
+        if (i < starFrames && Number.isFinite(stats?.starsDrawn)) seen.add(stats.starsDrawn);
+      }
+      return { samples, starsDrawnFrames: [...seen].sort((a, b) => a - b), starsDrawnVaried: seen.size ? seen.size > 1 : null };
+    })()]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** Median (middle pair averaged), maximum and valid sample count in ms; unavailable measurements stay null. */
+export function summarizeFrameTimings(samples) {
+  const out = { frames: samples.length };
+  for (const key of ['cpuPrepMs', 'cpuFrameMs', 'frameMs', 'gpuFrameMs']) {
+    const a = samples.map((s) => s[key]).filter((x) => typeof x === 'number' && Number.isFinite(x) && x >= 0).sort((a, b) => a - b);
+    out[key] = { samples: a.length, median: a.length ? (a[Math.floor((a.length - 1) / 2)] + a[Math.floor(a.length / 2)]) / 2 : null, max: a.length ? a[a.length - 1] : null };
+  }
+  return out;
+}
+
+/** Absolute CPU refusal, even with --no-compare/--accept; base.readyMs is advisory, never an exact comparison. */
+export function checkSceneTimings(cur, base, mode) {
+  const failures = [], warnings = [];
+  const t = cur.timings;
+  for (const key of ['cpuPrepMs', 'cpuFrameMs']) {
+    if (!Number.isFinite(t?.[key]?.median) || t?.[key]?.samples !== TIMING_POLICY.frames || t?.frames !== TIMING_POLICY.frames)
+      failures.push(`${cur.id}: ${key} unavailable or incomplete (need ${TIMING_POLICY.frames} animation frames)`);
+  }
+  if (Number.isFinite(t?.cpuPrepMs?.median) && t.cpuPrepMs.median > TIMING_POLICY.cpuPrepMedianCeilingMs)
+    failures.push(`${cur.id}: median cpuPrepMs ${fmt(t.cpuPrepMs.median)} ms > ${TIMING_POLICY.cpuPrepMedianCeilingMs} ms ceiling (${t.frames} animation frames)`);
+  const ready = cur.readyMs, was = base?.readyMs;
+  const hasBase = Number.isFinite(was) && was > 0;
+  if (Number.isFinite(ready) && ((mode === 'hardware' && ready > TIMING_POLICY.hardwareReadyWarningMs) || (hasBase && ready > was * TIMING_POLICY.readyWarningRatio))) {
+    warnings.push(`WARNING ${cur.id}: readyMs ${Math.round(ready)} ms; ${hasBase ? `baseline ${Math.round(was)} ms (${(ready / was).toFixed(2)}×)` : 'baseline unavailable for this adapter mode'}; readiness is advisory under load`);
+  }
+  return { pass: failures.length === 0, failures, warnings };
 }
 
 // ---- tolerances ----------------------------------------------------------------------------------------------
@@ -456,23 +530,25 @@ function fmt(x) {
 
 /** A plain-text table of the scenes' stats (for the console and the report). */
 export function statsTable(results) {
-  const head = ['scene', 'ready s', 'L_adapt cd/m²', 'pupil mm', 'lim mag', 'stars', 'bodies (resolved)', 'worst labels', 'warnings', 'mean L', 'result'];
+  const head = ['scene', 'ready ms', 'CPU prep med ms', 'CPU prep max ms', 'CPU frame med ms', 'CPU frame max ms', 'GPU med ms', 'GPU max ms', 'L_adapt cd/m²', 'pupil mm', 'lim mag', 'stars', 'stars varied', 'bodies (resolved)', 'worst labels', 'warnings', 'mean L', 'result'];
   const rows = results.map((r) => {
     const s = r.stats ?? {};
     const labels = {};
     for (const l of [...(s.bodies ?? []).map((b) => b.worstLabel), ...(s.points ?? []).map((p) => p.split(':')[1])]) labels[l] = (labels[l] ?? 0) + 1;
     return [
       r.id,
-      r.readyMs !== undefined ? (r.readyMs / 1000).toFixed(0) : '',
+      r.readyMs !== undefined ? r.readyMs.toFixed(0) : '',
+      ...['cpuPrepMs', 'cpuFrameMs', 'gpuFrameMs'].flatMap((key) => [fmt(r.timings?.[key]?.median), fmt(r.timings?.[key]?.max)]),
       fmt(s.adaptationLuminance),
       s.pupilDiameterMm !== null && s.pupilDiameterMm !== undefined ? s.pupilDiameterMm.toFixed(2) : 'none',
       s.limitingMagnitude !== null && s.limitingMagnitude !== undefined ? s.limitingMagnitude.toFixed(2) : 'none',
       String(s.starsDrawn ?? ''),
+      r.starsDrawnVaried == null ? 'none' : r.starsDrawnVaried ? 'yes' : 'no',
       s.bodies ? `${s.bodiesDrawn} (${s.bodies.length})` : '',
       Object.entries(labels).map(([l, n]) => `${n} ${l}`).join(', '),
       String(s.warnings?.length ?? 0),
       r.grid ? mean(r.grid).toFixed(3) : '',
-      r.error ? 'ERROR' : r.compare ? (r.compare.pass ? 'pass' : `FAIL (${r.compare.failures.length})`) : 'rendered',
+      r.error ? 'ERROR' : r.performance && !r.performance.pass ? `FAIL (${r.performance.failures.length})` : r.compare ? (r.compare.pass ? 'pass' : `FAIL (${r.compare.failures.length})`) : 'rendered',
     ];
   });
   const w = head.map((h, i) => Math.max(h.length, ...rows.map((r) => r[i].length)));

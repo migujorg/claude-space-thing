@@ -161,6 +161,7 @@ export function buildSnapshot(inp: SnapshotInput, out?: { overlayOnly: OverlayOn
       adaptation: {
         mode: reality.instantAdaptation ? 'instant' : 'realtime',
         ...(reality.adaptationHistory ? { history: reality.adaptationHistory } : {}),
+        ...(reality.adaptationTimeS !== undefined ? { heldElapsedS: reality.adaptationTimeS } : {}),
       },
     },
     orbits: reality.overlays.orbits ? inp.orbits : [],

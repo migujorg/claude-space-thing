@@ -23,8 +23,8 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  acceptanceNotes, adapterLabel, compareScene, decodePng, encodePng, extractStats, gpuLaunchArgs, gpuMismatch, gridFromThumb, hdrFormatOf, mergeBaseline,
-  pageAdapterInfo, pageStarsDrawnFrames, runServerOptions, sceneQuery, starsFramesFailure, starsFramesNote, statsTable, thumbFromLinear, THUMB_H, THUMB_W,
+  acceptanceNotes, adapterLabel, checkSceneTimings, compareScene, decodePng, encodePng, extractStats, gpuLaunchArgs, gpuMismatch, gridFromThumb, hdrFormatOf, mergeBaseline,
+  pageAdapterInfo, pageFrameSamples, runServerOptions, sceneAcceptance, sceneQuery, starsFramesFailure, starsFramesNote, statsTable, summarizeFrameTimings, thumbFromLinear, THUMB_H, THUMB_W, TIMING_POLICY,
 } from './e2e-lib.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -79,6 +79,11 @@ function writeBaseline(rs, meta) {
   const unsteady = rs.filter((r) => starsFramesFailure(r.starsDrawnFrames, r.stats.starsDrawn, r.query));
   if (unsteady.length) {
     for (const r of unsteady) console.log(`Not accepting ${r.id}: ${starsFramesFailure(r.starsDrawnFrames, r.stats.starsDrawn, r.query)}`);
+    process.exit(1);
+  }
+  const slow = rs.flatMap((r) => checkSceneTimings(r, null, gpuMode).failures);
+  if (slow.length) {
+    for (const f of slow) console.log(`Not accepting: ${f}`);
     process.exit(1);
   }
   mkdirSync(BASE_DIR, { recursive: true });
@@ -142,13 +147,15 @@ async function renderScene(scene) {
     else if (m.type() === 'warning') consoleWarnings.push(m.text().slice(0, 400));
   });
   page.on('pageerror', (e) => consoleErrors.push(`pageerror: ${e.message.slice(0, 400)}`));
-  const t0 = Date.now();
+  const t0 = performance.now();
   const r = { id: scene.id, title: scene.title, query };
   try {
     await page.goto(`${base}/?${query}&present=offscreen`);
-    await page.waitForFunction(() => window.__frameReady === true || !!window.__frameError, null, { timeout: timeoutMs, polling: 500 });
-    r.readyMs = Date.now() - t0;
-    const err = await page.evaluate(() => window.__frameError ?? null);
+    await page.waitForFunction(() => window.__frameReady === true || !!window.__frameError, null, { timeout: timeoutMs, polling: 100 });
+    const observedMs = performance.now() - t0;
+    const { ready, error: err } = await page.evaluate(() => ({ ready: window.__frameReady === true, error: window.__frameError ?? null }));
+    if (ready) r.readyMs = observedMs;
+    else r.elapsedMs = observedMs;
     if (err) r.error = String(err).slice(0, 1000);
     // The adapter this page's renderer was given. Asked per scene: after GPU process crashes Chromium goes on with
     // SwiftShader, and from then on a --gpu hardware run would be a software run.
@@ -177,14 +184,17 @@ async function renderScene(scene) {
       r.grid = gridFromThumb(thumb);
       r.thumb = thumb;
     } else r.imageNote = 'no 2D canvas to read (not offscreen presentation?)';
-    // On the GPU the stats above are those of whichever ~10 ms frame the read landed on; record whether the star
-    // count is steady over the next frames (e2e-lib.mjs pageStarsDrawnFrames). Not sampled on SwiftShader, where
-    // one more frame can cost a second and the read lands on the same frame every run.
-    if (gpuMode === 'hardware' && r.stats) r.starsDrawnFrames = await page.evaluate(pageStarsDrawnFrames, 16);
+    // Measure every scene on either adapter, without screenshot/readback overhead in the sampling window.
+    if (!r.error) {
+      const sampled = await page.evaluate(pageFrameSamples, { frames: TIMING_POLICY.frames, starFrames: 16, timeoutMs });
+      r.timings = summarizeFrameTimings(sampled.samples);
+      r.starsDrawnFrames = sampled.starsDrawnFrames;
+      r.starsDrawnVaried = sampled.starsDrawnVaried;
+    }
     // A screenshot waits for a new frame, and a SwiftShader frame can take tens of seconds on a busy machine.
     await page.screenshot({ path: resolve(OUT, `${scene.id}.png`), timeout: Math.min(timeoutMs, 300_000) });
   } catch (e) {
-    r.readyMs = Date.now() - t0;
+    r.elapsedMs = performance.now() - t0;
     r.error = String(e?.message ?? e).slice(0, 1000);
     try {
       await page.screenshot({ path: resolve(OUT, `${scene.id}.png`), timeout: 60_000 });
@@ -206,7 +216,7 @@ await Promise.all(
       const s = scenes[i];
       process.stdout.write(`… ${s.id}\n`);
       results[i] = await renderScene(s);
-      process.stdout.write(`${results[i].error ? '✗' : '✓'} ${s.id} (${((results[i].readyMs ?? 0) / 1000).toFixed(0)} s)${results[i].error ? `: ${results[i].error}` : ''}\n`);
+      process.stdout.write(`${results[i].error ? '✗' : '✓'} ${s.id} (${((results[i].readyMs ?? results[i].elapsedMs ?? 0) / 1000).toFixed(0)} s)${results[i].error ? `: ${results[i].error}` : ''}\n`);
     }
   }),
 );
@@ -221,7 +231,7 @@ for (let attempt = 0; attempt < retries; attempt++) {
     const again = await renderScene(scenes[i]);
     again.retried = attempt + 1;
     results[i] = again;
-    process.stdout.write(`${again.error ? '✗' : '✓'} ${scenes[i].id} (${((again.readyMs ?? 0) / 1000).toFixed(0)} s)${again.error ? `: ${again.error}` : ''}\n`);
+    process.stdout.write(`${again.error ? '✗' : '✓'} ${scenes[i].id} (${((again.readyMs ?? again.elapsedMs ?? 0) / 1000).toFixed(0)} s)${again.error ? `: ${again.error}` : ''}\n`);
   }
 }
 await browser.close();
@@ -234,9 +244,13 @@ await server?.close();
 const gpu = { mode: gpuMode, adapter: results.find((r) => r.adapter)?.adapter ?? null };
 const notes = compare ? acceptanceNotes(baseline, results.map((r) => r.id), dataInfo, gpu) : [];
 for (const r of results) {
+  const accepted = sceneAcceptance(baseline, r.id);
+  const timingBase = (accepted.gpu?.mode ?? 'swiftshader') === gpuMode ? baseline?.scenes?.[r.id] : null;
+  r.performance = checkSceneTimings(r, timingBase, gpuMode);
   // A failure where the eye is always adapted (in the comparison below; said here when nothing is compared); a
   // note where the adaptation runs in real time.
   const fails = starsFramesFailure(r.starsDrawnFrames, r.stats?.starsDrawn, r.query);
+  if (fails) { r.performance.failures.push(`${r.id}: ${fails}`); r.performance.pass = false; }
   const unsteady = fails ? (compare ? null : fails) : starsFramesNote(r.starsDrawnFrames, r.stats?.starsDrawn);
   if (unsteady) notes.push(`${r.id}: ${unsteady}`);
 }
@@ -265,6 +279,7 @@ const report = {
   data: dataInfo,
   gpu,
   viewport: vp,
+  timingPolicy: TIMING_POLICY,
   compared: compare ? { baselineAcceptedAt: baseline.acceptedAt, baselineGit: baseline.git } : null,
   notes,
   scenes: results.map(({ thumb: _t, ...r }) => r),
@@ -277,6 +292,8 @@ const formats = [...new Set(results.map((r) => r.hdrFormat).filter(Boolean))];
 console.log(`gpu: ${gpu.mode}, adapter ${adapterLabel(gpu.adapter)}, HDR targets ${formats.join(', ') || 'unknown'}`);
 for (const n of notes) console.log(`note: ${n}`);
 for (const r of results) {
+  for (const f of r.performance?.failures ?? []) console.log(`FAIL ${f}`);
+  for (const w of r.performance?.warnings ?? []) console.log(w);
   for (const f of r.compare?.failures ?? []) console.log(`FAIL ${r.id}: ${f}`);
   for (const n of r.compare?.notes ?? []) console.log(`     ${r.id}: ${n}`);
 }
@@ -286,5 +303,5 @@ console.log(`\nreport: ${resolve(OUT, 'report.json')}  screenshots: ${OUT}`);
 
 if (accept) writeBaseline(results, { acceptedAt: report.generatedAt, git: gitRev, data: dataInfo, viewport: vp, gpu });
 
-const failed = results.filter((r) => r.error || (r.compare && !r.compare.pass));
+const failed = results.filter((r) => r.error || !r.performance.pass || (r.compare && !r.compare.pass));
 process.exit(failed.length ? 1 : 0);

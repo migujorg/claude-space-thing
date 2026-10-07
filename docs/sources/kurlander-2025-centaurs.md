@@ -1,4 +1,4 @@
-# kurlander-2025-centaurs and kurlander-2025-archive: the debiased Centaur population and its model archive
+# kurlander-2025-centaurs and kurlander-2025-archive: the normalized literature Centaur model and its archive
 
 - **Paper:** https://arxiv.org/pdf/2412.01687v1 (cached as `data/raw/papers/arXiv-2412.01687v1.pdf`, sha256 11def0ffc12414b5d30e1c11be2bbcfab6873ef869f205c21f2f3b90cd51ee24). Kurlander, J. A., Holman, M. J., Bernardinelli, P. H., Jurić, M., Heinze, A. N. & Payne, M. J. (2025). A well-characterized survey for Centaurs in Pan-STARRS1. Astronomical Journal 169, 73. DOI:10.3847/1538-3881/ad9a58. CC BY 4.0.
 - **Archive:** https://zenodo.org/api/records/14201491/files/Survey-Debiasing-1.0.1.zip/content (DOI:10.5281/zenodo.14201491, v1.0.1, 2024-11-22; Kurlander, Bernardinelli, Holman, Jurić, Heinze, Payne). Cached as `data/raw/synthetic/Survey-Debiasing-1.0.1.zip`, 110 628 633 bytes, sha256 7cadb55bb6f4ac475b88eeb1baf77fec94a386c2da70f4facee88e42735716d6, retrieved 2026-10-01. MIT licence.
@@ -23,3 +23,7 @@
 - The survey accepts the model's marginal a, e, i and H distributions but rejects their joint distribution (Sec. 5.3: fewer Centaurs than the model at a < 18 au, more at 18–20.5 au, more at 10°–15° inclination). The synthetic Centaurs inherit the model's joint distribution.
 - The H_r estimate assumes r = w = i colours; Sec. 5.3 notes that offsetting to the mean of r, w and i would lower the population by ~5 %.
 - About 1 % of the model (states always brighter than m = 21, at r ≲ 5.6 au) cannot be reconstructed from the archive.
+
+All 44 comet-flagged Centaur-region catalogue objects are excluded by the current generator. Audit C1's comet table finds 18 with M2 nuclear-magnitude laws; their suitability for bare-nucleus H was not established. The generator does not read those laws, so it is incorrect to describe all 44 as lacking nuclear photometry. The inverse archive magnitude-selection weights are not the paper's orbit-sensitive survey efficiency.
+
+Product-use scope: catalogue-count conditioning and a fitted H proxy do not establish detection probability for a generated orbit or guarantee consistency with all observations. Discovery yield is aggregate under fixed inputs; catalogue refits can change counts and identities. Source survey efficiencies and completeness statements above retain their published domains; the current generator does not apply their pointings or efficiencies as an object veto. [Audited limitations](../reports/synthetic-limitations.md).

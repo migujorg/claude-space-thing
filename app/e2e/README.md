@@ -17,7 +17,7 @@ All output goes to `app/shots/e2e/`, which git ignores.
 |---|---|
 | `<id>.png` | Screenshot of the page, with the UI. For people. |
 | `<id>.thumb.png` | 64×36 thumbnail of the rendered image only, without UI overlays. Box-averaged in linear light. |
-| `report.json` | For each scene: renderer stats, a trimmed `debugState()`, the 16×9 lightness grid, console errors and warnings, the WebGPU adapter and HDR target format it rendered with, and the comparison. For the run: `gpu`, the mode asked for and the adapter. |
+| `report.json` | For each scene: renderer stats, a trimmed `debugState()`, the 16×9 lightness grid, console errors and warnings, the WebGPU adapter and HDR target format it rendered with, and the comparison, `readyMs` from navigation to observed `__frameReady`, the distinct `starsDrawnFrames` over 16 sampled animation frames and `starsDrawnVaried` (whether more than one count was seen), and `timings` (sample counts, median and maximum in ms of CPU preparation, CPU frame submission work, GPU pass time when available, and CPU-start-to-GPU-completion `frameMs`). For the run: `gpu`, the mode asked for and the adapter, and `timingPolicy`. |
 | `stats.txt` | The stats table that is also printed to the console. |
 
 ## What is compared
@@ -56,6 +56,30 @@ A scene that fails to render always fails. Examples: a `__frameError`, or a time
 
 A scene also fails, without a retry, when the page reports a data product that the manifest lists as missing or unusable, for example when a worktree's `public/data` lacks the `shapes`, `comets` or `synthetic` link. Such a scene would silently draw ellipsoids in place of shape models and no comets, and it could not be accepted as a baseline.
 
+## Frame cost
+
+Every rendered scene, on either adapter, is sampled over 60 animation frames after `__frameReady`, before the screenshot. The console and `stats.txt` show `ready ms` and the median/maximum of `cpuPrepMs`, `cpuFrameMs` and `gpuFrameMs` (shown as `none` without timestamp queries); `report.json` also records `frameMs`. CPU preparation covers photometry, rings, tiles and meshes; CPU frame time covers render work through command encoding before submission. `frameMs` includes GPU completion, while GPU timestamps sum GPU passes and arrive asynchronously. With backpressure, multiple animation frames can observe the same last render; these are 60 rAF observations, not 60 distinct submissions. Sampling also keeps a 16-frame star census on both adapters. SwiftShader therefore needs 60 more animation frames per scene than before.
+
+`TIMING_POLICY` in `scripts/e2e-lib.mjs` states the budgets and their evidence. Median CPU preparation above **50 ms** fails the scene, including with `--no-compare`, and cannot be accepted with `--accept` or `--accept-last`. Missing/incomplete CPU measurements also fail. Normal preparation is 1–3 ms; at load average 9 on 7 October, fixed scenes measured 0.8–1.6 ms and regressed Pluto/Charon 758–1007 ms. The ceiling is over an order of magnitude from both; medians tolerate isolated scheduler/GC pauses, and maximum CPU/GPU times are recorded without gates. Readiness has **no hard performance ceiling**: fixed scenes took 5324–7932 ms under that load, regressions 17951/18047 ms, but earlier healthy GPU runs reached 17 s. Hardware readiness above **12000 ms**, or readiness above **twice a same-mode baseline**, prints a `WARNING` naming the scene, current time and baseline time/ratio when available. Warnings stay in each scene's `performance` report and do not change the exit code. Frame timing distributions are excluded from baseline acceptance; the existing baseline `readyMs` is retained only for these advisory comparisons, never compared exactly. A legacy `--accept-last` report without the 60-frame CPU measurements must be rerendered.
+
+## Held eye clock
+
+`adapttime=<nonnegative seconds>` requires an `adaptfrom=<cd/m²>,<exposure seconds>,<elapsed seconds>` history
+and real-time adaptation (`adapt=realtime`, or the interactive default). It overrides the history's elapsed value.
+For example, `adapt=realtime&adaptfrom=10000,600,60&adapttime=60` means ten minutes of daylight followed by
+exactly sixty seconds in the current view. Zero is valid. Invalid values, missing histories, and instant adaptation
+are reported and ignored. The app badges this fixed instant; omitting the parameter preserves the interactive clock.
+
+As light measurements arrive, the CPU eye evaluates that same history from regenerated pigments under the current
+measured light and pupil. No loading, settling, sample or screenshot frame adds elapsed seconds. “Settled” means
+the data, tiles, sky point cut and light measurement have converged at that instant, not that the observer has waited
+longer or become fully dark-adapted. The frame read is at the stated instant, including through offscreen presentation.
+
+More than one `starsDrawn` value over the sampled frames fails a held-clock scene on either adapter, including
+`--no-compare`, `--accept`, and `--accept-last`. A held-clock report without star samples cannot be accepted.
+The suite retains the same count-stability gate for instant adaptation; unheld real-time scenes may gain stars.
+`stats.txt` prints `stars varied` as yes/no (none if sampling was unavailable).
+
 ## Determinism
 
 A scene renders the same numbers on every run of an unchanged tree. Two runs of the Moments scenes, earth-night
@@ -64,7 +88,8 @@ and saturn-rings agree on every stat, stars included. Four things make this so:
 - **Instant adaptation.** `defaults` sets `adapt=instant`, so the eye is always adapted to the view. With the
   real-time default, the frames rendered around the settled one would move the pigments by real elapsed time,
   so star counts near threshold depended on timing. Scenes that test the eye's time dependence set
-  `adapt=realtime` with an `adaptfrom` history, which defines their past.
+  `adapt=realtime` with an `adaptfrom` history and `adapttime=<elapsed seconds>`, which holds the eye at
+  exactly 60, 120, 720 or 1800 seconds after that exposure.
 - **A settled point cut.** The sky (app/sky.ts) cuts points from background light at the eye's limit, with
   hysteresis while the view changes. Before `__frameReady` the cut is set afresh at the settled limit
   (`SkyController.settleCut`), so it does not depend on the limits the loading frames passed through.
@@ -80,8 +105,20 @@ and saturn-rings agree on every stat, stars included. Four things make this so:
 The settled frame of a scene with `adapt=instant` is therefore one frame. Checked on the GPU by reading back which
 stars the cull kept on 300 consecutive frames of each of the suite's 33 scenes: none changes in the 29 scenes
 with instant adaptation, and after a pass is skipped for one to three frames (no star light in the veil, no stars drawn, an
-older veil) the same set comes back. The four `adapt=realtime` scenes stay as they are or gain stars as their
-pigments regenerate, as they should; no star in them goes back and forth.
+older veil) the same set comes back. Before the held clock, the four `adapt=realtime` scenes stayed as they were or gained stars as their
+pigments regenerated; their counts included machine-dependent loading time. Their new baselines require GPU acceptance.
+
+The check is a script, to be run after any change to the cull, the point path or the veil:
+
+```sh
+cd app
+node scripts/point-census.mjs --gpu hardware --perturb   # every scene: 300 frames, then seven perturbations
+node scripts/point-census.mjs --frames 40 --only pluto-charon   # SwiftShader, where a frame takes seconds
+```
+
+It compares the lists by identity, not by count. A scene with instant adaptation fails if any star's verdict
+differs between two consecutive frames, or if the settled set after a perturbation is not the first one. A
+real-time scene fails only if a star goes back and forth. Exit 1 on a failure.
 
 ## Running
 
