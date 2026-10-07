@@ -63,7 +63,7 @@ describe.skipIf(!built)('ellipsoid flux pinned at the albedo measurement view',(
 
 // Original-position parametrization, with quadrature cut at source map rows. This
 // does not use the production normal-space Jacobian/profile transformation.
-import { EllipsoidNormalization, gaussLegendre, LAW, type ZonalProfile } from '../src/render/spatial';
+import { EllipsoidNormalization, MotionNormalization, gaussLegendre, LAW, type ZonalProfile } from '../src/render/spatial';
 import { zonalMeanOfLevel0 } from '../src/render/surface';
 const fileBytes: {readFileSync(p:URL):Uint8Array} = await import(/* @vite-ignore */ 'node:fs' as string);
 function mapAt(z:ZonalProfile,lat:number,k:number) {
@@ -122,23 +122,29 @@ describe('ellipsoid law and zonal-map quadrature',()=>{
 describe.skipIf(!built)('dated calibration normalization product', () => {
   for (const id of [599,699,799,899]) it(`${id} table matches the direct dated-view mean`, () => {
     const view=photo[id].albedoMeasurementView.value;
-    expect(view.normalizationTable).toBeDefined();
-    const direct={...view,normalizationTable:undefined};
+    const table=photo[id].albedoReferenceNormalization.value;
+    expect(table).toBeDefined();
+    expect(photo[id].albedoMeasurementView.label).toBe('derived');
+    expect(photo[id].albedoReferenceNormalization.label).toBe('estimated');
+    const direct=view;
     const radii=bodies.find((b: {id:number})=>b.id===id).radii.value as V3;
     const tiles=[0,1].map(t=>{const v=fileBytes.readFileSync(new URL(`../public/data/surfaces/${id}/albedo/0/0/${t}.bin`,import.meta.url));return v.buffer.slice(v.byteOffset,v.byteOffset+v.byteLength) as ArrayBuffer;});
     const map=zonalMeanOfLevel0(tiles);
+    const productOnly=new EllipsoidNormalization({get:()=>{throw new Error('frame-time spherical oracle');}} as unknown as MotionNormalization);
+    const probe=resolveLaw(photo[id].spatialModel.value,.3);
+    if(!('error' in probe)) expect(productOnly.reference(probe.law,.3,radii,view,map,table).every(Number.isFinite)).toBe(true);
     const norm=new EllipsoidNormalization();
-    for(const profile of [undefined,map]) for(const deg of [0,6.8,30.1,59.9,90,120,150,175,179,179.5,179.9]) {
+    for(const profile of [undefined,map]) for(const deg of [0,6.8,30.1,59.9,90,120,150,175,179,179.5,179.9,179.99,179.9999]) {
       const alpha=deg*Math.PI/180,r=resolveLaw(photo[id].spatialModel.value,alpha),law='error' in r?LAMBERT_LAW:r.law;
-      const got=norm.reference(law,alpha,radii,view,profile),exact=norm.reference(law,alpha,radii,direct,profile);
+      const got=norm.reference(law,alpha,radii,view,profile,table),exact=norm.reference(law,alpha,radii,direct,profile);
       for(let k=0;k<4;k++)expect(Math.abs(got[k]/exact[k]-1),`${id} ${deg}° map=${!!profile} c=${k}`).toBeLessThan(1e-4);
     }
   },60000);
   it('a different law or different map cannot reuse a calibration table',()=>{
     const id=799,view=photo[id].albedoMeasurementView.value;
     const radii=bodies.find((b: {id:number})=>b.id===id).radii.value as V3;
-    const norm=new EllipsoidNormalization(),direct={...view,normalizationTable:undefined};
+    const norm=new EllipsoidNormalization(),direct=view;
     const map:ZonalProfile={rows:3,mean:Float64Array.from([1,1,1,1,2,2,2,2,1,1,1,1])};
-    expect(norm.reference(LAMBERT_LAW,.3,radii,view,map)).toEqual(norm.reference(LAMBERT_LAW,.3,radii,direct,map));
+    expect(norm.reference(LAMBERT_LAW,.3,radii,view,map,photo[id].albedoReferenceNormalization.value)).toEqual(norm.reference(LAMBERT_LAW,.3,radii,direct,map));
   });
 });

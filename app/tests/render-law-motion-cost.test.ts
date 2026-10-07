@@ -31,8 +31,9 @@ const cpuMs = (f: () => unknown): number => { const t = cpuUsage(); f(); const d
 const median = (v: number[]) => v.slice().sort((a, b) => a - b)[v.length >> 1];
 const tile = (id: string, t: number) => new URL(`../public/data/surfaces/${id}/albedo/0/0/${t}.bin`, import.meta.url);
 function zonalOf(id: string): ZonalProfile | null {
-  if (![0, 1].every((t) => fs.existsSync(tile(id, t)))) return null;
+  if (![0, 1].some((t) => fs.existsSync(tile(id, t)))) return null;
   return zonalMeanOfLevel0([0, 1].map((t) => {
+    if(!fs.existsSync(tile(id,t))) return null;
     const b = fs.readFileSync(tile(id, t));
     return b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) as ArrayBuffer;
   }));
@@ -116,20 +117,25 @@ describe('ellipsoid frame entry points, first use included', () => {
   it.skipIf(!built)('every built unequal-radii body, reference/current/orientation mean, with and without its map', () => {
     for (const body of unequal) for (const map of [undefined, zonalOf(String(body.id)) ?? undefined]) {
       for (const deg of [0.5, 16, 90, 150]) {
-        const a = deg * Math.PI / 180, r = resolveLaw(photometry[body.id].spatialModel?.value, a);
-        const law = 'error' in r ? LAMBERT_LAW : r.law;
-        const cache = new EllipsoidNormalization();
-        const radii = body.radii.value;
-        const axes = photometricFrame([0.8, 0, 0.6], [0.8 * Math.cos(a), Math.sin(a), 0.6 * Math.cos(a)]);
-        const geometry = { radii, axes, pole: [axes[0][2], axes[1][2], axes[2][2]] as [number, number, number] };
-        for (const [entry, f] of [
-          ['reference', () => cache.reference(law, a, radii, photometry[body.id].albedoMeasurementView?.value ?? {kind: 'orientation-mean'}, map)],
-          ['current', () => cache.get(law, a, geometry, map)],
-          ['mean', () => cache.reference(law, a, radii, {kind: 'orientation-mean'}, map)],
-        ] as const) {
-          const [value, ms] = timed(f);
-          expect(value.every(Number.isFinite)).toBe(true);
-          expect(ms, `${body.id} ${entry} ${deg}° map=${!!map}, first use`).toBeLessThan(LOOKUP_BUDGET_MS);
+        const cache = new EllipsoidNormalization(), radii = body.radii.value;
+        for (const entry of ['reference','current','mean'] as const) {
+          const at = (i: number): number => {
+            const a=deg*Math.PI/180+i*1e-4,r=resolveLaw(photometry[body.id].spatialModel?.value,a);
+            const law='error' in r?LAMBERT_LAW:r.law;
+            const lat=.6+i*1e-4,o:[number,number,number]=[Math.cos(lat),0,Math.sin(lat)];
+            const axes=photometricFrame(o,[o[0]*Math.cos(a),Math.sin(a),o[2]*Math.cos(a)]);
+            const geometry={radii,axes,pole:[axes[0][2],axes[1][2],axes[2][2]] as [number,number,number]};
+            let value: number[] = [];
+            const ms=cpuMs(()=>{
+              value=entry==='current'?cache.get(law,a,geometry,map):cache.reference(law,a,radii,
+                entry==='mean'?{kind:'orientation-mean'}:photometry[body.id].albedoMeasurementView?.value ?? {kind:'orientation-mean'},map,entry==='reference'?photometry[body.id].albedoReferenceNormalization?.value ?? undefined:undefined);
+            });
+            expect(value.every(Number.isFinite)).toBe(true);
+            return ms;
+          };
+          expect(at(0),`${body.id} ${entry} ${deg}° map=${!!map}, first use`).toBeLessThan(FIRST_LOOKUP_BUDGET_MS);
+          const moving=[1,2,3,4,5].map(at);
+          expect(median(moving),`${body.id} ${entry} ${deg}° map=${!!map}, moving`).toBeLessThan(MOVING_LOOKUP_BUDGET_MS);
         }
       }
     }

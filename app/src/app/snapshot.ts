@@ -138,6 +138,7 @@ export function sceneBodyOf(
       && !(rCal[0] === rCal[1] && rCal[1] === rCal[2])) {
     // The same mean is used at Strict and Best. The measurement stays labelled;
     // only a correction whose bound exceeds its own uncertainty is estimated.
+    sb.albedoReferenceNormalization = allowedValue(g.body.photometry?.albedoReferenceNormalization, level);
     sb.albedoMeasurementView = calibration?.value ?? {kind: 'orientation-mean'};
     const spread = g.body.photometry?.albedoViewSpread?.value;
     sb.albedoScaleLabel = sb.albedoMeasurementView.kind === 'orientation-mean'

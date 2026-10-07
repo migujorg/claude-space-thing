@@ -5,7 +5,7 @@
 // anything not allowed at the current `exists` level arrives here as null / flagged, so the renderer
 // never needs to reason about provenance labels except for the provenance-tint overlay.
 
-import type { AlbedoMeasurementView, BodyAtmosphere, DiskReflectanceModel, Label, PhaseFunction, RingComponentModel, RingReflectance, SpatialPhotometricModel, SurfaceLayerHeader } from '../data/schema';
+import type { AlbedoMeasurementView, CalibrationNormalizationTable, BodyAtmosphere, DiskReflectanceModel, Label, PhaseFunction, RingComponentModel, RingReflectance, SpatialPhotometricModel, SurfaceLayerHeader } from '../data/schema';
 import type { EyeSettings } from '../eye/settings';
 import type { CometActivity } from './comets/model';
 import type { CloudPopulation } from './earth';
@@ -34,6 +34,7 @@ export interface SceneBody {
   /** Reference view used at every reality level; scale provenance is separate. */
   albedoMeasurementView?: AlbedoMeasurementView | null;
   albedoScaleLabel?: Label;
+  albedoReferenceNormalization?: CalibrationNormalizationTable | null;
   /** When true, draw the silhouette with the "not measured" hatch material instead of a lit surface (§5.3). */
   surfaceUnknown: boolean;
   /** Worst provenance label among what is drawn, for the provenance-tint overlay. */

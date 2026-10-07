@@ -25,9 +25,11 @@ from ..photometry.albedo import pck_radii
 
 from ..output import write_json
 from ..photometry import atmospheres, bodies, phase, rings, smallbody_colors, solar
-from ..schema import BuildContext, sourced, unknown
+from ..schema import BuildContext, sourced, unknown, worst
 
 DEPENDS: tuple[str, ...] = ()
+# Optional cache/product inputs; no scheduling dependency (surfaces depends on light).
+OPTIONAL_INPUTS = ("surfaces",)
 
 
 # These dates and observer are from Karkoschka 1998 / PDS 1995LOW (source note).
@@ -73,6 +75,20 @@ def dated_views(naif: int, ctx: BuildContext | None = None) -> dict:
     return {"kind": "latitude", "epoch": KARKOSCHKA_EPOCH, **mean, "views": views}
 
 
+def earth_measurement_view() -> dict:
+    """The actual CGMS observer/Sun geometry used to integrate the AHI albedo."""
+    from datetime import datetime, timedelta, timezone
+    from ..photometry.earth import himawari_disk
+    hd=himawari_disk();sun=np.asarray(hd["sun_dir"])
+    phase=float(np.arccos(np.clip(sun[0],-1,1)))
+    utc=lambda mjd:(datetime(1858,11,17,tzinfo=timezone.utc)+timedelta(days=mjd)).isoformat()
+    return {"kind":"latitude","latitudeDeg":0.0,
+            "epoch":f"{utc(hd['mjd_start'])}/{utc(hd['mjd_end'])}",
+            "subSolarLatitudeDeg":float(np.degrees(np.arcsin(sun[2]))),
+            "phaseAngleDeg":float(np.degrees(phase)),
+            "solarTangent":[0.0,float(sun[1]/np.sin(phase)),float(sun[2]/np.sin(phase))]}
+
+
 def view_spread(naif: int, entry: dict, ctx: BuildContext | None = None) -> dict:
     """A rigorous all-phase/all-orientation envelope, not an extrema grid scan.
 
@@ -98,7 +114,8 @@ def view_spread(naif: int, entry: dict, ctx: BuildContext | None = None) -> dict
     bare = max(abs(jac_min/mean-1), abs(jac_max/mean-1))
     out = {"maxRelativeXYZS": [bare]*4, "bareMaxRelative": bare,
            "mapMaxRelativeXYZS": None, "albedoSigmaRelative": None, "scaleLabel": "estimated"}
-    sources = [ek.SRC_PCK]
+    sources = [ek.SRC_PCK, *entry["geometricAlbedoXYZS"]["sources"]]
+    spread_label = "derived"
     # light can precede surfaces on a clean build. A map bound is certified only
     # for the exact retained level-0 bytes, whose hashes the shell compares.
     paths = [OUT / f"surfaces/{naif}/albedo/0/0/{i}.bin" for i in (0, 1)]
@@ -115,19 +132,30 @@ def view_spread(naif: int, entry: dict, ctx: BuildContext | None = None) -> dict
                             abs(jac_max*np.max(rows,axis=0)/weighted_mean-1))
         out["mapMaxRelativeXYZS"] = spread.tolist()
         out["mapTileSha256"] = [hashlib.sha256(p.read_bytes()).hexdigest() for p in paths]
-        sources += json.loads(header.read_text()).get("sources", [])
+        h = json.loads(header.read_text())
+        sources += h.get("sources", [])
+        spread_label = worst("derived", h.get("provenance",{}).get("label","derived"),
+                             h.get("color",{}).get("label","derived"))
     # Use numeric source-stated uncertainties; vague "a few percent" and a
     # rotational range are not a 1-sigma error and do not qualify the exception.
     if 601 <= naif <= 605:
         from ..photometry.moons import filacchione_rows
         t = filacchione_rows(naif)
         out["albedoSigmaRelative"] = float(np.median(t["a0_err"]/t["a0"]))
+    elif naif == 609:
+        from ..photometry.common import read_table_json
+        h = read_table_json("grav_2015_irregulars.json")["satellites"]["609"]
+        out["albedoSigmaRelative"] = float(.4*np.log(10)*h["H_err"])
+    elif naif == 402:
+        from ..photometry.common import read_table_json
+        p = read_table_json("wargnier_2025_deimos.json")["src_panchromatic"]
+        out["albedoSigmaRelative"] = p["A_p_err"]/p["A_p"]
     if out["albedoSigmaRelative"] is not None and bare < out["albedoSigmaRelative"]:
         out["scaleLabel"] = "derived"
     if out["mapMaxRelativeXYZS"] is not None:
         out["mapScaleLabel"] = ("derived" if out["albedoSigmaRelative"] is not None and
                                 max(out["mapMaxRelativeXYZS"]) < out["albedoSigmaRelative"] else "estimated")
-    return sourced(out, "derived", list(dict.fromkeys(sources)),
+    return sourced(out, spread_label, list(dict.fromkeys(sources)),
                    method="All-phase bound: min/max of the Gauss-map area Jacobian times the exact level-0 zonal "
                           "map divided by its uniform-orientation mean. Bare and mapped bounds are separate; "
                           "a mapped bound applies only to the named tile SHA-256 values. This conservative "
@@ -142,7 +170,9 @@ def reference_table(naif: int, entry: dict) -> dict | None:
     Ratios to the bare spherical law remove the vanishing crescent power law.
     """
     import hashlib
-    from ..paths import OUT
+    import inspect
+    import json
+    from ..paths import OUT, CACHE
     model = entry.get("spatialModel", {}).get("value")
     view = entry["albedoMeasurementView"]["value"]
     if naif not in (599,699,799,899) or not model or view["kind"] != "latitude":
@@ -154,6 +184,13 @@ def reference_table(naif: int, entry: dict) -> dict | None:
         texels=np.concatenate([np.frombuffer(p.read_bytes(),dtype="<f2").reshape(256,256,4) for p in paths],axis=1).astype(float)
         texels[np.all(texels==0,axis=2)] = 1
         rows=texels.mean(axis=1)
+    cache_key = hashlib.sha256(json.dumps({"algorithm":inspect.getsource(reference_table),
+        "radii":list(pck_radii()[naif]), "view":view,"model":model,
+        "map":[hashlib.sha256(p.read_bytes()).hexdigest() for p in paths] if rows is not None else None},
+        sort_keys=True).encode()).hexdigest()
+    cached = CACHE/"light-calibration"/f"{naif}-{cache_key}.json"
+    if cached.exists():
+        return json.loads(cached.read_text())
     grids = {}
     def integral(alpha, n):
         if n not in grids:
@@ -162,14 +199,28 @@ def reference_table(naif: int, entry: dict) -> dict | None:
             grids[n]=(x,w,u,cb,sb)
         x,w,u,cb,sb=grids[n]
         delta=np.pi-alpha; eps=delta*(1+np.sin(u))/2
+        measure=cb*w[:,None]*w[None,:]*delta*np.pi/8*np.cos(u)
+        if model["kind"]=="barkstrom":
+            # Resolve the documented emission-cosine floor exactly in longitude.
+            # Each latitude ring has its own mu=f crossing(s).
+            ef=np.arcsin(np.minimum(1,1e-3/cb))
+            cuts=[np.zeros_like(cb),np.minimum(ef,delta),np.minimum(np.pi-ef,delta),np.full_like(cb,delta)]
+            segments=[];weights=[]
+            for lo,hi in zip(cuts,cuts[1:]):
+                width=np.maximum(0,hi-lo)
+                segments.append(lo+width*(1+np.sin(u))/2)
+                weights.append(cb*w[:,None]*w[None,:]*width*np.pi/8*np.cos(u))
+            eps=np.concatenate(segments,axis=1);measure=np.concatenate(weights,axis=1)
         mu=cb*np.sin(eps); mu0=cb*np.sin(delta-eps)
         nv=np.stack(np.broadcast_arrays(cb*np.cos(eps),sb,mu),axis=-1)
         power=model["k"] if model["kind"]=="minnaert" else float(np.interp(np.degrees(alpha),model["B"]["alphaDeg"],model["B"]["values"]))
         weighted=(mu0**power*mu**power if model["kind"]=="minnaert" else
                   (mu0*mu/(mu0+mu))**power * mu/np.maximum(mu,1e-3))
-        weighted*=cb*w[:,None]*w[None,:]*delta*np.pi/8*np.cos(u)
+        weighted*=measure
         bare=weighted.sum()
-        result=np.zeros(8)
+        result=np.zeros(9)
+        factor=delta**(2*power+1) if model["kind"]=="minnaert" else delta**(power+1)*min(1,delta/1e-3)
+        result[8]=bare/factor
         for at in view["views"]:
             lat=np.radians(at["latitudeDeg"]);o=np.array([np.cos(lat),0,np.sin(lat)])
             xx=np.asarray(at["solarTangent"]); yy=np.cross(o,xx)
@@ -186,6 +237,7 @@ def reference_table(naif: int, entry: dict) -> dict | None:
                     values=rows[j,c]*(1-t)+rows[np.minimum(j+1,255),c]*t
                     result[c+4]+=np.sum(ww*values)
         return result
+    print(f"[light] {naif} dated reference: computing fixed calibration table", flush=True)
     cache={}; max_quadrature_change=0.0
     def value(t):
         nonlocal max_quadrature_change
@@ -194,31 +246,43 @@ def reference_table(naif: int, entry: dict) -> dict | None:
             for n in (128,256,512):
                 v=integral(alpha,n)
                 rel=np.max(abs(v[:4]/prev[:4]-1))
-                if rows is not None: rel=max(rel,float(np.max(abs(v[4:]/prev[4:]-1))))
-                if rel<1e-5: break
+                if rows is not None: rel=max(rel,float(np.max(abs(v[4:8]/prev[4:8]-1))))
+                rel=max(rel,float(abs(v[8]/prev[8]-1)))
+                if rel<3e-5: break
                 prev=v
             max_quadrature_change=max(max_quadrature_change,float(rel));cache[t]=v
         return cache[t]
-    end=float(np.log(np.pi/1e-4)); cells=[]
+    end=float(np.log(np.pi/1e-8)); cells=[]
     def visit(lo,hi,depth=0):
-        a,b=value(lo),value(hi);mid=(lo+hi)/2;m=value(mid)
-        # Quarter checks keep a narrow peak from hiding behind a midpoint.
-        probes=[(mid,m),((3*lo+hi)/4,value((3*lo+hi)/4)),((lo+3*hi)/4,value((lo+3*hi)/4))]
-        error=max(float(np.max(abs(((1-(t-lo)/(hi-lo))*a+(t-lo)/(hi-lo)*b)[:4]/v[:4]-1))) for t,v in probes)
-        if rows is not None:
-            error=max(error,max(float(np.max(abs(((1-(t-lo)/(hi-lo))*a+(t-lo)/(hi-lo)*b)[4:]/v[4:]-1))) for t,v in probes))
-        if error>3e-5 and depth<12:
-            visit(lo,mid,depth+1);visit(mid,hi,depth+1)
-        else: cells.append({"lo":lo,"hi":hi,"bare":[a[:4].tolist(),b[:4].tolist()],
-                            **({"mapped":[a[4:].tolist(),b[4:].tolist()]} if rows is not None else {})})
+        values=[value(lo+u*(hi-lo)) for u in (0,1/3,2/3,1)]
+        def interp(u):
+            a,b,c,d=values
+            return (-4.5*(u-1/3)*(u-2/3)*(u-1)*a
+                    +13.5*u*(u-2/3)*(u-1)*b
+                    -13.5*u*(u-1/3)*(u-1)*c
+                    +4.5*u*(u-1/3)*(u-2/3)*d)
+        used=[0,1,2,3,8]+(list(range(4,8)) if rows is not None else [])
+        error=max(float(np.max(abs(interp(u)[used]/value(lo+u*(hi-lo))[used]-1)))
+                  for u in (1/12,1/6,1/4,1/2,3/4,5/6,11/12))
+        if error>1e-5 and depth<12:
+            visit(lo,(lo+hi)/2,depth+1);visit((lo+hi)/2,hi,depth+1)
+        else:
+            cells.append({"lo":lo,"hi":hi,"sphere":[float(v[8]) for v in values],
+                          "bare":[v[:4].tolist() for v in values],
+                          **({"mapped":[v[4:8].tolist() for v in values]} if rows is not None else {})})
     cuts=list(np.linspace(0,end,17))
     if model["kind"]=="barkstrom":
+        cuts += [float(np.log(np.pi/1e-3))]
         cuts += [float(-np.log1p(-a/180)) for a in model["B"]["alphaDeg"] if 0<a<180]
     cuts=sorted(set(cuts))
     for lo,hi in zip(cuts,cuts[1:]):visit(lo,hi)
-    return {"model": model,"cells": cells,"endLogCrescent":end,
-            "quadratureMaxChange":max_quadrature_change,
+    table = {"model": model,"sphereFloor":1e-3,"cells": cells,"endLogCrescent":end,
+            "quadratureMaxChange":max_quadrature_change,"radiiKm":list(pck_radii()[naif]),"view":view,
             **({"zonalRows":rows.reshape(-1).tolist(),"mapTileSha256":[hashlib.sha256(p.read_bytes()).hexdigest() for p in paths]} if rows is not None else {})}
+    cached.parent.mkdir(parents=True,exist_ok=True)
+    cached.write_text(json.dumps(table)+"\n")
+    return table
+
 
 
 def with_measurement_views(photometry: dict, ctx: BuildContext | None = None) -> dict:
@@ -242,9 +306,19 @@ def with_measurement_views(photometry: dict, ctx: BuildContext | None = None) ->
                        "observed relative solar direction as the law's phase changes. "
                        "Planet/satellite-centre offsets from the system barycentre are omitted; for Titan the "
                        "parent-system direction is an approximation, not a recovered Cassini or Titan ephemeris.")
+        elif naif == 399 and any("himawari9-ahi" in x for x in albedo["sources"]):
+            entry["albedoMeasurementView"] = sourced(earth_measurement_view(), "derived",
+                [x for x in albedo["sources"] if "himawari9-ahi" in x],
+                method="Himawari-9 AHI calibration geometry from the HSD/CGMS observer frame and "
+                       "the solar direction computed by photometry.earth for the actual scan. "
+                       "This is the very geometry used to integrate the albedo; sub-observer "
+                       "latitude is zero in the CGMS equatorial projection. Absolute Earth "
+                       "layers continue to use their independent calibration.")
         else:
             entry["albedoMeasurementView"] = sourced(
-                {"kind": "orientation-mean"}, "estimated", albedo["sources"],
+                {"kind": "orientation-mean", **({"epoch":"2000-10/2001-03"} if naif in (501,502,503,504) else
+                 {"epoch":"2004/2017"} if 601<=naif<=605 else
+                 {"epoch":"2004/2024"} if naif==402 else {})}, "estimated", albedo["sources"],
                 method="The adopted albedo is a global fitted/compiled mean without one recoverable calibration "
                        "view in the retained inputs. Explicit fallback: uniform mean over orientations of the "
                        "ellipsoid Gauss-map area measure and zonal map. This is a normalization assumption; "
@@ -287,8 +361,24 @@ def run(ctx: BuildContext) -> None:
     for key, entry in photometry.items():
         table = reference_table(int(key), entry)
         if table is not None:
-            entry["albedoMeasurementView"]["value"]["normalizationTable"] = table
-            print(f"[light] {key} dated reference: {len(table['cells'])} cells, quadrature change {table['quadratureMaxChange']:.3g}")
+            import json
+            from ..paths import OUT
+            header = OUT/f"surfaces/{key}/albedo.json"
+            h = json.loads(header.read_text()) if header.exists() else {}
+            sources = list(dict.fromkeys([*entry["albedoMeasurementView"]["sources"],
+                                         *entry["spatialModel"]["sources"], *h.get("sources",[])]))
+            entry["albedoReferenceNormalization"] = sourced(table,
+                worst(entry["spatialModel"]["label"], h.get("color",{}).get("label","derived"),
+                      h.get("provenance",{}).get("label","derived"), "derived"), sources,
+                method="Fixed dated-view integral and its bare-sphere factor, precomputed with NumPy "
+                       "normal-space quadrature. Binary16 map rows are evaluated exactly piecewise-linearly "
+                       "at position latitude, with order refinement. Cubic interpolation in log crescent "
+                       "width is checked at seven interlaced points to 1e-5; quadrature maximum "
+                       "successive-order change is recorded. Tables retain the law, radii, views and "
+                       "exact zonal rows; mismatched frame inputs cannot reuse a table. "
+                       "The law's crescent power is factored analytically; below delta=1e-8 the limiting "
+                       "ratio is held (a numerical endpoint approximation).")
+            print(f"[light] {key} dated reference: {len(table['cells'])} cells, quadrature change {table['quadratureMaxChange']:.3g}", flush=True)
     write_json(ctx, "photometry.json", photometry, "light")
     for n, r in results.items():
         labels = (f"albedo:{r.entry['geometricAlbedoXYZS']['label']} phase:{r.entry['phaseFunction']['label']}")

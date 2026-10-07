@@ -11,7 +11,7 @@
 // exactly albedoXYZS·(1/d²)(R/Δ)²·Φ(α) for spheres (ellipsoids use their fixed albedo reference below). For a map without longitude
 // structure it holds at every instant. This file is the float64 reference; shaders.ts mirrors lawRadf.
 
-import type { AlbedoMeasurementView, PhaseDependent, SpatialPhotometricModel } from '../data/schema';
+import type { AlbedoMeasurementView, CalibrationNormalizationTable, PhaseDependent, SpatialPhotometricModel } from '../data/schema';
 import type { V3 } from './raycast';
 
 export type XYZS = [number, number, number, number];
@@ -987,6 +987,7 @@ export class EllipsoidNormalization {
   private equatorNodes = new WeakMap<ZonalProfile, Map<number, { logCos: number; values: XYZS }[]>>();
   private floorNodes = new WeakMap<ZonalProfile, Map<string, { lo: number; hi: number; nodes: { cp: number; sp: number; weight: number; map: XYZS }[] }[]>>();
   private exact = new Map<string, XYZS>();
+  private tableViews = new WeakMap<object, WeakMap<object, boolean>>();
   private tableMaps = new WeakMap<ZonalProfile, WeakMap<object, boolean>>();
   private triaxial = new WeakMap<ZonalProfile, Map<string, XYZS>>();
 
@@ -1190,10 +1191,16 @@ export class EllipsoidNormalization {
     return value;
   }
 
-  reference(law: ResolvedLaw, alpha: number, radii: V3, view: AlbedoMeasurementView, map?: ZonalProfile): XYZS {
-    if (view.kind === 'latitude' && view.normalizationTable && alpha < Math.PI) {
-      const table = view.normalizationTable, resolved = resolveLaw(table.model, alpha);
-      let valid = !('error' in resolved) && JSON.stringify(resolved.law) === JSON.stringify(law);
+  reference(law: ResolvedLaw, alpha: number, radii: V3, view: AlbedoMeasurementView, map?: ZonalProfile, table?: CalibrationNormalizationTable): XYZS {
+    if (view.kind === 'latitude' && table && alpha < Math.PI) {
+      const resolved = resolveLaw(table.model, alpha);
+      let valid = !('error' in resolved) && JSON.stringify(resolved.law) === JSON.stringify(law)
+        && table.radiiKm.every((v,k)=>v===radii[k]);
+      let viewCache=this.tableViews.get(view);
+      if(!viewCache)this.tableViews.set(view,viewCache=new WeakMap());
+      let sameView=viewCache.get(table);
+      if(sameView===undefined){sameView=JSON.stringify(view)===JSON.stringify(table.view);viewCache.set(table,sameView);}
+      valid=valid && sameView;
       if (map && valid) {
         let byTable=this.tableMaps.get(map);
         if(!byTable)this.tableMaps.set(map,byTable=new WeakMap());
@@ -1205,14 +1212,19 @@ export class EllipsoidNormalization {
         }
         valid=same;
       }
-      const t=Math.log(Math.PI/(Math.PI-alpha));
+      const t=Math.min(table.endLogCrescent,Math.log(Math.PI/(Math.PI-alpha)));
       if(valid && t<=table.endLogCrescent) {
         let lo=0,hi=table.cells.length-1;
         while(lo<hi){const mid=(lo+hi)>>>1;if(table.cells[mid].hi<t)lo=mid+1;else hi=mid;}
         const cell=table.cells[lo],v=map?cell.mapped:cell.bare;
         if(v) {
-          const u=(t-cell.lo)/(cell.hi-cell.lo),bare=this.bare.get(law,alpha);
-          return bare.map((v0,k)=>v0*((1-u)*v[0][k]+u*v[1][k])) as XYZS;
+          const u=(t-cell.lo)/(cell.hi-cell.lo),delta=Math.PI-alpha;
+          const factor=law.kind===LAW.minnaert?delta**(2*law.p+1)
+            :delta**(law.p+1)*Math.min(1,delta/table.sphereFloor);
+          const weights=[-4.5*(u-1/3)*(u-2/3)*(u-1),13.5*u*(u-2/3)*(u-1),
+            -13.5*u*(u-1/3)*(u-1),4.5*u*(u-1/3)*(u-2/3)];
+          const bare=factor*weights.reduce((sum,w,j)=>sum+w*cell.sphere[j],0);
+          return [0,1,2,3].map(k=>bare*weights.reduce((sum,w,j)=>sum+w*v[j][k],0)) as XYZS;
         }
       }
     }
@@ -1246,7 +1258,10 @@ export class EllipsoidNormalization {
         this.means.set(profile,average);
       }
     } else {
-      const key='mean:'+radii.join(',');const hit=!map?this.exact.get(key):null;
+      const key='mean:'+radii.join(',');
+      let cache=this.exact;
+      if(map){let found=this.triaxial.get(map);if(!found)this.triaxial.set(map,found=new Map());cache=found;}
+      const hit=cache.get(key);
       if(hit)average=hit;else {
         const R=Math.cbrt(radii[0]*radii[1]*radii[2]),d=radii.map(v=>(v/R)**2),gl=gaussLegendre(48),vals=[1,1,1,1];average=[0,0,0,0];
         for(let j=0;j<48;j++)for(let i=0;i<96;i++){
@@ -1255,7 +1270,7 @@ export class EllipsoidNormalization {
           if(map)zonalAt(map,d[2]*z/Math.hypot(...nv.map((v,k)=>d[k]*v)),vals);
           for(let k=0;k<4;k++)average[k]+=jac*vals[k]*gl.w[j]/192;
         }
-        if(!map)this.exact.set(key,average);
+        cache.set(key,average);
       }
     }
     return this.bare.get(law,alpha).map((v,k)=>v*average[k]) as XYZS;

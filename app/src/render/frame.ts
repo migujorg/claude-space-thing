@@ -457,7 +457,7 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
     const measurementView = (b as CalibratedSceneBody).albedoMeasurementView ?? { kind: 'orientation-mean' as const };
     const profile = surface?.albedo?.zonal ?? undefined;
     const referenceIntegral = (lawAt: ResolvedLaw, a: number): XYZS => ellipsoid
-      ? ellipsoidNormalization.reference(lawAt, a, b.radii!, measurementView, profile)
+      ? ellipsoidNormalization.reference(lawAt, a, b.radii!, measurementView, profile, b.albedoReferenceNormalization ?? undefined)
       : lawIntegral(lawAt, a);
     let pPhi: XYZS | null = b.surfaceUnknown ? null
       : diskModelPPhi(b.diskReflectanceModel, b.orient, R, b.toSun, scale(b.pos, -1), irr);

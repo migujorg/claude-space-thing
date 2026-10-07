@@ -203,15 +203,18 @@ export interface CalibrationLatitude {
   earthCentreParallaxBoundDeg?: number;
 }
 export type AlbedoMeasurementView =
-  | ({ kind: 'latitude'; views?: (CalibrationLatitude & {weight: number})[]; normalizationTable?: CalibrationNormalizationTable } & CalibrationLatitude)
+  | ({ kind: 'latitude'; views?: (CalibrationLatitude & {weight: number})[] } & CalibrationLatitude)
   | { kind: 'orientation-mean'; epoch?: string };
 
 /** Pipeline-computed fixed calibration integral / bare-sphere integral. */
 export interface CalibrationNormalizationTable {
   model: SpatialPhotometricModel;
   endLogCrescent: number;
+  sphereFloor: number;
+  radiiKm: [number,number,number];
+  view: AlbedoMeasurementView;
   quadratureMaxChange: number;
-  cells: {lo: number; hi: number; bare: [number[], number[]]; mapped?: [number[], number[]]}[];
+  cells: {lo: number; hi: number; sphere: number[]; bare: number[][]; mapped?: number[][]}[];
   zonalRows?: number[];
   mapTileSha256?: string[];
 }
@@ -234,6 +237,7 @@ export interface BodyPhotometry {
   geometricAlbedoV: Sourced<number>;
   albedoMeasurementView?: Sourced<AlbedoMeasurementView>;
   albedoViewSpread?: Sourced<AlbedoViewSpread>;
+  albedoReferenceNormalization?: Sourced<CalibrationNormalizationTable>;
   /** Disk-integrated phase function. */
   phaseFunction: Sourced<PhaseFunction>;
   /**
