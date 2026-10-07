@@ -588,6 +588,13 @@ def measure(p: Prepared, sub: int = 4) -> dict:
                 entry["appDataPreview"] = prev
         if p.annotate is not None:
             entry.update(p.annotate(entry))
+        if p.id == "jupiter-nh-lorri-2007" and r.spec.kind == "disk-centre":
+            entry["sceneDependence"] = {
+                "reason": "The observed centre is in Jupiter's 2007 equatorial zone; the app holds the OPAL "
+                          "2025-12-11 map, not that atmospheric scene at the observation epoch.",
+                "sources": ["LORRI observation: lor_0031736039 (2007-01-22)",
+                            "Simon et al. (2015), OPAL, ApJ 812, 55, doi:10.1088/0004-637X/812/1/55; "
+                            "MAST doi:10.17909/T9G593, cycle 32 Jupiter map 2025-12-11"]}
         roi_json.append(entry)
 
     ratio_json = _ratios(p, roi_json)
@@ -694,15 +701,24 @@ def _ratios(p: Prepared, roi_json: list[dict]) -> list[dict]:
     """ROI-to-ROI ratios from the same frames: the absolute calibration cancels."""
     by_id = {e["id"]: e for e in roi_json}
     out = []
-    for num, den in p.ratios:
+    pairs = list(p.ratios)
+    for target in dict.fromkeys(e["target"] for e in roi_json):
+        kinds = {e["kind"]: e["id"] for e in roi_json if e["target"] == target}
+        centre, disk = kinds.get("disk-centre"), kinds.get("disk-integrated")
+        pairs.extend((kinds[k], centre) for k in ("limb", "terminator") if k in kinds and centre)
+        pairs.extend((kinds[k], disk) for k in ("disk-centre", "limb", "terminator") if k in kinds and disk)
+    for num, den in dict.fromkeys(pairs):
         a, b = by_id.get(num), by_id.get(den)
         if not a or not b or a["expected"]["type"] != "value" or b["expected"]["type"] != "value":
             continue
         va, vb = np.array(a["expected"]["XYZS"]), np.array(b["expected"]["XYZS"])
 
+        spatial = a["target"] == b["target"]
+
         def noncal(e):
             bu = e["expected"]["budget"]
-            return np.hypot(np.array(bu["noiseAndRegistration"]), np.array(bu["spectralModel"]))
+            independent = np.array(bu["noiseAndRegistration"])
+            return independent if spatial else np.hypot(independent, np.array(bu["spectralModel"]))
         r = va / vb
         sr = np.abs(r) * np.hypot(noncal(a) / va, noncal(b) / vb)
         band = []
@@ -717,6 +733,32 @@ def _ratios(p: Prepared, roi_json: list[dict]) -> list[dict]:
                                   "per channel",
                     "method": "same frames and filters: the absolute calibration cancels; σ from noise, "
                               "registration and the spectral model of both ROIs"})
+        if spatial:
+            out[-1].update({
+                "label": "estimated" if "estimated" in (a["expected"]["label"], b["expected"]["label"]) else "derived",
+                "budget": {"noiseAndRegistration": sr.tolist(),
+                           "formula": "sigma(R_c) = |R_c| * hypot(u_a,c / L_a,c, u_b,c / L_b,c); "
+                                      "u = each ROI's noiseAndRegistration; tolerance = 2 sigma(R)",
+                           "correlation": "Shared absolute calibration and the same-body spectral conversion "
+                                          "cancel. The test is conditional on that common spectral conversion, "
+                                          "not an independent measurement of local colour. Noise and registration "
+                                          "are propagated independently, as in the region budgets; no cross-ROI "
+                                          "covariance is measured. Additive background level uncertainty remains "
+                                          "in disk noise and does not cancel."},
+                "method": "same body, frames and filters: shared calibration and spectral conversion cancel; "
+                          "sigma from noise and registration alone, including measured disk background uncertainty"})
+        dependence = a.get("sceneDependence") or b.get("sceneDependence")
+        if dependence:
+            out[-1]["sceneDependence"] = dependence
+        if (num, den) == ("moon-disk-integrated", "earth-disk-integrated"):
+            out[-1]["sceneDependence"] = {
+                "reason": "The ratio depends on Earth's clouds and surface visibility at 2008-05-29; "
+                          "the app holds clouds from another epoch. The existing budget has no Earth scene "
+                          "variation term: the held calibration document gives no rotational-variation value.",
+                "sources": ["EPOXI observation: HV08052902_1000116_001 (2008-05-29)",
+                            "Livengood et al. (2011), Astrobiology 11, 907-930, doi:10.1089/ast.2011.0614 "
+                            "(cited by the archive; paper needed for an Earth variation budget)",
+                            "epoxi-cal-pipeline-summary-2014, section 3, pp. 13-14"]}
     return out
 
 

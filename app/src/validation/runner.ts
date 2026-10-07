@@ -11,7 +11,7 @@
 
 import { validationSampling } from './sampling.mjs';
 
-import type { Body, Label, LightData, ValidationBody, ValidationCase, ValidationRoi } from '../data/schema';
+import type { Body, Label, LightData, ValidationBody, ValidationCase, ValidationRoi, ValidationSceneDependence } from '../data/schema';
 import type { SceneBody, SceneSnapshot, SceneSun } from '../render/scene';
 import type { OrientationSetPort, OrientationSourcePort } from '../app/ports';
 import type { BodyGeom } from '../app/world';
@@ -135,6 +135,7 @@ export interface RegionStats {
 }
 
 export interface RoiResult {
+  sceneDependence?: ValidationSceneDependence;
   id: string;
   kind: ValidationRoi['kind'];
   target: number;
@@ -159,7 +160,7 @@ export interface RoiResult {
 }
 
 export function compareRoi(roi: ValidationRoi, r: RegionStats): RoiResult {
-  const base = { id: roi.id, kind: roi.kind, target: roi.target, rect: roi.rect, rendered: r };
+  const base = { id: roi.id, kind: roi.kind, target: roi.target, rect: roi.rect, rendered: r, ...(roi.sceneDependence ? { sceneDependence: roi.sceneDependence } : {}) };
   const e = roi.expected;
   if (e.type === 'none') return { ...base, expectedType: 'none', pass: null, failing: [], note: e.method };
   if (!r.n) return { ...base, expectedType: e.type, pass: null, failing: [], note: 'no finite rendered pixels' };
@@ -177,6 +178,9 @@ export function compareRoi(roi: ValidationRoi, r: RegionStats): RoiResult {
 }
 
 export interface RatioResult {
+  sceneDependence?: ValidationSceneDependence;
+  sigma: XYZS;
+  deviationSigma?: XYZS;
   status?: 'not rendered';
   reason?: string;
   numerator: string;
@@ -192,11 +196,13 @@ export function compareRatios(c: ValidationCase, rois: RoiResult[]): RatioResult
   const byId = new Map(rois.map((r) => [r.id, r]));
   return c.ratios.map((q) => {
     const a = byId.get(q.numerator), b = byId.get(q.denominator);
-    const base = { numerator: q.numerator, denominator: q.denominator, expected: q.ratioXYZS, tolerance: q.tolerance };
+    const base = { numerator: q.numerator, denominator: q.denominator, expected: q.ratioXYZS, sigma: q.sigma, tolerance: q.tolerance,
+      ...(q.sceneDependence ? { sceneDependence: q.sceneDependence } : {}) };
     if (!a?.rendered.n || !b?.rendered.n) return { ...base, rendered: null, pass: null, failing: [] };
     const rendered = a.rendered.mean.map((m, k) => m / b.rendered.mean[k]) as XYZS;
     const failing = CHANNELS.filter((_, k) => !(Math.abs(rendered[k] - q.ratioXYZS[k]) <= q.tolerance[k]));
-    return { ...base, rendered, pass: failing.length === 0, failing: [...failing] };
+    const deviationSigma = rendered.map((m, k) => (m - q.ratioXYZS[k]) / q.sigma[k]) as XYZS;
+    return { ...base, rendered, deviationSigma, pass: failing.length === 0, failing: [...failing] };
   });
 }
 

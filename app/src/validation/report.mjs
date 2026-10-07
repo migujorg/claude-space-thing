@@ -1,6 +1,6 @@
 // Frame-validity-aware validation report. The legacy validate-lib formatter remains for existing consumers.
 
-import { tally } from './results.mjs';
+import { tally, tallyPartLines, sceneDependenceLines } from './results.mjs';
 import { adapterLabel } from '../../scripts/e2e-lib.mjs';
 
 const g = (v, d = 4) => (v === null || v === undefined || !Number.isFinite(v) ? '—' : Number(v).toPrecision(d));
@@ -8,6 +8,7 @@ const f = (v, d = 2) => (v === null || v === undefined || !Number.isFinite(v) ? 
 
 function verdict(q) {
   if (q.status === 'not rendered') return `not rendered: ${q.reason.replace(/\|/g, '/').replace(/\n/g, ' ')}`;
+  if (q.sceneDependence) return `scene-dependent (${q.pass === true ? 'pass' : q.pass === false ? 'fail' : 'not compared'})`;
   if (q.pass === true) return 'pass';
   if (q.pass === false) return `**FAIL** (${q.failing.join('')})`;
   return 'not compared';
@@ -40,6 +41,7 @@ export function markdownReport(report) {
   const n = tally(report.cases);
   L.push(`**${n.pass} pass, ${n.fail} fail, ${n.notRendered} not rendered** over ${report.cases.length} cases` +
     (n.notCompared ? `; ${n.notCompared} not compared` : '') + '.', '');
+  L.push(...tallyPartLines(report.cases), '', ...sceneDependenceLines(report.cases), '');
   L.push('| case | ROI | kind | expected Y ± tol | rendered Y | rendered/expected | σ | verdict |');
   L.push('|---|---|---|---|---|---|---|---|');
   for (const c of report.cases) {
