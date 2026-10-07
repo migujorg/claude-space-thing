@@ -116,7 +116,7 @@ ORIENTATION_MEANS = {
     "payne-2026-venus": "The absolute level is scaled to Venus's V geometric albedo 0.689 "
         "(Mallama et al. 2017), a compiled broadband albedo; the spectral shape remains estimated.",
     "mallama-2017": "Mars: from Mallama 2007's photometry, rotation- and season-averaged.",
-    "kieffer-stone-2005": "ROLO: a fit to 32 bands in more than 1000 observations over phase "
+    "kieffer-stone-2005": "ROLO: a fit to about 38000 whole-disk measurements in 32 bands over phase "
         "and libration, evaluated at zero libration and the geometric mean of waxing and waning.",
     "buie-2010a": "Buie 2010 Tables 8/12 give Fourier mean V at 1 degree; Table 10 gives Charon weighted-mean B-V.",
     "fornasier-2024": "Tables 1 and 2 give disk-integrated Hapke albedos and H-G fits over "
