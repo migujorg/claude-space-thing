@@ -186,9 +186,10 @@ async function renderScene(scene) {
     } else r.imageNote = 'no 2D canvas to read (not offscreen presentation?)';
     // Measure every scene on either adapter, without screenshot/readback overhead in the sampling window.
     if (!r.error) {
-      const sampled = await page.evaluate(pageFrameSamples, { frames: TIMING_POLICY.frames, starFrames: gpuMode === 'hardware' ? 16 : 0, timeoutMs });
+      const sampled = await page.evaluate(pageFrameSamples, { frames: TIMING_POLICY.frames, starFrames: 16, timeoutMs });
       r.timings = summarizeFrameTimings(sampled.samples);
-      if (gpuMode === 'hardware') r.starsDrawnFrames = sampled.starsDrawnFrames;
+      r.starsDrawnFrames = sampled.starsDrawnFrames;
+      r.starsDrawnVaried = sampled.starsDrawnVaried;
     }
     // A screenshot waits for a new frame, and a SwiftShader frame can take tens of seconds on a busy machine.
     await page.screenshot({ path: resolve(OUT, `${scene.id}.png`), timeout: Math.min(timeoutMs, 300_000) });
@@ -249,6 +250,7 @@ for (const r of results) {
   // A failure where the eye is always adapted (in the comparison below; said here when nothing is compared); a
   // note where the adaptation runs in real time.
   const fails = starsFramesFailure(r.starsDrawnFrames, r.stats?.starsDrawn, r.query);
+  if (fails) { r.performance.failures.push(`${r.id}: ${fails}`); r.performance.pass = false; }
   const unsteady = fails ? (compare ? null : fails) : starsFramesNote(r.starsDrawnFrames, r.stats?.starsDrawn);
   if (unsteady) notes.push(`${r.id}: ${unsteady}`);
 }

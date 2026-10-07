@@ -29,6 +29,8 @@ export interface RealityState {
    * one would really see. Badged when on.
    */
   instantAdaptation?: boolean;
+  /** Sample the defined history at exactly these elapsed seconds, holding the eye clock (URL adapttime). */
+  adaptationTimeS?: number;
   /** A defined eye history for tests and demonstrations (URL `adaptfrom`; ViewSettings.adaptation.history). */
   adaptationHistory?: { luminanceCdM2: number; exposureS: number; elapsedS: number };
 }
@@ -212,6 +214,7 @@ export function badgeParts(s: RealityState, defaults: RealityState, opts: { synt
   // Always shown when on, whatever the defaults: it hides the Sun and its glare.
   if (s.sunShield) parts.push('SUN SHIELDED: occulting disc (viewing aid)');
   if (s.instantAdaptation) parts.push('INSTANT ADAPTATION: eye always fully adapted');
+  else if (s.adaptationTimeS !== undefined) parts.push(`EYE CLOCK HELD: ${s.adaptationTimeS} s after history`);
   return parts;
 }
 

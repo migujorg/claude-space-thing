@@ -777,6 +777,7 @@ export class Renderer {
     const sunWhite = snapshot.sun ? ([snapshot.sun.irradianceXYZS_1AU[0], snapshot.sun.irradianceXYZS_1AU[1], snapshot.sun.irradianceXYZS_1AU[2]] as [number, number, number]) : null;
     const ad = snapshot.view.adaptation;
     this.adaptation.timeDependent = ad?.mode === 'realtime';
+    this.adaptation.heldElapsedS = ad?.mode === 'realtime' && ad.history ? ad.heldElapsedS : undefined;
     if (snapshot.sun) this.sunSP = snapshot.sun.irradianceXYZS_1AU[3] / snapshot.sun.irradianceXYZS_1AU[1];
     const outMax = this.displayInfo.hdr ? Math.max(this.settings.hdrPeakCdM2, this.settings.displayPeakCdM2) : undefined;
     const eye = computeEyeFrame(this.settings, this.adaptation, snapshot.view.mode, snapshot.view.exposureBoostStops, sunWhite, outMax);
@@ -1344,7 +1345,7 @@ export class Renderer {
     this.adaptation.timeDependent = timed && !(this.settling && !hist);
     this.adaptation.update(goal, dt, pupil);
     this.adaptation.timeDependent = timed;
-    if (hist && timed && !this.historySettled) {
+    if (hist && timed && (!this.historySettled || this.adaptation.heldElapsedS !== undefined)) {
       const L = hist.luminanceCdM2;
       const dPre = pupilDiameterMm(L * this.fieldDeg2, s.ageYears, s.eyes);
       this.adaptation.pigment = null;
