@@ -1038,6 +1038,9 @@ export class NightglowGpu {
     pass.end();
   }
 
+  /** Diagnostic readback of the emission before its full-resolution composite. */
+  get emissionTexture(): GPUTexture | null { return this.low; }
+
   /** Adds the emission into the bodies pass (depth-tested). `entries`: bindings 0, 1 and those of prepare(). */
   drawComposite(pass: GPURenderPassEncoder, entries: GPUBindGroupEntry[], index: number): void {
     if (!this.low) return;

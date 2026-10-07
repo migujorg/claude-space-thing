@@ -30,7 +30,7 @@ if (opt('pixel')) {
 if (out) mkdirSync(resolve(out), { recursive: true });
 const variants = [
   ['baseline', ''], ['legacyGeometry', 'glareGeometry'], ['legacyWithoutGlare', 'glareGeometry,glare'],
-  ['noNightglow', 'nightglow'], ['noAirglow', 'airglow'], ['noAurora', 'aurora'],
+  ['noNightglow', 'nightglow'], ['noNightglowComposite', 'nightglowComposite'], ['noAirglow', 'airglow'], ['noAurora', 'aurora'],
   ['fullResolutionNightglow', 'nightglowHalfResolution'], ['noNightglowAttenuation', 'nightglowAttenuation'],
   ['noAtmosphere', 'atmosphere'], ['noAPColumns', 'ap'], ['noLimbExtinction', 'limb'],
   ['noBodies', 'bodies'], ['noPyramid', 'pyramid'], ['noAnalyticGlare', 'glare'],
@@ -107,6 +107,7 @@ ${body}` });
         if (!r) throw new Error('Diagnostic renderer hook did not run');
         await r.frameDone();
         const image = await r.readHdr();
+        const emission = await r.readNightglow();
         const snap = window.__app.snapshot();
         const { nearHit, prepareBody, normalize } = await import('/src/render/raycast.ts');
         const earth = snap.bodies.find(b => b.id === 399);
@@ -117,7 +118,10 @@ ${body}` });
           const ndcX = 2 * (x + .5) / image.width - 1, ndcY = 1 - 2 * (y + .5) / image.height;
           const dir = normalize([0, 1, 2].map(k => o[3*k] * ndcX * tx + o[3*k+1] * ndcY * ty - o[3*k+2]));
           const hit = b && nearHit(b, dir);
-          return [name, { x, y, xyzs: Array.from(image.data.slice(4 * (y * image.width + x), 4 * (y * image.width + x) + 4)), hitsEarth: !!hit && hit.t > 0 && hit.disc >= 0 }];
+          const ex = emission && Math.min(emission.width - 1, Math.floor((x + .5) / image.width * emission.width));
+          const ey = emission && Math.min(emission.height - 1, Math.floor((y + .5) / image.height * emission.height));
+          const emissionXYZS = emission && Array.from(emission.data.slice(4 * (ey * emission.width + ex), 4 * (ey * emission.width + ex) + 4));
+          return [name, { x, y, emissionXYZS, xyzs: Array.from(image.data.slice(4 * (y * image.width + x), 4 * (y * image.width + x) + 4)), hitsEarth: !!hit && hit.t > 0 && hit.disc >= 0 }];
         }));
         let peak = -Infinity, peakIndex = 0;
         for (let i = 0; i < image.width * image.height; i++) if (image.data[4*i+1] > peak) { peak = image.data[4*i+1]; peakIndex = i; }

@@ -581,6 +581,12 @@ export class Renderer {
     const t = this.targets;
     return (this.hdrReadback ??= new HdrReadback(this.device)).read(t.ext, [0, 0, t.W, t.H], 1 / this.hdrPreExposure);
   }
+  /** Diagnostic: physical XYZS in the emission target, before upsampling and depth-tested composition. */
+  readNightglow(): Promise<HdrImage | null> {
+    const t = this.nightglow?.emissionTexture;
+    if (!t) return Promise.resolve(null);
+    return (this.hdrReadback ??= new HdrReadback(this.device)).read(t, [0, 0, t.width, t.height], 1 / this.hdrPreExposure);
+  }
   // ── end of the validation hook ─────────────────────────────────────────────────────────────────────────────
 
   private destroyTargets(): void {
@@ -881,7 +887,7 @@ export class Renderer {
         }
       }
       // Earth's airglow and aurora (nightglow.ts): the emission computed above, depth-tested like the shells.
-      if (ngDraw && this.bodiesBuf) this.nightglow!.drawComposite(pass, ngDraw.entries, ngDraw.index);
+      if (ngDraw && this.bodiesBuf && !skip.has('nightglowComposite')) this.nightglow!.drawComposite(pass, ngDraw.entries, ngDraw.index);
       if (nRings && !skip.has('rings')) {
         pass.setPipeline(this.ringPipe);
         pass.setBindGroup(0, d.createBindGroup({

@@ -267,11 +267,11 @@ depth and the retinal glare/adaptation passes still require root's GPU readback.
 From `app/`, `node scripts/nightglow-diagnostic.mjs --gpu hardware --url '<app URL path and query>'`
 starts its own ephemeral-port Vite server, captures the real renderer before its first frame, and renders a
 fresh page for each omission. It prints settled adaptation plus pre-eye HDR XYZS at centre, upper sky and lower
-ground probes, their Earth-intersection flags, and the maximum HDR Y. Names describe probe positions; in a
+ground probes, their Earth-intersection flags, the emission target before its composite, and the maximum HDR Y. Names describe probe positions; in a
 nadir view all three probes hit ground. `--reported` runs all eight reported URLs. `--scenes` runs the four
 nightglow scenes. `--out DIR` saves JSON and each display image. No test fixtures enter these renders.
 
-Variants remove nightglow, airglow, aurora, lower-air attenuation of emission, atmosphere (including over the
+Variants remove nightglow, its composite alone, airglow, aurora, lower-air attenuation of emission, atmosphere (including over the
 surface), AP columns, limb extinction, bodies, glare pyramid, analytic glare, Sun disk, sky background and
 points. `fullResolutionNightglow` removes the half-resolution calculation; `emissionOnly` isolates emission.
 `legacyGeometry` skips the new glare-visibility correction, and `legacyWithoutGlare` also removes analytic
