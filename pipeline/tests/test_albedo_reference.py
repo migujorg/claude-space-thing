@@ -41,3 +41,26 @@ def test_missing_app_esbuild_fails_clearly(tmp_path):
     (tmp_path / 'app/package.json').write_text('{}')
     with pytest.raises(RuntimeError, match="app's esbuild"):
         stage.check_toolchain(tmp_path)
+
+
+def test_build_record_names_the_table_hash(tmp_path, monkeypatch):
+    import json
+    from pipeline import output
+    from pipeline.schema import BuildContext
+    stage = importlib.import_module('pipeline.stages.albedo_reference')
+    monkeypatch.setattr(stage, 'OUT', tmp_path)
+    monkeypatch.setattr(output, 'OUT', tmp_path)
+    monkeypatch.setattr(stage, 'check_toolchain', lambda: None)
+    table = {'sourceCodeSha256': 'test-code', 'relativeTolerance': 1e-5,
+             'radiiKm': [2,2,1], 'view': {'kind': 'latitude', 'latitudeDeg': 0}, 'cells': []}
+    monkeypatch.setattr(stage, 'reference_table', lambda *args: table)
+    (tmp_path/'photometry.json').write_text(json.dumps({'599': {
+        'albedoMeasurementView': {'label':'derived','sources':['test-view']},
+        'spatialModel': {'label':'estimated','sources':['test-law']}}}))
+    ctx = BuildContext(0, 1)
+    stage.run(ctx)
+    record = json.loads((tmp_path/'verification/albedo-reference.json').read_text())
+    assert record['products'] == {'albedo-reference.json': ctx.products['albedo-reference.json']['sha256']}
+    product = json.loads((tmp_path/'albedo-reference.json').read_text())
+    assert product['599']['label'] == 'estimated'
+    assert record['bodies']['599']['view'] == table['view']

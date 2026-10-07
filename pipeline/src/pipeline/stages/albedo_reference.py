@@ -95,6 +95,7 @@ def run(ctx: BuildContext) -> None:
     write_json(ctx, "albedo-reference.json", product, "albedo_reference")
     write_json(ctx, "verification/albedo-reference.json", {
         "method": "Build record: exact inputs and numerical tolerance of this run, not observational fixtures.",
+        "products": {"albedo-reference.json": ctx.products["albedo-reference.json"]["sha256"]},
         "bodies": {key: {"sourceCodeSha256": entry["value"]["sourceCodeSha256"],
                          "relativeTolerance": entry["value"]["relativeTolerance"],
                          "radiiKm": entry["value"]["radiiKm"],
