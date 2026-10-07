@@ -31,7 +31,7 @@ import numpy as np
 
 from . import sb_catalog, sb_model, sb_sbdb, sb_verify
 from .paths import CACHE, OUT, REPO
-from .stages.smallbodies import RECORD_STEP_DAYS, common_epoch, verification_objects
+from .stages.smallbodies import RECORD_STEP_DAYS, check_verification, common_epoch, verification_objects
 from .schema import BuildContext
 from .sb_table import read_table
 
@@ -55,6 +55,9 @@ def main() -> None:
         raise ValueError("the built product does not match this snapshot/window: rebuild the smallbodies stage first")
     states_full = np.concatenate([table["pos"], table["vel"]], axis=1).astype(np.float64)
     res = sb_verify.run(cat, model, common, ctx.start_et, ctx.end_et, states_common=states_full)
+    fails = check_verification(cat, res, table["flags"])[1]
+    if fails:   # a reference is made only from a verification that holds at every epoch
+        raise ValueError("small-body verification failed, no reference written: " + "; ".join(fails))
     objs = verification_objects(cat, model, res, table["flags"])
     app = {
         "generatedBy": "uv run python -m pipeline.sb_fixtures", "generated": _dt.date.today().isoformat(),
