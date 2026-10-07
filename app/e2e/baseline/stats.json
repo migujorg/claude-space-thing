@@ -1,6 +1,6 @@
 {
- "acceptedAt": "2026-10-07T11:07:29.033Z",
- "git": "0ccd90f",
+ "acceptedAt": "2026-10-07T13:50:38.163Z",
+ "git": "0e6369a",
  "data": {
   "manifestGeneratedAt": "2026-10-07T11:04:06+00:00",
   "manifestSha256": "9150581f09d62734360c2da516c2ee0e3589e068ab08f7009f6c24da931f3392"
@@ -361,7 +361,7 @@
     ]
    },
    "consoleErrors": [],
-   "readyMs": 5410
+   "readyMs": 4631
   },
   "earth-day-strict": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=instant&target=399&dist=20000&az=0&el=0&exists=strict",
@@ -371,7 +371,7 @@
     "pupilDiameterMm": 7.890004873339091,
     "mesopicM": 0,
     "limitingMagnitude": 7.601985293005745,
-    "starsDrawn": 2163,
+    "starsDrawn": 2119,
     "bodiesDrawn": 310,
     "bodies": [
      {
@@ -706,7 +706,7 @@
     ]
    },
    "consoleErrors": [],
-   "readyMs": 4190
+   "readyMs": 4053
   },
   "earth-night": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=instant&target=399&dist=20000&az=180&el=0",
@@ -716,7 +716,7 @@
     "pupilDiameterMm": 7.393990572518929,
     "mesopicM": 0,
     "limitingMagnitude": 5.301683130943876,
-    "starsDrawn": 520,
+    "starsDrawn": 242,
     "bodiesDrawn": 4,
     "bodies": [
      {
@@ -746,7 +746,7 @@
     ]
    },
    "consoleErrors": [],
-   "readyMs": 4540
+   "readyMs": 3146
   },
   "night-limb-iss": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=instant&target=399&dist=6771&az=180&el=0&look=0%2C-15&fov=30",
@@ -756,7 +756,7 @@
     "pupilDiameterMm": 7.729786071127967,
     "mesopicM": 0,
     "limitingMagnitude": 5.535484356547915,
-    "starsDrawn": 581,
+    "starsDrawn": 252,
     "bodiesDrawn": 0,
     "bodies": [],
     "points": [],
@@ -770,17 +770,17 @@
     ]
    },
    "consoleErrors": [],
-   "readyMs": 4542
+   "readyMs": 3000
   },
   "night-limb-iss-daylight-eye": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=realtime&target=399&dist=6771&az=180&el=0&look=0%2C-15&fov=30&adaptfrom=10000%2C600%2C60",
    "stats": {
-    "adaptationLuminance": 0.0011746069929407712,
-    "scotopicAdaptationLuminance": 0.0014193532561434185,
+    "adaptationLuminance": 0.0011746270473231765,
+    "scotopicAdaptationLuminance": 0.001420231448846095,
     "pupilDiameterMm": 7.729786281976684,
     "mesopicM": 0,
-    "limitingMagnitude": 4.555542242629192,
-    "starsDrawn": 37,
+    "limitingMagnitude": 4.5568561585186504,
+    "starsDrawn": 38,
     "bodiesDrawn": 0,
     "bodies": [],
     "points": [],
@@ -792,7 +792,7 @@
     "badge": []
    },
    "consoleErrors": [],
-   "readyMs": 4363
+   "readyMs": 4315
   },
   "aurora-2025-11-12": {
    "query": "t=2025-11-12T01:00:00Z&smallbodies=0&adapt=instant&target=399&dist=6771&az=173.26110422279018&el=46.95923411082049&look=0%2C-89&fov=60",
@@ -821,7 +821,7 @@
     ]
    },
    "consoleErrors": [],
-   "readyMs": 4192
+   "readyMs": 4089
   },
   "aurora-2025-11-14-quiet": {
    "query": "t=2025-11-14T01:00:00Z&smallbodies=0&adapt=instant&target=399&dist=6771&az=173.2804022752983&el=46.43408307185946&look=0%2C-89&fov=60",
@@ -850,7 +850,7 @@
     ]
    },
    "consoleErrors": [],
-   "readyMs": 4245
+   "readyMs": 4554
   },
   "moon-quarter": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=instant&target=301&dist=6000&az=90&el=0",
@@ -1000,16 +1000,16 @@
     ]
    },
    "consoleErrors": [],
-   "readyMs": 4417
+   "readyMs": 4222
   },
   "jupiter-galileans": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=instant&target=599&dist=4000000",
    "stats": {
-    "adaptationLuminance": 647.429140414851,
-    "scotopicAdaptationLuminance": 1453.6816982822809,
-    "pupilDiameterMm": 5.487414267021127,
+    "adaptationLuminance": 647.0866775838397,
+    "scotopicAdaptationLuminance": 1452.9976684856247,
+    "pupilDiameterMm": 5.487726163732193,
     "mesopicM": 1,
-    "limitingMagnitude": -1.9228917196341555,
+    "limitingMagnitude": -1.922408373669304,
     "starsDrawn": 179,
     "bodiesDrawn": 36,
     "bodies": [
@@ -1072,35 +1072,16 @@
     ]
    },
    "consoleErrors": [],
-   "readyMs": 3120,
-   "accepted": {
-    "acceptedAt": "2026-10-07T11:26:04.088Z",
-    "git": "2ea1236",
-    "data": {
-     "manifestGeneratedAt": "2026-10-07T11:04:06+00:00",
-     "manifestSha256": "9150581f09d62734360c2da516c2ee0e3589e068ab08f7009f6c24da931f3392"
-    },
-    "gpu": {
-     "mode": "hardware",
-     "adapter": {
-      "vendor": "nvidia",
-      "architecture": "blackwell",
-      "device": "",
-      "description": "",
-      "fallback": false,
-      "float32Blendable": true
-     }
-    }
-   }
+   "readyMs": 7461
   },
   "saturn-rings": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=instant&target=699&dist=400000&el=25",
    "stats": {
-    "adaptationLuminance": 108.07760054415955,
-    "scotopicAdaptationLuminance": 222.8230188730548,
-    "pupilDiameterMm": 3.9906844971215714,
+    "adaptationLuminance": 108.16015905833454,
+    "scotopicAdaptationLuminance": 222.9940795035451,
+    "pupilDiameterMm": 3.990351562481282,
     "mesopicM": 1,
-    "limitingMagnitude": -0.3373662504031343,
+    "limitingMagnitude": -0.3380203832577841,
     "starsDrawn": 95,
     "bodiesDrawn": 60,
     "bodies": [
@@ -1194,35 +1175,16 @@
     ]
    },
    "consoleErrors": [],
-   "readyMs": 8392,
-   "accepted": {
-    "acceptedAt": "2026-10-07T11:26:04.088Z",
-    "git": "2ea1236",
-    "data": {
-     "manifestGeneratedAt": "2026-10-07T11:04:06+00:00",
-     "manifestSha256": "9150581f09d62734360c2da516c2ee0e3589e068ab08f7009f6c24da931f3392"
-    },
-    "gpu": {
-     "mode": "hardware",
-     "adapter": {
-      "vendor": "nvidia",
-      "architecture": "blackwell",
-      "device": "",
-      "description": "",
-      "fallback": false,
-      "float32Blendable": true
-     }
-    }
-   }
+   "readyMs": 7230
   },
   "uranus-epsilon-estimate": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=instant&target=799&dist=100000&az=25&el=12&fov=1&look=-64.44491889269331%2C-63.83801785178568&exists=best&view=eye&labels=0&orbits=0&ui=0",
    "stats": {
-    "adaptationLuminance": 0.9757370907523973,
-    "scotopicAdaptationLuminance": 2.350241656970162,
-    "pupilDiameterMm": 3.8749282021936273,
-    "mesopicM": 0.7826065275076567,
-    "limitingMagnitude": 3.2460220809478253,
+    "adaptationLuminance": 0.975737142113119,
+    "scotopicAdaptationLuminance": 2.350241570791568,
+    "pupilDiameterMm": 3.874928202193522,
+    "mesopicM": 0.7826065319653834,
+    "limitingMagnitude": 3.246022058923451,
     "starsDrawn": 0,
     "bodiesDrawn": 0,
     "bodies": [],
@@ -1237,17 +1199,17 @@
     ]
    },
    "consoleErrors": [],
-   "readyMs": 3779
+   "readyMs": 7618
   },
   "uranus": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=instant&target=799&dist=150000",
    "stats": {
-    "adaptationLuminance": 51.67212538586595,
-    "scotopicAdaptationLuminance": 137.942789596677,
-    "pupilDiameterMm": 4.246526576174232,
+    "adaptationLuminance": 51.674743863172324,
+    "scotopicAdaptationLuminance": 137.94786852632095,
+    "pupilDiameterMm": 4.246498068970626,
     "mesopicM": 1,
-    "limitingMagnitude": 0.2855327606632695,
-    "starsDrawn": 172,
+    "limitingMagnitude": 0.28549062681405163,
+    "starsDrawn": 171,
     "bodiesDrawn": 16,
     "bodies": [
      {
@@ -1285,16 +1247,16 @@
     ]
    },
    "consoleErrors": [],
-   "readyMs": 5418
+   "readyMs": 6900
   },
   "neptune": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=instant&target=899&dist=150000",
    "stats": {
-    "adaptationLuminance": 17.61890189223995,
-    "scotopicAdaptationLuminance": 50.86318790842177,
-    "pupilDiameterMm": 4.935487299621135,
+    "adaptationLuminance": 17.6171986835229,
+    "scotopicAdaptationLuminance": 50.86285496078314,
+    "pupilDiameterMm": 4.935546392755032,
     "mesopicM": 1,
-    "limitingMagnitude": 1.160015319091844,
+    "limitingMagnitude": 1.160092072090573,
     "starsDrawn": 133,
     "bodiesDrawn": 10,
     "bodies": [
@@ -1333,17 +1295,17 @@
     ]
    },
    "consoleErrors": [],
-   "readyMs": 2957
+   "readyMs": 7402
   },
   "pluto-charon": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=instant&target=999&dist=60000",
    "stats": {
-    "adaptationLuminance": 10.99582776115129,
-    "scotopicAdaptationLuminance": 23.202604542534544,
-    "pupilDiameterMm": 7.112780712636673,
+    "adaptationLuminance": 10.972539756878101,
+    "scotopicAdaptationLuminance": 23.136222980090885,
+    "pupilDiameterMm": 7.113339151428256,
     "mesopicM": 1,
-    "limitingMagnitude": 1.5304196494155136,
-    "starsDrawn": 798,
+    "limitingMagnitude": 1.532067727122941,
+    "starsDrawn": 703,
     "bodiesDrawn": 3,
     "bodies": [
      {
@@ -1373,17 +1335,17 @@
     ]
    },
    "consoleErrors": [],
-   "readyMs": 3589
+   "readyMs": 7295
   },
   "starfield": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=instant&target=999&dist=3000000000&labels=0",
    "stats": {
     "adaptationLuminance": 0.000056480702519988256,
     "scotopicAdaptationLuminance": 0.00012046153522475927,
-    "pupilDiameterMm": 7.835268764555344,
+    "pupilDiameterMm": 7.835268764555614,
     "mesopicM": 0,
     "limitingMagnitude": 6.571261840695466,
-    "starsDrawn": 3400,
+    "starsDrawn": 1668,
     "bodiesDrawn": 6,
     "bodies": [],
     "points": [
@@ -1405,17 +1367,17 @@
     ]
    },
    "consoleErrors": [],
-   "readyMs": 3446
+   "readyMs": 6698
   },
   "starfield-enhanced": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=instant&target=999&dist=3000000000&labels=0&view=enhanced&boost=6",
    "stats": {
     "adaptationLuminance": 0.00004266927907016036,
     "scotopicAdaptationLuminance": 0.00008955819008632568,
-    "pupilDiameterMm": 7.835271107738915,
+    "pupilDiameterMm": 7.835271107739185,
     "mesopicM": 0,
     "limitingMagnitude": 11.22390812693233,
-    "starsDrawn": 210122,
+    "starsDrawn": 136995,
     "bodiesDrawn": 6,
     "bodies": [],
     "points": [
@@ -1438,7 +1400,7 @@
     ]
    },
    "consoleErrors": [],
-   "readyMs": 5243
+   "readyMs": 6284
   },
   "sun-1au": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=instant&target=10&dist=149597871",
@@ -1470,14 +1432,14 @@
     ]
    },
    "consoleErrors": [],
-   "readyMs": 2833
+   "readyMs": 2572
   },
   "juno-closeup": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=1&adapt=instant&target=20000003",
    "stats": {
     "adaptationLuminance": 1392.608341460264,
     "scotopicAdaptationLuminance": 3104.9431460800156,
-    "pupilDiameterMm": 2.915459483277096,
+    "pupilDiameterMm": 2.9154594832771576,
     "mesopicM": 1,
     "limitingMagnitude": -2.6310550213201847,
     "starsDrawn": 14,
@@ -1527,7 +1489,7 @@
     ]
    },
    "consoleErrors": [],
-   "readyMs": 8177
+   "readyMs": 13013
   },
   "comet-lemmon": {
    "query": "t=2025-10-27T00:00:00Z&smallbodies=1&adapt=instant&target=1004054&sbfield=0&dist=40000000&az=90&el=20&shield=1",
@@ -1537,7 +1499,7 @@
     "pupilDiameterMm": 7.67610362940016,
     "mesopicM": 0,
     "limitingMagnitude": 5.582625593561213,
-    "starsDrawn": 2381,
+    "starsDrawn": 944,
     "bodiesDrawn": 3,
     "bodies": [],
     "points": [
@@ -1554,16 +1516,16 @@
     ]
    },
    "consoleErrors": [],
-   "readyMs": 7157
+   "readyMs": 6668
   },
   "mars-map": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=instant&target=499&dist=15000&az=0&el=10",
    "stats": {
-    "adaptationLuminance": 2676.1766225899314,
-    "scotopicAdaptationLuminance": 4397.439253902421,
-    "pupilDiameterMm": 2.495567286092431,
+    "adaptationLuminance": 2699.451684711112,
+    "scotopicAdaptationLuminance": 4458.58398845684,
+    "pupilDiameterMm": 2.4939795776416775,
     "mesopicM": 1,
-    "limitingMagnitude": -3.247714305017577,
+    "limitingMagnitude": -3.25596357216323,
     "starsDrawn": 8,
     "bodiesDrawn": 32,
     "bodies": [
@@ -1623,16 +1585,16 @@
     ]
    },
    "consoleErrors": [],
-   "readyMs": 4016
+   "readyMs": 7638
   },
   "mercury-map": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=instant&target=199&dist=8000&az=0&el=10",
    "stats": {
-    "adaptationLuminance": 22590.750168925715,
-    "scotopicAdaptationLuminance": 47828.177608568134,
-    "pupilDiameterMm": 2.1690192904544316,
+    "adaptationLuminance": 22590.71860890028,
+    "scotopicAdaptationLuminance": 47828.14650611243,
+    "pupilDiameterMm": 2.1690193655127783,
     "mesopicM": 1,
-    "limitingMagnitude": -5.33165285157936,
+    "limitingMagnitude": -5.331651456133849,
     "starsDrawn": 0,
     "bodiesDrawn": 7,
     "bodies": [
@@ -1659,16 +1621,16 @@
     ]
    },
    "consoleErrors": [],
-   "readyMs": 3982
+   "readyMs": 2140
   },
   "starfield-dark-2min": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=realtime&target=999&dist=3000000000&labels=0&adaptfrom=10000%2C600%2C120",
    "stats": {
-    "adaptationLuminance": 0.00006498327483330773,
-    "scotopicAdaptationLuminance": 0.00013964160602904672,
-    "pupilDiameterMm": 7.835258707605361,
+    "adaptationLuminance": 0.00006498327484961392,
+    "scotopicAdaptationLuminance": 0.0001396426345415019,
+    "pupilDiameterMm": 7.835258707605631,
     "mesopicM": 0,
-    "limitingMagnitude": 4.7904029039172045,
+    "limitingMagnitude": 4.7923465053255105,
     "starsDrawn": 175,
     "bodiesDrawn": 6,
     "bodies": [],
@@ -1689,17 +1651,17 @@
     "badge": []
    },
    "consoleErrors": [],
-   "readyMs": 6299
+   "readyMs": 6847
   },
   "starfield-dark-12min": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=realtime&target=999&dist=3000000000&labels=0&adaptfrom=10000%2C600%2C720",
    "stats": {
-    "adaptationLuminance": 0.00006424027879350501,
-    "scotopicAdaptationLuminance": 0.0001379326582566859,
-    "pupilDiameterMm": 7.835260207339829,
+    "adaptationLuminance": 0.00006424027902665678,
+    "scotopicAdaptationLuminance": 0.00013793688066500594,
+    "pupilDiameterMm": 7.835260207340099,
     "mesopicM": 0,
-    "limitingMagnitude": 5.046116011226452,
-    "starsDrawn": 235,
+    "limitingMagnitude": 5.046126260649993,
+    "starsDrawn": 239,
     "bodiesDrawn": 6,
     "bodies": [],
     "points": [
@@ -1719,17 +1681,17 @@
     "badge": []
    },
    "consoleErrors": [],
-   "readyMs": 5767
+   "readyMs": 7323
   },
   "starfield-dark-30min": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=realtime&target=999&dist=3000000000&labels=0&adaptfrom=10000%2C600%2C1800",
    "stats": {
-    "adaptationLuminance": 0.00005725934306641134,
-    "scotopicAdaptationLuminance": 0.00012220218203516292,
-    "pupilDiameterMm": 7.8352711442251,
+    "adaptationLuminance": 0.00005725934880854658,
+    "scotopicAdaptationLuminance": 0.00012222108192547532,
+    "pupilDiameterMm": 7.83527114422537,
     "mesopicM": 0,
-    "limitingMagnitude": 6.308550621400812,
-    "starsDrawn": 2624,
+    "limitingMagnitude": 6.309752851009192,
+    "starsDrawn": 1276,
     "bodiesDrawn": 6,
     "bodies": [],
     "points": [
@@ -1749,14 +1711,14 @@
     "badge": []
    },
    "consoleErrors": [],
-   "readyMs": 3842
+   "readyMs": 7011
   },
   "phobos-stickney": {
    "query": "t=2026-10-15T05:20:00Z&smallbodies=0&adapt=instant&target=401&dist=45&az=-21&el=5",
    "stats": {
     "adaptationLuminance": 451.926141462671,
     "scotopicAdaptationLuminance": 1012.6928422174205,
-    "pupilDiameterMm": 2.934838485074702,
+    "pupilDiameterMm": 2.93483848507472,
     "mesopicM": 1,
     "limitingMagnitude": -1.5964176424396728,
     "starsDrawn": 37,
@@ -1812,7 +1774,7 @@
     ]
    },
    "consoleErrors": [],
-   "readyMs": 4544
+   "readyMs": 8101
   },
   "titan-haze": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=instant&target=606&dist=12000&az=60&el=10",
@@ -1872,16 +1834,16 @@
     ]
    },
    "consoleErrors": [],
-   "readyMs": 8351
+   "readyMs": 5766
   },
   "titan-haze-ring": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=instant&target=606&dist=12000&az=170&el=0",
    "stats": {
-    "adaptationLuminance": 918.9953530997409,
-    "scotopicAdaptationLuminance": 1670.4748102230767,
-    "pupilDiameterMm": 3.7363951844179373,
+    "adaptationLuminance": 918.9230838584361,
+    "scotopicAdaptationLuminance": 1670.351915780525,
+    "pupilDiameterMm": 3.736357305762275,
     "mesopicM": 1,
-    "limitingMagnitude": -2.244672598257382,
+    "limitingMagnitude": -2.2445999542057797,
     "starsDrawn": 66,
     "bodiesDrawn": 192,
     "bodies": [
@@ -2114,17 +2076,17 @@
     ]
    },
    "consoleErrors": [],
-   "readyMs": 9444
+   "readyMs": 6195
   },
   "hyperion-fallback": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=instant&target=607&dist=900&az=30&el=10",
    "stats": {
     "adaptationLuminance": 0.00004473630292859586,
     "scotopicAdaptationLuminance": 0.00009736467650227955,
-    "pupilDiameterMm": 7.8415764176520355,
+    "pupilDiameterMm": 7.841576417651896,
     "mesopicM": 0,
     "limitingMagnitude": 6.669576849724821,
-    "starsDrawn": 3455,
+    "starsDrawn": 1869,
     "bodiesDrawn": 34,
     "bodies": [
      {
@@ -2179,14 +2141,14 @@
     ]
    },
    "consoleErrors": [],
-   "readyMs": 9785
+   "readyMs": 5723
   },
   "bennu-closeup": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=1&adapt=instant&target=20101955&dist=1.5&az=40&el=10",
    "stats": {
     "adaptationLuminance": 918.8742986354064,
     "scotopicAdaptationLuminance": 2162.3609062982005,
-    "pupilDiameterMm": 3.012638318642954,
+    "pupilDiameterMm": 3.012638318642957,
     "mesopicM": 1,
     "limitingMagnitude": -2.2445509128375716,
     "starsDrawn": 43,
@@ -2218,7 +2180,7 @@
     ]
    },
    "consoleErrors": [],
-   "readyMs": 11410
+   "readyMs": 13001
   },
   "earth-moon-first-run": {
    "query": "t=2026-09-30T17:00:00Z&smallbodies=0&adapt=instant&target=399&dist=45828.8&az=32.84&el=-17.26",
@@ -2598,7 +2560,7 @@
     ]
    },
    "consoleErrors": [],
-   "readyMs": 3888
+   "readyMs": 3693
   },
   "eclipse-2027-above": {
    "query": "t=2027-08-02T10:06:41.000Z&smallbodies=0&adapt=instant&target=399&dist=28715.92&az=0.65&el=1.69",
@@ -2634,7 +2596,7 @@
     ]
    },
    "consoleErrors": [],
-   "readyMs": 4430
+   "readyMs": 7137
   },
   "eclipse-2027-totality": {
    "query": "t=2027-08-02T10:06:41.000Z&smallbodies=0&adapt=instant&target=301&dist=350939.1&az=179.99&el=0&fov=6",
@@ -2673,35 +2635,16 @@
     ]
    },
    "consoleErrors": [],
-   "readyMs": 3733,
-   "accepted": {
-    "acceptedAt": "2026-10-07T11:26:04.088Z",
-    "git": "2ea1236",
-    "data": {
-     "manifestGeneratedAt": "2026-10-07T11:04:06+00:00",
-     "manifestSha256": "9150581f09d62734360c2da516c2ee0e3589e068ab08f7009f6c24da931f3392"
-    },
-    "gpu": {
-     "mode": "hardware",
-     "adapter": {
-      "vendor": "nvidia",
-      "architecture": "blackwell",
-      "device": "",
-      "description": "",
-      "fallback": false,
-      "float32Blendable": true
-     }
-    }
-   }
+   "readyMs": 7224
   },
   "jupiter-double-shadow": {
    "query": "t=2027-01-30T15:12:07.461Z&smallbodies=0&adapt=instant&target=599&dist=300266.4&az=2.32&el=0.58",
    "stats": {
-    "adaptationLuminance": 902.0156262139536,
-    "scotopicAdaptationLuminance": 2031.5422131033727,
-    "pupilDiameterMm": 2.7445714415279037,
+    "adaptationLuminance": 899.7260110925204,
+    "scotopicAdaptationLuminance": 2025.2441157764058,
+    "pupilDiameterMm": 2.74525654334106,
     "mesopicM": 1,
-    "limitingMagnitude": -2.2274507941370274,
+    "limitingMagnitude": -2.225104537661398,
     "starsDrawn": 8,
     "bodiesDrawn": 28,
     "bodies": [
@@ -2752,16 +2695,16 @@
     ]
    },
    "consoleErrors": [],
-   "readyMs": 3011
+   "readyMs": 7353
   },
   "ganymede-narrow-field": {
    "query": "t=2026-10-07T08:00:00Z&smallbodies=0&adapt=instant&target=503&dist=5000000&fov=1",
    "stats": {
-    "adaptationLuminance": 291.4052044893219,
-    "scotopicAdaptationLuminance": 660.4553183270485,
-    "pupilDiameterMm": 5.954384073788913,
+    "adaptationLuminance": 291.40516217099395,
+    "scotopicAdaptationLuminance": 660.4549464714083,
+    "pupilDiameterMm": 5.954384073666982,
     "mesopicM": 1,
-    "limitingMagnitude": -1.2032789080867716,
+    "limitingMagnitude": -1.2032787789753399,
     "starsDrawn": 0,
     "bodiesDrawn": 1,
     "bodies": [
@@ -2781,26 +2724,7 @@
     ]
    },
    "consoleErrors": [],
-   "readyMs": 3326,
-   "accepted": {
-    "acceptedAt": "2026-10-07T11:26:04.088Z",
-    "git": "2ea1236",
-    "data": {
-     "manifestGeneratedAt": "2026-10-07T11:04:06+00:00",
-     "manifestSha256": "9150581f09d62734360c2da516c2ee0e3589e068ab08f7009f6c24da931f3392"
-    },
-    "gpu": {
-     "mode": "hardware",
-     "adapter": {
-      "vendor": "nvidia",
-      "architecture": "blackwell",
-      "device": "",
-      "description": "",
-      "fallback": false,
-      "float32Blendable": true
-     }
-    }
-   }
+   "readyMs": 7479
   }
  }
 }
