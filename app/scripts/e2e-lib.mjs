@@ -103,6 +103,50 @@ export function gpuNote(baselineGpu, gpu) {
 }
 
 /**
+ * The baseline after an acceptance. Its header (`acceptedAt`, `git`, `data`, `viewport`, `gpu`) says what the whole
+ * suite was last accepted with. When only some scenes are accepted (`--accept --only`), the header stays what it
+ * was and each of those scenes records its own acceptance in `accepted`: otherwise the header would claim today's
+ * adapter and data build for scenes rendered long before. Scenes no longer in `sceneIds` are dropped.
+ */
+export function mergeBaseline(prev, results, meta, sceneIds) {
+  const whole = sceneIds.every((id) => results.some((r) => r.id === id)) || !prev?.acceptedAt;
+  const header = whole ? meta : { acceptedAt: prev.acceptedAt, git: prev.git, data: prev.data, viewport: prev.viewport, ...(prev.gpu ? { gpu: prev.gpu } : {}) };
+  const scenes = { ...(prev?.scenes ?? {}) };
+  for (const r of results) {
+    scenes[r.id] = {
+      query: r.query, stats: r.stats, consoleErrors: r.consoleErrors ?? [], readyMs: r.readyMs,
+      ...(whole ? {} : { accepted: { acceptedAt: meta.acceptedAt, git: meta.git, data: meta.data, gpu: meta.gpu } }),
+    };
+  }
+  for (const id of Object.keys(scenes)) if (!sceneIds.includes(id)) delete scenes[id];
+  return { ...header, scenes };
+}
+
+/** What a scene's baseline was accepted with: its own acceptance, or the whole suite's. */
+export function sceneAcceptance(baseline, id) {
+  return baseline?.scenes?.[id]?.accepted ?? { acceptedAt: baseline?.acceptedAt, git: baseline?.git, data: baseline?.data, gpu: baseline?.gpu };
+}
+
+/**
+ * Notes for a comparison whose baseline was accepted on another data build or another adapter, per scene (a scene
+ * accepted on its own has its own). A note that holds for every compared scene is given once, without their names.
+ */
+export function acceptanceNotes(baseline, ids, dataInfo, gpu) {
+  const by = new Map();
+  const add = (text, id) => by.set(text, [...(by.get(text) ?? []), id]);
+  for (const id of ids) {
+    if (!baseline?.scenes?.[id]) continue;
+    const a = sceneAcceptance(baseline, id);
+    if (a.data?.manifestSha256 && a.data.manifestSha256 !== dataInfo?.manifestSha256)
+      add(`The baseline was accepted on another data build (manifest ${a.data.manifestGeneratedAt}); this run uses ${dataInfo?.manifestGeneratedAt}. Differences may come from the data.`, id);
+    const g = gpuNote(a.gpu, gpu);
+    if (g) add(g, id);
+  }
+  const compared = ids.filter((id) => baseline?.scenes?.[id]).length;
+  return [...by].map(([text, who]) => (who.length === compared ? text : `${who.join(', ')}: ${text}`));
+}
+
+/**
  * Runs in the page: the distinct values `renderer.starsDrawn` takes over `frames` animation frames, ascending.
  * The star cull judges each star against the light of the frame before (stars included), and in some scenes the
  * count alternates between two values on consecutive frames. On SwiftShader a frame takes about a second and a

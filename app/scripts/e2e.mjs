@@ -23,8 +23,8 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  adapterLabel, compareScene, decodePng, encodePng, extractStats, gpuLaunchArgs, gpuMismatch, gpuNote, gridFromThumb, hdrFormatOf, pageAdapterInfo,
-  pageStarsDrawnFrames, sceneQuery, starsFramesNote, statsTable, thumbFromLinear, THUMB_H, THUMB_W, runServerOptions,
+  acceptanceNotes, adapterLabel, compareScene, decodePng, encodePng, extractStats, gpuLaunchArgs, gpuMismatch, gridFromThumb, hdrFormatOf, mergeBaseline,
+  pageAdapterInfo, pageStarsDrawnFrames, runServerOptions, sceneQuery, starsFramesNote, statsTable, thumbFromLinear, THUMB_H, THUMB_W,
 } from './e2e-lib.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -76,14 +76,10 @@ function writeBaseline(rs, meta) {
     process.exit(1);
   }
   mkdirSync(BASE_DIR, { recursive: true });
-  const prev = baseline ?? { scenes: {} };
-  const accepted = { ...meta, scenes: { ...prev.scenes } };
-  for (const r of rs) {
-    accepted.scenes[r.id] = { query: r.query, stats: r.stats, consoleErrors: r.consoleErrors ?? [], readyMs: r.readyMs };
-    if (r.thumb) writeFileSync(resolve(BASE_DIR, `${r.id}.png`), encodePng(r.thumb, THUMB_W, THUMB_H));
-  }
-  // Drop scenes that no longer exist in scenes.json.
-  for (const id of Object.keys(accepted.scenes)) if (!suite.scenes.some((s) => s.id === id)) delete accepted.scenes[id];
+  // The header describes the last acceptance of the whole suite; scenes accepted on their own record theirs
+  // (e2e-lib.mjs mergeBaseline). Scenes that no longer exist in scenes.json are dropped.
+  const accepted = mergeBaseline(baseline, rs, meta, suite.scenes.map((s) => s.id));
+  for (const r of rs) if (r.thumb) writeFileSync(resolve(BASE_DIR, `${r.id}.png`), encodePng(r.thumb, THUMB_W, THUMB_H));
   writeFileSync(baselinePath, JSON.stringify(accepted, null, 1) + '\n');
   console.log(`Accepted ${rs.length} scene(s) as the baseline in ${BASE_DIR}. Review the diff, then commit it.`);
   process.exit(0);
@@ -232,11 +228,7 @@ await server?.close();
 // What rendered this run: the mode asked for and the adapter the pages got (the first scene's; they all share one
 // browser, and a scene whose adapter is not the mode's has failed above).
 const gpu = { mode: gpuMode, adapter: results.find((r) => r.adapter)?.adapter ?? null };
-const notes = [];
-if (compare && baseline.data?.manifestSha256 && baseline.data.manifestSha256 !== dataInfo.manifestSha256)
-  notes.push(`The baseline was accepted on another data build (manifest ${baseline.data.manifestGeneratedAt}); this run uses ${dataInfo.manifestGeneratedAt}. Differences may come from the data.`);
-const otherGpu = compare ? gpuNote(baseline.gpu, gpu) : null;
-if (otherGpu) notes.push(otherGpu);
+const notes = compare ? acceptanceNotes(baseline, results.map((r) => r.id), dataInfo, gpu) : [];
 for (const r of results) {
   const unsteady = starsFramesNote(r.starsDrawnFrames, r.stats?.starsDrawn);
   if (unsteady) notes.push(`${r.id}: ${unsteady}`);
