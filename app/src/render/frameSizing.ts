@@ -5,6 +5,11 @@ export type FrameLimits = Pick<GPUSupportedLimits, 'maxTextureDimension2D' | 'ma
 /** Rows of square aerial-perspective columns, with at least two pixels per column. */
 const AP_ROWS = 270;
 
+/** Reduced-resolution 2D targets, optionally including interpolation border texels. */
+export function sampledFrameSize(W: number, H: number, scale: number, border = 0) {
+  return { w: Math.max(1, Math.ceil(W / scale)) + border, h: Math.max(1, Math.ceil(H / scale)) + border };
+}
+
 export function aerialPerspectiveSize(W: number, H: number, slices: number, K4: number, limits: FrameLimits) {
   const depth = slices * (1 + K4);
   // Keep every spectral/altitude slice: null selects the existing per-pixel march instead.

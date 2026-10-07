@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { Renderer } from '../src/render/renderer';
 import { ADAPT_TILE_PX } from '../src/render/shaders';
-import { aerialPerspectiveSize, frameSize, readbackSize, requiredFrameLimits, type FrameLimits } from '../src/render/frameSizing';
+import { aerialPerspectiveSize, frameSize, readbackSize, requiredFrameLimits, sampledFrameSize, type FrameLimits } from '../src/render/frameSizing';
 
 // WebGPU baseline limits; no adapter/GPU is involved in these allocation tests.
 const baseline: FrameLimits = {
@@ -43,7 +43,7 @@ for (const limits of [baseline, wider, { ...wider, maxTextureDimension3D: 4096 }
           expect(Math.max(1, p.acuW >> j, p.acuH >> j)).toBeLessThanOrEqual(limits.maxTextureDimension2D);
         }
         // Night emission (half-resolution), zodiacal grid (+1 interpolation border).
-        for (const [w, h] of [[Math.ceil(W / 2), Math.ceil(H / 2)], [Math.ceil(W / 16) + 1, Math.ceil(H / 16) + 1]]) {
+        for (const { w, h } of [sampledFrameSize(W, H, 2), sampledFrameSize(W, H, 16, 1)]) {
           expect(Math.max(w, h)).toBeLessThanOrEqual(limits.maxTextureDimension2D);
           expect(Math.max(Math.ceil(w / 8), Math.ceil(h / 8))).toBeLessThanOrEqual(limits.maxComputeWorkgroupsPerDimension);
         }
