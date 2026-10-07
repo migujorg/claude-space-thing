@@ -343,12 +343,14 @@ def overlap(src_edges: np.ndarray, dst_edges: np.ndarray) -> sp.csr_matrix:
     return sp.csr_matrix((vals, (rows, cols)), shape=(dst_edges.size - 1, src_edges.size - 1))
 
 
-def aggregate(m: Mosaic, lat_edges_deg: np.ndarray, lon_edges_deg: np.ndarray) -> dict[str, np.ndarray]:
+def aggregate(m: Mosaic, lat_edges_deg: np.ndarray, lon_edges_deg: np.ndarray,
+              extra: dict[str, np.ndarray] | None = None) -> dict[str, np.ndarray]:
     """Area-overlap sums of the cells onto a grid of texels (row edges north first, in the latitude of the
     product's grid; column edges west first). Every output is a share, or a sum per unit area, of the TEXEL:
     `observed` is the share of the texel that has an observation, the classes are shares of the texel, and the
     ln τ, τ, ice and top-height fields are sums over the cells of a group times their share of the texel. All are
-    additive: the area-weighted mean of four texels is the value of their union."""
+    additive: the area-weighted mean of four texels is the value of their union. `extra` holds further per-cell
+    fields to sum the same way (diagnostics)."""
     wr = overlap(np.sin(np.radians(_centre_edges(m.lat)[::-1])), np.sin(np.radians(np.asarray(lat_edges_deg, float)[::-1])))[::-1, ::-1]
     wc = overlap(_centre_edges(m.lon), np.asarray(lon_edges_deg, float))
     wr, wct = sp.csr_matrix(wr), sp.csr_matrix(wc).T.tocsr()
@@ -367,6 +369,8 @@ def aggregate(m: Mosaic, lat_edges_deg: np.ndarray, lon_edges_deg: np.ndarray) -
            "measuredTau": agg(np.where(meas, np.exp(ln), 0)), "measuredIce": agg(meas & m.ice),
            "thicknessLnTau": agg(ln), "thicknessLnTau2": agg(ln * ln), "thicknessIce": agg(both & m.ice),
            "topShare": agg(has_top), "topSum": agg(np.where(has_top, m.top_m, 0))}
+    for k, v in (extra or {}).items():
+        out[k] = agg(v)
     return out
 
 
