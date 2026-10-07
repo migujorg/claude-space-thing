@@ -10,7 +10,9 @@
 // `system` names moon systems (ephem/sat-<key>) to load before the first frame instead of in the background;
 // "all" loads every one up front. The target's own system is always loaded up front.
 // az/el are in the target-centered Sun frame (camera.ts sunFrame): az = el = 0 puts the camera on the
-// Sun side of the target. A URL with `t` starts paused at that instant; without `t` the app starts
+// Sun side of the target. look=<az>,<el> then turns the camera, kept at that place, to look along local azimuth az
+// (from the target's north toward east) and elevation el (above the plane perpendicular to the direction from the
+// target's centre), e.g. dist=6771&look=0,-17 looks at the horizon from 400 km above a 6371 km Earth. A URL with `t` starts paused at that instant; without `t` the app starts
 // at "now", playing in real time.
 
 import { EXISTS_LEVELS, VIEW_MODES, type ExistsLevel, type ViewMode } from './reality';
@@ -43,6 +45,8 @@ export interface UrlView {
   adapt?: 'instant' | 'realtime';
   /** Eye history (RealityState.adaptationHistory). */
   adaptFrom?: { luminanceCdM2: number; exposureS: number; elapsedS: number };
+  /** View direction at the camera's place: local azimuth and elevation (deg), see the header. */
+  look?: { azDeg: number; elDeg: number };
 }
 
 /** Parse an ISO-8601 UTC time. A missing zone designator means UTC (never local time). */
@@ -122,6 +126,12 @@ export function parseUrlParams(search: string): { view: UrlView; errors: string[
     if (x.length === 3 && x.every((v) => Number.isFinite(v) && v >= 0)) view.adaptFrom = { luminanceCdM2: x[0], exposureS: x[1], elapsedS: x[2] };
     else errors.push(`Ignoring adaptfrom=${af}: expected <cd/m²>,<exposure s>,<elapsed s>.`);
   }
+  const lk = p.get('look');
+  if (lk !== null) {
+    const x = lk.split(',').map(Number);
+    if (x.length === 2 && x.every(Number.isFinite) && x[1] >= -90 && x[1] <= 90) view.look = { azDeg: x[0], elDeg: x[1] };
+    else errors.push(`Ignoring look=${lk}: expected <azimuth deg>,<elevation deg>.`);
+  }
   for (const k of Object.keys(view) as (keyof UrlView)[]) if (view[k] === undefined) delete view[k];
   return { view, errors };
 }
@@ -142,6 +152,7 @@ export function formatUrlParams(v: UrlView): string {
   if (v.system?.length) p.set('system', v.system.join(','));
   if (v.adapt !== undefined) p.set('adapt', v.adapt);
   if (v.adaptFrom) p.set('adaptfrom', `${v.adaptFrom.luminanceCdM2},${v.adaptFrom.exposureS},${v.adaptFrom.elapsedS}`);
+  if (v.look) p.set('look', `${v.look.azDeg.toFixed(2)},${v.look.elDeg.toFixed(2)}`);
   // ':' is legal in a query string; keep ISO times readable.
   return p.toString().replace(/%3A/gi, ':');
 }

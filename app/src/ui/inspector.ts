@@ -161,6 +161,7 @@ export class Inspector {
       surfaces: m.data?.surfaces.filter((x) => x.bodyId === body.id) ?? [],
       shape: m.shapeStatus(body.id),
       atmospheres: m.data?.atmospheres ?? null,
+      nightglow: body.id === 399 ? m.nightglowInfo() : null,
       rings: m.data?.rings?.[String(body.id)] ?? null,
     });
     // The Sun is drawn from light.json, not from reflectance data.
@@ -219,7 +220,10 @@ export class Inspector {
     const o = this.model.orientationSource(id);
     const chain = this.model.ephemerisSource(id);
     const links = chain ? JSON.stringify(chain.links.map((l) => [l.header.bin, l.header.segments.indexOf(l.seg)])) : '-';
-    return `${this.model.bodyLoadState(id)}|${links}|${o ? `${o.kind}:${o.label}:${o.frame}` : '-'}|${this.model.reality.exists}|${this.model.shapeStatus(id)?.text ?? ''}`;
+    // The Earth's airglow and aurora depend on the time (solar flux per day, coupling per hour).
+    const ng = id === 399 ? this.model.nightglowInfo() : null;
+    const ngKey = ng ? `${ng.airglow?.drawn}:${ng.airglow?.srf?.day}:${ng.aurora?.drawn}:${ng.aurora?.coupling.measured}:${Math.round(ng.aurora?.coupling.value ?? 0)}` : '';
+    return `${this.model.bodyLoadState(id)}|${links}|${o ? `${o.kind}:${o.label}:${o.frame}` : '-'}|${this.model.reality.exists}|${this.model.shapeStatus(id)?.text ?? ''}|${ngKey}`;
   }
 
   private setWhy(line: string): void {
