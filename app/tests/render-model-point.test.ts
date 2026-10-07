@@ -9,8 +9,14 @@ import { OrientationSet, PreciseOrientation, bodyToIcrf } from '../src/core/rota
 import { TimeScale, formatUtc } from '../src/core/time';
 import { atmosphereModelFromData, precomputeAtmosphere, ProfileGrid } from '../src/render/atmosphere';
 import type { AtmosphereBinding } from '../src/render/atmosphereGpu';
-import { cameraGeom, prepareFrame } from '../src/render/frame';
-import { len, normalize, scale, sub } from '../src/render/raycast';
+import { cameraGeom, prepareFrame, type SurfaceBinding } from '../src/render/frame';
+import { prepareNightglow } from '../src/render/renderer';
+import { layerKey, level0Map, tileUrl, zonalMeanOfLevel0 } from '../src/render/surface';
+import { decodeTexelHapke } from '../src/render/texelLaw';
+import type { SceneBody, SurfaceLayerRef } from '../src/render/scene';
+import { dot, len, normalize, scale, sub } from '../src/render/raycast';
+import { evalPhase } from '../src/render/photometry';
+import { CIE146 } from '../src/eye/constants';
 import { AdaptationState, computeEyeFrame } from '../src/eye/model';
 import { DEFAULT_EYE_SETTINGS } from '../src/eye/settings';
 import { DATA_DIR } from './core-data';
@@ -127,7 +133,7 @@ function selectedTables(row: number): SmallBodyTables {
     cometRow: new Map(), nongravRow: nrow === undefined ? new Map() : new Map([[0, 0]]), count: 1 };
 }
 
-it.skipIf(!built)('audits Titan warning sets in all canonical scene geometries', async () => {
+it.skipIf(!built)('audits every warning in all canonical scene geometries', async () => {
   const data = await loadAll({ fetch: fetchFs, base: '/data/', eagerEphemeris: (p) => p === 'ephem/de442s.json' });
   const scenes = JSON.parse(fs.readFileSync(new URL('../e2e/scenes.json', import.meta.url), 'utf8'));
   const baseline = JSON.parse(fs.readFileSync(new URL('../e2e/baseline/stats.json', import.meta.url), 'utf8'));
@@ -136,7 +142,8 @@ it.skipIf(!built)('audits Titan warning sets in all canonical scene geometries',
   const state = new AdaptationState();
   state.update({ coneCdM2: 1e-5, rodCdM2: 1.4e-5, cornealFlux: 0 }, 0);
   const eye = computeEyeFrame(DEFAULT_EYE_SETTINGS, state, 'eye', 0, null);
-  let bind: AtmosphereBinding | null = null;
+  const bindings = readyBindings();
+  const surfaces = readySurfaces();
   const changed: string[] = [];
   for (const sc of scenes.scenes) {
     const model = new AppModel({ TimeScale, formatUtc, Ephemeris, EphemerisSet, bodyToIcrf, apparentPosition, OrientationSet, PreciseOrientation });
@@ -156,26 +163,19 @@ it.skipIf(!built)('audits Titan warning sets in all canonical scene geometries',
     model.frame(0);
     const snap = model.snapshot!;
     const titan = snap.bodies.find((b) => b.id === 606);
-    if (!bind && titan?.atmosphere?.surface) {
-      const r = atmosphereModelFromData(titan.atmosphere, 0, 1,
-        { groundPerSample: titan.atmosphere.surface.reflectance, multipleScattering: 'orders' });
-      if ('error' in r) throw new Error(r.error);
-      bind = { model: r.model, tables: precomputeAtmosphere(r.model), grid: new ProfileGrid(r.model, 512), key: 'model-point-all-scenes' } as AtmosphereBinding;
-    }
     const g = cameraGeom(snap, 1280, 720, 1e-7);
-    const frame = prepareFrame(snap, g, eye, 1e-9, { atmospheres: (b) => b.atmosphere?.surface ? bind : null });
-    const photometry = prepareFrame(snap, g, eye, 1e-9);
-    expect(frame.warnings.filter((w) => !w.startsWith('Titan:')), sc.id)
-      .toEqual(photometry.warnings.filter((w) => !w.startsWith('Titan:')));
-    const warnings = frame.warnings.filter((w) => w.startsWith('Titan:'));
-    const expected = baseline.scenes[sc.id].stats.warnings.filter((w: string) => w.startsWith('Titan:'));
+    const frame = prepareFrame(snap, g, eye, 1e-9, { atmospheres: bindings, surfaces });
+    // Runs the renderer's actual nightglow selection/attenuation warning, with no GPU encoding.
+    prepareNightglow(frame);
+    const warnings = [...new Set(frame.warnings)].sort();
+    const expected = [...baseline.scenes[sc.id].stats.warnings].sort();
     if (JSON.stringify(warnings) !== JSON.stringify(expected)) changed.push(sc.id);
     const phase = titan ? 2 * Math.asin(Math.min(1, len(sub(normalize(titan.toSun), normalize(scale(titan.pos, -1)))) / 2)) * 180 / Math.PI : null;
     const diameter = titan?.radii ? 2 * Math.asin(Math.min(1, titan.radii[0] / len(titan.pos))) / g.pixelAngle : null;
-    console.log(`[model-point warnings] ${sc.id}: Titan phase ${phase?.toFixed(6) ?? 'absent'}°, diameter ${diameter?.toFixed(4) ?? 'absent'} px; ${JSON.stringify(warnings)}`);
-    expect(warnings, sc.id).toEqual(expected);
+    console.log(`[all warnings] ${sc.id}: Titan phase ${phase?.toFixed(6) ?? 'absent'}°, diameter ${diameter?.toFixed(4) ?? 'absent'} px; ${JSON.stringify(warnings)}`);
+    expect.soft(warnings, sc.id).toEqual(expected);
   }
-  console.log(`[model-point warnings] changed from scene baseline: ${JSON.stringify(changed)}`);
+  console.log(`[all warnings] changed from scene baseline: ${JSON.stringify(changed)}`);
   expect(changed).toEqual([]);
 }, 120000);
 
@@ -190,7 +190,8 @@ it.skipIf(!built)('requests only atmosphere tables that can contribute to canoni
   state.update({ coneCdM2: 1e-5, rodCdM2: 1.4e-5, cornealFlux: 0 }, 0);
   const eye = computeEyeFrame(DEFAULT_EYE_SETTINGS, state, 'eye', 0, null);
   const costs = new Map<number, number>();
-  const noTables = new Set(['earth-day-strict', 'moon-quarter', 'jupiter-galileans', 'ganymede-narrow-field',
+  const surfaces = readySurfaces();
+  const noTables = new Set(['earth-day-strict', 'jupiter-galileans', 'ganymede-narrow-field',
     'uranus-epsilon-estimate', 'uranus', 'neptune', 'starfield', 'starfield-enhanced', 'sun-1au',
     'comet-lemmon', 'mercury-map', 'starfield-dark-2min', 'starfield-dark-12min',
     'starfield-dark-30min', 'hyperion-fallback', 'jupiter-double-shadow']);
@@ -214,7 +215,7 @@ it.skipIf(!built)('requests only atmosphere tables that can contribute to canoni
     const g = cameraGeom(snap, 1280, 720, 1e-7);
     const requests: { name: string; angleDeg: number; diameterPx: number; cpuMs: number }[] = [];
     const start = cpuUsage();
-    const frame = prepareFrame(snap, g, eye, 1e-9, { atmospheres: (b, ground, dust) => {
+    const frame = prepareFrame(snap, g, eye, 1e-9, { surfaces, atmospheres: (b, ground, dust) => {
       if (!costs.has(b.id)) {
         const r = atmosphereModelFromData(b.atmosphere!, ground, dust?.scale ?? 1,
           b.atmosphere!.surface ? { groundPerSample: b.atmosphere!.surface.reflectance, multipleScattering: 'orders' } : {});
@@ -232,6 +233,35 @@ it.skipIf(!built)('requests only atmosphere tables that can contribute to canoni
         cpuMs: costs.get(b.id)! });
       return null;
     } });
+    // Audit the frame's downstream consumers independently of the request predicate. In particular the
+    // nightglow pass selects a resolved emitter regardless of whether its shell overlaps the frustum.
+    const emitter = frame.resolved.find((r) => r.body.nightglow)?.body;
+    const consumers = snap.bodies.filter((b) => b.atmosphere).map((b) => {
+      const r = frame.resolved.find((r) => r.body === b);
+      const radius = Math.max(...b.radii!) + (b.atmosphere!.body.topAltitudeKm ?? 0) - (b.atmosphere!.body.altitudesKm[0] ?? 0);
+      const d = len(b.pos), u = normalize(b.pos);
+      const fieldDeg = Math.acos(Math.max(-1, Math.min(1, -dot(g.back, u)))) * 180 / Math.PI;
+      const angularR = Math.asin(Math.min(1, radius / d));
+      // Angular bounds of a sphere against both perspective axes; a deliberately separate geometric check.
+      const shellInView = radius >= d || (Math.atan2(Math.abs(dot(g.right, b.pos)), -dot(g.back, b.pos)) <= Math.atan(g.tanX) + angularR
+        && Math.atan2(Math.abs(dot(g.up, b.pos)), -dot(g.back, b.pos)) <= Math.atan(g.tanY) + angularR);
+      const needs: string[] = [];
+      if (r && r.lit && shellInView) {
+        needs.push('disk/shell', 'disk normalization', 'aerial perspective', 'recipient planetshine attenuation');
+        if (d > radius) needs.push('star/sky limb dimming');
+      }
+      if (b === emitter) needs.push('airglow/aurora attenuation');
+      const phase = Math.acos(Math.max(-1, Math.min(1, dot(normalize(b.toSun), scale(u, -1)))));
+      const ph = b.phase ? evalPhase(b.phase, phase) : null;
+      const shielded = frame.sunShield && dot(u, frame.sunShield.dir) >= frame.sunShield.cosRadius;
+      if (b.atmosphere?.surface && b.allowPhaseExtrapolation && ph && !ph.ok && !shielded && fieldDeg <= CIE146.maxDeg) {
+        needs.push('model point/off-frame corneal flux');
+      }
+      const requested = requests.some((q) => q.name === b.name);
+      expect.soft(requested || needs.length === 0, `${sc.id}/${b.name}: ${needs.join(', ')}`).toBe(true);
+      return { name: b.name, requested, fieldDeg, shellInView, resolved: !!r, consumers: needs };
+    });
+    console.log(`[atmosphere consumers] ${sc.id}: ${JSON.stringify(consumers)}`);
     console.log(`[model-table requests] ${sc.id}: ${JSON.stringify(requests)}; points ${frame.points.length}`);
     if (noTables.has(sc.id)) {
       expect.soft(requests, sc.id).toHaveLength(0);
@@ -239,7 +269,83 @@ it.skipIf(!built)('requests only atmosphere tables that can contribute to canoni
       // Frame preparation only, using this process's CPU: generous versus the normal few ms.
       expect.soft((elapsed.user + elapsed.system) / 1000, sc.id).toBeLessThan(250);
     }
-    if (['pluto-charon', 'pluto-narrow-field'].includes(sc.id)) expect(requests.map((r) => r.name)).toEqual(['Pluto']);
-    if (sc.id === 'titan-haze') expect(requests.map((r) => r.name)).toEqual(['Titan']);
+    const expected = expectedRequests[sc.id];
+    expect(expected, `request audit missing scene ${sc.id}`).toBeDefined();
+    expect.soft(requests.map((r) => r.name).sort(), sc.id).toEqual([...expected].sort());
+    if (sc.id === 'phobos-stickney') {
+      const mars = consumers.find((b) => b.name === 'Mars')!;
+      expect(mars.requested).toBe(false);
+      expect(mars.consumers).toEqual([]);
+      const phobos = frame.resolved.find((r) => r.body.id === 401)!;
+      expect(phobos.planetshine.some((ps) => ps.sourceId === 499)).toBe(true);
+      // Mars still illuminates Phobos through its disk photometry; removing its observer-facing binding
+      // must not change that illuminance. Phobos has no atmosphere to attenuate the received light.
+      const withoutMarsAir = { ...snap, bodies: snap.bodies.map((b) => b.id === 499 ? { ...b, atmosphere: undefined } : b) };
+      const unbound = prepareFrame(withoutMarsAir, g, eye, 1e-9, { surfaces });
+      expect(unbound.resolved.find((r) => r.body.id === 401)!.planetshine).toEqual(phobos.planetshine);
+    }
   }
 }, 120000);
+
+
+function readyBindings(): NonNullable<Parameters<typeof prepareFrame>[4]>['atmospheres'] {
+  const cache = new Map<string, AtmosphereBinding>();
+  return (b, ground, dust) => {
+    const result = atmosphereModelFromData(b.atmosphere!, ground, dust?.scale ?? 1,
+      b.atmosphere!.surface ? { groundPerSample: b.atmosphere!.surface.reflectance, multipleScattering: 'orders' } : {});
+    if ('error' in result) throw new Error(result.error);
+    const key = JSON.stringify(result.model);
+    let bind = cache.get(key);
+    if (!bind) {
+      bind = { model: result.model, tables: precomputeAtmosphere(result.model),
+        grid: new ProfileGrid(result.model, 512), key } as AtmosphereBinding;
+      cache.set(key, bind);
+    }
+    return bind;
+  };
+}
+
+function readySurfaces(): (b: SceneBody) => SurfaceBinding | null {
+  const cache = new Map<string, SurfaceBinding>();
+  const tiles = (ref: SurfaceLayerRef) => [0, 1].map((tx) => {
+    const missing = ref.header.missingTiles?.['0'] ?? ref.header.missing?.['0'] ?? [];
+    if (missing.some(([x, y]) => x === tx && y === 0)) return null;
+    const path = DATA_DIR + tileUrl(ref, 0, 0, tx).replace(/^\/?data\//, '');
+    expect(fs.existsSync(path), path).toBe(true);
+    return new Uint8Array(fs.readFileSync(path)).buffer;
+  });
+  return (b) => {
+    const s = b.surface;
+    if (!s) return null;
+    const key = Object.values(s).filter((ref) => ref && 'header' in ref).map((ref) => layerKey(ref as SurfaceLayerRef)).join('|');
+    const hit = cache.get(key);
+    if (hit) return hit;
+    const out: SurfaceBinding = {};
+    if (s.albedo) {
+      const t = tiles(s.albedo);
+      out.albedo = { base: 1, maxLevel: s.albedo.header.maxLevel, zonal: zonalMeanOfLevel0(t), map0: level0Map(t) };
+    }
+    for (const k of ['height', 'clouds', 'cloudTau', 'water', 'night'] as const) {
+      if (s[k]) out[k] = { base: 1, maxLevel: s[k]!.header.maxLevel };
+    }
+    if (s.photometry && s.albedo) out.photometry = { texel: decodeTexelHapke(s.photometry, s.albedo, tiles(s.photometry)), view: {} as GPUTextureView };
+    cache.set(key, out);
+    return out;
+  };
+}
+
+
+// Every canonical scene is covered, including the two requests lost in the rejected first handoff.
+const expectedRequests: Record<string, string[]> = {
+  'earth-day': ['Earth'], 'earth-day-strict': [], 'earth-night': ['Earth'],
+  'night-limb-iss': ['Earth'], 'night-limb-iss-daylight-eye': ['Earth'],
+  'aurora-2025-11-12': ['Earth'], 'aurora-2025-11-14-quiet': ['Earth'], 'moon-quarter': ['Earth'],
+  'jupiter-galileans': [], 'ganymede-narrow-field': [], 'pluto-narrow-field': ['Pluto'],
+  'saturn-rings': ['Titan'], 'uranus-epsilon-estimate': [], 'uranus': [], 'neptune': [],
+  'pluto-charon': ['Pluto'], 'starfield': [], 'starfield-enhanced': [], 'sun-1au': [],
+  'juno-closeup': ['Titan'], 'comet-lemmon': [], 'mars-map': ['Mars', 'Titan'], 'mercury-map': [],
+  'starfield-dark-2min': [], 'starfield-dark-12min': [], 'starfield-dark-30min': [],
+  'phobos-stickney': ['Titan'], 'titan-haze': ['Titan'], 'titan-haze-ring': ['Titan'],
+  'hyperion-fallback': [], 'bennu-closeup': ['Titan'], 'earth-moon-first-run': ['Earth'],
+  'eclipse-2027-above': ['Earth', 'Titan'], 'eclipse-2027-totality': ['Earth'], 'jupiter-double-shadow': [],
+};
