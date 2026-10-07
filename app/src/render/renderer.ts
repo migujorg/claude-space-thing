@@ -82,6 +82,18 @@ export function prepareRendererFrame(...args: Parameters<typeof prepareFrame>): 
   return prep;
 }
 
+/** Select the emitting resolved body and check the binding before the nightglow pass encodes it. */
+export function prepareNightglow(prep: PreparedFrame) {
+  const index = prep.resolved.findIndex((r) => !!r.body.nightglow);
+  if (index < 0) return null;
+  const body = prep.resolved[index];
+  const atmosphere = body.atmosphere?.binding;
+  if (!atmosphere || atmosphere.unmeasured) {
+    prep.warnings.push(`${body.body.name}: airglow and aurora drawn without the lower atmosphere's attenuation (atmosphere not drawn)`);
+  }
+  return { index, body, atmosphere };
+}
+
 /** Near plane of the reversed-Z infinite projection, km (0.1 mm). */
 const NEAR_KM = 1e-7;
 /** Point-splat radius in units of σ. */
@@ -867,15 +879,13 @@ export class Renderer {
     // 1b. Earth's airglow and aurora (nightglow.ts): the emission along the view rays at reduced resolution, in a
     //     pass of its own; it is composited into the bodies pass below.
     let ngDraw: { entries: GPUBindGroupEntry[]; index: number } | null = null;
-    const ngI = prep.resolved.findIndex((r) => !!r.body.nightglow);
-    if (ngI >= 0 && this.bodiesBuf && !skip.has('nightglow')) {
-      const r = prep.resolved[ngI];
+    const ngPrep = this.bodiesBuf && !skip.has('nightglow') ? prepareNightglow(prep) : null;
+    if (ngPrep && this.bodiesBuf) {
+      const { index: ngI, body: r, atmosphere: atmB } = ngPrep;
       const ng = { ...r.body.nightglow!,
         airglow: skip.has('airglow') ? null : r.body.nightglow!.airglow,
         aurora: skip.has('aurora') ? null : r.body.nightglow!.aurora };
       this.nightglow ??= new NightglowGpu(d, this.hdrFormat);
-      const atmB = atmOf.get(ngI);
-      if (!atmB || atmB.unmeasured) prep.warnings.push(`${r.body.name}: airglow and aurora drawn without the lower atmosphere's attenuation (atmosphere not drawn)`);
       const top = Math.max(...r.radiiKm) + shellTopKm(ng);
       const own = this.nightglow.prepare({
         index: ngI, ng, bodyToWorld: r.bodyToWorld, sunDir: r.sunDir, rMaxKm: Math.max(...r.radiiKm),
