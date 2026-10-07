@@ -22,7 +22,7 @@ from pathlib import Path
 import numpy as np
 
 from .photometry.common import Download
-from .schema import BuildContext
+from .schema import BuildContext, SourceRecord
 
 TABLES = Path(__file__).parent / "syn_tables"
 SUBDIR = "synthetic"
@@ -215,11 +215,18 @@ def register(ctx: BuildContext) -> dict[str, str]:
     out = {}
     for d in (*DATASETS, *PAPERS, GRAV):
         out[d.id] = ctx.add_source(d.source())
+    for rec in centaur_nuclei()["sources"]:
+        out[rec["id"]] = ctx.add_source(SourceRecord(**rec))
     return out
 
 
 def tables() -> dict:
     return json.loads((TABLES / "populations.json").read_text(encoding="utf-8"))
+
+
+def centaur_nuclei() -> dict:
+    """Qualified nuclear photometry, bounds and unknowns; transcription/source scope in docs/sources/centaur-nuclei.md."""
+    return json.loads((TABLES / "centaur_nuclei.json").read_text(encoding="utf-8"))
 
 
 def read_granvik() -> np.ndarray:
@@ -317,4 +324,134 @@ def read_centaur_archive() -> dict[str, np.ndarray]:
     H = np.asarray(H, dtype=np.float64)
     if keps.shape[0] != 6 or states.shape[1] != 7 or not (keps.shape[1] == states.shape[0] == H.size):
         raise ValueError(f"{KURLANDER_ARCHIVE.name}: unexpected array shapes {keps.shape} {states.shape} {H.shape}")
-    return {"a": keps[0], "e": keps[1], "i": keps[2], "H": H, "m": states[:, 6], "d": states[:, 6] - H}
+    return {"a": keps[0], "e": keps[1], "i": keps[2], "H": H, "m": states[:, 6], "d": states[:, 6] - H,
+            "states": states}
+
+
+def parse_centaur_classifier(data: bytes) -> dict[str, np.ndarray]:
+    """Decode only v1.0.1's protocol-3 numeric arrays, without unpickling any Python object.
+
+    GLOBAL/REDUCE/NEWOBJ/BUILD are syntax tokens here, never imported/called. The saved scipy tree's opaque
+    node buffer is ignored; a fresh tree can be built from its documented normalized (x,y,z,vx,vy,vz,m) data.
+    Unknown opcodes, constructors, object/structured dtypes, malformed shapes and trailing data fail closed.
+    """
+    import pickletools
+    import math
+
+    if len(data) > 60_000_000:
+        raise ValueError("classifier format exceeds v1.0.1 size limit")
+    stack, memo, mark = [], {}, object()
+    allowed = {"scipy.spatial.ckdtree cKDTree": "tree", "numpy.core.multiarray _reconstruct": "array",
+               "numpy ndarray": "ndarray", "numpy dtype": "dtype"}
+    def fail():
+        raise ValueError("unsupported or malformed classifier format/opcode")
+    def node(kind, value=None):
+        return {"kind": kind, "value": value}
+    def items():
+        if mark not in stack:
+            fail()
+        i = next(i for i in range(len(stack) - 1, -1, -1) if stack[i] is mark)
+        out = tuple(stack[i + 1:]); del stack[i:]
+        return out
+    try:
+        for op, arg, pos in pickletools.genops(data):
+            name = op.name
+            if name == "PROTO":
+                if pos != 0 or arg != 3: fail()
+            elif name == "MARK": stack.append(mark)
+            elif name in ("BININT", "BININT1", "BININT2", "BINUNICODE", "BINBYTES", "SHORT_BINBYTES"):
+                stack.append(arg)
+            elif name == "NONE": stack.append(None)
+            elif name in ("NEWTRUE", "NEWFALSE"): stack.append(name == "NEWTRUE")
+            elif name == "EMPTY_TUPLE": stack.append(())
+            elif name == "TUPLE": stack.append(items())
+            elif name in ("TUPLE1", "TUPLE2", "TUPLE3"):
+                n = int(name[-1]); t = tuple(stack[-n:]); del stack[-n:]; stack.append(t)
+            elif name in ("BINPUT", "LONG_BINPUT"):
+                if arg in memo or len(memo) > 100: fail()
+                memo[arg] = stack[-1]
+            elif name in ("BINGET", "LONG_BINGET"): stack.append(memo[arg])
+            elif name == "GLOBAL":
+                if arg not in allowed:
+                    raise ValueError(f"refusing global {arg} in classifier format")
+                stack.append(node("global", allowed[arg]))
+            elif name in ("NEWOBJ", "REDUCE"):
+                args, token = stack.pop(), stack.pop()
+                if not isinstance(token, dict) or token.get("kind") != "global": fail()
+                kind = token["value"]
+                if name == "NEWOBJ" and kind == "tree" and args == ():
+                    stack.append(node("tree"))
+                elif name == "REDUCE" and kind == "dtype" and args in (("S1", False, True), ("f8", False, True), ("i8", False, True), ("b1", False, True)):
+                    stack.append(node("dtype", args[0]))
+                elif name == "REDUCE" and kind == "array" and len(args) == 3 and args[0] == node("global", "ndarray") and args[1:] == ((0,), b'b'):
+                    stack.append(node("array"))
+                else: fail()
+            elif name == "BUILD":
+                state, target = stack.pop(), stack[-1]
+                if not isinstance(target, dict): fail()
+                if target["kind"] == "dtype":
+                    expected = (3, "|", None, None, None, 1, 1, 0) if target["value"] == "S1" else (3, "|" if target["value"] == "b1" else "<", None, None, None, -1, -1, 0)
+                    if state != expected: fail()
+                elif target["kind"] == "array":
+                    if len(state) != 5: fail()
+                    version, shape, dtype, fortran, raw = state
+                    if version != 1 or fortran is not False or not isinstance(shape, tuple) or not 1 <= len(shape) <= 2: fail()
+                    if any(type(x) is not int or not 0 < x <= 5_000_000 for x in shape): fail()
+                    if not isinstance(dtype, dict) or dtype.get("kind") != "dtype" or not isinstance(raw, bytes): fail()
+                    dt = np.dtype({"S1": "S1", "f8": "<f8", "i8": "<i8", "b1": "?"}[dtype["value"]])
+                    if len(raw) != math.prod(shape) * dt.itemsize: fail()
+                    target["value"] = np.frombuffer(raw, dtype=dt).reshape(shape)
+                elif target["kind"] == "tree":
+                    if not isinstance(state, tuple) or len(state) != 10: fail()
+                    target["value"] = state
+                else: fail()
+            elif name == "STOP":
+                if pos != len(data) - 1 or len(stack) != 1: fail()
+                break
+            else: fail()
+        result = stack[0]
+        if not isinstance(result, tuple) or len(result) != 4: fail()
+        tree, objects, status, scale = result
+        if tree["kind"] != "tree": fail()
+        ts = tree["value"]
+        points = ts[1]["value"]
+        objects, status, scale = (x["value"] for x in (objects, status, scale))
+        if points.shape != objects.shape or points.ndim != 2 or points.shape[1] != 7: fail()
+        if status.shape != (len(points),) or status.dtype.kind != 'b' or scale.shape != (7,): fail()
+        if points.dtype != np.dtype('<f8') or objects.dtype != np.dtype('<f8') or scale.dtype != np.dtype('<f8'): fail()
+        if ts[2:4] != (len(points), 7) or ts[8:] != (None, None): fail()
+        if not np.all(np.isfinite(points)) or not np.all(np.isfinite(objects)) or not np.all(np.isfinite(scale)) or np.any(scale <= 0): fail()
+        return {"points": points, "objects": objects, "status": status, "scale": scale}
+    except (IndexError, KeyError, TypeError, StopIteration, AttributeError, OverflowError) as exc:
+        raise ValueError("malformed classifier format") from exc
+
+
+def read_centaur_classifier() -> dict[str, np.ndarray]:
+    """Read only the source classifier file; notebook and serialized scipy implementation never execute."""
+    with zipfile.ZipFile(KURLANDER_ARCHIVE.fetch()) as z:
+        return parse_centaur_classifier(z.read("Survey-Debiasing-1.0.1/debiasing_nn_classifier.pkl"))
+
+
+def centaur_selection(classifier: dict[str, np.ndarray], survey_states: np.ndarray) -> dict[str, np.ndarray]:
+    """Source notebook's one-nearest-neighbour status at its survey-midpoint states, in 21 < m < 23.5 only.
+
+    Status -1 is unknown/outside published domain, 0 undetected, 1 detected. Nonfinite queries are unknown.
+    Distance is returned as a diagnostic, not an invented confidence threshold; interpolation error has no
+    published per-object bound (§5.2). Do not query present-epoch states or transfer status to changed angles.
+    """
+    from scipy.spatial import cKDTree
+    states = np.asarray(survey_states, dtype=np.float64)
+    if states.ndim != 2 or states.shape[1] != 7:
+        raise ValueError("selection requires (N,7) survey-midpoint states")
+    status = np.full(len(states), -1, dtype=np.int8)
+    distance = np.full(len(states), np.nan)
+    valid = np.all(np.isfinite(states), axis=1) & (states[:, 6] > 21) & (states[:, 6] < 23.5)
+    tree = cKDTree(classifier['points'])
+    # Bound query working memory even for the archive's million-state table.
+    for start in range(0, len(states), 8192):
+        idx = np.flatnonzero(valid[start:start + 8192]) + start
+        if idx.size:
+            d, j = tree.query(states[idx] / classifier['scale'], workers=1)
+            distance[idx] = d
+            status[idx] = classifier['status'][j].astype(np.int8)
+    return {"status": status, "distance": distance}
