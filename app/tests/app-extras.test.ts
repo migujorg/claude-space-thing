@@ -92,7 +92,7 @@ describe('scene extras', () => {
 
   it('gives the cloud without a retrieval the partly-cloudy statistic at Best (estimated), never at Strict', () => {
     const abs = { normalization: { absoluteDiskMean: { X: 0.03, Y: 0.03, Z: 0.03, S: 0.03 } } };
-    const unmeasuredTau = { label: 'estimated', tauBinLnCentre: [-0.471, 0.772], statistics: { floorCellsZero: { partlyCloudyAllHeights: { binProbability: [0.6, 0.4] } } } };
+    const unmeasuredTau = { label: 'estimated', sources: ['s'], value: { tauBinLnCentre: [-0.471, 0.772], statistics: { floorCellsZero: { partlyCloudyAllHeights: { binProbability: [0.6, 0.4] } } } } };
     const layers = surfaceRefs([
       layer(1, 'albedo', { maxLevel: 3, brightness: { label: 'measured' }, color: { label: 'measured' }, ...abs }),
       layer(1, 'clouds', { maxLevel: 3, kind: 'cloud-properties', brightness: { label: 'measured' } }),
