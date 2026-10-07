@@ -665,7 +665,8 @@ summed in azimuthal Fourier terms m = 0…5:
   4 bins); `Atm.ms.x` switches the march (`atmStep` in shaders-atmosphere.ts, shared by `atmMarch` and the
   aerial-perspective columns) to the source table and the scaled path; `Atm.delta2` holds the second group's f.
   Per march step and 4 bins: 12 more texture reads.
-- **Cost**: 6.6 s for Titan's 12 bins (Node, the workstation; the app computes them in a worker).
+- **Cost**: 3.9–6.6 s for Titan's 12 bins (Node on the workstation, two measurements; the app computes them in a
+  worker).
 
 Sampling choices, at 550 and 750 nm and α = 6°, 90°, 166° (measured when the solver was written; the constants
 are fixed in `atmosphereMs.ts` and the variations were not run again): 16 instead of 8 streams, 10 instead of 6
