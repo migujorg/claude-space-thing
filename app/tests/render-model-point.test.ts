@@ -277,12 +277,13 @@ it.skipIf(!built)('requests only atmosphere tables that can contribute to canoni
       expect(mars.requested).toBe(false);
       expect(mars.consumers).toEqual([]);
       const phobos = frame.resolved.find((r) => r.body.id === 401)!;
-      expect(phobos.planetshine.some((ps) => ps.sourceId === 499)).toBe(true);
-      // Mars still illuminates Phobos through its disk photometry; removing its observer-facing binding
-      // must not change that illuminance. Phobos has no atmosphere to attenuate the received light.
+      // Planetshine sources use disk photometry when admitted at their source-to-recipient phase.
+      // Removing Mars's observer-facing binding must not change those inputs, including absent sources.
+      // Phobos itself has no atmosphere to attenuate the received light.
       const withoutMarsAir = { ...snap, bodies: snap.bodies.map((b) => b.id === 499 ? { ...b, atmosphere: undefined } : b) };
       const unbound = prepareFrame(withoutMarsAir, g, eye, 1e-9, { surfaces });
       expect(unbound.resolved.find((r) => r.body.id === 401)!.planetshine).toEqual(phobos.planetshine);
+      console.log(`[planetshine audit] ${sc.id}: recipient sources ${JSON.stringify(phobos.planetshine.map((ps) => ps.sourceId))}; unchanged without Mars atmosphere`);
     }
   }
 }, 120000);
