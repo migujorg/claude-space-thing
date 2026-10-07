@@ -1076,12 +1076,12 @@
   "uranus": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=instant&target=799&dist=150000",
    "stats": {
-    "adaptationLuminance": 51.762059781610915,
-    "scotopicAdaptationLuminance": 138.18581026120054,
-    "pupilDiameterMm": 4.246718996417602,
+    "adaptationLuminance": 51.67212538586595,
+    "scotopicAdaptationLuminance": 137.942789596677,
+    "pupilDiameterMm": 4.246528163218932,
     "mesopicM": 1,
-    "limitingMagnitude": 0.28408679924563457,
-    "starsDrawn": 174,
+    "limitingMagnitude": 0.2855327606632695,
+    "starsDrawn": 172,
     "bodiesDrawn": 16,
     "bodies": [
      {
@@ -1111,14 +1111,23 @@
     "bodiesInSnapshot": 75,
     "sun": true,
     "warnings": [
-     "Uranus rings: geometry not measured at this time for ring 6, ring 5, ring 4, α ring, β ring, η ring, γ ring, δ ring, λ ring, ε ring → no light or extinction; radial annotation hatched as not measured"
+     "Uranus rings: geometry estimated from COR centreline fits with constant mean widths for ring 6, ring 5, ring 4, α ring, β ring, η ring, γ ring, δ ring, λ ring, ε ring; 20.07–30.51 years beyond last accepted data; fitted modes and width variation omitted; dynamical change is unbounded",
+     "Uranus rings: reflectance not measured for λ ring → absorption only where geometry is valid, covered material hatched as not measured"
     ],
     "badge": [
      "INSTANT ADAPTATION: eye always fully adapted"
     ]
    },
    "consoleErrors": [],
-   "readyMs": 3767
+   "readyMs": 3625,
+   "accepted": {
+    "acceptedAt": "2026-10-07T10:28:29.973Z",
+    "git": "e316bff",
+    "data": {
+     "manifestGeneratedAt": "2026-10-07T10:25:54+00:00",
+     "manifestSha256": "039ad44c05832dd69fe854a3655a199f22edbed54bd29324adfa30d628f5d379"
+    }
+   }
   },
   "neptune": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=instant&target=899&dist=150000",
@@ -1421,14 +1430,23 @@
     "bodiesInSnapshot": 75,
     "sun": true,
     "warnings": [
-     "Uranus rings: geometry not measured at this time for ring 6, ring 5, ring 4, α ring, β ring, η ring, γ ring, δ ring, λ ring, ε ring → no light or extinction; radial annotation hatched as not measured"
+     "Uranus rings: geometry estimated from COR centreline fits with constant mean widths for ring 6, ring 5, ring 4, α ring, β ring, η ring, γ ring, δ ring, λ ring, ε ring; 20.07–30.51 years beyond last accepted data; fitted modes and width variation omitted; dynamical change is unbounded",
+     "Uranus rings: reflectance not measured for λ ring → absorption only where geometry is valid, covered material hatched as not measured"
     ],
     "badge": [
      "INSTANT ADAPTATION: eye always fully adapted"
     ]
    },
    "consoleErrors": [],
-   "readyMs": 5195
+   "readyMs": 4687,
+   "accepted": {
+    "acceptedAt": "2026-10-07T10:28:29.973Z",
+    "git": "e316bff",
+    "data": {
+     "manifestGeneratedAt": "2026-10-07T10:25:54+00:00",
+     "manifestSha256": "039ad44c05832dd69fe854a3655a199f22edbed54bd29324adfa30d628f5d379"
+    }
+   }
   },
   "mercury-map": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=instant&target=199&dist=8000&az=0&el=10",
@@ -1636,14 +1654,23 @@
     "bodiesInSnapshot": 75,
     "sun": true,
     "warnings": [
-     "Uranus rings: geometry not measured at this time for ring 6, ring 5, ring 4, α ring, β ring, η ring, γ ring, δ ring, λ ring, ε ring → no light or extinction; radial annotation hatched as not measured"
+     "Uranus rings: geometry estimated from COR centreline fits with constant mean widths for ring 6, ring 5, ring 4, α ring, β ring, η ring, γ ring, δ ring, λ ring, ε ring; 20.07–30.51 years beyond last accepted data; fitted modes and width variation omitted; dynamical change is unbounded",
+     "Uranus rings: reflectance not measured for λ ring → absorption only where geometry is valid, covered material hatched as not measured"
     ],
     "badge": [
      "INSTANT ADAPTATION: eye always fully adapted"
     ]
    },
    "consoleErrors": [],
-   "readyMs": 5647
+   "readyMs": 5835,
+   "accepted": {
+    "acceptedAt": "2026-10-07T10:28:29.973Z",
+    "git": "e316bff",
+    "data": {
+     "manifestGeneratedAt": "2026-10-07T10:25:54+00:00",
+     "manifestSha256": "039ad44c05832dd69fe854a3655a199f22edbed54bd29324adfa30d628f5d379"
+    }
+   }
   },
   "hyperion-fallback": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=instant&target=607&dist=900&az=30&el=10",
@@ -1752,11 +1779,11 @@
   "earth-moon-first-run": {
    "query": "t=2026-09-30T17:00:00Z&smallbodies=0&adapt=instant&target=399&dist=45828.8&az=32.84&el=-17.26",
    "stats": {
-    "adaptationLuminance": 8907.387503691429,
-    "scotopicAdaptationLuminance": 23875.718895078655,
-    "pupilDiameterMm": 2.500380914338339,
+    "adaptationLuminance": 8905.777970470606,
+    "scotopicAdaptationLuminance": 23871.87235582826,
+    "pupilDiameterMm": 2.5004049116643947,
     "mesopicM": 1,
-    "limitingMagnitude": -4.410392954498227,
+    "limitingMagnitude": -4.410215770858807,
     "starsDrawn": 7,
     "bodiesDrawn": 341,
     "bodies": [
@@ -2119,14 +2146,23 @@
     "warnings": [
      "Neptune rings: geometry not measured at this time for Adams ring arcs (Fraternité, Égalité) → no light or extinction; radial annotation hatched as not measured",
      "Neptune rings: reflectance not measured for Galle ring → absorption only where geometry is valid, covered material hatched as not measured",
-     "Uranus rings: geometry not measured at this time for ring 6, ring 5, ring 4, α ring, β ring, η ring, γ ring, δ ring, λ ring, ε ring → no light or extinction; radial annotation hatched as not measured"
+     "Uranus rings: geometry estimated from COR centreline fits with constant mean widths for ring 6, ring 5, ring 4, α ring, β ring, η ring, γ ring, δ ring, λ ring, ε ring; 20.03–30.47 years beyond last accepted data; fitted modes and width variation omitted; dynamical change is unbounded",
+     "Uranus rings: reflectance not measured for λ ring → absorption only where geometry is valid, covered material hatched as not measured"
     ],
     "badge": [
      "INSTANT ADAPTATION: eye always fully adapted"
     ]
    },
    "consoleErrors": [],
-   "readyMs": 4789
+   "readyMs": 4178,
+   "accepted": {
+    "acceptedAt": "2026-10-07T10:28:29.973Z",
+    "git": "e316bff",
+    "data": {
+     "manifestGeneratedAt": "2026-10-07T10:25:54+00:00",
+     "manifestSha256": "039ad44c05832dd69fe854a3655a199f22edbed54bd29324adfa30d628f5d379"
+    }
+   }
   },
   "eclipse-2027-above": {
    "query": "t=2027-08-02T10:06:41.000Z&smallbodies=0&adapt=instant&target=399&dist=28715.92&az=0.65&el=1.69",
@@ -2396,6 +2432,38 @@
     "data": {
      "manifestGeneratedAt": "2026-10-07T08:06:19+00:00",
      "manifestSha256": "9fab972127475c397fd8bd0546181333f8f45ed1c568822f9100e3630b4d15f0"
+    }
+   }
+  },
+  "uranus-epsilon-estimate": {
+   "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=instant&target=799&dist=100000&az=25&el=12&fov=1&look=-64.44491889269331%2C-63.83801785178568&exists=best&view=eye&labels=0&orbits=0&ui=0",
+   "stats": {
+    "adaptationLuminance": 0.9757370907523973,
+    "scotopicAdaptationLuminance": 2.350241656970162,
+    "pupilDiameterMm": 3.8749282021936273,
+    "mesopicM": 0.7826065275076567,
+    "limitingMagnitude": 3.2460220809478253,
+    "starsDrawn": 0,
+    "bodiesDrawn": 0,
+    "bodies": [],
+    "points": [],
+    "bodiesInSnapshot": 75,
+    "sun": true,
+    "warnings": [
+     "Ariel: phase extrapolated beyond measured range (0–3.1°) with the spatial law → estimated"
+    ],
+    "badge": [
+     "INSTANT ADAPTATION: eye always fully adapted"
+    ]
+   },
+   "consoleErrors": [],
+   "readyMs": 3814,
+   "accepted": {
+    "acceptedAt": "2026-10-07T10:28:29.973Z",
+    "git": "e316bff",
+    "data": {
+     "manifestGeneratedAt": "2026-10-07T10:25:54+00:00",
+     "manifestSha256": "039ad44c05832dd69fe854a3655a199f22edbed54bd29324adfa30d628f5d379"
     }
    }
   }

@@ -71,6 +71,31 @@ export function geometrySupported(c: RingComponent, et: number): boolean {
     && (!v || (et >= v.startEt && et <= v.endEt));
 }
 
+const selectionCache = new WeakMap<RingComponentModel, Map<string, RingComponentModel>>();
+
+/** Select once before CPU light/extinction or GPU packing, so geometry and its opacity profile always agree.
+ * The scene reality gate admits this estimated system only at Best/Complete. `allowEstimates=false` retains
+ * supported geometry/unknown annotations for callers evaluating the Strict geometry policy directly.
+ * Inside support return the original model, retaining the exact historical edge/mode/profile calculations.
+ */
+export function componentsAt(model: RingComponentModel, et: number, allowEstimates = true): RingComponentModel {
+  if (!allowEstimates || !Number.isFinite(et)) return model;
+  const use = model.components.map((c) => {
+    const v = c.geometryValidity, e = c.outsideSupportEstimate;
+    return !!(v && (et < v.startEt || et > v.endEt) && e?.label === 'estimated' && e.value);
+  });
+  if (!use.some(Boolean)) return model;
+  const key = use.map((x) => x ? '1' : '0').join('');
+  let cache = selectionCache.get(model);
+  if (!cache) selectionCache.set(model, cache = new Map());
+  let selected = cache.get(key);
+  if (!selected) {
+    selected = { ...model, components: model.components.map((c, i) => use[i] ? c.outsideSupportEstimate!.value! : c) };
+    cache.set(key, selected);
+  }
+  return selected;
+}
+
 export function bandAt(model: RingComponentModel, c: RingComponent, lam: number, et: number): Band | null {
   if (!geometrySupported(c, et)) return null;
   const t = (et - model.epochEt) / DAY_S;
