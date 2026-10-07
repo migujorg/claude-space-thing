@@ -1327,6 +1327,36 @@ fn load(t: texture_2d<f32>, p: vec2i) -> vec4f {
   textureStore(dst, p, s * 0.25);
 }
 
+// The acuity filter's image chain (eye/acuity.ts downTiling; docs/eye-model.md §5b): the level tiles its source. A
+// texel is the mean of the source interval it covers, each source texel by the share of the interval it fills. The
+// chain's mip sides round down, so where a source side is odd "down" above would never read its last row or
+// column; and where the frame's side is odd it would average the base's last texel with zero. "down" stays as it
+// is for the veil pyramid (sides rounded up, dark beyond the frame) and for the fovea's block sums (powers of two).
+@compute @workgroup_size(8, 8) fn downTiling(@builtin(global_invocation_id) g: vec3u) {
+  let p = vec2i(g.xy);
+  let d = vec2i(textureDimensions(dst));
+  if (p.x >= d.x || p.y >= d.y) { return; }
+  let n = vec2i(textureDimensions(srcA));
+  // In units of 1/d of a source texel: texel p covers [p·n, (p+1)·n), source texel x covers [x·d, (x+1)·d).
+  // Integers, so the overlaps are exact (p·n and (x+1)·d stay under the frame's pixel count).
+  let a = p * n;
+  let i0 = a / d;
+  var s = vec4f(0.0);
+  for (var j = 0; j < 3; j++) {
+    let y = i0.y + j;
+    let wy = min(a.y + n.y, (y + 1) * d.y) - max(a.y, y * d.y);
+    if (wy <= 0) { continue; }
+    for (var i = 0; i < 3; i++) {
+      let x = i0.x + i;
+      let wx = min(a.x + n.x, (x + 1) * d.x) - max(a.x, x * d.x);
+      // Per axis the weight is the share of the interval: exactly one half where the source side is even, so that
+      // level is "down"'s arithmetic in "down"'s order and the same bits.
+      if (wx > 0) { s += load(srcA, vec2i(x, y)) * ((f32(wx) / f32(n.x)) * (f32(wy) / f32(n.y))); }
+    }
+  }
+  textureStore(dst, p, s);
+}
+
 // Discrete Gaussian, sigma = 1 texel, 7 taps, normalised.
 const W0: f32 = 0.39905027;
 const W1: f32 = 0.24203623;
@@ -1539,14 +1569,16 @@ export const COMPOSITE_SHADER = COMMON + TONE + /* wgsl */ `
 @group(0) @binding(3) var ptDispTex: texture_2d<f32>;   // point sources, display-linear XYZ (cd/m²)
 @group(0) @binding(5) var paintTex: texture_2d<f32>;    // painted glare: the viewer's veil of the overflow (display XYZ, cd/m²)
 ${SRCS(0, 6)}
-@group(0) @binding(7) var acuTex: texture_2d<f32>;      // EXT as a mip chain: mip j has 2^(j+1) px per texel (pre-exposed)
+@group(0) @binding(7) var acuTex: texture_2d<f32>;      // EXT as a mip chain whose levels tile the frame: mip j has 2^(j+1) px per texel, a little more below an odd side (pre-exposed)
 @group(0) @binding(8) var fovTex: texture_2d<f32>;      // the adaptation pass's block sums (Σ w·ln(L_ret + L₀), Σ w) as a mip chain: mip m has ${ADAPT_BLOCK}·2^m px per texel
 
 /** EXT at pyramid level m (0 = full resolution), bilinear at full-resolution position q (px). */
 fn acuAt(m: i32, q: vec2f) -> vec4f {
   if (m <= 0) { return textureLoad(extTex, clamp(vec2i(q), vec2i(0), vec2i(F.size.xy) - 1), 0); }
   let d = vec2i(textureDimensions(acuTex, m - 1));
-  let c = q / f32(1 << u32(m)) - 0.5;
+  // The level's texels tile the frame, so the frame maps onto it by its size (eye/acuity.ts acuityReadPos). Where
+  // the sides are even all the way down the ratio is exactly 2^-m and this is q / 2^m − ½ to the bit.
+  let c = q * (vec2f(d) / F.size.xy) - 0.5;
   let i0 = vec2i(floor(c));
   let fr = c - vec2f(i0);
   let h = d - 1;

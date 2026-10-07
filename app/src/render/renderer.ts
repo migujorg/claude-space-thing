@@ -134,7 +134,10 @@ interface Targets {
   ptDisp: GPUTexture;
   depth: GPUTexture;
   levels: Level[];
-  /** The extended image alone as a mip chain (mip j: 2^(j+1) px per texel), for the low-light acuity (eye/acuity.ts). */
+  /**
+   * The extended image alone as a mip chain, for the low-light acuity (eye/acuity.ts). Every level tiles the frame;
+   * mip j has 2^(j+1) px per texel, a little more below an odd side (docs/eye-model.md §10 has the table).
+   */
   acu: GPUTexture;
   /**
    * The adaptation pass's sums per block of ADAPT_BLOCK² px, (Σ w·ln(L_ret + L₀), Σ w) with the light-weighted
@@ -264,7 +267,7 @@ export class Renderer {
   surfaceCacheMiB = 1024;
   private overflowPipe: GPUComputePipeline;
   private sunPipe: GPURenderPipeline;
-  private pyr: Record<'combine' | 'down' | 'blurH' | 'blurV' | 'accum', GPUComputePipeline>;
+  private pyr: Record<'combine' | 'down' | 'downTiling' | 'blurH' | 'blurV' | 'accum', GPUComputePipeline>;
   private adaptPipe: GPUComputePipeline;
   private reducePipe: GPUComputePipeline;
   private compositePipe: GPURenderPipeline;
@@ -385,7 +388,7 @@ export class Renderer {
     });
     const pyrMod = mod(PYRAMID_SHADER, 'pyramid');
     const cp = (entryPoint: string) => d.createComputePipeline({ label: entryPoint, layout: 'auto', compute: { module: pyrMod, entryPoint } });
-    this.pyr = { combine: cp('combine'), down: cp('down'), blurH: cp('blurH'), blurV: cp('blurV'), accum: cp('accum') };
+    this.pyr = { combine: cp('combine'), down: cp('down'), downTiling: cp('downTiling'), blurH: cp('blurH'), blurV: cp('blurV'), accum: cp('accum') };
     this.overflowPipe = d.createComputePipeline({ label: 'overflow', layout: 'auto', compute: { module: mod(OVERFLOW_SHADER, 'overflow'), entryPoint: 'main' } });
     this.adaptPipe = d.createComputePipeline({ label: 'adapt tiles', layout: 'auto', compute: { module: mod(ADAPT_SHADER, 'adapt'), entryPoint: 'tiles' } });
     this.reducePipe = d.createComputePipeline({ label: 'adapt reduce', layout: 'auto', compute: { module: mod(ADAPT_REDUCE_SHADER, 'reduce'), entryPoint: 'main' } });
@@ -1164,12 +1167,14 @@ export class Renderer {
     const acuityOn = snapshot.view.mode === 'eye' && !skip.has('acuity');
     if (acuityOn) {
       const pass = enc.beginComputePass({ label: 'acuity mips', timestampWrites: this.tsw('acuity mips') });
-      pass.setPipeline(this.pyr.down);
+      // Every level tiles the frame (eye/acuity.ts downTiling): the mip sides round down, and the pyramid's `down`
+      // would leave the last row or column of an odd level out of everything below it.
+      pass.setPipeline(this.pyr.downTiling);
       const n = t.acu.mipLevelCount;
       for (let j = 0; j < n; j++) {
         const src = j === 0 ? t.ext.createView() : t.acu.createView({ baseMipLevel: j - 1, mipLevelCount: 1 });
         pass.setBindGroup(0, d.createBindGroup({
-          layout: this.pyr.down.getBindGroupLayout(0),
+          layout: this.pyr.downTiling.getBindGroupLayout(0),
           entries: [{ binding: 0, resource: src }, { binding: 2, resource: t.acu.createView({ baseMipLevel: j, mipLevelCount: 1 }) }],
         }));
         pass.dispatchWorkgroups(Math.ceil(Math.max(1, t.acu.width >> j) / 8), Math.ceil(Math.max(1, t.acu.height >> j) / 8));
