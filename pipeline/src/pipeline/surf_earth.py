@@ -54,7 +54,11 @@ NAME = "Earth"
 SUBDIR = "surfaces/earth"
 LEVEL = 4
 SAMPLES = 4                      # WMS pixels per texel along each axis (1.1 km samples for 4.9 km texels)
-DAY_SZA_MAX = 81.36              # CLDPROP daytime retrieval limit (solar zenith angle, degrees)
+# Hubanks et al. (2022), CLDPROP L3 User Guide v2.1, §8.13, pp. 69–70, Table 9:
+# L2 continuity cloud optical AND cloud-top day classification is SZA ≤ 80° (cloud mask: ≤ 85°).
+# https://atmosphere-imager.gsfc.nasa.gov/sites/default/files/ModAtmo/documents/L3_CLDPROP_User_Guide_v2.1.pdf
+# CLDPROP L2 User Guide v1.2 (March 2021), Appendix D, pp. 71–72, also uses 80° for day/night phase tests.
+VIIRS_CLDPROP_DAY_SZA_MAX_DEG = 80.0
 OVERPASS_LST_H = 13.5            # NOAA-20 ascending-node local solar time
 
 L_COT = "VIIRS_NOAA20_Cloud_Optical_Thickness"
@@ -132,7 +136,7 @@ def daylit_rows(day: str) -> np.ndarray:
     dec = np.radians(solar_declination_deg(day))
     hour = np.radians(15.0 * (OVERPASS_LST_H - 12.0))
     cos_sza = np.sin(lat) * np.sin(dec) + np.cos(lat) * np.cos(dec) * np.cos(hour)
-    return cos_sza > np.cos(np.radians(DAY_SZA_MAX))
+    return cos_sza >= np.cos(np.radians(VIIRS_CLDPROP_DAY_SZA_MAX_DEG))
 
 
 def _register_gibs(ctx: BuildContext) -> str:
@@ -208,7 +212,7 @@ def _overpass_mu0(lat_deg: np.ndarray, day: str) -> np.ndarray:
     dec = np.radians(solar_declination_deg(day))
     hour = np.radians(15.0 * (OVERPASS_LST_H - 12.0))
     mu = np.sin(lat) * np.sin(dec) + np.cos(lat) * np.cos(dec) * np.cos(hour)
-    return np.where(mu > np.cos(np.radians(DAY_SZA_MAX)), mu, 0.0)
+    return np.where(mu >= np.cos(np.radians(VIIRS_CLDPROP_DAY_SZA_MAX_DEG)), mu, 0.0)
 
 
 class _TauDiagnostics:
