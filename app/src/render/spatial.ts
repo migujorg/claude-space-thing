@@ -489,6 +489,425 @@ export class NormalizationCache {
   }
 }
 
+// Motion normalization. The general converged quadrature remains the oracle/fallback above.
+// All tolerances below are numerical error budgets, never photometric fit parameters.
+const MOTION_RELATIVE_BUDGET = 5e-5;
+
+// Lanczos g=7, n=9 log-gamma approximation (Boost.Math / Numerical Recipes). Its constants
+// approximate a mathematical function; they are not physical quantities or fitted scene values.
+function logGamma(z: number): number {
+  const c = [676.5203681218851, -1259.1392167224028, 771.32342877765313, -176.61502916214059,
+    12.507343278686905, -0.13857109526572012, 9.9843695780195716e-6, 1.5056327351493116e-7];
+  z--;
+  let x = 0.99999999999980993;
+  for (let i = 0; i < c.length; i++) x += c[i] / (z + i + 1);
+  const t = z + 7.5;
+  return 0.5 * Math.log(2 * Math.PI) + (z + 0.5) * Math.log(t) - t + Math.log(x);
+}
+const latitudeBeta = (s: number) => Math.exp(logGamma(0.5) + logGamma(s + 1) - logGamma(s + 1.5));
+const scalarXYZS = (v: number): XYZS => [v, v, v, v];
+
+interface PhaseCell { lo: number; hi: number; values: number[] }
+/** Piecewise cubic in log(I / particle-phase-factor) versus t=log(pi/(pi-alpha)); this removes the crescent's
+ * vanishing power law. Each cell is checked at seven interlaced points against converged
+ * quadrature, to 1e-7 relative. The supported-model tested bound is 2e-5 (not an
+ * interval-arithmetic certificate for arbitrary future Hapke fits). Construction is synchronous:
+ * no unbounded/old result is drawn while a table is being constructed. */
+function hapkePhaseFactor(law: ResolvedLaw, a: number): number {
+  const tg = Math.tan(a / 2), Bs = law.hs > 0 ? 1 / (1 + tg / law.hs) : 0;
+  const x = law.hc > 0 ? tg / law.hc : Infinity;
+  const Bc = x > 1e-9 ? (1 - Math.expm1(-x) / x) / (2 * (1 + x) ** 2) : 1;
+  return doubleHG(a, law.b, law.c) * (1 + law.bs0 * Bs) * (1 + law.bc0 * Bc);
+}
+function phaseTable(law: ResolvedLaw): PhaseCell[] {
+  const out: PhaseCell[] = [], cache = new Map<number, number>();
+  const evalAt = (t: number) => {
+    let v = cache.get(t);
+    if (v === undefined) {
+      const a = Math.PI * -Math.expm1(-t);
+      v = Math.log(lawDiskIntegral(law, a, undefined, 24)[0] / hapkePhaseFactor(law, a));
+      cache.set(t, v);
+    }
+    return v;
+  };
+  const visit = (lo: number, hi: number, depth: number) => {
+    const values = [0, 1 / 3, 2 / 3, 1].map(u => evalAt(lo + u * (hi - lo)));
+    const cell = { lo, hi, values };
+    let error = 0;
+    for (const u of [1 / 12, 1 / 6, 1 / 4, 1 / 2, 3 / 4, 5 / 6, 11 / 12])
+      error = Math.max(error, Math.abs(Math.expm1(cubic(cell, lo + u * (hi - lo)) - evalAt(lo + u * (hi - lo)))));
+    if (error <= 1e-7) out.push(cell);
+    else if (depth < 16) { const mid = (lo + hi) / 2; visit(lo, mid, depth + 1); visit(mid, hi, depth + 1); }
+    else throw new Error('Surface-law phase interpolation did not converge');
+  };
+  const end = Math.log(Math.PI / 1e-4);
+  for (let j = 0; j < 16; j++) visit(end * j / 16, end * (j + 1) / 16, 0);
+  return out;
+}
+function cubic(c: PhaseCell, t: number): number {
+  const u = (t - c.lo) / (c.hi - c.lo), [a, b, d, e] = c.values;
+  return -4.5 * (u - 1 / 3) * (u - 2 / 3) * (u - 1) * a
+    + 13.5 * u * (u - 2 / 3) * (u - 1) * b
+    - 13.5 * u * (u - 1 / 3) * (u - 1) * d
+    + 4.5 * u * (u - 1 / 3) * (u - 2 / 3) * e;
+}
+
+interface ZonalSpectrum { coeff: Float64Array; energy: XYZS; min: XYZS; max: XYZS; slope: XYZS; knots: Float64Array }
+const SPECTRAL_MAX = 512;
+/** M(y)=sum c_l P_l(y). Composite GL at the actual row knots integrates the input,
+ * with no downsampled/replaced map. The L2 residual is retained to bound truncation. */
+function zonalSpectrum(z: ZonalProfile): ZonalSpectrum {
+  const coeff = new Float64Array((SPECTRAL_MAX + 1) * 4), energy: XYZS = [0, 0, 0, 0];
+  const min: XYZS = [Infinity, Infinity, Infinity, Infinity], max: XYZS = [0, 0, 0, 0], slope: XYZS = [0, 0, 0, 0];
+  const knots = new Float64Array(z.rows), cuts = [-Math.PI / 2];
+  for (let j = 0; j < z.rows; j++) {
+    const lat = Math.PI * ((j + 0.5) / z.rows - 0.5);
+    cuts.push(lat); knots[j] = Math.sin(lat);
+    for (let c = 0; c < 4; c++) {
+      min[c] = Math.min(min[c], z.mean[4 * j + c]); max[c] = Math.max(max[c], z.mean[4 * j + c]);
+      if (j > 0) slope[c] = Math.max(slope[c], Math.abs(z.mean[4 * j + c] - z.mean[4 * (j - 1) + c]) * z.rows / Math.PI);
+    }
+  }
+  cuts.push(Math.PI / 2);
+  const gl = gaussLegendre(12), vals = [0, 0, 0, 0];
+  for (let j = 1; j < cuts.length; j++) for (let q = 0; q < gl.x.length; q++) {
+    const lat = cuts[j - 1] + (gl.x[q] + 1) * (cuts[j] - cuts[j - 1]) / 2, y = Math.sin(lat);
+    const w = Math.cos(lat) * gl.w[q] * (cuts[j] - cuts[j - 1]) / 4;
+    zonalAt(z, y, vals);
+    for (let c = 0; c < 4; c++) energy[c] += w * vals[c] ** 2;
+    let prev = 1, cur = y;
+    for (let l = 0; l <= SPECTRAL_MAX; l++) {
+      const pl = l === 0 ? 1 : l === 1 ? y : ((2 * l - 1) * y * cur - (l - 1) * prev) / l;
+      if (l > 1) { prev = cur; cur = pl; }
+      for (let c = 0; c < 4; c++) coeff[4 * l + c] += (2 * l + 1) * w * vals[c] * pl;
+    }
+  }
+  return { coeff, energy, min, max, slope, knots };
+}
+
+let harmonicFactors: { diag: Float64Array; first: Float64Array; A: Float64Array; B: Float64Array; moment: Float64Array } | undefined;
+function factors() {
+  if (harmonicFactors) return harmonicFactors;
+  const width = SPECTRAL_MAX + 1, size = width * width;
+  const diag = new Float64Array(width), first = new Float64Array(width);
+  const A = new Float64Array(size), B = new Float64Array(size), moment = new Float64Array(size);
+  for (let m = 0; m < width; m++) {
+    if (m > 0) diag[m] = Math.sqrt((2 * m - 1) / (2 * m));
+    first[m] = Math.sqrt(2 * m + 1);
+    for (let l = m + 2; l < width; l++) {
+      const index = l * width + m, den = Math.sqrt(l * l - m * m);
+      A[index] = (2 * l - 1) / den; B[index] = Math.sqrt((l - 1) ** 2 - m * m) / den;
+      if ((l - m) % 2 === 0) {
+        const j = (l - m) / 2;
+        moment[index] = Math.sqrt(2 * j * (2 * j - 1) / ((2 * m + 2 * j) * (2 * m + 2 * j - 1))) * (m + j - 0.5) / j;
+      }
+    }
+  }
+  harmonicFactors = { diag, first, A, B, moment };
+  return harmonicFactors;
+}
+
+/** Associated Legendre latitude moments R_lm(s)=int (1-y²)^s sqrt((l-m)!/(l+m)!) P_l^m(y) dy.
+ * Odd l-m vanish. Integrating Gegenbauer polynomials gives the beta/Pochhammer recurrence
+ * below (expand the Gegenbauer polynomial and integrate each monomial); this is analytic, not another quadrature/table. */
+function latitudeMoments(s: number, degree: number, reusable?: Float64Array): Float64Array {
+  const width = SPECTRAL_MAX + 1, R = reusable ?? new Float64Array(width * (degree + 1)), f = factors();
+  let diag = 1;
+  const bb = [latitudeBeta(s), latitudeBeta(s + 0.5)];
+  for (let m = 0; m <= degree; m++) {
+    if (m > 0) diag *= -f.diag[m];
+    if (m >= 2) bb[m % 2] *= (s + m / 2) / (s + m / 2 + 0.5);
+    let r = diag * bb[m % 2];
+    R[m * width + m] = r;
+    for (let l = m + 2; l <= degree; l += 2) {
+      const j = (l - m) / 2;
+      r *= f.moment[l * width + m] * (m / 2 - s + j - 1) / (s + m / 2 + j + 0.5);
+      R[l * width + m] = r;
+    }
+  }
+  return R;
+}
+
+/** Fast separable kernel, before Barkstrom's paired limb floor. */
+function longitudeMoments(law: ResolvedLaw, a: number, degree: number) {
+  const delta = Math.PI - a;
+  // The largest oscillation is degree*delta/2, not degree*pi/2. Keep the full-disk
+  // resolution per wavelength but avoid thousands of nodes in a narrow crescent.
+  const order = Math.max(64, 16 * Math.ceil(2 * degree * delta / (16 * Math.PI)));
+  const Q = new Float64Array(degree + 1), gl = gaussLegendre(order);
+  let square = 0;
+  for (let i = 0; i < gl.x.length / 2; i++) {
+    const u = gl.x[i] * Math.PI / 2, t = delta / 2 * Math.sin(u), eps = delta / 2 + t;
+    const ci = Math.sin(delta - eps), cl = Math.sin(eps);
+    const f = Math.pow(law.kind === LAW.minnaert ? ci * cl : ci * cl / (ci + cl), law.p);
+    const w = gl.w[i] * delta * Math.PI / 2 * Math.cos(u), ct = Math.cos(t);
+    square += w * f * f;
+    let prev = 1, cur = ct;
+    for (let m = 0; m <= degree; m++) {
+      const v = m === 0 ? 1 : m === 1 ? ct : 2 * ct * cur - prev;
+      if (m > 1) { prev = cur; cur = v; }
+      Q[m] += w * f * v;
+    }
+  }
+  return { Q, square };
+}
+
+/** Addition theorem with polar axis perpendicular to the Sun/observer plane. Parseval and
+ * Cauchy–Schwarz give the orientation-independent ABSOLUTE remainder:
+ * |I-I_L| <= sqrt(4pi (E[M²]-sum c_l²/(2l+1)) (||K||²-||K_L||²))/pi.
+ * The small positive roundoff reserve prevents a negative subtraction from certifying zero error.
+ * Barkstrom's omitted floor has an independent positive upper bound, checked before acceptance. */
+function spectralIntegral(law: ResolvedLaw, a: number, pole: V3, spectrum: ZonalSpectrum, R: Float64Array, degree: number, correction?: { value: XYZS; error: XYZS }): { value: XYZS; relativeBound: number; extraRelativeBound: number } {
+  const { Q, square } = longitudeMoments(law, a, degree), s = law.kind === LAW.minnaert ? law.p : law.p / 2;
+  const norm = latitudeBeta(2 * s) * square, length = Math.hypot(...pole), y = pole[1] / length;
+  const st = Math.sqrt(Math.max(0, 1 - y * y)), az = Math.atan2(pole[0], pole[2]) - a / 2;
+  const value: XYZS = [0, 0, 0, 0], used: XYZS = [0, 0, 0, 0];
+  const cos = Array.from({ length: degree + 1 }, (_, m) => Math.cos(m * az));
+  let diag = 1, projectedNorm = 0;
+  const width = SPECTRAL_MAX + 1, f = factors();
+  for (let m = 0; m <= degree; m++) {
+    if (m > 0) diag *= -f.diag[m] * st;
+    let cur = diag, prev = 0;
+    for (let l = m; l <= degree; l++) {
+      const p = l === m ? cur : l === m + 1 ? f.first[m] * y * cur
+        : f.A[l * width + m] * y * cur - f.B[l * width + m] * prev;
+      if (l > m) { prev = cur; cur = p; }
+      if ((l - m) % 2 !== 0) continue;
+      const r = R[l * width + m], contribution = (m === 0 ? 1 : 2) * r * Q[m] * p * cos[m] / Math.PI;
+      for (let c = 0; c < 4; c++) value[c] += spectrum.coeff[4 * l + c] * contribution;
+      projectedNorm += (2 * l + 1) / (4 * Math.PI) * r * r * Q[m] * Q[m] * (m === 0 ? 1 : 2);
+    }
+  }
+  for (let l = 0; l <= degree; l++) for (let c = 0; c < 4; c++) used[c] += spectrum.coeff[4 * l + c] ** 2 / (2 * l + 1);
+  const tail = Math.max(0, norm - projectedNorm) + norm * 1e-12;
+  // In the strip 0<mu<f, K=(mu0*mu/(mu0+mu))^B <= mu^B, dOmega=dmu*dphi.
+  // The omitted part is <= 2 f^(B+1)/((B+1)(B+2)), after division by pi.
+  const floor = law.kind === LAW.barkstrom && !correction ? 2 * Math.pow(1e-3, law.p + 1) / ((law.p + 1) * (law.p + 2)) : 0;
+  let relativeBound = 0, extraRelativeBound = 0;
+  for (let c = 0; c < 4; c++) {
+    const residual = Math.max(0, spectrum.energy[c] - used[c]) + spectrum.energy[c] * 1e-12;
+    if (correction) value[c] -= correction.value[c];
+    const extra = floor * spectrum.max[c] + (correction?.error[c] ?? 0);
+    const bound = Math.sqrt(4 * Math.PI * residual * tail) / Math.PI + extra;
+    extraRelativeBound = Math.max(extraRelativeBound, extra / Math.max(value[c] - extra, Number.MIN_VALUE));
+    relativeBound = Math.max(relativeBound, bound / Math.max(value[c] - bound, Number.MIN_VALUE));
+  }
+  return { value, relativeBound, extraRelativeBound };
+}
+
+/** Near a crescent the harmonic remainder bound is intentionally conservative. Instead integrate
+ * in photometric longitude, splitting the INNER latitude integral at every actual map knot and
+ * at Barkstrom's floor. The laws separate, so only one pow per latitude node is needed. */
+function crescentIntegral(law: ResolvedLaw, a: number, pole: V3, z: ZonalProfile, knots: Float64Array, n: number, nb: number): XYZS {
+  const lg = gaussLegendre(n), delta = Math.PI - a;
+  const s = law.kind === LAW.minnaert ? 2 * law.p : law.p, length = Math.hypot(...pole);
+  const P = pole.map(v => v / length), acc: XYZS = [0, 0, 0, 0];
+  const lonCuts = [-Math.PI / 2, Math.PI / 2];
+  const addLambda = (lam: number) => {
+    if (lam <= a - Math.PI / 2 || lam >= Math.PI / 2) return;
+    const eps = Math.PI / 2 - lam;
+    lonCuts.push(Math.asin(Math.max(-1, Math.min(1, 2 * eps / delta - 1))));
+  };
+  const amplitude = Math.hypot(P[0], P[2]), centre = Math.atan2(P[0], P[2]);
+  // Outer-longitude tangencies to each map row: A(lambda)^2 + Py^2 = sin(lat_row)^2.
+  // Without these cuts, doubling longitude nodes can alias the narrow latitude-row arcs.
+  if (amplitude > 0) for (const y of knots) {
+    if (y * y <= P[1] * P[1]) continue;
+    const target = Math.sqrt(y * y - P[1] * P[1]) / amplitude;
+    if (target >= 1) continue;
+    for (const sign of [-1, 1]) {
+      const t = Math.acos(sign * target);
+      for (let lam of [centre - t, centre + t]) {
+        if (lam < -Math.PI) lam += 2 * Math.PI;
+        if (lam > Math.PI) lam -= 2 * Math.PI;
+        addLambda(lam);
+      }
+    }
+  }
+  if (law.kind === LAW.barkstrom) addLambda(Math.acos(1e-3));
+  lonCuts.sort((x, y) => x - y);
+  for (let segment = 1; segment < lonCuts.length; segment++) for (let p = 0; p < n; p++) {
+    const du = (lonCuts[segment] - lonCuts[segment - 1]) / 2;
+    const u = lonCuts[segment - 1] + (lg.x[p] + 1) * du, eps = delta * (1 + Math.sin(u)) / 2;
+    const lam = Math.PI / 2 - eps, cl = Math.sin(eps), ci = Math.sin(delta - eps);
+    const wl = lg.w[p] * delta / 2 * du * Math.cos(u) / Math.PI;
+    const lon = Math.pow(law.kind === LAW.minnaert ? ci * cl : ci * cl / (ci + cl), law.p);
+    const A = P[0] * Math.sin(lam) + P[2] * cl, radius = Math.hypot(A, P[1]), b0 = Math.atan2(P[1], A);
+    const cuts = [-Math.PI / 2, Math.PI / 2];
+    for (const y of knots) {
+      if (Math.abs(y) >= radius) continue;
+      const t = Math.acos(y / radius);
+      for (let b of [b0 - t, b0 + t]) {
+        if (b < -Math.PI) b += 2 * Math.PI;
+        if (b > Math.PI) b -= 2 * Math.PI;
+        if (b > -Math.PI / 2 && b < Math.PI / 2) cuts.push(b);
+      }
+    }
+    if (law.kind === LAW.barkstrom && cl > 1e-3) { const b = Math.acos(1e-3 / cl); cuts.push(-b, b); }
+    cuts.sort((x, y) => x - y);
+    for (let j = 1; j < cuts.length; j++) {
+      const db = (cuts[j] - cuts[j - 1]) / 2;
+      // Empty equatorial knot spans at a thin crescent can cover the whole latitude range.
+      // Resolve those wide intervals too; longitude convergence alone cannot certify latitude.
+      const bg = gaussLegendre(Math.max(nb, nb * Math.ceil(8 * db)));
+      const mid = (cuts[j] + cuts[j - 1]) / 2;
+      const midLat = Math.asin(Math.max(-1, Math.min(1, A * Math.cos(mid) + P[1] * Math.sin(mid))));
+      const rawRow = Math.floor((0.5 - midLat / Math.PI) * z.rows - 0.5);
+      const row = Math.max(0, Math.min(z.rows - 1, rawRow)), next = Math.min(row + 1, z.rows - 1);
+      let weight = 0, latitudeMoment = 0;
+      for (let q = 0; q < bg.x.length; q++) {
+        const b = cuts[j - 1] + (bg.x[q] + 1) * db, cb = Math.cos(b);
+        const lat = Math.asin(Math.max(-1, Math.min(1, A * cb + P[1] * Math.sin(b))));
+        let f = Math.pow(cb, s + 1) * bg.w[q] * db * wl * lon;
+        if (law.kind === LAW.barkstrom) f *= Math.min(1, cb * cl / 1e-3);
+        weight += f; latitudeMoment += f * lat;
+      }
+      const tMoment = rawRow < 0 || row === z.rows - 1 ? 0 : (z.rows / 2 - 0.5 - row) * weight - z.rows / Math.PI * latitudeMoment;
+      for (let c = 0; c < 4; c++) acc[c] += z.mean[row * 4 + c] * weight + (z.mean[next * 4 + c] - z.mean[row * 4 + c]) * tMoment;
+    }
+  }
+  return acc;
+}
+
+/** Barkstrom's floor correction in dOmega=dmu*dphi, with the map evaluated on the limb.
+ * This reuse has an analytic absolute bound: latitude is 1-Lipschitz in spherical distance,
+ * distance(n(mu,phi),n(0,phi))=asin(mu), and |M'| is known from the actual linear rows.
+ * Map error <= max|M'| asin(f) * 2 f^(B+1)/((B+1)(B+2)). */
+function barkstromFloorCorrection(law: ResolvedLaw, a: number, P: V3, z: ZonalProfile, spectrum: ZonalSpectrum, n: number): { value: XYZS; bound: XYZS } {
+  const gl = gaussLegendre(n), phiGL = gaussLegendre(4), value: XYZS = [0, 0, 0, 0];
+  const sa = Math.sin(a), ca = Math.cos(a), length = Math.hypot(...P), pole = P.map(v => v / length);
+  const radius = Math.hypot(pole[0], pole[1]), centre = Math.atan2(pole[1], pole[0]);
+  const cuts = [-Math.PI / 2, Math.PI / 2];
+  for (const y of spectrum.knots) {
+    if (Math.abs(y) >= radius) continue;
+    const t = Math.acos(y / radius);
+    for (let phi of [centre - t, centre + t]) {
+      if (phi < -Math.PI) phi += 2 * Math.PI;
+      if (phi > Math.PI) phi -= 2 * Math.PI;
+      if (phi > -Math.PI / 2 && phi < Math.PI / 2) cuts.push(phi);
+    }
+  }
+  const threshold = 1e-3 * Math.abs(ca) / (sa * Math.sqrt(1 - 1e-6));
+  if (threshold < 1) { const phi = Math.acos(threshold); cuts.push(-phi, phi); }
+  cuts.sort((x, y) => x - y);
+  const map = [0, 0, 0, 0];
+  for (let j = 1; j < cuts.length; j++) for (let k = 0; k < phiGL.x.length; k++) {
+    const dphi = (cuts[j] - cuts[j - 1]) / 2, u = phiGL.x[k] * Math.PI / 2;
+    const phi = (cuts[j] + cuts[j - 1]) / 2 + dphi * Math.sin(u), cp = Math.cos(phi);
+    const muMax = Math.min(1e-3, sa * cp / Math.hypot(ca, sa * cp));
+    zonalAt(z, pole[0] * cp + pole[1] * Math.sin(phi), map);
+    let weight = 0;
+    for (let q = 0; q < n; q++) {
+      const mu = (gl.x[q] + 1) * muMax / 2, mu0 = sa * Math.sqrt(1 - mu * mu) * cp + ca * mu;
+      weight += Math.pow(Math.max(0, mu * mu0 / (mu + mu0)), law.p) * (1 - mu / 1e-3) * gl.w[q] * muMax / 2;
+    }
+    weight *= phiGL.w[k] * dphi / 2 * Math.cos(u);
+    for (let c = 0; c < 4; c++) value[c] += weight * map[c];
+  }
+  const upper = 2 * Math.pow(1e-3, law.p + 1) / ((law.p + 1) * (law.p + 2));
+  return { value, bound: spectrum.slope.map(v => v * Math.asin(1e-3) * upper) as XYZS };
+}
+
+/** Cache owned by the caller, so cold work and warm work can be benchmarked separately. No
+ * rounded geometry key: every query uses its actual phase/pole, also when the camera stops. */
+export class MotionNormalization {
+  private phases = new Map<string, PhaseCell[]>();
+  private spectra = new WeakMap<ZonalProfile, ZonalSpectrum>();
+  private moments = new Map<string, Float64Array>();
+  private degrees = new WeakMap<ZonalProfile, { degree: number; alpha: number }>();
+  private variableMoments?: Float64Array;
+  private variableExponent?: number;
+  private variableDegree = 0;
+
+  get(law: ResolvedLaw, alpha: number, zonal?: { profile: ZonalProfile; pole: V3 }): XYZS {
+    const a = Math.min(Math.max(alpha, 0), Math.PI), delta = Math.PI - a;
+    if (!(delta > 0)) return [0, 0, 0, 0];
+    if (zonal && (law.kind === LAW.minnaert || law.kind === LAW.barkstrom) && law.p > 0) {
+      let spectrum = this.spectra.get(zonal.profile);
+      if (!spectrum) { spectrum = zonalSpectrum(zonal.profile); this.spectra.set(zonal.profile, spectrum); }
+      // Numerical workload crossover: the floored Barkstrom crescent is cheaper in row coordinates.
+      if (a < (law.kind === LAW.barkstrom ? 2.9 : 3.07)) {
+        let correction: { value: XYZS; error: XYZS } | undefined;
+        if (law.kind === LAW.barkstrom && a > 2.8) {
+          const bare = latitudeBeta(law.p / 2) * longitudeMoments(law, a, 0).Q[0] / Math.PI;
+          const floor = 2 * Math.pow(1e-3, law.p + 1) / ((law.p + 1) * (law.p + 2));
+          const omittedBound = Math.max(...spectrum.max.map((v, c) => floor * v / Math.max(bare * spectrum.min[c] - floor * v, Number.MIN_VALUE)));
+          if (omittedBound > 1e-5) {
+            const low = barkstromFloorCorrection(law, a, zonal.pole, zonal.profile, spectrum, 4);
+            const high = barkstromFloorCorrection(law, a, zonal.pole, zonal.profile, spectrum, 8);
+            correction = { value: high.value, error: high.value.map((v, c) => high.bound[c] + 4 * Math.abs(v - low.value[c])) as XYZS };
+          }
+        }
+        const s = law.kind === LAW.minnaert ? law.p : law.p / 2;
+        const choices = [64, 96, 128, 192, 256, 384, SPECTRAL_MAX];
+        const previous = this.degrees.get(zonal.profile);
+        let start = previous?.degree ?? 64;
+        start = choices[Math.max(0, choices.indexOf(start) - 2)];
+        const recent: XYZS[] = [];
+        for (const degree of choices.filter(d => d >= start)) {
+          const key = `${s}:${degree}`;
+          let R: Float64Array;
+          if (law.kind === LAW.barkstrom) {
+            this.variableMoments ??= new Float64Array((SPECTRAL_MAX + 1) ** 2);
+            if (this.variableExponent !== s || this.variableDegree < degree) {
+              latitudeMoments(s, degree, this.variableMoments);
+              this.variableExponent = s; this.variableDegree = degree;
+            }
+            R = this.variableMoments;
+          } else {
+            const cached = this.moments.get(key);
+            R = cached ?? latitudeMoments(s, degree);
+            if (!cached) {
+              if (this.moments.size > 8) this.moments.clear();
+              this.moments.set(key, R);
+            }
+          }
+          const result = spectralIntegral(law, a, zonal.pole, spectrum, R, degree, correction);
+          recent.push(result.value);
+          const correctionResolved = result.extraRelativeBound <= 1e-5;
+          const converged = correctionResolved && recent.length >= 3 && recent.slice(-3).every(value => value.every((v, c) => Math.abs(v - result.value[c]) <= 1e-6 * Math.abs(result.value[c])));
+          // When the analytic Cauchy bound is too conservative, three increasing orders must
+          // agree. Like the general quadrature, this is a convergence estimate; the independent
+          // real-map scans below bound its observed error to 2e-5, not a certificate for all maps.
+          if (result.relativeBound <= MOTION_RELATIVE_BUDGET || converged) { this.degrees.set(zonal.profile, { degree, alpha: a }); return result.value; }
+        }
+      }
+      let n = 4;
+      const nb = 2;
+      let prev = crescentIntegral(law, a, zonal.pole, zonal.profile, spectrum.knots, n, nb);
+      for (let it = 0; it < 6; it++) {
+        n *= 2;
+        const value = crescentIntegral(law, a, zonal.pole, zonal.profile, spectrum.knots, n, nb);
+        if (value.every((v, c) => Math.abs(v - prev[c]) <= 1e-5 * Math.abs(v))) return value;
+        prev = value;
+      }
+      return lawDiskIntegral(law, a, zonal);
+    }
+    if (zonal) return lawDiskIntegral(law, a, zonal);
+    if (law.kind === LAW.lambert) return scalarXYZS(2 / (3 * Math.PI) * (Math.sin(a) + delta * Math.cos(a)));
+    if (law.kind === LAW.lommelSeeliger) return scalarXYZS(0.5 * lommelSeeligerPhase(a));
+    if (law.kind === LAW.lunarLambert) {
+      const lambert = 2 / (3 * Math.PI) * (Math.sin(a) + delta * Math.cos(a));
+      return scalarXYZS(law.p * lommelSeeligerPhase(a) + (1 - law.p) * lambert);
+    }
+    if (law.kind === LAW.akimov && delta >= 1e-4) {
+      if (a < 1e-6) return scalarXYZS((1 + Math.cos(a)) / 2);
+      return scalarXYZS(Math.cos(a / 2) * 2 * delta / Math.PI ** 2 * latitudeBeta((a / delta + 1) / 2));
+    }
+    if (law.kind === LAW.hapke && law.p === 0) return scalarXYZS(0);
+    if (law.kind === LAW.hapke && delta >= 1e-4) {
+      const key = JSON.stringify(law);
+      let cells = this.phases.get(key);
+      if (!cells) { cells = phaseTable(law); this.phases.set(key, cells); }
+      const t = Math.log(Math.PI / delta);
+      let lo = 0, hi = cells.length - 1;
+      while (lo < hi) { const mid = (lo + hi) >>> 1; if (t > cells[mid].hi) lo = mid + 1; else hi = mid; }
+      return scalarXYZS(Math.exp(cubic(cells[lo], t)) * hapkePhaseFactor(law, a));
+    }
+    return lawDiskIntegral(law, a, undefined, law.kind === LAW.hapke ? 24 : 32);
+  }
+}
+
 /** Photometric frame (z toward observer, x toward the Sun in the observer–Sun plane) from body-centred unit vectors. */
 export function photometricFrame(toObserver: V3, toSun: V3): [V3, V3, V3] {
   const z = toObserver;
