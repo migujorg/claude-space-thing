@@ -2,8 +2,9 @@
 // precomputes its tables in a worker, packs them into one rgba16float texture array (shaders-atmosphere.ts)
 // and keeps one uniform buffer per atmosphere.
 
-import { atmosphereModelFromData, IRR_H, IRR_W, MS_N, PHASE_N, particleDeltaFraction, particleTable, PROFILE_N, ProfileGrid, rayleighDepolarization, T_H, T_W, type AtmosphereModel, type AtmosphereTables } from './atmosphere';
-import { ATM_K4_MAX, ATM_TEX_H, ATM_TEX_W } from './shaders-atmosphere';
+import { atmosphereModelFromData, IRR_H, IRR_W, MS_N, PHASE_N, particleDeltaFractions, particleGroups, PROFILE_N, ProfileGrid, rayleighDepolarization, T_H, T_W, type AtmosphereModel, type AtmosphereTables } from './atmosphere';
+import { FOURIER_N, VIEW_N } from './atmosphereMs';
+import { ATM_K4_MAX, ATM_MS_LAYERS, ATM_MS_TILES, ATM_MS_TILES_X, ATM_TEX_H, ATM_TEX_W } from './shaders-atmosphere';
 import { numberToF16 } from './surface';
 import type { SceneAtmosphere } from './scene';
 
@@ -34,8 +35,8 @@ interface Entry {
   error?: string;
 }
 
-/** Bytes of the Atm uniform (struct Atm: 3 + 16 + 4 vec4). */
-export const ATM_UB_BYTES = (3 + 16 + 4 + 4 + 2 + 3) * 16;
+/** Bytes of the Atm uniform (struct Atm in shaders-atmosphere.ts). */
+export const ATM_UB_BYTES = (3 + 16 + 4 + 4 + 2 + 3 + 1 + 4) * 16;
 
 /** Aerial-perspective columns of one body this frame (renderer.ts, AP_COLUMNS_SHADER). */
 export interface ApColumns {
@@ -90,7 +91,11 @@ export class AtmosphereGpu {
     const bin = dust ? dust.bin : -1;
     let e = byBin.get(bin);
     if (!e) {
-      const r = atmosphereModelFromData(atm, groundAlbedo, dust ? dust.scale : 1);
+      // A body drawn from its model (SceneAtmosphere.surface: Titan) keeps the measured surface reflectance below
+      // its air per sample, and takes its multiple scattering from orders of scattering (atmosphereMs.ts): its
+      // haze is optically thick, where Hillaire's estimate does not hold (docs/rendering-earth.md §8 "Titan").
+      const r = atmosphereModelFromData(atm, groundAlbedo, dust ? dust.scale : 1,
+        atm.surface ? { groundPerSample: atm.surface.reflectance, multipleScattering: 'orders' } : {});
       if ('error' in r && r.extent) {
         e = {
           state: 'unmeasured', error: r.error, key: `${this.ids.get(atm.body)}|u`,
@@ -155,12 +160,14 @@ export class AtmosphereGpu {
     for (let c = 0; c < 4; c++) for (let k = 0; k < K; k++) a[12 + (4 * c + (k >> 2)) * 4 + (k & 3)] = m.weights[c][k];
     const dep = rayleighDepolarization(m);
     for (let k = 0; k < K; k++) a[12 + 64 + k] = dep[k];
-    const fD = particleDeltaFraction(m);
+    const [fD, fD2] = particleDeltaFractions(m);
     for (let k = 0; k < K; k++) a[12 + 64 + 16 + k] = fD[k];
     if (ap) {
       a.set([ap.colPx, ap.nx, ap.ny, ap.slices.length, ap.body, 1, 0, 0], 12 + 64 + 32);
       ap.slices.slice(0, 12).forEach((h, k) => { a[12 + 64 + 40 + k] = h; });
     }
+    a.set([m.multipleScattering === 'orders' && b.tables?.msSource ? 1 : 0, 0, 0, 0], 128);
+    for (let k = 0; k < K; k++) a[132 + k] = fD2[k];
     this.device.queue.writeBuffer(b.uniform, 0, a);
   }
 
@@ -168,18 +175,31 @@ export class AtmosphereGpu {
   private pack(m: AtmosphereModel, t: AtmosphereTables): GPUTexture {
     const K = t.K;
     const K4 = Math.ceil(K / 4);
-    const layers = 7 * K4;
+    const src = t.msSource;
+    const layers = (7 + (src ? ATM_MS_LAYERS : 0)) * K4;
     const W = ATM_TEX_W, H = ATM_TEX_H;
     const data = new Uint16Array(W * H * 4 * layers);
     const put = (layer: number, x: number, y: number, k: number, v: number) => { data[((layer * H + y) * W + x) * 4 + (k & 3)] = numberToF16(v); };
-    const table = particleTable(m);
+    const [table, table2] = particleGroups(m).tables;
     for (let k = 0; k < K; k++) {
       const j = k >> 2;
       for (let y = 0; y < T_H; y++) for (let x = 0; x < T_W; x++) put(j, x, y, k, t.transmittance[(y * T_W + x) * K + k]);
       for (let y = 0; y < MS_N; y++) for (let x = 0; x < MS_N; x++) put(K4 + j, x, y, k, t.multiScattering[(y * MS_N + x) * K + k]);
       for (let y = 0; y < IRR_H; y++) for (let x = 0; x < IRR_W; x++) put(2 * K4 + j, x, y, k, t.skyIrradiance[(y * IRR_W + x) * K + k]);
       for (let x = 0; x < PROFILE_N; x++) for (let q = 0; q < 3; q++) put((3 + q) * K4 + j, x, 0, k, t.profile[(x * K + k) * 4 + q]);
+      for (let x = 0; x < PROFILE_N; x++) put(5 * K4 + j, x, 1, k, t.profile[(x * K + k) * 4 + 3]);
       for (let x = 0; x < PHASE_N; x++) put(6 * K4 + j, x, 0, k, table ? table[k][x] : 0);
+      for (let x = 0; x < PHASE_N; x++) put(6 * K4 + j, x, 1, k, table2 ? table2[k][x] : 0);
+      if (src) {
+        for (let mm = 0; mm < FOURIER_N; mm++) for (let v = 0; v < VIEW_N; v++) {
+          const tt = mm * VIEW_N + v, tile = tt % ATM_MS_TILES;
+          const layer = (7 + Math.floor(tt / ATM_MS_TILES)) * K4 + j;
+          const ox = (tile % ATM_MS_TILES_X) * MS_N, oy = Math.floor(tile / ATM_MS_TILES_X) * MS_N;
+          for (let y = 0; y < MS_N; y++) for (let x = 0; x < MS_N; x++) {
+            put(layer, ox + x, oy + y, k, src[((((y * MS_N + x) * FOURIER_N + mm) * VIEW_N) + v) * K + k]);
+          }
+        }
+      }
     }
     const tex = this.device.createTexture({ size: [W, H, layers], format: 'rgba16float', usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST, label: 'atmosphere tables' });
     this.device.queue.writeTexture({ texture: tex }, data, { bytesPerRow: W * 8, rowsPerImage: H }, [W, H, layers]);

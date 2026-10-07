@@ -100,7 +100,7 @@ export function mountUi(container: HTMLElement, model: AppModel, opts: { banner?
       }
       labels.update();
       hud.update(stats);
-      inspector.update();
+      inspector.update(stats);
       top.update();
     },
     fatal(msg) {
