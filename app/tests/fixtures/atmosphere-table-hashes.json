@@ -1,11 +1,11 @@
 {
   "sourceCommit": "db55a5b",
-  "ground": "min(1, 1.5 * geometricAlbedoXYZS); Titan uses surfaceReflectance; annual-mean Mars dust",
+  "ground": "min(1, 1.5 * geometricAlbedoXYZS / solarIrradianceXYZS_1AU); Titan uses surfaceReflectance; annual-mean Mars dust",
   "bodies": [
     {
       "id": "299",
       "name": "Venus",
-      "modelSha256": "db3498c7b264b62cf67b93aabf880d75a9a63ab57eb28479b4147cb7237c648c",
+      "modelSha256": "a4fa1483ba74ba064d22b509b5ccbe82142b12bd75774dc260062c01ba2bd909",
       "K": 12,
       "tables": {
         "transmittance": {
@@ -14,11 +14,11 @@
         },
         "multiScattering": {
           "bytes": 49152,
-          "sha256": "2e191e336a0dae6d4061cb15a97756b975223dc2c5063fea2ea8e982d852043b"
+          "sha256": "d3270f7b3640ce5e00d3e216735272a250b1b5341e3c4cbae12c6f2a6d0cb870"
         },
         "skyIrradiance": {
           "bytes": 49152,
-          "sha256": "9cd4c1853d802eaf100c346f707bc50fe97ed97b363f532e59e5ad0a33612142"
+          "sha256": "68f6a31ef634f287e813c904d4c6b3f33e790daea6f122296535e36ad1e293a3"
         },
         "profile": {
           "bytes": 49152,
@@ -29,7 +29,7 @@
     {
       "id": "399",
       "name": "Earth",
-      "modelSha256": "2c2d6a5dd48f544ed87298571ddbbc9cda99c0b8399770e3a7401456915b7f54",
+      "modelSha256": "aa084fb61726065ac3bbf3097e8b1f70d577434930b1a299f2dceb921434c668",
       "K": 12,
       "tables": {
         "transmittance": {
@@ -38,11 +38,11 @@
         },
         "multiScattering": {
           "bytes": 49152,
-          "sha256": "d2d482453796a4be38d1223ad8c4a417223d34714364efe077cfbffb6468a29e"
+          "sha256": "c0d79c2b4b66c987d214cc6b1c86a077445c2632236c8ec2dcec511d1ed3d278"
         },
         "skyIrradiance": {
           "bytes": 49152,
-          "sha256": "987dc0ae6dba8317ae1adfdbdf2207c999228d2b3bec8b528f4260cef182dfc8"
+          "sha256": "5e68fd80d79f497990f43c7fbc464c4dc4c074ec284d85ace396cce0724dfc9f"
         },
         "profile": {
           "bytes": 49152,
@@ -53,7 +53,7 @@
     {
       "id": "499",
       "name": "Mars",
-      "modelSha256": "54e540868ea775d3101ecde1595bd6578920f45668f35d60bf6734295f83a7db",
+      "modelSha256": "251f39f6e74298b07fceafdc29c0ce3abb5cd2ac7f77864195219399945aebcc",
       "K": 12,
       "tables": {
         "transmittance": {
@@ -62,11 +62,11 @@
         },
         "multiScattering": {
           "bytes": 49152,
-          "sha256": "4dd9059edd4705e3f384e5a2b16e1fa693f16d19a05202d6ab5c7aa07b34ec2a"
+          "sha256": "cf7d3022c9c20df20036dd1392dd549679af9b64d898087ef4e4ea55e043be10"
         },
         "skyIrradiance": {
           "bytes": 49152,
-          "sha256": "57d4100358df689b91818b7d8792289909c7a3e21e86267681e22c97c8578d65"
+          "sha256": "7685004d97b30a0f94ed1fc490e5ec0cdff62523524f3ec4028b19e01e8b9221"
         },
         "profile": {
           "bytes": 49152,
@@ -125,7 +125,7 @@
     {
       "id": "999",
       "name": "Pluto",
-      "modelSha256": "8f5c6e42101c3a1afdb4abcb08d7d311829c1b23f283b0742737847987f7a066",
+      "modelSha256": "d6cc8cba34cbf9c6ea30bae78d0fba3f79bd3d3203614839151b5acdc456d763",
       "K": 12,
       "tables": {
         "transmittance": {
@@ -134,11 +134,11 @@
         },
         "multiScattering": {
           "bytes": 49152,
-          "sha256": "6a87a2726fc74983a9a3eb7726b1b5445fbbeff39cdbe9bd783b97d971563103"
+          "sha256": "8a206b9705036a14fa9fbba15747c5455cb3e2e30b2df8e47bba5ed5cbe96c39"
         },
         "skyIrradiance": {
           "bytes": 49152,
-          "sha256": "d27a3374e59c97f29c430892b324b585a6f8ec1b6a86033116c11c88dcd76c56"
+          "sha256": "11807a766d85da1ba8961d1a079ff1b681c54af91088f302500ef83ed3b6b1d5"
         },
         "profile": {
           "bytes": 49152,
