@@ -4,6 +4,7 @@
 
 import { atmosphereModelFromData, IRR_H, IRR_W, MS_N, PHASE_N, particleDeltaFractions, particleGroups, PROFILE_N, ProfileGrid, rayleighDepolarization, T_H, T_W, type AtmosphereModel, type AtmosphereTables } from './atmosphere';
 import { FOURIER_N, VIEW_N } from './atmosphereMs';
+import { AtmosphereTableCache } from './atmosphereCache';
 import { ATM_K4_MAX, ATM_MS_LAYERS, ATM_MS_TILES, ATM_MS_TILES_X, ATM_TEX_H, ATM_TEX_W } from './shaders-atmosphere';
 import { numberToF16 } from './surface';
 import type { SceneAtmosphere } from './scene';
@@ -55,6 +56,7 @@ export class AtmosphereGpu {
   private entries = new Map<SceneAtmosphere['body'], Map<number, Entry>>();
   private ids = new Map<SceneAtmosphere['body'], number>();
   private worker: Worker | null = null;
+  private tableCache = new AtmosphereTableCache();
   private nextId = 1;
   private waiting = new Map<number, (t: AtmosphereTables) => void>();
   private pendingCount = 0;
@@ -67,7 +69,13 @@ export class AtmosphereGpu {
   }
 
   private tables(model: AtmosphereModel): Promise<AtmosphereTables> {
+    // Injected computations keep their existing test contract. The browser keeps full worker tables by
+    // their built model inputs and solver source hashes, including across fresh AtmosphereGpu instances.
     if (this.precompute) return this.precompute(model);
+    return this.tableCache.get(model, () => this.computeTables(model));
+  }
+
+  private computeTables(model: AtmosphereModel): Promise<AtmosphereTables> {
     if (!this.worker) {
       this.worker = new Worker(new URL('./atmosphere.worker.ts', import.meta.url), { type: 'module' });
       this.worker.onmessage = (e: MessageEvent<{ id: number; tables: AtmosphereTables }>) => {

@@ -82,7 +82,7 @@ describe('a body with a surface reflectance under its air (fixture)', () => {
     const warnings = [
       'Titan: atmosphere model scaled to the disk photometry at 3°, ×0.99 X, 0.99 Y, 0.88 Z, 0.95 S (measured p·Φ over the model\'s disk integral)',
       'Titania: phase extrapolated beyond measured range (0–35°) with the spatial law → estimated',
-      'Saturn rings: phase angle 147.75° outside the reflectance model\'s 0.25–47° → ring brightness not measured (hatched)',
+      'Saturn rings: phase angle 147.75° outside the reflectance model\'s 0.25–47° → ring brightness unknown in this product (hatched)',
       'Saturn: Barkstrom law outside its fitted range → Lambert spatial distribution',
     ];
     expect(rendererLines(warnings, 'Titan')).toEqual([warnings[0].slice('Titan: '.length)]);
@@ -301,6 +301,28 @@ describe('the frame of a body drawn from its atmosphere model (fixture)', () => 
       at(31.25);
       expect(spy).toHaveBeenCalledTimes(5); // Only 32° is new.
     } finally { spy.mockRestore(); }
+  });
+
+  it('requests an extrapolated model point through 100° of the eye field, and no table beyond it', () => {
+    const s = scene(60, 2e7);
+    for (const offset of [60, 99.9, 100.1, 150]) {
+      const t = offset * Math.PI / 180;
+      const turned = { ...g, back: [Math.sin(t), 0, Math.cos(t)] as V3,
+        right: [Math.cos(t), 0, -Math.sin(t)] as V3 };
+      const tables = vi.fn(() => binding());
+      const frame = prepareFrame(s, turned, eye, 1e-9, { atmospheres: tables });
+      expect(tables).toHaveBeenCalledTimes(offset <= 100 ? 1 : 0);
+      if (offset <= 100) {
+        // Off-frame light belongs to adaptation even if its analytic veil is below the glare-source cut.
+        expect(frame.offFrameFluxDeg2).toBeGreaterThan(0);
+      } else {
+        const noBody = prepareFrame({ ...s, bodies: [] }, turned, eye, 1e-9);
+        expect(frame.offFrameFluxDeg2).toBe(noBody.offFrameFluxDeg2);
+        expect(frame.glare).toEqual(noBody.glare);
+        expect(frame.points).toHaveLength(0);
+        expect(frame.resolved).toHaveLength(0);
+      }
+    }
   });
 
   it('an in-range point uses photometry bit for bit, without model tables, an integral or a scaling line', () => {
