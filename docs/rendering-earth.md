@@ -700,8 +700,8 @@ rendered frames (the HDR buffer summed over a 512 × 512 view, Titan 330 px acro
 workstation's GPU, `nvidia blackwell`, rgba32float, 2026-10-07) over the twin's on a fine grid times the frame's
 factors is 1.0003, 1.0005, 0.9986, 1.0001 (X, Y, Z, S) at 0°, 1.0005–1.0007 from 1° to 30°, 1.0002 at 60°,
 0.9998–0.9999 at 90°, 0.9997–0.9998 at 120°, 0.9998–1.0001 at 150° and 0.9978–0.9989 at 166°: the shaders draw
-what the twin computes to within 0.07 % up to 150° and 0.2 % at 166° (where the twin's grid is the coarser of the
-two), so the twin's numbers stand for the picture. Against the measured p·Φ(α) the same frames give 1.0000,
+what the twin computes to within 0.07 % from 1° to 150° (0.14 % in Z at exactly 0°) and 0.2 % at 166° (where the
+twin's grid is the coarser of the two), so the twin's numbers stand for the picture. Against the measured p·Φ(α) the same frames give 1.0000,
 1.0003, 0.9981, 0.9998 at 0° (at exactly 0° the model's backscatter peak is narrower than the ±0.07° the phase
 angle varies across the disk from that distance), 1.0003, 1.0003, 1.0001, 1.0003 at 1°, 1.0004, 1.0004, 1.0002,
 1.0004 at 3° and 1.0005, 1.0005, 1.0003, 1.0004 at 5.6°. From 200 000 km the frames are 0.9 % brighter at small
