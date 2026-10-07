@@ -1,7 +1,7 @@
 // Display encoding: chromatic adaptation (CIECAM02 CAT02), XYZ → linear sRGB (IEC 61966-2-1),
 // gamut mapping, and the sRGB transfer function.
 
-import { CAT02, SRGB } from './constants';
+import { CAT02, DISPLAY_P3, SRGB } from './constants';
 
 export type M3 = [number, number, number, number, number, number, number, number, number];
 export type V3 = [number, number, number];
@@ -106,7 +106,7 @@ export function rgbToXyzFromPrimaries(r: [number, number], g: [number, number], 
  * Display P3 (CSS Color 4 'display-p3'): DCI-P3 primaries (SMPTE EG 432-1: R 0.680, 0.320; G 0.265, 0.690;
  * B 0.150, 0.060) with the D65 white and the sRGB transfer function.
  */
-export const DISPLAY_P3 = { r: [0.68, 0.32] as [number, number], g: [0.265, 0.69] as [number, number], b: [0.15, 0.06] as [number, number] };
+export { DISPLAY_P3 } from './constants';
 export const P3_TO_XYZ: M3 = rgbToXyzFromPrimaries(DISPLAY_P3.r, DISPLAY_P3.g, DISPLAY_P3.b, [SRGB.whiteX, SRGB.whiteY]);
 export const XYZ_TO_P3: M3 = inv3(P3_TO_XYZ);
 

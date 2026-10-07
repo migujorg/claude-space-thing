@@ -2,6 +2,8 @@
 // per-frame pipeline world → snapshot. No DOM, no GPU: the UI and bootstrap drive it, tests use it
 // with fake core implementations.
 
+import { SECONDS_PER_DAY } from '../core/constants';
+
 import type { Body, Label, LightData } from '../data/schema';
 import type { DataLoader, DeferredEphemeris, LoadedData, LoadedEphemeris } from '../data/load';
 import { loadSmallBodyNamesHeader, loadSmallBodyTables, type SmallBodyLoader, type SmallBodyTables } from '../data/smallbodies';
@@ -712,7 +714,7 @@ export class AppModel {
     // Small bodies: the catalogue's position label (propagation adds no assumption beyond it).
     if (id < 0) return this.smallBodies?.posLabel(sbRow(id)) ?? 'unknown';
     const c = this.chainCache.get(id);
-    if (c && Math.abs(c.et - et) < 86400) return c.label;
+    if (c && Math.abs(c.et - et) < SECONDS_PER_DAY) return c.label;
     const label = this.eph?.provenance?.(id, et)?.label ?? 'measured';
     this.chainCache.set(id, { et, label });
     return label;
@@ -1409,7 +1411,7 @@ export class AppModel {
   /** Curated views: the most striking events found so far, and a few placed near the current time. */
   curatedViews(): Bookmark[] {
     const now = this.nowEt() ?? this.clock.et;
-    const key = `${this.data?.manifest?.generatedAt ?? ''}:${this.loadedEphem.length}:${Math.round(now / 86400)}`;
+    const key = `${this.data?.manifest?.generatedAt ?? ''}:${this.loadedEphem.length}:${Math.round(now / SECONDS_PER_DAY)}`;
     if (this.staticViews?.key !== key) {
       const inp = this.finderInput();
       let list: Bookmark[] = [];
