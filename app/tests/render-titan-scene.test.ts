@@ -303,6 +303,46 @@ describe('the frame of a body drawn from its atmosphere model (fixture)', () => 
     } finally { spy.mockRestore(); }
   });
 
+  it('an in-range point uses photometry bit for bit, without model tables, an integral or a scaling line', () => {
+    const integral = vi.spyOn(atmosphereMath, 'modelDiskXYZS');
+    const tables = vi.fn(() => ({ ...binding(), key: 'in-range-point-no-integral' }));
+    try {
+      for (const phase of [0, 0.5, 1.2, 3, 5.7]) {
+        const s = scene(phase, 2e7, [0.21, 0.2, 0.12, 0.16], { id: 12345 });
+        // No atmosphere callback is the direct photometry path from before model point integration.
+        const photometry = prepareFrame(s, g, eye, 1e-9);
+        const point = prepareFrame(s, g, eye, 1e-9, { atmospheres: tables });
+        expect(point.resolved).toHaveLength(0);
+        expect(point.points).toHaveLength(1);
+        expect.soft(point.points[0].E).toEqual(photometry.points[0].E);
+        expect.soft(scaleLine(point)).toEqual([]);
+        // The same source outside a narrow field still contributes its direct photometry to glare.
+        const theta = 5 * Math.PI / 180;
+        const offG = { ...g, tanY: Math.tan(Math.PI / 360),
+          back: [Math.sin(theta), 0, Math.cos(theta)] as V3,
+          right: [Math.cos(theta), 0, -Math.sin(theta)] as V3 };
+        const off = prepareFrame(s, offG, eye, 1e-9, { atmospheres: tables });
+        expect(off.glare.find((v) => v.dir[2] === -1)?.E).toEqual(photometry.points[0].E);
+      }
+      expect.soft(tables).not.toHaveBeenCalled();
+      expect.soft(integral).not.toHaveBeenCalled();
+    } finally { integral.mockRestore(); }
+  });
+
+  it('an extrapolated point reports the disk\'s held edge factors once, rather than a spatial-law continuation', () => {
+    for (const phase of [6, 60, 150]) {
+      const point = prepareFrame(scene(phase, 2e7), g, eye, 1e-9, { atmospheres: () => binding() });
+      const disk = prepareFrame(scene(phase, 40000), g, eye, 1e-9, { atmospheres: () => binding() });
+      expect(point.resolved).toHaveLength(0);
+      expect(point.points).toHaveLength(1);
+      const lines = point.warnings.filter((w) => w.startsWith('Fixture:'));
+      expect(lines).toEqual(scaleLine(disk));
+      expect(lines).toHaveLength(1);
+      expect(lines[0]).toContain('beyond the measured range (0–5.7°) and the factors of its edge are held → estimated');
+      expect(lines[0]).not.toContain('with the spatial law');
+    }
+  });
+
   it('a body without a model-drawn disk keeps the point photometry bit for bit, with no table request', () => {
     const atmosphere = { ...scene(0, 40000).bodies[0].atmosphere!, surface: undefined };
     for (const a of [0, 3, 5.7, 30, 90, 150, 166]) {
