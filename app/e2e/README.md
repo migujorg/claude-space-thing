@@ -2,7 +2,7 @@
 
 `npm run e2e` renders the canonical views in [`scenes.json`](scenes.json) with the real app and the real data, then compares them with the committed baseline in [`baseline/`](baseline/).
 
-The reference renderer is the workstation's GPU: the project is built for that machine (NORTH_STAR §2), and the committed baseline was accepted there. On the workstation run `npm run e2e -- --gpu hardware`: one to two minutes for the 30 scenes. See [On the GPU](#on-the-gpu---gpu-hardware).
+The reference renderer is the workstation's GPU: the project is built for that machine (NORTH_STAR §2), and the committed baseline was accepted there. On the workstation run `npm run e2e -- --gpu hardware`: one to two minutes for the 31 scenes. See [On the GPU](#on-the-gpu---gpu-hardware).
 
 Without `--gpu` the suite renders with SwiftShader WebGPU, the fallback for a machine without a GPU. It uses one Vite server and one headless Chromium and renders at most two scenes at a time. SwiftShader is slow: on a 4-vCPU cloud workspace a scene takes about 1–3 minutes and the whole suite about 15 minutes; on the 32-thread workstation a scene takes 7–86 s and the suite 6 minutes. A SwiftShader run is compared with the same GPU baseline and says so in a note; how far the two adapters are apart is measured below, and it is far inside the tolerances.
 
@@ -78,8 +78,8 @@ and saturn-rings agree on every stat, stars included. Four things make this so:
   a script read depended on how the page had loaded.
 
 The settled frame of a scene with `adapt=instant` is therefore one frame. Checked on the GPU by reading back which
-stars the cull kept on 300 consecutive frames of every scene: none changes in the 26 scenes with instant
-adaptation, and after a pass is skipped for one to three frames (no star light in the veil, no stars drawn, an
+stars the cull kept on 300 consecutive frames of each of the 30 scenes the suite had on 7 October 2026: none
+changes in the 26 scenes with instant adaptation, and after a pass is skipped for one to three frames (no star light in the veil, no stars drawn, an
 older veil) the same set comes back. The four `adapt=realtime` scenes stay as they are or gain stars as their
 pigments regenerate, as they should; no star in them goes back and forth.
 
@@ -135,7 +135,7 @@ How the numbers differ between the two adapters, same tree and data:
 - **Stars drawn is one number.** A `hardware` run records the values `starsDrawn` takes over 16 animation frames in `starsDrawnFrames`. In a scene with `adapt=instant` they must all be the same: if not, the scene fails ("starsDrawn changes from frame to frame"), and it is not accepted as a baseline. In a scene with `adapt=realtime` a changing count is a note. Until the cull fix of 7 October 2026 ([Determinism](#determinism)) the count alternated between two values on consecutive frames in 9 of the 26 scenes (pluto-charon 889 ↔ 1120, 908 ↔ 1101, 965 ↔ 1043 or 994 ↔ 1014 depending on the run; jupiter-galileans 179 ↔ 186; the others by 2 % or less), and in seven GPU runs pluto-charon failed the 5 % star tolerance three times. SwiftShader had the same alternation (pluto-charon 996 ↔ 1014), but its frames take about a second, so a script read the same frame on almost every run.
 - **The sky cube** is 512² on a hardware adapter and 256² on a software one, so the sky background is not the same computation on the two. `SkyController` decides it from the adapter's name (`src/app/sky.ts`: `swiftshader`, `llvmpipe` or `software` in the vendor, architecture or description gives 256²). Measured on 7 October 2026 by forcing 256² on the GPU, same tree and data: the adaptation luminance falls by 1.1 % in starfield-dark-2min, 1.0 % in starfield-dark-12min, 0.2 % in starfield, starfield-dark-30min and hyperion-fallback, and by under 0.03 % elsewhere; the limiting magnitude moves by at most 0.002 mag, the star count by at most 3, a cell of the coarse image by at most 0.003. That is the whole difference between a SwiftShader run and a GPU run in the dark-sky scenes (1.1 %, 0.9 %, 0.2 %). The tolerances (0.15 dex, 0.3 mag, 5 %, 0.35) are ten to a hundred times wider, so no scene can tell the two cubes apart: the suite does not test the cube's size.
 
-The committed baseline was accepted on the workstation's GPU (`nvidia blackwell`, `--gpu hardware`) on 7 October 2026, at 0ea4588, with the data build of 2026-10-07T10:33:30Z: all 30 scenes in one run. A baseline records the mode and the adapter it was accepted with, and comparing a run with a baseline of the other kind prints a note. A scene accepted on its own later records its own acceptance (below), and the note then names the scenes it is about.
+The committed baseline was accepted on the workstation's GPU (`nvidia blackwell`, `--gpu hardware`) on 7 October 2026, at 3c01b16, with the data build of 2026-10-07T10:55:24Z: all 31 scenes in one run. A baseline records the mode and the adapter it was accepted with, and comparing a run with a baseline of the other kind prints a note. A scene accepted on its own later records its own acceptance (below), and the note then names the scenes it is about.
 
 ## Accepting a new baseline
 
