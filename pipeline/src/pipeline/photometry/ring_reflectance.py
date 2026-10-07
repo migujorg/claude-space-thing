@@ -392,6 +392,7 @@ FORMULA = ("lit face (Sun and observer on the same side): I/F_c = litModulation(
 
 
 def model_json(ctx: BuildContext | None) -> tuple[dict, RingModel]:
+    from .rings import UVIS
     m = build_model()
     lit_src = voyager_profile(VG_LIT, ctx).sources + voyager_profile(VG_UNLIT, ctx).sources
     js = {
@@ -412,6 +413,7 @@ def model_json(ctx: BuildContext | None) -> tuple[dict, RingModel]:
                     for k, (name, lo, hi) in REGIONS.items()],
     }
     sources = [*lit_src, SALO_FRENCH.register(ctx) if ctx else SALO_FRENCH.id,
+               *[d.register(ctx) if ctx else d.id for d in UVIS],
                *filters.register(ctx, ("voyager.nac.Clear", *(f"wfpc2.{f}" for f in HST_FILTERS))),
                solar.HSRS.register(ctx) if ctx else solar.HSRS.id,
                *(cie.register_sources(ctx) if ctx else [cie.SOURCE_CMF, cie.SOURCE_SCOTOPIC])]
@@ -438,7 +440,8 @@ def model_json(ctx: BuildContext | None) -> tuple[dict, RingModel]:
         "face's colour and phase shape are ASSUMED to follow the lit face's (in empty gaps, τ⊥ < 0.01, and at edges "
         "whose radii differ between the Voyager and UVIS cuts, gain 1 and unlitTau = normalTau). (5) Outside the "
         "HST elevation range (Beff < 4.5° or > 26.1°) W is held at the table's edge value (assumption; the "
-        "single-scattering factor still carries the elevation dependence). Domain: 0.25° ≤ α ≤ 47° (outside, unknown); "
+        "single-scattering factor still carries the elevation dependence). Domain: 0.25° ≤ α ≤ 47° (outside, unknown "
+        "in this product; published high-phase measurements are not yet included, see docs/sources/rings-high-phase.md); "
         "radii 74 000-140 600 km (litModulation null beyond the Voyager 2 coverage, 138 700 km: the F ring's "
         "brightness is not modelled).")
     uncertainty = ("reproduces its calibration data by construction. Independent check (docs/reports/planet-colors.md, "
@@ -449,5 +452,6 @@ def model_json(ctx: BuildContext | None) -> tuple[dict, RingModel]:
                    "behaviour outside the three HST regions, the unlit face at other geometries (multiple scattering "
                    "is represented only through the fitted unlitTau/unlitGain), self-gravity-wake azimuthal "
                    "asymmetries of the A ring (French et al. 2007a) and spokes are not modelled; below "
-                   "0.25° the opposition surge continues to rise; beyond 47° (forward scattering by dust) unknown")
+                   "0.25° the opposition surge continues to rise; beyond 47° brightness is unknown in this product "
+                   "because it has no admitted high-phase calibration")
     return {"reflectance": sourced(js, "estimated", sources, method=method, uncertainty=uncertainty)}, m

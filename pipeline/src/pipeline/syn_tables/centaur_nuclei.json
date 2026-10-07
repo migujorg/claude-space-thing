@@ -1,0 +1,1418 @@
+{
+  "version": 1,
+  "modelBand": "V",
+  "sources": [
+    {
+      "id": "jewitt-2009-active-centaurs",
+      "title": "Jewitt (2009), The Active Centaurs",
+      "citation": "AJ 137, 4296\u20134312, DOI:10.1088/0004-6256/137/5/4296",
+      "url": "https://faculty.epss.ucla.edu/~jewitt/papers/2009/J09.pdf",
+      "retrieved": "2026-10-07",
+      "sha256": "6bea288cdda88f773d249aca17dad680f49aee6036b35ea20fb90d0f913a06e2",
+      "notes": "Original PDF retained in synthetic-rules-audit; reread sections recorded in docs/sources/centaur-nuclei.md. No new raw retrieval required."
+    },
+    {
+      "id": "harrington-pinto-2023-39p",
+      "title": "Harrington Pinto et al. (2023), First detection of CO2 emission in a Centaur",
+      "citation": "arXiv:2309.11486v1",
+      "url": "https://arxiv.org/pdf/2309.11486",
+      "retrieved": "2026-10-07",
+      "sha256": "1d43b14d014c27073dba0b2a147bec6e4840bdb4f456efa59fc47fcb2ee183c1",
+      "notes": "Original PDF retained in synthetic-rules-audit; reread sections recorded in docs/sources/centaur-nuclei.md. No new raw retrieval required."
+    },
+    {
+      "id": "wong-2019-dormant-centaurs",
+      "title": "Wong, Mishra & Brown (2019), Photometry of Active Centaurs: Colors of Dormant Active Centaur Nuclei",
+      "citation": "AJ 157, 225, DOI:10.3847/1538-3881/ab1b22",
+      "url": "https://arxiv.org/pdf/1904.09255",
+      "retrieved": "2026-10-07",
+      "sha256": "a53fb8f3042b3bce474da0effdc7c49576280f8ec1c025aee97bdcc66234dae3",
+      "notes": "Original PDF retained in synthetic-rules-audit; reread sections recorded in docs/sources/centaur-nuclei.md. No new raw retrieval required."
+    },
+    {
+      "id": "chandler-2020-og392",
+      "title": "Chandler et al. (2020), Cometary Activity Discovered on Centaur (523676) 2014 OG392",
+      "citation": "ApJL 897, L2, DOI:10.3847/2041-8213/ab9dc6",
+      "url": "https://arxiv.org/pdf/2003.04904",
+      "retrieved": "2026-10-07",
+      "sha256": "962e0085523851fb37eef1ee4f992639f4b267c58f1a23415e712a798fa376be",
+      "notes": "Original PDF retained in synthetic-rules-audit; reread sections recorded in docs/sources/centaur-nuclei.md. No new raw retrieval required."
+    },
+    {
+      "id": "delafuente-2021-mk4",
+      "title": "de la Fuente Marcos et al. (2021), Active Centaur 2020 MK4",
+      "citation": "arXiv:2104.01668v2",
+      "url": "https://arxiv.org/pdf/2104.01668",
+      "retrieved": "2026-10-07",
+      "sha256": "90c2015c888906385c18afcae629680fdae35d9fdff3835280cd50bd55b097c7",
+      "notes": "Original PDF retained in synthetic-rules-audit; reread sections recorded in docs/sources/centaur-nuclei.md. No new raw retrieval required."
+    },
+    {
+      "id": "schambeau-2026-450p",
+      "title": "Schambeau et al. (2026), JWST and Gemini Observations of Active Centaur 450P/LONEOS",
+      "citation": "arXiv:2605.24260v1",
+      "url": "https://arxiv.org/pdf/2605.24260",
+      "retrieved": "2026-10-07",
+      "sha256": "e9624b40f031c3ce541400d4df766a714c416e72e3098e9d7142dd08bb103644",
+      "notes": "Original PDF retained in synthetic-rules-audit; reread sections recorded in docs/sources/centaur-nuclei.md. No new raw retrieval required."
+    }
+  ],
+  "objects": [
+    {
+      "spkid": 1000079,
+      "designation": "29P",
+      "kind": "lower-bound",
+      "band": "R",
+      "H": {
+        "value": 8.52,
+        "label": "estimated",
+        "sources": [
+          "jewitt-2009-active-centaurs"
+        ],
+        "unit": "mag",
+        "method": "Jewitt Table 3 central aperture includes coma; H_R > 8.52.",
+        "uncertainty": "Lower bound; phase correction assumed in paper."
+      },
+      "H_V": {
+        "value": null,
+        "label": "unknown",
+        "sources": [],
+        "method": "No qualified V-band nuclear H or object-specific band conversion."
+      },
+      "evidence": [
+        "jewitt-2009-active-centaurs"
+      ]
+    },
+    {
+      "spkid": 1000177,
+      "designation": "39P",
+      "kind": "bare-nucleus",
+      "band": "r",
+      "H": {
+        "value": 15.21,
+        "label": "estimated",
+        "sources": [
+          "harrington-pinto-2023-39p"
+        ],
+        "unit": "mag",
+        "method": "Section 3.1: H_r = 15.21 (July) and 15.48 (September), AB r; assumed beta = 0.046 mag/deg.",
+        "uncertainty": "Rotation/phase assumption; no bare-nucleus V\u2212r published in this source."
+      },
+      "H_V": {
+        "value": null,
+        "label": "unknown",
+        "sources": [],
+        "method": "No qualified V-band nuclear H or object-specific band conversion."
+      },
+      "evidence": [
+        "harrington-pinto-2023-39p"
+      ],
+      "nuclearLaw": {
+        "M2": {
+          "value": 13.6,
+          "label": "measured",
+          "sources": [
+            "jpl-sbdb-orbits"
+          ]
+        },
+        "K2": {
+          "value": 5.0,
+          "label": "measured",
+          "sources": [
+            "jpl-sbdb-orbits"
+          ]
+        },
+        "PC": {
+          "value": 0.03,
+          "label": "measured",
+          "sources": [
+            "jpl-sbdb-orbits"
+          ]
+        },
+        "qualification": "Catalogue M2 law; aperture, coma separation, passband and phase/rotation suitability for bare-nucleus H not established. Not used as point H."
+      }
+    },
+    {
+      "spkid": 1000294,
+      "designation": "165P",
+      "kind": "unknown",
+      "band": null,
+      "H": {
+        "value": null,
+        "label": "unknown",
+        "sources": [],
+        "method": "No qualified absolute nuclear photometry imported."
+      },
+      "H_V": {
+        "value": null,
+        "label": "unknown",
+        "sources": [],
+        "method": "No qualified V-band nuclear H or object-specific band conversion."
+      },
+      "evidence": [],
+      "nuclearLaw": {
+        "M2": {
+          "value": 11.5,
+          "label": "measured",
+          "sources": [
+            "jpl-sbdb-orbits"
+          ]
+        },
+        "K2": {
+          "value": 5.0,
+          "label": "measured",
+          "sources": [
+            "jpl-sbdb-orbits"
+          ]
+        },
+        "PC": {
+          "value": 0.03,
+          "label": "measured",
+          "sources": [
+            "jpl-sbdb-orbits"
+          ]
+        },
+        "qualification": "Catalogue M2 law; aperture, coma separation, passband and phase/rotation suitability for bare-nucleus H not established. Not used as point H."
+      }
+    },
+    {
+      "spkid": 1000344,
+      "designation": "C/2001 M10",
+      "kind": "lower-bound",
+      "band": "R",
+      "H": {
+        "value": 10.92,
+        "label": "estimated",
+        "sources": [
+          "jewitt-2009-active-centaurs"
+        ],
+        "unit": "mag",
+        "method": "Jewitt Table 3: H_R > 10.92, coma-contaminated aperture.",
+        "uncertainty": "Lower bound; not a point H."
+      },
+      "H_V": {
+        "value": null,
+        "label": "unknown",
+        "sources": [],
+        "method": "No qualified V-band nuclear H or object-specific band conversion."
+      },
+      "evidence": [
+        "jewitt-2009-active-centaurs"
+      ]
+    },
+    {
+      "spkid": 1000356,
+      "designation": "166P",
+      "kind": "lower-bound",
+      "band": "R",
+      "H": {
+        "value": 10.47,
+        "label": "estimated",
+        "sources": [
+          "jewitt-2009-active-centaurs"
+        ],
+        "unit": "mag",
+        "method": "Jewitt Table 3: H_R > 10.47 (2001); > 10.04 (2002).",
+        "uncertainty": "Lower bounds; not point H; coma colours not nucleus colours."
+      },
+      "H_V": {
+        "value": null,
+        "label": "unknown",
+        "sources": [],
+        "method": "No qualified V-band nuclear H or object-specific band conversion."
+      },
+      "evidence": [
+        "jewitt-2009-active-centaurs"
+      ],
+      "nuclearLaw": {
+        "M2": {
+          "value": 10.6,
+          "label": "measured",
+          "sources": [
+            "jpl-sbdb-orbits"
+          ]
+        },
+        "K2": {
+          "value": 5.0,
+          "label": "measured",
+          "sources": [
+            "jpl-sbdb-orbits"
+          ]
+        },
+        "PC": {
+          "value": 0.03,
+          "label": "measured",
+          "sources": [
+            "jpl-sbdb-orbits"
+          ]
+        },
+        "qualification": "Catalogue M2 law; aperture, coma separation, passband and phase/rotation suitability for bare-nucleus H not established. Not used as point H."
+      }
+    },
+    {
+      "spkid": 1000473,
+      "designation": "450P",
+      "kind": "bare-nucleus",
+      "band": "r",
+      "H": {
+        "value": 15.8369,
+        "label": "estimated",
+        "sources": [
+          "schambeau-2026-450p"
+        ],
+        "unit": "mag",
+        "method": "Table 1 2022-08-21: H_r = 25.08 \u2212 5 log10(7.897 \u00d7 7.642) \u2212 0.047 \u00d7 7.228; paper beta assumption.",
+        "uncertainty": "Photometry \u00b10.07 mag; beta unknown; second date gives a different rotational snapshot; no published V\u2212r conversion."
+      },
+      "H_V": {
+        "value": null,
+        "label": "unknown",
+        "sources": [],
+        "method": "No qualified V-band nuclear H or object-specific band conversion."
+      },
+      "evidence": [
+        "schambeau-2026-450p"
+      ],
+      "nuclearLaw": {
+        "M2": {
+          "value": 11.3,
+          "label": "measured",
+          "sources": [
+            "jpl-sbdb-orbits"
+          ]
+        },
+        "K2": {
+          "value": 5.0,
+          "label": "measured",
+          "sources": [
+            "jpl-sbdb-orbits"
+          ]
+        },
+        "PC": {
+          "value": 0.03,
+          "label": "measured",
+          "sources": [
+            "jpl-sbdb-orbits"
+          ]
+        },
+        "qualification": "Catalogue M2 law; aperture, coma separation, passband and phase/rotation suitability for bare-nucleus H not established. Not used as point H."
+      }
+    },
+    {
+      "spkid": 1001647,
+      "designation": "167P",
+      "kind": "bare-nucleus",
+      "band": null,
+      "H": {
+        "value": null,
+        "label": "unknown",
+        "sources": [],
+        "method": "Wong Table 1/\u00a73.1: inactive R=22.13\u00b10.03 at Rh=17.15 au and R=22.17\u00b10.03 at Rh=17.35 au; V\u2212R=0.43\u00b10.12 / 0.51\u00b10.06. Absolute H unavailable here: Table 1 omits geocentric distance and phase angle; no current-epoch geometry substituted."
+      },
+      "H_V": {
+        "value": null,
+        "label": "unknown",
+        "sources": [],
+        "method": "No qualified V-band nuclear H or object-specific band conversion."
+      },
+      "evidence": [
+        "wong-2019-dormant-centaurs"
+      ],
+      "nuclearLaw": {
+        "M2": {
+          "value": 9.7,
+          "label": "measured",
+          "sources": [
+            "jpl-sbdb-orbits"
+          ]
+        },
+        "K2": {
+          "value": 5.0,
+          "label": "measured",
+          "sources": [
+            "jpl-sbdb-orbits"
+          ]
+        },
+        "PC": {
+          "value": 0.03,
+          "label": "measured",
+          "sources": [
+            "jpl-sbdb-orbits"
+          ]
+        },
+        "qualification": "Catalogue M2 law; aperture, coma separation, passband and phase/rotation suitability for bare-nucleus H not established. Not used as point H."
+      }
+    },
+    {
+      "spkid": 1001666,
+      "designation": "P/2005 S2",
+      "kind": "bare-nucleus",
+      "band": "R",
+      "H": {
+        "value": 14.54,
+        "label": "estimated",
+        "sources": [
+          "jewitt-2009-active-centaurs"
+        ],
+        "unit": "mag",
+        "method": "Jewitt Table 3 inactive point source, paper phase correction.",
+        "uncertainty": "No imported bare-nucleus V\u2212R; no conversion to model band."
+      },
+      "H_V": {
+        "value": null,
+        "label": "unknown",
+        "sources": [],
+        "method": "No qualified V-band nuclear H or object-specific band conversion."
+      },
+      "evidence": [
+        "jewitt-2009-active-centaurs"
+      ],
+      "nuclearLaw": {
+        "M2": {
+          "value": 12.1,
+          "label": "measured",
+          "sources": [
+            "jpl-sbdb-orbits"
+          ]
+        },
+        "K2": {
+          "value": 5.0,
+          "label": "measured",
+          "sources": [
+            "jpl-sbdb-orbits"
+          ]
+        },
+        "PC": {
+          "value": 0.03,
+          "label": "measured",
+          "sources": [
+            "jpl-sbdb-orbits"
+          ]
+        },
+        "qualification": "Catalogue M2 law; aperture, coma separation, passband and phase/rotation suitability for bare-nucleus H not established. Not used as point H."
+      }
+    },
+    {
+      "spkid": 1001670,
+      "designation": "P/2005 T3",
+      "kind": "unknown",
+      "band": null,
+      "H": {
+        "value": null,
+        "label": "unknown",
+        "sources": [],
+        "method": "No qualified absolute nuclear photometry imported."
+      },
+      "H_V": {
+        "value": null,
+        "label": "unknown",
+        "sources": [],
+        "method": "No qualified V-band nuclear H or object-specific band conversion."
+      },
+      "evidence": [],
+      "nuclearLaw": {
+        "M2": {
+          "value": 13.3,
+          "label": "measured",
+          "sources": [
+            "jpl-sbdb-orbits"
+          ]
+        },
+        "K2": {
+          "value": 5.0,
+          "label": "measured",
+          "sources": [
+            "jpl-sbdb-orbits"
+          ]
+        },
+        "PC": {
+          "value": 0.03,
+          "label": "measured",
+          "sources": [
+            "jpl-sbdb-orbits"
+          ]
+        },
+        "qualification": "Catalogue M2 law; aperture, coma separation, passband and phase/rotation suitability for bare-nucleus H not established. Not used as point H."
+      }
+    },
+    {
+      "spkid": 1002478,
+      "designation": "C/2007 S2",
+      "kind": "unknown",
+      "band": null,
+      "H": {
+        "value": null,
+        "label": "unknown",
+        "sources": [],
+        "method": "No qualified absolute nuclear photometry imported."
+      },
+      "H_V": {
+        "value": null,
+        "label": "unknown",
+        "sources": [],
+        "method": "No qualified V-band nuclear H or object-specific band conversion."
+      },
+      "evidence": []
+    },
+    {
+      "spkid": 1003018,
+      "designation": "423P",
+      "kind": "unknown",
+      "band": null,
+      "H": {
+        "value": null,
+        "label": "unknown",
+        "sources": [],
+        "method": "Do not use Wong (2019) P/2008 CL94 photometry: audit identifies subsequent erratum for wrong asteroid. No qualified recovery geometry/band conversion imported."
+      },
+      "H_V": {
+        "value": null,
+        "label": "unknown",
+        "sources": [],
+        "method": "No qualified V-band nuclear H or object-specific band conversion."
+      },
+      "evidence": []
+    },
+    {
+      "spkid": 1003061,
+      "designation": "P/2010 C1",
+      "kind": "unknown",
+      "band": null,
+      "H": {
+        "value": null,
+        "label": "unknown",
+        "sources": [],
+        "method": "No qualified absolute nuclear photometry imported."
+      },
+      "H_V": {
+        "value": null,
+        "label": "unknown",
+        "sources": [],
+        "method": "No qualified V-band nuclear H or object-specific band conversion."
+      },
+      "evidence": [],
+      "nuclearLaw": {
+        "M2": {
+          "value": 13.5,
+          "label": "measured",
+          "sources": [
+            "jpl-sbdb-orbits"
+          ]
+        },
+        "K2": {
+          "value": 5.0,
+          "label": "measured",
+          "sources": [
+            "jpl-sbdb-orbits"
+          ]
+        },
+        "PC": {
+          "value": 0.03,
+          "label": "measured",
+          "sources": [
+            "jpl-sbdb-orbits"
+          ]
+        },
+        "qualification": "Catalogue M2 law; aperture, coma separation, passband and phase/rotation suitability for bare-nucleus H not established. Not used as point H."
+      }
+    },
+    {
+      "spkid": 1003088,
+      "designation": "P/2010 H5",
+      "kind": "unknown",
+      "band": null,
+      "H": {
+        "value": null,
+        "label": "unknown",
+        "sources": [],
+        "method": "No qualified absolute nuclear photometry imported."
+      },
+      "H_V": {
+        "value": null,
+        "label": "unknown",
+        "sources": [],
+        "method": "No qualified V-band nuclear H or object-specific band conversion."
+      },
+      "evidence": [],
+      "nuclearLaw": {
+        "M2": {
+          "value": 13.2,
+          "label": "measured",
+          "sources": [
+            "jpl-sbdb-orbits"
+          ]
+        },
+        "K2": {
+          "value": 5.0,
+          "label": "measured",
+          "sources": [
+            "jpl-sbdb-orbits"
+          ]
+        },
+        "PC": {
+          "value": 0.03,
+          "label": "measured",
+          "sources": [
+            "jpl-sbdb-orbits"
+          ]
+        },
+        "qualification": "Catalogue M2 law; aperture, coma separation, passband and phase/rotation suitability for bare-nucleus H not established. Not used as point H."
+      }
+    },
+    {
+      "spkid": 1003121,
+      "designation": "P/2011 C2",
+      "kind": "unknown",
+      "band": null,
+      "H": {
+        "value": null,
+        "label": "unknown",
+        "sources": [],
+        "method": "No qualified absolute nuclear photometry imported."
+      },
+      "H_V": {
+        "value": null,
+        "label": "unknown",
+        "sources": [],
+        "method": "No qualified V-band nuclear H or object-specific band conversion."
+      },
+      "evidence": [],
+      "nuclearLaw": {
+        "M2": {
+          "value": 12.9,
+          "label": "measured",
+          "sources": [
+            "jpl-sbdb-orbits"
+          ]
+        },
+        "K2": {
+          "value": 5.0,
+          "label": "measured",
+          "sources": [
+            "jpl-sbdb-orbits"
+          ]
+        },
+        "PC": {
+          "value": 0.03,
+          "label": "measured",
+          "sources": [
+            "jpl-sbdb-orbits"
+          ]
+        },
+        "qualification": "Catalogue M2 law; aperture, coma separation, passband and phase/rotation suitability for bare-nucleus H not established. Not used as point H."
+      }
+    },
+    {
+      "spkid": 1003141,
+      "designation": "C/2011 P2",
+      "kind": "unknown",
+      "band": null,
+      "H": {
+        "value": null,
+        "label": "unknown",
+        "sources": [],
+        "method": "No qualified absolute nuclear photometry imported."
+      },
+      "H_V": {
+        "value": null,
+        "label": "unknown",
+        "sources": [],
+        "method": "No qualified V-band nuclear H or object-specific band conversion."
+      },
+      "evidence": [],
+      "nuclearLaw": {
+        "M2": {
+          "value": 12.4,
+          "label": "measured",
+          "sources": [
+            "jpl-sbdb-orbits"
+          ]
+        },
+        "K2": {
+          "value": 5.0,
+          "label": "measured",
+          "sources": [
+            "jpl-sbdb-orbits"
+          ]
+        },
+        "PC": {
+          "value": 0.03,
+          "label": "measured",
+          "sources": [
+            "jpl-sbdb-orbits"
+          ]
+        },
+        "qualification": "Catalogue M2 law; aperture, coma separation, passband and phase/rotation suitability for bare-nucleus H not established. Not used as point H."
+      }
+    },
+    {
+      "spkid": 1003150,
+      "designation": "P/2011 S1",
+      "kind": "unknown",
+      "band": null,
+      "H": {
+        "value": null,
+        "label": "unknown",
+        "sources": [],
+        "method": "No qualified absolute nuclear photometry imported."
+      },
+      "H_V": {
+        "value": null,
+        "label": "unknown",
+        "sources": [],
+        "method": "No qualified V-band nuclear H or object-specific band conversion."
+      },
+      "evidence": [],
+      "nuclearLaw": {
+        "M2": {
+          "value": 11.5,
+          "label": "measured",
+          "sources": [
+            "jpl-sbdb-orbits"
+          ]
+        },
+        "K2": {
+          "value": 5.0,
+          "label": "measured",
+          "sources": [
+            "jpl-sbdb-orbits"
+          ]
+        },
+        "PC": {
+          "value": 0.03,
+          "label": "measured",
+          "sources": [
+            "jpl-sbdb-orbits"
+          ]
+        },
+        "qualification": "Catalogue M2 law; aperture, coma separation, passband and phase/rotation suitability for bare-nucleus H not established. Not used as point H."
+      }
+    },
+    {
+      "spkid": 1003153,
+      "designation": "467P",
+      "kind": "unknown",
+      "band": null,
+      "H": {
+        "value": null,
+        "label": "unknown",
+        "sources": [],
+        "method": "No qualified absolute nuclear photometry imported."
+      },
+      "H_V": {
+        "value": null,
+        "label": "unknown",
+        "sources": [],
+        "method": "No qualified V-band nuclear H or object-specific band conversion."
+      },
+      "evidence": []
+    },
+    {
+      "spkid": 1003202,
+      "designation": "C/2012 Q1",
+      "kind": "unknown",
+      "band": null,
+      "H": {
+        "value": null,
+        "label": "unknown",
+        "sources": [],
+        "method": "Wong \u00a73.4 and Table 2 detect coma; M2 cannot be promoted to bare H."
+      },
+      "H_V": {
+        "value": null,
+        "label": "unknown",
+        "sources": [],
+        "method": "No qualified V-band nuclear H or object-specific band conversion."
+      },
+      "evidence": [
+        "wong-2019-dormant-centaurs"
+      ],
+      "nuclearLaw": {
+        "M2": {
+          "value": 9.3,
+          "label": "measured",
+          "sources": [
+            "jpl-sbdb-orbits"
+          ]
+        },
+        "K2": {
+          "value": 5.0,
+          "label": "measured",
+          "sources": [
+            "jpl-sbdb-orbits"
+          ]
+        },
+        "PC": {
+          "value": 0.03,
+          "label": "measured",
+          "sources": [
+            "jpl-sbdb-orbits"
+          ]
+        },
+        "qualification": "Catalogue M2 law; aperture, coma separation, passband and phase/rotation suitability for bare-nucleus H not established. Not used as point H."
+      }
+    },
+    {
+      "spkid": 1003235,
+      "designation": "C/2013 C2",
+      "kind": "unknown",
+      "band": null,
+      "H": {
+        "value": null,
+        "label": "unknown",
+        "sources": [],
+        "method": "No qualified absolute nuclear photometry imported."
+      },
+      "H_V": {
+        "value": null,
+        "label": "unknown",
+        "sources": [],
+        "method": "No qualified V-band nuclear H or object-specific band conversion."
+      },
+      "evidence": []
+    },
+    {
+      "spkid": 1003272,
+      "designation": "C/2013 P4",
+      "kind": "unknown",
+      "band": null,
+      "H": {
+        "value": null,
+        "label": "unknown",
+        "sources": [],
+        "method": "No qualified absolute nuclear photometry imported."
+      },
+      "H_V": {
+        "value": null,
+        "label": "unknown",
+        "sources": [],
+        "method": "No qualified V-band nuclear H or object-specific band conversion."
+      },
+      "evidence": [],
+      "nuclearLaw": {
+        "M2": {
+          "value": 11.4,
+          "label": "measured",
+          "sources": [
+            "jpl-sbdb-orbits"
+          ]
+        },
+        "K2": {
+          "value": 5.0,
+          "label": "measured",
+          "sources": [
+            "jpl-sbdb-orbits"
+          ]
+        },
+        "PC": {
+          "value": 0.03,
+          "label": "measured",
+          "sources": [
+            "jpl-sbdb-orbits"
+          ]
+        },
+        "qualification": "Catalogue M2 law; aperture, coma separation, passband and phase/rotation suitability for bare-nucleus H not established. Not used as point H."
+      }
+    },
+    {
+      "spkid": 1003315,
+      "designation": "C/2014 F3",
+      "kind": "unknown",
+      "band": null,
+      "H": {
+        "value": null,
+        "label": "unknown",
+        "sources": [],
+        "method": "No qualified absolute nuclear photometry imported."
+      },
+      "H_V": {
+        "value": null,
+        "label": "unknown",
+        "sources": [],
+        "method": "No qualified V-band nuclear H or object-specific band conversion."
+      },
+      "evidence": []
+    },
+    {
+      "spkid": 1003370,
+      "designation": "P/2015 B1",
+      "kind": "unknown",
+      "band": null,
+      "H": {
+        "value": null,
+        "label": "unknown",
+        "sources": [],
+        "method": "No qualified absolute nuclear photometry imported."
+      },
+      "H_V": {
+        "value": null,
+        "label": "unknown",
+        "sources": [],
+        "method": "No qualified V-band nuclear H or object-specific band conversion."
+      },
+      "evidence": [],
+      "nuclearLaw": {
+        "M2": {
+          "value": 12.4,
+          "label": "measured",
+          "sources": [
+            "jpl-sbdb-orbits"
+          ]
+        },
+        "K2": {
+          "value": 5.0,
+          "label": "measured",
+          "sources": [
+            "jpl-sbdb-orbits"
+          ]
+        },
+        "PC": {
+          "value": 0.03,
+          "label": "measured",
+          "sources": [
+            "jpl-sbdb-orbits"
+          ]
+        },
+        "qualification": "Catalogue M2 law; aperture, coma separation, passband and phase/rotation suitability for bare-nucleus H not established. Not used as point H."
+      }
+    },
+    {
+      "spkid": 1003373,
+      "designation": "C/2015 D2",
+      "kind": "unknown",
+      "band": null,
+      "H": {
+        "value": null,
+        "label": "unknown",
+        "sources": [],
+        "method": "No qualified absolute nuclear photometry imported."
+      },
+      "H_V": {
+        "value": null,
+        "label": "unknown",
+        "sources": [],
+        "method": "No qualified V-band nuclear H or object-specific band conversion."
+      },
+      "evidence": [],
+      "nuclearLaw": {
+        "M2": {
+          "value": 12.5,
+          "label": "measured",
+          "sources": [
+            "jpl-sbdb-orbits"
+          ]
+        },
+        "K2": {
+          "value": 5.0,
+          "label": "measured",
+          "sources": [
+            "jpl-sbdb-orbits"
+          ]
+        },
+        "PC": {
+          "value": 0.03,
+          "label": "measured",
+          "sources": [
+            "jpl-sbdb-orbits"
+          ]
+        },
+        "qualification": "Catalogue M2 law; aperture, coma separation, passband and phase/rotation suitability for bare-nucleus H not established. Not used as point H."
+      }
+    },
+    {
+      "spkid": 1003400,
+      "designation": "P/2015 M2",
+      "kind": "unknown",
+      "band": null,
+      "H": {
+        "value": null,
+        "label": "unknown",
+        "sources": [],
+        "method": "No qualified absolute nuclear photometry imported."
+      },
+      "H_V": {
+        "value": null,
+        "label": "unknown",
+        "sources": [],
+        "method": "No qualified V-band nuclear H or object-specific band conversion."
+      },
+      "evidence": [],
+      "nuclearLaw": {
+        "M2": {
+          "value": 11.9,
+          "label": "measured",
+          "sources": [
+            "jpl-sbdb-orbits"
+          ]
+        },
+        "K2": {
+          "value": 5.0,
+          "label": "measured",
+          "sources": [
+            "jpl-sbdb-orbits"
+          ]
+        },
+        "PC": {
+          "value": 0.03,
+          "label": "measured",
+          "sources": [
+            "jpl-sbdb-orbits"
+          ]
+        },
+        "qualification": "Catalogue M2 law; aperture, coma separation, passband and phase/rotation suitability for bare-nucleus H not established. Not used as point H."
+      }
+    },
+    {
+      "spkid": 1003417,
+      "designation": "C/2015 T5",
+      "kind": "unknown",
+      "band": null,
+      "H": {
+        "value": null,
+        "label": "unknown",
+        "sources": [],
+        "method": "No qualified absolute nuclear photometry imported."
+      },
+      "H_V": {
+        "value": null,
+        "label": "unknown",
+        "sources": [],
+        "method": "No qualified V-band nuclear H or object-specific band conversion."
+      },
+      "evidence": []
+    },
+    {
+      "spkid": 1003418,
+      "designation": "C/2015 V4",
+      "kind": "unknown",
+      "band": null,
+      "H": {
+        "value": null,
+        "label": "unknown",
+        "sources": [],
+        "method": "No qualified absolute nuclear photometry imported."
+      },
+      "H_V": {
+        "value": null,
+        "label": "unknown",
+        "sources": [],
+        "method": "No qualified V-band nuclear H or object-specific band conversion."
+      },
+      "evidence": []
+    },
+    {
+      "spkid": 1003479,
+      "designation": "C/2016 Q4",
+      "kind": "unknown",
+      "band": null,
+      "H": {
+        "value": null,
+        "label": "unknown",
+        "sources": [],
+        "method": "No qualified absolute nuclear photometry imported."
+      },
+      "H_V": {
+        "value": null,
+        "label": "unknown",
+        "sources": [],
+        "method": "No qualified V-band nuclear H or object-specific band conversion."
+      },
+      "evidence": []
+    },
+    {
+      "spkid": 1003527,
+      "designation": "P/2017 P1",
+      "kind": "unknown",
+      "band": null,
+      "H": {
+        "value": null,
+        "label": "unknown",
+        "sources": [],
+        "method": "No qualified absolute nuclear photometry imported."
+      },
+      "H_V": {
+        "value": null,
+        "label": "unknown",
+        "sources": [],
+        "method": "No qualified V-band nuclear H or object-specific band conversion."
+      },
+      "evidence": []
+    },
+    {
+      "spkid": 1003606,
+      "designation": "C/2019 A5",
+      "kind": "unknown",
+      "band": null,
+      "H": {
+        "value": null,
+        "label": "unknown",
+        "sources": [],
+        "method": "No qualified absolute nuclear photometry imported."
+      },
+      "H_V": {
+        "value": null,
+        "label": "unknown",
+        "sources": [],
+        "method": "No qualified V-band nuclear H or object-specific band conversion."
+      },
+      "evidence": []
+    },
+    {
+      "spkid": 1003713,
+      "designation": "C/2020 Q2",
+      "kind": "unknown",
+      "band": null,
+      "H": {
+        "value": null,
+        "label": "unknown",
+        "sources": [],
+        "method": "No qualified absolute nuclear photometry imported."
+      },
+      "H_V": {
+        "value": null,
+        "label": "unknown",
+        "sources": [],
+        "method": "No qualified V-band nuclear H or object-specific band conversion."
+      },
+      "evidence": []
+    },
+    {
+      "spkid": 1003735,
+      "designation": "C/2014 OG392",
+      "kind": "coma-separated",
+      "band": "V",
+      "H": {
+        "value": 11.92603,
+        "label": "estimated",
+        "sources": [
+          "chandler-2020-og392"
+        ],
+        "unit": "mag",
+        "method": "Recomputed Chandler \u00a77 Eq.9\u201310 from the authors' coma-separated Johnson V=22.4 (their own nuclear g/r-to-V conversion via Jester et al. 2005), R=10.10 au, delta=10.01 au, alpha=5.58 deg, assumed G=0.15, A1=3.33, A2=1.87, B1=0.63, B2=1.22. H_V = V - 5 log10(R delta) + 2.5 log10[(1-G)Phi1 + G Phi2], Phi_i=exp[-Ai tan(alpha/2)^Bi]. The paper's reported H_V=11.3 is retained separately; it does not reproduce these inputs.",
+        "uncertainty": "Approximate PSF decomposition, rounded published photometry/geometry and assumed G; systematic uncertainty not quantified. Computation precision is not measurement precision."
+      },
+      "H_V": {
+        "value": 11.92603,
+        "label": "estimated",
+        "sources": [
+          "chandler-2020-og392"
+        ],
+        "unit": "mag",
+        "method": "Recomputed Chandler \u00a77 Eq.9\u201310 from the authors' coma-separated Johnson V=22.4 (their own nuclear g/r-to-V conversion via Jester et al. 2005), R=10.10 au, delta=10.01 au, alpha=5.58 deg, assumed G=0.15, A1=3.33, A2=1.87, B1=0.63, B2=1.22. H_V = V - 5 log10(R delta) + 2.5 log10[(1-G)Phi1 + G Phi2], Phi_i=exp[-Ai tan(alpha/2)^Bi]. The paper's reported H_V=11.3 is retained separately; it does not reproduce these inputs.",
+        "uncertainty": "Approximate PSF decomposition, rounded published photometry/geometry and assumed G; systematic uncertainty not quantified. Computation precision is not measurement precision."
+      },
+      "evidence": [
+        "chandler-2020-og392"
+      ],
+      "reportedH_V": {
+        "value": 11.3,
+        "label": "estimated",
+        "sources": [
+          "chandler-2020-og392"
+        ],
+        "unit": "mag",
+        "method": "Chandler \u00a77 reports H_V approximately 11.3; this does not reproduce the same section's published V, geometry and Eq.9\u201310.",
+        "uncertainty": "Approximate PSF decomposition; uncertainty not quantified; nucleus colours require coma-free measurements."
+      },
+      "reductionInputs": {
+        "value": {
+          "V": 22.4,
+          "rAu": 10.1,
+          "deltaAu": 10.01,
+          "phaseDeg": 5.58,
+          "G": 0.15,
+          "A": [
+            3.33,
+            1.87
+          ],
+          "B": [
+            0.63,
+            1.22
+          ]
+        },
+        "label": "estimated",
+        "sources": [
+          "chandler-2020-og392"
+        ],
+        "method": "Published rounded inputs to Eq.9\u201310, including an assumed G; the computation introduces no factor selected by population counts."
+      }
+    },
+    {
+      "spkid": 1003743,
+      "designation": "P/2020 W1",
+      "kind": "unknown",
+      "band": null,
+      "H": {
+        "value": null,
+        "label": "unknown",
+        "sources": [],
+        "method": "No qualified absolute nuclear photometry imported."
+      },
+      "H_V": {
+        "value": null,
+        "label": "unknown",
+        "sources": [],
+        "method": "No qualified V-band nuclear H or object-specific band conversion."
+      },
+      "evidence": []
+    },
+    {
+      "spkid": 1003745,
+      "designation": "P/2020 V3",
+      "kind": "unknown",
+      "band": null,
+      "H": {
+        "value": null,
+        "label": "unknown",
+        "sources": [],
+        "method": "No qualified absolute nuclear photometry imported."
+      },
+      "H_V": {
+        "value": null,
+        "label": "unknown",
+        "sources": [],
+        "method": "No qualified V-band nuclear H or object-specific band conversion."
+      },
+      "evidence": []
+    },
+    {
+      "spkid": 1003838,
+      "designation": "P/2020 B4",
+      "kind": "unknown",
+      "band": null,
+      "H": {
+        "value": null,
+        "label": "unknown",
+        "sources": [],
+        "method": "No qualified absolute nuclear photometry imported."
+      },
+      "H_V": {
+        "value": null,
+        "label": "unknown",
+        "sources": [],
+        "method": "No qualified V-band nuclear H or object-specific band conversion."
+      },
+      "evidence": []
+    },
+    {
+      "spkid": 1003871,
+      "designation": "C/2018 S2",
+      "kind": "unknown",
+      "band": null,
+      "H": {
+        "value": null,
+        "label": "unknown",
+        "sources": [],
+        "method": "No qualified absolute nuclear photometry imported."
+      },
+      "H_V": {
+        "value": null,
+        "label": "unknown",
+        "sources": [],
+        "method": "No qualified V-band nuclear H or object-specific band conversion."
+      },
+      "evidence": []
+    },
+    {
+      "spkid": 1003896,
+      "designation": "P/2020 MK4",
+      "kind": "lower-bound",
+      "band": "g",
+      "H": {
+        "value": 11.3,
+        "label": "estimated",
+        "sources": [
+          "delafuente-2021-mk4"
+        ],
+        "unit": "mag",
+        "method": "Photometry/nucleus section: H_g >= 11.30; central aperture contains coma.",
+        "uncertainty": "\u00b10.03 mag photometric uncertainty; lower bound, not point H."
+      },
+      "H_V": {
+        "value": null,
+        "label": "unknown",
+        "sources": [],
+        "method": "No qualified V-band nuclear H or object-specific band conversion."
+      },
+      "evidence": [
+        "delafuente-2021-mk4"
+      ]
+    },
+    {
+      "spkid": 1003905,
+      "designation": "P/2023 B1",
+      "kind": "unknown",
+      "band": null,
+      "H": {
+        "value": null,
+        "label": "unknown",
+        "sources": [],
+        "method": "No qualified absolute nuclear photometry imported."
+      },
+      "H_V": {
+        "value": null,
+        "label": "unknown",
+        "sources": [],
+        "method": "No qualified V-band nuclear H or object-specific band conversion."
+      },
+      "evidence": [],
+      "nuclearLaw": {
+        "M2": {
+          "value": 10.3,
+          "label": "measured",
+          "sources": [
+            "jpl-sbdb-orbits"
+          ]
+        },
+        "K2": {
+          "value": 5.0,
+          "label": "measured",
+          "sources": [
+            "jpl-sbdb-orbits"
+          ]
+        },
+        "PC": {
+          "value": 0.03,
+          "label": "measured",
+          "sources": [
+            "jpl-sbdb-orbits"
+          ]
+        },
+        "qualification": "Catalogue M2 law; aperture, coma separation, passband and phase/rotation suitability for bare-nucleus H not established. Not used as point H."
+      }
+    },
+    {
+      "spkid": 1003932,
+      "designation": "C/2023 H3",
+      "kind": "unknown",
+      "band": null,
+      "H": {
+        "value": null,
+        "label": "unknown",
+        "sources": [],
+        "method": "No qualified absolute nuclear photometry imported."
+      },
+      "H_V": {
+        "value": null,
+        "label": "unknown",
+        "sources": [],
+        "method": "No qualified V-band nuclear H or object-specific band conversion."
+      },
+      "evidence": []
+    },
+    {
+      "spkid": 1003974,
+      "designation": "C/2024 C2",
+      "kind": "unknown",
+      "band": null,
+      "H": {
+        "value": null,
+        "label": "unknown",
+        "sources": [],
+        "method": "No qualified absolute nuclear photometry imported."
+      },
+      "H_V": {
+        "value": null,
+        "label": "unknown",
+        "sources": [],
+        "method": "No qualified V-band nuclear H or object-specific band conversion."
+      },
+      "evidence": []
+    },
+    {
+      "spkid": 1003977,
+      "designation": "C/2024 C3",
+      "kind": "unknown",
+      "band": null,
+      "H": {
+        "value": null,
+        "label": "unknown",
+        "sources": [],
+        "method": "No qualified absolute nuclear photometry imported."
+      },
+      "H_V": {
+        "value": null,
+        "label": "unknown",
+        "sources": [],
+        "method": "No qualified V-band nuclear H or object-specific band conversion."
+      },
+      "evidence": []
+    },
+    {
+      "spkid": 1004004,
+      "designation": "C/2024 L1",
+      "kind": "unknown",
+      "band": null,
+      "H": {
+        "value": null,
+        "label": "unknown",
+        "sources": [],
+        "method": "No qualified absolute nuclear photometry imported."
+      },
+      "H_V": {
+        "value": null,
+        "label": "unknown",
+        "sources": [],
+        "method": "No qualified V-band nuclear H or object-specific band conversion."
+      },
+      "evidence": []
+    },
+    {
+      "spkid": 1004049,
+      "designation": "C/2025 A3",
+      "kind": "unknown",
+      "band": null,
+      "H": {
+        "value": null,
+        "label": "unknown",
+        "sources": [],
+        "method": "No qualified absolute nuclear photometry imported."
+      },
+      "H_V": {
+        "value": null,
+        "label": "unknown",
+        "sources": [],
+        "method": "No qualified V-band nuclear H or object-specific band conversion."
+      },
+      "evidence": []
+    },
+    {
+      "spkid": 1004056,
+      "designation": "P/2025 D2",
+      "kind": "unknown",
+      "band": null,
+      "H": {
+        "value": null,
+        "label": "unknown",
+        "sources": [],
+        "method": "No qualified absolute nuclear photometry imported."
+      },
+      "H_V": {
+        "value": null,
+        "label": "unknown",
+        "sources": [],
+        "method": "No qualified V-band nuclear H or object-specific band conversion."
+      },
+      "evidence": []
+    },
+    {
+      "spkid": 1004072,
+      "designation": "C/2023 RS61",
+      "kind": "unknown",
+      "band": null,
+      "H": {
+        "value": null,
+        "label": "unknown",
+        "sources": [],
+        "method": "No qualified absolute nuclear photometry imported."
+      },
+      "H_V": {
+        "value": null,
+        "label": "unknown",
+        "sources": [],
+        "method": "No qualified V-band nuclear H or object-specific band conversion."
+      },
+      "evidence": []
+    }
+  ]
+}

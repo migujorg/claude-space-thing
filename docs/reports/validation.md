@@ -579,9 +579,23 @@ These offsets are the missions' attitude-knowledge errors plus ours; the fits th
 * `pluto-nh-lorri-2015` disk-integrated: phase angle 15.82° is outside the app's phase function range: the app has no measured disk brightness here (the renderer hatches or extrapolates, by reality level).
 * `uranus-voyager2-1986` disk-integrated (phase 13.8°, sub-observer -72.5° 105.0° E): app/observed Y = 0.980 (-0.2 σ), X 0.998, Z 1.062; phase function measured.
 
-**Sizes:** `validation/` 15.9 MB (committed); downloaded inputs 194.9 MB (download ledger), git-ignored in `data/raw/validation/` (194.9 MB present now: `python -m pipeline.validation clean` deletes the images after a build; `build` fetches them again, and the pointing-fit cache is keyed by each image's sha256, so a changed archive file is refitted).
+**Sizes:** `validation/` 15.7 MB (committed); downloaded inputs 194.9 MB (download ledger), git-ignored in `data/raw/validation/` (194.9 MB present now: `python -m pipeline.validation clean` deletes the images after a build; `build` fetches them again, and the pointing-fit cache is keyed by each image's sha256, so a changed archive file is refitted).
 
 **Unit tests** (`pipeline/tests/test_validation.py`): the camera puts the target at the requested pixel with the pole up; ray casting reproduces a sphere's projected area to 1 % and face-on emission; ring classes and radii; the pointing fit recovers a synthetic pose to 0.15 px and 2°; grey closure (I/F = 1 in every band gives exactly the XYZS of sunlight / π d²); band radiance definition; PDS3 label parsing; the Himawari grid mapping round trip; the companion parity test; and every committed case.json (orthonormal camera and body matrices, fovY/pitch consistency, reference.bin size, ROI rectangles inside the view, tolerance = 2σ, fitted target centre = the view's projection of the target).
+
+**Rebuild locks.** Each case's `reproducibility` lock hashes the static import closure of its build path (the stage fingerprint walker, with the selected instrument reader or Himawari prepare module), with source tables read during module initialization or that case build. Shared modules are hashed as whole files; unrelated stages and their tables are excluded. Raw inputs retain exact byte hashes. Product dependencies hash canonically serialized consumed fields, including presence, nulls, labels and source IDs where read: ring profile radii/depths/sources and disk-photometry values/labels. Unconsumed product method text does not stale a lock; changing a consumed value does. This costs an explicit field selection at each product read, checked again by the rebuild input capture. The lock also records the numerical libraries, BLAS/LAPACK configuration, CPU features, PNG compression, one-thread environment, artifact creation time and exact fit inputs/results. The pipeline suite checks implementation/tables, environment and present input products offline without raw images; a missing product is a counted skip. After an applicable code/table/product change, run `cd pipeline && python -m pipeline.validation renew-locks` with the project Python. It restarts with BLAS/OMP/MKL threads set to 1, uses each case's recorded SOURCE_DATE_EPOCH and Earth kernel, and rebuilds from the pinned raw bytes. It refuses the entire batch if any JSON outside the lock (including regions, expected values, tolerances and fits), reference.bin or preview.png bytes differ; otherwise it rewrites only the eleven locks. Verification remains `OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 python -m pipeline.validation verify`.
+
+* `callisto-nh-lorri-2007`: [`reproducibility`](../../validation/cases/callisto-nh-lorri-2007/case.json).
+* `earth-himawari9-2026`: [`reproducibility`](../../validation/cases/earth-himawari9-2026/case.json).
+* `earth-moon-epoxi-2008`: [`reproducibility`](../../validation/cases/earth-moon-epoxi-2008/case.json).
+* `europa-nh-lorri-2007`: [`reproducibility`](../../validation/cases/europa-nh-lorri-2007/case.json).
+* `ganymede-nh-lorri-2007`: [`reproducibility`](../../validation/cases/ganymede-nh-lorri-2007/case.json).
+* `io-nh-lorri-2007`: [`reproducibility`](../../validation/cases/io-nh-lorri-2007/case.json).
+* `jupiter-nh-lorri-2007`: [`reproducibility`](../../validation/cases/jupiter-nh-lorri-2007/case.json).
+* `neptune-voyager2-1989`: [`reproducibility`](../../validation/cases/neptune-voyager2-1989/case.json).
+* `pluto-nh-lorri-2015`: [`reproducibility`](../../validation/cases/pluto-nh-lorri-2015/case.json).
+* `saturn-cassini-wac-2016`: [`reproducibility`](../../validation/cases/saturn-cassini-wac-2016/case.json).
+* `uranus-voyager2-1986`: [`reproducibility`](../../validation/cases/uranus-voyager2-1986/case.json).
 
 ## 6. Limitations and open issues
 
@@ -834,7 +848,8 @@ How each body was drawn:
   outside the case's uncertainty budget, rather than evidence for choosing a different law.
 * **Saturn's terminator:** the frame shows night-side light with ringshine's signature, which the
   app does not draw. The deficit does not establish that the Barkstrom law darkens too steeply.
-  **Ring rows:** the case's phase is beyond the ring reflectance model's domain. Ring brightness
+  **Ring rows:** the case's phase is beyond the product's calibrated 0.25–47° domain;
+  [published measurements beyond 47° exist](../sources/rings-high-phase.md) and are not yet included. Ring brightness
   is shown as unknown, and these HDR rows compare the reference with zero ring light.
 * **Moon/Earth ratio:** the table above gives its refreshed tolerance, failing channels and relative
   errors. It depends on the Earth's rendered clouds and on a scene from another epoch. It is not

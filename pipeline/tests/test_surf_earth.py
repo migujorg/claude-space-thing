@@ -142,47 +142,12 @@ def test_geodetic_centric_round_trip_and_row_shift():
     assert np.abs(shift).max() in (4, 5) and shift[0] == 0 and shift[-1] == 0   # 0.192° / 0.044°
 
 
-def test_daylit_rows_follow_the_season():
-    lat = st.lat_centers(se.LEVEL)
-    june = se.daylit_rows("2026-06-21")
-    dec = se.daylit_rows("2026-12-21")
-    assert june[lat > 80].all() and not june[lat < -75].any()
-    assert dec[lat < -80].all() and not dec[lat > 75].any()
-
-
-@pytest.mark.parametrize("day", [se.CLOUD_DAY, "2026-06-21", "2026-12-21"])
-def test_cloud_daylit_rows_use_cldprop_optical_and_height_limit(day):
-    # Hubanks et al., CLDPROP L3 guide v2.1, §8.13 Table 9: L2 continuity COP/CTP day is SZA ≤ 80°.
-    lat = np.radians(st.lat_centers(se.LEVEL))
-    dec = np.radians(se.solar_declination_deg(day))
-    hour = np.radians(15 * (se.OVERPASS_LST_H - 12))
-    mu = np.sin(lat) * np.sin(dec) + np.cos(lat) * np.cos(dec) * np.cos(hour)
-    np.testing.assert_array_equal(se.daylit_rows(day), mu >= np.cos(np.radians(80.0)))
-    assert se.VIIRS_CLDPROP_DAY_SZA_MAX_DEG == 80.0
-
-
-def test_cloud_diagnostic_domain_uses_cldprop_limit_including_boundary(monkeypatch):
-    # At equinox/noon, latitude is SZA: include the documented 80° boundary, exclude the MODIS-only band.
+def test_the_diagnostics_sun_is_that_of_1330_local_inside_the_products_day(monkeypatch):
+    # At an equinox noon the latitude is the solar zenith angle: the product's daytime ends at 82° (satcorps.py).
     monkeypatch.setattr(se, "solar_declination_deg", lambda day: 0.0)
-    monkeypatch.setattr(se, "OVERPASS_LST_H", 12.0)
-    lat = np.array([79.9, 80.0, 80.1, 81.36, 85.0])
-    expected = np.where(lat <= 80.0, np.cos(np.radians(lat)), 0.0)
-    np.testing.assert_array_equal(se._overpass_mu0(lat, se.CLOUD_DAY), expected)
-    monkeypatch.setattr(st, "lat_centers", lambda level: lat)
-    np.testing.assert_array_equal(se.daylit_rows(se.CLOUD_DAY), expected > 0)
-
-
-def test_modis_population_retains_its_own_cited_daylight_domain(monkeypatch):
-    # The histogram is already aggregated by MODIS; documenting its domain must not refilter it for VIIRS.
-    cp = se.cloud_pcl
-    assert cp.MODIS_COP_DAY_SZA_MAX_DEG == 81.36
-    if not all((RAW / "papers" / name).exists() for name in (cp.PDF_NAME, cp.P17_NAME)):
-        pytest.skip("MODIS population source PDFs not downloaded")
-    pdf = cp.fetch_pdf()
-    monkeypatch.setattr(se.sl, "register_dataset", lambda ctx, sid, *args, **kwargs: sid)
-    table, _ = cp.table(SimpleNamespace())
-    assert any("MODIS" in c and "SZA < 81.36°" in c for c in table["caveats"])
-    assert table["statistics"] == cp.statistics(cp.figure_cells(cp.pdf_image(pdf.read_bytes(), *cp.IMAGE_SIZE)))
+    monkeypatch.setattr(se.satcorps, "LOCAL_SOLAR_HOUR", 12.0)
+    lat = np.array([0.0, 60.0, 81.9, 82.0, 85.0])
+    np.testing.assert_allclose(se._local_mu0(lat, se.CLOUD_DAY), np.where(lat < 82.0, np.cos(np.radians(lat)), 0.0))
 
 
 def test_coverage_weighted_coarse_levels():
@@ -361,12 +326,11 @@ def test_earth_clouds_channels_in_range():
     fin = np.isfinite(cot)
     assert ((cot[fin] >= 0) & (cot[fin] <= 150)).all()
     fin = np.isfinite(cth)
-    assert ((cth[fin] >= 0) & (cth[fin] <= 12000)).all()
+    assert ((cth[fin] >= 0) & (cth[fin] <= 25000)).all()            # the product's range of top heights
     fin = np.isfinite(ice)
     assert ((ice[fin] >= 0) & (ice[fin] <= 1)).all()
     # global mean cloud fraction of one day: ~0.5-0.8
     assert 0.5 < h["diagnostics"]["meanCloudFraction"] < 0.85
-    assert h["diagnostics"]["unmatchedColours"] == 0
 
 
 def test_earth_night_lights():
@@ -421,78 +385,93 @@ def test_earth_wind_layer():
 # ------------------------------------------------------------------------------------------------ cloud τ moments
 
 
-@pytest.mark.parametrize("layer", ["clouds", "cloudTau"])
-def test_cloud_headers_label_aggregates_derived_and_assumed_population_estimated(monkeypatch, layer):
-    # Exercise the builder and real header serialization with a tiny observational fixture, without downloads
-    # or writing tiles/products. Counts, fractions, means and log moments are derived from the L2 retrievals;
-    # the population assigned to cloud without its own thickness remains an assumed input (estimated).
+def _fake_mosaic():
+    """TEST FIXTURE: a 1° mosaic with every class and a hole, and the bookkeeping the header is written from."""
+    sc = se.satcorps
+    rng = np.random.default_rng(11)
+    cls = rng.integers(1, 6, (180, 360)).astype(np.uint8)
+    cls[60:80, 100:160] = sc.UNOBSERVED
+    thick = np.isin(cls, [sc.MEASURED, sc.ESTIMATED])
+    strips = [{"fileHourUtc": x.hour, "lonWest": x.lon_west, "lonEast": x.lon_east, "url": x.url, "referenceTime": "TEST",
+               "version": "TEST FIXTURE", "satelliteSources": "TEST", "inputGranules": 1, "sha256": "0" * 64,
+               "remote": {"bytes": 1, "etag": "x", "lastModified": "y"}, "bytesRead": 10, "rangesRead": 2,
+               "sources": {"Himawari-9": {"cells": 100, "secondsFromNominal": [11, 700]},
+                           "NOAA-20 VIIRS": {"cells": 10, "secondsFromNominal": [-7000, 9000]}},
+               "cells": {n: 0 for n in sc.CLASS_NAMES.values()}} for x in sc.strips(se.CLOUD_DAY)]
+    zero = lambda: {"cells": 5, "possible": 1, "noRetrieval": 0}   # noqa: E731
+    info = {"strips": strips, "files": {"a.bin": {"retrieved": "2026-10-07", "sha256": "1" * 64, "bytes": 10, "range": "bytes=0-9"},
+                                         "b.bin": {"retrieved": "2026-10-07", "sha256": "2" * 64, "bytes": 10, "range": "bytes=10-19"}},
+            "grid": {"version": "TEST FIXTURE"}, "cells": {n: int((cls == c).sum()) for c, n in sc.CLASS_NAMES.items()},
+            "evidence": {n: {k: zero() for k in ("waterInsideCone", "waterOutsideCone", "lowSun", "sun60toLowSun")}
+                         for n in sc.GEOSTATIONARY.values()}}
+    return sc.Mosaic(lat=90.0 - (np.arange(180) + 0.5), lon=np.arange(360) + 0.5 - 180.0, cls=cls,
+                     ln_tau=np.where(thick, rng.normal(1.2, 1.0, cls.shape), np.nan).astype(np.float32),
+                     ice=thick & (rng.random(cls.shape) < 0.3),
+                     top_m=np.where(thick, rng.uniform(300, 14000, cls.shape), np.nan).astype(np.float32), info=info)
+
+
+def test_cloud_builder_writes_three_layers_whose_headers_say_what_the_arrays_hold(monkeypatch):
+    # The builder and the real header serialization on a small fixture mosaic, without downloads or tiles.
+    sc = se.satcorps
+    m = _fake_mosaic()
     monkeypatch.setattr(se, "LEVEL", 0)
-    monkeypatch.setattr(st, "level_shape", lambda level: (4, 8))
-    monkeypatch.setattr(se, "centric_rows", lambda level: np.arange(4))
-    monkeypatch.setattr(se, "daylit_rows", lambda day: np.ones(4, bool))
-    cm = gb.Colormap("test", np.array([1]), np.array([1.0]), np.array([4.0]), np.array([2.5]),
-                     np.zeros(1, bool), np.zeros(1, int), ["Ice"], np.array([], np.int64), None)
-    monkeypatch.setattr(gb, "capabilities", lambda: None)
-    monkeypatch.setattr(gb, "layer_info", lambda caps, name: {
-        "layer": name, "colormap": "test", "periods": [se.CLOUD_DAY]})
-    monkeypatch.setattr(gb, "colormap", lambda url: cm)
-    monkeypatch.setattr(se, "_fetch_blocks", lambda name, day: [((), 0, 0, Path(name))])
-    monkeypatch.setattr(gb, "read_rgba", lambda path: path)
-    def decode(path, cm):
-        values = np.full((4, 8), 2.5 if path.name == se.L_COT else 1000.0, np.float32)
-        if path.name == se.L_COT:
-            values[:, ::2] = np.nan  # Height without thickness belongs to the cloudy, unretrieved share.
-        return values, np.zeros((4, 8), int), np.zeros((4, 8), bool), 0
-    monkeypatch.setattr(gb, "decode", decode)
-    monkeypatch.setattr(se, "record", lambda path: {})
-    monkeypatch.setattr(se, "discard", lambda path: None)
-    monkeypatch.setattr(se, "_register_gibs", lambda ctx: se.SRC_GIBS)
+    monkeypatch.setattr(sc, "PINS", {se.CLOUD_DAY: {}})
+    monkeypatch.setattr(sc, "mosaic", lambda day, pins: m)
     monkeypatch.setattr(se.sl, "register_dataset", lambda ctx, sid, *args, **kwargs: sid)
-    monkeypatch.setattr(se.cloud_pcl, "table", lambda ctx: ({
-        "label": "estimated", "sources": ["pcl-test"], "tauBinLnCentre": [0.0],
-        "statistics": {"floorCellsZero": {"partlyCloudyAllHeights": {
-            "binProbability": [1.0], "meanLnTau": 0.0, "sdLnTau": 0.0}}}}, "pcl-test"))
-    monkeypatch.setattr(st, "write_pyramid", lambda *args, **kwargs: SimpleNamespace(
-        listing=lambda: b"", bytes=0, files=[], missing={}))
+    written = {}
+
+    def write_pyramid(root, naif, layer, top, known, *args, **kwargs):
+        written[layer] = (np.array(top), np.array(known))
+        return SimpleNamespace(listing=lambda: b"", bytes=0, files=[], missing={})
+    monkeypatch.setattr(st, "write_pyramid", write_pyramid)
     monkeypatch.setattr(se.sl, "write_bin", lambda *args: None)
     monkeypatch.setattr(se.sl, "write_json", lambda *args: None)
-    ctx = SimpleNamespace(param=lambda key: None, products={})
-    headers = {h["layer"]: h for h in se.build_clouds(ctx)}
-    h = headers[layer]
-    assert h["brightness"]["label"] == "derived"
-    assert h["coverage"]["regions"][0]["brightness"]["label"] == "derived"
-    if layer == "cloudTau":
-        assert h["constants"]["unmeasuredTau"]["label"] == "estimated"
-        assert h["constants"]["unmeasuredTau"]["sources"] == ["pcl-test"]
+    headers = {h["layer"]: h for h in se.build_clouds(SimpleNamespace(param=lambda key: None, products={}))}
+    assert list(headers) == list(written) == ["clouds", "cloudTau", "cloudTauEstimated"]
+    # labels: aggregates of retrievals are derived; the layer that takes the provider's estimates in is estimated
+    for layer, label in (("clouds", "derived"), ("cloudTau", "derived"), ("cloudTauEstimated", "estimated")):
+        h = headers[layer]
+        assert h["brightness"]["label"] == label and h["coverage"]["regions"][0]["brightness"]["label"] == label
+        assert "unmeasuredTau" not in h["constants"]                 # no statistic stands in for a thickness
+        g = h["constants"]["geometricTest"]
+        assert g["label"] == "estimated" and len(g["estimatedWhere"]) == 3
+        assert "82°" in g["estimatedWhere"][0] and "75.25°" in g["estimatedWhere"][1] and "< 40°" in g["estimatedWhere"][2]
+        assert g["evidence"]["allGeostationary"]["waterInsideCone"] == {"cells": 25, "possible": 5, "noRetrieval": 0}
+        mo = h["epoch"]["mosaic"]
+        assert len(mo["strips"]) == 24 and mo["dayCut"]["lonDeg"] == -150.0 and mo["hoursBetweenNeighbourStrips"] == 1.0
+        assert mo["secondsFromNominalHour"] == {"geostationary": [11, 700], "polarOrbiter": [-7000, 9000]}
+        assert h["epoch"]["observedSpan"] == {"earliest": "2026-09-27T22:03:20Z", "latest": "2026-09-29T01:30:00Z"}
+        assert h["diagnostics"]["cells"] == m.info["cells"]         # the header's counts are the mosaic's
+        assert set(h["constants"]["classes"]) == set(sc.CLASS_NAMES.values())
+    # the header's area shares are those of the arrays that were written
+    (top, known), (strict, _), (best, _) = (written[k] for k in ("clouds", "cloudTau", "cloudTauEstimated"))
+    w = np.cos(np.radians(st.lat_centers(0)))[:, None] * np.ones((1, top.shape[1]))
+    sh = headers["clouds"]["diagnostics"]["areaShares"]
+    area = lambda x: float((w * np.where(known, x, 0)).sum() / w.sum())   # noqa: E731
+    assert sh["known"] == pytest.approx(area(1.0), abs=1e-6) and 0.97 < sh["known"] < 0.99          # the hole
+    assert sh["cloud"] == pytest.approx(area(top[..., 0]), abs=1e-6)
+    assert sh["cloudMeasuredThickness"] == pytest.approx(area(strict[..., 0]), abs=1e-6)
+    assert sh["cloudEstimatedThickness"] == pytest.approx(area(best[..., 0] - strict[..., 0]), abs=1e-6)
+    assert sh["cloud"] == pytest.approx(sh["cloudMeasuredThickness"] + sh["cloudEstimatedThickness"] + sh["possibleCloud"]
+                                        + sh["cloudWithoutThickness"], abs=1e-5)
+    assert sh["cloud"] + sh["clear"] == pytest.approx(sh["known"], abs=1e-5)
+    d = headers["clouds"]["diagnostics"]
+    assert d["notMeasuredAtStrict"] == pytest.approx(sh["cloud"] - sh["cloudMeasuredThickness"], abs=1e-6)
+    assert d["notMeasuredAtBest"] == pytest.approx(sh["possibleCloud"] + sh["cloudWithoutThickness"], abs=1e-5)
+    # and they are the mosaic's classes: one fifth of the observed cells each, to the grid's rounding
+    for k in ("cloudMeasuredThickness", "cloudEstimatedThickness", "possibleCloud", "cloudWithoutThickness", "clear"):
+        assert sh[k] == pytest.approx(0.2 * sh["known"], abs=0.01), k
+    # the hole is unknown in every layer; nothing was carried into it
+    hole = ~known
+    assert hole.any() and all(np.isnan(written[k][0][hole]).all() for k in written)
+    assert (strict[..., 0][known] <= best[..., 0][known] + 1e-6).all() and (best[..., 0][known] <= top[..., 0][known] + 1e-6).all()
+    assert "planeAlbedoCheck" in headers["cloudTau"]["diagnostics"] and "planeAlbedoCheck" not in headers["cloudTauEstimated"]["diagnostics"]
 
 
-def test_ln_tau_at_the_geometric_bin_centre():
-    lo, hi = np.array([0.01, 1.0, 100.001]), np.array([1.0, 1.038, 150.0])
-    cm = gb.Colormap("t", np.array([1, 2, 3]), lo, hi, 0.5 * (lo + hi), np.zeros(3, bool), np.zeros(3, int), ["x"],
-                     np.array([], np.int64), None)
-    vs, lns = se._ln_bin_centres(cm)
-    cot = np.array([0.5 * (0.01 + 1.0), np.nan, 0.5 * (100.001 + 150.0)], np.float32)
-    ln = se._ln_of(cot, vs, lns)
-    assert ln[0] == pytest.approx(np.log(0.1), abs=1e-6) and np.isnan(ln[1])
-    assert ln[2] == pytest.approx(0.5 * (np.log(100.001) + np.log(150.0)), abs=1e-5)
-    with pytest.raises(ValueError, match="bin centre"):
-        se._ln_of(np.array([7.0], np.float32), vs, lns)
-
-
-def test_tau_moments_are_exact_under_the_pyramid_means():
-    rng = np.random.default_rng(1)
-    ln = rng.normal(2.0, 0.8, (4, 4, 16)).astype(np.float32)
-    ln[rng.random((4, 4, 16)) < 0.4] = np.nan              # samples without a retrieval
-    ice = rng.random((4, 4, 16)) < 0.3
-    m = se.tau_moments(ln, ice)
-    f, m1, m2, fi = (m[..., k] for k in range(4))
-    np.testing.assert_allclose(f, np.isfinite(ln).mean(-1))
-    np.testing.assert_allclose(m1 / f, np.nanmean(ln, -1), rtol=1e-5)
-    np.testing.assert_allclose(m2 / f - (m1 / f) ** 2, np.nanvar(ln, -1), atol=1e-4)
-    assert (fi <= f).all()
-    # the 2×2 mean of four texels' moments is the moments of their pooled samples (what a coarser level holds)
-    pooled = se.tau_moments(ln[:2, :2].reshape(1, 1, 64), ice[:2, :2].reshape(1, 1, 64))[0, 0]
-    np.testing.assert_allclose(m[:2, :2].mean(axis=(0, 1)), pooled, rtol=1e-5)
+def test_cloud_builder_refuses_an_unpinned_day(monkeypatch):
+    monkeypatch.setattr(se.satcorps, "PINS", {})
+    with pytest.raises(RuntimeError, match="pins"):
+        se.build_clouds(SimpleNamespace(param=lambda key: None, products={}))
 
 
 def test_plane_albedo_from_the_moments():
@@ -516,8 +495,9 @@ def test_plane_albedo_check_sums_and_report():
     ln = rng.normal(1.5, 1.0, (h, w, 16)).astype(np.float32)
     ln[rng.random((h, w, 16)) < 0.5] = np.nan
     ice = rng.random((h, w, 16)) < 0.2
-    m = se.tau_moments(ln, ice)
     has = np.isfinite(ln)
+    lz = np.where(has, ln, 0)
+    m = np.stack([has.mean(-1), lz.mean(-1), (lz * lz).mean(-1), (ice & has).mean(-1)], axis=-1)
     tau = np.where(has, np.exp(np.where(has, ln, 0)), 0)
     mu0 = np.linspace(0.2, 0.9, h).astype(np.float32)
     g = np.where(ice, se.G_ICE, se.G_LIQUID)
@@ -528,7 +508,7 @@ def test_plane_albedo_check_sums_and_report():
                 ipa, mu0)
     r = d.report()
     assert set(r) == {"global", "swath", "global.level0", "swath.level0"}
-    assert 0 < r["global"]["cloudyShareWithoutTau"] < 1
+    assert 0 < r["global"]["cloudyShareWithoutMeasuredTau"] < 1
     for key in r:
         assert r[key]["linearMeanTau"]["ratioToIpa"] > 1
         assert abs(r[key]["logNormal3"]["ratioToIpa"] - 1) < abs(r[key]["linearMeanTau"]["ratioToIpa"] - 1)
@@ -540,30 +520,39 @@ def test_cloud_day_is_checked_against_the_advertised_periods():
     assert not se._serves(info, "2024-06-01") and not se._serves(info, "2026-09-29")
 
 
-def test_earth_cloud_tau_layer():
-    h, c = _header("cloudTau"), _header("clouds")
-    assert h["constants"]["sourceDate"] == c["constants"]["sourceDate"] == se.CLOUD_DAY
-    a, cl = _top(h), _top(c)
+def test_earth_cloud_tau_layers():
+    c, h, e = _header("clouds"), _header("cloudTau"), _header("cloudTauEstimated")
+    assert h["constants"]["sourceDate"] == e["constants"]["sourceDate"] == c["constants"]["sourceDate"] == se.CLOUD_DAY
+    assert (c["brightness"]["label"], h["brightness"]["label"], e["brightness"]["label"]) == ("derived", "derived", "estimated")
+    assert all("unmeasuredTau" not in x["constants"] for x in (c, h, e))
+    a, b, cl = _top(h), _top(e), _top(c)
     f, m1, m2, fi = (a[..., k] for k in range(4))
     ok = np.isfinite(f)
-    assert (ok == np.isfinite(cl[..., 0])).all()           # same coverage (the daylit band)
-    assert (f[ok] <= cl[..., 0][ok] + 1e-3).all() and (fi[ok] <= f[ok] + 1e-3).all()
-    # cloudy with no retrieval at all (opticalThickness NaN) is exactly where the retrieved fraction is 0
+    assert (ok == np.isfinite(cl[..., 0])).all() and (ok == np.isfinite(b[..., 0])).all()      # same coverage
+    # measured ≤ measured + estimated ≤ cloud, to float16 rounding
+    assert (f[ok] <= b[..., 0][ok] + 1e-3).all() and (b[..., 0][ok] <= cl[..., 0][ok] + 1e-3).all() and (fi[ok] <= f[ok] + 1e-3).all()
+    # cloud with no measured thickness (opticalThickness NaN) is exactly where the measured share is 0
     no_tau = ok & np.isnan(cl[..., 1])
     assert (f[no_tau] == 0).all() and (cl[..., 0][no_tau] > 0).all()
-    pos = ok & (f > 0.2)
-    mean_ln = m1[pos] / f[pos]
-    assert (mean_ln > np.log(0.1) - 0.01).all() and (mean_ln < np.log(150) + 0.01).all()
-    assert (m2[pos] / f[pos] - mean_ln ** 2 > -0.05).all()   # variance ≥ 0 up to float16 rounding
+    for arr in (a, b):
+        pos = ok & (arr[..., 0] > 0.2)
+        mean_ln = arr[..., 1][pos] / arr[..., 0][pos]
+        assert (mean_ln > np.log(0.01) - 0.01).all() and (mean_ln < np.log(150) + 0.01).all()
+        assert (arr[..., 2][pos] / arr[..., 0][pos] - mean_ln ** 2 > -0.05).all()   # variance ≥ 0 up to float16 rounding
+    # the header's shares are the layer's (tiles are float16)
+    w = np.cos(np.radians(st.lat_centers(h["maxLevel"])))[:, None] * np.ones((1, f.shape[1]))
+    sh = h["diagnostics"]["areaShares"]
+    if h["maxLevel"] == se.LEVEL:
+        assert float((w * np.where(ok, f, 0)).sum() / w.sum()) == pytest.approx(sh["cloudMeasuredThickness"], abs=5e-4)
+        assert float((w * np.where(ok, b[..., 0] - f, 0)).sum() / w.sum()) == pytest.approx(sh["cloudEstimatedThickness"], abs=5e-4)
+        assert float((w * np.where(ok, cl[..., 0], 0)).sum() / w.sum()) == pytest.approx(sh["cloud"], abs=5e-4)
+    assert sh["known"] > 0.99 and sh["cloudWithoutThickness"] < 0.01 and sh["cloudMeasuredThickness"] > 0.3
+    # a mosaic of 24 strips, and it says so
+    mo = h["epoch"]["mosaic"]
+    assert [s["fileHourUtc"] for s in mo["strips"]] == list(range(24)) and mo["dayCut"]["lonDeg"] == -150.0
+    assert sum(sum(s["cells"].values()) for s in mo["strips"]) == sum(h["diagnostics"]["cells"].values())
+    assert set(h["constants"]["pins"]["strips"]) == {f"{i:02d}" for i in range(24)}
     d = h["diagnostics"]["planeAlbedoCheck"]
-    assert 0 < d["swath"]["cloudyShareWithoutTau"] < 1
-    # the population statistic for the share without a retrieval (cloud_pcl.py), estimated, with its sources
-    u = h["constants"]["unmeasuredTau"]
-    assert u["label"] == "estimated" and "pincus2023-modis-cosp" in u["sources"] and "pincus2023-modis-cosp" in h["sources"]
-    u = u["value"]
-    p = u["statistics"]["floorCellsZero"]["partlyCloudyAllHeights"]
-    assert sum(p["binProbability"]) == pytest.approx(1, abs=1e-3) and len(p["binProbability"]) == len(u["tauBinEdges"]) - 1
-    rows = u["planeAlbedoLiquid"]["rows"]
-    assert all(0 < r["binSum"] < 0.5 for r in rows) and rows[0]["binSum"] > rows[-1]["binSum"]
+    assert 0 <= d["swath"]["cloudyShareWithoutMeasuredTau"] < 1
     for key in ("global", "swath", "global.level0", "swath.level0"):
         assert d[key]["linearMeanTau"]["ratioToIpa"] >= 1  # plane-parallel bias

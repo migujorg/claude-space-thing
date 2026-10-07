@@ -15,7 +15,8 @@ streams, yield) is the one of syn_model and docs/reports/synthetic-populations.m
                     Lawler et al. 2018 H law, 21 400 with H_r < 13.7): the archive keeps only members with 21 < m <
                     23.5, so each member is weighted by 1/P(selected | its distance modulus) (Horvitz-Thompson), which
                     estimates the model's (a, e, i) distribution on reconstructible states; H from the knee law, angles uniform (Murtagh et al.
-                    2025). It is then conditioned on eligible asteroid counts like NEOs/TNOs; comet flags are excluded.
+                    2025). It is then conditioned on eligible asteroid counts and qualified, sourced comet nuclear H_V;
+                    M1, unqualified M2, lower bounds and unknown object-specific band conversions are excluded.
                     The cited survey rejects the joint orbit/H model, though marginal distributions agree.
 """
 
@@ -265,3 +266,72 @@ def knee_check(arch: dict[str, np.ndarray], tab: dict, bins: int = 20) -> dict:
             dof += int(ok.sum())
         out[name] = {"chi2PerBin": round(chi2 / max(dof, 1), 2), "bins": dof}
     return out
+
+
+def centaur_selection_comparison(arch: dict, classifier: dict, tab: dict, grid: sm.Grid, known: sm.Known,
+                                h_floor: float, prefix: str) -> dict:
+    """Diagnostic only: current guard versus source status on archived survey-state counterparts.
+
+    Keeps the current deterministic a/e/i/H realization and normalization. Queries resampled archive states
+    with m shifted by the newly drawn H; uses the archive's angles at its survey midpoint, not the generator's
+    independently randomized angles. Unknown m-domain cases retain the current guard in the comparison
+    only; they are reported separately and are not asserted to be unobservable. Does not alter live products.
+    """
+    from . import syn_sources as ss
+    mem, diag = centaur_realization(arch, tab)
+    members = sm.Known(mem['a'], mem['e'], mem['i'], mem['H'])
+    old, obs, lists, limits = sm.realization_cells(grid, known, members, h_floor)
+    sm.condition(old, obs)
+    sm.sample_realization(grid, old, lists, prefix)
+    hlim = np.array([np.inf if x is None else x for x in limits['hlimPerABin']])
+    ia, ie, ii, ih = grid.index(members.a, members.e, members.i, members.H)
+    inside = (ia >= 0) & (members.H < h_floor)
+    guard = inside & (members.H >= hlim[np.maximum(ia, 0)])
+    states = arch['states'][mem['archiveRow']].copy()
+    states[:, 6] = mem['Hr'] + arch['d'][mem['archiveRow']]
+    result = ss.centaur_selection(classifier, states)
+    status = result['status']
+    # This policy preserves the current guard where the source cannot classify; it is a diagnostic proposal.
+    keep = inside & ((status == 0) | ((status == -1) & guard))
+    mkey = grid.key(ia[keep], ie[keep], ii[keep], ih[keep])
+    midx = np.flatnonzero(keep)
+    order = np.lexsort((midx, mkey)); mkey, midx = mkey[order], midx[order]
+    keys, starts, counts = np.unique(mkey, return_index=True, return_counts=True)
+    a, e, i, h = grid.unkey(keys)
+    new = sm.cells_from_rows([(aa, ee, ii_, hh, hh * grid.h_width, min((hh + 1) * grid.h_width, h_floor), n)
+                             for aa, ee, ii_, hh, n in zip(a, e, i, h, counts)])
+    known_idx = grid.index(known.a, known.e, known.i, known.H)
+    obs = sm.count_known(grid, new, (*known_idx, known.H))
+    sm.condition(new, obs)
+    new_lists = {int(k): midx[s:s+n] for k, s, n in zip(keys, starts, counts)}
+    sm.sample_realization(grid, new, new_lists, prefix)
+    def shown(c):
+        out = {}
+        for aa, hh, n in zip(c.ia, c.ih, c.n_shown):
+            key = (int(aa), int(hh)); out[key] = out.get(key, 0) + int(n)
+        return out
+    old_count, new_count = shown(old), shown(new)
+    rows = []
+    for a_, h_ in sorted(old_count.keys() | new_count.keys()):
+        group = inside & (ia == a_) & (ih == h_)
+        n0, n1 = old_count.get((a_, h_), 0), new_count.get((a_, h_), 0)
+        spread = math.sqrt(max(n0, n1))  # conservative one-sigma Poisson spread of either group's shown count
+        rows.append({'ia': a_, 'ih': h_, 'aLo': grid.a_edges[a_], 'aHi': grid.a_edges[a_+1],
+                     'hLoV': h_ * grid.h_width, 'hHiV': min((h_+1) * grid.h_width, h_floor),
+                     'todayGuardShown': n0, 'archiveStateSelectionShown': n1, 'difference': n1-n0,
+                     'poissonSpread': spread, 'exceedsPoisson': abs(n1-n0) > spread,
+                     'sourceDetected': int(np.sum(group & (status == 1))),
+                     'sourceUndetected': int(np.sum(group & (status == 0))),
+                     'unknownDomain': int(np.sum(group & (status == -1)))})
+    return {'method': 'Counterfactual on resampled archive survey-midpoint states with newly drawn H; unknown '
+                      'm-domain cases retain today guard. Archive-state angles differ from live randomized angles; '
+                      'this is a diagnostic, not an implemented survey veto or a certified unseen count.',
+            'model': diag, 'sourceOriginalPopulation': tab['archive']['modelSize'],
+            'normalization': tab['normalization'], 'groups': rows,
+            'totals': {'todayGuardShown': sum(old_count.values()), 'archiveStateSelectionShown': sum(new_count.values()),
+                       'groupsExceedPoisson': sum(r['exceedsPoisson'] for r in rows),
+                       'sourceDetected': int(np.sum(inside & (status == 1))),
+                       'sourceUndetected': int(np.sum(inside & (status == 0))),
+                       'unknownDomain': int(np.sum(inside & (status == -1))),
+                       'unknownBright': int(np.sum(inside & (states[:,6] <= 21))),
+                       'unknownFaint': int(np.sum(inside & (states[:,6] >= 23.5)))}}

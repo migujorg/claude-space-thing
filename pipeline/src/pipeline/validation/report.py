@@ -328,6 +328,28 @@ def findings(cases: list[dict]) -> str:
           "Himawari grid mapping round trip; the companion parity test; and every committed case.json (orthonormal "
           "camera and body matrices, fovY/pitch consistency, reference.bin size, ROI rectangles inside the view, "
           "tolerance = 2σ, fitted target centre = the view's projection of the target).", ""]
+    L += ["**Rebuild locks.** Each case's `reproducibility` lock hashes the static import closure of its "
+          "build path (the stage fingerprint walker, with the selected instrument reader or Himawari prepare "
+          "module), with source tables read during module initialization or that case build. Shared modules are hashed as "
+          "whole files; unrelated stages and their tables are excluded. Raw inputs retain exact byte hashes. "
+          "Product dependencies hash canonically serialized consumed fields, including presence, nulls, "
+          "labels and source IDs where read: ring profile radii/depths/sources and disk-photometry values/labels. "
+          "Unconsumed product method text does not stale a lock; changing a consumed value does. This costs an "
+          "explicit field selection at each product read, checked again by the rebuild input capture. "
+          "The lock also records the numerical libraries, BLAS/LAPACK configuration, CPU features, PNG "
+          "compression, one-thread environment, artifact creation time and exact fit inputs/results. "
+          "The pipeline suite checks implementation/tables, environment and present input products offline "
+          "without raw images; a missing product is a counted skip. After an applicable code/table/product "
+          "change, run `cd pipeline && python -m pipeline.validation renew-locks` with the project Python. "
+          "It restarts with BLAS/OMP/MKL threads set to 1, uses each case's recorded SOURCE_DATE_EPOCH and "
+          "Earth kernel, and rebuilds from the pinned raw bytes. It refuses the entire batch if any JSON "
+          "outside the lock (including regions, expected values, tolerances and fits), reference.bin or "
+          "preview.png bytes differ; otherwise it rewrites only the eleven locks. Verification remains "
+          "`OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 python -m pipeline.validation verify`.", ""]
+    for c in cases:
+        L.append(f"* `{c['id']}`: [`reproducibility`]"
+                 f"(../../validation/cases/{c['id']}/case.json).")
+    L.append("")
     return "\n".join(L) + "\n"
 
 
@@ -736,7 +758,8 @@ RUN_FINDINGS = """### Current reading (decisions of 2026-10-07)
   outside the case's uncertainty budget, rather than evidence for choosing a different law.
 * **Saturn's terminator:** the frame shows night-side light with ringshine's signature, which the
   app does not draw. The deficit does not establish that the Barkstrom law darkens too steeply.
-  **Ring rows:** the case's phase is beyond the ring reflectance model's domain. Ring brightness
+  **Ring rows:** the case's phase is beyond the product's calibrated 0.25–47° domain;
+  [published measurements beyond 47° exist](../sources/rings-high-phase.md) and are not yet included. Ring brightness
   is shown as unknown, and these HDR rows compare the reference with zero ring light.
 * **Moon/Earth ratio:** the table above gives its refreshed tolerance, failing channels and relative
   errors. It depends on the Earth's rendered clouds and on a scene from another epoch. It is not
