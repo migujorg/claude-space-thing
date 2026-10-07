@@ -2593,6 +2593,142 @@
    },
    "consoleErrors": [],
    "readyMs": 63051
+  },
+  "night-limb-iss": {
+   "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=instant&target=399&dist=6771&az=180&el=0&look=0%2C-15&fov=30",
+   "stats": {
+    "adaptationLuminance": 0.001186785069947635,
+    "scotopicAdaptationLuminance": 0.0014251584923404442,
+    "pupilDiameterMm": 7.729684148056892,
+    "mesopicM": 0,
+    "limitingMagnitude": 5.535149923584361,
+    "starsDrawn": 584,
+    "bodiesDrawn": 0,
+    "bodies": [],
+    "points": [],
+    "bodiesInSnapshot": 75,
+    "sun": true,
+    "warnings": [
+     "Earth: phase extrapolated beyond measured range (0–170°) with the spatial law → estimated"
+    ],
+    "badge": [
+     "INSTANT ADAPTATION: eye always fully adapted"
+    ]
+   },
+   "consoleErrors": [],
+   "readyMs": 5754,
+   "accepted": {
+    "acceptedAt": "2026-10-07T09:41:20.362Z",
+    "git": "e7e5e89",
+    "data": {
+     "manifestGeneratedAt": "2026-10-07T08:06:19+00:00",
+     "manifestSha256": "9fab972127475c397fd8bd0546181333f8f45ed1c568822f9100e3630b4d15f0"
+    }
+   }
+  },
+  "night-limb-iss-daylight-eye": {
+   "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=realtime&target=399&dist=6771&az=180&el=0&look=0%2C-15&fov=30&adaptfrom=10000%2C600%2C60",
+   "stats": {
+    "adaptationLuminance": 0.0011760784414089236,
+    "scotopicAdaptationLuminance": 0.001419875900598226,
+    "pupilDiameterMm": 7.729785310965616,
+    "mesopicM": 0,
+    "limitingMagnitude": 4.5556978303148705,
+    "starsDrawn": 37,
+    "bodiesDrawn": 0,
+    "bodies": [],
+    "points": [],
+    "bodiesInSnapshot": 75,
+    "sun": true,
+    "warnings": [
+     "Earth: phase extrapolated beyond measured range (0–170°) with the spatial law → estimated"
+    ],
+    "badge": []
+   },
+   "consoleErrors": [],
+   "readyMs": 6133,
+   "accepted": {
+    "acceptedAt": "2026-10-07T09:41:20.362Z",
+    "git": "e7e5e89",
+    "data": {
+     "manifestGeneratedAt": "2026-10-07T08:06:19+00:00",
+     "manifestSha256": "9fab972127475c397fd8bd0546181333f8f45ed1c568822f9100e3630b4d15f0"
+    }
+   }
+  },
+  "aurora-2025-11-12": {
+   "query": "t=2025-11-12T01:00:00Z&smallbodies=0&adapt=instant&target=399&dist=6771&az=173.26110422279018&el=46.95923411082049&look=0%2C-89&fov=60",
+   "stats": {
+    "adaptationLuminance": 0.004550405561610023,
+    "scotopicAdaptationLuminance": 0.005598239033239343,
+    "pupilDiameterMm": 6.829632627521212,
+    "mesopicM": 0.015195116256507823,
+    "limitingMagnitude": 5.0999459315885565,
+    "starsDrawn": 0,
+    "bodiesDrawn": 1,
+    "bodies": [
+     {
+      "id": 399,
+      "name": "Earth",
+      "worstLabel": "estimated",
+      "surfaceUnknown": false
+     }
+    ],
+    "points": [],
+    "bodiesInSnapshot": 75,
+    "sun": true,
+    "warnings": [],
+    "badge": [
+     "INSTANT ADAPTATION: eye always fully adapted"
+    ]
+   },
+   "consoleErrors": [],
+   "readyMs": 8942,
+   "accepted": {
+    "acceptedAt": "2026-10-07T09:41:20.362Z",
+    "git": "e7e5e89",
+    "data": {
+     "manifestGeneratedAt": "2026-10-07T08:06:19+00:00",
+     "manifestSha256": "9fab972127475c397fd8bd0546181333f8f45ed1c568822f9100e3630b4d15f0"
+    }
+   }
+  },
+  "aurora-2025-11-14-quiet": {
+   "query": "t=2025-11-14T01:00:00Z&smallbodies=0&adapt=instant&target=399&dist=6771&az=173.2804022752983&el=46.43408307185946&look=0%2C-89&fov=60",
+   "stats": {
+    "adaptationLuminance": 0.0009604893148197737,
+    "scotopicAdaptationLuminance": 0.0009373048430433822,
+    "pupilDiameterMm": 7.171285150088395,
+    "mesopicM": 0,
+    "limitingMagnitude": 5.693210453879869,
+    "starsDrawn": 0,
+    "bodiesDrawn": 1,
+    "bodies": [
+     {
+      "id": 399,
+      "name": "Earth",
+      "worstLabel": "estimated",
+      "surfaceUnknown": false
+     }
+    ],
+    "points": [],
+    "bodiesInSnapshot": 75,
+    "sun": true,
+    "warnings": [],
+    "badge": [
+     "INSTANT ADAPTATION: eye always fully adapted"
+    ]
+   },
+   "consoleErrors": [],
+   "readyMs": 9923,
+   "accepted": {
+    "acceptedAt": "2026-10-07T09:41:20.362Z",
+    "git": "e7e5e89",
+    "data": {
+     "manifestGeneratedAt": "2026-10-07T08:06:19+00:00",
+     "manifestSha256": "9fab972127475c397fd8bd0546181333f8f45ed1c568822f9100e3630b4d15f0"
+    }
+   }
   }
  }
 }

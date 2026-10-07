@@ -7,6 +7,7 @@ import type { Mat3, SceneBody, SceneRings, SurfaceLayerRef } from '../render/sce
 import { unmeasuredTauPopulation } from '../render/earth';
 import { allowedValue, labelAllowed, worstOf, type ExistsLevel } from './reality';
 import type { ShapeLibrary } from './shapes';
+import { EARTH_ID, type NightglowSource } from './nightglow';
 
 export interface LayerRef {
   ref: SurfaceLayerRef;
@@ -35,6 +36,8 @@ export interface SceneExtras {
   atmospheres?: AtmosphereFile | null;
   /** Shape models (render/scene.ts SceneBody.shape), when shapes/index.json is loaded. */
   shapes?: ShapeLibrary | null;
+  /** Earth's airglow and aurora (render/scene.ts SceneBody.nightglow), with the time scale to evaluate them. */
+  nightglow?: { source: NightglowSource; etToUtcMs: (et: number) => number } | null;
 }
 
 const LABELS: readonly string[] = ['measured', 'derived', 'estimated', 'synthetic', 'unknown'];
@@ -126,7 +129,7 @@ export function applyExtras(
   extras: SceneExtras | undefined,
   level: ExistsLevel,
   lit: boolean,
-  /** Emission time (TDB seconds past J2000) the body is seen at: time-varying ring structure (precession, arcs). */
+  /** Emission time (TDB seconds past J2000) the body is seen at: time-varying ring structure (precession, arcs) and nightglow. */
   emitEt?: number,
 ): Label[] {
   const used: Label[] = [];
@@ -189,6 +192,15 @@ export function applyExtras(
   if (atm && !sb.atmosphere && lit && !sb.surfaceUnknown) {
     sb.atmosphere = atm;
     used.push(atm.worstLabel);
+  }
+  // Earth's own light at night: needs the body-fixed frame (local time, magnetic coordinates) and the time.
+  if (body.id === EARTH_ID && extras.nightglow && sb.radii && emitEt !== undefined) {
+    const ms = extras.nightglow.etToUtcMs(emitEt);
+    const ng = Number.isFinite(ms) ? extras.nightglow.source.scene(level, ms) : null;
+    if (ng) {
+      sb.nightglow = ng;
+      used.push(ng.worstLabel);
+    }
   }
   const sys = extras.rings?.[String(body.id)];
   if (sys) {

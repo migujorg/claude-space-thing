@@ -1563,3 +1563,144 @@ export interface ValidationCase {
   notes: string[];
   sources: SourceRecord[];
 }
+
+// ── Nightglow: airglow and aurora (pipeline stage `nightglow`, docs/reports/nightglow.md) ─────────────────────────
+
+/** One PALACE emission class (Noll et al. 2025): its spectrum folded through the CIE observers, and its climatology. */
+export interface AirglowClass {
+  id: string;
+  chem: string;
+  name: string;
+  /** Reference height of the class's emission layer, km (AirglowLayer.centreKm). */
+  layerKm: number;
+  /** Zenith column emission rate above the atmosphere, R: annual nocturnal mean at 100 sfu (all wavelengths). */
+  referenceR: number;
+  /** The part of referenceR at 360–830 nm, R. */
+  visibleR: number;
+  /** Luminance (X, Y, Z cd/m²; S scotopic cd/m²) of a column of 1 R of the class's spectrum. */
+  xyzsPerR: number[];
+  /** The same split over the 10 nm samples of `AirglowModel.samplesNm`, for spectral attenuation. */
+  xyzsPerRBySample: number[][];
+  zenithXYZSReference: number[];
+  shareOfZenithY: number;
+  shareOfZenithS: number;
+  brightestVisibleLines: { nmAir: number; R: number }[];
+  /** PALACE climatology [month 12][local-time bin 12]: scaling at 100 sfu, solar-cycle effect (% per sfu), residual σ. */
+  f0: number[][];
+  sce: number[][];
+  sigma: number[][];
+}
+
+/** A Gaussian volume-emission layer (altitude above the reference ellipsoid). */
+export interface AirglowLayer {
+  id: string;
+  centreKm: number;
+  sigmaKm: number;
+  fwhmKm: number;
+  kind: 'mesopause' | 'thermosphere';
+  classes: string[];
+}
+
+/** Daily solar radio flux (centred 27-day means of F10.7), sfu, with the provenance of each day. */
+export interface SolarRadioFluxSeries {
+  firstDay: string;
+  values: (number | null)[];
+  labelSegments: { label: Label; from: string; to: string }[];
+  lastObservedDay: string;
+}
+
+/** Resolved airglow data used by the app; serialized as AirglowProduct. */
+export interface AirglowModel {
+  kind: 'airglowModel';
+  version: number;
+  description: string;
+  units: Record<string, string>;
+  classes: AirglowClass[];
+  layers: AirglowLayer[];
+  omitted: { id: string; reason: string; zenithY: number }[];
+  samplesNm: number[];
+  climatology: {
+    monthCentreDoy: number[];
+    ltBinCentresHours: number[];
+    localTime: string;
+    nightWeight: number[][];
+    srf0: number;
+    /** Night domain: the airglow is drawn where the solar zenith angle at the ground point below exceeds this. */
+    nightMinSolarZenithDeg?: number;
+    scaling: string;
+    domain: string;
+  };
+  solarRadioFlux: Sourced<SolarRadioFluxSeries>;
+  label: Label;
+  sources: string[];
+  method: string;
+  uncertainty: string;
+  limbCheck?: {
+    peakLimbR: number; peakLimbRRange: [number, number]; peakTangentKm: number;
+    latitudeDeg: number; localTimeH: number; month: number; year: number; _source?: string;
+    /** Solar radio flux of that month (sfu) and how it was formed. */
+    srfSfu?: number | null; srfMethod?: string;
+  };
+}
+
+/** nightglow/airglow.json v2: inline physical data in the canonical Sourced.value envelope. */
+export interface AirglowProduct extends Sourced<Omit<AirglowModel, 'kind' | 'version' | 'label' | 'sources' | 'method' | 'uncertainty'>> {
+  kind: 'airglowModel';
+  version: number;
+}
+
+/** An aurora line group of the emission model. */
+export interface AuroraLineGroup {
+  /** Column per unit energy flux at each average-energy node, R per (erg cm⁻² s⁻¹). */
+  columnRPerErg: number[];
+  peakKm: number[];
+  /** Luminance of 1 R of the group (all its lines, in their fixed ratios). */
+  xyzsPerR: number[];
+  /** The same over the 10 nm samples (emission.value.samplesNm). */
+  xyzsPerRBySample?: number[][];
+}
+
+/** nightglow/aurora.json */
+export interface AuroraModel {
+  kind: 'auroraModel';
+  version: number;
+  description: string;
+  ovation: Sourced<{
+    file: string; dtype: 'float32' | 'float16'; layout: string;
+    seasons: string[]; quantities: string[];
+    couplingNodes: number[]; mlatDeg: number[]; mltHours: number[];
+    seasonWeights: string; types: string;
+  }>;
+  coupling: Sourced<{
+    unit: string;
+    hourlyStart: string;
+    stepHours: number;
+    values: (number | null)[];
+    measuredUntil: string;
+    climatology: { value: number; label: Label; method: string; sources: string[] };
+  }>;
+  magneticCoordinates: Sourced<{
+    file: string; dtype: 'float32'; layout: string;
+    /** [first, step, count] */
+    latDeg: [number, number, number];
+    lonDeg: [number, number, number];
+    altitudeKm: number;
+    epochYear: number;
+    /** Dipole frame axes (x, y, z) in Earth-fixed coordinates. */
+    dipoleFrameRows: number[][];
+    mlt: string;
+    undefined: string;
+  }>;
+  emission: Sourced<{
+    file: string; dtype: 'float32'; layout: string; unit: string;
+    groups?: string[];
+    samplesNm?: number[];
+    averageEnergyNodesKeV: number[];
+    altitudesKm: number[];
+    lines: Record<string, AuroraLineGroup>;
+    n2plusBands: { nmVac: number; photonsRelative4278: number }[];
+    checks: Record<string, unknown>;
+  }>;
+  label: Label;
+  nowcastCheck?: { source: string; use: string };
+}
