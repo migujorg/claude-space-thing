@@ -1,0 +1,20 @@
+# Mean widths: French et al. (2024), Icarus 411, 115957, DOI:10.1016/j.icarus.2024.115957,
+# arXiv:2401.04634v1 Table 14 p.45. No mean-width errors are published; rounding differences from aO-aI retained.
+# Lambda has no Table 14 width: 2.3 km from PDS RMS Vital Statistics for Uranus's Rings,
+# https://pds-rings.seti.org/uranus/uranus_rings_table.html, citing Nicholson et al. (2018),
+# The rings of Uranus, Planetary Ring Systems pp.93-111. Coarse review width, uncertainty unspecified.
+# COR support: French et al. (2023), DOI:10.1016/j.icarus.2023.115474, sections 4.1, 4.29-4.30, Table 5;
+# French et al. (2024) Tables 8,10. Accepted cuts: KAO 1977 and U0602 2006 except eta/delta (U0201 2002),
+# lambda (eight candidates 1985-1996). These are ring-specific COR detections, not independent per-edge bounds.
+# Dates are date-only; pipeline supports whole days TDB. No author-stated forward validity warranty.
+ring,first_datum,last_datum,mean_width_km,width_source
+6,1977-03-10,2006-09-20,2.316,french-2024-uranus
+5,1977-03-10,2006-09-20,2.684,french-2024-uranus
+4,1977-03-10,2006-09-20,3.231,french-2024-uranus
+alpha,1977-03-10,2006-09-20,7.277,french-2024-uranus
+beta,1977-03-10,2006-09-20,8.516,french-2024-uranus
+eta,1977-03-10,2002-07-29,2.227,french-2024-uranus
+gamma,1977-03-10,2006-09-20,3.258,french-2024-uranus
+delta,1977-03-10,2002-07-29,4.977,french-2024-uranus
+lambda,1985-05-04,1996-04-10,2.3,pds-uranus-ring-statistics
+epsilon,1977-03-10,2006-09-20,58.574,french-2024-uranus

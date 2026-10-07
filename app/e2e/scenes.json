@@ -135,6 +135,26 @@
    }
   },
   {
+   "id": "uranus-epsilon-estimate",
+   "title": "Uranus epsilon ring: an estimated band 17.66 pixels wide, with the planet outside the frame",
+   "params": {
+    "t": "2026-10-15T00:00:00Z",
+    "target": "799",
+    "dist": "100000",
+    "az": "25",
+    "el": "12",
+    "fov": "1",
+    "look": "-64.44491889269331,-63.83801785178568",
+    "exists": "best",
+    "view": "eye",
+    "adapt": "instant",
+    "smallbodies": "0",
+    "labels": "0",
+    "orbits": "0",
+    "ui": "0"
+   }
+  },
+  {
    "id": "uranus",
    "title": "Uranus",
    "params": {

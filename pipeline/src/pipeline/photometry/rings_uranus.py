@@ -3,7 +3,8 @@
 Geometry (derived): the nine main rings' inner and outer edges (IER, OER) from French et al. (2024, Table 5): precessing,
 inclined keplerian ellipses at epoch TDB 1986 Jan 19 12:00 with the normal modes of their Table 6; the λ ring as a
 circle at its fitted semimajor axis. Propagation is restricted to the supporting observation span; beyond it the
-geometry is unknown. Table 5 fits the edges separately, not as a rigid ring (Section 4.2).
+geometry is unknown at Strict. Best/Complete use an estimated COR ellipse with constant published mean width,
+without fitted edge or centreline modes, outside that support. Table 5 fits the edges separately, not as a rigid ring (Section 4.2).
 
 Optical depth: the Voyager 2 PPS occultation profiles of each ring (PDS VG_2801, 1 km; β Per ingress and egress for all
 nine rings, σ Sgr ingress and egress for δ, ε and λ), each placed at its cut with the PPS geometry files (ring
@@ -38,16 +39,8 @@ from .ring_reflectance import SALO_FRENCH
 
 _VG2801 = "https://pds-rings.seti.org/holdings/volumes/VG_28xx/VG_2801/"
 EPOCH_ET = rc.et_of_tdb_calendar(1986, 1, 19, 12.0)       # French et al. (2024) Table 5 epoch, TDB
-# Table 8 gives date-only observation bounds. Whole calendar days are used at that precision (TDB), rather than
-# implying measured sub-day limits. This is our no-extrapolation policy, NOT an author-stated validity warranty.
-GEOMETRY_VALIDITY = {
-    "startEt": rc.et_of_tdb_calendar(1977, 3, 10),
-    "endEt": rc.et_of_tdb_calendar(2006, 9, 21),
-    "basis": "Observation support, French et al. (2024) Table 8: 1977-03-10 through 2006-09-20 (whole days, "
-             "TDB at date precision). Pipeline policy: no extrapolation of the separately fitted Table 5/6 edge "
-             "elements; the paper does not state an extrapolation validity span. Nonpositive widths are unknown "
-             "even inside this interval.",
-}
+# Ring-specific accepted COR dates are transcribed separately from the orbital fit. Whole-day TDB policy.
+JULIAN_YEAR_DAYS = 365.25  # Julian year definition, IAU; only converts elapsed days to years in method text.
 POLE_RA_DEC = (77.311327, 15.172795)                      # French et al. (2024) Table 13 fit 1 (angular momentum)
 RINGS = ("6", "5", "4", "alpha", "beta", "eta", "gamma", "delta", "lambda", "epsilon")
 PPS_CODE = {"6": "6", "5": "5", "4": "4", "alpha": "A", "beta": "B", "eta": "N", "gamma": "G", "delta": "D",
@@ -79,7 +72,32 @@ FRENCH = Download(
              "masses of Cressida, Cordelia, and Ophelia. Icarus 411, 115957. DOI:10.1016/j.icarus.2024.115957 "
              "(manuscript arXiv:2401.04634v1).",
     notes="Tables 5 and 6 transcribed to photometry/tables/french_2024_uranus_ring_{orbits,modes}.csv "
-          "(docs/reports/rings.md).")
+          "(docs/reports/rings.md). Table 14 widths in french_2024_uranus_ring_support_widths.csv. "
+          "Table 14 q_varpi does not reproduce Eq.22 from its printed inputs: epsilon printed -0.019 vs computed "
+          "+0.00338644; beta 1.105 vs +0.122260; alpha -0.139 vs -0.029203. No correction chosen; width laws unused.")
+FRENCH_EVENTS = Download(
+    id="french-2023-uranus-occultations", subdir="papers", name="french-2023-uranus-occultations.pdf",
+    url="https://authors.library.caltech.edu/records/vr3cc-p4838/files/1-s2.0-S0019103523000519-main.pdf?download=1",
+    title="Uranus occultations 1977-2006: accepted ring event history",
+    citation="French, R. G. et al. (2023). Uranus ring occultation observations: 1977-2006. Icarus 395, "
+             "115474. DOI:10.1016/j.icarus.2023.115474.", transcribed_only=True,
+    notes="Sections 4.1, 4.29-4.30 and Table 5: U0201 missed 6/5/4; U0602 excludes eta/delta and tentative lambda.")
+FRENCH_PREDICTIONS = Download(
+    id="french-souami-2023-predictions", subdir="papers", name="arXiv-2307.13530.pdf",
+    url="https://arxiv.org/pdf/2307.13530", version="arXiv:2307.13530v1", title="Published Uranus ring occultation predictions through 2050",
+    citation="French, R. G. & Souami, D. (2023). Earth-based Stellar Occultation Predictions for Jupiter, Saturn, Uranus, Neptune, Titan, and Triton: 2023-2050. "
+             "Planetary Science Journal 4, 202. DOI:10.3847/PSJ/aced50 (arXiv:2307.13530).",
+    transcribed_only=True,
+    notes="Sections 3, 5.3 and Table 4: forward predictions use ring orbits. Published prediction practice, "
+          "not a measurement or a dynamical stability guarantee; planning widths are not final Table 14 widths.")
+PDS_STATISTICS = Download(
+    id="pds-uranus-ring-statistics", subdir="rings", name="uranus_rings_table.html",
+    url="https://pds-rings.seti.org/uranus/uranus_rings_table.html", title="Vital Statistics for Uranus's Rings",
+    citation="NASA PDS Ring-Moon Systems Node, Vital Statistics for Uranus's Rings; citing Nicholson, P. D., "
+             "de Pater, I., French, R. G. & Showalter, M. R. (2018), The rings of Uranus, Planetary Ring Systems, "
+             "Cambridge University Press, pp.93-111.", transcribed_only=True,
+    notes="Lambda width 2.3 km (coarse review, no uncertainty supplied). No optical depth or other element from "
+          "this summary substitutes for the primary fit or the PPS equivalent depths.")
 HEDMAN_CHANCIA = Download(
     id="hedman-chancia-2021", url="https://arxiv.org/pdf/2104.14482v2", subdir="papers", name="arXiv-2104.14482v2.pdf",
     title="Uranus's narrow dusty ringlets in Voyager 2 high-phase images (Table 3: peak normal I/F, NEW)",
@@ -167,6 +185,86 @@ def orbits() -> dict[str, dict[str, dict]]:
             float(r["a_km"]), num("ae_km"), num("varpi0_deg"), num("varpidot_deg_d"), num("asini_km"),
             num("node0_deg"), num("nodedot_deg_d"), modes.get((r["ring"], r["feature"]), []))
     return out
+
+
+@lru_cache(maxsize=1)
+def support_widths() -> dict[str, dict]:
+    return {r["ring"]: r for r in read_table_csv("french_2024_uranus_ring_support_widths.csv")}
+
+
+def _date_et(date: str) -> float:
+    return rc.et_of_tdb_calendar(*map(int, date.split("-")))
+
+
+def geometry_validity(ring: str) -> dict:
+    r = support_widths()[ring]
+    return {"startEt": _date_et(r["first_datum"]), "endEt": _date_et(r["last_datum"]) + rc.DAY,
+            "basis": f"Accepted COR observation dates {r['first_datum']} through {r['last_datum']} (whole days "
+                     "TDB): French et al. (2023) Sections 4.1, 4.29-4.30, Table 5; French et al. (2024) Tables 8,10. "
+                     "No separate per-edge bounds published. Pipeline policy: no extrapolation of separate edge "
+                     "fits; nonpositive widths are unknown even inside support. Not an author-stated validity warranty."}
+
+
+def formal_displacements(ring: str, et: float) -> dict:
+    """Phase-only diagonal 1-sigma displacement proxies from Table 5 marginal errors; covariance unavailable."""
+    row = next(r for r in read_table_csv("french_2024_uranus_ring_orbits.csv")
+               if r["ring"] == ring and r["feature"] == "COR")
+    dt = (et - EPOCH_ET) / rc.DAY
+    out = {}
+    for name, amp, angle, rate in (("radial", "ae", "varpi0", "varpidot"),
+                                    ("vertical", "asini", "node0", "nodedot")):
+        if row[amp + "_km"] == "fixed":
+            out[name] = None
+        else:
+            sigma = math.hypot(float(row[angle + "_err"]), dt * float(row[rate + "_err"]))
+            out[name] = float(row[amp + "_km"]) * math.sin(math.radians(sigma))
+    return out
+
+
+def estimate_method(ring: str, ctx: BuildContext | None) -> str:
+    row = support_widths()[ring]
+    w = float(row["mean_width_km"])
+    fit = next(r for r in read_table_csv("french_2024_uranus_ring_orbits.csv")
+               if r["ring"] == ring and r["feature"] == "COR")
+    run = "ringfit v1.9 Ur018M-RF-V0351-URA178-COR-" + ("lambda" if ring == "lambda" else "v2")
+    method = (f"Estimated constant-rate ellipse from French et al. (2024) Table 5 COR fit for {ring}, epoch "
+              f"TDB 1986-01-19 12:00, {run}"
+              + (" (gamma solution including m=3)" if ring == "gamma" else "") + "; propagate fitted apse/node rates. "
+              f"Band centred on that ellipse, constant published mean width {w:g} km "
+              f"({'PDS RMS/Nicholson et al. 2018 review; coarse, error unspecified' if ring == 'lambda' else 'Table 14; error unspecified'}). "
+              f"Last accepted COR datum {row['last_datum']}; years beyond it at any requested et = "
+              f"(et - {_date_et(row['last_datum']):.17g}) / (86400 * 365.25). ")
+    method += f"Semimajor-axis formal sigma {fit['a_err']} km, fit RMS {fit['rms_km']} km (not added independently to phase error). "
+    if ctx:
+        for name, et in (("start", ctx.start_et), ("end", ctx.end_et)):
+            years = (et - _date_et(row["last_datum"])) / (rc.DAY * JULIAN_YEAR_DAYS)
+            d = formal_displacements(ring, et)
+            disp = lambda k: f"{d[k]:.6f} km" if d[k] is not None else "undefined (term fixed zero, orientation not fitted)"
+            method += (f"Data-window {name} ET {et:.17g}: {years:.6f} years beyond last datum; formal 1-sigma radial "
+                       f"apse-phase displacement {disp('radial')}, vertical node-phase displacement {disp('vertical')}. ")
+    method += ("Diagonal phase proxy: amplitude*sin(hypot(sigma_angle0, delta_days*sigma_rate)), from transcribed "
+               "Table 5 errors; missing angle/rate covariance prevents an exact propagated sigma. These constrain "
+               "statistical error inside a constant-rate model, not dynamical change since the fit or total position "
+               "error; a/ae/amplitude/pole errors and omitted modes are not included. Fixed eccentricity/inclination "
+               "terms are zero as in the source, with undefined apse/node and no implied orientation or zero error. "
+               "No separately fitted edges or modes are propagated. Width variation with longitude is not "
+               "represented at this date (epsilon about 20 to 97 km historically). ")
+    modes = orbits()[ring]["COR"]["modes"]
+    method += ("Omitted COR radial modes: " + ", ".join(f"m={m['m']}, amplitude {m['amplitudeKm']:g} km" for m in modes) + ". ") if modes else "No detected COR radial modes omitted. "
+    return method + ("French & Souami (2023), PSJ 4,202, DOI:10.3847/PSJ/aced50, Sections 3,5.3/Table 4, "
+                     "publish occultation predictions from ring orbits through 2050: this follows published "
+                     "forward-prediction practice, not a measurement or a stability guarantee.")
+
+
+def centreline_band(ring: str) -> tuple[dict, dict]:
+    """Constant radial offsets, encoded as static m=0 terms for the existing edge/mode shader arithmetic.
+    These terms are the band boundaries, not observed normal modes. No separately fitted IER/OER is evaluated.
+    """
+    cor = dict(orbits()[ring]["COR"], modes=[])
+    half = float(support_widths()[ring]["mean_width_km"]) / 2
+    def offset(amp):
+        return dict(cor, modes=[{"m": 0, "amplitudeKm": amp, "phaseDeg": 0., "patternSpeedDegPerDay": 0.}])
+    return offset(half), offset(-half)
 
 
 def edges(ring: str) -> tuple[dict, dict]:
@@ -482,6 +580,7 @@ def build(ctx: BuildContext | None = None) -> tuple[dict, dict]:
                                                                     HEDMAN_STARK, SALO_FRENCH))
     checks = {"karkoschka-1997 (via molter-2019)": reg(MOLTER), "ockert-1987": reg(OCKERT),
               "svitek-danielson-1987": reg(SVITEK)}
+    s_events, s_predictions, s_statistics = (reg(d) for d in (FRENCH_EVENTS, FRENCH_PREDICTIONS, PDS_STATISTICS))
     profiles = {ring: combine(ring, ring_cuts(ring, ctx)) for ring in RINGS}
     cal = calibrate(profiles)
     tables = {
@@ -502,7 +601,7 @@ def build(ctx: BuildContext | None = None) -> tuple[dict, dict]:
     diag: dict = {"calibration": cal, "profiles": profiles, "checks": {}}
     geo_method = ("Inner and outer edges from French et al. (2024) Table 5 keplerian elements (IER, OER) and Table 6 "
                   "normal modes at epoch TDB 1986-01-19 12:00, propagated with the fitted apsidal, nodal and pattern "
-                  "speeds only over the supporting Table 8 observation span (geometryValidity); nonpositive widths "
+                  "speeds only over the ring-specific accepted COR observation span (geometryValidity); nonpositive widths "
                   "are unknown. The band lies in the ring's inclined plane (a sin i of its centreline).")
     for ring in RINGS:
         prof = profiles[ring]
@@ -532,8 +631,8 @@ def build(ctx: BuildContext | None = None) -> tuple[dict, dict]:
             id=f"uranus-{ring}", name=NAMES.get(ring, f"ring {ring}"), inner=i_e, outer=o_e,
             u_start=float(prof.u[0]), u_step=float(prof.u[1] - prof.u[0]), profile=prof.tau_ref,
             width_ref_km=prof.w_ref, width_scaling=ring != "lambda", optical_depth_known=True,
-            geometry_validity=GEOMETRY_VALIDITY,
-            geometry=rc.Prov("derived" if ring != "lambda" else "estimated", [s_french], geo_method if ring != "lambda" else
+            geometry_validity=geometry_validity(ring),
+            geometry=rc.Prov("derived" if ring != "lambda" else "estimated", [s_french, s_events], geo_method if ring != "lambda" else
                              f"Circular band ±{LAMBDA_HALF_WINDOW} km about the λ ring's fitted semimajor axis (French "
                              "et al. 2024 Table 5; its eccentricity and inclination were held at 0)."),
             optical_depth=rc.Prov(
@@ -544,6 +643,37 @@ def build(ctx: BuildContext | None = None) -> tuple[dict, dict]:
                 f"negative noise clipped with ∫τ dr kept ({prof.ed:.3f} km). Measured at the cuts; at other "
                 "longitudes τ = τ_ref·W_ref/W(λ) (estimated: streamline mass conservation)."),
             reflectance=refl, layer=layer, thin=thin))
+        # Historical geometry/profile/brightness remain byte-for-byte. An alternate *component*, rather than
+        # new shader arithmetic, supplies the unsupported-date estimate with the same reflectance model.
+        old = comps[-1].json()
+        mean_width = float(support_widths()[ring]["mean_width_km"])
+        ei, eo = centreline_band(ring)
+        u0, du, u = rc.tiled_bins()
+        method = estimate_method(ring, ctx)
+        geo_sources = [s_french, s_events, s_predictions] + ([s_statistics] if ring == "lambda" else [])
+        estimate = rc.Component(
+            id=old["id"], name=old["name"], inner=ei, outer=eo,
+            u_start=u0, u_step=du, profile=np.full(len(u), prof.ed / mean_width),
+            width_ref_km=mean_width, width_scaling=False, optical_depth_known=True,
+            geometry=rc.Prov("estimated", geo_sources, method),
+            optical_depth=rc.Prov("estimated", srcs + [s_french] + ([s_statistics] if ring == "lambda" else []),
+                f"Historical PPS mean equivalent depth {prof.ed:.6f} km ({prof.method}), from the same cuts as the "
+                f"supported component, spread uniformly over published mean width {mean_width:g} km "
+                f"(mean equivalent optical depth {prof.ed / mean_width:.6f}). Stationary opacity and uniform "
+                "redistribution are assumptions, not a present-date opacity measurement; no wavelength, "
+                "longitude or time variation is inferred."),
+            reflectance=refl, layer=layer, thin=thin,
+            centreline_estimate={"centreline": dict(cor, modes=[]), "meanWidthKm": mean_width,
+                                 "lastDatumEt": _date_et(support_widths()[ring]["last_datum"]),
+                                 "lastDatumTdb": support_widths()[ring]["last_datum"],
+                                 "yearDays": JULIAN_YEAR_DAYS}).json()
+        # Reflectance is untouched, including its full sourced envelope and lambda's unknown brightness.
+        estimate["provenance"]["reflectance"] = old["provenance"]["reflectance"]
+        comps[-1].geometry = rc.Prov(comps[-1].geometry.label, comps[-1].geometry.sources,
+                                    comps[-1].geometry.method + " Outside support, Best/Complete may use the separately "
+                                    "labelled outsideSupportEstimate alternative: " + method)
+        comps[-1].outside_support_estimate = rc.Prov("estimated", sorted(set(geo_sources + srcs + refl.sources)),
+                                                   method).json(estimate)
         diag["checks"][ring] = {"ed_km": prof.ed, "ed_cuts": prof.ed_cuts, "noise": prof.noise,
                                 "shifts": [c.shift_km for c in prof.cuts]}
     # Dust-only ringlets (circular, Gaussian of the measured FWHM and NEW) and the ζ ring.
@@ -601,4 +731,4 @@ def build(ctx: BuildContext | None = None) -> tuple[dict, dict]:
     diag["checks_sources"] = checks
     return {"model": model, "label": label, "sources": sorted({s for c in comps for s in
                                                               c.geometry.sources + c.optical_depth.sources +
-                                                              c.reflectance.sources} | {s_hs, s_sf})}, diag
+                                                              c.reflectance.sources} | {s_hs, s_sf, s_events, s_predictions, s_statistics})}, diag

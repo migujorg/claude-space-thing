@@ -29,7 +29,7 @@
 
 import type { SceneBody, SceneRings } from './scene';
 import type { Label, RingReflectance } from '../data/schema';
-import { geometrySupported, packComponentRecords, packComponents, phaseValue, type PackedComponents } from './ringComponents';
+import { DAY_S, componentsAt, geometrySupported, packComponentRecords, packComponents, phaseValue, type PackedComponents } from './ringComponents';
 import { AU_KM } from './constants';
 import { dot, len, normalize, prepareBody, type M3, type V3 } from './raycast';
 import type { XYZS } from './photometry';
@@ -427,7 +427,8 @@ const EMPTY_RINGS: SceneRings = { normal: [0, 0, 1], opticalDepth: [], reflectan
 export function prepareRings(b: SceneBody, sunIrradianceXYZS_1AU: XYZS | null, sunRadiusKm: number, pixelAngle: number): RingFrame {
   const out: RingFrame = { draw: null, pointE: null, warnings: [] };
   const r = b.rings;
-  const comps = r?.components ?? null;
+  const rawComponents = r?.components ?? null;
+  const comps = rawComponents ? componentsAt(rawComponents, r?.et ?? rawComponents.epochEt) : null;
   if (!r || !b.radii || (!comps && !r.opticalDepth.some((p) => p.radiusKm.length >= 2))) return out;
   const prof = ringProfile(comps ? EMPTY_RINGS : r);
   const packed = comps ? packComponents(comps) : null;
@@ -447,6 +448,14 @@ export function prepareRings(b: SceneBody, sunIrradianceXYZS_1AU: XYZS | null, s
   const alphaDeg = (Math.acos(Math.max(-1, Math.min(1, dot(toObs, sunDir)))) * 180) / Math.PI;
   if (comps) {
     const et = r.et ?? comps.epochEt;
+    const estimates = comps.components.filter((c) => c.centrelineEstimate);
+    if (estimates.length) {
+      const years = estimates.map((c) => {
+        const e = c.centrelineEstimate!;
+        return (et - e.lastDatumEt) / (DAY_S * e.yearDays);
+      });
+      out.warnings.push(`${b.name} rings: geometry estimated from COR centreline fits with constant mean widths for ${estimates.map((c) => c.name).join(', ')}; ${Math.min(...years).toFixed(2)}–${Math.max(...years).toFixed(2)} years beyond last accepted data; fitted modes and width variation omitted; dynamical change is unbounded`);
+    }
     const unsupported = comps.components.filter((c) => !geometrySupported(c, et)).map((c) => c.name);
     if (unsupported.length) out.warnings.push(`${b.name} rings: geometry not measured at this time for ${unsupported.join(', ')} → no light or extinction; radial annotation hatched as not measured`);
     const dark = comps.components.filter((c) => geometrySupported(c, et) && !c.layer && !c.thin && c.profile.opticalDepthKnown).map((c) => c.name);
