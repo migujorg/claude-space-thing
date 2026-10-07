@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import { zonalMeanOfLevel0 } from '../src/render/surface';
 import type { BodyPhotometry } from '../src/data/schema';
-import { gaussLegendre, LAW, LAMBERT_LAW, lawDiskIntegral, lawRadf, resolveLaw, type ResolvedLaw, type ZonalProfile } from '../src/render/spatial';
+import { gaussLegendre, LAW, LAMBERT_LAW, lawDiskIntegral, lawRadf, resolveLaw, type ResolvedLaw, type ZonalProfile, MotionNormalization } from '../src/render/spatial';
 const fs: { existsSync(p: URL): boolean; readFileSync(p: URL, enc: 'utf8'): string; readFileSync(p: URL): Uint8Array } =
   await import(/* @vite-ignore */ 'node:fs' as string);
 const path = new URL('../public/data/photometry.json', import.meta.url);
@@ -99,4 +99,34 @@ describe('disk quadrature: relative accuracy across 0–179.9°, including thin 
     const law = { ...LAMBERT_LAW, kind: LAW.akimov }, a = 179.9 * Math.PI / 180;
     expect(Math.abs(reference(law, a, 160) / reference(law, a, 320) - 1)).toBeLessThan(1e-6);
   });
+});
+
+// Motion uses this same entry point; the accepted quadrature above stays its independent oracle.
+describe('motion normalization: bounded approximation, independent of image scores', () => {
+  it('interpolated bare laws stay within 2e-5 relative, including opposition and crescents', () => {
+    const cache = new MotionNormalization();
+    for (const id of ['501', '502', '503', '504', '601']) {
+      for (const deg of [0, 0.00001, 0.01, 0.1, 1, 3, 17, 41, 73, 119, 150, 175, 179, 179.5, 179.9]) {
+        const a = deg * Math.PI / 180, r = resolveLaw(photometry[id].spatialModel!.value, a);
+        if ('error' in r) continue;
+        const value = cache.get(r.law, a), exact = lawDiskIntegral(r.law, a, undefined, 24);
+        expect(Math.abs(value[1] / exact[1] - 1), `${id} at ${deg}`).toBeLessThan(2e-5);
+      }
+    }
+  }, 30000);
+  for (const id of ['599', '699']) it(`${id}: moving pole and phase stay within 2e-5 of converged row quadrature`, () => {
+    const tiles = [0, 1].map(t => {
+      const b = fs.readFileSync(new URL(`../public/data/surfaces/${id}/albedo/0/0/${t}.bin`, import.meta.url));
+      return b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) as ArrayBuffer;
+    });
+    const profile = zonalMeanOfLevel0(tiles), cache = new MotionNormalization();
+    for (const deg of [0, 1, 17, 41, 73, 91, 119, 135, 150, 170, 179, 179.9]) {
+      const a = deg * Math.PI / 180, r = resolveLaw(photometry[id].spatialModel!.value, a);
+      if ('error' in r) throw new Error(r.error);
+      for (const pole of [[0.3, 0.7, Math.sqrt(0.42)], [0, 1, 0], [0, 0, 1]] as [number, number, number][]) {
+        const zonal = { profile, pole }, value = cache.get(r.law, a, zonal), exact = lawDiskIntegral(r.law, a, zonal);
+        for (let c = 0; c < 4; c++) expect(Math.abs(value[c] / exact[c] - 1), `${deg} pole=${pole} c=${c}`).toBeLessThan(2e-5);
+      }
+    }
+  }, 30000);
 });
