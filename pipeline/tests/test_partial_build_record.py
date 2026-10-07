@@ -114,6 +114,14 @@ def test_adopt_cannot_promote_a_partial_record(runner, stage, filters, capsys):
     assert "NOT ADOPTABLE" in capsys.readouterr().out
 
 
+@pytest.mark.parametrize("stage,filters", FILTERS)
+def test_adopt_cannot_certify_unrecorded_filtered_products(runner, stage, filters):
+    manifest = changed_partial(runner, stage, filters)
+    manifest.pop("stages")
+    (runner.out / "manifest.json").write_text(json.dumps(manifest))
+    assert "stages" not in runner.invoke(stage, filters, adopt=True)
+
+
 @pytest.mark.parametrize("stage,sets", [
     ("surfaces", {"surfaces.maxLevel": 3}),
     ("shapes", {"shapes.damit": False}),
