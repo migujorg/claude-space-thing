@@ -71,9 +71,9 @@ function bodyOf(pr: Products, id: number, pos: Vec3, toSun: Vec3, orient: Mat3, 
     id, name: b.name, pos, toSun, orient, radii: b.radii.value,
     albedoMeasurementView: ph?.albedoMeasurementView?.value ?? null,
     albedoReferenceNormalization: ph?.albedoReferenceNormalization?.value ?? null,
-    albedoScaleLabel: ph?.albedoMeasurementView?.value?.kind === 'orientation-mean' ? (extra.surface?.albedo ? ph.albedoViewSpread?.value?.mapScaleLabel : ph.albedoViewSpread?.value?.scaleLabel) ?? 'estimated' : ph?.albedoMeasurementView?.label,
+    albedoScaleLabel: ph?.albedoMeasurementView?.label,
     albedoXYZS: albedo, phase, surfaceUnknown: !albedo || !phase,
-    worstLabel: [lab(b.radii), lab(ph?.geometricAlbedoXYZS), lab(ph?.phaseFunction), ...(ph?.albedoMeasurementView ? [ph.albedoMeasurementView.value?.kind === 'orientation-mean' ? (extra.surface?.albedo ? ph.albedoViewSpread?.value?.mapScaleLabel : ph.albedoViewSpread?.value?.scaleLabel) ?? 'estimated' : lab(ph.albedoMeasurementView)] : [])].reduce(worse, 'measured'),
+    worstLabel: [lab(b.radii), lab(ph?.geometricAlbedoXYZS), lab(ph?.phaseFunction), ...(ph?.albedoMeasurementView ? [lab(ph.albedoMeasurementView)] : [])].reduce(worse, 'measured'),
     selected: false, allowPhaseExtrapolation: true, phaseEstimated: !!phase && ph.phaseFunction.label === 'estimated', ...extra,
   };
 }

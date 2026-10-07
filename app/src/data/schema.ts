@@ -214,22 +214,20 @@ export interface CalibrationNormalizationTable {
   radiiKm: [number,number,number];
   view: AlbedoMeasurementView;
   sourceCodeSha256: string;
+  relativeTolerance: number;
   quadrature: string;
   cells: {lo: number; hi: number; sphere: number[]; bare: number[][]; mapped?: number[][]}[];
   zonalRows?: number[];
   mapTileSha256?: (string | null)[];
 }
 
-/** Positive-weight all-phase envelope for an unknown calibration orientation. */
+/** Informational spread of a single bare-ellipsoid view around its mean. */
 export interface AlbedoViewSpread {
-  maxRelativeXYZS: [number, number, number, number];
-  bareMaxRelative?: number;
-  mapMaxRelativeXYZS?: [number, number, number, number] | null;
-  mapTileSha256?: string[];
-  albedoSigmaRelative: number | null;
-  scaleLabel: 'derived' | 'estimated';
-  mapScaleLabel?: 'derived' | 'estimated';
+  bareMaxRelative: number;
 }
+
+/** albedo-reference.json: fixed integrals built after light and surfaces. */
+export type AlbedoReferenceFile = Record<string, Sourced<CalibrationNormalizationTable>>;
 
 export interface BodyPhotometry {
   /** See docs/architecture.md §4.3. Four numbers (X, Y, Z, scotopic) in "lux at 1 AU". */

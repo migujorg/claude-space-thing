@@ -140,14 +140,14 @@ describe('buildSnapshot', () => {
   });
 });
 
-// The measurement is the albedo. An uncertain calibration view is a bounded scale correction.
+// A mean reference stays derived regardless of its single-view spread.
 describe('ellipsoid calibration at Strict and Best', () => {
-  for (const calibration of ['derived', 'bounded', 'estimated'] as const) for (const level of ['strict', 'best'] as const) {
+  for (const calibration of ['dated', 'mean', 'estimated'] as const) for (const level of ['strict', 'best'] as const) {
     it(`${calibration} view at ${level}`, () => {
       const b = body(399, 'Planet', 'planet', {albedo: 'measured', phase: 'measured'});
       b.radii.value = [10, 10, 9];
-      b.photometry!.albedoMeasurementView = {value: calibration === 'derived' ? {kind:'latitude', latitudeDeg: 40} : {kind:'orientation-mean'}, label: calibration === 'derived' ? 'derived' : 'estimated', sources: ['test']};
-      b.photometry!.albedoViewSpread = {value: {maxRelativeXYZS: [0.02,0.02,0.02,0.02], albedoSigmaRelative: calibration === 'bounded' ? 0.03 : 0.01, scaleLabel: calibration === 'estimated' ? 'estimated' : 'derived'}, label:'derived', sources:['test']};
+      b.photometry!.albedoMeasurementView = {value: calibration === 'dated' ? {kind:'latitude', latitudeDeg: 40} : {kind:'orientation-mean'}, label: calibration === 'estimated' ? 'estimated' : 'derived', sources: ['test']};
+      b.photometry!.albedoViewSpread = {value: {bareMaxRelative: 2}, label:'derived', sources:['test']};
       const bs = [body(10,'Sun','star',{r:500}), b];
       const world = computeWorld(0, [5e5,0,0], bs, eph, core, 10);
       const s = buildSnapshot({world, camera: cam, reality:{...defaultReality(), exists:level},light:fakeLight(), selectedId:null, orbits:[],orientations:new IauOrientationSet(bs,fakeBodyToIcrf)});

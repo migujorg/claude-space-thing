@@ -12,6 +12,9 @@ const fs: { existsSync(p: URL): boolean; readFileSync(p: URL, enc: 'utf8'): stri
 const path = new URL('../public/data/photometry.json', import.meta.url);
 const built = fs.existsSync(path);
 const photometry: Record<string, BodyPhotometry> = built ? JSON.parse(fs.readFileSync(path, 'utf8')) : {};
+const refsPath = new URL('../public/data/albedo-reference.json', import.meta.url);
+const refs = fs.existsSync(refsPath) ? JSON.parse(fs.readFileSync(refsPath, 'utf8')) : {};
+for (const id of Object.keys(refs)) if (photometry[id]) photometry[id].albedoReferenceNormalization=refs[id];
 const { env }: { env: Record<string, string | undefined> } = await import(/* @vite-ignore */ 'node:process' as string);
 
 /**

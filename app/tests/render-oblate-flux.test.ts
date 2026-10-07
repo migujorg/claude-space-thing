@@ -9,6 +9,9 @@ import type { SceneBody, SceneSnapshot } from '../src/render/scene';
 const fs: {readFileSync(p:URL,enc:'utf8'):string;existsSync(p:URL):boolean} = await import(/* @vite-ignore */ 'node:fs' as string);
 const built = fs.existsSync(new URL('../public/data/photometry.json', import.meta.url)) && fs.existsSync(new URL('../public/data/bodies.json', import.meta.url));
 const photo = built ? JSON.parse(fs.readFileSync(new URL('../public/data/photometry.json', import.meta.url), 'utf8')) : {};
+const referencePath = new URL('../public/data/albedo-reference.json', import.meta.url);
+const reference = fs.existsSync(referencePath) ? JSON.parse(fs.readFileSync(referencePath, 'utf8')) : {};
+for (const id of Object.keys(reference)) if (photo[id]) photo[id].albedoReferenceNormalization = reference[id];
 const bodies = built ? JSON.parse(fs.readFileSync(new URL('../public/data/bodies.json', import.meta.url), 'utf8')) : [];
 type V3 = [number, number, number];
 export function surfaceSum(radii: V3, law: ResolvedLaw, alpha: number, latitude = 0, n = 400): number {
@@ -138,6 +141,21 @@ describe.skipIf(!built)('dated calibration normalization product', () => {
       const alpha=deg*Math.PI/180,r=resolveLaw(photo[id].spatialModel.value,alpha),law='error' in r?LAMBERT_LAW:r.law;
       const got=norm.reference(law,alpha,radii,view,profile,table),exact=norm.reference(law,alpha,radii,direct,profile);
       for(let k=0;k<4;k++)expect(Math.abs(got[k]/exact[k]-1),`${id} ${deg}° map=${!!profile} c=${k}`).toBeLessThan(1e-4);
+    }
+  },60000);
+  for (const id of [599,699,799,899]) it(`${id} one cell recomputes from product inputs at stated tolerance`, () => {
+    const table=reference[id].value;
+    const cell=table.cells[Math.floor(table.cells.length/2)];
+    const alpha=Math.PI*-Math.expm1(-(cell.lo+cell.hi)/2);
+    const resolved=resolveLaw(table.model,alpha);
+    expect('error' in resolved).toBe(false);
+    if ('error' in resolved) throw new Error(resolved.error);
+    const norm=new EllipsoidNormalization();
+    const map=table.zonalRows ? {rows:table.zonalRows.length/4, mean:Float64Array.from(table.zonalRows)} : undefined;
+    for (const profile of [undefined,map]) {
+      const exact=norm.reference(resolved.law,alpha,table.radiiKm,table.view,profile);
+      const got=norm.reference(resolved.law,alpha,table.radiiKm,table.view,profile,table);
+      for (let c=0;c<4;c++) expect(Math.abs(got[c]/exact[c]-1)).toBeLessThanOrEqual(table.relativeTolerance);
     }
   },60000);
   it('a different law or different map cannot reuse a calibration table',()=>{

@@ -25,29 +25,9 @@ from ..photometry.albedo import pck_radii
 
 from ..output import write_json
 from ..photometry import atmospheres, bodies, phase, rings, smallbody_colors, solar
-from ..schema import BuildContext, sourced, unknown, worst
+from ..schema import BuildContext, sourced, unknown
 
 DEPENDS: tuple[str, ...] = ()
-# Optional cache/product inputs; no scheduling dependency (surfaces depends on light).
-def fingerprint_inputs(products: dict) -> dict:
-    """Read-only late inputs, avoiding generated timestamps and a scheduling cycle."""
-    import hashlib
-    import json
-    import re
-    from ..paths import OUT
-    inputs = {}
-    for rel, record in sorted(products.items()):
-        if re.fullmatch(r"surfaces/\d+/albedo/0/0/\d+\.bin", rel):
-            inputs[rel] = record.get("sha256")
-        elif re.fullmatch(r"surfaces/\d+/albedo\.json", rel) and (OUT/rel).exists():
-            header=json.loads((OUT/rel).read_text());header.pop("generated",None)
-            inputs[rel]=hashlib.sha256(json.dumps(header,sort_keys=True).encode()).hexdigest()
-    return inputs
-
-# Pure numerical implementation shared with the renderer; fingerprint hook is in the handoff.
-CODE_INPUTS = ("app/src/render/spatial.ts", "app/src/render/surface.ts")
-
-
 # These dates and observer are from Karkoschka 1998 / PDS 1995LOW (source note).
 KARKOSCHKA_EPOCH = "1995-07-06/1995-07-10"
 
@@ -106,19 +86,12 @@ def earth_measurement_view() -> dict:
 
 
 def view_spread(naif: int, entry: dict, ctx: BuildContext | None = None) -> dict:
-    """A rigorous all-phase/all-orientation envelope, not an extrema grid scan.
+    """Informational all-phase single-view spread of the bare ellipsoid.
 
-    Any nonnegative surface law weights the Gauss-map Jacobian times the zonal
-    map positively. Its normalized integral therefore lies between the extrema
-    of that weight. Divide by its orientation mean to bound a missing view's
-    scale at every phase. The bound can be conservative; it never understates
-    a view uncertainty or uses a validation case to choose a tolerance.
+    A positive law bounds the normalized integral by the extrema of its Gauss-map
+    area Jacobian. This is a geometric spread, not an error of a compiled mean.
     """
-    import hashlib
-    import json
     from .. import ephem_kernels as ek
-    from ..paths import OUT
-    from ..photometry.albedo import pck_radii
     r = np.asarray(pck_radii()[naif]); d = (r / np.cbrt(np.prod(r)))**2
     jac_min, jac_max = float(np.prod(d)/max(d)**2), float(np.prod(d)/min(d)**2)
     z, w = np.polynomial.legendre.leggauss(128)
@@ -128,122 +101,43 @@ def view_spread(naif: int, entry: dict, ctx: BuildContext | None = None) -> dict
     jac = np.prod(d) / np.sum(normals**2*d, axis=-1)**2
     mean = float(np.sum(jac*w[:,None])/512)
     bare = max(abs(jac_min/mean-1), abs(jac_max/mean-1))
-    out = {"maxRelativeXYZS": [bare]*4, "bareMaxRelative": bare,
-           "mapMaxRelativeXYZS": None, "albedoSigmaRelative": None, "scaleLabel": "estimated"}
-    sources = [ek.SRC_PCK, *entry["geometricAlbedoXYZS"]["sources"]]
-    spread_label = "derived"
-    # light can precede surfaces on a clean build. A map bound is certified only
-    # for the exact retained level-0 bytes, whose hashes the shell compares.
-    paths = [OUT / f"surfaces/{naif}/albedo/0/0/{i}.bin" for i in (0, 1)]
-    header = OUT / f"surfaces/{naif}/albedo.json"
-    if header.exists() and all(p.exists() for p in paths):
-        tiles = [np.frombuffer(p.read_bytes(), dtype="<f2").reshape(256,256,4) for p in paths]
-        texels = np.concatenate(tiles, axis=1).astype(np.float64)
-        texels[np.all(texels == 0, axis=2)] = 1
-        rows = np.mean(texels, axis=1)
-        lat = np.arcsin(d[2]*normals[:,:,2] / np.linalg.norm(normals*d,axis=-1))
-        xp = np.pi*(.5-(np.arange(256)+.5)/256)
-        weighted_mean = np.array([np.sum(jac*np.interp(lat,xp[::-1],rows[::-1,c])*w[:,None])/512 for c in range(4)])
-        spread = np.maximum(abs(jac_min*np.min(rows,axis=0)/weighted_mean-1),
-                            abs(jac_max*np.max(rows,axis=0)/weighted_mean-1))
-        out["mapMaxRelativeXYZS"] = spread.tolist()
-        out["mapTileSha256"] = [hashlib.sha256(p.read_bytes()).hexdigest() for p in paths]
-        h = json.loads(header.read_text())
-        sources += h.get("sources", [])
-        spread_label = worst("derived", h.get("provenance",{}).get("label","derived"),
-                             h.get("color",{}).get("label","derived"))
-    # Use numeric source-stated uncertainties; vague "a few percent" and a
-    # rotational range are not a 1-sigma error and do not qualify the exception.
-    if 601 <= naif <= 605:
-        from ..photometry.moons import filacchione_rows
-        t = filacchione_rows(naif)
-        out["albedoSigmaRelative"] = float(np.median(t["a0_err"]/t["a0"]))
-    elif naif == 609:
-        from ..photometry.common import read_table_json
-        h = read_table_json("grav_2015_irregulars.json")["satellites"]["609"]
-        out["albedoSigmaRelative"] = float(.4*np.log(10)*h["H_err"])
-    elif naif == 402:
-        from ..photometry.common import read_table_json
-        p = read_table_json("wargnier_2025_deimos.json")["src_panchromatic"]
-        out["albedoSigmaRelative"] = p["A_p_err"]/p["A_p"]
-    if out["albedoSigmaRelative"] is not None and bare < out["albedoSigmaRelative"]:
-        out["scaleLabel"] = "derived"
-    if out["mapMaxRelativeXYZS"] is not None:
-        out["mapScaleLabel"] = ("derived" if out["albedoSigmaRelative"] is not None and
-                                max(out["mapMaxRelativeXYZS"]) < out["albedoSigmaRelative"] else "estimated")
-    return sourced(out, spread_label, list(dict.fromkeys(sources)),
-                   method="All-phase bound: min/max of the Gauss-map area Jacobian times the exact level-0 zonal "
-                          "map divided by its uniform-orientation mean. Bare and mapped bounds are separate; "
-                          "a mapped bound applies only to the named tile SHA-256 values. This conservative "
-                          "envelope bounds the reference integral over every orientation for any positive law.")
+    return sourced({"bareMaxRelative": bare}, "derived", [ek.SRC_PCK],
+        method="Bare-ellipsoid all-phase positive-weight bound: min/max Gauss-map area Jacobian "
+               "divided by its uniform-orientation mean. Describes how a single view can differ "
+               "from the mean; neither an albedo error nor a provenance-label criterion.")
 
 
-def reference_table(naif: int, entry: dict) -> dict | None:
-    """Precompute the accepted exact-row integral; no calibration work belongs in a frame.
-
-    The pure TypeScript physics implementation is also the app's reference. Node
-    and esbuild are the existing app toolchain, not an observational input.
-    """
-    import hashlib
-    import inspect
-    import json
-    import subprocess
-    from pathlib import Path
-    from ..paths import OUT, CACHE
-    model = entry.get("spatialModel", {}).get("value")
-    view = entry["albedoMeasurementView"]["value"]
-    if naif not in (599,699,799,899) or not model or view["kind"] != "latitude":
-        return None
-    repo=Path(__file__).resolve().parents[4]
-    code_files=[repo/p for p in CODE_INPUTS]
-    source_hash=hashlib.sha256(b"".join(p.read_bytes() for p in code_files)).hexdigest()
-    paths=[OUT/f"surfaces/{naif}/albedo/0/0/{i}.bin" for i in (0,1)]
-    tiles=[str(p) if p.exists() else None for p in paths]
-    request={"model":model,"view":view,"radii":list(pck_radii()[naif]),"tiles":tiles,
-             "hasMap":any(p is not None for p in tiles)}
-    cache_key=hashlib.sha256(json.dumps({"inputs":request,"source":source_hash,
-        "algorithm":inspect.getsource(reference_table),
-        "tiles":[hashlib.sha256(p.read_bytes()).hexdigest() if p.exists() else None for p in paths]},sort_keys=True).encode()).hexdigest()
-    cached=CACHE/"light-calibration"/f"{naif}-{cache_key}.json"
-    if cached.exists():return json.loads(cached.read_text())
-    cached.parent.mkdir(parents=True,exist_ok=True)
-    request["bundle"]=str(cached.parent/f"integrator-{source_hash}.mjs")
-    script=r"""
-import fs from 'node:fs';import {createRequire} from 'node:module';
-const p=JSON.parse(fs.readFileSync(0,'utf8'));
-const {build}=createRequire(process.cwd()+'/package.json')('esbuild');
-if(!fs.existsSync(p.bundle)) await build({stdin:{contents:"export * from './src/render/spatial.ts';export {zonalMeanOfLevel0} from './src/render/surface.ts';",resolveDir:process.cwd(),loader:'ts'},outfile:p.bundle,bundle:true,platform:'node',format:'esm',logLevel:'silent'});
-const lib=await import(p.bundle),norm=new lib.EllipsoidNormalization();
-const map=p.hasMap?lib.zonalMeanOfLevel0(p.tiles.map(path=>{if(!path)return null;const b=fs.readFileSync(path);return b.buffer.slice(b.byteOffset,b.byteOffset+b.byteLength);})):undefined;
-const end=Math.log(Math.PI/1e-8),cache=new Map();
-function value(t){
- if(cache.has(t))return cache.get(t);
- const a=Math.PI*-Math.expm1(-t),r=lib.resolveLaw(p.model,a);if('error' in r)throw Error(r.error);
- const bare=lib.lawDiskIntegral(r.law,a)[0],b=norm.reference(r.law,a,p.radii,p.view),m=map?norm.reference(r.law,a,p.radii,p.view,map):null;
- const delta=Math.PI-a,factor=p.model.kind==='minnaert'?delta**(2*r.law.p+1):delta**(r.law.p+1)*Math.min(1,delta/1e-3);
- const v=[...b.map(x=>x/bare),...(m?m.map(x=>x/bare):[]),bare/factor];cache.set(t,v);return v;
+# The source note/paper sentence establishing each compiled mean (see
+# docs/sources/ellipsoid-calibration-views.md). A new source without this evidence
+# must take the estimated branch, rather than acquiring a derived label by default.
+ORIENTATION_MEANS = {
+    "payne-2026-mercury": "Payne 2026: MESSENGER/MASCS global-mean reflectance (Izenberg et al. 2014), "
+        "scaled to Mallama et al. (2017) broadband geometric albedos.",
+    "payne-2026-venus": "The absolute level is scaled to Venus's V geometric albedo 0.689 "
+        "(Mallama et al. 2017), a compiled broadband albedo; the spectral shape remains estimated.",
+    "mallama-2017": "Mars: from Mallama 2007's photometry, rotation- and season-averaged.",
+    "kieffer-stone-2005": "ROLO: a fit to 32 bands in more than 1000 observations over phase "
+        "and libration, evaluated at zero libration and the geometric mean of waxing and waning.",
+    "buie-2010a": "Buie 2010 Tables 8/12 give Fourier mean V at 1 degree; Table 10 gives Charon weighted-mean B-V.",
+    "fornasier-2024": "Tables 1 and 2 give disk-integrated Hapke albedos and H-G fits over "
+        "Mars Express HRSC observations, mostly the 10-100 degree phase range.",
+    "wargnier-2025": "Deimos photometric properties: analysis of 20 years of observations "
+        "(2004-2024); Table 4 is the disk-integrated Hapke fit to SRC panchromatic data.",
+    "mayorga-2020": "Disk-integrated phase curves from 3299 WAC and 329 NAC images of the "
+        "2000-2001 flyby; the zero-phase value of each fit is the geometric albedo in that filter.",
+    "filacchione-2022": "A single photometric model per wavelength fitted to all Cassini VIMS "
+        "pixels with i, e <=70 degrees and 10<=g<=120 degrees over the whole mission.",
+    "grav-2015": "Table 1: V absolute magnitude H and slope G compiled from Luu (1991), "
+        "Rettig et al. (2001), Grav et al. (2003), Grav & Bauer (2007) and Bauer et al. (2006).",
+    "decolibus-2026-data": "The All grand-average disk-integrated reflectance spectra: "
+        "Palomar DBSP and LDT DeVeny, 2002-2024, all longitudes; scaled to Karkoschka's HST geometric albedos.",
+    "verbiscer-2022": "Triton's compiled albedo/colour is from Buratti et al. (2011) and "
+        "Cruikshank et al. (1993); the phase coefficient covers 2000-2004.",
 }
-const cells=[];
-function visit(lo,hi,depth=0){
- const values=[0,1/3,2/3,1].map(u=>value(lo+u*(hi-lo)));
- const interp=u=>values[0].map((_,k)=>-4.5*(u-1/3)*(u-2/3)*(u-1)*values[0][k]+13.5*u*(u-2/3)*(u-1)*values[1][k]-13.5*u*(u-1/3)*(u-1)*values[2][k]+4.5*u*(u-1/3)*(u-2/3)*values[3][k]);
- let error=0;
- for(const u of [1/12,1/6,1/4,1/2,3/4,5/6,11/12]){const exact=value(lo+u*(hi-lo)),got=interp(u);error=Math.max(error,...got.map((v,k)=>Math.abs(v/exact[k]-1)));}
- if(error>1e-5){if(depth>=16)throw Error('Calibration interpolation did not converge');const mid=(lo+hi)/2;visit(lo,mid,depth+1);visit(mid,hi,depth+1);}
- else cells.push({lo,hi,sphere:values.map(v=>v.at(-1)),bare:values.map(v=>v.slice(0,4)),...(map?{mapped:values.map(v=>v.slice(4,8))}:{})});
-}
-let cuts=Array.from({length:17},(_,i)=>end*i/16);
-if(p.model.kind==='barkstrom')cuts.push(Math.log(Math.PI/1e-3),...p.model.B.alphaDeg.filter(a=>a>0&&a<180).map(a=>-Math.log1p(-a/180)));
-cuts=[...new Set(cuts)].sort((a,b)=>a-b);for(let i=1;i<cuts.length;i++)visit(cuts[i-1],cuts[i]);
-console.log(JSON.stringify({model:p.model,view:p.view,radiiKm:p.radii,cells,endLogCrescent:end,sphereFloor:1e-3,sourceCodeSha256:p.sourceHash,quadrature:'exact-row converged TypeScript reference',...(map?{zonalRows:Array.from(map.mean),mapTileSha256:p.tiles.map(path=>path?createRequire(process.cwd()+'/package.json')('node:crypto').createHash('sha256').update(fs.readFileSync(path)).digest('hex'):null)}:{})}));
-"""
-    request["sourceHash"]=source_hash
-    print(f"[light] {naif} dated reference: computing fixed calibration table",flush=True)
-    result=subprocess.run(["node","--input-type=module","-e",script],input=json.dumps(request),
-                          cwd=repo/"app",capture_output=True,text=True,check=True)
-    table=json.loads(result.stdout)
-    cached.write_text(json.dumps(table)+"\n")
-    return table
+
+
+def orientation_mean_description(sources: list[str]) -> str | None:
+    return next((ORIENTATION_MEANS[s] for s in sources if s in ORIENTATION_MEANS), None)
 
 
 def with_measurement_views(photometry: dict, ctx: BuildContext | None = None) -> dict:
@@ -276,24 +170,20 @@ def with_measurement_views(photometry: dict, ctx: BuildContext | None = None) ->
                        "latitude is zero in the CGMS equatorial projection. Absolute Earth "
                        "layers continue to use their independent calibration.")
         else:
+            description = orientation_mean_description(albedo["sources"])
             entry["albedoMeasurementView"] = sourced(
-                {"kind": "orientation-mean", **({"epoch":"2000-10/2001-03"} if naif in (501,502,503,504) else
-                 {"epoch":"2004/2017"} if 601<=naif<=605 else
-                 {"epoch":"2004/2024"} if naif==402 else {})}, "estimated", albedo["sources"],
-                method="The adopted albedo is a global fitted/compiled mean without one recoverable calibration "
-                       "view in the retained inputs. Explicit fallback: uniform mean over orientations of the "
-                       "ellipsoid Gauss-map area measure and zonal map. This is a normalization assumption; "
-                       "albedoViewSpread bounds its effect separately from the measured albedo.")
+                {"kind": "orientation-mean"}, "derived" if description else "estimated", albedo["sources"],
+                method=("Source description: " + description + " The reference integral is the mean over "
+                        "orientations by the definition of this compiled measurement; the albedo keeps its label."
+                        if description else "Single observation without a recoverable date/view in the retained "
+                        "inputs. Assumed uniform-orientation reference; section 2.1 propagation applies."))
         if naif in pck_radii():
             spread = view_spread(naif, entry, ctx)
             entry["albedoViewSpread"] = spread
             v = spread["value"]
-            text = (f"Calibration orientation envelope: bare ≤{100*v['bareMaxRelative']:.6g}% relative; "
-                    + (f"mapped XYZS ≤{[round(100*x,6) for x in v['mapMaxRelativeXYZS']]}% "
-                       if v["mapMaxRelativeXYZS"] is not None else "mapped envelope not certified; ")
-                    + "(all phases/orientations, conservative positive-weight bound). "
-                    + (f"Source albedo formal 1-sigma error {100*v['albedoSigmaRelative']:.6g}%."
-                       if v["albedoSigmaRelative"] is not None else "No numeric source-stated 1-sigma error used."))
+            text = (f"Single-view bare-ellipsoid spread ≤{100*v['bareMaxRelative']:.6g}% relative "
+                    "over all phases/orientations (conservative positive-weight bound); "
+                    "informational spread, not the error of the reference mean.")
             for field in ("geometricAlbedoXYZS", "geometricAlbedoV"):
                 if field in entry:
                     entry[field]["uncertainty"] = entry[field].get("uncertainty", "") + "; " + text
@@ -319,27 +209,6 @@ def run(ctx: BuildContext) -> None:
 
     results = bodies.build_all(ctx)
     photometry = with_measurement_views(bodies.photometry_json(results), ctx)
-    for key, entry in photometry.items():
-        table = reference_table(int(key), entry)
-        if table is not None:
-            import json
-            from ..paths import OUT
-            header = OUT/f"surfaces/{key}/albedo.json"
-            h = json.loads(header.read_text()) if header.exists() else {}
-            sources = list(dict.fromkeys([*entry["albedoMeasurementView"]["sources"],
-                                         *entry["spatialModel"]["sources"], *h.get("sources",[])]))
-            entry["albedoReferenceNormalization"] = sourced(table,
-                worst(entry["spatialModel"]["label"], h.get("color",{}).get("label","derived"),
-                      h.get("provenance",{}).get("label","derived"), "derived"), sources,
-                method="Fixed dated-view integral and its bare-sphere factor, precomputed with the pure TypeScript "
-                       "normal-space quadrature. Binary16 map rows are evaluated exactly piecewise-linearly "
-                       "at position latitude by the accepted exact-row, converged reference integral. Cubic interpolation in log crescent "
-                       "width is checked at seven interlaced points to 1e-5; the numerical implementation hash "
-                       "is recorded. Tables retain the law, radii, views and "
-                       "exact zonal rows; mismatched frame inputs cannot reuse a table. "
-                       "The law's crescent power is factored analytically; below delta=1e-8 the limiting "
-                       "ratio is held (a numerical endpoint approximation).")
-            print(f"[light] {key} dated reference: {len(table['cells'])} cells, exact-row reference", flush=True)
     write_json(ctx, "photometry.json", photometry, "light")
     for n, r in results.items():
         labels = (f"albedo:{r.entry['geometricAlbedoXYZS']['label']} phase:{r.entry['phaseFunction']['label']}")

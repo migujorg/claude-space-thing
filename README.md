@@ -19,7 +19,7 @@ With the full data, the app also draws Earth’s airglow and aurora, Titan’s H
 
 ## Build profiles
 
-The data is built by `cd pipeline && uv run python -m pipeline build --profile <name>` (the run scripts do this). The pipeline has 14 stages. A profile chooses which stages run and at what size, never what a product means. Products it leaves out are simply absent, and the app says so in its Data panel (`M`).
+The data is built by `cd pipeline && uv run python -m pipeline build --profile <name>` (the run scripts do this). The pipeline has 15 stages. The `albedo_reference` stage runs after `light` and `surfaces` and needs Node.js plus the app's esbuild package in `app/node_modules`; it uses the renderer's TypeScript integrator to build `albedo-reference.json`. A profile chooses which stages run and at what size, never what a product means. Products it leaves out are simply absent, and the app says so in its Data panel (`M`).
 
 | profile | cold download | kept in data/raw | disk needed | products | cold build | forced rebuild | stages |
 |---|---|---|---|---|---|---|---|

@@ -25,22 +25,6 @@ def test_unknown_albedo_has_unknown_view():
     assert entry["albedoMeasurementView"]["label"] == "unknown"
 
 
-def test_bound_below_formal_error_keeps_the_disk_scale_derived():
-    entries = {str(i): {"geometricAlbedoXYZS": sourced([1,2,3,4],"derived",["filacchione-2022"])}
-               for i in (601,604,605)}
-    result = with_measurement_views(entries)
-    for key in ("604","605"):
-        spread=result[key]["albedoViewSpread"]["value"]
-        assert spread["bareMaxRelative"] < spread["albedoSigmaRelative"]
-        assert spread["scaleLabel"] == "derived"
-        assert result[key]["geometricAlbedoXYZS"]["label"] == "derived"
-    spread=result["601"]["albedoViewSpread"]["value"]
-    assert spread["bareMaxRelative"] > spread["albedoSigmaRelative"]
-    assert spread["scaleLabel"] == "estimated"
-    assert result["601"]["geometricAlbedoXYZS"]["label"] == "derived"
-    assert "orientation envelope" in result["601"]["geometricAlbedoXYZS"]["uncertainty"]
-
-
 def test_ahi_view_retains_the_actual_scan_geometry():
     entry = with_measurement_views({"399":{"geometricAlbedoXYZS":sourced([1,2,3,4],"estimated",["himawari9-ahi-l1b-fldk-20250320-0230"])}})["399"]
     view=entry["albedoMeasurementView"]
@@ -50,17 +34,22 @@ def test_ahi_view_retains_the_actual_scan_geometry():
     assert abs(view["value"]["phaseAngleDeg"]-2.420352164420693) < 1e-6
 
 
-def test_late_fingerprint_tracks_map_values_not_generation_time(tmp_path, monkeypatch):
-    import json
-    from pipeline import paths
-    from pipeline.stages.light import fingerprint_inputs
-    monkeypatch.setattr(paths,"OUT",tmp_path)
-    rel="surfaces/599/albedo.json"
-    header=tmp_path/rel;header.parent.mkdir(parents=True)
-    header.write_text(json.dumps({"generated":"first","sources":["source"],"color":{"label":"estimated"}}))
-    products={rel:{"stage":"surfaces","sha256":"header"},"surfaces/599/albedo/0/0/0.bin":{"sha256":"tile"}}
-    first=fingerprint_inputs(products)
-    header.write_text(json.dumps({"generated":"later","sources":["source"],"color":{"label":"estimated"}}))
-    assert fingerprint_inputs(products)==first
-    products["surfaces/599/albedo/0/0/0.bin"]["sha256"]="changed"
-    assert fingerprint_inputs(products)!=first
+def test_compiled_measurements_define_derived_orientation_means():
+    cases = {199:'payne-2026-mercury',499:'mallama-2017',401:'fornasier-2024',402:'wargnier-2025',
+             501:'mayorga-2020',502:'mayorga-2020',601:'filacchione-2022',602:'filacchione-2022',
+             603:'filacchione-2022',604:'filacchione-2022',605:'filacchione-2022',609:'grav-2015',
+             701:'decolibus-2026-data'}
+    entries = {str(i): {'geometricAlbedoXYZS': sourced([1,2,3,4], 'derived', [source])}
+               for i, source in cases.items()}
+    for entry in with_measurement_views(entries).values():
+        assert entry['albedoMeasurementView']['label'] == 'derived'
+        assert 'Source description:' in entry['albedoMeasurementView']['method']
+        assert 'scaleLabel' not in entry['albedoViewSpread']['value']
+        assert entry['geometricAlbedoXYZS']['label'] == 'derived'
+
+
+def test_unrecognized_single_observation_introduces_assumed_view():
+    entry = with_measurement_views({'199': {'geometricAlbedoXYZS': sourced([1,2,3,4], 'measured', ['single-undated'])}})['199']
+    assert entry['albedoMeasurementView']['label'] == 'estimated'
+    assert 'Assumed' in entry['albedoMeasurementView']['method']
+    assert entry['geometricAlbedoXYZS']['label'] == 'measured'

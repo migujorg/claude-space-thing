@@ -136,14 +136,11 @@ export function sceneBodyOf(
   const rCal = sb.radii;
   if (sb.orient && rCal && !sb.shape && !sb.atmosphere?.surface && !absoluteEarth
       && !(rCal[0] === rCal[1] && rCal[1] === rCal[2])) {
-    // The same mean is used at Strict and Best. The measurement stays labelled;
-    // only a correction whose bound exceeds its own uncertainty is estimated.
+    // A compiled mean defines its own reference. Only an unrecoverable single
+    // observation introduces an assumed view; its estimated label follows §2.1.
     sb.albedoReferenceNormalization = allowedValue(g.body.photometry?.albedoReferenceNormalization, level);
     sb.albedoMeasurementView = calibration?.value ?? {kind: 'orientation-mean'};
-    const spread = g.body.photometry?.albedoViewSpread?.value;
-    sb.albedoScaleLabel = sb.albedoMeasurementView.kind === 'orientation-mean'
-      ? (sb.surface?.albedo ? spread?.mapScaleLabel ?? 'estimated' : spread?.scaleLabel ?? 'estimated')
-      : calibration?.label ?? 'estimated';
+    sb.albedoScaleLabel = calibration?.label ?? 'estimated';
     if (labelAllowed(sb.albedoScaleLabel, level)) used.push(sb.albedoScaleLabel);
     else {
       // Match an unadmitted phase function: no albedo/phase light, known shape

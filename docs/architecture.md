@@ -261,6 +261,7 @@ Stages (`config.STAGES`): `time`, `ephemeris`, `light`, `surfaces`, `shapes`, `b
 | `verification/orientation.json` | `bodies` | Build record: SPICE's body-fixed → J2000 matrices (pxform) from the kernel files `orient/earth` and `orient/moon` were copied from, at 16 epochs inside every segment, with the sha256 of those kernels and products. Not read by the app |
 | `verification/smallbodies.json` | `smallbodies` | Build record: for the verification objects, their rows and states as written to `smallbodies/core.bin`, the integrator's positions every 20 days through the window next to JPL Horizons' (query URLs, tolerances); the JPL CNEOS Earth and Moon approaches of the window computed from the orbit solutions the catalogue holds (the closest, the first and the last); the sha256 of the products it describes. Not read by the app |
 | `bodies.json` | `bodies` | `Body[]` with `Sourced` attributes (geometry, rotation, GM, ephemeris wiring) |
+| `albedo-reference.json` + `verification/albedo-reference.json` | `albedo_reference` | Fixed giant-planet disk-reference integrals, their exact law/radii/view/map inputs, relative numerical tolerance and build record; depends on `light` and `surfaces` |
 | `photometry.json` | `light` | NAIF id → `BodyPhotometry` (albedo spectra integrated per §4.3, phase functions); merged into bodies by the app loader |
 | `light.json` | `light` | Sun spectrum-derived quantities, CIE constants actually used |
 | `rings.json` | `light` | planet NAIF id → `RingSystem`: measured radial profiles of normal optical depth (occultations); Saturn: separately labelled cleaned optical-depth estimate, ring I/F model (lit and unlit faces, per channel) and the measured I/F data it is built on; Jupiter, Uranus and Neptune: estimated component models, including Uranus’s outside-support estimates; see below |
@@ -306,23 +307,28 @@ to 1e-5. The product records the pure TypeScript numerical implementation hash, 
 rows; a mismatch falls back to the direct integral. Below crescent width 1e-8 rad the limiting ratio
 is held while the law's vanishing power remains explicit, a numerical endpoint approximation.
 
-Where no calibration view can be recovered, the same uniform-orientation mean is used at every
-reality level. `albedoViewSpread` gives separate bare and mapped per-channel conservative all-phase
-orientation envelopes, derived from the min/max Gauss-map area weight (times the exact level-0
-zonal map) divided by its orientation mean. The albedo uncertainty text repeats the bounds.
-A missing numeric source-stated one-sigma uncertainty does not certify a small correction.
-`scaleLabel`/`mapScaleLabel` is `derived` only when the bound is below that error; otherwise it is
-`estimated`. This is the uncertainty-bounded calibration exception requested by root; it requires
-an explicit exception to §2's unconditional propagation rule (proposed sentence in lane handoff).
-The albedo measurement retains its own label. The shell passes the reference at Strict and Best;
-an unadmitted estimated disk scale receives the same hatched known-shape treatment as an
-unadmitted phase function, with albedo and phase light withheld. Absolute Earth layers, physical
-atmosphere models and resident meshes retain their existing normalization rules.
+For photometry compiled over rotation, apparitions or spacecraft geometries, an
+`orientation-mean` reference is `derived` by the measurement's definition. The method
+quotes the source description establishing that mean; the albedo keeps its existing
+label. Dated measurements retain their derived view. A single observation with no
+recoverable date/view uses an assumed reference labelled `estimated` under §2.1,
+with Strict applying its ordinary admission rule. No uncertainty exception applies.
+`albedoViewSpread.bareMaxRelative` is a conservative all-phase bare-ellipsoid
+single-view spread from the Gauss-map area extrema divided by the orientation mean.
+It is repeated in the albedo uncertainty text as information, not as an error of
+the compiled reference. Map variegation does not determine any calibration label.
 
-Mapped envelopes and calibration tables record the exact level-0 tile hashes. The light stage uses the
-existing Node/esbuild app toolchain to run the pure exact-row reference implementation offline; its
-source files are explicit code inputs, requiring the build fingerprint hook in the lane handoff. A fresh build that has no surface product
-cannot certify a mapped correction; rebuild `light` after surfaces to emit that envelope.
+`albedo_reference` runs after and depends on both `light` and `surfaces`; `light`
+reads no surface tiles. It writes `albedo-reference.json` and
+`verification/albedo-reference.json`, with no output parameters or new downloads.
+The app loader merges its independently sourced tables into body photometry.
+The stage requires Node.js and the app's esbuild; absence fails clearly. The build
+fingerprint includes `app/src/render/spatial.ts`, `app/src/render/surface.ts` and
+`pipeline/src/pipeline/stages/albedo_reference.mjs` as explicit non-Python code inputs,
+in addition to the Python closure and both stages' product hashes. Tables record
+exact level-0 tile hashes. The app suite recomputes one cell per giant from the
+recorded inputs with the same integrator against the table's stated tolerance.
+Absolute Earth layers, physical atmosphere models and meshes keep their own rules.
 
 
 Headers (`*.json` next to a `*.bin`) define byte layout explicitly (field name, type, count, stride) so the loader is generic.
