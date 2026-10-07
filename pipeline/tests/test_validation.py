@@ -136,6 +136,23 @@ def test_companion_signal_finds_the_right_parity():
 # ---------------------------------------------------------------------------------------------- committed cases
 
 
+def test_report_sizes_line_does_not_print_zero_for_inputs_never_fetched_here():
+    """§5's sizes line reads this machine's download ledger; a machine that never fetched the inputs says so."""
+    from pipeline.validation import report
+
+    ledger = {"validation/a/img.fits": {"bytes": 150_000_000}, "validation/b/img.fits": {"bytes": 44_900_000},
+              "naif/de442s.bsp": {"bytes": 31_000_000}}
+    here = report.sizes_line(13.4, ledger, 27.5)
+    assert here.startswith("**Sizes:** `validation/` 13.4 MB (committed); downloaded inputs 194.9 MB (download ledger), "
+                           "git-ignored in `data/raw/validation/` (27.5 MB present now: `python -m pipeline.validation clean`")
+    elsewhere = report.sizes_line(13.4, {"naif/de442s.bsp": {"bytes": 31_000_000}}, 0.0)
+    assert "downloaded inputs 0.0 MB" not in elsewhere
+    assert elsewhere.startswith("**Sizes:** `validation/` 13.4 MB (committed); the downloaded inputs are not on this machine "
+                                "(its download ledger has no entry under `validation/`, and the git-ignored "
+                                "`data/raw/validation/` holds 0.0 MB: `python -m pipeline.validation clean`")
+    assert here.endswith("so a changed archive file is refitted).") and elsewhere.endswith("so a changed archive file is refitted).")
+
+
 def test_report_run_line_names_the_adapter_and_machine():
     """§7's run line says what rendered the run when the runner recorded it (scripts/validate.mjs `gpu`, `host`)."""
     from pipeline.validation import report

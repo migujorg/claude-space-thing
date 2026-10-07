@@ -258,6 +258,21 @@ def _du(path) -> float:
     return sum(f.stat().st_size for f in path.rglob("*") if f.is_file()) / 1e6
 
 
+def sizes_line(committed_mb: float, ledger: dict, present_mb: float) -> str:
+    """§5's sizes: the committed cases, and the downloaded inputs as this machine's download ledger records them.
+    A machine whose ledger has no entry under validation/ never fetched them (the cases were built elsewhere): the
+    line says so instead of printing a total of zero."""
+    fetched = [v.get("bytes", 0) for k, v in ledger.items() if k.startswith("validation/")]
+    head = f"**Sizes:** `validation/` {committed_mb:.1f} MB (committed); "
+    tail = ("`python -m pipeline.validation clean` deletes the images after a build; `build` fetches them again, and "
+            "the pointing-fit cache is keyed by each image's sha256, so a changed archive file is refitted).")
+    if not fetched:
+        return (head + "the downloaded inputs are not on this machine (its download ledger has no entry under "
+                f"`validation/`, and the git-ignored `data/raw/validation/` holds {present_mb:.1f} MB: " + tail)
+    return (head + f"downloaded inputs {sum(fetched) / 1e6:.1f} MB (download ledger), git-ignored in "
+            f"`data/raw/validation/` ({present_mb:.1f} MB present now: " + tail)
+
+
 def findings(cases: list[dict]) -> str:
     """§5: checks of the set itself, computed from the cases, then the fixed text of §6."""
     from ..paths import RAW
@@ -303,11 +318,7 @@ def findings(cases: list[dict]) -> str:
             else:
                 L.append(f"* `{c['id']}` {r['id']}: {pv['note']}.")
     ledger = json.loads((RAW / "_downloads.json").read_text(encoding="utf-8"))
-    fetched = sum(v.get("bytes", 0) for k, v in ledger.items() if k.startswith("validation/")) / 1e6
-    L += ["", f"**Sizes:** `validation/` {_du(VALIDATION):.1f} MB (committed); downloaded inputs {fetched:.1f} MB "
-          f"(download ledger), git-ignored in `data/raw/validation/` ({_du(RAW / 'validation'):.1f} MB present now: "
-          "`python -m pipeline.validation clean` deletes the images after a build; `build` fetches them again, and "
-          "the pointing-fit cache is keyed by each image's sha256, so a changed archive file is refitted).", "",
+    L += ["", sizes_line(_du(VALIDATION), ledger, _du(RAW / "validation")), "",
           "**Unit tests** (`pipeline/tests/test_validation.py`): the camera puts the target at the requested pixel "
           "with the pole up; ray casting reproduces a sphere's projected area to 1 % and face-on emission; ring "
           "classes and radii; the pointing fit recovers a synthetic pose to 0.15 px and 2°; grey closure (I/F = 1 "
@@ -434,8 +445,13 @@ FINDINGS = """## 6. Limitations and open issues
       which leaves a common deficit of ~11 %. The rendered values are in §7.
 """
 
-RUN_FINDINGS = """**What the failures say** (numbers from the run above; checks of the runner itself: 2 × 2 samples per pixel
-change no ROI by more than 0.3 %, and the rgba16float fallback targets give the same means as rgba32float):
+RUN_FINDINGS = """**What the failures say.** The numbers in items 5 and 6 are those of the run above. Those in items 1 to 4 were
+measured when each change was made, on the software renderer and, for Saturn, against the case as it was before
+its regions were rebuilt; they differ from the table above in the third digit (by up to 1 %). Two checks of the
+runner itself, made on the same tree and data as the run above. With 2 × 2 samples per pixel, 14 of the 47 body regions change by more than 0.3 % and six by more than
+1 % (Pluto's limb +3.5 %, the EPOXI Moon's disk +2.8 %, the EPOXI Earth's centre +1.6 %, Europa's and Callisto's
+limbs and Europa's terminator about 1 %), and one verdict changes: the Himawari limb's Z is +2.06σ with one sample
+and +1.99σ with four. The rgba16float fallback targets give the same means as rgba32float within 0.06 %.
 
 *In the data (photometry.json, rings.json):*
 
@@ -520,15 +536,22 @@ change no ROI by more than 0.3 %, and the rgba16float fallback targets give the 
 
 *In the renderer (for the renderer engineer):*
 
-5. **The Moon's far side (EPOXI): fixed in the renderer.** It now renders 153.0 cd/m² against 164.1 ± 17 (0.933,
-   −1.3σ). Before the fix it rendered 130.1 (0.793, −4.1σ), with the Moon's maps normalized over a rotation rather
-   than at ROLO's reference view. The Moon/Earth ratio still fails: 0.089 against 0.1016 ± 0.0014, since the Earth
-   renders 1.068 there.
-6. **Earth (Himawari-9, 2026-09-28 04:05 UTC):** the disk centre (cloud-time offset 0.03 h, so the app's clouds
-   are those of this very time) renders 9707 against 4678 ± 600 cd/m² (2.1×). The three near-centre points render
-   1.21–1.25×. The limb passes (0.99). The terminator renders 0.57, but its clouds are 4.2 h older, so that one is
+5. **The Moon's far side (EPOXI): fixed in the renderer.** It renders 152.5 cd/m² against 164.1 ± 17 (0.929,
+   −1.4σ). Before the fix it rendered 130.1 (0.793, −4.1σ), with the Moon's maps normalized over a rotation rather
+   than at ROLO's reference view. The Moon/Earth ratio fails in X and Y: 0.0981 against 0.1016 ± 0.0014, with the
+   Moon at 0.929 and the Earth at 0.962 of the observed. The ratio's tolerance is 1.4 %, far tighter than either
+   disk's (10 %), so it follows the Earth's rendering closely: it failed at 0.089 when the Earth rendered 1.068 (the
+   clouds layer's mean τ), passed at 0.101 when the Earth rendered 0.938 (the cloudTau clouds of item 6), and fails
+   again now that the light of the air below a cloud comes through the cloud (docs/rendering-earth.md §4), which
+   raised seven of the Earth's eight body regions by 0.8–13 % (the Himawari limb by 0.04 %).
+6. **Earth (Himawari-9, 2026-09-28 04:05 UTC):** the clouds are drawn from the cloudTau layer
+   (docs/rendering-earth.md §2): the share with a retrieval as a log-normal in τ, the rest with the partly-cloudy τ
+   statistic (estimated). The disk centre (cloud-time offset 0.03 h, so the app's clouds are those of this very
+   time) renders 7011 against 4678 ± 600 cd/m² (1.50×, +7.8σ). The three near-centre points render 1.38×, 1.02×
+   (pass) and 1.38×. The limb passes in X, Y and S (Y 1.000) and fails in Z (1.112, +2.1σ; with four samples per
+   pixel it passes, +2.0σ). The terminator renders 0.64, but its clouds are 4.2 h older, so that one is
    inconclusive. The rendered image shows 8-pixel blocks in the ocean/cloud field around the disk centre
-   (`app/shots/validation/earth-himawari9-2026.hdr.png`). To check: the cloud layer's optical thickness and
-   fraction there, and the sun glint (the specular point is near 130° E). The EPOXI Earth of 2008, seen whole at
-   75° phase, passes: disk-integrated 1.068, centre 1.011.
+   (`app/shots/validation/earth-himawari9-2026.hdr.png`). To check: the cloud without a retrieval at the centre
+   (its thickness is a global statistic), and the sun glint (the specular point is near 130° E). The EPOXI Earth of
+   2008, seen whole at 75° phase, passes: disk-integrated 0.962, centre 0.980.
 """
