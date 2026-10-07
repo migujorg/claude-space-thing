@@ -6,9 +6,9 @@ function background(w: number, h: number, maxBufferSize: number, data = new Arra
   const buffer = { mapAsync: vi.fn().mockResolvedValue(undefined), getMappedRange: () => data, unmap: vi.fn(), destroy: vi.fn() };
   const enc = { copyTextureToBuffer: vi.fn(), finish: vi.fn() };
   const device = { limits: { maxBufferSize }, createBuffer: vi.fn(() => buffer), createCommandEncoder: vi.fn(() => enc), queue: { submit: vi.fn() } };
-  const sky = Object.assign(Object.create(SkyBackground.prototype) as SkyBackground, {
+  const sky = Object.assign(Object.create(SkyBackground.prototype), {
     device, corTex: { width: w, height: h }, zodiTex: { width: w, height: h }, zodiOn: true,
-  });
+  }) as SkyBackground;
   vi.stubGlobal('GPUBufferUsage', { COPY_DST: 1, MAP_READ: 2 });
   vi.stubGlobal('GPUMapMode', { READ: 1 });
   return { sky, device, enc, buffer };

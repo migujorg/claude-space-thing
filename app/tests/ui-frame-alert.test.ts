@@ -9,7 +9,7 @@ const dom = vi.hoisted(() => {
     return {
       children: [] as unknown[], textContent: '', className,
       classList: { contains: (c: string) => classes.has(c), toggle: (c: string, on: boolean) => on ? classes.add(c) : classes.delete(c), add: (c: string) => classes.add(c), remove: (c: string) => classes.delete(c) },
-      style: { setProperty: vi.fn(), display: '' },
+      style: { setProperty: vi.fn(), removeProperty: vi.fn(), display: '' },
       append(...children: unknown[]) { this.children.push(...children); },
       appendChild(child: unknown) { this.children.push(child); },
     };
@@ -63,5 +63,6 @@ describe('persistent renderer alert', () => {
     expect(alert.style.setProperty).toHaveBeenLastCalledWith('display', 'block', 'important');
     ui.update(0, stats([]));
     expect(alert.textContent).toBe('Stopped at the end of the data window.');
+    expect(alert.style.removeProperty).toHaveBeenLastCalledWith('display');
   });
 });

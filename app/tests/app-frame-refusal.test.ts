@@ -24,7 +24,7 @@ let finish: (() => void) | undefined;
 const renderer = {
   stats, render, setStars: vi.fn(),
   resize(w: number) { stats.warnings = w > 8192 ? [refusal] : []; if (w > 8192) throw new RangeError(refusal); },
-  settled: async () => {},
+  settled: () => finish ? new Promise<void>((resolve) => { finish = resolve; }) : Promise.resolve(),
   frameDone: () => finish ? new Promise<void>((resolve) => { finish = resolve; }) : Promise.resolve(),
 };
 async function flush() { for (let i = 0; i < 20; i++) await Promise.resolve(); }
@@ -61,5 +61,36 @@ describe('app resize refusal', () => {
     const app = await start();
     vi.spyOn(renderer, 'resize').mockImplementationOnce(() => { throw new Error('unrelated failure'); });
     expect(() => resize()).toThrow('unrelated failure'); app.stop(); vi.restoreAllMocks();
+  });
+  it('does not let an old in-flight frame restore readiness after a refusal or supported resize', async () => {
+    const app = await start();
+    finish = () => {}; tick(20);
+    const oldDone = finish!;
+    width = 8193; resize();
+    width = 1280; resize();
+    oldDone(); await flush();
+    expect(window.__frameReady).toBe(false);
+    tick(30); finish!(); await flush();
+    expect(window.__frameReady).toBe(true);
+    app.stop();
+  });
+  it('does not certify startup at a refused size', async () => {
+    width = 8193;
+    const app = await start();
+    expect(window.__frameReady).toBe(false);
+    expect(window.__frameError).toBe(refusal);
+    expect(render).not.toHaveBeenCalled();
+    width = 1280; resize(); tick(20); await flush();
+    expect(window.__frameReady).toBe(true);
+    app.stop();
+  });
+  it('preserves an unrelated frame error through refusal and recovery', async () => {
+    const app = await start();
+    window.__frameError = 'WebGPU device lost';
+    width = 8193; resize();
+    width = 1280; resize(); tick(20); await flush();
+    expect(window.__frameError).toBe('WebGPU device lost');
+    expect(window.__frameReady).toBe(false);
+    app.stop();
   });
 });
