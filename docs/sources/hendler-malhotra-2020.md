@@ -16,3 +16,5 @@ The `synthetic` stage refits C on every build, in each region, to the current ca
 ## Caveat
 
 The peak marks where completeness starts falling faster than the population rises (Sec. 3.1, 4), so the bin just brighter than H_lim can already be a few per cent incomplete. The stage therefore anchors the extrapolation one bin brighter, at [H_lim − 1, H_lim − 0.5).
+
+Product-use scope: catalogue-count conditioning and a fitted H proxy do not establish detection probability for a generated orbit or guarantee consistency with all observations. Discovery yield is aggregate under fixed inputs; catalogue refits can change counts and identities. Source survey efficiencies and completeness statements above retain their published domains; the current generator does not apply their pointings or efficiencies as an object veto. [Audited limitations](../reports/synthetic-limitations.md).
