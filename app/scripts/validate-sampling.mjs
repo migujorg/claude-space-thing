@@ -150,7 +150,7 @@ async function main() {
     const defaultRun = runs.find((r) => r.options.ss === DEFAULT_VALIDATION_SS);
     if (canPromoteDefault(defaultRun)) cpSync(resolve(OUT, `sampling/${DEFAULT_VALIDATION_SS}`), OUT, { recursive: true });
     else console.log(`Default ss ${DEFAULT_VALIDATION_SS} was not promoted: at least one case was not rendered. Existing report.json is unchanged.`);
-    console.log(`Convergence: ${resolve(OUT, 'sampling-convergence.md')}; report: ss ${DEFAULT_VALIDATION_SS}`);
+    console.log(`Convergence: ${resolve(OUT, 'sampling-convergence.md')}; default report ${canPromoteDefault(defaultRun) ? `promoted at ss ${DEFAULT_VALIDATION_SS}` : 'not promoted'}`);
   } finally {
     await server.close();
   }
