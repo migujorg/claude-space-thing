@@ -51,10 +51,10 @@ def test_hemisphere_diagnostic_distinguishes_kernels_and_unknown_error():
     }}
     d = pan.leading_trailing_diagnostic(1.5, model)
     assert d['ratio'] == 1.5
-    assert d['rotationSlices']['projectedAreaRatio'] == 1.5
-    assert d['rotationSlices']['mapOverSlices'] == 1
+    assert d['rotationSlices']['value']['projectedAreaRatio'] == 1.5
+    assert d['rotationSlices']['value']['mapOverSlices'] == 1
     # A Lambert disk weights the middle slice more heavily than projected area alone.
-    assert d['rotationSlices']['renderedZeroPhaseDiskRatio'] > 1.5
+    assert d['rotationSlices']['value']['renderedZeroPhaseDiskRatio'] > 1.5
     assert d['comparisonStatus'] == 'unknown' and d['ratioUncertainty'] is None
 
 
@@ -74,6 +74,6 @@ def test_built_galilean_contrast_is_reported_without_inventing_slice_errors(naif
     if not p.exists():
         pytest.skip('photometry not built')
     model = json.loads(p.read_text())[str(naif)]['diskReflectanceModel']
-    expected = pan.leading_trailing_diagnostic(map_ratio, model)['rotationSlices']
-    assert d['rotationSlices']['projectedAreaRatio'] == expected['projectedAreaRatio']
-    assert d['rotationSlices']['renderedZeroPhaseDiskRatio'] == expected['renderedZeroPhaseDiskRatio']
+    expected = pan.leading_trailing_diagnostic(map_ratio, model)['rotationSlices']['value']
+    assert d['rotationSlices']['value']['projectedAreaRatio'] == expected['projectedAreaRatio']
+    assert d['rotationSlices']['value']['renderedZeroPhaseDiskRatio'] == expected['renderedZeroPhaseDiskRatio']

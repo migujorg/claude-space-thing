@@ -226,8 +226,8 @@ def leading_trailing_diagnostic(ratio: float, model: dict | None) -> dict:
                     / slice_factor(m["sliceEdgesEastLonDeg"], a, trail, trail))
         d["rotationSlices"] = {
             "sources": model["sources"], "label": model["label"],
-            "projectedAreaRatio": round(projected, 6), "mapOverSlices": round(ratio / projected, 6),
-            "renderedZeroPhaseDiskRatio": round(rendered, 6),
+            "value": {"projectedAreaRatio": round(projected, 6), "mapOverSlices": round(ratio / projected, 6),
+                      "renderedZeroPhaseDiskRatio": round(rendered, 6)},
             "method": "Projected-area slice weights [0.5, 1, 0.5] on each hemisphere; "
                       "rendered disk ratio uses the Lambert slice_factor kernel cos²(longitude - centre). "
                       "frame.ts normalizes law × map at each viewing geometry, leaving disk brightness "
