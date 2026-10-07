@@ -20,6 +20,12 @@ EARTH, MOON = OUT / "orient" / "earth.json", OUT / "orient" / "moon.json"
 products_required = pytest.mark.skipif(not (EARTH.exists() and MOON.exists()), reason="orientation products not built")
 
 
+def _require_raw(*paths):
+    missing = [str(p) for p in paths if not p.is_file()]
+    if missing:
+        pytest.skip(f"raw inputs not present: wanted {', '.join(missing)}")
+
+
 def _load(p):
     h = json.loads(p.read_text(encoding="utf-8"))
     return h, np.fromfile(OUT / h["bin"], dtype="<f8")
@@ -111,12 +117,16 @@ def test_earth_rejects_unpinned_input_with_recovery_instruction(tmp_path, monkey
 
 @products_required
 def test_earth_source_records_use_pins_without_a_directory_lookup(monkeypatch):
+    lsk = RAW / "naif/lsk/naif0012.tls"
+    _require_raw(RAW / "naif/pck" / orient.EARTH_HP, RAW / "naif/pck" / orient.EARTH_PRED,
+                 lsk, RAW / "_downloads.json")
+
     def no_network(*args, **kwargs):
         pytest.fail("cached pinned Earth inputs must not consult NAIF's live directory")
 
     monkeypatch.setattr(orient.download, "request", no_network)
     ctx = BuildContext(*coverage(_load(EARTH)[0]))
-    orient.earth(ctx, ctx.start_et, ctx.end_et, RAW / "naif/lsk/naif0012.tls")
+    orient.earth(ctx, ctx.start_et, ctx.end_et, lsk)
     for sid, name, digest in ((orient.SRC_EARTH_HP, orient.EARTH_HP, orient.EARTH_HP_SHA256),
                               (orient.SRC_EARTH_PRED, orient.EARTH_PRED, orient.EARTH_PRED_SHA256)):
         src = ctx.sources[sid]
@@ -127,9 +137,10 @@ def test_earth_source_records_use_pins_without_a_directory_lookup(monkeypatch):
 @products_required
 def test_pin_review_reports_newly_measured_interval_without_changing_files(monkeypatch):
     old = RAW / "naif/pck/earth_000101_261230_261003.bpc"
-    if not old.exists():
-        pytest.skip("retained 3 October kernel absent: cannot compare the measured interval")
     current_hp = orient.EARTH_HP
+    files = [RAW / "_downloads.json", OUT / "manifest.json", old, RAW / "naif/pck" / current_hp,
+             RAW / "naif/pck" / orient.EARTH_PRED]
+    _require_raw(files[0], *files[2:], RAW / "naif/lsk/naif0012.tls")
     monkeypatch.setattr(orient, "EARTH_HP", old.name)
     monkeypatch.setattr(orient, "EARTH_HP_SHA256", orient.sha256_file(old))
 
@@ -150,8 +161,6 @@ def test_pin_review_reports_newly_measured_interval_without_changing_files(monke
                 yield from iter(lambda: f.read(size), b"")
 
     monkeypatch.setattr(orient.download, "request", lambda method, url, **kwargs: Response(url))
-    files = [RAW / "_downloads.json", OUT / "manifest.json", old, RAW / "naif/pck" / current_hp,
-             RAW / "naif/pck" / orient.EARTH_PRED]
     before = [orient.sha256_file(p) for p in files]
     review = orient.inspect_earth_pins()
     assert review["newlyMeasuredWindowUtc"] == ["2026-10-03T00:00:00.000Z", "2026-10-06T00:00:00.000Z"]
