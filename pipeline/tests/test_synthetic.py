@@ -387,9 +387,13 @@ def test_product_statements_disclose_limits_and_motion():
     centaur = next(p for p in h["populations"] if p["name"] == "centaur")
     assert centaur["model"]["cataloguedCometsNotCounted"] == 44
     assert "44" in centaur["model"]["uncertainty"]
-    assert "18" in centaur["model"]["uncertainty"]
     assert "comet-flagged" in centaur["model"]["uncertainty"]
-    assert "suitability" in centaur["model"]["uncertainty"]
+    nuclei = centaur["model"]["cometNuclei"]
+    assert len(nuclei["objects"]) == 44
+    assert "M1" in nuclei["rule"] and "lower bounds" in nuclei["rule"]
+    assert sum("nuclearLaw" in r["photometry"] for r in nuclei["objects"]) == 18
+    assert all(r["status"] != "conditioned" for r in nuclei["objects"])
+    assert next(r for r in nuclei["objects"] if r["designation"] == "39P")["H_V"]["label"] == "unknown"
     assert "rejects their joint distribution" in centaur["model"]["uncertainty"]
 
 
@@ -397,7 +401,8 @@ def test_all_population_metadata_including_no_model():
     """The disclosure path also covers intentionally empty Uranus/Neptune populations."""
     from pipeline.stages import synthetic as syn
     res = {"populations": {pop: {"limit": {}, "extra": {"orbitDistribution": "template assumption",
-            "cataloguedCometsNotCounted": 44, "realization": {"sumWeightsOverModelSize": 0.99},
+            "cataloguedCometsNotCounted": 44, "cataloguedCometsCounted": 0, "cometNuclei": {"rule": "Qualified H_V only"},
+            "realization": {"sumWeightsOverModelSize": 0.99},
             "normalization": {"nBelowHr": 21400, "plus": 3400, "minus": 2800, "hrMax": 13.7}}} for pop in syn.POP_CODES}}
     result = syn._order(res)
     assert list(result["populations"]) == list(syn.POP_CODES)
@@ -407,3 +412,33 @@ def test_all_population_metadata_including_no_model():
         assert r["extra"]["method"] and r["extra"]["uncertainty"]
         if pop not in syn.MOONS:
             assert "fixed two-body" in r["extra"]["motion"]
+
+
+def test_centaur_comet_nucleus_conditioning():
+    """A sourced point nuclear H yields in its represented group; M1, bounds and out-of-range H do not."""
+    from pipeline.stages import synthetic as syn
+    cat = {k: np.array(v) for k, v in {
+        'a': [10.2] * 6, 'e': [0.2] * 6, 'i': [7.] * 6,
+        'H': [np.nan] * 6, 'comet': [True] * 6, 'ok': [False] * 6,
+        'spkid': [1, 2, 3, 4, 5, 6], 'designation': ['P/point', 'P/total', 'P/faint', 'P/bound', 'P/no-colour', 'P/unsourced'],
+    }.items()}
+    def record(k, value, kind='bare-nucleus', band='V', sources=None):
+        return {'spkid': k, 'kind': kind, 'band': band,
+                'H': {'value': value, 'label': 'estimated', 'sources': ['paper'] if sources is None else sources},
+                'H_V': {'value': value if band == 'V' else None,
+                        'label': 'estimated' if band == 'V' else 'unknown',
+                        'sources': ['paper'] if sources is None else sources}}
+    records = [record(1, 12.2), record(2, 12.2, 'total-magnitude'), record(3, 15.2),
+               record(4, 12.2, 'lower-bound'), record(5, 12.2, band='r'), record(6, 12.2, sources=[])]
+    known, diag = syn.centaur_known(cat, records, 14.0)
+    grid = syn.GRIDS['centaur']
+    def count(k):
+        c = sm.cells_from_rows([(5, 2, 1, 24, 12., 12.5, 16.)])
+        idx = grid.index(k.a, k.e, k.i, k.H)
+        totals = sm.condition(c, sm.count_known(grid, c, (*idx, k.H)))
+        sm.sample_realization(grid, c, {int(grid.key(c.ia, c.ie, c.ii, c.ih)[0]): np.arange(16)}, 'test')
+        return totals['deficit'], c.n_shown.sum()
+    empty, _ = syn.centaur_known(cat, [], 14.0)
+    assert count(known) == (count(empty)[0] - 1, count(empty)[1] - 1)
+    assert known.H.tolist() == [12.2]
+    assert [r['status'] for r in diag['objects']] == ['eligible', 'unqualified', 'outside-model-H', 'unqualified', 'unknown-model-band', 'unsourced']

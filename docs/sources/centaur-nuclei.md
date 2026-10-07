@@ -1,0 +1,24 @@
+# Qualified nuclear photometry for Centaur conditioning
+
+Input: `pipeline/src/pipeline/syn_tables/centaur_nuclei.json`, version 1. Stable SBDB SPK identifiers join the current catalogue; the 44 designations are the Centaur-region comet rows in the 2026-10-04 TDB built states, not an external present-day orbital classification. Future comet identities absent from the table remain unknown and are named in the product. Membership is recomputed from each build's states.
+
+The generator's stored conditioning band is **Johnson V**. Its literature model is H_r <13.7, transformed to V with its cited population mean colour (Murtagh et al. 2025 and Jester et al. 2005). That mean is not a measured comet nucleus colour and is **not applied to individual comet photometry**. A comet enters only with a sourced point nuclear H_V, either directly published or converted with its own published nucleus colour and an applicable published transformation. Bounds, M1 total magnitudes, and M2 laws without bare-nucleus/aperture/passband qualification cannot select an H cell.
+
+There is currently one imported V-band point estimate: C/2014 OG392, H_V approximately 11.3 from Chandler et al. §7. The authors subtract a scaled stellar PSF from the coma profile, estimate nucleus g=23.1 and r=21.9, and use Jester et al. (2005) to obtain V=22.4; they then use Bowell H-G with assumed G=0.15. Decomposition and phase assumptions make this **estimated**, with unquantified systematic uncertainty. It is brighter than its present H_lim=11.5 and does not reduce the present deficit. Do not adjust it to make a group change.
+
+39P has point-source H_r=15.21 and 15.48 with assumed phase slope 0.046 mag/degree. 450P's 2022-08-21 point-source photometry gives H_r=15.8357 from m_r=25.08, R=7.897 au, delta=7.642 au, alpha=7.228 degrees and the paper's assumed beta=0.047. No object-specific V−r conversion is imported for either; their model-band H remains unknown. P/2005 S2 has inactive H_R=14.54 but no imported bare-nucleus V−R. 167P has inactive R and measured V−R, but Wong Table 1 does not supply delta or alpha for an absolute-H reduction; no catalogue/current-epoch geometry is substituted. These remain unconditioned.
+
+Jewitt's central-aperture H_R for 29P, C/2001 M10 and 166P and de la Fuente Marcos's H_g for P/2020 MK4 are **lower H bounds** from coma contamination, not point values. Every finite catalogue M2/K2/PC is retained separately with its catalogue label and a limitation statement; none is automatically promoted. For the remaining objects, unknown means no qualified point imported from the sources reviewed, not that no measurement exists. The erroneous Wong (2019) P/2008 CL94 measurement is not used for 423P; importing its corrected recovery would require separately reading the erratum and recovery geometry.
+
+## Source-reading record
+
+Read on 2026-10-07 at starting commit `660fea4` (current rc already merged). Original PDFs and extracted text were reread from the audit's `sources/` directory; the input records each original PDF SHA256. No shell network retrieval or new raw download was performed. Browser PDF checks on the same date succeeded for all following arXiv URLs; the UCLA browser request returned an internal error, so the archived original was used.
+
+- [Jewitt 2009](https://faculty.epss.ucla.edu/~jewitt/papers/2009/J09.pdf), AJ 137,4296, DOI 10.1088/0004-6256/137/5/4296: §§2.4–2.5,2.12–2.13, §3, Tables 1,3,6; central-aperture bound semantics and inactive Skiff point.
+- [Harrington Pinto et al. 2023](https://arxiv.org/pdf/2309.11486), §3.1: point-source analysis, AB r photometry, assumed phase correction, two H_r snapshots and unknown nucleus colour.
+- [Wong, Mishra & Brown 2019](https://arxiv.org/pdf/1904.09255), AJ 157,225, DOI 10.3847/1538-3881/ab1b22: Tables 1–2, §§3.1,3.4; inactive 167P photometry and active C/2012 Q1. The table's 423P alias measurement is excluded because the audit flagged an identity erratum; no value from it is imported.
+- [Schambeau et al. 2026](https://arxiv.org/pdf/2605.24260), Table 1, §§3.1,4.1: inactive 2022 point source and geometry, assumed beta, rotation and colour limits. The two nights are not treated as an averaged nucleus measurement.
+- [Chandler et al. 2020](https://arxiv.org/pdf/2003.04904), ApJL 897,L2, DOI 10.3847/2041-8213/ab9dc6: §7, Eq.8–11, Figure 4 discussion and conclusions; approximate PSF separation and the authors' own g/r-to-V conversion.
+- [de la Fuente Marcos et al. 2021](https://arxiv.org/pdf/2104.01668), v2 abstract and photometry/nucleus discussion: H_g >=11.30±0.03. Coma colour is not promoted to nucleus colour.
+
+Other S21–S33 leads are not imported as numerical H: thermal sizes, radius bounds, conference claims without a numeric table and active-aperture measurements do not supply a qualified V point in this transcription. No other comet's M2 is borrowed. Validation scenes were not used to choose these qualifications or values.

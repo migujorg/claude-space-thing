@@ -53,9 +53,19 @@ const unknownPosition = 'Individual true position and omitted-force position bud
 
 /** Population rows shared by the object inspector and any population view; metadata stays in the product. */
 export function syntheticPopulationFacts(p: SyntheticPopulation, level: ExistsLevel): AttrRow[] {
-  return [{ key: 'syn:population', name: 'Population model and limitations', label: 'synthetic',
+  const rows: AttrRow[] = [{ key: 'syn:population', name: 'Population model and limitations', label: 'synthetic',
     value: p.name, sources: p.sources, withheld: !labelAllowed('synthetic', level), method: modelText(p),
     uncertainty: String(p.model.uncertainty ?? 'Population count and template-selection uncertainty are unknown in this product; the deficit is conditional on the model and eligible catalogue counts.') }];
+  const nuclei = p.model.cometNuclei as { rule: string; objects: { designation: string; status: string }[] } | undefined;
+  if (p.name === 'centaur' && nuclei) {
+    const counted = nuclei.objects.filter(r => r.status === 'conditioned');
+    const omitted = nuclei.objects.filter(r => r.status !== 'conditioned');
+    rows.push({ key: 'syn:nuclei', name: 'Catalogued comet nucleus conditioning', label: 'synthetic',
+      value: `${counted.length} conditioned; ${omitted.length} unconditioned`, sources: p.sources,
+      withheld: !labelAllowed('synthetic', level),
+      method: `${nuclei.rule} Conditioned: ${counted.map(r => r.designation).join(', ') || 'none'}. Unconditioned: ${omitted.map(r => `${r.designation}: ${r.status}`).join('; ') || 'none'}.` });
+  }
+  return rows;
 }
 
 export interface SyntheticFacts {

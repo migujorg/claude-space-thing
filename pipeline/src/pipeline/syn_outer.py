@@ -15,7 +15,8 @@ streams, yield) is the one of syn_model and docs/reports/synthetic-populations.m
                     Lawler et al. 2018 H law, 21 400 with H_r < 13.7): the archive keeps only members with 21 < m <
                     23.5, so each member is weighted by 1/P(selected | its distance modulus) (Horvitz-Thompson), which
                     estimates the model's (a, e, i) distribution on reconstructible states; H from the knee law, angles uniform (Murtagh et al.
-                    2025). It is then conditioned on eligible asteroid counts like NEOs/TNOs; comet flags are excluded.
+                    2025). It is then conditioned on eligible asteroid counts and qualified, sourced comet nuclear H_V;
+                    M1, unqualified M2, lower bounds and unknown object-specific band conversions are excluded.
                     The cited survey rejects the joint orbit/H model, though marginal distributions agree.
 """
 

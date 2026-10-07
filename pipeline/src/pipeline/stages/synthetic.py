@@ -162,9 +162,17 @@ def load_catalogue(root: Path = OUT / "smallbodies") -> dict:
     H = core["H"].astype(np.float64)
     ok = ~comet & np.isfinite(el["a"]) & np.isfinite(H)
     ph, phys = read_table(root / "physical.json")
+    # Read identities only for comet rows; the full catalogue names are not retained in memory.
+    spkid, designation = {}, {}
+    with (root / "names.txt").open(encoding="utf-8") as f:
+        for row, line in enumerate(f):
+            if row < comet.size and comet[row]:
+                sid, pdes, _, prefix, _ = line.rstrip("\n").split("\t")
+                spkid[row] = int(sid)
+                designation[row] = pdes if pdes.endswith("P") else f"{prefix}/{pdes}"
     return {"header": hdr, "mu": mu, "obliquity": obl, "a": el["a"] / AU_KM, "e": el["e"], "i": el["i"],
             "node": el["node"], "peri": el["peri"], "M": el["M"], "H": H, "ok": ok, "comet": comet,
-            "colorClass": core["colorClass"],
+            "colorClass": core["colorClass"], "spkid": spkid, "designation": designation,
             "diameterFromH": core["diameterFromH"].astype(np.float64), "physHeader": ph, "phys": phys,
             "coreSha256": sha256_file(root / "core.bin"), "physSha256": sha256_file(root / "physical.bin")}
 
@@ -190,6 +198,52 @@ def centaur_comets(cat: dict) -> int:
     with np.errstate(invalid="ignore"):
         q = cat["a"] * (1.0 - cat["e"])
         return int(np.sum(cat["comet"] & np.isfinite(cat["a"]) & (q > CENTAUR_Q_MIN) & (cat["a"] < CENTAUR_A[1])))
+
+
+def centaur_known(cat: dict, records: list[dict], h_floor: float) -> tuple[sm.Known, dict]:
+    """Append only sourced, qualified point nuclear H_V to asteroid conditioning.
+
+    The realization is expressed in V (its H_r is converted with the cited population colour); an observed
+    nucleus needs its own published V photometry/conversion. M1, unqualified M2 and lower bounds cannot
+    select a cell. Unknowns are named, including future catalogue objects absent from the input table.
+    """
+    known = _known(cat, population_masks(cat)["centaur"])
+    by = {r["spkid"]: r for r in records}
+    if len(by) != len(records):
+        raise ValueError("duplicate comet nucleus identity")
+    q = cat["a"] * (1 - cat["e"])
+    rows = np.flatnonzero(cat["comet"] & np.isfinite(cat["a"]) & (q > CENTAUR_Q_MIN) & (cat["a"] < CENTAUR_A[1]))
+    add, objects = [], []
+    for row in rows:
+        rec = by.get(int(cat["spkid"][row]), {})
+        hv = rec.get("H_V", {})
+        value = hv.get("value")
+        if rec.get("kind") not in ("bare-nucleus", "coma-separated", "qualified-M2"):
+            status = "unqualified"
+        elif value is None or hv.get("label") not in ("measured", "derived", "estimated"):
+            status = "unknown-model-band"
+        elif not hv.get("sources"):
+            status = "unsourced"
+        elif not np.isfinite(value):
+            raise ValueError("nonfinite qualified comet nuclear H")
+        elif value >= h_floor:
+            status = "outside-model-H"
+        elif cat["a"][row] < CENTAUR_A[0]:
+            status = "outside-model-orbit"
+        else:
+            status = "eligible"
+            add.append((row, value))
+        objects.append({"designation": str(cat["designation"][row]), "spkid": int(cat["spkid"][row]),
+                        "status": status, "kind": rec.get("kind", "unknown"),
+                        "H_V": hv or {"value": None, "label": "unknown", "sources": []},
+                        "photometry": rec})
+    if add:
+        idx, h = zip(*add)
+        known = sm.Known(*(np.concatenate((getattr(known, k), cat[k][list(idx)] if k != "H" else np.array(h)))
+                           for k in ("a", "e", "i", "H")))
+    return known, {"modelBand": "V", "objects": objects,
+                   "rule": "Only sourced, qualified point nuclear H_V counts inside represented a/e/i/H cells and a/H groups. "
+                           "M1, unqualified M2, coma lower bounds and unknown object-specific band conversions do not count."}
 
 
 def _known(cat: dict, m: np.ndarray) -> sm.Known:
@@ -413,6 +467,7 @@ def build(cat: dict, p: dict | None = None, *, only: tuple[str, ...] | None = No
             elif pop == "centaur":
                 arch = centaur_archive if centaur_archive is not None else ss.read_centaur_archive()
                 ct = tab["centaurs"]
+                known, nuclei = centaur_known(cat, ss.centaur_nuclei()["objects"], floors[pop])
                 mem, cdiag = so.centaur_realization(arch, ct)
                 members = sm.Known(mem["a"], mem["e"], mem["i"], mem["H"])
                 model_id = f"{ss.KURLANDER_ARCHIVE.id}+{ss.KURLANDER.id}"
@@ -422,7 +477,7 @@ def build(cat: dict, p: dict | None = None, *, only: tuple[str, ...] | None = No
                          "normalization": {k: ct["normalization"][k] for k in ("nBelowHr", "plus", "minus", "hrMax", "source")},
                          "crossCheck": ct["normalization"]["crossCheck"]["text"],
                          "angles": ct["angles"]["text"],
-                         "cataloguedCometsNotCounted": centaur_comets(cat),
+                         "cometNuclei": nuclei,
                          "notModelled": "Centaurs with a < 5.35 au (inside the Trojan grid) and a >= 30 au (the Kuiper-belt "
                                         "grid); the model has no members below a = 5.37 au."}
             else:
@@ -447,6 +502,17 @@ def build(cat: dict, p: dict | None = None, *, only: tuple[str, ...] | None = No
                     raise ValueError(f"L7 lambdaN {hdr['lambdaN']} rad differs from Neptune's mean longitude by {dl:.2f} deg")
                 extra["lambdaNDifferenceDeg"] = round(dl, 3)
             cells, gobs, lists, diag = sm.realization_cells(grid, known, members, floors[pop])
+            if pop == "centaur":
+                ranges = {(int(a), int(h)): (lo, hi) for a, h, lo, hi in
+                          zip(cells.ia, cells.ih, cells.h_lo, cells.h_hi)}
+                for r in nuclei["objects"]:
+                    if r["status"] == "eligible":
+                        row = next(k for k, sid in cat["spkid"].items() if sid == r["spkid"])
+                        a, _, _, h = grid.index([cat["a"][row]], [cat["e"][row]], [cat["i"][row]], [r["H_V"]["value"]])
+                        bounds = ranges.get((int(a[0]), int(h[0])))
+                        r["status"] = "conditioned" if bounds and bounds[0] <= r["H_V"]["value"] < bounds[1] else "below-proxy-or-unrepresented"
+                extra["cataloguedCometsNotCounted"] = sum(r["status"] != "conditioned" for r in nuclei["objects"])
+                extra["cataloguedCometsCounted"] = sum(r["status"] == "conditioned" for r in nuclei["objects"])
             tot = sm.condition(cells, gobs)
             prefix = f"{sm.ALGORITHM}|{seed}|{model_id}"
             objs = sm.sample_realization(grid, cells, lists, prefix)
@@ -539,13 +605,13 @@ def _order(res: dict) -> dict:
             elif pop == "centaur":
                 m["method"] = ("Literature orbit model of Nesvorny et al. 2019 with independent Lawler et al. 2018 H law, "
                                "normalized by Kurlander et al. 2025; magnitude-selected archive reweighted by 1/P(selected "
-                               "| distance modulus), under that law. This is not the survey's orbit-sensitive efficiency.")
+                               "| distance modulus), under that law. This is not the survey's orbit-sensitive efficiency. "
+                               + m["cometNuclei"]["rule"])
                 m["uncertainty"] += (
                     f" Kurlander et al. 2025 §5.3 rejects their joint distribution. {m['cataloguedCometsNotCounted']} "
-                    "catalogued comet-flagged Centaurs are excluded by the comet flag, not conditioned on; nuclear "
-                    "photometry was not qualified for bare-nucleus H. Audit C1 comet table found 18 with M2 nuclear-"
-                    "magnitude laws whose suitability for bare-nucleus H has not been established; they are not all "
-                    f"without nuclear photometry. {100 * (1 - m['realization']['sumWeightsOverModelSize']):.1f}% of model states "
+                    "catalogued comet-flagged Centaurs are not conditioned on: named qualifications, bounds and "
+                    "unknowns are in cometNuclei.objects. Catalogue M2 laws alone are not qualified bare-nucleus H. "
+                    f"{m['cataloguedCometsCounted']} qualified nuclei counted. {100 * (1 - m['realization']['sumWeightsOverModelSize']):.1f}% of model states "
                     "are not recovered by the archive weighting. "
                     f"Kurlander et al. 2025 normalization: {m['normalization']['nBelowHr']} "
                     f"(+{m['normalization']['plus']}/-{m['normalization']['minus']}) "
@@ -784,6 +850,8 @@ def _pop_sources(pop: str) -> list[str]:
                  "trojan": ss.YOSHIDA_TERAI.id}[pop]]
     else:
         srcs = srcs + ["jpl-sbdb-orbits"]
+    if pop == "centaur":
+        srcs += [r["id"] for r in ss.centaur_nuclei()["sources"]]
     return srcs + ["neowise-v2", "jpl-sbdb-physical", "lcdb-2023-10", "smallbody-class-colors", "bowell-1989"]
 
 

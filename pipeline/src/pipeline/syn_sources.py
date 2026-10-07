@@ -22,7 +22,7 @@ from pathlib import Path
 import numpy as np
 
 from .photometry.common import Download
-from .schema import BuildContext
+from .schema import BuildContext, SourceRecord
 
 TABLES = Path(__file__).parent / "syn_tables"
 SUBDIR = "synthetic"
@@ -215,11 +215,18 @@ def register(ctx: BuildContext) -> dict[str, str]:
     out = {}
     for d in (*DATASETS, *PAPERS, GRAV):
         out[d.id] = ctx.add_source(d.source())
+    for rec in centaur_nuclei()["sources"]:
+        out[rec["id"]] = ctx.add_source(SourceRecord(**rec))
     return out
 
 
 def tables() -> dict:
     return json.loads((TABLES / "populations.json").read_text(encoding="utf-8"))
+
+
+def centaur_nuclei() -> dict:
+    """Qualified nuclear photometry, bounds and unknowns; transcription/source scope in docs/sources/centaur-nuclei.md."""
+    return json.loads((TABLES / "centaur_nuclei.json").read_text(encoding="utf-8"))
 
 
 def read_granvik() -> np.ndarray:
