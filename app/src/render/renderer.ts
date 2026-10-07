@@ -754,9 +754,10 @@ export class Renderer {
     const kR = backgroundLevel(veilLevels, omegaCentre, eye.riccoAreaSr);
     this.bgView = t.levels[kR].acc.createView();
     // A source's own light in that background at its own position, per unit illuminance and per pixel
-    // solid angle: Σ_{k≥kR} w_k/(2π σ_k²). The shaders subtract it: the background excludes the source. The
-    // veil holds every point source in the frame, displayed or not (step 3), so the subtraction is always right.
-    this.selfVeilPx = ownVeilPerPixel(veilLevels, kR);
+    // solid angle: Σ_{k≥kR} w_k/(2π V_k), V_k the variance of level k's term as the splat and the read of
+    // level kR make it. The shaders subtract it: the background excludes the source. The veil holds every
+    // point source in the frame, displayed or not (step 3), so there is always that light to take out.
+    this.selfVeilPx = ownVeilPerPixel(veilLevels, kR, sigmaPx);
 
     this.writeUniforms(snapshot, eye, g, prep, sigmaPx, extentPx, wPt);
 

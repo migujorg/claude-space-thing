@@ -93,6 +93,8 @@ describe('the star cull: no verdict depends on an earlier verdict (twin of CULL_
   // A view with a sunlit body in it: the suite's pluto-charon adapts to 11 cd/m².
   const eye = eyeAt(11);
   const kR = backgroundLevel(levels, pixelSr, eye.riccoAreaSr);
+  // The splat's σ at this field of view: the renderer's reconstruction minimum (renderer.ts SIGMA_MIN_PX).
+  const splatPx = 0.6;
   // Everything in the veil that is not a point source (the sky's and the bodies' scattered light), cd/m².
   const other = { Y: 2e-3, S: 4e-3 };
   const none = { Y: 0, S: 0 };
@@ -100,21 +102,21 @@ describe('the star cull: no verdict depends on an earlier verdict (twin of CULL_
   const lamp = (Y: number) => ({ Y, S: CRUMEY.spRatioBlackwell * Y });
   const thr = (bg: { Y: number; S: number }) => pointObserver(eye, bg).thresholdBwLux;
   const at = (x: number, y: number, Y: number): PointSource => ({ x, y, E: lamp(Y) });
-  const own = (s: PointSource) => ({ Y: (s.E.Y * ownVeilPerPixel(levels, kR)) / pixelSr, S: (s.E.S * ownVeilPerPixel(levels, kR)) / pixelSr });
+  const own = (s: PointSource) => ({ Y: (s.E.Y * ownVeilPerPixel(levels, kR, splatPx)) / pixelSr, S: (s.E.S * ownVeilPerPixel(levels, kR, splatPx)) / pixelSr });
   const add = (a: { Y: number; S: number }, b: { Y: number; S: number }) => ({ Y: a.Y + b.Y, S: a.S + b.S });
 
   // One frame of the renderer, as it is: every source is in the point image; each is judged against the veil of
   // the frame before (the texture the cull reads) less its own light there. The only history is that texture.
   const frame = (sources: PointSource[], texBefore: { Y: number; S: number }[]) => ({
     verdicts: sources.map((s, i) => pointVisible(eye, s.E, cullBackground(texBefore[i], own(s), none))),
-    tex: pointVeil(sources, levels, kR, pixelSr).map((v) => add(v, other)),
+    tex: pointVeil(sources, levels, kR, pixelSr, splatPx).map((v) => add(v, other)),
   });
   // The texture when only some of the sources are in the point image (the rules below; not what the renderer does).
   const texOfDrawn = (sources: PointSource[], drawn: boolean[]) => sources.map((a) => {
     let Y = other.Y, S = other.S;
     sources.forEach((b, j) => {
       if (!drawn[j]) return;
-      const k = veilKernelPerPixel(levels, kR, Math.hypot(a.x - b.x, a.y - b.y)) / pixelSr;
+      const k = veilKernelPerPixel(levels, kR, Math.hypot(a.x - b.x, a.y - b.y), splatPx) / pixelSr;
       Y += b.E.Y * k;
       S += b.E.S * k;
     });
@@ -145,15 +147,19 @@ describe('the star cull: no verdict depends on an earlier verdict (twin of CULL_
     expect(backgroundLevel(levels, pixelSr, 1e9)).toBe(levels.length - 1);
   });
   it('a source\'s own light in its background is the veil kernel at zero distance, and the cull removes exactly that', () => {
-    const k0 = ownVeilPerPixel(levels, kR);
+    const k0 = ownVeilPerPixel(levels, kR, splatPx);
+    // each level a Gaussian whose variance is the level's at full resolution, less the upsamples below level kR
+    // that the read of level kR does not go through, plus that read's own tent and the splat
     let sum = 0;
-    for (let k = kR; k < levels.length; k++) sum += levels[k].weight / (2 * Math.PI * levels[k].sigmaPx ** 2);
+    for (let k = kR; k < levels.length; k++) sum += levels[k].weight / (2 * Math.PI * (levels[k].sigmaPx ** 2 - (4 ** (kR + 1) - 4) / 18 + 4 ** kR / 6 + splatPx ** 2));
     expect(k0).toBeCloseTo(sum, 15);
-    expect(veilKernelPerPixel(levels, kR, 0)).toBe(k0);
-    expect(veilKernelPerPixel(levels, kR, 3)).toBeLessThan(k0);
+    // a wider splat leaves less of the source at its own position
+    expect(ownVeilPerPixel(levels, kR, 2)).toBeLessThan(k0);
+    expect(veilKernelPerPixel(levels, kR, 0, splatPx)).toBe(k0);
+    expect(veilKernelPerPixel(levels, kR, 3, splatPx)).toBeLessThan(k0);
     // an isolated source: what is left of its background is the other light, to rounding
     const s = at(100, 100, luxFromMagnitude(5));
-    const tex = add(pointVeil([s], levels, kR, pixelSr)[0], other);
+    const tex = add(pointVeil([s], levels, kR, pixelSr, splatPx)[0], other);
     const bg = cullBackground(tex, own(s), none);
     expect(bg.Y / other.Y - 1).toBeLessThan(1e-12);
     expect(Math.abs(bg.S / other.S - 1)).toBeLessThan(1e-12);
@@ -165,25 +171,25 @@ describe('the star cull: no verdict depends on an earlier verdict (twin of CULL_
     // a source far below the threshold, 2 px from one above it
     const faint = at(102, 100, 0.01 * thr(other));
     const seen = at(100, 100, 3 * thr(other));
-    const f = frame([seen, faint], pointVeil([seen, faint], levels, kR, pixelSr).map((v) => add(v, other)));
+    const f = frame([seen, faint], pointVeil([seen, faint], levels, kR, pixelSr, splatPx).map((v) => add(v, other)));
     expect(f.verdicts).toEqual([true, false]);
     const withFaint = cullBackground(f.tex[0], own(seen), none).Y;
-    const alone = cullBackground(add(pointVeil([seen], levels, kR, pixelSr)[0], other), own(seen), none).Y;
-    expect(withFaint - alone).toBeCloseTo((faint.E.Y * veilKernelPerPixel(levels, kR, 2)) / pixelSr, 12);
+    const alone = cullBackground(add(pointVeil([seen], levels, kR, pixelSr, splatPx)[0], other), own(seen), none).Y;
+    expect(withFaint - alone).toBeCloseTo((faint.E.Y * veilKernelPerPixel(levels, kR, 2, splatPx)) / pixelSr, 12);
     expect(withFaint).toBeGreaterThan(alone);
     // no light is lost: each source, seen or not, carries its whole scattered light into the veil (the kernel's
     // integral over the plane is the levels' weight)
     let w = 0;
     for (let k = kR; k < levels.length; k++) w += levels[k].weight;
     let integral = 0;
-    for (let r = 0.005; r < 60000; r *= 1.01) integral += 2 * Math.PI * (r * 1.005) * (r * 0.01) * veilKernelPerPixel(levels, kR, r * 1.005);
+    for (let r = 0.005; r < 60000; r *= 1.01) integral += 2 * Math.PI * (r * 1.005) * (r * 0.01) * veilKernelPerPixel(levels, kR, r * 1.005, splatPx);
     expect(integral / w - 1).toBeLessThan(1e-3);
     expect(integral / w - 1).toBeGreaterThan(-1e-3);
   });
   it('a star at threshold keeps one verdict from any history; under the old rule it was drawn every other frame', () => {
     // E passes against the veil with its own light taken out although it was never in it, and fails against the true one
     const probe = at(300, 200, 1);
-    const k0 = ownVeilPerPixel(levels, kR) / pixelSr;
+    const k0 = ownVeilPerPixel(levels, kR, splatPx) / pixelSr;
     // find E with thr(other − E·k0) ≤ E < thr(other): the old rule's flipping band
     let E = thr(other);
     for (let i = 0; i < 60; i++) E = 0.5 * (thr({ Y: Math.max(other.Y - E * k0, 0), S: Math.max(other.S - CRUMEY.spRatioBlackwell * E * k0, 0) }) + thr(other));
@@ -196,7 +202,7 @@ describe('the star cull: no verdict depends on an earlier verdict (twin of CULL_
     expect(new Set(old.slice(2)).size).toBe(2);
     for (let i = 3; i < old.length; i++) expect(old[i]).not.toBe(old[i - 1]);
     // as it is now: one verdict (not seen: it is below the threshold of its true background), from every history
-    const histories = [zero, [other], [{ Y: 50 * other.Y, S: 50 * other.S }], pointVeil([star], levels, kR, pixelSr).map((v) => add(v, other))];
+    const histories = [zero, [other], [{ Y: 50 * other.Y, S: 50 * other.S }], pointVeil([star], levels, kR, pixelSr, splatPx).map((v) => add(v, other))];
     const seqs = histories.map((h) => run(12, frame([star], h), (p) => frame([star], p.tex)));
     for (const s of seqs) {
       expect(new Set(s.slice(1)).size).toBe(1);   // constant from the second frame on (the first reads the history's texture)
@@ -206,7 +212,7 @@ describe('the star cull: no verdict depends on an earlier verdict (twin of CULL_
   });
   it('a close pair at threshold has one verdict; with a "drawn last frame" flag per star the outcome depended on the history', () => {
     // two equal stars 1 px apart: each passes against the other light alone and fails with its neighbour's light added
-    const kN = veilKernelPerPixel(levels, kR, 1) / pixelSr;
+    const kN = veilKernelPerPixel(levels, kR, 1, splatPx) / pixelSr;
     let E = thr(other);
     for (let i = 0; i < 60; i++) E = 0.5 * (thr(other) + thr({ Y: other.Y + E * kN, S: other.S + CRUMEY.spRatioBlackwell * E * kN }));
     const A = at(400, 300, E), B = at(401, 300, E);
@@ -241,7 +247,7 @@ describe('the star cull: no verdict depends on an earlier verdict (twin of CULL_
       const u = (i * 0.61803398875) % 1, v = (i * 0.75487766625) % 1, m = (i * 0.56984029099) % 1;
       field.push(at(200 * u, 200 * v, thr(other) * 10 ** (0.4 * (2 * m - 1))));
     }
-    const truth = pointVeil(field, levels, kR, pixelSr).map((v) => add(v, other));
+    const truth = pointVeil(field, levels, kR, pixelSr, splatPx).map((v) => add(v, other));
     const expected = field.map((s, i) => pointVisible(eye, s.E, cullBackground(truth[i], own(s), none)));
     const nSeen = expected.filter(Boolean).length;
     expect(nSeen).toBeGreaterThan(50);
@@ -257,5 +263,104 @@ describe('the star cull: no verdict depends on an earlier verdict (twin of CULL_
     // the old rule, same field, from an empty texture: it never settles
     const old = run(40, frameOld(field, empty), (p) => frameOld(field, p.tex));
     expect(old[39]).not.toBe(old[38]);
+  });
+});
+
+// A source's own light in the background texture, against the pyramid's own arithmetic run on the CPU for one
+// splat (shaders.ts PYRAMID_SHADER: 2 × 2 box downsampling, the 7-tap blur, the accumulation w_k·blur_k +
+// bilinear upsample of the level above, textures zero outside; POINT_SHADER's splat; BG's bilinear read).
+describe('a point source\'s own light in its background (against the retina pyramid run on the CPU)', () => {
+  const W = 1280, H = 720;
+  const sigma = (k: number) => { const p = 4 ** k; return Math.sqrt(p + (p - 1) / 12 + (4 * p - 4) / 18); };
+  const nLevels = Math.ceil(Math.log2(Math.max(W, H))) + 1;
+  const dims: { w: number; h: number }[] = [{ w: W, h: H }];
+  while (dims[dims.length - 1].w > 1 || dims[dims.length - 1].h > 1) dims.push({ w: Math.max(1, Math.ceil(dims[dims.length - 1].w / 2)), h: Math.max(1, Math.ceil(dims[dims.length - 1].h / 2)) });
+  const TAPS = [0.39905027, 0.24203623, 0.05400558, 0.00443305];
+  const splatPx = 0.6, extent = 3 * splatPx, norm = 1 / (1 - Math.exp(-9 / 2));   // renderer.ts SIGMA_MIN_PX, SPLAT_EXTENT_SIGMA
+
+  /** The texture of level kR read at (rx, ry) px, for one source of unit illuminance at (cx, cy) px, per pixel solid angle. */
+  function pyramidAt(weights: number[], kR: number, cx: number, cy: number, rx: number, ry: number): number {
+    // PT: the splat's fragments (pixel centres within the extent)
+    const px: { x: number; y: number; g: number }[] = [];
+    for (let y = Math.floor(cy - extent - 1); y <= cy + extent + 1; y++) for (let x = Math.floor(cx - extent - 1); x <= cx + extent + 1; x++) {
+      const r2 = (x + 0.5 - cx) ** 2 + (y + 0.5 - cy) ** 2;
+      if (r2 <= extent * extent && x >= 0 && y >= 0 && x < W && y < H) px.push({ x, y, g: (Math.exp(-r2 / (2 * splatPx * splatPx)) / (2 * Math.PI * splatPx * splatPx)) * norm });
+    }
+    const inside = (k: number, X: number, Y: number) => X >= 0 && Y >= 0 && X < dims[k].w && Y < dims[k].h;
+    // level k before its blur: k box downsamples of PT (zero outside every texture on the way)
+    const lvl = (k: number, X: number, Y: number) => {
+      if (!inside(k, X, Y)) return 0;
+      let v = 0;
+      for (const p of px) if (p.x >> k === X && p.y >> k === Y) v += p.g;
+      return v / 4 ** k;
+    };
+    const blur = (k: number, X: number, Y: number) => {
+      let v = 0;
+      for (let j = -3; j <= 3; j++) {
+        if (Y + j < 0 || Y + j >= dims[k].h) continue;   // the horizontal pass's texture, zero outside
+        for (let i = -3; i <= 3; i++) v += TAPS[Math.abs(i)] * TAPS[Math.abs(j)] * lvl(k, X + i, Y + j);
+      }
+      return v;
+    };
+    const memo = new Map<string, number>();
+    const acc = (k: number, X: number, Y: number): number => {
+      if (k >= dims.length || !inside(k, X, Y)) return 0;
+      const key = `${k},${X},${Y}`;
+      const hit = memo.get(key);
+      if (hit !== undefined) return hit;
+      const c = [(X + 0.5) * 0.5 - 0.5, (Y + 0.5) * 0.5 - 0.5];
+      const i0 = [Math.floor(c[0]), Math.floor(c[1])], f = [c[0] - Math.floor(c[0]), c[1] - Math.floor(c[1])];
+      const up = (acc(k + 1, i0[0], i0[1]) * (1 - f[0]) + acc(k + 1, i0[0] + 1, i0[1]) * f[0]) * (1 - f[1])
+        + (acc(k + 1, i0[0], i0[1] + 1) * (1 - f[0]) + acc(k + 1, i0[0] + 1, i0[1] + 1) * f[0]) * f[1];
+      const v = ((weights[k] ?? 0) > 0 ? weights[k] * blur(k, X, Y) : 0) + up;
+      memo.set(key, v);
+      return v;
+    };
+    // BG's read: bilinear between texel centres, indices clamped to the texture
+    const c = [rx / 2 ** kR - 0.5, ry / 2 ** kR - 0.5];
+    const i0 = [Math.floor(c[0]), Math.floor(c[1])], f = [c[0] - Math.floor(c[0]), c[1] - Math.floor(c[1])];
+    const cl = (X: number, Y: number) => acc(kR, Math.min(Math.max(X, 0), dims[kR].w - 1), Math.min(Math.max(Y, 0), dims[kR].h - 1));
+    return (cl(i0[0], i0[1]) * (1 - f[0]) + cl(i0[0] + 1, i0[1]) * f[0]) * (1 - f[1]) + (cl(i0[0], i0[1] + 1) * (1 - f[0]) + cl(i0[0] + 1, i0[1] + 1) * f[0]) * f[1];
+  }
+  /** The source's own light where the shaders read it: at its own position. */
+  const ownInPyramid = (weights: number[], kR: number, cx: number, cy: number) => pyramidAt(weights, kR, cx, cy, cx, cy);
+  // 36 positions spread over a 64 × 64 px block near the frame's centre: every phase of the texels up to level 6
+  const positions: [number, number][] = [];
+  for (let i = 0; i < 36; i++) positions.push([608 + 64 * ((i * 0.61803398875) % 1), 328 + 64 * ((i * 0.75487766625) % 1)]);
+
+  for (const fov of [50, 20]) {
+    const pixelDeg = fov / H;
+    const fit = fitScatterKernel(Array.from({ length: nLevels }, (_, k) => ({ sigmaPx: sigma(k) })), pixelDeg, Math.hypot(W, H), 25, 0.5);
+    const levels: VeilLevel[] = fit.weights.map((weight, k) => ({ weight, sigmaPx: sigma(k) }));
+    it(`field of view ${fov}°: the term is the pyramid's mean over the source's position within 2 %, at every background level`, () => {
+      for (let kR = 0; kR <= 6; kR++) {
+        const got = positions.map(([x, y]) => ownInPyramid(fit.weights, kR, x, y));
+        const mean = got.reduce((a, b) => a + b, 0) / got.length;
+        const model = ownVeilPerPixel(levels, kR, splatPx);
+        expect(Math.abs(model / mean - 1), `level ${kR}`).toBeLessThan(0.02);
+        // Known limit: where exactly the source sits in the texels moves its own light by up to a quarter (the
+        // texture is bilinear between texel centres; the term is one number per frame).
+        expect(Math.max(...got) / mean, `level ${kR}`).toBeLessThan(1.25);
+        expect(Math.min(...got) / mean, `level ${kR}`).toBeGreaterThan(0.75);
+      }
+    });
+  }
+  it('without the splat\'s width and the read of the level, the term was 45 % too large when the background is read at level 0', () => {
+    const fit = fitScatterKernel(Array.from({ length: nLevels }, (_, k) => ({ sigmaPx: sigma(k) })), 50 / H, Math.hypot(W, H), 25, 0.5);
+    const got = positions.map(([x, y]) => ownInPyramid(fit.weights, 0, x, y));
+    const mean = got.reduce((a, b) => a + b, 0) / got.length;
+    const before = fit.weights.reduce((a, w, k) => a + w / (2 * Math.PI * sigma(k) ** 2), 0);
+    expect(before / mean).toBeGreaterThan(1.4);
+    expect(before / mean).toBeLessThan(1.5);
+  });
+  it('the CPU pyramid keeps a source\'s light: each level alone spreads the whole splat over the full-resolution veil', () => {
+    // the veil at full resolution (level 0's texture) summed over the pixels around the source, one level at a time
+    for (const k of [0, 1, 2]) {
+      const w = Array.from({ length: nLevels }, (_, j) => (j === k ? 1 : 0));
+      const half = 8 * 2 ** k;
+      let sum = 0;
+      for (let y = 360 - half; y < 360 + half; y++) for (let x = 640 - half; x < 640 + half; x++) sum += pyramidAt(w, 0, 640.3, 360.7, x + 0.5, y + 0.5);
+      expect(Math.abs(sum - 1), `level ${k}`).toBeLessThan(5e-3);
+    }
   });
 });
