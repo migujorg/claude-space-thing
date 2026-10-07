@@ -61,7 +61,12 @@ fn hapkeRadf(mu0: f32, mu: f32, g: f32, l0: vec4f, l1: vec4f, l2: vec4f) -> f32 
   let tg = tan(0.5 * g);
   let Bs = select(0.0, 1.0 / (1.0 + tg / l1.y), l1.y > 0.0);
   let x = select(1e9, tg / l1.w, l1.w > 0.0);
-  let Bc = select(1.0, (1.0 + (1.0 - exp(-x)) / x) / (2.0 * (1.0 + x) * (1.0 + x)), x > 1e-6);
+  // q = (1-exp(-x))/x. Its cubic Taylor remainder at x <= 0.01 is
+  // <= x^4/120 (< 8.4e-11): avoid cancellation, preserving the analytic law.
+  var q = 1.0;
+  if (x < 0.01) { q = 1.0 - 0.5 * x + x * x / 6.0 - x * x * x / 24.0; }
+  else { q = (1.0 - exp(-x)) / x; }
+  let Bc = select(1.0, (1.0 + q) / (2.0 * (1.0 + x) * (1.0 + x)), x > 1e-6);
   let K = l2.y;
   var H = hFn2002(r.x / K, w) * hFn2002(r.y / K, w);
   if (l2.z > 0.5) { H = hFn1981(r.x / K, w) * hFn1981(r.y / K, w); }
@@ -86,7 +91,9 @@ fn lawRadf(mu0: f32, mu: f32, g: f32, l0: vec4f, l1: vec4f, l2: vec4f) -> f32 {
   switch kind {
     case 1u: { return mu0 / (mu0 + mu); }
     case 2u: { return 2.0 * l0.y * mu0 / (mu0 + mu) + (1.0 - l0.y) * mu0; }
-    case 3u: { return pow(mu0, l0.y) * pow(max(mu, 1e-3), l0.y - 1.0); }
+    // No emission floor: the same published Minnaert law enters the CPU integral.
+    // Built k in [0.788, 0.9717] keeps this power finite even at mu = 2^-149.
+    case 3u: { return pow(mu0, l0.y) * pow(mu, l0.y - 1.0); }
     case 4u: { return hapkeRadf(mu0, mu, g, l0, l1, l2); }
     case 6u: { return akimovDisk(mu0, mu, g); }
     case 7u: { return pow(mu0 * mu / (mu0 + mu), l0.y) / max(mu, 1e-3); }

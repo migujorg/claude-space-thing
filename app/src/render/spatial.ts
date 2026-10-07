@@ -184,7 +184,7 @@ export function hapkeRadf(i: number, e: number, g: number, law: ResolvedLaw): nu
   const tg = Math.tan(g / 2);
   const Bs = law.hs > 0 ? 1 / (1 + tg / law.hs) : 0;
   const x = law.hc > 0 ? tg / law.hc : Infinity;
-  const Bc = x > 1e-9 ? (1 + (1 - Math.exp(-x)) / x) / (2 * (1 + x) ** 2) : 1;
+  const Bc = x > 1e-9 ? (1 - Math.expm1(-x) / x) / (2 * (1 + x) ** 2) : 1;
   const H = law.hFn === 1 ? hFunction1981 : hFunction2002;
   const M = H(mu0e / law.K, w) * H(mue / law.K, w) - 1;
   const r = ((law.K * w) / (4 * Math.PI)) * (mu0e / (mu0e + mue)) * (doubleHG(g, law.b, law.c) * (1 + law.bs0 * Bs) + M) * (1 + law.bc0 * Bc) * S;
@@ -211,7 +211,7 @@ export function lawRadf(law: ResolvedLaw, mu0: number, mu: number, g: number): n
     case LAW.akimov:
       return akimovDisk(mu0, mu, g);
     case LAW.barkstrom:
-      // Barkstrom (1973): I/F ∝ (1/μ)(μ0μ/(μ0 + μ))^B; μ floored at 1e-3 as for Minnaert (B < 1 diverges at the limb).
+      // Barkstrom (1973): I/F ∝ (1/μ)(μ0μ/(μ0 + μ))^B; μ floored at 1e-3 (B < 1 diverges at the limb); mirrored in WGSL.
       return Math.pow((mu0 * mu) / (mu0 + mu), law.p) / Math.max(mu, 1e-3);
     default:
       return mu0;
@@ -272,7 +272,9 @@ function zonalAt(z: ZonalProfile, sinLat: number, out: number[]): void {
  * I(α) = (1/π) ∫ r(μ0, μ, α)·M̄(lat) dA_proj over the unit disk (per channel), for a distant observer.
  * Photometric frame: z toward the observer, x in the observer–Sun plane toward the Sun. The lit and
  * visible lune is the rectangle λ ∈ [α − π/2, π/2], β ∈ [−π/2, π/2] in photometric longitude/latitude,
- * integrated with Gauss–Legendre quadrature (n × n nodes).
+ * integrated with endpoint-smoothed, adaptively doubled Gauss–Legendre quadrature.
+ * `n` is the initial order; successive integrals must agree to 1e-6 relative (tested against an
+ * independent reference to 1e-4 for the supported laws from 0 to 179.9 degrees).
  *
  * @param pole body's north pole in the photometric frame (needed only with a zonal profile)
  */
@@ -280,37 +282,62 @@ export function lawDiskIntegral(law: ResolvedLaw, alpha: number, zonal?: { profi
   const a = Math.min(Math.max(alpha, 0), Math.PI);
   const lam0 = a - Math.PI / 2, lam1 = Math.PI / 2;
   if (lam1 <= lam0) return [0, 0, 0, 0];
-  const { x, w } = gaussLegendre(n);
-  const sa = Math.sin(a), ca = Math.cos(a);
-  const acc = [0, 0, 0, 0];
-  const m = [1, 1, 1, 1];
-  for (let p = 0; p < n; p++) {
-    const lam = lam0 + ((x[p] + 1) / 2) * (lam1 - lam0);
-    const wl = (w[p] * (lam1 - lam0)) / 2;
-    const sl = Math.sin(lam), cl = Math.cos(lam);
-    for (let q = 0; q < n; q++) {
-      const beta = (x[q] * Math.PI) / 2;
-      const wb = (w[q] * Math.PI) / 2;
-      const cb = Math.cos(beta), sb = Math.sin(beta);
-      const mu = cb * cl;
-      const mu0 = cb * (sl * sa + cl * ca);
-      const r = lawRadf(law, mu0, mu, a);
-      if (!(r > 0)) continue;
-      const f = r * mu * cb * wl * wb;
-      if (zonal) {
-        const P = zonal.pole;
-        zonalAt(zonal.profile, cb * sl * P[0] + sb * P[1] + cb * cl * P[2], m);
+  // The sine map makes distances to both lune edges quadratic in the node coordinate:
+  // it smooths the fractional-power endpoints of Minnaert without clipping the law.
+  // Akimov contains cos(beta)^(a/(pi-a)); its width is O(sqrt((pi-a)/pi)).
+  // beta = atan(scale*tan(u)) resolves that concentration even as the lune narrows.
+  const delta = Math.PI - a;
+  const scale = law.kind === LAW.akimov ? Math.sqrt(delta / Math.PI) : 1;
+  const evaluate = (order: number): XYZS => {
+    const { x, w } = gaussLegendre(order);
+    // Split at the equator and mu0=mu (eps=delta/2), where roughness changes branch.
+    // The bare law is even in beta; a zonal profile need not be.
+    const latitudes = Array.from(x, (v, q) => {
+      const u = (v + 1) * Math.PI / 4, t = Math.tan(u);
+      const beta = Math.atan(scale * t);
+      const jac = scale * (1 + t * t) / (1 + scale * scale * t * t);
+      return { cb: Math.cos(beta), sb: Math.sin(beta), wb: w[q] * Math.PI / 4 * jac };
+    }).flatMap(v => zonal ? [v, { ...v, sb: -v.sb }] : [{ ...v, wb: 2 * v.wb }]);
+    const acc: XYZS = [0, 0, 0, 0], m = [1, 1, 1, 1];
+    for (const side of [-1, 1]) for (let p = 0; p < order; p++) {
+      const u = side * (x[p] + 1) * Math.PI / 4;
+      const eps = delta * (1 + Math.sin(u)) / 2;
+      const wl = w[p] * delta * Math.PI / 8 * Math.cos(u);
+      const cl = Math.sin(eps), sl = Math.cos(eps);
+      // mu0 = cos(beta)*sin(delta-eps) avoids cancellation in the thin crescent.
+      const ci = Math.sin(delta - eps);
+      for (const { cb, sb, wb } of latitudes) {
+        const mu = cb * cl, mu0 = cb * ci;
+        const r = lawRadf(law, mu0, mu, a);
+        if (!(r > 0)) continue;
+        const f = r * mu * cb * wl * wb;
+        if (zonal) {
+          const P = zonal.pole;
+          zonalAt(zonal.profile, cb * sl * P[0] + sb * P[1] + cb * cl * P[2], m);
+        }
+        for (let k = 0; k < 4; k++) acc[k] += f * m[k];
       }
-      for (let k = 0; k < 4; k++) acc[k] += f * m[k];
     }
+    return acc.map(v => v / Math.PI) as XYZS;
+  };
+  // Relative successive-order tolerance is numerical, not a fit/scene parameter. Leave two
+  // orders of margin to the 1e-4 reference contract; fail explicitly if refinement cannot resolve it.
+  let order = Math.max(16, Math.ceil(n)), prev = evaluate(order);
+  const maxOrder = Math.max(1024, 2 * order);
+  while (order < maxOrder) {
+    order = Math.min(2 * order, maxOrder);
+    const next = evaluate(order);
+    if (next.every((v, c) => Math.abs(v - prev[c]) <= 1e-6 * Math.max(Math.abs(v), Math.abs(prev[c])))) return next;
+    prev = next;
   }
-  return acc.map((v) => v / Math.PI) as XYZS;
+  throw new Error('Surface-law disk quadrature did not converge to 1e-6');
 }
 
 /**
  * I_c = (1/π)∫ f_c dA_proj over the lit and visible lune of the unit disk, with f = R·M evaluated at each
  * point's body-fixed planetocentric latitude and longitude: the normalization for a map (and a
- * per-texel law) that is not zonal. Same photometric frame and quadrature as lawDiskIntegral. `frame`
+ * per-texel law) that is not zonal. Same photometric frame as lawDiskIntegral, with fixed-order
+ * quadrature in longitude/latitude. `frame`
  * holds the photometric axes (x toward the Sun in the observer–Sun plane, y, z toward the observer)
  * expressed in the body-fixed frame. `rotations` > 1 averages over that many rotations of the body about
  * its pole (for disk photometry that is itself a rotational average); 1 = this geometry exactly (for disk
