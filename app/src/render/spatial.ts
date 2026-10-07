@@ -268,6 +268,87 @@ function zonalAt(z: ZonalProfile, sinLat: number, out: number[]): void {
   for (let k = 0; k < 4; k++) out[k] = z.mean[4 * j0 + k] * (1 - t) + z.mean[4 * j1 + k] * t;
 }
 
+/** Zonal maps are piecewise linear in BODY latitude. Integrate in that frame, splitting
+ * at every row centre and at the great-circle tangencies/intersections, instead of trying
+ * to resolve hundreds of interpolation kinks by global node doubling in photometric latitude.
+ * The measure is mu*cos(lat)*dlat*dlon, exactly the same projected area as the bare-law path. */
+function zonalDiskIntegral(law: ResolvedLaw, a: number, zonal: { profile: ZonalProfile; pole: V3 }, n: number): XYZS {
+  const length = Math.hypot(...zonal.pole);
+  const P = zonal.pole.map(v => v / length) as V3;
+  const el = Math.hypot(P[0], P[1]);
+  const E: V3 = el > 1e-12 ? [-P[1] / el, P[0] / el, 0] : [1, 0, 0];
+  const F: V3 = [P[1] * E[2] - P[2] * E[1], P[2] * E[0] - P[0] * E[2], P[0] * E[1] - P[1] * E[0]];
+  const sa = Math.sin(a), ca = Math.cos(a);
+  const incidence = (v: V3) => sa * v[0] + ca * v[2];
+  const pv = P[2], ps = incidence(P), ev = E[2], es = incidence(E), fv = F[2], fs = incidence(F);
+  const cuts = [-Math.PI / 2, Math.PI / 2];
+  for (let j = 0; j < zonal.profile.rows; j++) cuts.push(Math.PI * (0.5 - (j + 0.5) / zonal.profile.rows));
+  // Latitudes where a circle becomes tangent to the limb, terminator, or i=e great circle.
+  const sd = Math.hypot(sa, ca - 1);
+  for (const pd of [pv, ps, ...(sd > 1e-12 ? [(ps - pv) / sd] : [])]) {
+    const lat = Math.acos(Math.min(1, Math.abs(pd)));
+    cuts.push(-lat, lat);
+  }
+  // The limb/terminator intersection is +/- y in the photometric frame, for nonzero phase.
+  if (Math.abs(sa) > 1e-12) { const lat = Math.asin(P[1]); cuts.push(lat, -lat); }
+  // Barkstrom has the same mu=1e-3 floor in CPU and shader; split its kink too.
+  if (law.kind === LAW.barkstrom) {
+    const radius = Math.sqrt((1 - 1e-6) * Math.max(0, 1 - pv * pv));
+    for (const z of [1e-3 * pv - radius, 1e-3 * pv + radius]) cuts.push(Math.asin(Math.max(-1, Math.min(1, z))));
+  }
+  const unique = (values: number[]) => values.sort((x, y) => x - y).filter((v, j, all) => j === 0 || v - all[j - 1] > 32 * Number.EPSILON);
+  const latCuts = unique(cuts);
+  const evaluate = (order: number): XYZS => {
+    const latGL = gaussLegendre(order), lonGL = gaussLegendre(2 * order);
+    const acc: XYZS = [0, 0, 0, 0], map = [1, 1, 1, 1];
+    for (let j = 1; j < latCuts.length; j++) {
+      const half = (latCuts[j] - latCuts[j - 1]) / 2;
+      for (let q = 0; q < order; q++) {
+        const lat = latCuts[j - 1] + (latGL.x[q] + 1) * half, z = Math.sin(lat), cb = Math.cos(lat);
+        const av = z * pv, bv = cb * ev, cv = cb * fv;
+        const as = z * ps, bs = cb * es, cs = cb * fs;
+        const phiCuts = [-Math.PI, Math.PI];
+        const boundaries = [[av, bv, cv], [as, bs, cs], [as - av, bs - bv, cs - cv]];
+        if (law.kind === LAW.barkstrom) boundaries.push([av - 1e-3, bv, cv]);
+        for (const [A, B, C] of boundaries) {
+          const r = Math.hypot(B, C);
+          if (r === 0 || Math.abs(A) >= r) continue;
+          const centre = Math.atan2(C, B), angle = Math.acos(-A / r);
+          for (let phi of [centre - angle, centre + angle]) {
+            if (phi < -Math.PI) phi += 2 * Math.PI;
+            if (phi > Math.PI) phi -= 2 * Math.PI;
+            phiCuts.push(phi);
+          }
+        }
+        const longitudes = unique(phiCuts);
+        zonalAt(zonal.profile, z, map);
+        for (let k = 1; k < longitudes.length; k++) {
+          const lo = longitudes[k - 1], hi = longitudes[k], mid = (lo + hi) / 2;
+          if (av + bv * Math.cos(mid) + cv * Math.sin(mid) <= 0 || as + bs * Math.cos(mid) + cs * Math.sin(mid) <= 0) continue;
+          for (let p = 0; p < 2 * order; p++) {
+            const u = lonGL.x[p] * Math.PI / 2;
+            const phi = mid + (hi - lo) / 2 * Math.sin(u), cp = Math.cos(phi), sp = Math.sin(phi);
+            const mu = av + bv * cp + cv * sp, mu0 = as + bs * cp + cs * sp;
+            const value = lawRadf(law, mu0, mu, a) * mu * cb * latGL.w[q] * half
+              * lonGL.w[p] * (hi - lo) * Math.PI / 4 * Math.cos(u);
+            for (let c = 0; c < 4; c++) acc[c] += value * map[c];
+          }
+        }
+      }
+    }
+    return acc.map(v => v / Math.PI) as XYZS;
+  };
+  let order = Math.max(4, Math.ceil(n / 4)), prev = evaluate(order);
+  const maxOrder = Math.max(128, 2 * order);
+  while (order < maxOrder) {
+    order = Math.min(2 * order, maxOrder);
+    const next = evaluate(order);
+    if (next.every((v, c) => Math.abs(v - prev[c]) <= 1e-6 * Math.max(Math.abs(v), Math.abs(prev[c])))) return next;
+    prev = next;
+  }
+  throw new Error('Zonal surface-law disk quadrature did not converge to 1e-6');
+}
+
 /**
  * I(α) = (1/π) ∫ r(μ0, μ, α)·M̄(lat) dA_proj over the unit disk (per channel), for a distant observer.
  * Photometric frame: z toward the observer, x in the observer–Sun plane toward the Sun. The lit and
@@ -282,6 +363,7 @@ export function lawDiskIntegral(law: ResolvedLaw, alpha: number, zonal?: { profi
   const a = Math.min(Math.max(alpha, 0), Math.PI);
   const lam0 = a - Math.PI / 2, lam1 = Math.PI / 2;
   if (lam1 <= lam0) return [0, 0, 0, 0];
+  if (zonal) return zonalDiskIntegral(law, a, zonal, n);
   // The sine map makes distances to both lune edges quadratic in the node coordinate:
   // it smooths the fractional-power endpoints of Minnaert without clipping the law.
   // Akimov contains cos(beta)^(a/(pi-a)); its width is O(sqrt((pi-a)/pi)).
@@ -291,31 +373,27 @@ export function lawDiskIntegral(law: ResolvedLaw, alpha: number, zonal?: { profi
   const evaluate = (order: number): XYZS => {
     const { x, w } = gaussLegendre(order);
     // Split at the equator and mu0=mu (eps=delta/2), where roughness changes branch.
-    // The bare law is even in beta; a zonal profile need not be.
+    // The bare law is even in beta (zonal profiles use the row-split path above).
     const latitudes = Array.from(x, (v, q) => {
       const u = (v + 1) * Math.PI / 4, t = Math.tan(u);
       const beta = Math.atan(scale * t);
       const jac = scale * (1 + t * t) / (1 + scale * scale * t * t);
       return { cb: Math.cos(beta), sb: Math.sin(beta), wb: w[q] * Math.PI / 4 * jac };
-    }).flatMap(v => zonal ? [v, { ...v, sb: -v.sb }] : [{ ...v, wb: 2 * v.wb }]);
-    const acc: XYZS = [0, 0, 0, 0], m = [1, 1, 1, 1];
+    }).map(v => ({ ...v, wb: 2 * v.wb }));
+    const acc: XYZS = [0, 0, 0, 0];
     for (const side of [-1, 1]) for (let p = 0; p < order; p++) {
       const u = side * (x[p] + 1) * Math.PI / 4;
       const eps = delta * (1 + Math.sin(u)) / 2;
       const wl = w[p] * delta * Math.PI / 8 * Math.cos(u);
-      const cl = Math.sin(eps), sl = Math.cos(eps);
+      const cl = Math.sin(eps);
       // mu0 = cos(beta)*sin(delta-eps) avoids cancellation in the thin crescent.
       const ci = Math.sin(delta - eps);
-      for (const { cb, sb, wb } of latitudes) {
+      for (const { cb, wb } of latitudes) {
         const mu = cb * cl, mu0 = cb * ci;
         const r = lawRadf(law, mu0, mu, a);
         if (!(r > 0)) continue;
         const f = r * mu * cb * wl * wb;
-        if (zonal) {
-          const P = zonal.pole;
-          zonalAt(zonal.profile, cb * sl * P[0] + sb * P[1] + cb * cl * P[2], m);
-        }
-        for (let k = 0; k < 4; k++) acc[k] += f * m[k];
+        for (let k = 0; k < 4; k++) acc[k] += f;
       }
     }
     return acc.map(v => v / Math.PI) as XYZS;
