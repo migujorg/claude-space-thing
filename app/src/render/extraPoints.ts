@@ -26,6 +26,8 @@ export interface CullBindings {
   /** Atmospheric limbs (CULL_SHADER Limbs). */
   limbs: GPUBuffer;
   maxVisible: number;
+  /** Capacity of the unseen list (it holds every record: none's light is left out of the point image). */
+  maxUnseen: number;
 }
 
 export class ExtraPointSources {
@@ -42,7 +44,7 @@ export class ExtraPointSources {
     if (src && (src.strideFloats < 7 || src.count < 0)) throw new Error('extra point sources: need >= 7 floats per record');
     this.src = src && src.count > 0 ? src : null;
     if (this.src && !this.info) {
-      this.info = this.device.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST, label: 'extra points info' });
+      this.info = this.device.createBuffer({ size: 32, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST, label: 'extra points info' });
     }
   }
 
@@ -53,7 +55,7 @@ export class ExtraPointSources {
     const groups = Math.ceil(s.count / 256);
     const gx = Math.min(groups, 65535);
     const gy = Math.ceil(groups / gx);
-    this.device.queue.writeBuffer(this.info, 0, new Uint32Array([s.count, s.strideFloats, b.maxVisible, gx]));
+    this.device.queue.writeBuffer(this.info, 0, new Uint32Array([s.count, s.strideFloats, b.maxVisible, gx, b.maxUnseen, 0, 0, 0]));
     pass.setBindGroup(0, this.device.createBindGroup({
       layout: pipeline.getBindGroupLayout(0),
       entries: [

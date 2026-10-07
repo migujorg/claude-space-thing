@@ -1053,7 +1053,7 @@ fn limbTransmittanceTo(u: vec3f, D: f32) -> vec4f {
  * frame.) The verdict decides what is displayed as a point (PTDISP) and what overflows into painted glare (PTEX).
  */
 export const CULL_SHADER = COMMON + /* wgsl */ `
-struct CullInfo { count: u32, stride: u32, maxVisible: u32, groupsX: u32 };
+struct CullInfo { count: u32, stride: u32, maxVisible: u32, groupsX: u32, maxUnseen: u32, pad0: u32, pad1: u32, pad2: u32 };
 @group(0) @binding(0) var<uniform> F: Frame;
 @group(0) @binding(1) var<uniform> E: Eye;
 @group(0) @binding(2) var<storage, read> stars: array<f32>;
@@ -1097,7 +1097,7 @@ ${LIMB_WGSL(8)}
   if (blackwellEqM(E, mL, e.y, e.w) < thr) {
     // Not picked out by the eye: light on the retina all the same.
     let j = atomicAdd(&args[5], 1u);
-    if (j >= info.maxVisible) { return; }
+    if (j >= info.maxUnseen) { return; }
     unseen[2u * j] = vec4f(ndc, 0.0, 0.0);
     unseen[2u * j + 1u] = e;
     return;
@@ -1111,10 +1111,10 @@ ${LIMB_WGSL(8)}
 
 export const CLAMP_ARGS_SHADER = /* wgsl */ `
 @group(0) @binding(0) var<storage, read_write> args: array<u32, 8>;
-@group(0) @binding(1) var<uniform> maxVisible: vec4u;
+@group(0) @binding(1) var<uniform> maxVisible: vec4u;   // x: the visible list's capacity, y: the unseen list's
 @compute @workgroup_size(1) fn main() {
   args[1] = min(args[1], maxVisible.x);
-  args[5] = min(args[5], maxVisible.x);
+  args[5] = min(args[5], maxVisible.y);
 }
 `;
 

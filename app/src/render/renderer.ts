@@ -138,6 +138,7 @@ export class Renderer {
   /** The point sources in the frame that the eye does not pick out: in the point image (PT), not displayed. */
   private unseen: GPUBuffer;
   private maxVisible = 1;
+  private maxUnseen = 1;
   private frameIndex = 0;
   private lastSnapshot: SceneSnapshot | null = null;
   private readbackBusy = false;
@@ -427,19 +428,27 @@ export class Renderer {
       const data = catalog.data.subarray(first * catalog.stride, (first + count) * catalog.stride);
       const buffer = this.device.createBuffer({ size: Math.max(16, data.byteLength), usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
       this.device.queue.writeBuffer(buffer, 0, data.buffer as ArrayBuffer, data.byteOffset, data.byteLength);
-      const info = this.device.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+      const info = this.device.createBuffer({ size: 32, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
       this.stars.push({ buffer, count, info });
     }
     this.allocPointLists();
   }
 
-  /** The cull's two lists, each able to hold every record (up to MAX_VISIBLE_STARS). */
+  /**
+   * The cull's two lists. The visible list holds up to MAX_VISIBLE_STARS sources, as before. The unseen list holds
+   * every record (as many as one storage binding can): which records a full list drops is a race between the
+   * cull's invocations, so a list that could fill would put a different set of faint sources into the point image
+   * on every frame.
+   */
   private allocPointLists(): void {
-    this.maxVisible = Math.max(1, Math.min(this.starCount + (this.extraPts?.count ?? 0), MAX_VISIBLE_STARS));
+    const records = this.starCount + (this.extraPts?.count ?? 0);
+    const perBinding = Math.floor(Math.min(this.device.limits.maxStorageBufferBindingSize, this.device.limits.maxBufferSize) / 32);
+    this.maxVisible = Math.max(1, Math.min(records, MAX_VISIBLE_STARS));
+    this.maxUnseen = Math.max(1, Math.min(records, perBinding));
     this.visible.destroy();
     this.unseen.destroy();
     this.visible = this.device.createBuffer({ size: this.maxVisible * 32, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC });
-    this.unseen = this.device.createBuffer({ size: this.maxVisible * 32, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC });
+    this.unseen = this.device.createBuffer({ size: this.maxUnseen * 32, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC });
   }
 
   /**
@@ -579,18 +588,18 @@ export class Renderer {
   async readPointList(): Promise<{ frame: number; count: number; data: Float32Array; unseenCount: number; unseen: Float32Array }> {
     const d = this.device;
     const frame = this.frameIndex;
-    const bytes = this.visible.size;
-    const buf = d.createBuffer({ size: 32 + 2 * bytes, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ });
+    const bytes = this.visible.size, bytesU = this.unseen.size;
+    const buf = d.createBuffer({ size: 32 + bytes + bytesU, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ });
     const enc = d.createCommandEncoder();
     enc.copyBufferToBuffer(this.args, 0, buf, 0, 32);
     enc.copyBufferToBuffer(this.visible, 0, buf, 32, bytes);
-    enc.copyBufferToBuffer(this.unseen, 0, buf, 32 + bytes, bytes);
+    enc.copyBufferToBuffer(this.unseen, 0, buf, 32 + bytes, bytesU);
     d.queue.submit([enc.finish()]);
     await buf.mapAsync(GPUMapMode.READ);
     const raw = buf.getMappedRange();
     const head = new Uint32Array(raw, 0, 8);
     const count = Math.min(head[1], bytes / 32);
-    const unseenCount = Math.min(head[5], bytes / 32);
+    const unseenCount = Math.min(head[5], bytesU / 32);
     const data = new Float32Array(raw.slice(32, 32 + count * 32));
     const unseen = new Float32Array(raw.slice(32 + bytes, 32 + bytes + unseenCount * 32));
     buf.unmap();
@@ -906,7 +915,7 @@ export class Renderer {
         const groups = Math.ceil(c.count / 256);
         const gx = Math.min(groups, 65535);
         const gy = Math.ceil(groups / gx);
-        d.queue.writeBuffer(c.info, 0, new Uint32Array([c.count, this.starStride, this.maxVisible, gx]));
+        d.queue.writeBuffer(c.info, 0, new Uint32Array([c.count, this.starStride, this.maxVisible, gx, this.maxUnseen, 0, 0, 0]));
         pass.setBindGroup(0, d.createBindGroup({
           layout: this.cullPipe.getBindGroupLayout(0),
           entries: [
@@ -924,8 +933,8 @@ export class Renderer {
         }));
         pass.dispatchWorkgroups(gx, gy);
       }
-      this.extraPts?.cull(pass, this.cullPipe, { frameUB: this.frameUB, eyeUB: this.eyeUB, visible: this.visible, unseen: this.unseen, args: this.args, bgView, srcs: this.srcs, limbs: this.limbsUB, maxVisible: this.maxVisible });
-      d.queue.writeBuffer(this.clampUB, 0, new Uint32Array([this.maxVisible, 0, 0, 0]));
+      this.extraPts?.cull(pass, this.cullPipe, { frameUB: this.frameUB, eyeUB: this.eyeUB, visible: this.visible, unseen: this.unseen, args: this.args, bgView, srcs: this.srcs, limbs: this.limbsUB, maxVisible: this.maxVisible, maxUnseen: this.maxUnseen });
+      d.queue.writeBuffer(this.clampUB, 0, new Uint32Array([this.maxVisible, this.maxUnseen, 0, 0]));
       pass.setPipeline(this.clampPipe);
       pass.setBindGroup(0, d.createBindGroup({ layout: this.clampPipe.getBindGroupLayout(0), entries: [{ binding: 0, resource: { buffer: this.args } }, { binding: 1, resource: { buffer: this.clampUB } }] }));
       pass.dispatchWorkgroups(1);
