@@ -35,6 +35,12 @@ it.skipIf(!built)('actual square-pixel footprint conserves all built laws, inclu
     for (const radius of [1, 2, 4]) for (const offset of offsets) {
       const frame = rasterDisk(law, { radius, alpha, offset, rule: 'footprint', order: 32 });
       expect(frame.nonfinite, `${name}, ${phase}, R=${radius}`).toBe(0);
+      // A positive square-pixel integral is bounded by the largest interior
+      // radiance (covered area <= 1); record its cosines instead of a magic cap.
+      const witness = frame.interiorWitness!;
+      expect(witness.mu).toBeGreaterThan(0);
+      expect(witness.mu0).toBeGreaterThan(0);
+      expect(frame.maxPixel).toBeLessThanOrEqual(publishedRadf(law, witness.mu0, witness.mu, alpha) * (1 + 1e-4));
       expect(Math.abs(frame.sum / (radius ** 2 * reference) - 1), `${name}, ${phase}, R=${radius}, ${offset}`).toBeLessThan(1e-4);
     }
   }
