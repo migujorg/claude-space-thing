@@ -268,3 +268,18 @@ def test_case_build_clears_process_local_numerical_caches(monkeypatch):
     assert read_input()==read_input()==1
     r.clear_process_caches()
     assert read_input()==2
+
+
+@pytest.mark.parametrize('case_path', sorted((build.VALIDATION / 'cases').glob('*/case.json')),
+                         ids=lambda p: p.parent.name)
+def test_committed_case_lock_is_current(case_path, monkeypatch):
+    """Landing preflight needs code/tables, products and the environment, no raw images."""
+    from pipeline.validation import reproducibility as r
+    case = json.loads(case_path.read_text())
+    for key in r.THREAD_VARS:
+        monkeypatch.setenv(key, '1')
+    missing = [key for key in case['reproducibility']['inputs']
+               if key.startswith('products/') and not r.input_path(key).is_file()]
+    if missing:
+        pytest.skip('validation input product absent: ' + ', '.join(missing))
+    r.preflight(case)
