@@ -296,6 +296,12 @@ export interface EarthPart {
   dif: XYZS;
   /** Transmission of surface emission to the viewer. */
   emit: XYZS;
+  /** The transmitted surface part of dir/dif, to be lit through the whole air column. */
+  surfaceDir: XYZS;
+  surfaceDif: XYZS;
+  /** Lower-air path transmission: down through the cloud (direct/diffuse), then unscattered up. */
+  lowerDirect: number;
+  lowerDiffuse: number;
 }
 
 const fin = (x: number) => Number.isFinite(x);
@@ -363,8 +369,8 @@ export function earthParts(s: EarthSample, mu0: number, mu: number, glint?: Glin
   const glintUnknown = glint && ow > 0 && mu0 > 0 && !fin(u)
     ? { share: clearW * ow, maxRho: glintMaxRadianceFactor(glint.cosBeta, mu, glint.cosOmega, mu0) }
     : { share: 0, maxRho: 0 };
-  const clear: EarthPart = { w: clearW, dir: Rs.map((r) => r * m0 + ow * rg) as XYZS, dif: Rs.map((r) => r + ow * FRESNEL_DIFFUSE) as XYZS, emit: [1, 1, 1, 1] };
-  const cl: EarthPart = { w: cloudy, dir: [0, 0, 0, 0], dif: [0, 0, 0, 0], emit: [0, 0, 0, 0] };
+  const clear: EarthPart = { w: clearW, dir: Rs.map((r) => r * m0 + ow * rg) as XYZS, dif: Rs.map((r) => r + ow * FRESNEL_DIFFUSE) as XYZS, emit: [1, 1, 1, 1], surfaceDir: [0, 0, 0, 0], surfaceDif: [0, 0, 0, 0], lowerDirect: 0, lowerDiffuse: 0 };
+  const cl: EarthPart = { w: cloudy, dir: [0, 0, 0, 0], dif: [0, 0, 0, 0], emit: [0, 0, 0, 0], surfaceDir: [0, 0, 0, 0], surfaceDif: [0, 0, 0, 0], lowerDirect: 0, lowerDiffuse: 0 };
   // Each τ node is a sub-pixel of its own (independent pixel approximation), weighted by its share of the cloud.
   if (cloudy > 0) for (const q of pops) for (let k = 0; k < q.taus.length; k++) {
     const tau = q.taus[k], wk = (q.w / cloudy) * q.wts[k];
@@ -375,10 +381,20 @@ export function earthParts(s: EarthSample, mu0: number, mu: number, glint?: Glin
     // The glint seen through a thin cloud: the unscattered beam both ways.
     const tp = (1 - g * g) * tau;
     const glintThrough = ow * rg * Math.exp(-tp / Math.max(m0, 1e-4)) * o.tView;
+    // Lower-air radiance is directional, so retain only its unscattered second passage through the cloud.
+    // Downward direct/diffuse flux uses the conservative two-stream transmission. Angular redistribution
+    // on that downward passage and cloud/air feedback on the precomputed multiple-scattering field are neglected.
+    cl.lowerDirect += wk * (1 - o.R0) * o.tView;
+    cl.lowerDiffuse += wk * (1 - o.rbar) * o.tView;
     for (let c = 0; c < 4; c++) {
       const multi = 1 / (1 - Rs[c] * o.rbar);
-      cl.dir[c] += wk * (m0 * (o.R0 * escape(mu) + (1 - o.R0) * multi * Rs[c] * through) + glintThrough);
-      cl.dif[c] += wk * (o.rbar * escape(mu) + (1 - o.rbar) * multi * Rs[c] * through);
+      const surfaceDir = m0 * (1 - o.R0) * multi * Rs[c] * through + glintThrough;
+      // Water's Fresnel skylight also belongs below the cloud (and must survive the zero-τ limit).
+      const surfaceDif = (1 - o.rbar) * multi * (Rs[c] + ow * FRESNEL_DIFFUSE) * through;
+      cl.surfaceDir[c] += wk * surfaceDir;
+      cl.surfaceDif[c] += wk * surfaceDif;
+      cl.dir[c] += wk * (m0 * o.R0 * escape(mu) + surfaceDir);
+      cl.dif[c] += wk * (o.rbar * escape(mu) + surfaceDif);
       cl.emit[c] += wk * multi * through;
     }
   }
@@ -396,4 +412,42 @@ export function earthShade(s: EarthSample, mu0: number, mu: number, glint?: Glin
   const rho = [0, 1, 2, 3].map((c) => clear.w * clear.dir[c] + cloudy.w * cloudy.dir[c]) as XYZS;
   const emitT = [0, 1, 2, 3].map((c) => clear.w * clear.emit[c] + cloudy.w * cloudy.emit[c]) as XYZS;
   return { rho, emitT, gap: Math.max(gap, earthGlintGap(glintUnknown, rho[1])), gapEmit };
+}
+
+/** Per-bin atmospheric illumination at the ground and cloud top, per unit solar irradiance. */
+export interface EarthIllumination {
+  ts0: ArrayLike<number>; es0: ArrayLike<number>;
+  tsc: ArrayLike<number>; esc: ArrayLike<number>;
+}
+/** CPU reference of shaders.ts EARTH_WITH_ATMOSPHERE; returns πL/E_sun (XYZS). */
+export function earthAtmosphereRadiance(pr: EarthPartsOut, path: {
+  L: ArrayLike<number>; Lc: ArrayLike<number>; Td: ArrayLike<number>; Tcd: ArrayLike<number>;
+}, light: EarthIllumination, weights: ArrayLike<ArrayLike<number>>, mu0: number): XYZS {
+  const unknownW = Math.max(1 - pr.clear.w - pr.cloudy.w, 0);
+  const out: XYZS = [0, 0, 0, 0];
+  for (let c = 0; c < 4; c++) {
+    let fullPath = 0, upperPath = 0, directTop = 0, diffuseTop = 0;
+    for (let k = 0; k < path.L.length; k++) {
+      const w = weights[c][k];
+      fullPath += w * path.L[k]; upperPath += w * path.Lc[k];
+      directTop += w * light.tsc[k]; diffuseTop += w * light.esc[k];
+    }
+    out[c] = Math.PI * ((pr.clear.w + unknownW) * fullPath + pr.cloudy.w * upperPath);
+    for (let k = 0; k < path.L.length; k++) {
+      const clearRad = path.Td[k] * (pr.clear.dir[c] * light.ts0[k] + pr.clear.dif[c] * light.es0[k]);
+      const cloudRad = path.Tcd[k] * ((pr.cloudy.dir[c] - pr.cloudy.surfaceDir[c]) * light.tsc[k]
+        + (pr.cloudy.dif[c] - pr.cloudy.surfaceDif[c]) * light.esc[k])
+        + path.Td[k] * (pr.cloudy.surfaceDir[c] * light.ts0[k] + pr.cloudy.surfaceDif[c] * light.es0[k]);
+      out[c] += weights[c][k] * (pr.clear.w * clearRad + pr.cloudy.w * cloudRad);
+    }
+    // Existing path tables contain combined single/multiple scattering, already folded on the GPU.
+    // Approximate their illumination mixture by the direct/diffuse horizontal irradiance at cloud top.
+    // If the local Sun is below the horizon, use diffuse transmission for twilight path light.
+    // This keeps the clear-air spectral path at τ=0, without adding a new table or scattering parameter.
+    const beam = Math.max(mu0, 0) * directTop;
+    const total = beam + diffuseTop;
+    const lowerT = total > 0 ? (pr.cloudy.lowerDirect * beam + pr.cloudy.lowerDiffuse * diffuseTop) / total : pr.cloudy.lowerDiffuse;
+    out[c] += Math.PI * pr.cloudy.w * Math.max(fullPath - upperPath, 0) * lowerT;
+  }
+  return out;
 }
