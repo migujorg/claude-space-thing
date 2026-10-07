@@ -152,8 +152,10 @@ async function renderScene(scene) {
   try {
     await page.goto(`${base}/?${query}&present=offscreen`);
     await page.waitForFunction(() => window.__frameReady === true || !!window.__frameError, null, { timeout: timeoutMs, polling: 100 });
-    r.readyMs = performance.now() - t0;
-    const err = await page.evaluate(() => window.__frameError ?? null);
+    const observedMs = performance.now() - t0;
+    const { ready, error: err } = await page.evaluate(() => ({ ready: window.__frameReady === true, error: window.__frameError ?? null }));
+    if (ready) r.readyMs = observedMs;
+    else r.elapsedMs = observedMs;
     if (err) r.error = String(err).slice(0, 1000);
     // The adapter this page's renderer was given. Asked per scene: after GPU process crashes Chromium goes on with
     // SwiftShader, and from then on a --gpu hardware run would be a software run.
@@ -213,7 +215,7 @@ await Promise.all(
       const s = scenes[i];
       process.stdout.write(`… ${s.id}\n`);
       results[i] = await renderScene(s);
-      process.stdout.write(`${results[i].error ? '✗' : '✓'} ${s.id} (${((results[i].readyMs ?? 0) / 1000).toFixed(0)} s)${results[i].error ? `: ${results[i].error}` : ''}\n`);
+      process.stdout.write(`${results[i].error ? '✗' : '✓'} ${s.id} (${((results[i].readyMs ?? results[i].elapsedMs ?? 0) / 1000).toFixed(0)} s)${results[i].error ? `: ${results[i].error}` : ''}\n`);
     }
   }),
 );
@@ -228,7 +230,7 @@ for (let attempt = 0; attempt < retries; attempt++) {
     const again = await renderScene(scenes[i]);
     again.retried = attempt + 1;
     results[i] = again;
-    process.stdout.write(`${again.error ? '✗' : '✓'} ${scenes[i].id} (${((again.readyMs ?? 0) / 1000).toFixed(0)} s)${again.error ? `: ${again.error}` : ''}\n`);
+    process.stdout.write(`${again.error ? '✗' : '✓'} ${scenes[i].id} (${((again.readyMs ?? again.elapsedMs ?? 0) / 1000).toFixed(0)} s)${again.error ? `: ${again.error}` : ''}\n`);
   }
 }
 await browser.close();
