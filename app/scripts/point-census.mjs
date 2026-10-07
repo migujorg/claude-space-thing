@@ -23,7 +23,7 @@
 // at is read back (Renderer.readVeilLevel) with and without the source, and the cull's own-light value from the
 // list (Renderer.readPointList). What is left, as a fraction of the source's own light, must be under 1e-6 where
 // the HDR targets are float32 and under 1e-3 where they are half float. Options: --lux 1e-6 (the source's
-// illuminance), --query "fov=2", --size 1283x723, --line x0,y0,x1,y1,n (n places along a line in pixels, for
+// illuminance at least; it is raised where needed so that its light at its own position is 30 times the background), --query "fov=2", --size 1283x723, --line x0,y0,x1,y1,n (n places along a line in pixels, for
 // instance across a body's limb, where a source is either hidden whole or drawn whole).
 import { chromium } from 'playwright';
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -222,7 +222,7 @@ const pageLone = async ({ n, lux, line }) => {
     const inv = 2 ** -t.level, cx = rec[0] * inv - 0.5, cy = rec[1] * inv - 0.5, ix = Math.floor(cx), iy = Math.floor(cy), fx = cx - ix, fy = cy - iy;
     const at = (x, y) => t.data[(Math.min(Math.max(y, 0), t.height - 1) * t.width + Math.min(Math.max(x, 0), t.width - 1)) * 4 + 1] / t.preExposure;
     const tex = (at(ix, iy) * (1 - fx) + at(ix + 1, iy) * fx) * (1 - fy) + (at(ix, iy + 1) * (1 - fx) + at(ix + 1, iy + 1) * fx) * fy;
-    return { tex, own: rec[3] * rec[5], level: t.level };
+    return { tex, own: rec[3] * rec[5], ownPerLux: rec[3], level: t.level };
   };
   let seed = 987654321;
   const rnd = () => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 2 ** 32; };
@@ -234,7 +234,10 @@ const pageLone = async ({ n, lux, line }) => {
   }
   const rows = [];
   for (const [x, y] of pos) {
-    const a = await one(x, y, 1e-30), b = await one(x, y, lux);
+    const a = await one(x, y, 1e-30);
+    // Bright enough to measure: the texture is float32, so what is left of the source can only be told from the
+    // background's own rounding when the source's light there is well above the background (30 times, here).
+    const b = a && await one(x, y, Math.max(lux, a.ownPerLux > 0 ? (30 * a.tex) / a.ownPerLux : lux));
     if (!a || !b) { rows.push({ hidden: true, x, y }); continue; }
     rows.push({ x, y, residual: (b.tex - b.own - a.tex) / b.own, ownOverBackground: b.own / Math.max(a.tex, 1e-30), level: b.level, levelMoved: a.level !== b.level });
   }
