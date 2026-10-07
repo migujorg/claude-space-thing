@@ -178,3 +178,68 @@ it.skipIf(!built)('audits Titan warning sets in all canonical scene geometries',
   console.log(`[model-point warnings] changed from scene baseline: ${JSON.stringify(changed)}`);
   expect(changed).toEqual([]);
 }, 120000);
+
+const { cpuUsage } = await import(/* @vite-ignore */ 'node:process' as string);
+
+it.skipIf(!built)('requests only atmosphere tables that can contribute to canonical scenes', async () => {
+  const data = await loadAll({ fetch: fetchFs, base: '/data/', eagerEphemeris: (p) => p === 'ephem/de442s.json' });
+  const scenes = JSON.parse(fs.readFileSync(new URL('../e2e/scenes.json', import.meta.url), 'utf8'));
+  const ids = scenes.scenes.map((s: { params: { target: string } }) => Number(s.params.target)).filter((id: number) => id >= 1000000);
+  const rows = await selectedRows(ids);
+  const state = new AdaptationState();
+  state.update({ coneCdM2: 1e-5, rodCdM2: 1.4e-5, cornealFlux: 0 }, 0);
+  const eye = computeEyeFrame(DEFAULT_EYE_SETTINGS, state, 'eye', 0, null);
+  const costs = new Map<number, number>();
+  const noTables = new Set(['earth-day-strict', 'jupiter-galileans', 'ganymede-narrow-field',
+    'uranus-epsilon-estimate', 'uranus', 'neptune', 'starfield', 'starfield-enhanced', 'sun-1au',
+    'comet-lemmon', 'mercury-map', 'starfield-dark-2min', 'starfield-dark-12min',
+    'starfield-dark-30min', 'hyperion-fallback', 'jupiter-double-shadow']);
+  for (const sc of scenes.scenes) {
+    const model = new AppModel({ TimeScale, formatUtc, Ephemeris, EphemerisSet, bodyToIcrf, apparentPosition, OrientationSet, PreciseOrientation });
+    model.setData(data);
+    model.setViewport({ width: 1280, height: 720, dpr: 1 });
+    model.startBackgroundLoading();
+    await model.systemsIdle();
+    const view = parseUrlParams('?' + new URLSearchParams({ ...scenes.defaults, ...sc.params })).view;
+    model.applyUrl(view);
+    await model.systemsIdle();
+    const row = rows.get(view.target!);
+    if (row !== undefined) {
+      model.setSmallBodyTables(selectedTables(row));
+      expect(typeof model.goTo(-1, view.dist, { azDeg: view.az, elDeg: view.el, instant: true })).not.toBe('string');
+      if (view.look) model.lookLocal(-1, view.look.azDeg, view.look.elDeg);
+    }
+    model.frame(0);
+    const snap = model.snapshot!;
+    const g = cameraGeom(snap, 1280, 720, 1e-7);
+    const requests: { name: string; angleDeg: number; diameterPx: number; cpuMs: number }[] = [];
+    const start = cpuUsage();
+    const frame = prepareFrame(snap, g, eye, 1e-9, { atmospheres: (b, ground, dust) => {
+      if (!costs.has(b.id)) {
+        const r = atmosphereModelFromData(b.atmosphere!, ground, dust?.scale ?? 1,
+          b.atmosphere!.surface ? { groundPerSample: b.atmosphere!.surface.reflectance, multipleScattering: 'orders' } : {});
+        if ('error' in r) costs.set(b.id, 0);
+        else {
+          const t = cpuUsage();
+          precomputeAtmosphere(r.model);
+          const d = cpuUsage(t);
+          costs.set(b.id, (d.user + d.system) / 1000);
+        }
+      }
+      requests.push({ name: b.name,
+        angleDeg: Math.acos(Math.max(-1, Math.min(1, -g.back.reduce((sum, v, c) => sum + v * normalize(b.pos)[c], 0)))) * 180 / Math.PI,
+        diameterPx: 2 * Math.asin(Math.min(1, b.radii![0] / len(b.pos))) / g.pixelAngle,
+        cpuMs: costs.get(b.id)! });
+      return null;
+    } });
+    console.log(`[model-table requests] ${sc.id}: ${JSON.stringify(requests)}; points ${frame.points.length}`);
+    if (noTables.has(sc.id)) {
+      expect.soft(requests, sc.id).toHaveLength(0);
+      const elapsed = cpuUsage(start);
+      // Frame preparation only, using this process's CPU: generous versus the normal few ms.
+      expect.soft((elapsed.user + elapsed.system) / 1000, sc.id).toBeLessThan(250);
+    }
+    if (sc.id === 'pluto-charon') expect(requests.map((r) => r.name)).toEqual(['Pluto']);
+    if (sc.id === 'titan-haze') expect(requests.map((r) => r.name)).toEqual(['Titan']);
+  }
+}, 120000);
