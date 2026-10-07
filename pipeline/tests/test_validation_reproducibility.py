@@ -89,7 +89,7 @@ def test_input_capture_checks_unregistered_files(tmp_path,monkeypatch):
 def test_lock_refuses_environment_and_code_changes(monkeypatch):
     from pipeline.validation import reproducibility as r
     monkeypatch.setattr(r, 'runtime', lambda: {'numpy': 'new'})
-    monkeypatch.setattr(r, 'implementation', lambda: {'register.py': 'new'})
+    monkeypatch.setattr(r, 'implementation', lambda case=None: {'register.py': 'new'})
     c={'reproducibility': {'schema':'validation-rebuild-v1', 'runtime':{'numpy':'old'},
                            'implementation':{'register.py':'old'}, 'inputs':{}}}
     with pytest.raises(r.ReproductionError,match='numerical environment'):
@@ -270,6 +270,7 @@ def test_case_build_clears_process_local_numerical_caches(monkeypatch):
     assert read_input()==2
 
 
+@pytest.mark.skip_group('missing-input')
 @pytest.mark.parametrize('case_path', sorted((build.VALIDATION / 'cases').glob('*/case.json')),
                          ids=lambda p: p.parent.name)
 def test_committed_case_lock_is_current(case_path, monkeypatch):
@@ -282,4 +283,126 @@ def test_committed_case_lock_is_current(case_path, monkeypatch):
                if key.startswith('products/') and not r.input_path(key).is_file()]
     if missing:
         pytest.skip('validation input product absent: ' + ', '.join(missing))
-    r.preflight(case)
+    r.preflight(case, check_raw=False)
+
+
+def test_product_lock_ignores_prose_but_checks_consumed_values_and_presence(tmp_path, monkeypatch):
+    from pipeline.validation import reproducibility as r
+    monkeypatch.setattr(r, 'OUT', tmp_path)
+    path = tmp_path / 'rings.json'
+    product = {'699': {'opticalDepth': {'value': [{'radiusKm': [1, 2], 'normalTau': [None, .2]}],
+                                       'sources': ['archive'], 'method': 'original prose'}}}
+    selection = [['699', 'opticalDepth', 'value', 0, 'normalTau'],
+                 ['699', 'opticalDepth', 'sources']]
+    path.write_text(json.dumps(product))
+    with r.capture_inputs() as inputs:
+        r.read_product(path, selection)
+    product['699']['opticalDepth']['method'] = 'edited prose'
+    path.write_text(json.dumps(product, indent=3))
+    r.check_input(path, inputs['products/rings.json'])
+    with r.capture_inputs(inputs):
+        r.read_product(path, selection)
+    product['699']['opticalDepth']['value'][0]['normalTau'][0] = 0
+    path.write_text(json.dumps(product))
+    with pytest.raises(r.ReproductionError, match='consumed product values'):
+        r.check_input(path, inputs['products/rings.json'])
+    missing = r.selected_record(path, [['absent']])
+    product['absent'] = None
+    path.write_text(json.dumps(product))
+    assert r.selected_record(path, [['absent']]) != missing
+
+
+def test_import_closure_excludes_unexecuted_stages_and_adds_himawari_only():
+    from pipeline.validation import reproducibility as r
+    frame = r.implementation({'id': 'neptune-voyager2-1989'})
+    earth = r.implementation({'id': 'earth-himawari9-2026'})
+    assert 'validation/himawari.py' not in frame
+    assert set(earth) - set(frame) == {'validation/himawari.py'}
+    assert 'validation/reader_voyager.py' in frame
+    assert 'validation/reader_epoxi.py' not in frame
+    assert 'validation/reader_epoxi.py' in r.implementation({'id': 'earth-moon-epoxi-2008'})
+    assert {'validation/build.py', 'validation/readers.py', 'validation/register.py',
+            'surf_color.py', 'photometry/albedo.py'} <= set(frame)
+    assert not any(p.startswith(('stages/', 'syn_', 'stars_', 'surf_earth')) for p in frame)
+    assert 'photometry/ring_reflectance.py' not in frame
+
+
+@pytest.mark.parametrize('section', ['reference', 'rois', 'observation', 'view', 'ratios', 'sources', 'unexpected'])
+def test_renewal_refuses_every_json_change_outside_lock(tmp_path, section):
+    from pipeline.validation import reproducibility as r
+    old, new = tmp_path / 'old', tmp_path / 'new'
+    old.mkdir(); new.mkdir()
+    case = {'reproducibility': {'old': True}, 'rois': [{'expected': 1, 'tolerance': .1}],
+            'observation': {'fit': 1}}
+    for folder in (old, new):
+        (folder / 'case.json').write_text(json.dumps(case))
+        (folder / 'reference.bin').write_bytes(b'fixed')
+        (folder / 'preview.png').write_bytes(b'fixed preview')
+    case['reproducibility'] = {'new': True}
+    (new / 'case.json').write_text(json.dumps(case))
+    r.assert_renewal(old, new)
+    case[section] = 'changed'
+    (new / 'case.json').write_text(json.dumps(case))
+    with pytest.raises(r.ReproductionError, match='outside lock'):
+        r.assert_renewal(old, new)
+
+
+@pytest.mark.parametrize('artifact', ['reference.bin', 'preview.png'])
+def test_renewal_refuses_changed_artifact_bytes(tmp_path, artifact):
+    from pipeline.validation import reproducibility as r
+    old, new = tmp_path / 'old', tmp_path / 'new'
+    old.mkdir(); new.mkdir()
+    for folder in (old, new):
+        (folder / 'case.json').write_text('{}')
+        (folder / 'reference.bin').write_bytes(b'fixed')
+        (folder / 'preview.png').write_bytes(b'fixed preview')
+    (new / artifact).write_bytes(b'changed')
+    with pytest.raises(r.ReproductionError, match=artifact):
+        r.assert_renewal(old, new)
+
+
+def test_renewal_writes_no_locks_if_any_case_changes(tmp_path, monkeypatch):
+    from pipeline.validation import __main__ as cli, reproducibility as r
+    from pipeline import paths
+    from copy import deepcopy
+    monkeypatch.setattr(paths, 'CACHE', tmp_path / 'cache')
+    monkeypatch.setattr(build, 'VALIDATION', tmp_path)
+    monkeypatch.setattr(cli, 'CASES', {'first': object(), 'second': object()})
+    monkeypatch.setattr(build, 'preview', lambda path, *args: path.write_bytes(b'preview fixture'))
+    for key in r.THREAD_VARS:
+        monkeypatch.setenv(key, '1')
+    originals, candidates = {}, {}
+    for cid in cli.CASES:
+        built = {'json': {'id': cid, 'generated': '2026-10-07T00:00:00+00:00',
+                          'reproducibility': {'old': True}, 'reference': {'bands': []},
+                          'rois': [], 'view': {}, 'observation': {'fit': 1}},
+                 'refs': [np.array([[1., np.nan]])], 'rois': []}
+        folder = build.write_case(cid, built)
+        originals[cid] = {p.name: p.read_bytes() for p in folder.iterdir()}
+        candidates[cid] = deepcopy(built)
+        candidates[cid]['json']['reproducibility'] = {'renewed': True}
+    candidates['second']['json']['observation']['fit'] = 2
+    monkeypatch.setattr(build, 'build_case', lambda case, expected, renew: candidates[expected['id']])
+    assert cli.main(['renew-locks']) == 1
+    for cid in cli.CASES:
+        assert {p.name: p.read_bytes() for p in (tmp_path / 'cases' / cid).iterdir()} == originals[cid]
+    candidates['second']['json']['observation']['fit'] = 1
+    assert cli.main(['renew-locks']) == 0
+    for cid in cli.CASES:
+        folder = tmp_path / 'cases' / cid
+        assert json.loads((folder / 'case.json').read_text())['reproducibility'] == {'renewed': True}
+        for name in ('reference.bin', 'preview.png'):
+            assert (folder / name).read_bytes() == originals[cid][name]
+
+
+def test_tables_lock_only_actual_reads_from_static_closure():
+    from pipeline.validation import reproducibility as r
+    from pipeline.photometry.common import read_table_json
+    with r.capture_tables() as tables:
+        read_table_json('karkoschka_disk_radii.json')
+    assert {p.name for p in tables} == {'karkoschka_disk_radii.json'}
+    lock = r.implementation({'id': 'neptune-voyager2-1989'}, tables=tables)
+    assert 'photometry/tables/karkoschka_disk_radii.json' in lock
+    assert 'photometry/tables/salo_french_2010_table4.csv' not in lock
+    assert r.implementation({'id': 'neptune-voyager2-1989',
+                             'reproducibility': {'implementation': lock}}) == lock

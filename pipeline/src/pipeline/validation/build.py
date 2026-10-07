@@ -75,7 +75,10 @@ def _rings(naif: int) -> g.RingModel:
     path = OUT / "rings.json"
     if not path.exists():
         raise FileNotFoundError(f"{path} missing: run `uv run python -m pipeline build --only light` first")
-    rj = json.loads(path.read_text(encoding="utf-8"))[str(naif)]
+    from . import reproducibility as repro
+    rj = repro.read_product(path, [[str(naif), "opticalDepth", "value", 0, "radiusKm"],
+                                   [str(naif), "opticalDepth", "value", 0, "normalTau"],
+                                   [str(naif), "opticalDepth", "sources"]])[str(naif)]
     od = rj["opticalDepth"]
     p = od["value"][0]
     tau = np.array([np.nan if v is None else v for v in p["normalTau"]], float)
@@ -659,7 +662,10 @@ def app_preview(t: g.Target, entry: dict, view: g.Camera) -> dict | None:
     path = OUT / "photometry.json"
     if not path.exists():
         return None
-    ph = json.loads(path.read_text(encoding="utf-8")).get(str(t.naif))
+    from . import reproducibility as repro
+    ph = repro.read_product(path, [[str(t.naif), field, part]
+                                   for field in ("geometricAlbedoXYZS", "phaseFunction")
+                                   for part in ("value", "label")]).get(str(t.naif))
     if not ph or not (ph.get("geometricAlbedoXYZS") or {}).get("value") or not (ph.get("phaseFunction") or {}).get(
             "value"):
         return {"note": "no disk-integrated albedo or phase function in photometry.json"}
@@ -772,15 +778,16 @@ def preview(path: Path, refs: list[np.ndarray], bands: list[str], rois: list[roi
     img.save(path)
 
 
-def build_case(case, *, expected: dict | None = None) -> dict:
+def build_case(case, *, expected: dict | None = None, renew: bool = False) -> dict:
     from . import reproducibility as repro
     repro.require_single_thread()
     repro.clear_process_caches()
     generated = repro.generation_time(expected)
     if expected is not None:
-        repro.preflight(expected)
+        repro.preflight(expected, renew=renew)
     lock = (expected or {}).get("reproducibility")
-    with repro.isolated_spectral_cache(), repro.expected_case(expected), repro.capture_inputs(lock["inputs"] if lock else None) as inputs:
+    pinned = lock["inputs"] if lock else None
+    with repro.capture_tables() as tables, repro.isolated_spectral_cache(), repro.expected_case(expected), repro.capture_inputs(pinned, renew=renew) as inputs:
         # SPICE opens kernels in C, outside Python's file-open audit hook.
         # Hash the exact declared kernel paths before their bytes are consumed.
         for path in (ek.lsk(), ek.pck(), ek.planetary()):
@@ -800,8 +807,8 @@ def build_case(case, *, expected: dict | None = None) -> dict:
             repro.check_sources(expected, built["json"])
     built["json"]["generated"] = generated
     built["json"]["reproducibility"] = {
-        "schema": "validation-rebuild-v1", "artifactCreated": generated, "criterion": "exact scientific JSON and float32 reference bytes",
-        "inputs": inputs, "implementation": repro.implementation(), "runtime": repro.runtime(),
+        "schema": "validation-rebuild-v2", "artifactCreated": generated, "criterion": "exact scientific JSON and float32 reference bytes",
+        "inputs": inputs, "implementation": repro.implementation({"id": case.id}, tables=tables), "runtime": repro.runtime(),
         "fits": [{"product": m["product"], "inputs": m.get("fitInputs"), "freeResult": m.get("freeFitResult"), "result": m.get("fitResult")}
                  for m in p.img_meta],
         "optimizer": "deterministic 3-degree exhaustive roll/FFT translation seed, explicit Nelder-Mead simplex; "
