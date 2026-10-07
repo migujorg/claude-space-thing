@@ -3,7 +3,7 @@
 import { describe, expect, it } from 'vitest';
 import { AdaptationState, computeEyeFrame } from '../src/eye/model';
 import { DEFAULT_EYE_SETTINGS } from '../src/eye/settings';
-import { VEIL_BLUR_TAPS, backgroundLevel, cullBackground, erf, intendedDisplayLd, ownVeilAxis, ownVeilExact, ownVeilPerPixel, pointAppearance, pointObserver, pointVeil, pointVisible, splatNorm, veilKernelPerPixel, type PointSource, type PointSplat, type VeilLevel } from '../src/eye/points';
+import { VEIL_BLUR_TAPS, backgroundLevel, erf, intendedDisplayLd, ownVeilAxis, ownVeilExact, ownVeilPerPixel, pointAppearance, pointBackground, pointObserver, pointVeil, pointVisible, splatNorm, veilKernelPerPixel, type PointSource, type PointSplat, type VeilLevel } from '../src/eye/points';
 import { luxFromMagnitude, riccoArea } from '../src/eye/crumey';
 import { fitScatterKernel } from '../src/eye/glare';
 import { CRUMEY, HECHT1947, PATTANAIK } from '../src/eye/constants';
@@ -18,6 +18,9 @@ const eyeAt = (A: number) => {
 const splat = 2 * Math.PI * 0.36 * ((50 * Math.PI) / 180 / 720) ** 2;
 const star = (V: number, sp = 2) => ({ Y: luxFromMagnitude(V), S: sp * luxFromMagnitude(V) });
 const dark = eyeAt(1e-5);
+type YS = { Y: number; S: number };
+/** A source's background where no extended light lies behind it (pointBackground's direct term is zero). */
+const veilBackground = (texture: YS, own: YS, analytic: YS) => pointBackground(texture, own, analytic, { Y: 0, S: 0 });
 const bg = { Y: 2e-6, S: 4e-6 };
 
 describe('point sources are drawn as points', () => {
@@ -106,7 +109,7 @@ describe('the star cull: no verdict depends on an earlier verdict (twin of CULL_
   // One frame of the renderer, as it is: every source is in the point image; each is judged against the veil of
   // the frame before (the texture the cull reads) less its own light there. The only history is that texture.
   const frame = (sources: PointSource[], texBefore: { Y: number; S: number }[]) => ({
-    verdicts: sources.map((s, i) => pointVisible(eye, s.E, cullBackground(texBefore[i], own(s), none))),
+    verdicts: sources.map((s, i) => pointVisible(eye, s.E, veilBackground(texBefore[i], own(s), none))),
     tex: pointVeil(sources, levels, kR, pixelSr).map((v) => add(v, other)),
   });
   // The texture when only some of the sources are in the point image (the rules below; not what the renderer does).
@@ -122,13 +125,13 @@ describe('the star cull: no verdict depends on an earlier verdict (twin of CULL_
   });
   // The rule before the fix: only the sources that passed are in the image, and own light is always subtracted.
   const frameOld = (sources: PointSource[], texBefore: { Y: number; S: number }[]) => {
-    const verdicts = sources.map((s, i) => pointVisible(eye, s.E, cullBackground(texBefore[i], own(s), none)));
+    const verdicts = sources.map((s, i) => pointVisible(eye, s.E, veilBackground(texBefore[i], own(s), none)));
     return { verdicts, tex: texOfDrawn(sources, verdicts) };
   };
   // The rule that was tried and rejected: only the sources that passed are in the image, and a source's own light
   // is subtracted only if it was drawn the frame before (one flag per source).
   const frameFlags = (sources: PointSource[], texBefore: { Y: number; S: number }[], was: boolean[]) => {
-    const verdicts = sources.map((s, i) => pointVisible(eye, s.E, cullBackground(texBefore[i], was[i] ? own(s) : none, none)));
+    const verdicts = sources.map((s, i) => pointVisible(eye, s.E, veilBackground(texBefore[i], was[i] ? own(s) : none, none)));
     return { verdicts, tex: texOfDrawn(sources, verdicts) };
   };
   const run = <T extends { verdicts: boolean[]; tex: { Y: number; S: number }[] }>(n: number, first: T, step: (prev: T) => T) => {
@@ -154,12 +157,12 @@ describe('the star cull: no verdict depends on an earlier verdict (twin of CULL_
     // an isolated source: what is left of its background is the other light, to rounding
     const s = at(100, 100, luxFromMagnitude(5));
     const tex = add(pointVeil([s], levels, kR, pixelSr)[0], other);
-    const bg = cullBackground(tex, own(s), none);
+    const bg = veilBackground(tex, own(s), none);
     expect(bg.Y / other.Y - 1).toBeLessThan(1e-12);
     expect(Math.abs(bg.S / other.S - 1)).toBeLessThan(1e-12);
     // and it is never negative: against a texture that does not hold the source (the first frame after a cut)
-    expect(cullBackground({ Y: 0.5 * own(s).Y, S: 0 }, own(s), none)).toEqual({ Y: 0, S: 0 });
-    expect(cullBackground({ Y: 0, S: 0 }, own(s), { Y: 1e-4, S: 2e-4 })).toEqual({ Y: 1e-4, S: 2e-4 });
+    expect(veilBackground({ Y: 0.5 * own(s).Y, S: 0 }, own(s), none)).toEqual({ Y: 0, S: 0 });
+    expect(veilBackground({ Y: 0, S: 0 }, own(s), { Y: 1e-4, S: 2e-4 })).toEqual({ Y: 1e-4, S: 2e-4 });
   });
   it('the point image holds every source: one the eye cannot pick out still lights its neighbours\' background', () => {
     // a source far below the threshold, 2 px from one above it
@@ -167,8 +170,8 @@ describe('the star cull: no verdict depends on an earlier verdict (twin of CULL_
     const seen = at(100, 100, 3 * thr(other));
     const f = frame([seen, faint], pointVeil([seen, faint], levels, kR, pixelSr).map((v) => add(v, other)));
     expect(f.verdicts).toEqual([true, false]);
-    const withFaint = cullBackground(f.tex[0], own(seen), none).Y;
-    const alone = cullBackground(add(pointVeil([seen], levels, kR, pixelSr)[0], other), own(seen), none).Y;
+    const withFaint = veilBackground(f.tex[0], own(seen), none).Y;
+    const alone = veilBackground(add(pointVeil([seen], levels, kR, pixelSr)[0], other), own(seen), none).Y;
     expect(withFaint - alone).toBeCloseTo((faint.E.Y * veilKernelPerPixel(levels, kR, 2)) / pixelSr, 12);
     expect(withFaint).toBeGreaterThan(alone);
     // no light is lost: each source, seen or not, carries its whole scattered light into the veil (the kernel's
@@ -189,7 +192,7 @@ describe('the star cull: no verdict depends on an earlier verdict (twin of CULL_
     for (let i = 0; i < 60; i++) E = 0.5 * (thr({ Y: Math.max(other.Y - E * k0, 0), S: Math.max(other.S - CRUMEY.spRatioBlackwell * E * k0, 0) }) + thr(other));
     const star = { ...probe, E: lamp(E) };
     expect(pointVisible(eye, star.E, other)).toBe(false);
-    expect(pointVisible(eye, star.E, cullBackground(other, own(star), none))).toBe(true);
+    expect(pointVisible(eye, star.E, veilBackground(other, own(star), none))).toBe(true);
     const zero = [none];
     // old rule: on, off, on, off … for ever
     const old = run(12, frameOld([star], zero), (p) => frameOld([star], p.tex));
@@ -242,7 +245,7 @@ describe('the star cull: no verdict depends on an earlier verdict (twin of CULL_
       field.push(at(200 * u, 200 * v, thr(other) * 10 ** (0.4 * (2 * m - 1))));
     }
     const truth = pointVeil(field, levels, kR, pixelSr).map((v) => add(v, other));
-    const expected = field.map((s, i) => pointVisible(eye, s.E, cullBackground(truth[i], own(s), none)));
+    const expected = field.map((s, i) => pointVisible(eye, s.E, veilBackground(truth[i], own(s), none)));
     const nSeen = expected.filter(Boolean).length;
     expect(nSeen).toBeGreaterThan(50);
     expect(nSeen).toBeLessThan(350);
@@ -267,6 +270,30 @@ describe('the star cull: no verdict depends on an earlier verdict (twin of CULL_
 // it leaves out the splat's own width and the fact that level kR is read, not level 0, and it is one number per
 // frame while the texture's value depends on where the source sits in the texels. These tests state the size of
 // that error; they are the measure a better term has to beat (the lane's handoff of 7 Oct 2026 has the consequences).
+describe('one test for the cull and the display: the background includes the extended image\'s direct light', () => {
+  const eye = eyeAt(2e-4);
+  const none = { Y: 0, S: 0 };
+  it('a star on a dark veil but in front of the sky\'s own luminance is judged against that sky', () => {
+    const veil = { Y: 2e-5, S: 4e-5 }, sky = { Y: 2e-4, S: 4.4e-4 };
+    // the faintest star that passes against the veil alone (what the cull tested until 7 October 2026)
+    let V = 4;
+    while (pointVisible(eye, star(V + 0.05), pointBackground(veil, none, none, none))) V += 0.05;
+    const s = star(V);
+    expect(pointVisible(eye, s, pointBackground(veil, none, none, none))).toBe(true);
+    // against what the display judged it by, it is not seen: the cull counted it and the screen did not show it
+    expect(pointVisible(eye, s, pointBackground(veil, none, none, sky))).toBe(false);
+    // and the limit against the sky is brighter by a good part of a magnitude
+    let Vs = 4;
+    while (pointVisible(eye, star(Vs + 0.05), pointBackground(veil, none, none, sky))) Vs += 0.05;
+    expect(V - Vs).toBeGreaterThan(0.3);
+  });
+  it('the direct light adds to the veil and the analytic veil; the own light comes out of the texture only', () => {
+    const bg = pointBackground({ Y: 5, S: 9 }, { Y: 2, S: 3 }, { Y: 0.5, S: 1 }, { Y: 10, S: 20 });
+    expect(bg).toEqual({ Y: 13.5, S: 27 });
+    expect(pointBackground({ Y: 1, S: 1 }, { Y: 2, S: 3 }, none, { Y: 10, S: 20 })).toEqual({ Y: 10, S: 20 });
+  });
+});
+
 describe('known limit: a point source\'s own light in its background against the retina pyramid run on the CPU', () => {
   const W = 1280, H = 720;
   const sigma = (k: number) => { const p = 4 ** k; return Math.sqrt(p + (p - 1) / 12 + (4 * p - 4) / 18); };
@@ -520,7 +547,7 @@ describe('a point source\'s own light in its background, exactly: the product fo
         const acc = veilPyramid(c.W, c.H, w, pointImage(c.W, c.H, c.splat, [{ x, y, E: 1 }], Float64Array), Float64Array);
         for (let kR = 0; kR < K; kR++) {
           const tex = readAt(acc[kR], kR, x, y) / omega, own = ownVeilExact(x, y, c.W, c.H, c.splat, kR, w) / omega;
-          const bg = cullBackground({ Y: E.Y * tex, S: E.S * tex }, { Y: E.Y * own, S: E.S * own }, { Y: 0, S: 0 });
+          const bg = veilBackground({ Y: E.Y * tex, S: E.S * tex }, { Y: E.Y * own, S: E.S * own }, { Y: 0, S: 0 });
           expect(bg.Y, `${c.W}x${c.H} (${x}, ${y}) level ${kR}`).toBeLessThanOrEqual(1e-12 * E.Y * own);
           expect(bg.S).toBeLessThanOrEqual(1e-12 * E.S * own);
           expect(bg.Y).toBeGreaterThanOrEqual(0);

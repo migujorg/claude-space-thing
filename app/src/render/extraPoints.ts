@@ -28,6 +28,8 @@ export interface CullBindings {
   maxVisible: number;
   /** Capacity of the unseen list (it holds every record: none's light is left out of the point image). */
   maxUnseen: number;
+  /** The extended image (resolved bodies, sky), for the direct light at a source's pixel. */
+  extView: GPUTextureView;
 }
 
 export class ExtraPointSources {
@@ -69,6 +71,7 @@ export class ExtraPointSources {
         { binding: 7, resource: { buffer: b.srcs } },
         { binding: 8, resource: { buffer: b.limbs } },
         { binding: 9, resource: { buffer: b.unseen } },
+        { binding: 10, resource: b.extView },
       ],
     }));
     pass.dispatchWorkgroups(gx, gy);

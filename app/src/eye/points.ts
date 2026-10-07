@@ -94,7 +94,8 @@ export function pointAppearance(eye: EyeFrame, E: { Y: number; S: number }, bg: 
 // The reference for what the GPU does, unit-tested (tests/eye-points.test.ts). The point image (PT) holds every
 // source in the frame, whether the eye can pick it out or not: its light reaches the eye either way. So the veil
 // a source is judged against is a function of the scene alone, and no verdict depends on an earlier one (a
-// source's own or a neighbour's). The cull decides only what is displayed as a point.
+// source's own or a neighbour's). The cull decides only what is displayed as a point, and it alone decides: its
+// test is the display's (pointBackground), so the sources it passes are the sources on the screen.
 
 /** One level of the retina pyramid: its weight in the CIE 146 kernel fit and its Gaussian's σ in pixels. */
 export interface VeilLevel {
@@ -155,12 +156,14 @@ export function pointVeil(sources: PointSource[], levels: VeilLevel[], kR: numbe
 }
 
 /**
- * The cull's local background of a source (cd/m²): the background texture at the source less the source's own
- * light there (never below zero: a texture from before the source was in the frame does not hold it), plus the
- * analytic veil (Sun, off-frame bodies).
+ * The background a source is judged against and seen on (cd/m²; shaders.ts pointBackground, one function for the
+ * cull and the point shader): the veil texture at the source less the source's own light there (never below zero:
+ * a texture from before the source was in the frame does not hold it), plus the analytic veil (Sun, off-frame
+ * bodies), plus the extended image's unscattered light at the source's pixel (the sky, a disk or an atmosphere
+ * behind it).
  */
-export function cullBackground(texture: { Y: number; S: number }, own: { Y: number; S: number }, analytic: { Y: number; S: number }): { Y: number; S: number } {
-  return { Y: Math.max(texture.Y - own.Y, 0) + analytic.Y, S: Math.max(texture.S - own.S, 0) + analytic.S };
+export function pointBackground(texture: { Y: number; S: number }, own: { Y: number; S: number }, analytic: { Y: number; S: number }, direct: { Y: number; S: number }): { Y: number; S: number } {
+  return { Y: Math.max(texture.Y - own.Y, 0) + analytic.Y + direct.Y, S: Math.max(texture.S - own.S, 0) + analytic.S + direct.S };
 }
 
 /** The verdict: is the point above the threshold of the eye looking at it, adapted to that background? */

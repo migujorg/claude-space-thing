@@ -327,6 +327,18 @@ fn bgAt(t: texture_2d<f32>, ndc: vec2f) -> vec4f {
   let b = mix(textureLoad(t, clamp(i0 + vec2i(0, 1), l, h), 0), textureLoad(t, clamp(i0 + vec2i(1, 1), l, h), 0), fr.x);
   return mix(a, b, fr.y);
 }
+
+/**
+ * The background a point source is judged against, and seen on (cd/m², XYZS; eye/points.ts pointBackground): the
+ * veil at scales from the Ricco area up, less the source's own light there (never below zero); the analytic veil
+ * (Sun, off-frame bodies); and the extended image's unscattered light at the source's pixel (the sky, a body's
+ * disk or atmosphere behind it). One function for the cull and for the point shader, so there is one test: what
+ * the cull passes is what is displayed. Needs F, E, analyticVeil.
+ */
+fn pointBackground(veil: texture_2d<f32>, ext: texture_2d<f32>, ndc: vec2f, own: vec4f, dir: vec3f) -> vec4f {
+  let px = clamp(vec2i((ndc * vec2f(0.5, -0.5) + 0.5) * F.size.xy), vec2i(0), vec2i(F.size.xy) - 1);
+  return max(bgAt(veil, ndc) / F.proj.w - own, vec4f(0.0)) + analyticVeil(E, dir) + E.glare.x * textureLoad(ext, px, 0) / F.proj.w;
+}
 `;
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -1074,6 +1086,7 @@ ${BG}
 
 ${LIMB_WGSL(8)}
 @group(0) @binding(9) var<storage, read_write> unseen: array<vec4f>;
+@group(0) @binding(10) var extTex: texture_2d<f32>;            // resolved bodies and sky, this frame's (drawn before the cull)
 
 @compute @workgroup_size(256) fn main(@builtin(global_invocation_id) gid: vec3u) {
   let i = gid.x + gid.y * info.groupsX * 256u;
@@ -1088,12 +1101,15 @@ ${LIMB_WGSL(8)}
   let ndc = vec2f(c.x * F.proj.x, c.y * F.proj.y) / (-c.z);
   let marg = E.misc2.x * 2.0 * F.size.zw;
   if (abs(ndc.x) > 1.0 + marg.x || abs(ndc.y) > 1.0 + marg.y) { return; }
-  // Local background: last frame's scattered light at scales ≥ the Ricco area (so a star's own core glare
-  // does not mask it), plus the analytic veil (Sun, off-frame bodies). That veil holds this source's light
-  // whatever last frame's verdict was (both lists go into PT), so taking its own light out is always right;
-  // only in the first frame a source is in view does the veil not hold it yet (hence the max).
+  // Local background (pointBackground): last frame's scattered light at scales ≥ the Ricco area (so a star's own
+  // core glare does not mask it), the analytic veil (Sun, off-frame bodies), and the extended image's direct light
+  // at the source's pixel. That veil holds this source's light whatever last frame's verdict was (both lists go
+  // into PT), so taking its own light out is always right; only in the first frame a source is in view does the
+  // veil not hold it yet (hence the max there). This is the display's test: a source that passes is displayed,
+  // and the point shader does not judge it again. (The Sun's disk is drawn after the cull: a source on it is
+  // judged against the Sun's analytic veil there.)
   let own = e * (E.pts.w / pixelSolidAngle(F, ndc));
-  let bg = max(bgAt(bgTex, ndc) / F.proj.w - own, vec4f(0.0)) + analyticVeil(E, normalize(u));
+  let bg = pointBackground(bgTex, extTex, ndc, own, normalize(u));
   // Judged by the eye looking at the star, adapted to that background (Crumey's condition), not to the
   // frame's global state (eye-model.md §2 "Fixations").
   let aC = max(bg.y, E.cr1.y);
@@ -1110,7 +1126,7 @@ ${LIMB_WGSL(8)}
   }
   let k = atomicAdd(&args[1], 1u);
   if (k >= info.maxVisible) { return; }
-  visible[2u * k] = vec4f(ndc, 0.0, 0.0);
+  visible[2u * k] = vec4f(ndc, -1.0, 0.0);   // depth < 0: at infinity, and judged here (POINT_SHADER vs)
   visible[2u * k + 1u] = e;
 }
 `;
@@ -1136,7 +1152,9 @@ export const CLAMP_ARGS_SHADER = /* wgsl */ `
 export const POINT_SHADER = COMMON + TONE + BG + /* wgsl */ `
 @group(0) @binding(0) var<uniform> F: Frame;
 @group(0) @binding(1) var<uniform> E: Eye;
-@group(0) @binding(2) var<storage, read> pts: array<vec4f>;   // (ndc.x, ndc.y, depth, _), (E XYZS)
+// (ndc.x, ndc.y, depth, _), (E XYZS). A depth below zero marks a source of the cull's visible list: it is at
+// infinity (depth 0) and its verdict is made; a point written by the CPU (a body, the Sun) is judged in vs.
+@group(0) @binding(2) var<storage, read> pts: array<vec4f>;
 @group(0) @binding(3) var bgTex: texture_2d<f32>;              // coarse physical veil (≥ Ricco scale)
 @group(0) @binding(4) var extTex: texture_2d<f32>;             // resolved bodies
 ${SRCS(0, 5)}
@@ -1152,8 +1170,10 @@ struct PV {
 
 @vertex fn vs(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> PV {
   var corners = array<vec2f, 6>(vec2f(-1.0, -1.0), vec2f(1.0, -1.0), vec2f(-1.0, 1.0), vec2f(-1.0, 1.0), vec2f(1.0, -1.0), vec2f(1.0, 1.0));
-  let p = pts[2u * ii];
+  let q = pts[2u * ii];
   let e = pts[2u * ii + 1u];
+  let judged = q.z < 0.0;                       // the cull's verdict stands: this source is displayed
+  let p = vec4f(q.xy, max(q.z, 0.0), q.w);
   let ext = E.misc2.x;
   let offPx = corners[vi] * ext;
   var o: PV;
@@ -1161,18 +1181,17 @@ struct PV {
   o.off = offPx * vec2f(1.0, -1.0);
   o.e = e;
   // Appearance (points.ts pointAppearance). Background: coarse veil + analytic veil + bodies.
-  let px = clamp(vec2i((p.xy * vec2f(0.5, -0.5) + 0.5) * F.size.xy), vec2i(0), vec2i(F.size.xy) - 1);
   let dir = normalize(worldDirNdc(F, p.xy));
   // The source's own light is removed from the background (it would otherwise mask itself).
   let own = e * (E.pts.w / pixelSolidAngle(F, p.xy));
-  let bgPhys = max(bgAt(bgTex, p.xy) / F.proj.w - own, vec4f(0.0)) + analyticVeil(E, dir) + E.glare.x * textureLoad(extTex, px, 0) / F.proj.w;
+  let bgPhys = pointBackground(bgTex, extTex, p.xy, own, dir);
   // The eye looking at the point is adapted to that background (its own fixation, eye-model.md §2).
   let ob = obsAt(bgPhys.y, bgPhys.w);
   let aC = max(bgPhys.y, E.cr1.y);
   let aR = max(bgPhys.w, E.cr1.y * E.mes.z);
   let mL = mesopicM(aC, aR);
   let bBw = blackwellEqM(E, mL, aC, aR);
-  let visible = blackwellEqM(E, mL, e.y, e.w) >= E.mes.w * crumeyPointThreshold(E, bBw) * darkFactor(E, aC, aR) / E.map.w;
+  let visible = judged || blackwellEqM(E, mL, e.y, e.w) >= E.mes.w * crumeyPointThreshold(E, bBw) * darkFactor(E, aC, aR) / E.map.w;
   let aRicco = crumeyRiccoArea(E, bBw);
   let aCones = crumeyRiccoArea(E, max(bBw, ${f(CIE191.upperCdM2)}));
   let bg = bgPhys * E.map.w;

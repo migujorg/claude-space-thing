@@ -474,9 +474,16 @@ Galactic light, unresolved stars) the regression suite's star field beyond Pluto
 **Culling.** On the GPU, each star whose Blackwell-equivalent illuminance is below F·ΔI(B) (÷ the
 enhanced boost) at its own background is not displayed as a point. Its light still goes into the physical
 point image, and so into the veil and the adaptation (the cull writes two lists, the visible and the
-unseen sources; both are splatted into it). The cull's background has no extended-image term, so it keeps
-more stars than are displayed; the point shader applies the full test. Unresolved bodies are tested in
-the point shader.
+unseen sources; both are splatted into it). The cull's background is the background the point is shown
+on: the veil at the Ricco scale less the source's own light, the analytic veil, and the unscattered light
+of the extended image at the source's pixel (the sky's own luminance, a disk or an atmosphere behind it;
+`pointBackground`, one function for the cull and the point shader). So there is one test and one verdict:
+a star the cull passes is displayed, the point shader does not judge it again, and `starsDrawn` is the
+number of stars on the screen. Until 7 October 2026 the cull left the extended image out and the point
+shader judged every star a second time with it: the picture was the same, but the count held about twice
+the stars shown under a dark sky (3400 against 1668 in the regression suite's star field). The Sun's disk
+is drawn after the cull; a source on it is judged against the Sun's analytic veil there. Unresolved bodies
+do not go through the cull and are tested in the point shader, by the same function.
 The renderer also reports `pointLimitingMagnitude`: the limit for the eye looking at the darkest
 background in the frame (the minimum retinal luminance, reduced on the GPU with the adaptation
 measurement), with the current pigment state. It bounds which catalogue stars can be drawn at all, and

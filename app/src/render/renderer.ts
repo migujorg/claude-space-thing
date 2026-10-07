@@ -1018,11 +1018,12 @@ export class Renderer {
             { binding: 7, resource: { buffer: this.srcs } },
             { binding: 8, resource: { buffer: this.limbsUB } },
             { binding: 9, resource: { buffer: this.unseen } },
+            { binding: 10, resource: t.ext.createView() },
           ],
         }));
         pass.dispatchWorkgroups(gx, gy);
       }
-      this.extraPts?.cull(pass, this.cullPipe, { frameUB: this.frameUB, eyeUB: this.eyeUB, visible: this.visible, unseen: this.unseen, args: this.args, bgView, srcs: this.srcs, limbs: this.limbsUB, maxVisible: this.maxVisible, maxUnseen: this.maxUnseen });
+      this.extraPts?.cull(pass, this.cullPipe, { frameUB: this.frameUB, eyeUB: this.eyeUB, visible: this.visible, unseen: this.unseen, args: this.args, bgView, srcs: this.srcs, limbs: this.limbsUB, maxVisible: this.maxVisible, maxUnseen: this.maxUnseen, extView: t.ext.createView() });
       d.queue.writeBuffer(this.clampUB, 0, new Uint32Array([this.maxVisible, this.maxUnseen, 0, 0]));
       pass.setPipeline(this.clampPipe);
       pass.setBindGroup(0, d.createBindGroup({ layout: this.clampPipe.getBindGroupLayout(0), entries: [{ binding: 0, resource: { buffer: this.args } }, { binding: 1, resource: { buffer: this.clampUB } }] }));
