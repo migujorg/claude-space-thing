@@ -42,6 +42,58 @@
    }
   },
   {
+   "id": "night-limb-iss",
+   "title": "Night limb from 400 km (ISS-like), dark-adapted: the airglow's green band above the limb, the red layer above it (Best estimate)",
+   "params": {
+    "target": "399",
+    "dist": "6771",
+    "az": "180",
+    "el": "0",
+    "look": "0,-15",
+    "fov": "30"
+   }
+  },
+  {
+   "id": "night-limb-iss-daylight-eye",
+   "title": "The same night limb 1 min after 10 min in daylight: the airglow is below the eye's threshold",
+   "params": {
+    "target": "399",
+    "dist": "6771",
+    "az": "180",
+    "el": "0",
+    "look": "0,-15",
+    "fov": "30",
+    "adapt": "realtime",
+    "adaptfrom": "10000,600,60"
+   }
+  },
+  {
+   "id": "aurora-2025-11-12",
+   "title": "Storm-hour northern oval segment over dark ground from 400 km: pale green/grey band, brighter than the quiet-hour control; no sunlit crescent",
+   "params": {
+    "t": "2025-11-12T01:00:00Z",
+    "target": "399",
+    "dist": "6771",
+    "az": "173.26110422279018",
+    "el": "46.95923411082049",
+    "look": "0,-89",
+    "fov": "60"
+   }
+  },
+  {
+   "id": "aurora-2025-11-14-quiet",
+   "title": "Quiet-hour control at the same geographic place: a weaker oval segment, with its bright part farther poleward than the storm band",
+   "params": {
+    "t": "2025-11-14T01:00:00Z",
+    "target": "399",
+    "dist": "6771",
+    "az": "173.2804022752983",
+    "el": "46.43408307185946",
+    "look": "0,-89",
+    "fov": "60"
+   }
+  },
+  {
    "id": "moon-quarter",
    "title": "Moon at quarter phase, close up",
    "params": {
