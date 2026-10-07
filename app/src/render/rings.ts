@@ -464,7 +464,7 @@ export function prepareRings(b: SceneBody, sunIrradianceXYZS_1AU: XYZS | null, s
     if (outside.length) out.warnings.push(`${b.name} rings: phase angle ${alphaDeg.toFixed(2)}° outside the measured range of ${outside.join('; ')} → that light not measured (hatched)`);
   } else if (!m) out.warnings.push(`${b.name} rings: reflectance not measured → rings absorb and cast shadows only; their material is hatched as not measured`);
   else if (alphaDeg < m.minPhaseDeg || alphaDeg > m.maxPhaseDeg) {
-    out.warnings.push(`${b.name} rings: phase angle ${alphaDeg.toFixed(2)}° outside the reflectance model's ${m.minPhaseDeg}–${m.maxPhaseDeg}° → ring brightness not measured (hatched)`);
+    out.warnings.push(`${b.name} rings: phase angle ${alphaDeg.toFixed(2)}° outside the reflectance model's ${m.minPhaseDeg}–${m.maxPhaseDeg}° → ring brightness unknown in this product (hatched)`);
   } else {
     const beff = effectiveElevationDeg(Math.abs(dot(toObs, normal)), Math.abs(dot(sunDir, normal)));
     const e = m.elevationEffDeg;

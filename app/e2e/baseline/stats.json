@@ -2104,7 +2104,7 @@
      "Mimas: phase extrapolated beyond measured range (0–120°) with the spatial law → estimated",
      "Moon: phase extrapolated beyond measured range (1.55–120°) with the spatial law → estimated",
      "Pasiphae: phase extrapolated beyond measured range (0–12°) with the spatial law → estimated",
-     "Saturn rings: phase angle 147.75° outside the reflectance model's 0.25–47° → ring brightness not measured (hatched)",
+     "Saturn rings: phase angle 147.75° outside the reflectance model's 0.25–47° → ring brightness unknown in this product (hatched)",
      "Sinope: phase extrapolated beyond measured range (0–12°) with the spatial law → estimated",
      "Tethys: phase extrapolated beyond measured range (0–120°) with the spatial law → estimated",
      "Titan: atmosphere model scaled to the disk photometry as at 5.7°, ×0.99 X, 0.99 Y, 0.89 Z, 0.95 S: phase 170° is beyond the measured range (0–5.7°) and the factors of its edge are held → estimated"

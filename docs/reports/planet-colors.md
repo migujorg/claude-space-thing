@@ -405,7 +405,7 @@ Unlit face: in the B ring core (100 000-107 000 km, median τ⊥ = 5.44) the Voy
 
 At β = 15-26° the model agrees with ground photometry within 10 % at α = 1-3° (5-22 % at 6°). At β ≤ 10° it is brighter than the M&H difference, but there the difference is not a clean measure of the rings: M&H's Eq. 10 at β = 0 is +0.04 mag (α = 0°) to +0.17 mag (α = 6°) off their globe-only Eq. 11, comparable to the whole ring term at low β, and the difference turns negative at β = 5°, α = 6° (rings dimming Saturn). The comparison is inconclusive there. The model's own low-β behaviour rests on the HST data down to Beff = 4.5°, below which the particle term is held constant.
 
-Domain: 0.25° ≤ α ≤ 47° (brightness unknown outside: the true-opposition spike below 0.25° and the forward scattering by dust at large α are not in the data used); radii 74000-140600 km. Not modelled: the A ring's azimuthal (wake) asymmetry, spokes, the F ring.
+Domain: 0.25° ≤ α ≤ 47° (brightness unknown outside in this product: the true-opposition spike below 0.25° is not calibrated, and [published high-phase measurements](../sources/rings-high-phase.md) are not yet included); radii 74000-140600 km. Not modelled: the A ring's azimuthal (wake) asymmetry, spokes, the F ring.
 
 Jupiter, Uranus, Neptune: no calibrated machine-readable reflectance profile was found (the PDS Ring-Moon Systems Node's Voyager ring-profile series VG_28xx has imaging (ISS) I/F profiles for Saturn only; other published photometry of these rings is in figures), so their reflectance stays unknown.
 
@@ -533,4 +533,3 @@ Population (unclassified): x, y = 0.3354, 0.3442 (SDSS class frequencies), p_V m
 9. **Iapetus and Miranda** unknown; **Deimos** grey placeholder; **Titan** and **Triton**/**Charon** phase curves only near opposition.
 10. **Ring brightness**: Saturn's is a calibrated model (unlit face and radii away from the three HST regions least certain; low ring elevations only partly checked); Jupiter's, Uranus's and Neptune's unknown.
 11. **Irregular satellites**: brightness from compiled H only; grey placeholder colour; rough pck00011 radii (if bodies.json uses a different radius for them, the rendered brightness scales by (R_bodies/R_pck)²).
-

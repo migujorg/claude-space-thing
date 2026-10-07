@@ -704,7 +704,7 @@ Run of 2026-10-07 10:45 UTC (git cae3826, data built 2026-10-07 10:41), reality 
 * `jupiter-nh-lorri-2007`: Jupiter: disk photometry, spatial model, map albedo.
 * `neptune-voyager2-1989`: Neptune: disk photometry, spatial model, map albedo.
 * `pluto-nh-lorri-2015`: Pluto: disk photometry, spatial model, map albedo, atmosphere. Renderer warnings: Pluto: phase extrapolated beyond measured range (0–1.74°) with the spatial law → estimated.
-* `saturn-cassini-wac-2016`: Saturn: disk photometry, spatial model, map albedo, rings. Renderer warnings: Saturn rings: phase angle 54.58° outside the reflectance model's 0.25–47° → ring brightness not measured (hatched).
+* `saturn-cassini-wac-2016`: Saturn: disk photometry, spatial model, map albedo, rings. Renderer warnings: Saturn rings: phase angle 54.58° outside the reflectance model's 0.25–47° → ring brightness unknown in this product (hatched).
 * `uranus-voyager2-1986`: Uranus: disk photometry, spatial model, map albedo.
 
 **What the failures say.** The numbers in items 5 and 6 are those of the run above. Those in items 1 to 4 were
@@ -788,10 +788,11 @@ and +1.99σ with four. The rgba16float fallback targets give the same means as r
    The aperture loss depends on per-image moon sizes that the paper does not give, and the LORRI evidence rests
    on a validation frame, so nothing is changed.
 3. **Saturn's rings are not drawn at 54.6° phase:** `rings.json`'s reflectance model covers 0.25–47°, so the
-   renderer hatches the rings as not measured and draws no ring light (ROIs C, B, A render 0; they still cast
-   shadows and absorb). Observed: B ring I/F ~0.11 in the green. No published, machine-usable ring photometry
-   beyond 47° was found: the Voyager ISS profiles on PDS are at 47° only, the Cassini ISS phase curves of
-   Déau et al. (2009) reach 25°, and HST reaches 6.3°. It stays unknown.
+   renderer hatches the rings as unknown in this product and draws no ring light (ROIs C, B, A render 0; they still cast
+   shadows and absorb). Observed: B ring I/F ~0.11 in the green. [Published measurements beyond 47° exist](../sources/rings-high-phase.md),
+   including ISS colours at 66° and VIMS spectra at 96° and 132°. They are not yet included in this product;
+   their radial, face, spectral and geometry support must be qualified before use. Brightness stays unknown
+   outside the model's domain.
 4. **Pluto's phase function** is measured only to 1.74° (Earth-based). 15.8° is extrapolated with the spatial
    law (renderer warning), which is now Verbiscer et al.'s Hapke fit to the full New Horizons phase curve
    (item 1).
