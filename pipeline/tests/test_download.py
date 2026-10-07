@@ -20,8 +20,9 @@ from pipeline import download
 
 
 @pytest.fixture(autouse=True)
-def metrics_off(monkeypatch):
+def metrics_off(monkeypatch, tmp_path):
     monkeypatch.delenv("PIPELINE_NETWORK_METRICS", raising=False)
+    monkeypatch.setattr(download, "CACHE", tmp_path / "cache")
 
 
 class Handler(http.server.BaseHTTPRequestHandler):
