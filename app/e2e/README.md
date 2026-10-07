@@ -83,6 +83,18 @@ with instant adaptation, and after a pass is skipped for one to three frames (no
 older veil) the same set comes back. The four `adapt=realtime` scenes stay as they are or gain stars as their
 pigments regenerate, as they should; no star in them goes back and forth.
 
+The check is a script, to be run after any change to the cull, the point path or the veil:
+
+```sh
+cd app
+node scripts/point-census.mjs --gpu hardware --perturb   # every scene: 300 frames, then seven perturbations
+node scripts/point-census.mjs --frames 40 --only pluto-charon   # SwiftShader, where a frame takes seconds
+```
+
+It compares the lists by identity, not by count. A scene with instant adaptation fails if any star's verdict
+differs between two consecutive frames, or if the settled set after a perturbation is not the first one. A
+real-time scene fails only if a star goes back and forth. Exit 1 on a failure.
+
 ## Running
 
 ```sh
@@ -197,7 +209,7 @@ npm run validate -- --only io-nh-lorri-2007        # some cases
 npm run validate -- --ss 2                         # explicit 2 × 2 override (the references are pixel-area averages)
 npm run validate -- --reality strict               # measured and derived data only
 npm run validate -- --hdr f16                      # the rgba16float fallback targets
-npm run validate -- --strict                       # exit 1 when a region fails (default: only when a case does not render)
+npm run validate -- --strict                       # exit 1 for a failed ROI/ratio or a case not rendered (default: report and continue)
 npm run validate -- --gpu hardware                 # on the machine's GPU instead of SwiftShader
 ```
 
@@ -209,8 +221,12 @@ To measure the coarsest converged grid on stable code, cases and built data:
 cd app && node scripts/validate-sampling.mjs
 ```
 
-This uses `local-server.mjs` on a free port and `--gpu hardware`, runs the whole validation sequentially at 1, 2, 3, 4 and 6 samples per axis, and writes `shots/validation/sampling-convergence.json` and `.md`: every ROI and ratio in X/Y/Z/S, the 4→6 relative changes and every verdict. It retains the runs under `sampling/<ss>/` and promotes the shared default's run and images to `shots/validation/`. Inspect changes at every grid in every channel and verdict; a stable tally alone does not establish convergence. The default stays provisional until this evidence supports the coarsest grid.
+“Not rendered” means the case produced no usable measurement: its required sampled frame exceeded the device's `maxTextureDimension2D`, a WebGPU error or device loss occurred during that case (including readback), rendering timed out, or all body regions expecting light contained only zeros/non-finite pixels. Every ROI and ratio in that case carries the reason and has no pass/fail verdict. Its sky upper limits cannot pass. A single dark body/ring ROI still tests the model when other expected-light regions rendered. The headline counts all ROI and ratio rows as pass / fail / not rendered; intentional “not compared” rows are listed separately. `--strict` exits nonzero for any case not rendered or any failed ROI/ratio. Ordinary runs retain invalid cases and continue so a sweep can show every level. A timeout makes later cases not rendered too, since the page may still be rendering the timed-out case.
 
-`cd pipeline && .venv/bin/python -m pipeline.validation report` includes the convergence table automatically when its JSON file is present. It refuses runs without recorded sampling, and refuses a convergence file that does not contain the reported run. Rerun the sweep or remove the stale file before reporting a separate run. The generated report's header reads sampling from that run.
+The page exposes device limits and checks dimensions before allocating the frame; the CLI checks them too. WebGPU validation, internal and out-of-memory error scopes wrap each case through its readbacks; uncaptured GPU errors, console errors and device loss are attributed per case. Invalid cases have no HDR/display measurement image, and stale images for those cases are removed.
+
+This uses `local-server.mjs` on a free port and `--gpu hardware`, runs the whole validation sequentially at 1, 2, 3, 4 and 6 samples per axis, and writes `shots/validation/sampling-convergence.json` and `.md`: every ROI and ratio in X/Y/Z/S, the valid 4→6 relative changes and every verdict. Each level also prints the largest absolute relative difference, across all rows/channels, to the finest valid level **per case**, plus the largest across valid cases. Invalid levels show “not rendered” and contribute neither convergence values nor “verdict depends on sampling” changes. The default justification is calculated from that sweep; if a case has no valid level finer than the default, the text states that limit. It retains the runs under `sampling/<ss>/` and promotes the shared default's run and images to `shots/validation/` only if every default-level case rendered. Inspect changes at every grid in every channel and verdict; a stable tally alone does not establish convergence. The default stays provisional until this evidence supports the coarsest grid.
+
+`cd pipeline && .venv/bin/python -m pipeline.validation report` includes the convergence table automatically when its JSON file is present. It refuses runs with errors but pass/fail rows (including old reports with only unattributed run-level errors), refuses runs without recorded sampling, and refuses a convergence file that does not contain the reported run. Rerun the sweep or remove the stale file before reporting a separate run. The generated report's header reads sampling from that run.
 
 From a script, the page exposes `window.__validation.run(case, { ss, reality })`. For experiments with a changed scene, it also exposes `window.__validation.debug`, which is `{ renderer, data }`.

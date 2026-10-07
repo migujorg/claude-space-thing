@@ -350,15 +350,31 @@ def sampling_header(run: dict | None) -> str:
     return f"**Rendered sampling:** {ss} × {ss} = {ss * ss} samples per pixel (recorded in the run).\n\n"
 
 
+def not_rendered(c: dict) -> bool:
+    return c.get("status") == "not rendered" or bool(c.get("error"))
+
+
+def validate_frame_verdicts(run: dict) -> None:
+    for c in run.get("cases", []):
+        rows = [*c.get("rois", []), *c.get("ratios", [])]
+        errors = c.get("errors") or c.get("consoleErrors") or c.get("error")
+        if (errors or not_rendered(c)) and any(q.get("pass") is not None for q in rows):
+            raise ValueError(f"case {c['id']} carries errors or was not rendered but rows claim verdicts; rerun validation")
+        if errors and not not_rendered(c):
+            raise ValueError(f"case {c['id']} carries errors without frame validity; rerun validation")
+    # Old runners kept GPU errors only at run level: they cannot attribute those verdicts safely.
+    if run.get("consoleErrors") and not any(c.get("consoleErrors") or c.get("errors") for c in run.get("cases", [])):
+        raise ValueError("run carries unattributed errors but rows may claim verdicts; rerun validation")
+
+
 def _sampling_rows(run: dict) -> list[tuple]:
+    validate_frame_verdicts(run)
     rows = []
     for c in run["cases"]:
-        if c.get("error"):
-            raise ValueError("sampling convergence contains a case that did not render")
         for q in c.get("rois", []):
-            rows.append((c["id"], q["id"], q["rendered"]["mean"], q["pass"], q["failing"]))
+            rows.append((c["id"], q["id"], q["rendered"]["mean"], q["pass"], q["failing"], not_rendered(c)))
         for q in c.get("ratios", []):
-            rows.append((c["id"], f"{q['numerator']} / {q['denominator']}", q["rendered"], q["pass"], q["failing"]))
+            rows.append((c["id"], f"{q['numerator']} / {q['denominator']}", q["rendered"], q["pass"], q["failing"], not_rendered(c)))
     return rows
 
 
@@ -375,9 +391,13 @@ def convergence_section(run: dict, path=None) -> str:
         raise ValueError("sampling convergence must contain the same run being reported; rerun the sweep or remove its file")
     identity = lambda r: (r.get("git"), r.get("dataGeneratedAt"), r.get("gpu"), r.get("dataMissing"),
                           {k: v for k, v in r["options"].items() if k != "ss"},
-                          [(c["id"], c.get("hdrFormat")) for c in r["cases"]])
+                          [c["id"] for c in r["cases"]])
     if any(identity(r) != identity(run) for r in runs):
         raise ValueError("sampling convergence inputs, adapter or options differ between grids")
+    for c in run["cases"]:
+        formats = {cc.get("hdrFormat") for r in runs for cc in r["cases"] if cc["id"] == c["id"] and not not_rendered(cc)}
+        if len(formats) > 1:
+            raise ValueError("sampling convergence HDR formats differ between valid frames")
     rows = [_sampling_rows(r) for r in runs]
     if any([(q[0], q[1]) for q in rr] != [(q[0], q[1]) for q in rows[0]] for rr in rows):
         raise ValueError("sampling convergence region sets differ between grids")
@@ -393,15 +413,51 @@ def convergence_section(run: dict, path=None) -> str:
          f"| case | region | channel | {columns} | Δ 4→6 |", "|---|---|---|---|---|---|---|---|---|"]
     for i, q in enumerate(rows[0]):
         for k, ch in enumerate(CH):
-            values = [rr[i][2][k] if rr[i][2] else None for rr in rows]
+            values = [rr[i][2][k] if rr[i][2] and not rr[i][5] else None for rr in rows]
             a, b = values[3], values[4]
             delta = None if a is None or b is None or not math.isfinite(a) or not math.isfinite(b) else (100 * (a / b - 1) if b else (0 if a == 0 else None))
             ds = "—" if delta is None else f"{'+' if delta >= 0 else ''}{_g(delta, 6)} %"
-            L.append(f"| `{q[0]}` | {q[1]} | {ch} | " + " | ".join(_g(v, 7) for v in values) + f" | {ds} |")
+            L.append(f"| `{q[0]}` | {q[1]} | {ch} | " + " | ".join("not rendered" if rows[j][i][5] else _g(v, 7) for j, v in enumerate(values)) + f" | {ds} |")
     L += ["", f"| case | region | {columns} |", "|---|---|---|---|---|---|---|"]
     for i, q in enumerate(rows[0]):
-        verdicts = ["not compared" if rr[i][3] is None else "pass" if rr[i][3] else f"fail ({''.join(rr[i][4])})" for rr in rows]
+        verdicts = ["not rendered" if rr[i][5] else "not compared" if rr[i][3] is None else "pass" if rr[i][3] else f"fail ({''.join(rr[i][4])})" for rr in rows]
         L.append(f"| `{q[0]}` | {q[1]} | " + " | ".join(verdicts) + " |")
+    L += ["", "Invalid frames contribute no convergence statistics or verdict changes.", "",
+          "| sampling | case | finest valid sampling | largest relative difference (%) |", "|---|---|---|---|"]
+    level_max = []
+    for j, r in enumerate(runs):
+        maxima = []
+        for c in r["cases"]:
+            indices = [i for i, q in enumerate(rows[j]) if q[0] == c["id"]]
+            valid = [k for k, rr in enumerate(rows) if any(q[0] == c["id"] and not q[5] for q in rr)]
+            ref = max(valid, key=lambda k: runs[k]["options"]["ss"]) if valid else None
+            differences = []
+            if not not_rendered(c) and ref is not None:
+                for i in indices:
+                    for a, b in zip(rows[j][i][2] or [], rows[ref][i][2] or []):
+                        if a is not None and b is not None and math.isfinite(a) and math.isfinite(b) and (b or a == 0):
+                            differences.append(abs(100 * (a / b - 1)) if b else 0)
+            largest = max(differences) if differences else None
+            if largest is not None:
+                maxima.append(largest)
+            value = "not rendered" if not_rendered(c) else _g(largest, 7) + " %"
+            finest = runs[ref]["options"]["ss"] if ref is not None else "—"
+            L.append(f"| {r['options']['ss']} × {r['options']['ss']} | `{c['id']}` | {finest} | {value} |")
+        level_max.append(max(maxima) if maxima else None)
+    L += ["", "| sampling | pass | fail | not rendered | largest relative difference (%) |", "|---|---|---|---|---|"]
+    for j, r in enumerate(runs):
+        qs = [(c, q) for c in r["cases"] for q in [*c.get("rois", []), *c.get("ratios", [])]]
+        passes = sum(not not_rendered(c) and q["pass"] is True for c, q in qs)
+        fails = sum(not not_rendered(c) and q["pass"] is False for c, q in qs)
+        invalid = sum(not_rendered(c) for c, q in qs)
+        L.append(f"| {r['options']['ss']} × {r['options']['ss']} | {passes} | {fails} | {invalid} | {_g(level_max[j], 7)} % |")
+    default_index = next(j for j, r in enumerate(runs) if r == run)
+    L += ["", f"Reported default {run['options']['ss']} × {run['options']['ss']}: largest relative difference "
+          f"{_g(level_max[default_index], 7)} % against each case's finest valid level. These run values supply "
+          "the numerical justification; a case whose finest valid level is the default has no finer check."]
+    changes = [f"{q[0]} / {q[1]}" for i, q in enumerate(rows[0])
+               if len({rr[i][3] for rr in rows if not rr[i][5] and rr[i][3] is not None}) > 1]
+    L += ["", "Verdict depends on sampling: " + ("; ".join(changes) or "none") + " (valid frames only)."]
     return "\n".join(L) + "\n\n"
 
 
@@ -427,6 +483,7 @@ def rendered_by(run: dict) -> str:
 def run_section(run: dict, interpretation: str) -> str:
     """§7: the renderer's run (`npm run validate`, app/shots/validation/report.json): Y per ROI and the verdicts."""
     recorded_sampling(run)
+    validate_frame_verdicts(run)
     o = run["options"]
     cmd = "cd app && npm run validate" + (" -- --gpu hardware" if (run.get("gpu") or {}).get("mode") == "hardware" else "")
     L = ["## 7. The renderer against the cases\n",
@@ -435,12 +492,17 @@ def run_section(run: dict, interpretation: str) -> str:
          f"{o['ss']} × {o['ss']} samples per pixel{rendered_by(run)}: `{cmd}` (the full table, with X, Z, S, is in "
          "`app/shots/validation/report.md`). Y in cd/m²; the verdict covers X, Y, Z and S (failing channels named).",
          "", "| case | ROI | expected Y ± 2σ | rendered Y | rendered / expected | σ | verdict |", "|---|---|---|---|---|---|---|"]
-    tally = {True: 0, False: 0, None: 0}
+    tally = {True: 0, False: 0, None: 0, "not rendered": 0}
     for c in run["cases"]:
-        if c.get("error"):
+        if c.get("error") and not c.get("rois"):
             L.append(f"| `{c['id']}` | — | — | — | — | — | did not render: {c['error'][:120]} |")
             continue
         for q in c["rois"]:
+            if not_rendered(c):
+                tally["not rendered"] += 1
+                reason = (q.get("reason") or c.get("reason") or c.get("error") or "invalid frame").replace("|", "/").replace("\n", " ")
+                L.append(f"| `{c['id']}` | {q['id']} | — | — | — | — | not rendered: {reason} |")
+                continue
             tally[q["pass"]] += 1
             if q["expectedType"] == "value":
                 exp = f"{_g(q['expected'][1])} ± {_g(q['tolerance'][1], 2)}"
@@ -452,12 +514,17 @@ def run_section(run: dict, interpretation: str) -> str:
             v = {True: "pass", False: f"**fail** ({''.join(q['failing'])})", None: "not compared"}[q["pass"]]
             L.append(f"| `{c['id']}` | {q['id']} | {exp} | {_g(q['rendered']['mean'][1])} | {ratio} | {dev} | {v} |")
         for r in c.get("ratios", []):
+            tally["not rendered" if not_rendered(c) else r["pass"]] += 1
+            if not_rendered(c):
+                reason = (r.get("reason") or c.get("reason") or c.get("error") or "invalid frame").replace("|", "/").replace("\n", " ")
+                L.append(f"| `{c['id']}` | {r['numerator']} / {r['denominator']} | — | — | — | — | not rendered: {reason} |")
+                continue
             v = {True: "pass", False: f"**fail** ({''.join(r['failing'])})", None: "not compared"}[r["pass"]]
             L.append(f"| `{c['id']}` | {r['numerator']} / {r['denominator']} | {_g(r['expected'][1])} ± "
                      f"{_g(r['tolerance'][1], 2)} | {_g(r['rendered'][1]) if r['rendered'] else '—'} | — | — | {v} |")
-    L += ["", f"**{tally[True]} pass, {tally[False]} fail, {tally[None]} not compared.** How each body was drawn:", ""]
+    L += ["", f"**{tally[True]} pass, {tally[False]} fail, {tally['not rendered']} not rendered.** {tally[None]} not compared. How each body was drawn:", ""]
     for c in run["cases"]:
-        if c.get("error"):
+        if not_rendered(c):
             continue
         bodies = "; ".join(f"{b['name']}: {', '.join(b.get('uses') or []) or b['drawn']}" for b in c["scene"]["bodies"])
         warn = "; ".join(c.get("stats", {}).get("warnings") or [])
@@ -466,6 +533,8 @@ def run_section(run: dict, interpretation: str) -> str:
 
 
 def write(extra_sections: str = "", run: dict | None = None, run_interpretation: str = "") -> None:
+    if run is not None:
+        validate_frame_verdicts(run)
     sampling = sampling_header(run)  # validate before reading inputs or replacing the report
     convergence = convergence_section(run) if run is not None else ""
     cases = [json.loads(p.read_text(encoding="utf-8")) for p in sorted((VALIDATION / "cases").glob("*/case.json"))]
