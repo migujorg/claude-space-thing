@@ -127,17 +127,18 @@ describe('synthetic objects: two-body positions', () => {
     expect(Math.hypot(...r.pos) / (a2 * (1 - e2 * Math.cos(keplerE(Math.fround(1) * DEG, e2))))).toBeCloseTo(1, 10);
   });
 
-  it('moves a planet-centred object (synthetic irregular moon) about its barycentre with the system GM', () => {
+  it('initializes a planet-centred object with the system GM; legacy motion is unknown', () => {
     const { objects } = moonTables();
     const s = readSynthetic(objects.header, objects.buffer);
     const C = { pos: [7.8e8, -1.0e7, 2.0e6] as [number, number, number], vel: [1.0, 12.0, -0.3] as [number, number, number] };
     const center = (id: number) => (id === 5 ? C : null);
     expect(syntheticState(s, 0, EPOCH)).toBeNull();            // no centre given: no position
     expect(syntheticState(s, 0, EPOCH, () => null)).toBeNull();
+    expect(syntheticState(s,0,EPOCH+1,center)).toBeNull();
     const a = 0.125 * AU;
     const P = 2 * Math.PI * Math.sqrt((a * a * a) / FAKE_GM_PLANET);
     expect(syntheticPeriod(s, 0)).toBeCloseTo(P, 3);
-    for (const t of [0, P / 4, 0.37 * P]) {
+    for (const t of [0]) {
       const rel = syntheticRelativeState(s, 0, EPOCH + t)!;
       const abs = syntheticState(s, 0, EPOCH + t, center)!;
       expect(Math.abs(Math.hypot(...rel.pos) / a - 1)).toBeLessThan(1e-6);     // circular: |r| = a (float32 a)
@@ -258,7 +259,7 @@ describe('synthetic objects in the app shell', () => {
     expect(f.what).toMatch(/the MPC list of known moons has 0, with fitted completeness proxy H 17\.63,/);
     const orbit = f.rows.find((r) => r.key === 'syn:orbit')!;
     expect(orbit.name).toMatch(/about the Jupiter system barycentre/);
-    expect(orbit.method).toMatch(/an assumption: no bias-corrected orbit distribution was found.*fake motion text/);
+    expect(orbit.method).toMatch(/an assumption: no bias-corrected orbit distribution was found.*motion unknown away from the epoch/);
     expect(f.rows.find((r) => r.key === 'syn:limit')!.method).toMatch(/H_V = m − 6\.37 ± 0\.06, the median offset over the survey's photometry of 7 known moons/);
     // A missing population attribute must be shown as unknown, including below Complete.
     for (const level of ['complete', 'best'] as const) {
@@ -277,7 +278,8 @@ describe('synthetic objects in the app shell', () => {
     const sb = model.smallBodies!;
     const row = sb.count;
     expect(sb.name(row)).toBe('Synthetic irregular moon of Jupiter #1');
-    const h = sb.helio(row, EPOCH + 3 * DAY)!;
+    const h = sb.helio(row, EPOCH)!;
+    expect(sb.helio(row,EPOCH+3*DAY)).toBeNull(); // legacy metadata has no physical motion model
     expect(Math.hypot(h.pos[0] - PLANET[0], h.pos[1] - PLANET[1], h.pos[2] - PLANET[2]) / (0.125 * AU)).toBeCloseTo(1, 5);
     const tr = sb.orbit(row, EPOCH, { startEt: EPOCH - 1000 * DAY, endEt: EPOCH + 1000 * DAY })!;
     const n = tr.pos.length / 3;

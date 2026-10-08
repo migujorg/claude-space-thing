@@ -376,7 +376,18 @@ def test_product_statements_disclose_limits_and_motion():
         assert "not a detection probability" in p["limit"]["uncertainty"]
         assert "pointing" in p["limit"]["uncertainty"]
         assert "unknown" in p["model"]["positionUncertainty"]
-        assert "fixed" in p["model"]["motion"]
+        if p.get("center"):
+            assert "differential Sun" in p["model"]["motion"]
+            integration = p["model"]["integration"]
+            fm = integration["forceModel"]
+            assert fm["sun"]["naifId"] == p["center"]["naifId"]
+            assert fm["sun"]["gm"] == p["center"]["gm"]
+            assert fm["sun"]["naifId"] not in [q["naifId"] for q in fm["perturbers"]]
+            assert 10 in [q["naifId"] for q in fm["perturbers"]]
+            assert not fm["relativity"]["enabled"] and fm["zonal"]["perturber"] is None
+            assert integration["budgets"]["gpuNumericalKm"] is None
+        else:
+            assert "fixed" in p["model"]["motion"]
         if p["objects"]:
             assert "C3" in p["model"]["positionUncertainty"]
             assert "not a bound" in p["model"]["positionUncertainty"]
@@ -493,3 +504,18 @@ def test_og392_nuclear_h_reproduces_published_photometry_reduction():
     expected = 22.4 - 5 * math.log10(10.10 * 10.01) + 2.5 * math.log10(phi)
     assert math.isclose(r['H_V']['value'], expected, abs_tol=5e-5)
     assert r['H_V']['label'] == 'estimated'
+
+
+def test_moon_force_translation_preserves_inputs_and_external_set():
+    import copy
+    import json
+    from pipeline.stages.synthetic import moon_integration_metadata
+    core = json.loads((OUT / "smallbodies/core.json").read_text())
+    before = copy.deepcopy(core)
+    for host_id in (5, 6):
+        host = next(p for p in core["forceModel"]["perturbers"] if p["naifId"] == host_id)
+        m = moon_integration_metadata(core, {"naifId": host_id, "gm": host["gm"]})
+        assert m["window"] == core["window"]
+        assert m["forceModel"]["sun"]["gm"] == host["gm"]
+        assert [p["naifId"] for p in m["forceModel"]["perturbers"]] == [10] + [p["naifId"] for p in core["forceModel"]["perturbers"] if p["naifId"] != host_id]
+    assert core == before

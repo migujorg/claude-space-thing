@@ -7,7 +7,7 @@ import { CFEPS_L7_HG_MAX, D_H_CONSTANT_KM } from '../core/constants';
 import type { SyntheticPopulation } from '../data/schema';
 import { SYNTHETIC_POP_TEXT } from '../app/smallbodies';
 import { EXISTS_TEXT, labelAllowed, type ExistsLevel } from '../app/reality';
-import { diameterFromH, syntheticCell, syntheticPopulation, type SyntheticCatalog } from '../core/smallbodySynthetic';
+import { diameterFromH, moonIntegration, syntheticCell, syntheticPopulation, type SyntheticCatalog } from '../core/smallbodySynthetic';
 import type { AttrRow } from './inspectModel';
 
 const fmt = (x: number, n = 5): string => String(Number(x.toPrecision(n)));
@@ -105,7 +105,8 @@ export function syntheticFacts(s: SyntheticCatalog, j: number, level: ExistsLeve
     rows.push(row('seed', 'Seed and place in the cell', `candidate ${n0(k)} of the stream '${pop.prefix}|${c.ia}|${c.ie}|${c.ii}|${c.ih}' (seed ${s.header.seed}, algorithm ${s.header.algorithm})`, s.header.seedRule, []));
   }
   if (pop?.center) {
-    const motion = String(pop.model.motion ?? 'fixed two-body elements about the host barycentre; solar perturbations, oblateness and other-moon forces omitted.');
+    const integration = moonIntegration(pop);
+    const motion = integration ? String(pop.model.motion) : 'motion unknown away from the epoch: rebuild synthetic for the host force-model metadata; no fixed-element fallback.';
     rows.push(row('orbit', `Orbit (osculating, about the ${pop.center.name}, ecliptic J2000 axes${epochTdb ? `, at ${epochTdb} TDB` : ''})`,
       `a ${fmt(get('a'), 6)} au (${n0(get('a') * s.auKm)} km), e ${fmt(get('e'), 4)}, i ${fmt(get('i'), 4)}°, Ω ${fmt(get('node'), 5)}°, ω ${fmt(get('peri'), 5)}°, M ${fmt(get('M'), 5)}°`,
       `a, e, i uniform in the cell box; the cells are those of the known moons brighter than the limit (an assumption: no bias-corrected orbit distribution was found in the published sources reviewed); node, argument of pericentre and mean anomaly uniform. Motion: ${motion}`));
@@ -116,6 +117,12 @@ export function syntheticFacts(s: SyntheticCatalog, j: number, level: ExistsLeve
   }
   const limitRow = rows.find((r) => r.key === 'syn:limit');
   if (limitRow) limitRow.uncertainty = String(pop?.limit.uncertainty ?? proxyUncertainty);
+  if (pop?.center && moonIntegration(pop)) {
+    const budget = (pop.model.integration as { budgets?: Record<string,unknown> }).budgets;
+    rows.push(row('motion-budget','Numerical and omitted-force budgets',
+      'Individual true position and current-view total budget unknown; GPU moon error unverified.',
+      budget ? [budget.cpuNumerical,budget.gpuAcceptance,budget.omittedForces,budget.evidence].join(' ') : 'This product supplies no checked numerical or omission budgets.'));
+  }
   const orbitRow = rows.find((r) => r.key === 'syn:orbit');
   if (orbitRow) orbitRow.uncertainty = String(pop?.model.positionUncertainty ?? unknownPosition);
   rows.push(row('H', 'Absolute magnitude H', `${fmt(get('H'), 4)} mag`, cols.H?.method));

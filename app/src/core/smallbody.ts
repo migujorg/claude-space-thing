@@ -30,6 +30,17 @@ export interface PlanetPositions {
   positionSSB(id: number, et: number): Vec3 | null;
 }
 
+/** Translate the catalogue Newtonian law to a system-barycentric origin. Internal moon mass is already
+ * in the host GM; never double-count the host or transplant solar 1PN / Earth J2 to a different origin. */
+export function hostForceModel(base: SmallBodyForceModel, hostId: number, hostGm: number): SmallBodyForceModel {
+  const host = base.perturbers.find(p => p.naifId === hostId);
+  if (!host || host.gm !== hostGm) throw new Error('host force model requires the sourced system GM');
+  return { ...base, frame: `host ${hostId} system-barycentric ICRF, km and s`,
+    sun: { ...host, sources:base.sun.sources }, perturbers: [{ ...base.sun, name:'Sun' }, ...base.perturbers.filter(p => p.naifId !== hostId)],
+    relativity: { ...base.relativity, enabled: false }, zonal: { ...base.zonal, perturber: null },
+    nonGravitational: 'none: synthetic irregular moons are massless test particles' };
+}
+
 export const SB_OK = 0;
 /** Passed inside a perturber's (or the Sun's) radius: later positions are meaningless. */
 export const SB_COLLIDED = 1;

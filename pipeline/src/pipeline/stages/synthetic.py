@@ -700,6 +700,32 @@ def moon_population(pop: str, rows: list[dict], tab: dict, p: dict, templates: d
     }
 
 
+def moon_integration_metadata(core: dict, center: dict) -> dict:
+    """Runtime inputs only: elements stay byte-identical, converted to f64 ICRF epoch states by the app.
+
+    The host monopole includes its satellites. Differential external forces follow the same Newtonian
+    law as the catalogue kernel; solar PN / Earth J2 cannot be transplanted to this frame.
+    """
+    import copy
+    fm = copy.deepcopy(core["forceModel"])
+    host = next(p for p in fm["perturbers"] if p["naifId"] == center["naifId"])
+    if host["gm"] != center["gm"]:
+        raise ValueError("synthetic host GM differs from catalogue system GM")
+    fm["perturbers"] = [{**fm["sun"], "name": "Sun"}, *[p for p in fm["perturbers"] if p["naifId"] != center["naifId"]]]
+    fm["sun"] = {**host, "sources": core["forceModel"]["sun"]["sources"]}
+    fm["frame"] = f"host {center['naifId']} system-barycentric ICRF, km and s"
+    fm["relativity"]["enabled"] = False
+    fm["zonal"]["perturber"] = None
+    fm["nonGravitational"] = "none: synthetic irregular moons are massless test particles"
+    return {"kind": "host-smallbody-v1", "window": dict(core["window"]), "forceModel": fm,
+            "initialState": "Convert the unchanged stored f32 elements at epochEt to float64 ICRF using center.gm; no rounded Cartesian product replaces the elements.",
+            "budgets": {"label": "synthetic", "individualTruePosition": None, "gpuNumericalKm": None,
+                        "cpuNumerical": "All 458 original draws, both 2025-04-04/2028-04-04 edges: maximum 0.042166 km against same-force DOP853; regression threshold 0.1 km. Numerical check only, not an interval certificate.",
+                        "gpuAcceptance": "Provisional same-force test threshold 2 km, rounded up from the catalogue GPU report maximum 1.597638 km. Unverified for moons; no transferred certification.",
+                        "omittedForces": "Historical Sun+host trials: Jupiter J2 168.915 km, resolved planet/Galileans 342.042 km; Saturn J2 144.471 km, resolved planet/Titan 762.623 km. Individual sampled increments, not a total bound for the Sun+external-planet model or arbitrary close views. Other satellites, higher zonals, radiation and relativistic frame corrections unbounded.",
+                        "evidence": "docs/reports/synthetic-moon-kernel.md; app/tests/fixtures/synthetic_moon_all_reference.json; docs/reports/smallbodies-gpu-accuracy.json"}}
+
+
 # ---------------------------------------------------------------------------------------------- stage
 def run(ctx: BuildContext) -> None:
     t_stage = time.time()
@@ -737,7 +763,17 @@ def run(ctx: BuildContext) -> None:
         obj_cols["k"].append(r["k"][order])
         obj_cols["pop"].append(np.full(n_obj, r["code"]))
         obj_cols["colorClass"].append(np.asarray(o["colorClass"])[order])
-        pops_hdr.append(_pop_header(pop, r, src, first_cell, first_obj))
+        population = _pop_header(pop, r, src, first_cell, first_obj)
+        if population.get("center"):
+            integration = moon_integration_metadata(core_hdr, population["center"])
+            population["model"]["integration"] = integration
+            population["model"]["motion"] = ("Synthetic initial orbit propagated by the existing small-body kernel in the host system-barycentric frame: "
+                                              "system monopole plus differential Sun and external catalogue perturbers; host excluded from perturbers. "
+                                              "Same translated CPU model for selection and GPU records for picking. Host J2 and resolved internal moon forces omitted.")
+            population["model"]["positionUncertainty"] = ("Individual true position/covariance and total omitted-force/current-view budget unknown. "
+                + integration["budgets"]["cpuNumerical"] + " " + integration["budgets"]["gpuAcceptance"] + " "
+                + integration["budgets"]["omittedForces"] + " Historical C3 fixed-element drift is superseded as the motion model; it is not a bound on this model.")
+        pops_hdr.append(population)
         first_obj += n_obj
         first_cell += c.n
     cells = {k: np.concatenate(v) for k, v in cell_cols.items()}
