@@ -333,7 +333,7 @@ export class SmallBodyPropagator {
       const rp2 = px * px + py * py + pz * pz;
       const rp3 = rp2 * Math.sqrt(rp2);
       const g = this.gm[p];
-      const q = (x0*x0 + x1*x1 + x2*x2 - 2*(px*x0 + py*x1 + pz*x2)) / rp2;
+      const q = this.stableDifferential ? (x0*x0 + x1*x1 + x2*x2 - 2*(px*x0 + py*x1 + pz*x2)) / rp2 : Infinity;
       if (this.stableDifferential && Math.abs(q) < 0.5) {
         const w = 1 + q, A = w * Math.sqrt(w);
         const f = -q * (3 + q * (3 + q)) / (A * (1 + A));

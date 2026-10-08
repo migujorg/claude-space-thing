@@ -794,7 +794,7 @@ async function moonAccuracy(): Promise<unknown> {
     const syn = readSynthetic(cpuHeader,packed.buffer);
     const field = await SmallBodyField.create(dev,tables,eph,{backgroundStepsPerUpdate:0,debug:true,
       minCheckpointSpacing:Number(params.get('checkpointSpacing')??8),
-      moonDiagnostics:{gridDivisor:divisor,forceVariant:name==='tidal'?'tidal':'baseline'}});
+      moonDiagnostics:{gridDivisor:divisor,...(name==='tidal'?{}:{forceVariant:'baseline' as const})}});
     const selfTest = field.info.selfTest;
     const timedSubmit = async (et:number,cam:Vec3,level:'best'|'complete') => {
       const enc=dev.createCommandEncoder(),start=performance.now();

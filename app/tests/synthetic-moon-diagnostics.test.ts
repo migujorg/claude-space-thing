@@ -76,6 +76,14 @@ it('production moon step/display/twin use tides; catalogue arithmetic and named 
   const a=new Float64Array(3), x=1e-4, R=1e9;
   prop.acceleration([x,0,0,0,0,0],0,new Float64Array([R,0,0]),null,a);
   expect(a[0]/(2*fm.sun.gm*x/R**3)).toBeCloseTo(1,10);
+  const baseline=new SmallBodyPropagator(law,{positionSSB:()=>null},'baseline'), direct=new Float64Array(3);
+  baseline.acceleration([x,0,0,0,0,0],0,new Float64Array([R,0,0]),null,direct);
+  expect(Math.abs(direct[0]/a[0]-1)).toBeGreaterThan(1e-5);
+  for(const position of [[2e7,-1e7,3e6],[-2e7,0,0],[0,2e7,0],[0,0,-2e7],[.9*R,0,0]]) {
+    prop.acceleration([...position,0,0,0],0,new Float64Array([R,0,0]),null,a);
+    const truth=solarDifferential(position,[R,0,0],fm.sun.gm);
+    expect(Math.hypot(...a.map((v,k)=>v-truth[k]))/Math.hypot(...truth)).toBeLessThan(1e-12);
+  }
 });
 
 it('picking uses current combined-buffer records and global indices across both host batches', async () => {
