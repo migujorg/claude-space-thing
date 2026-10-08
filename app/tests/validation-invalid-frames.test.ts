@@ -52,3 +52,16 @@ it('strict mode includes ratio failures and every comparison row is tallied', ()
   expect(validationExitCode([r], true)).toBe(1);
   expect(validationExitCode([r], false)).toBe(0);
 });
+
+it('counts scene-dependent rows separately, lists reasons and excludes them from strict brightness failures', () => {
+  const r = assessCase(c, result());
+  const sceneDependence = { reason: 'clouds at another epoch', sources: ['frame-source'] };
+  r.rois[0] = { ...r.rois[0], pass: false, sceneDependence };
+  r.ratios[0] = { ...r.ratios[0], expected: [1, 1, 1, 1], tolerance: [.1, .1, .1, .1], pass: false, sceneDependence };
+  expect(tally([r])).toEqual({ pass: 1, fail: 0, notRendered: 0, notCompared: 0, sceneDependent: 2 });
+  expect(validationExitCode([r], true)).toBe(0);
+  const md = markdownReport({ generatedAt: 'now', options: { ss: 4 }, cases: [{ ...r, scene: { bodies: [], notes: [] }, renderMs: 1 }] });
+  expect(md).toContain('Scene-dependent rows: 0 pass, 2 fail');
+  expect(md).toContain('clouds at another epoch');
+  expect(md).toContain('frame-source');
+});

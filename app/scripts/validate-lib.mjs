@@ -1,11 +1,14 @@
 // Pure helpers of scripts/validate.mjs (tested in tests/validation-runner.test.ts): the markdown report.
 
+import { tallyPartLines, sceneDependenceLines } from '../src/validation/results.mjs';
+
 import { adapterLabel } from './e2e-lib.mjs';
 
 const g = (v, d = 4) => (v === null || v === undefined || !Number.isFinite(v) ? '—' : Number(v).toPrecision(d));
 const f = (v, d = 2) => (v === null || v === undefined || !Number.isFinite(v) ? '—' : Number(v).toFixed(d));
 
 function verdict(q) {
+  if (q.sceneDependence) return `scene-dependent (${q.pass === true ? 'pass' : q.pass === false ? 'fail' : 'not compared'})`;
   if (q.pass === true) return 'pass';
   if (q.pass === false) return `**FAIL** (${q.failing.join('')})`;
   return 'not compared';
@@ -36,9 +39,10 @@ export function markdownReport(report) {
     'budget; a verdict covers all four channels (the failing ones are named). Upper limits: the rendered mean must not ' +
     'exceed the observed sky level. σ: deviation in units of the 1σ budget.', '');
   const all = report.cases.flatMap((c) => c.rois ?? []);
-  const n = (p) => all.filter((q) => q.pass === p).length;
+  const n = (p) => all.filter((q) => !q.sceneDependence && q.pass === p).length;
   L.push(`**${n(true)} pass, ${n(false)} fail, ${n(null)} not compared** over ${report.cases.length} cases` +
     (report.cases.some((c) => c.error) ? ` (${report.cases.filter((c) => c.error).length} did not render)` : '') + '.', '');
+  L.push(...tallyPartLines(report.cases), '', ...sceneDependenceLines(report.cases), '');
   L.push('| case | ROI | kind | expected Y ± tol | rendered Y | rendered/expected | σ | verdict |');
   L.push('|---|---|---|---|---|---|---|---|');
   for (const c of report.cases) {

@@ -14,3 +14,19 @@
 **Quality:** absolute calibration ±4 %, relative ±2 % (Karkoschka). Our Jupiter agrees with Mallama et al. (2017) B, V, Rc to ≤ 2 % and with Horizons to 0.02 mag. Epoch caveats: Saturn's globe at ring-plane crossing (what the renderer draws, rings excluded); Neptune brightened ~3 % in V after 1995; Uranus's red albedo is 28 % above Mallama's 2000s value (seasonal change).
 
 **Titan (M2).** PDS column 8 is the "Full disk albedo of Titan at phase angle 5.7 deg." (1995LOW.LBL). The disk radius is 2575 km (1994 Table III, `karkoschka-1994-text` = `document/icarus94.asc`, fetched), which equals the pck00011 radius, so no rescaling is needed. The zero-phase factor is 1.02 from García Muñoz et al. (2017, `garcia-munoz-2017.md`) → label **estimated**. Check: dividing our spectrum by 1.02 gives V = −1.25 ± 0.03 at 1 AU and 5.7°, which is 1998 Table II's value (with Karkoschka's solar V = −26.74). The 1998 paper's Table II also shows Titan changing by a few percent over two years (seasons, north–south asymmetry, rotation near 940 nm).
+
+**Calibration view (`light` stage `albedoMeasurementView`).** The 1995 July 6–10 dates and
+ESO La Silla observing site support deriving the observing directions with DE442s, pck00011 and
+the LSK. The reference integrates geometry over those five UTC dates; its five numerical epochs
+are quadrature nodes, not claimed exposure timestamps. The product stores sub-observer latitude,
+sub-solar latitude, phase, weights and the solar tangent. Uranus is seen from the southern
+hemisphere (about −47.87°), rather than an orientation mean. Jupiter is about −2.92°, Saturn
+−0.59° and Neptune −26.30°. Earth-centre directions carry a computed telescope-parallax bound.
+System-barycentre directions and the missing Titan satellite-centre correction are disclosed;
+recovering Titan's exact centre requires a satellite kernel covering July 1995. No validation
+geometry supplies a calibration view. Dated normalization tables are precomputed by `light` and
+checked against the direct exact-row integral; a table is reused only with its law and exact
+level-0 zonal rows.
+
+The ellipsoid integral uses the pck00011 radii and the adopted spatial law's own incidence/emission
+cosines. It preserves pR² at this reference while letting other latitudes have their own flux.

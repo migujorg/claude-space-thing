@@ -138,6 +138,7 @@ for (const entry of cases) {
     results.push(r);
     const n = tally([r]);
     process.stdout.write(`${r.status === 'not rendered' ? '✗' : '✓'} ${c.id}: ${n.pass} pass, ${n.fail} fail, ${n.notRendered} not rendered` +
+      (n.sceneDependent ? `, ${n.sceneDependent} scene-dependent` : '') +
       (r.reason ? `: ${r.reason}` : '') + ` (${(r.wallMs / 1000).toFixed(0)} s)\n`);
   } catch (e) {
     for (const suffix of ['hdr', 'display']) rmSync(resolve(OUT, `${c.id}.${suffix}.png`), { force: true });

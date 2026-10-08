@@ -167,18 +167,39 @@ with A_c from the model's `formula`. The inputs are the phase angle g, the Sun's
 
 Shape models ([rendering-shapes.md](rendering-shapes.md)): an irregular body drawn from its mesh (`SceneBody.shape`) keeps this contract on average. The radiance prefactor is scaled by πR² / ⟨A_proj⟩, where ⟨A_proj⟩ is the mesh's rotation-mean projected area, so the rotation-averaged illuminance at small phase is still `geometricAlbedoXYZS · Φ(α) · (1/d²) · (R/Δ)²`. The instantaneous brightness then varies with the shape as it rotates (a lightcurve); that variation is `derived`.
 
+Ellipsoids with unequal radii retain their own normals and projected-area measure. Their per-channel
+radiance scale is pinned to `albedoMeasurementView`: at its source-stated view or mean of stated dated views (rotation-averaged longitude,
+observed solar tangent retained as α changes), `I_ref,c = ∫ r(n·s,n·o,α) M̄_c(lat_position) dA_proj / (πR²)` over the
+**ellipsoid**, and `L_c = p_c Φ(α) r M_c / (π d² I_ref,c)`. Thus the contract's illuminance holds at that
+reference view. At other latitudes the same scale is retained; the ellipsoid's area, normals and map determine
+its light. A point and off-frame glare carry the light that disk would emit at the current view, namely the
+contract's value times `I_current,c / I_ref,c` (rotation mean for zonal maps). An in-domain disk model that
+already measures the current geometry retains its own value, with the map/law integral at that geometry.
+Spheres keep their existing normalization. Relief remains omitted.
+
+For a compiled rotational/apparition/global albedo, `albedoMeasurementView` declares a `derived`
+mean over **all orientations** by definition. A single observation without a recoverable date/view
+introduces an assumed reference labelled `estimated` under §2.1. Averaging commutes
+with the law integral: the bare-law integral is multiplied by the ellipsoid's surface area over `4πR²`
+(Cauchy's mean projected area over `πR²`); with a zonal map use its surface-area-weighted mean instead.
+For an axisymmetric ellipsoid the exact normal-space Jacobian is `(abc)²/(n·diag(a²,b²,c²)n)²`, and its
+map latitude comes from `x = diag(a²,b²,c²)n / sqrt(n·diag(a²,b²,c²)n)`, not from the normal.
+This is the mesh mean-area fallback applied to ellipsoids, with the spatial law treated consistently.
+The albedo measurement view, its epoch and its assumptions are independent of the surface law's fit and of
+validation-case geometry; validation rows never select a view, law or factor.
+
 Kind `rotation-slices-v1` (the Galilean moons) adds a measured rotational (orbital-longitude) variation to `geometricAlbedoXYZS · Φ(α)`: a factor F from six longitude slices (Mayorga et al. 2020 Table 4), evaluated at the sub-observer and sub-solar longitudes (the formula is in `schema.ts` `RotationSlicesDiskModel`). F averages to 1 over a rotation, so the albedo and phase function remain the longitude average. As with ROLO, the renderer normalizes a body's surface maps at the viewing geometry when the model applies, so a map's own longitude contrast is not counted twice.
 
 ### 4.4 Surface maps (M2)
 
 Disk-integrated photometry (§4.3) is the **absolute** calibration of a body's brightness and color: it is measured from far away with well-understood instruments. Surface maps supply only the **spatial pattern** on top of it. This keeps the two consistent by construction and stops a map's calibration problems from changing how bright a world is.
 
-- **Texel content:** four float16 values (X, Y, Z, S) of *relative* normal reflectance: the ratio of the local normal albedo spectrum, integrated per §4.2 against sunlight, to the body's disk-integrated value. The pipeline normalizes each map so its disk-average (projected-area weighted, as seen at zero phase and averaged over rotation) is 1 in every channel. The renderer multiplies texels by the body's `geometricAlbedoXYZS` and applies its photometric model, then rescales so the disk integral still reproduces p and Φ(α) exactly (§4.3).
+- **Texel content:** four float16 values (X, Y, Z, S) of *relative* normal reflectance: the ratio of the local normal albedo spectrum, integrated per §4.2 against sunlight, to the body's disk-integrated value. The pipeline normalizes each map so its disk-average (projected-area weighted, as seen at zero phase and averaged over rotation) is 1 in every channel. The renderer multiplies texels by the body's `geometricAlbedoXYZS` and applies its photometric model, then uses the normalization of §4.3: at the declared albedo reference for ellipsoids, and at the applicable geometry for spheres and in-domain disk models.
 - **Color honesty:** a map made from several calibrated bands gives per-channel variation (label per map, usually `derived`). A single-band (panchromatic) map gives the same relative variation in all four channels, so local color is the disk-average color: that assumption makes the *map's color* `estimated`, while its brightness pattern keeps the map's own label.
 - **Epoch:** maps of changing surfaces (giant-planet cloud tops, Earth's clouds) carry the observation date. Showing them at another time is `estimated`; the inspector says how far from the map epoch the current time is.
 - **Geometry:** planetocentric latitude and east longitude in the body's IAU body-fixed frame (the same frame `bodyToIcrf` uses). Equirectangular tiles: u = (lon_E + 180°)/360°, v = (90° − lat)/180°. Pyramid level L has 2^(L+1) × 2^L tiles of 256 × 256 texels (level 0 = 512 × 256 texels, the whole body). Tiles are raw little-endian float16 RGBA (`.bin`, 512 KiB each), addressed `surfaces/<naifId>/<layer>/<L>/<ty>/<tx>.bin`.
 - **Layers:** `albedo` (above) and optionally `height` (one float32 per texel, meters above the reference ellipsoid, same tiling), used for normals and, later, displacement. Each layer has a `surfaces/<naifId>/<layer>.json` header: levels, source ids, label, epoch, notes, per-channel normalization constants, and the valid lat/lon coverage (gaps are `unknown` and rendered as such, never filled).
-- **Photometric model:** when a body has a measured spatially-resolved photometric model (e.g. Hapke parameters from LROC for the Moon, MESSENGER for Mercury), photometry.json carries it and the renderer uses it instead of Lambert for the *spatial* distribution; the disk-integrated Φ(α) still governs total brightness. `spatialModel` (photometry/spatial.py, docs/sources/spatial-photometry.md) holds published fits: Minnaert k from the Hubble OPAL READMEs for the giant planets, except Saturn beyond small phase, which has the Barkstrom law with the exponent B(α) measured by Pioneer 11 (Dones et al. 1993; a `{alphaDeg, values}` table); the Akimov disk function for Saturn's mid-sized moons (Filacchione et al. 2022); Hapke sets for Io (Simonelli & Veverka 1986), the icy Galilean moons (Domingue & Verbiscer 1997), Pluto, Charon and Triton (Verbiscer et al. 2022) and Mars (Vincendon 2013). A law is `measured` only if it was fitted to disk-resolved images of that body and is used per channel within the fitted phase range. Every current entry is `estimated`: one law serves all four channels, the laws are used at all phase angles, and the Hapke sets come from disk-integrated fits. The validation cases test these laws independently; none of the laws is fitted to the validation images. Laws are **selected** by the sources' merits and their coverage of the geometry (body, phase, latitude, season, wavelength), never by how they score on the validation cases. Between two published laws, or a law and an approximation of it, the better-supported one is used even if the other scores better. Saturn keeps the exact Barkstrom law although its Minnaert approximation passed a terminator ROI that the exact law fails (docs/reports/validation.md, "Method").
+- **Photometric model:** when a body has a measured spatially-resolved photometric model (e.g. Hapke parameters from LROC for the Moon, MESSENGER for Mercury), photometry.json carries it and the renderer uses it instead of Lambert for the *spatial* distribution; the disk-integrated Φ(α) governs the reference flux; an ellipsoid's projected area, law and map determine its flux away from the albedo reference (§4.3). `spatialModel` (photometry/spatial.py, docs/sources/spatial-photometry.md) holds published fits: Minnaert k from the Hubble OPAL READMEs for the giant planets, except Saturn beyond small phase, which has the Barkstrom law with the exponent B(α) measured by Pioneer 11 (Dones et al. 1993; a `{alphaDeg, values}` table); the Akimov disk function for Saturn's mid-sized moons (Filacchione et al. 2022); Hapke sets for Io (Simonelli & Veverka 1986), the icy Galilean moons (Domingue & Verbiscer 1997), Pluto, Charon and Triton (Verbiscer et al. 2022) and Mars (Vincendon 2013). A law is `measured` only if it was fitted to disk-resolved images of that body and is used per channel within the fitted phase range. Every current entry is `estimated`: one law serves all four channels, the laws are used at all phase angles, and the Hapke sets come from disk-integrated fits. The validation cases test these laws independently; none of the laws is fitted to the validation images. Laws are **selected** by the sources' merits and their coverage of the geometry (body, phase, latitude, season, wavelength), never by how they score on the validation cases. Between two published laws, or a law and an approximation of it, the better-supported one is used even if the other scores better. Saturn keeps the exact Barkstrom law although its Minnaert approximation passed a terminator ROI that the exact law fails (docs/reports/validation.md, "Method").
 
 ### 4.5 Sky background (M4)
 
@@ -229,7 +250,7 @@ A comet's total light is the SBDB total-magnitude law m1 = M1 + 5 log Δ + K1 lo
 
 ## 6. Data products (app/public/data)
 
-Stages (`config.STAGES`): `time`, `ephemeris`, `light`, `surfaces`, `shapes`, `bodies`, `smallbodies`, `sbphotometry`, `synthetic`, `comets`, `stars`, `deepstars`, `sky`, `nightglow`.
+Stages (`config.STAGES`): `time`, `ephemeris`, `light`, `surfaces`, `albedo_reference`, `shapes`, `bodies`, `smallbodies`, `sbphotometry`, `synthetic`, `comets`, `stars`, `deepstars`, `sky`, `nightglow`.
 
 | File | Producer stage | Content |
 |---|---|---|
@@ -241,6 +262,7 @@ Stages (`config.STAGES`): `time`, `ephemeris`, `light`, `surfaces`, `shapes`, `b
 | `verification/orientation.json` | `bodies` | Build record: SPICE's body-fixed → J2000 matrices (pxform) from the kernel files `orient/earth` and `orient/moon` were copied from, at 16 epochs inside every segment, with the sha256 of those kernels and products. Not read by the app |
 | `verification/smallbodies.json` | `smallbodies` | Build record: for the verification objects, their rows and states as written to `smallbodies/core.bin`, the integrator's positions every 20 days through the window next to JPL Horizons' (query URLs, tolerances); the JPL CNEOS Earth and Moon approaches of the window computed from the orbit solutions the catalogue holds (the closest, the first and the last); the sha256 of the products it describes. Not read by the app |
 | `bodies.json` | `bodies` | `Body[]` with `Sourced` attributes (geometry, rotation, GM, ephemeris wiring) |
+| `albedo-reference.json` + `verification/albedo-reference.json` | `albedo_reference` | Fixed giant-planet disk-reference integrals, their exact law/radii/view/map inputs, relative numerical tolerance and build record; depends on `light` and `surfaces` |
 | `photometry.json` | `light` | NAIF id → `BodyPhotometry` (albedo spectra integrated per §4.3, phase functions); merged into bodies by the app loader |
 | `light.json` | `light` | Sun spectrum-derived quantities, CIE constants actually used |
 | `rings.json` | `light` | planet NAIF id → `RingSystem`: measured radial profiles of normal optical depth (occultations); Saturn: separately labelled cleaned optical-depth estimate, ring I/F model (lit and unlit faces, per channel) and the measured I/F data it is built on; Jupiter, Uranus and Neptune: estimated component models, including Uranus’s outside-support estimates; see below |
@@ -268,6 +290,47 @@ Stages (`config.STAGES`): `time`, `ephemeris`, `light`, `surfaces`, `shapes`, `b
 | `shapes/<id>.json` + `shapes/<id>.bin` | `shapes` | `ShapeModelHeader`: triangle mesh of an irregular body in its own body-fixed frame (km), 1-4 levels of detail (quadric decimation, finest ≤ 2 M triangles), float32 positions, int16 snorm vertex normals, uint16/32 indices. The header states the frame, the rotation model it assumes and its angle to the app's pck00011 frame (or the radar spin state), provenance (spacecraft SPC/SPG/SfM/altimetry and radar → measured; hand-fitted limb models → estimated), integrity and topology (watertight per LOD, components, genus) and a scale check (volume-equivalent radius vs pck00011 or SBDB). id = NAIF id for planetary satellites, SBDB SPK-ID otherwise |
 | `shapes/damit-index.json` + `.bin` + `shapes/damit.bin` | `shapes` | `DamitIndexHeader`: every DAMIT lightcurve-inversion model (label derived), one table row per model keyed by SPK-ID with spin state (λ, β, P, t0, φ0, YORP and the IAU form), quality flag, closure and a preferred-model flag; meshes as int16 vertices + uint16 indices, dimensionless unless size-calibrated |
 | `shapes/index.json` | `shapes` | `ShapeIndex`: id → name, file, kind, labels, sizes |
+
+`BodyPhotometry.albedoMeasurementView` is a `Sourced<AlbedoMeasurementView>` emitted by `light`:
+`{kind: 'latitude', latitudeDeg, epoch?, subSolarLatitudeDeg?, phaseAngleDeg?, views?}` or
+`{kind: 'orientation-mean', epoch?}`. Degrees are I/O units. Dated views are computed with DE442s,
+pck00011 and the LSK outside the app build window, at the light-emission epoch. The Karkoschka
+1995 July 6–10 interval carries five time-quadrature nodes with weights, observer/solar latitudes,
+phase and solar tangents; nodes are numerical integration epochs, not claimed exposure timestamps.
+The Earth centre replaces La Silla with a computed topocentric parallax bound. System-barycentre
+rather than planet/satellite-centre directions are stated in the method; Titan's missing 1995
+satellite-centre ephemeris remains an explicit accuracy gap. The view's geometry is `derived`;
+the source spectrum's label is unchanged. The reference integral averages the node integrals,
+not their latitudes, and at each source phase reconstructs its solar latitude. The separately sourced
+`albedoReferenceNormalization` precomputes the fixed integral and factored sphere response; it inherits
+the worst law/map label and sources. Cubic interpolation in log crescent width is checked at seven interlaced points
+to 1e-5. The product records the pure TypeScript numerical implementation hash, exact radii, view and map
+rows; a mismatch falls back to the direct integral. Below crescent width 1e-8 rad the limiting ratio
+is held while the law's vanishing power remains explicit, a numerical endpoint approximation.
+
+For photometry compiled over rotation, apparitions or spacecraft geometries, an
+`orientation-mean` reference is `derived` by the measurement's definition. The method
+quotes the source description establishing that mean; the albedo keeps its existing
+label. Dated measurements retain their derived view. A single observation with no
+recoverable date/view uses an assumed reference labelled `estimated` under §2.1,
+with Strict applying its ordinary admission rule. No uncertainty exception applies.
+`albedoViewSpread.bareMaxRelative` is a conservative all-phase bare-ellipsoid
+single-view spread from the Gauss-map area extrema divided by the orientation mean.
+It is repeated in the albedo uncertainty text as information, not as an error of
+the compiled reference. Map variegation does not determine any calibration label.
+
+`albedo_reference` runs after and depends on both `light` and `surfaces`; `light`
+reads no surface tiles. It writes `albedo-reference.json` and
+`verification/albedo-reference.json`, with no output parameters or new downloads.
+The app loader merges its independently sourced tables into body photometry.
+The stage requires Node.js and the app's esbuild; absence fails clearly. The build
+fingerprint includes `app/src/render/spatial.ts`, `app/src/render/surface.ts` and
+`pipeline/src/pipeline/stages/albedo_reference.mjs` as explicit non-Python code inputs,
+in addition to the Python closure and both stages' product hashes. Tables record
+exact level-0 tile hashes. The app suite recomputes one cell per giant from the
+recorded inputs with the same integrator against the table's stated tolerance.
+Absolute Earth layers, physical atmosphere models and meshes keep their own rules.
+
 
 Headers (`*.json` next to a `*.bin`) define byte layout explicitly (field name, type, count, stride) so the loader is generic.
 

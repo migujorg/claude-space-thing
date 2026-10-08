@@ -19,7 +19,7 @@ With the full data, the app also draws Earth’s airglow and aurora, Titan’s H
 
 ## Build profiles
 
-The data is built by `cd pipeline && uv run python -m pipeline build --profile <name>` (the run scripts do this). The pipeline has 14 stages. A profile chooses which stages run and at what size, never what a product means. Products it leaves out are simply absent, and the app says so in its Data panel (`M`).
+The data is built by `cd pipeline && uv run python -m pipeline build --profile <name>` (the run scripts do this). The pipeline has 15 stages. The `albedo_reference` stage runs after `light` and `surfaces` and needs Node.js plus the app's esbuild package in `app/node_modules`; prepare those app packages before a direct pipeline build. It uses the renderer's TypeScript integrator to build `albedo-reference.json`. A profile chooses which stages run and at what size, never what a product means. Products it leaves out are simply absent, and the app says so in its Data panel (`M`).
 
 | profile | cold download | kept in data/raw | disk needed | products | cold build | forced rebuild | stages |
 |---|---|---|---|---|---|---|---|
@@ -46,6 +46,7 @@ Per stage (`python -m pipeline costs` prints this table; the numbers live in `pi
 | time | < 1 MB | < 1 MB | < 1 MB | < 1 MB | < 1 min | < 1 min |  |
 | ephemeris | 0.2 GB | 0.2 GB | 0.3 GB | 0.1 GB | 4 min | < 1 min | DE442s + range-request excerpts of 20 NAIF satellite kernels |
 | light | 1.0 GB | 1.0 GB | 1.0 GB | 2 MB | 7 min | 1 min | 0.8 GB of it is Earth photometry (EPOXI, Himawari-9 full-disk scans) |
+| albedo_reference | 0 | 0 | < 1 MB | 255 kB | under a minute | under a minute | Node.js + app esbuild; after light and surfaces |
 | surfaces | 22 GB | 3.0 GB | 15 GB | 4.2 GB | 55 min | 45 min | the Moon's 13 GB of LROC mosaics, Mercury's 4.3 GB and Pluto's 1.3 GB are deleted right after reduction, so a rebuild downloads them again; 1.3 GB of products at surfaces.maxLevel=3 |
 | shapes | 2.6 GB | 0.2 GB | 2.5 GB | 0.6 GB | 25 min | 20 min | without DAMIT (shapes.damit=0): 1.2 GB download, 0.43 GB products |
 | bodies | 40 MB | 40 MB | 40 MB | 1 MB | < 1 min | < 1 min |  |

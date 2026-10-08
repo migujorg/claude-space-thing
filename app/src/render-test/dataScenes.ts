@@ -69,8 +69,11 @@ function bodyOf(pr: Products, id: number, pos: Vec3, toSun: Vec3, orient: Mat3, 
   const phase = ph && ph.phaseFunction.label !== 'unknown' ? ph.phaseFunction.value : null;
   return {
     id, name: b.name, pos, toSun, orient, radii: b.radii.value,
+    albedoMeasurementView: ph?.albedoMeasurementView?.value ?? null,
+    albedoReferenceNormalization: ph?.albedoReferenceNormalization?.value ?? null,
+    albedoScaleLabel: ph?.albedoMeasurementView?.label,
     albedoXYZS: albedo, phase, surfaceUnknown: !albedo || !phase,
-    worstLabel: [lab(b.radii), lab(ph?.geometricAlbedoXYZS), lab(ph?.phaseFunction)].reduce(worse, 'measured'),
+    worstLabel: [lab(b.radii), lab(ph?.geometricAlbedoXYZS), lab(ph?.phaseFunction), ...(ph?.albedoMeasurementView ? [lab(ph.albedoMeasurementView)] : [])].reduce(worse, 'measured'),
     selected: false, allowPhaseExtrapolation: true, phaseEstimated: !!phase && ph.phaseFunction.label === 'estimated', ...extra,
   };
 }

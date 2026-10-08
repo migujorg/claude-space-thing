@@ -3526,7 +3526,83 @@
     }
    ],
    "comparison": "|renderer mean(numerator rect) / mean(denominator rect) − ratioXYZS| ≤ tolerance, per channel",
-   "method": "same frames and filters: the absolute calibration cancels; σ from noise, registration and the spectral model of both ROIs"
+   "method": "same frames and filters: the absolute calibration cancels; σ from noise, registration and the spectral model of both ROIs",
+   "sceneDependence": {
+    "reason": "The ratio depends on Earth's clouds and surface visibility at 2008-05-29; the app holds clouds from another epoch. The existing budget has no Earth scene variation term: the held calibration document gives no rotational-variation value.",
+    "sources": [
+     "EPOXI observation: HV08052902_1000116_001 (2008-05-29)",
+     "Livengood et al. (2011), Astrobiology 11, 907-930, doi:10.1089/ast.2011.0614 (cited by the archive; paper needed for an Earth variation budget)",
+     "epoxi-cal-pipeline-summary-2014, section 3, pp. 13-14"
+    ]
+   }
+  },
+  {
+   "numerator": "earth-centre",
+   "denominator": "earth-disk-integrated",
+   "ratioXYZS": [
+    2.013462,
+    2.018204,
+    2.039671,
+    2.031544
+   ],
+   "sigma": [
+    0.09209514,
+    0.1101882,
+    0.1157339,
+    0.1020797
+   ],
+   "tolerance": [
+    0.1841903,
+    0.2203764,
+    0.2314677,
+    0.2041595
+   ],
+   "bands": [
+    {
+     "filter": "hriv.Violet",
+     "ratio": 2.0815,
+     "sigma": 0.1378097
+    },
+    {
+     "filter": "hriv.Blue",
+     "ratio": 2.036614,
+     "sigma": 0.1418934
+    },
+    {
+     "filter": "hriv.Green",
+     "ratio": 2.025917,
+     "sigma": 0.1579227
+    },
+    {
+     "filter": "hriv.Orange",
+     "ratio": 1.983085,
+     "sigma": 0.1624386
+    },
+    {
+     "filter": "hriv.Red",
+     "ratio": 1.964991,
+     "sigma": 0.1558103
+    }
+   ],
+   "comparison": "|renderer mean(numerator rect) / mean(denominator rect) − ratioXYZS| ≤ tolerance, per channel",
+   "method": "same body, frames and filters: shared calibration and multiplicative spectral factors cancel; per-band sigma from noise and registration alone, including disk background uncertainty. XYZS retains differential linear/PCHIP ratio spread where local band colours differ",
+   "label": "estimated",
+   "budget": {
+    "noiseAndRegistration": [
+     0.09209432,
+     0.1101872,
+     0.1157186,
+     0.1020788
+    ],
+    "spectralModel": [
+     0.0003877644,
+     0.0004596791,
+     0.001876183,
+     0.000440355
+    ],
+    "formula": "sigma(R_c) = |R_c| * hypot(u_a,c / L_a,c, u_b,c / L_b,c); u = each ROI's noiseAndRegistration; total sigma = hypot(sigma(R_c), abs(R_PCHIP - R_linear)); tolerance = 2 total sigma",
+    "correlation": "Shared absolute calibration and a common multiplicative spectral factor cancel (exactly for one band). For multiple bands, apply linear and PCHIP to both ROIs before dividing; their ratio difference is retained as the non-cancelling spectral term. Noise and registration are propagated independently, as in the region budgets; no cross-ROI covariance is measured. Additive background level uncertainty remains in disk noise and does not cancel."
+   }
   }
  ],
  "appProducts": {
@@ -4252,11 +4328,11 @@
    "schema.py": "6694d90ccede50d9e9f96600bad70bcc377096bd8bd1cf37e925aed99e72b6a8",
    "surf_color.py": "307a7810f16975b1406c5b9b46453c40e7962eec537dbea1e37e38cd01c97fb5",
    "validation/__init__.py": "0624a235c97b37ed0a6f00a7425b92251faa28e9cf70930e6981c098f482b05b",
-   "validation/build.py": "1658b71850eef1b731a13fb0a813fcb8a864f9a8907a5c24d475ec6e6ee2e05d",
+   "validation/build.py": "1a175932b3d707dcda1e1765eaf57f6a5820f5065ea633650aab4ba7257bc064",
    "validation/cases.py": "4606e31fd8add5d8bda5d5c0e9d53a59d6c33a1aa917856d062d538c4d4e2805",
    "validation/checks.py": "591f3cc261753ddfd3ca5975cd8d3c03d72bbb936f475f625162a2349ef67c29",
    "validation/geometry.py": "fd02da9796633f7aa9a69823b0534162cf0c00f8bce63cba6fd80e3d3bbf8db7",
-   "validation/photometry.py": "356ede5cc53bc52a3b785cb2c098ddf0f18b6189c7f93796c79a1ec6c73e2421",
+   "validation/photometry.py": "7296ba9cb618e5d876da2016e322765748cde0ccfdcd6ca4ae579e4a7c222d3e",
    "validation/reader_epoxi.py": "6a8689a08d88b2d1d0c88f5bb6312af1689479dc1ca42e9873a24e5f1367879c",
    "validation/readers.py": "accd15f368c916bfc90718ffd054e0d8de847ac5ff2f424621f394656436314e",
    "validation/register.py": "a0ff6e331124d934cef23cafe644cd3f5006aaadb4dcc7c95644ba2e6502f6cb",
