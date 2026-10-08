@@ -1,9 +1,9 @@
 """Earth from Himawari-9 AHI on the day of the app's cloud snapshot (2026-09-28), inside the app's time window.
 
-The app's Earth clouds (surfaces/399/clouds) are one day of VIIRS/NOAA-20 retrievals, 2026-09-28, each place seen at
-the ~13:30 local-time overpass. The AHI full-disk scan of 04:00 UTC sees the sub-satellite point (140.7°E) at 13:23
-local solar time, so near the disk centre the clouds in the image are those of the app's layer (to within the scan
-and overpass offsets, stated per ROI). Only the equatorial swath (segment 6 of 10: the sub-satellite point to ~16°S,
+The app's Earth clouds (surfaces/399/clouds) are the SatCORPS mosaic of 2026-09-28, each longitude near
+13:30 local solar time. The AHI full-disk scan of 04:00 UTC sees the sub-satellite point (140.7°E) at 13:23
+local solar time. This proximity does not guarantee identical clouds: actual strip times and retrievals differ,
+and the existing comparison budget has no cloud-variation term. Only the equatorial swath (segment 6 of 10: the sub-satellite point to ~16°S,
 limb to limb) is fetched, for bands 1-3 (0.47, 0.51, 0.64 µm; 62 MB).
 
 Geometry: the AHI fixed grid (CGMS normalised geostationary projection; block 3 of the header: CFAC/LFAC/COFF/LOFF,
@@ -125,11 +125,11 @@ class HimawariCase:
     rois = [RoiSpec("disk-centre", "disk-centre", 5), RoiSpec("limb", "limb", 4, min_emission=70.0),
             RoiSpec("terminator", "terminator", 4),
             RoiSpec("near-centre-130E", "point", 4, lat_lon=(-6.0, 130.0),
-                    note="within ±1 h of the VIIRS overpass: the app's clouds are those of this image"),
+                    note="within ±1 h of the SatCORPS mosaic target local hour; the retrieval and actual strip time differ"),
             RoiSpec("near-centre-150E", "point", 4, lat_lon=(-6.0, 150.0),
-                    note="within ±1 h of the VIIRS overpass: the app's clouds are those of this image"),
+                    note="within ±1 h of the SatCORPS mosaic target local hour; the retrieval and actual strip time differ"),
             RoiSpec("near-centre-141E-12S", "point", 4, lat_lon=(-12.0, 141.0),
-                    note="within ±1 h of the VIIRS overpass: the app's clouds are those of this image"),
+                    note="within ±1 h of the SatCORPS mosaic target local hour; the retrieval and actual strip time differ"),
             RoiSpec("sky-near", "sky-near", 4, clear=4),
             RoiSpec("sky-far", "sky-far", 4, clear=4)]
 
@@ -213,9 +213,10 @@ class HimawariCase:
                 "navigation": {"subLonDeg": seg.sub_lon, "distanceKm": seg.h_km, "cfac": seg.cfac, "lfac": seg.lfac,
                                "coff": seg.coff, "loff": seg.loff, "firstLine": seg.first_line}})
         notes = [
-            "Clouds: the app's Earth cloud layer is VIIRS/NOAA-20 of 2026-09-28 at ~13:30 local solar time; each "
+            "Clouds: the app's Earth cloud layer is the SatCORPS mosaic of 2026-09-28 near 13:30 local solar time; each "
             "ROI's 'cloudTimeOffsetH' is Himawari's local solar time minus 13.5 h at the ROI's mean longitude. Only "
-            "ROIs within ~±1 h compare the same clouds; elsewhere the ROI tests the cloud statistics only.",
+            "ROIs within ~±1 h are near the target local hour, not a guarantee of identical clouds; actual "
+            "strip times and retrievals differ, and the existing budget has no cloud-variation term.",
             "Only segment 6 of 10 was fetched (the swath from the equator to ~16°S): pixels outside it are NaN.",
             "The Earth's shape spectrum p̃ is the app's (Himawari 2025-03-20 disk average, 'estimated'); it only "
             "shapes the spectrum between the three band centres.",

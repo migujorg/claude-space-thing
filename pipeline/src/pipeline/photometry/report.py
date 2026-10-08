@@ -308,7 +308,7 @@ def generate() -> str:
       "9. **Iapetus and Miranda** unknown; **Deimos** grey placeholder; **Titan** and **Triton**/**Charon** phase "
       "curves only near opposition.\n"
       "10. **Ring brightness**: Saturn's is a calibrated model (unlit face and radii away from the three HST "
-      "regions least certain; low ring elevations only partly checked); Jupiter's, Uranus's and Neptune's unknown.\n"
+      "regions least certain; low ring elevations only partly checked). Jupiter, Uranus and Neptune have estimated component brightness; Uranus lambda and Neptune Galle remain unknown.\n"
       "11. **Irregular satellites**: brightness from compiled H only; grey placeholder colour; rough pck00011 radii "
       "(if bodies.json uses a different radius for them, the rendered brightness scales by (R_bodies/R_pck)²).\n")
     return "\n".join(L) + "\n"
@@ -414,7 +414,7 @@ def _rings_section(w) -> None:
     w("## Rings (`rings.json`)\n")
     w("Normal optical depth τ⊥ from one occultation per system (label **measured**). Reflectance: Saturn's is a "
       "single-scattering model calibrated on Voyager and HST measurements (label **estimated**; the measurements "
-      "themselves are also in the product, **measured**); Jupiter's, Uranus's and Neptune's are **unknown**. Values "
+      "themselves are also in the product, **measured**). Jupiter, Uranus and Neptune classic profiles retain **unknown** reflectance; they additionally have **estimated** component models (see [the ring report](rings.md)). Values "
       "below are summaries of the product.\n")
     w("| planet | profile | radius range (km) | bins | observation | reflectance |\n|---|---|---|---|---|---|")
     names = {"599": "Jupiter", "699": "Saturn", "799": "Uranus", "899": "Neptune"}

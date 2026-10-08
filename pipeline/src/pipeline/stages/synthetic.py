@@ -688,7 +688,8 @@ def _order(res: dict) -> dict:
                                'samples, not measurements. ' + m['surveyVeto']['method'])
                 r['limit']['uncertainty'] = (
                     'The a/H completeness limit remains a catalogue-count proxy, not a detection probability. '
-                    'A separate orbit-specific CFEPS discovery residual is applied at published pointings within its characterized domain. '
+                    'A separate orbit-specific CFEPS discovery residual is applied after deficit sampling, without replacement, '
+                    'at published pointings within its characterized domain; see model.surveyVeto. '
                     'Other surveys\' histories and detectability beyond CFEPS characterization are unknown. '
                     'Population-model normalization and systematic uncertainty are not propagated into the deficit cutoff.')
     return res
