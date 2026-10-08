@@ -141,6 +141,23 @@
    "toleranceWhy": "The disk is 36 px across and lies on the corner of four grid cells. Drawn with the acuity of the mean luminance of the 1\u00b0 field (the defect found on 2026-10-07: the filter's fovea was dark-adapted while the frame was adapted to the disk, docs/eye-model.md \u00a75b), its light spreads over seven times its area and changes those cells by 0.010, 0.008, 0.005 and 0.002 (rendered with the code of both sides on the GPU), which the suite's default gridMaxAbs of 0.35 does not see; no counter differs."
   },
   {
+   "id": "jupiter-odd-frame",
+   "title": "A frame of 1283 \u00d7 723 inside Jupiter's disk at a 3.6\u00b0 field: its last row and column are as bright as the rest",
+   "params": {
+    "target": "599",
+    "dist": "300000",
+    "fov": "3.6"
+   },
+   "viewport": {
+    "width": 1283,
+    "height": 723
+   },
+   "tolerance": {
+    "gridMaxAbs": 0.0015
+   },
+   "toleranceWhy": "Both sides of this frame are odd. Until October 2026 the acuity filter's image chain averaged the last texel of its first level with zero there, and the last column and row were shown at 0.48 and 0.50 of the interior (docs/eye-model.md \u00a710). That darkens the nine grid cells of the last column and the sixteen of the last row by 0.001 to 0.003, sixteen of them by 0.002 or more (rendered with the code of both sides on the GPU), which the suite's default gridMaxAbs of 0.35 does not see; no counter differs. The grid is rounded to 0.001, so 0.0015 lets one cell turn over and no more."
+  },
+  {
    "id": "saturn-rings",
    "title": "Saturn and its rings from 400,000 km",
    "params": {

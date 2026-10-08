@@ -3248,6 +3248,56 @@
      }
     }
    }
+  },
+  "jupiter-odd-frame": {
+   "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=instant&target=599&dist=300000&fov=3.6",
+   "stats": {
+    "adaptationLuminance": 874.8233897077926,
+    "scotopicAdaptationLuminance": 1998.1043723188973,
+    "pupilDiameterMm": 4.059886292321293,
+    "mesopicM": 1,
+    "limitingMagnitude": -2.1992054606131726,
+    "starsDrawn": 0,
+    "bodiesDrawn": 2,
+    "bodies": [
+     {
+      "id": 599,
+      "name": "Jupiter",
+      "worstLabel": "estimated",
+      "surfaceUnknown": false
+     }
+    ],
+    "points": [
+     "515:derived"
+    ],
+    "bodiesInSnapshot": 75,
+    "sun": true,
+    "warnings": [],
+    "badge": [
+     "INSTANT ADAPTATION: eye always fully adapted"
+    ]
+   },
+   "consoleErrors": [],
+   "readyMs": 2410.010075,
+   "accepted": {
+    "acceptedAt": "2026-10-08T01:27:01.282Z",
+    "git": "ac7354d",
+    "data": {
+     "manifestGeneratedAt": "2026-10-08T01:23:42+00:00",
+     "manifestSha256": "6e7dc216c0b7f61b4165a011e7cc9665177ef5ab6ebb7a03fb7ad83a5f2197ea"
+    },
+    "gpu": {
+     "mode": "hardware",
+     "adapter": {
+      "vendor": "nvidia",
+      "architecture": "blackwell",
+      "device": "",
+      "description": "",
+      "fallback": false,
+      "float32Blendable": true
+     }
+    }
+   }
   }
  }
 }
