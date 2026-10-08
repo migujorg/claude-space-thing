@@ -1,6 +1,6 @@
 # Planet, moon and ring photometry: review report
 
-Generated 2026-09-30 by `cd pipeline && uv run python -m pipeline.photometry.report`, from the same code as the `light` stage (`app/public/data/light.json`, `photometry.json`, `rings.json`). All numbers below are computed, not typed; the prose is written by hand. Sources are listed in `sources.json` and `docs/sources/`.
+Generated 2026-10-07 by `cd pipeline && uv run python -m pipeline.photometry.report`, from the same code as the `light` stage (`app/public/data/light.json`, `photometry.json`, `rings.json`). All numbers below are computed, not typed; the prose is written by hand. Sources are listed in `sources.json` and `docs/sources/`.
 
 ## How to read the colours
 
@@ -62,7 +62,7 @@ p_V: Bessell V band average of p(λ) (reported as `geometricAlbedoV`); p_Y: phot
 - **Moon** (301). Albedo (M3): the ROLO model (Kieffer & Stone 2005) whole-disk reflectance in 32 bands at α = 1.55°, the model's smallest phase angle (a reference albedo, not a zero-phase one: below 1.55° unknown). Phase curve: ROLO for 1.55-97° (Φ(1.55°) = 1), with the opposition surge; Lane & Irvine's shape joined to it for 97-120° (estimated). Libration and waxing/waning are in diskReflectanceModel. Lane & Irvine's (1973) narrow-band albedos, used until M3, are a cross-check (M3 below): redder, with a 13 % internal V inconsistency. Sources: `kieffer-stone-2005`, `naif-pck00011`, `tsis1-hsrs-v2`, `cie-1931-2deg-cmf`, `cie-1951-scotopic`, `lane-irvine-1973`.
 - **Mars** (499). Reconstructed from Mallama et al. (2017) photometric Johnson UBVRI albedos (rotation/season averaged): a piecewise-linear spectrum through five band averages. Brightness and B-V are measured; the shape between bands is assumed (no 530 nm shoulder). A PSG model composite (Payne et al.) was rejected: its B albedo is 45 % below the photometry. Phase curve: measured to 50°, assumed beyond (estimated). Sources: `mallama-2017`, `svo-johnson-u`, `svo-johnson-b`, `svo-johnson-v`, `svo-johnson-r`, `svo-johnson-i`, `naif-pck00011`, `tsis1-hsrs-v2`, `cie-1931-2deg-cmf`, `cie-1951-scotopic`, `mallama-hilton-2018`.
 - **Jupiter** (599). Karkoschka (1998) ESO spectrophotometry at 6.8° phase, scaled to 0° with Mallama & Hilton's V phase law (assumption: same at all λ, +2.4 %). Agrees with Mallama et al. (2017) B, V, Rc to ≤ 2 % and with Horizons to 0.02 mag. Strong data. Phase curve: ground + Cassini (measured). Sources: `karkoschka-1998-pds`, `naif-pck00011`, `mallama-hilton-2018`, `tsis1-hsrs-v2`, `cie-1931-2deg-cmf`, `cie-1951-scotopic`.
-- **Saturn** (699). Karkoschka (1998) at the 1995 ring-plane crossing, i.e. the GLOBE without rings (what the renderer draws; rings are separate, see Rings). Scaled from 5.7° to 0° with an assumed phase law (+1.7 %). 5 % fainter in V than Mallama & Pavlov's synthetic globe magnitude from the same data, but consistent with Karkoschka's own V. Saturn's globe colour changes with season (hemisphere in view, ring shadow). Phase curve: assumed/modelled (estimated). Sources: `karkoschka-1998-pds`, `naif-pck00011`, `mallama-hilton-2018`, `tsis1-hsrs-v2`, `cie-1931-2deg-cmf`, `cie-1951-scotopic`.
+- **Saturn** (699). Karkoschka (1998) at the 1995 ring-plane crossing, i.e. the GLOBE without rings (what the renderer draws; rings are separate, see Rings). Scaled from 5.7° to 0° with an assumed phase law (+1.7 %). 5 % fainter in V than Mallama & Pavlov's synthetic globe magnitude from the same data, but consistent with Karkoschka's own V. Saturn's globe colour changes with season (hemisphere in view, ring shadow). Phase curve: assumed/modelled (estimated). Sources: `karkoschka-1998-pds`, `naif-pck00011`, `mallama-hilton-2018`, `tsis1-hsrs-v2`, `cie-1931-2deg-cmf`, `cie-1951-scotopic`, `wang-2024`.
 - **Uranus** (799). Karkoschka (1998) 1995 geometric albedo. Uranus's colour changes with season (Irwin et al. 2024): the red albedo in 1995 is 28 % above Mallama et al.'s 2000s photometry, and the 2026 view (near northern solstice) differs from 1995's. Irwin et al.'s calibrated spectra are available only on request, so they could not be used. Phase curve: Voyager (measured). Sources: `karkoschka-1998-pds`, `naif-pck00011`, `tsis1-hsrs-v2`, `cie-1931-2deg-cmf`, `cie-1951-scotopic`, `mallama-hilton-2018`.
 - **Neptune** (899). Karkoschka (1998) 1995 geometric albedo; Neptune brightened until ~2000 (3 % in V since 1995 per Mallama & Hilton), red albedo 15 % above Mallama's 2000s photometry. The computed colour is a pale blue close to Uranus's, as Irwin et al. (2024) find, not the deep blue of enhanced Voyager images. Phase curve: Voyager (measured). Sources: `karkoschka-1998-pds`, `naif-pck00011`, `tsis1-hsrs-v2`, `cie-1931-2deg-cmf`, `cie-1951-scotopic`, `mallama-hilton-2018`.
 - **Pluto** (999). No machine-usable spectrum of Pluto alone was found (Lorenzi et al. 2016 spectra are figures only; New Horizons disk-integrated colours not tabulated). Reconstructed from HST B and V only (Buie et al. 2010): p linear in λ, extrapolated to 360-830 nm, so the red end is likely too high and the colour too red. Phase curve: 0-1.74° only (HST); unknown beyond, i.e. from any viewpoint far from the Earth-Sun line. Sources: `buie-2010a`, `willmer-2018`, `naif-pck00011`, `bessell-1990-b`, `bessell-1990-v`, `tsis1-hsrs-v2`, `cie-1931-2deg-cmf`, `cie-1951-scotopic`.
@@ -124,7 +124,7 @@ Apparent V at three epochs in the window, using Horizons' own r, Δ, phase angle
 | Jupiter | 2027-Jan-15 | 5.41 | -2.489 | -2.489 | -2.509 | **-0.020** |  |
 | Jupiter | 2027-Jun-01 | 10.21 | -1.926 | -1.926 | -1.945 | **-0.019** |  |
 | Saturn | 2026-Sep-30 | 0.59 | +0.351 | +0.351 | +0.608 | **+0.257** | β_eff=7.62° (rings in Eq. 10) |
-| Saturn | 2027-Jan-15 | 5.78 | +0.768 | +0.768 | +0.903 | **+0.135** | β_eff=7.87° (rings in Eq. 10) |
+| Saturn | 2027-Jan-15 | 5.78 | +0.768 | +0.768 | +0.904 | **+0.136** | β_eff=7.87° (rings in Eq. 10) |
 | Saturn | 2027-Jun-01 | 4.49 | +0.683 | +0.683 | +0.978 | **+0.295** | β_eff=12.15° (rings in Eq. 10) |
 | Uranus | 2026-Sep-30 | 2.53 | +5.653 | +5.653 | +5.640 | **-0.013** | φ′=75.0° |
 | Uranus | 2027-Jan-15 | 2.30 | +5.641 | +5.641 | +5.625 | **-0.016** | φ′=74.0° |
@@ -356,7 +356,7 @@ Reading the differences:
 
 ## Rings (`rings.json`)
 
-Normal optical depth τ⊥ from one occultation per system (label **measured**). Reflectance: Saturn's is a single-scattering model calibrated on Voyager and HST measurements (label **estimated**; the measurements themselves are also in the product, **measured**); Jupiter's, Uranus's and Neptune's are **unknown**. Values below are summaries of the product.
+Normal optical depth τ⊥ from one occultation per system (label **measured**). Reflectance: Saturn's is a single-scattering model calibrated on Voyager and HST measurements (label **estimated**; the measurements themselves are also in the product, **measured**). Jupiter, Uranus and Neptune classic profiles retain **unknown** reflectance; they additionally have **estimated** component models (see [the ring report](rings.md)). Values below are summaries of the product.
 
 | planet | profile | radius range (km) | bins | observation | reflectance |
 |---|---|---|---|---|---|
@@ -407,7 +407,7 @@ At β = 15-26° the model agrees with ground photometry within 10 % at α = 1-3�
 
 Domain: 0.25° ≤ α ≤ 47° (brightness unknown outside in this product: the true-opposition spike below 0.25° is not calibrated, and [published high-phase measurements](../sources/rings-high-phase.md) are not yet included); radii 74000-140600 km. Not modelled: the A ring's azimuthal (wake) asymmetry, spokes, the F ring.
 
-Jupiter, Uranus, Neptune: no calibrated machine-readable reflectance profile was found (the PDS Ring-Moon Systems Node's Voyager ring-profile series VG_28xx has imaging (ISS) I/F profiles for Saturn only; other published photometry of these rings is in figures), so their reflectance stays unknown.
+Jupiter, Uranus, Neptune: no calibrated machine-readable reflectance profile was found (the PDS Ring-Moon Systems Node's Voyager ring-profile series VG_28xx has imaging (ISS) I/F profiles for Saturn only; other published photometry of these rings is in figures), so the classic profiles retain unknown reflectance. The separately sourced component models digitize published photometry and use stated assumptions (label estimated); Uranus lambda and Neptune Galle remain unknown.
 
 ## M1 follow-ups (M2)
 
@@ -531,5 +531,5 @@ Population (unclassified): x, y = 0.3354, 0.3442 (SDSS class frequencies), p_V m
 7. **Phase corrections for Jupiter/Saturn** to zero phase (+2.4 %, +1.7 %) assume a grey phase law.
 8. **Opposition surges of the moons**: included for the Moon (ROLO, to 1.55°), Mimas-Rhea (measured shape of Enceladus/Rhea at the VIMS level; HST is 1.2-1.4× brighter), Uranian moons, Triton, Charon, Phobos.
 9. **Iapetus and Miranda** unknown; **Deimos** grey placeholder; **Titan** and **Triton**/**Charon** phase curves only near opposition.
-10. **Ring brightness**: Saturn's is a calibrated model (unlit face and radii away from the three HST regions least certain; low ring elevations only partly checked); Jupiter's, Uranus's and Neptune's unknown.
+10. **Ring brightness**: Saturn's is a calibrated model (unlit face and radii away from the three HST regions least certain; low ring elevations only partly checked). Jupiter, Uranus and Neptune have estimated component brightness; Uranus lambda and Neptune Galle remain unknown.
 11. **Irregular satellites**: brightness from compiled H only; grey placeholder colour; rough pck00011 radii (if bodies.json uses a different radius for them, the rendered brightness scales by (R_bodies/R_pck)²).

@@ -308,10 +308,10 @@ def generate() -> str:
       "9. **Iapetus and Miranda** unknown; **Deimos** grey placeholder; **Titan** and **Triton**/**Charon** phase "
       "curves only near opposition.\n"
       "10. **Ring brightness**: Saturn's is a calibrated model (unlit face and radii away from the three HST "
-      "regions least certain; low ring elevations only partly checked); Jupiter's, Uranus's and Neptune's unknown.\n"
+      "regions least certain; low ring elevations only partly checked). Jupiter, Uranus and Neptune have estimated component brightness; Uranus lambda and Neptune Galle remain unknown.\n"
       "11. **Irregular satellites**: brightness from compiled H only; grey placeholder colour; rough pck00011 radii "
       "(if bodies.json uses a different radius for them, the rendered brightness scales by (R_bodies/R_pck)²).\n")
-    return "\n".join(L) + "\n"
+    return "\n".join(L).rstrip() + "\n"
 
 
 def main() -> None:
@@ -414,7 +414,7 @@ def _rings_section(w) -> None:
     w("## Rings (`rings.json`)\n")
     w("Normal optical depth τ⊥ from one occultation per system (label **measured**). Reflectance: Saturn's is a "
       "single-scattering model calibrated on Voyager and HST measurements (label **estimated**; the measurements "
-      "themselves are also in the product, **measured**); Jupiter's, Uranus's and Neptune's are **unknown**. Values "
+      "themselves are also in the product, **measured**). Jupiter, Uranus and Neptune classic profiles retain **unknown** reflectance; they additionally have **estimated** component models (see [the ring report](rings.md)). Values "
       "below are summaries of the product.\n")
     w("| planet | profile | radius range (km) | bins | observation | reflectance |\n|---|---|---|---|---|---|")
     names = {"599": "Jupiter", "699": "Saturn", "799": "Uranus", "899": "Neptune"}
@@ -515,13 +515,15 @@ def _ring_reflectance_section(w, rj, diag) -> None:
       "comparable to the whole ring term at low β, and the difference turns negative at β = 5°, α = 6° (rings "
       "dimming Saturn). The comparison is inconclusive there. The model's own low-β behaviour rests on the HST data "
       "down to Beff = 4.5°, below which the particle term is held constant.\n")
-    w("Domain: 0.25° ≤ α ≤ 47° (brightness unknown outside: the true-opposition spike below 0.25° and the forward "
-      f"scattering by dust at large α are not in the data used); radii {refl['radiusStartKm']:.0f}-"
+    w("Domain: 0.25° ≤ α ≤ 47° (brightness unknown outside in this product: the true-opposition spike below 0.25° "
+      f"is not calibrated, and [published high-phase measurements](../sources/rings-high-phase.md) are not yet included); radii {refl['radiusStartKm']:.0f}-"
       f"{refl['radiusStartKm'] + refl['radiusStepKm'] * (refl['count'] - 1):.0f} km. Not modelled: the A ring's "
       "azimuthal (wake) asymmetry, spokes, the F ring.\n")
     w("Jupiter, Uranus, Neptune: no calibrated machine-readable reflectance profile was found (the PDS Ring-Moon "
       "Systems Node's Voyager ring-profile series VG_28xx has imaging (ISS) I/F profiles for Saturn only; other "
-      "published photometry of these rings is in figures), so their reflectance stays unknown.\n")
+      "published photometry of these rings is in figures), so the classic profiles retain unknown reflectance. "
+      "The separately sourced component models digitize published photometry and use stated assumptions "
+      "(label estimated); Uranus lambda and Neptune Galle remain unknown.\n")
 
 
 def _fixups_section(w) -> None:
