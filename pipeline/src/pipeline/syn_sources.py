@@ -246,11 +246,70 @@ def register(ctx: BuildContext) -> dict[str, str]:
         # the paper's population parameters were used by the stage.
         rec = inactive_resonant_source(table)
         out[rec.id] = ctx.add_source(rec)
+    rec = SourceRecord(**cfeps_metadata()["source"])
+    out[rec.id] = ctx.add_source(rec)
     return out
 
 
 def tables() -> dict:
     return json.loads((TABLES / "populations.json").read_text(encoding="utf-8"))
+
+
+def cfeps_metadata() -> dict:
+    return json.loads((TABLES / "cfeps.json").read_text(encoding="utf-8"))
+
+
+def read_cfeps() -> list[dict]:
+    """Pinned, unmodified published CFEPS records; fail closed on changed bytes or unsupported formats.
+
+    Native pointing offsets are degrees, epochs JD, rates arcsec/hour. Geometry follows upstream getsur.f95.
+    Only the double-tanh efficiency form present in this release is accepted.
+    """
+    from .download import sha256_file
+    root = TABLES / "cfeps"
+    for rec in cfeps_metadata()["files"]:
+        if sha256_file(root / rec["name"]) != rec["sha256"]:
+            raise ValueError(f"changed CFEPS input: {rec['name']}")
+    lines = iter(s.strip() for s in (root / "pointings.list").read_text().splitlines()
+                 if s.strip() and not s.lstrip().startswith("#"))
+    out, efficiencies = [], {}
+    def sexagesimal(s, ra=False):
+        if ":" not in s:
+            return float(s)
+        # Two published entries use ':' for their decimal point in the seconds field.
+        a, b, c = s.split(":", 2)
+        value = abs(float(a)) + float(b)/60 + float(c.replace(":", "."))/3600
+        return value * (-1 if s.startswith("-") else 1) * (15 if ra else 1)
+    for line in lines:
+        p = line.split()
+        if len(p) != 8 or p[6] != "500":
+            raise ValueError(f"unsupported CFEPS pointing: {line}")
+        if p[0] == "poly":
+            vertices = [[float(x) for x in next(lines).split()] for _ in range(int(p[1]))]
+        else:
+            w, h = float(p[0])/2, float(p[1])/2
+            vertices = [[-w, -h], [-w, h], [w, h], [w, -h]]
+        name = p[7]
+        if name not in efficiencies:
+            eff = {}
+            for s in (root / name).read_text().splitlines():
+                s = s.split("#", 1)[0].strip()
+                if not s:
+                    continue
+                key, val = (x.strip() for x in s.split("=", 1))
+                if key in eff:
+                    raise ValueError(f"unsupported repeated efficiency key {key}")
+                eff[key] = val if key in ("filter", "function") else [float(x) for x in val.split()]
+            if eff['function'] != 'double' or eff['filter'] not in ('g', 'r', 'R'):
+                raise ValueError(f"unsupported CFEPS efficiency {name}")
+            for key, n in [('rate_cut', 4), ('rates', 2), ('double_param', 4), ('track_frac', 3), ('mag_lim', 1)]:
+                if len(eff[key]) != n or not np.all(np.isfinite(eff[key])):
+                    raise ValueError(f"invalid CFEPS {key}")
+            efficiencies[name] = eff
+        out.append(dict(block=name.split('-')[0], vertices=vertices, ra=sexagesimal(p[2], True),
+                        dec=sexagesimal(p[3]), epochJd=float(p[4]), fill=float(p[5]),
+                        observatory=p[6], eff=efficiencies[name]))
+    return out
 
 
 def hilda_model() -> dict:
