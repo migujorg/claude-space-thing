@@ -3199,6 +3199,14 @@
      0.3370671
     ],
     "colorCriterion": "Band centres 368.812, 452.061, 548.512, 646.857, 745.338 nm. Colour is 'derived' only if the bands bracket ≥ 99 % of every channel's sunlight-weighted observer integrand (here 100.0 % for the worst channel) and no gap between band centres inside the central 98 % range (407-669 nm) exceeds half the narrowest observer-function FWHM (27 nm; widest gap here 98 nm). Result: estimated."
+   },
+   "sceneDependence": {
+    "reason": "Earth-centre and earth-centre / earth-disk-integrated compare one region of the 2008-05-29 frame with Earth drawn using the satellite cloud mosaic of 2026-09-28. Whether cloud lies in that region is weather the app does not hold for 2008. The whole-disk earth-disk-integrated row remains a brightness comparison of cloud statistics, as the case's own note states. Root decided this on 2026-10-07 at 19:30 PDT when the cloud-angular-law correction was about to turn both rows from pass to fail: both rows passed until then with a cloud law that was two to eight times too bright at this geometry. The decision rests on what the rows compare, not on either verdict.",
+    "sources": [
+     "EPOXI observation: HV08052902_1000116_001 (2008-05-29)",
+     "earth-moon-epoxi-2008 case note: renderer cloud epoch 2026-09-28; docs/architecture.md section 6, Earth cloud mosaic",
+     "Root decision, 2026-10-07 19:30 PDT, epoxi-scene-rows lane brief; .lanes/run/cloud-angular-law/PROPOSAL.md section 4"
+    ]
    }
   },
   {
@@ -3602,6 +3610,14 @@
     ],
     "formula": "sigma(R_c) = |R_c| * hypot(u_a,c / L_a,c, u_b,c / L_b,c); u = each ROI's noiseAndRegistration; total sigma = hypot(sigma(R_c), abs(R_PCHIP - R_linear)); tolerance = 2 total sigma",
     "correlation": "Shared absolute calibration and a common multiplicative spectral factor cancel (exactly for one band). For multiple bands, apply linear and PCHIP to both ROIs before dividing; their ratio difference is retained as the non-cancelling spectral term. Noise and registration are propagated independently, as in the region budgets; no cross-ROI covariance is measured. Additive background level uncertainty remains in disk noise and does not cancel."
+   },
+   "sceneDependence": {
+    "reason": "Earth-centre and earth-centre / earth-disk-integrated compare one region of the 2008-05-29 frame with Earth drawn using the satellite cloud mosaic of 2026-09-28. Whether cloud lies in that region is weather the app does not hold for 2008. The whole-disk earth-disk-integrated row remains a brightness comparison of cloud statistics, as the case's own note states. Root decided this on 2026-10-07 at 19:30 PDT when the cloud-angular-law correction was about to turn both rows from pass to fail: both rows passed until then with a cloud law that was two to eight times too bright at this geometry. The decision rests on what the rows compare, not on either verdict.",
+    "sources": [
+     "EPOXI observation: HV08052902_1000116_001 (2008-05-29)",
+     "earth-moon-epoxi-2008 case note: renderer cloud epoch 2026-09-28; docs/architecture.md section 6, Earth cloud mosaic",
+     "Root decision, 2026-10-07 19:30 PDT, epoxi-scene-rows lane brief; .lanes/run/cloud-angular-law/PROPOSAL.md section 4"
+    ]
    }
   }
  ],
@@ -4328,7 +4344,7 @@
    "schema.py": "6694d90ccede50d9e9f96600bad70bcc377096bd8bd1cf37e925aed99e72b6a8",
    "surf_color.py": "307a7810f16975b1406c5b9b46453c40e7962eec537dbea1e37e38cd01c97fb5",
    "validation/__init__.py": "0624a235c97b37ed0a6f00a7425b92251faa28e9cf70930e6981c098f482b05b",
-   "validation/build.py": "1a175932b3d707dcda1e1765eaf57f6a5820f5065ea633650aab4ba7257bc064",
+   "validation/build.py": "2f5845cdf8a12a3282f18cc6e36b783a831a841d84da86421dfa3720e15cdf48",
    "validation/cases.py": "4606e31fd8add5d8bda5d5c0e9d53a59d6c33a1aa917856d062d538c4d4e2805",
    "validation/checks.py": "591f3cc261753ddfd3ca5975cd8d3c03d72bbb936f475f625162a2349ef67c29",
    "validation/geometry.py": "fd02da9796633f7aa9a69823b0534162cf0c00f8bce63cba6fd80e3d3bbf8db7",
