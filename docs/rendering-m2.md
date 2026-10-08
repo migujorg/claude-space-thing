@@ -100,6 +100,17 @@ relief along the terminator (12 tiles, 91 MiB at 960×540).
 
 ## 2. Spatial photometric models and the normalization
 
+Bare Hapke motion normalization reads `hapke-phase.json`, built by
+`albedo_reference` through the app's converged integrator. Cubic phase cells factor
+out the particle/opposition term, resolving Pluto's narrow coherent peak without
+main-thread construction. The bare lookup contract is 1e-5 relative over
+0–179.9°, first use below 5 ms and moving median below 0.1 ms CPU. The loader checks
+exact law parameters and the shipped integrator source hash. Missing/stale tables
+or phases beyond their crescent-width domain use one fixed order and a warning
+naming the body. Mapped Hapke normalization remains the older cached 24×24 rule;
+it needs a separately verified representation to meet 1e-4 and 0.1 ms. The current
+2.5e-3 mapped test allowance is a regression guard, not that accuracy claim.
+
 Available models (`schema.ts` `SpatialPhotometricModel`; float64 reference in `spatial.ts`, mirrored in WGSL):
 
 - Lambert.
@@ -135,9 +146,10 @@ These are per-body constant parameter sets. Per-texel parameters (the Moon's `ha
 
 computed per channel. Here pΦ is albedoXYZS·Φ(α), or the disk model's value (§4), and M̄ is the map's
 zonal (rotation-averaged) mean. For a sphere, the float64 `MotionNormalization` uses analytic bare laws,
-Hapke phase interpolation, and converged quadrature/harmonic sums for zonal maps, with actual phase/pole.
-The sphere's rendered integral reproduces pΦ·(1/d²)(R/Δ)², exactly for zonal maps and on average over
-rotation for maps with longitude structure. Relief is omitted.
+build-time bare Hapke phase interpolation, harmonic sums for Minnaert/Barkstrom zonal maps, and
+a fixed-order fallback for the other mapped laws. The converged quadratures remain the numerical
+oracle. The sphere's integral targets pΦ·(1/d²)(R/Δ)², over rotation for maps with longitude
+structure, subject to each path's numerical error budget; mapped Hapke still has the gap stated above. Relief is omitted.
 
 For an unequal-radii ellipsoid, I is the **reference-view ellipsoid integral**, as declared by
 `photometry.json` `albedoMeasurementView` (architecture §4.3). The denominator depends on the phase,

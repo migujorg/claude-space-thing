@@ -11,7 +11,7 @@
 // exactly albedoXYZS·(1/d²)(R/Δ)²·Φ(α) for spheres (ellipsoids use their fixed albedo reference below). For a map without longitude
 // structure it holds at every instant. This file is the float64 reference; shaders.ts mirrors lawRadf.
 
-import type { AlbedoMeasurementView, CalibrationNormalizationTable, PhaseDependent, SpatialPhotometricModel } from '../data/schema';
+import type { AlbedoMeasurementView, CalibrationNormalizationTable, HapkePhaseFile, HapkePhaseTable, PhaseDependent, SpatialPhotometricModel } from '../data/schema';
 import type { V3 } from './raycast';
 
 export type XYZS = [number, number, number, number];
@@ -356,6 +356,43 @@ function zonalDiskIntegral(law: ResolvedLaw, a: number, zonal: { profile: ZonalP
   throw new Error('Zonal surface-law disk quadrature did not converge to 1e-6');
 }
 
+/** One endpoint-smoothed order, also the bounded-cost fallback for an unavailable bare table. */
+function bareDiskIntegralAtOrder(law: ResolvedLaw, a: number, order: number): XYZS {
+  // The sine map makes distances to both lune edges quadratic in the node coordinate:
+  // it smooths the fractional-power endpoints of Minnaert without clipping the law.
+  // Akimov contains cos(beta)^(a/(pi-a)); its width is O(sqrt((pi-a)/pi)).
+  // beta = atan(scale*tan(u)) resolves that concentration even as the lune narrows.
+  const delta = Math.PI - a;
+  const scale = law.kind === LAW.akimov ? Math.sqrt(delta / Math.PI) : 1;
+
+  const { x, w } = gaussLegendre(order);
+  // Split at the equator and mu0=mu (eps=delta/2), where roughness changes branch.
+  // The bare law is even in beta (zonal profiles use the row-split path above).
+  const latitudes = Array.from(x, (v, q) => {
+    const u = (v + 1) * Math.PI / 4, t = Math.tan(u);
+    const beta = Math.atan(scale * t);
+    const jac = scale * (1 + t * t) / (1 + scale * scale * t * t);
+    return { cb: Math.cos(beta), sb: Math.sin(beta), wb: w[q] * Math.PI / 4 * jac };
+  }).map(v => ({ ...v, wb: 2 * v.wb }));
+  const acc: XYZS = [0, 0, 0, 0];
+  for (const side of [-1, 1]) for (let p = 0; p < order; p++) {
+    const u = side * (x[p] + 1) * Math.PI / 4;
+    const eps = delta * (1 + Math.sin(u)) / 2;
+    const wl = w[p] * delta * Math.PI / 8 * Math.cos(u);
+    const cl = Math.sin(eps);
+    // mu0 = cos(beta)*sin(delta-eps) avoids cancellation in the thin crescent.
+    const ci = Math.sin(delta - eps);
+    for (const { cb, wb } of latitudes) {
+      const mu = cb * cl, mu0 = cb * ci;
+      const r = lawRadf(law, mu0, mu, a);
+      if (!(r > 0)) continue;
+      const f = r * mu * cb * wl * wb;
+      for (let k = 0; k < 4; k++) acc[k] += f;
+    }
+  }
+  return acc.map(v => v / Math.PI) as XYZS;
+}
+
 /**
  * I(α) = (1/π) ∫ r(μ0, μ, α)·M̄(lat) dA_proj over the unit disk (per channel), for a distant observer.
  * Photometric frame: z toward the observer, x in the observer–Sun plane toward the Sun. The lit and
@@ -371,40 +408,7 @@ export function lawDiskIntegral(law: ResolvedLaw, alpha: number, zonal?: { profi
   const lam0 = a - Math.PI / 2, lam1 = Math.PI / 2;
   if (lam1 <= lam0) return [0, 0, 0, 0];
   if (zonal) return zonalDiskIntegral(law, a, zonal, n);
-  // The sine map makes distances to both lune edges quadratic in the node coordinate:
-  // it smooths the fractional-power endpoints of Minnaert without clipping the law.
-  // Akimov contains cos(beta)^(a/(pi-a)); its width is O(sqrt((pi-a)/pi)).
-  // beta = atan(scale*tan(u)) resolves that concentration even as the lune narrows.
-  const delta = Math.PI - a;
-  const scale = law.kind === LAW.akimov ? Math.sqrt(delta / Math.PI) : 1;
-  const evaluate = (order: number): XYZS => {
-    const { x, w } = gaussLegendre(order);
-    // Split at the equator and mu0=mu (eps=delta/2), where roughness changes branch.
-    // The bare law is even in beta (zonal profiles use the row-split path above).
-    const latitudes = Array.from(x, (v, q) => {
-      const u = (v + 1) * Math.PI / 4, t = Math.tan(u);
-      const beta = Math.atan(scale * t);
-      const jac = scale * (1 + t * t) / (1 + scale * scale * t * t);
-      return { cb: Math.cos(beta), sb: Math.sin(beta), wb: w[q] * Math.PI / 4 * jac };
-    }).map(v => ({ ...v, wb: 2 * v.wb }));
-    const acc: XYZS = [0, 0, 0, 0];
-    for (const side of [-1, 1]) for (let p = 0; p < order; p++) {
-      const u = side * (x[p] + 1) * Math.PI / 4;
-      const eps = delta * (1 + Math.sin(u)) / 2;
-      const wl = w[p] * delta * Math.PI / 8 * Math.cos(u);
-      const cl = Math.sin(eps);
-      // mu0 = cos(beta)*sin(delta-eps) avoids cancellation in the thin crescent.
-      const ci = Math.sin(delta - eps);
-      for (const { cb, wb } of latitudes) {
-        const mu = cb * cl, mu0 = cb * ci;
-        const r = lawRadf(law, mu0, mu, a);
-        if (!(r > 0)) continue;
-        const f = r * mu * cb * wl * wb;
-        for (let k = 0; k < 4; k++) acc[k] += f;
-      }
-    }
-    return acc.map(v => v / Math.PI) as XYZS;
-  };
+  const evaluate = (order: number) => bareDiskIntegralAtOrder(law, a, order);
   // Relative successive-order tolerance is numerical, not a fit/scene parameter. Leave two
   // orders of margin to the 1e-4 reference contract; fail explicitly if refinement cannot resolve it.
   let order = Math.max(16, Math.ceil(n)), prev = evaluate(order);
@@ -553,6 +557,92 @@ const scalarXYZS = (v: number): XYZS => [v, v, v, v];
 
 function profileCuts(z: ZonalProfile): number[] {
   return z.cuts ?? Array.from({ length: z.rows }, (_, j) => Math.PI * (0.5 - (j + 0.5) / z.rows));
+}
+
+type PhaseCell = HapkePhaseTable['cells'][number];
+/** Piecewise cubic in log(I / particle-phase-factor) versus t=log(pi/(pi-alpha)); this removes the crescent's
+ * vanishing power law. Each cell is checked at seven interlaced points against converged
+ * quadrature, to 1e-7 relative. The supported-model tested bound is 2e-5 (not an
+ * interval-arithmetic certificate for arbitrary future Hapke fits). Construction belongs exclusively to the pipeline bridge; frames only read its product. */
+function hapkePhaseFactor(law: ResolvedLaw, a: number): number {
+  const tg = Math.tan(a / 2), Bs = law.hs > 0 ? 1 / (1 + tg / law.hs) : 0;
+  const x = law.hc > 0 ? tg / law.hc : Infinity;
+  const Bc = x > 1e-9 ? (1 - Math.expm1(-x) / x) / (2 * (1 + x) ** 2) : 1;
+  return doubleHG(a, law.b, law.c) * (1 + law.bs0 * Bs) * (1 + law.bc0 * Bc);
+}
+export function buildHapkePhaseCells(law: ResolvedLaw): PhaseCell[] {
+  if (law.kind !== LAW.hapke || !(law.p > 0)) throw new Error('Expected a nonzero Hapke law');
+  const out: PhaseCell[] = [], cache = new Map<number, number>();
+  const evalAt = (t: number) => {
+    let v = cache.get(t);
+    if (v === undefined) {
+      const a = Math.PI * -Math.expm1(-t);
+      v = Math.log(lawDiskIntegral(law, a, undefined, 24)[0] / hapkePhaseFactor(law, a));
+      cache.set(t, v);
+    }
+    return v;
+  };
+  const visit = (lo: number, hi: number, depth: number) => {
+    const values = [0, 1 / 3, 2 / 3, 1].map(u => evalAt(lo + u * (hi - lo)));
+    const cell = { lo, hi, values };
+    let error = 0;
+    for (const u of [1 / 12, 1 / 6, 1 / 4, 1 / 2, 3 / 4, 5 / 6, 11 / 12])
+      error = Math.max(error, Math.abs(Math.expm1(cubic(cell, lo + u * (hi - lo)) - evalAt(lo + u * (hi - lo)))));
+    if (error <= 1e-7) out.push(cell);
+    else if (depth < 16) { const mid = (lo + hi) / 2; visit(lo, mid, depth + 1); visit(mid, hi, depth + 1); }
+    else throw new Error('Surface-law phase interpolation did not converge');
+  };
+  const end = Math.log(Math.PI / 1e-4);
+  for (let j = 0; j < 16; j++) visit(end * j / 16, end * (j + 1) / 16, 0);
+  return out;
+}
+function cubic(c: PhaseCell, t: number): number {
+  const u = (t - c.lo) / (c.hi - c.lo), [a, b, d, e] = c.values;
+  return -4.5 * (u - 1 / 3) * (u - 2 / 3) * (u - 1) * a
+    + 13.5 * u * (u - 2 / 3) * (u - 1) * b
+    - 13.5 * u * (u - 1 / 3) * (u - 1) * d
+    + 4.5 * u * (u - 1 / 3) * (u - 2 / 3) * e;
+}
+
+// Replaced atomically at data load, never constructed in a frame. Exact resolved-law keys
+// prevent reuse for a changed fit; the loader checks the TS source digest before installation.
+let hapkePhaseTables = new Map<string, HapkePhaseTable>();
+const hapkeLawKey = (law: ResolvedLaw) => JSON.stringify(law);
+export function installHapkePhaseTables(product: HapkePhaseFile | null, spatialCodeSha256: string | null): string[] {
+  const tables = new Map<string, HapkePhaseTable>(), notes: string[] = [];
+  for (const [id, entry] of Object.entries(product ?? {})) {
+    const t = entry?.value;
+    const resolved = t?.model?.kind === 'hapke' ? resolveLaw(t.model, 0) : null;
+    let hi = 0;
+    const valid = t?.algorithm === 'hapke-phase-v1' && t.spatialCodeSha256 === spatialCodeSha256
+      && spatialCodeSha256 !== null && t.relativeTolerance > 0 && t.relativeTolerance <= 1e-5 && t.interpolationTolerance > 0 && t.interpolationTolerance <= 1e-7
+      && t.minCrescentRad > 0 && t.minCrescentRad <= 1e-4 && Array.isArray(t.cells) && t.cells.length > 0
+      && t.cells.every(c => {
+        const good = c != null && c.lo === hi && c.hi > c.lo && Number.isFinite(c.hi)
+          && Array.isArray(c.values) && c.values.length === 4 && c.values.every(Number.isFinite);
+        if (c) hi = c.hi; return good;
+      }) && Math.abs(hi - Math.log(Math.PI / t.minCrescentRad)) < 1e-12;
+    if (!valid || !resolved || 'error' in resolved) {
+      notes.push(`${id}: missing, stale or invalid bare Hapke phase table → bounded fixed-order normalization`);
+    } else tables.set(hapkeLawKey(resolved.law), t);
+  }
+  hapkePhaseTables = tables;
+  return notes;
+}
+export function hapkePhaseTableIssue(law: ResolvedLaw, alpha: number): string | null {
+  if (law.kind !== LAW.hapke || law.p === 0 || alpha >= Math.PI) return null;
+  const table = hapkePhaseTables.get(hapkeLawKey(law));
+  if (!table) return 'bare Hapke phase table missing or stale → bounded fixed-order normalization';
+  if (Math.PI - alpha < table.minCrescentRad) return 'bare Hapke phase outside table domain → bounded fixed-order normalization';
+  return null;
+}
+function hapkePhaseLookup(law: ResolvedLaw, a: number): XYZS | null {
+  const table = hapkePhaseTables.get(hapkeLawKey(law));
+  if (!table || Math.PI - a < table.minCrescentRad) return null;
+  const t = Math.log(Math.PI / (Math.PI - a)), cells = table.cells;
+  let lo = 0, hi = cells.length - 1;
+  while (lo < hi) { const mid = (lo + hi) >>> 1; if (t > cells[mid].hi) lo = mid + 1; else hi = mid; }
+  return scalarXYZS(Math.exp(cubic(cells[lo], t)) * hapkePhaseFactor(law, a));
 }
 
 interface ZonalSpectrum { coeff: Float64Array; energy: XYZS; min: XYZS; max: XYZS; slope: XYZS; knots: Float64Array }
@@ -872,7 +962,7 @@ export class MotionNormalization {
       key += `|${id}|${pole.join(',')}`;
       at = { profile: zonal.profile, pole };
     }
-    return this.fixed.get(key, () => (at ? fixedOrderZonalIntegral(law, centre, at, n) : lawDiskIntegral(law, centre, undefined, n)));
+    return this.fixed.get(key, () => (at ? fixedOrderZonalIntegral(law, centre, at, n) : law.kind === LAW.hapke ? bareDiskIntegralAtOrder(law, centre, n) : lawDiskIntegral(law, centre, undefined, n)));
   }
 
   get(law: ResolvedLaw, alpha: number, zonal?: { profile: ZonalProfile; pole: V3 }): XYZS {
@@ -960,7 +1050,11 @@ export class MotionNormalization {
       if (a < 1e-6) return scalarXYZS((1 + Math.cos(a)) / 2);
       return scalarXYZS(Math.cos(a / 2) * 2 * delta / Math.PI ** 2 * latitudeBeta((a / delta + 1) / 2));
     }
-    if (law.kind === LAW.hapke && law.p === 0) return scalarXYZS(0);
+    if (law.kind === LAW.hapke) {
+      if (law.p === 0) return scalarXYZS(0);
+      const value = hapkePhaseLookup(law, a);
+      if (value) return value;
+    }
     return this.fixedOrder(law, a);
   }
 }

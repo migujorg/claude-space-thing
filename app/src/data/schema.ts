@@ -221,6 +221,19 @@ export interface CalibrationNormalizationTable {
   mapTileSha256?: (string | null)[];
 }
 
+/** Build-time bare Hapke integral. log(I / particle phase factor), cubic in log crescent width. */
+export interface HapkePhaseTable {
+  algorithm: 'hapke-phase-v1';
+  model: Extract<SpatialPhotometricModel, {kind: 'hapke'}>;
+  cells: {lo: number; hi: number; values: number[]}[];
+  minCrescentRad: number;
+  interpolationTolerance: number;
+  relativeTolerance: number;
+  sourceCodeSha256: string;
+  spatialCodeSha256: string;
+}
+export type HapkePhaseFile = Record<string, Sourced<HapkePhaseTable>>;
+
 /** Informational spread of a single bare-ellipsoid view around its mean. */
 export interface AlbedoViewSpread {
   bareMaxRelative: number;

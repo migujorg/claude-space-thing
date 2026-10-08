@@ -2,7 +2,16 @@ import fs from 'node:fs';import {createRequire} from 'node:module';
 const p=JSON.parse(fs.readFileSync(0,'utf8'));
 const {build}=createRequire(process.cwd()+'/package.json')('esbuild');
 if(!fs.existsSync(p.bundle)) await build({stdin:{contents:"export * from './src/render/spatial.ts';export {zonalMeanOfLevel0} from './src/render/surface.ts';",resolveDir:process.cwd(),loader:'ts'},outfile:p.bundle,bundle:true,platform:'node',format:'esm',logLevel:'silent'});
-const lib=await import(p.bundle),norm=new lib.EllipsoidNormalization();
+const lib=await import(p.bundle);
+if(p.kind==='hapke-phase') {
+ const resolved=lib.resolveLaw(p.model,0);if('error' in resolved)throw Error(resolved.error);
+ console.log(JSON.stringify({algorithm:'hapke-phase-v1',model:p.model,
+  cells:lib.buildHapkePhaseCells(resolved.law),minCrescentRad:1e-4,
+  interpolationTolerance:1e-7,relativeTolerance:1e-5,
+  sourceCodeSha256:p.sourceHash,spatialCodeSha256:p.spatialHash}));
+ process.exit(0);
+}
+const norm=new lib.EllipsoidNormalization();
 const map=p.hasMap?lib.zonalMeanOfLevel0(p.tiles.map(path=>{if(!path)return null;const b=fs.readFileSync(path);return b.buffer.slice(b.byteOffset,b.byteOffset+b.byteLength);})):undefined;
 const end=Math.log(Math.PI/1e-8),cache=new Map();
 function value(t){
