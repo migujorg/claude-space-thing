@@ -185,15 +185,16 @@ def test_products_guard_and_layout(products):
 
 
 def test_known_plus_synthetic_matches_model(products):
-    """Per population and H bin (conditioned ranges): catalogued + synthetic = the debiased model, within Poisson
-    rounding and the bins where the catalogue already exceeds the model."""
+    """Catalogue + retained synthetic + CFEPS vetoes recover the conditioned pre-survey model,
+    within Poisson rounding and bins where the catalogue already exceeds the model."""
     ho, o, hc, c = products
     for p in ho["populations"]:
         m = c["pop"] == p["code"]
         for h in np.unique(c["ih"][m]):
             mm = m & (c["ih"] == h)
             model = float(c["nModel"][mm].sum())
-            have = float(c["nObs"][mm].sum() + c["nShown"][mm].sum())
+            removed = sum(r['before']-r['after'] for r in p['model'].get('surveyVeto', {}).get('changedCells', []) if r['ih'] == h)
+            have = float(c['nObs'][mm].sum() + c['nShown'][mm].sum()) + removed
             if model > 2000:
                 assert abs(have - model) / model < 0.05, (p["name"], h, have, model)
         if not m.any():
@@ -203,7 +204,7 @@ def test_known_plus_synthetic_matches_model(products):
         # objects can sit in (e, i) cells the model leaves empty, e.g. irregular moons outside the known-moon template)
         # plus the synthetic ones; rounding adds up to half an object per cell.
         tm = float(c["nModel"][m].sum())
-        th = float(p["totals"]["knownInGroups"] + c["nShown"][m].sum())
+        th = float(p["totals"]["knownInGroups"] + c["nShown"][m].sum()) + p["model"].get("surveyVeto", {}).get("removed", 0)
         assert abs(th - tm) <= max(0.03 * tm, 0.5 * math.sqrt(int(m.sum())) + 2.0), (p["name"], th, tm)
 
 
