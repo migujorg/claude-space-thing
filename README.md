@@ -4,14 +4,14 @@ A data-backed solar system simulator: what you would actually see if you were ma
 
 ## Running it
 
-You need [uv](https://docs.astral.sh/uv/getting-started/installation/) (it fetches Python 3.11, the version the pipeline is tested with, if needed), [Node.js](https://nodejs.org) 22 LTS (or 20.19+), a current Chrome or Edge (WebGPU), and the disk space of your [build profile](#build-profiles). Then, from the repository root:
+You need [uv](https://docs.astral.sh/uv/getting-started/installation/) (it fetches Python 3.11, the version the pipeline is tested with, if needed), [Node.js](https://nodejs.org) 22.12+ LTS (or 20.19+), a current Chrome or Edge (WebGPU), and the disk space of your [build profile](#build-profiles). Then, from the repository root:
 
 ```sh
 ./run.sh                                                  # Linux, macOS, WSL, Git Bash
 powershell -ExecutionPolicy Bypass -File .\run.ps1        # Windows
 ```
 
-The script checks the machine (`pipeline doctor`), builds the data with the **standard** profile, installs the app's packages and opens the app at http://localhost:5173. The rendering scripts start their own server on `127.0.0.1` at a free port and never use 5173 unless explicitly pointed at the app with `--base` ([why](app/e2e/README.md#the-scripts-own-server)). Pass `minimal` or `full` to choose another profile, e.g. `./run.sh full`. Nothing is committed but code: the first build downloads everything from the data archives and takes hours (table below). It can be interrupted at any time. Run the same command again and it resumes: finished stages are kept and interrupted downloads continue where they stopped. If a stage fails (a host is down, say), the others still build, the app starts with what exists, and the next run retries only what is missing. When everything is up to date, a later run starts the app within a minute.
+The script checks the machine (`pipeline doctor`), installs the app's packages, builds the data with the **standard** profile and opens the app at http://localhost:5173. The rendering scripts start their own server on `127.0.0.1` at a free port and never use 5173 unless explicitly pointed at the app with `--base` ([why](app/e2e/README.md#the-scripts-own-server)). Pass `minimal` or `full` to choose another profile, e.g. `./run.sh full`. Raw downloads and built universe products are not committed: the first build downloads everything from the data archives and takes hours (table below). It can be interrupted at any time. Run the same command again and it resumes: finished stages are kept and interrupted downloads continue where they stopped. If a stage fails (a host is down, say), the others still build, the app starts with what exists, and the next run retries only what is missing. When everything is up to date, a later run starts the app within a minute.
 
 In the app press `?` for keys. Click anything to see its provenance; `X` cycles the reality level (Strict / Best estimate / Complete), `V` toggles naked-eye vs enhanced view, `/` searches. `E` opens Moments: eclipses, Galilean-moon phenomena, Saturn's ring-plane crossings, oppositions and elongations, and near-Earth-object approaches inside the data window, computed by the app from the loaded ephemerides, each with a "go there" camera and its provenance.
 
@@ -19,7 +19,7 @@ With the full data, the app also draws Earth’s airglow and aurora, Titan’s H
 
 ## Build profiles
 
-The data is built by `cd pipeline && uv run python -m pipeline build --profile <name>` (the run scripts do this). The pipeline has 15 stages. The `albedo_reference` stage runs after `light` and `surfaces` and needs Node.js plus the app's esbuild package in `app/node_modules`; prepare those app packages before a direct pipeline build. It uses the renderer's TypeScript integrator to build `albedo-reference.json`. A profile chooses which stages run and at what size, never what a product means. Products it leaves out are simply absent, and the app says so in its Data panel (`M`).
+The data is built by `cd pipeline && uv run python -m pipeline build --profile <name>` (the run scripts do this). The pipeline has 15 stages. The `albedo_reference` stage runs after `light` and `surfaces` and needs Node.js plus the app's esbuild package in `app/node_modules`; prepare those app packages before a direct pipeline build. It uses the renderer's TypeScript integrator to build `albedo-reference.json` and the bare Hapke phase tables in `hapke-phase.json`. A profile chooses which stages run and at what size, never what a product means. Products it leaves out are simply absent, and the app says so in its Data panel (`M`).
 
 | profile | cold download | kept in data/raw | disk needed | products | cold build | forced rebuild | stages |
 |---|---|---|---|---|---|---|---|
@@ -39,7 +39,7 @@ The values are bit-identical to the bulk files' (`docs/reports/stars.md` §8). T
 
 On a fast line, a full build can still be quicker from the bulk files: `--set stars.xpSource=bulk` streams all 114 GB once for every star tier. This is the older route, 145 GB and about 3.7 h for full. Times were measured at 20–40 MB/s on 4 cores.
 
-Per stage (`python -m pipeline costs` prints this table; the numbers live in `pipeline/src/pipeline/config.py`, measured or taken from each stage's report in `docs/reports/`). "Forced rebuild" is the time to rebuild a stage with `data/raw` already filled, e.g. after a pipeline update changed it; a stage that nothing changed is skipped.
+Per stage (configuration estimates from earlier measured runs, not the current catalogue sizes; `python -m pipeline costs` prints rounded values from this table; the numbers live in `pipeline/src/pipeline/config.py`, measured or taken from each stage's report in `docs/reports/`). "Forced rebuild" is the time to rebuild a stage with `data/raw` already filled, e.g. after a pipeline update changed it; a stage that nothing changed is skipped.
 
 | stage | cold download | kept in data/raw | peak disk | products | cold build | forced rebuild | notes |
 |---|---|---|---|---|---|---|---|
@@ -65,7 +65,7 @@ Useful commands (in `pipeline/`, prefixed with `uv run python -m pipeline`):
 - `plan --profile P` shows what `build` would run and why (not built yet, code or parameters changed, inputs changed…).
 - `build --profile P [--skip a,b] [--set key=value] [--force]` builds. `--only a,b` runs exactly those stages, whether up to date or not (development). The output is copied to `data/cache/logs/`, and the build ends with a summary of what was built, what was skipped and why.
 - Before each stage, `build` compares the disk space the stage may need (its peak in the table, less what is already downloaded or built) with the free space. If the stage may not fit, it does not start it, unless you pass `--force-space`.
-- `build --adopt --profile P` records products that already exist (e.g. built before resumable builds, or copied in) as up to date. It runs and downloads nothing. It hashes every product against `manifest.json`, and a JSON file rewritten after its manifest entry (e.g. merged by hand) is accepted and re-registered once it parses and everything it names exists. For each stage it prints adopted, or not adoptable with the reason.
+- `build --adopt --profile P` records products that already exist (e.g. built before resumable builds, or copied in) as up to date. It runs and downloads nothing. It hashes every product against `manifest.json`, and a JSON file rewritten after its manifest entry (e.g. merged by hand) is accepted and re-registered once it parses and everything it names exists. For each stage it prints adopted, or not adoptable with the reason. Body/layer-only surface builds and subset/reorientation shape builds are recorded as `partial`, not whole-stage completion, and cannot be resumed or adopted as a complete stage.
 - `params` lists every stage parameter (e.g. `surfaces.maxLevel`, `shapes.damit`, `gaia.xpWorkers`) and its environment-variable alias.
 
 Downloads go to `data/raw/` (sha256-recorded in `data/raw/_downloads.json`), intermediates to `data/cache/` (safe to delete), products to `app/public/data/`. To put downloads on another drive, set `PIPELINE_RAW` and `PIPELINE_CACHE` to absolute paths. The time window of the data is centered on the moment of the first build and stored in `data/cache/window.json`; `build --new-window` recenters it on "now" (every time-dependent stage then rebuilds).
@@ -84,10 +84,10 @@ CI (`.github/workflows/ci.yml`) runs the first two on every push, offline and wi
 
 The data are rebuilt on another day, with another time window, another SBDB snapshot and newer Earth orientation kernels, and the tests must not care. So the tests use two kinds of reference and never mix them:
 
-- **Committed references** (`app/tests/fixtures/`, `pipeline/tests/fixtures/`) hold values for stated inputs: orbit solutions with their orbit id, Horizons vectors with their query URL, SPICE values with the kernel files they came from (sha256; fixed kernel files only, so nothing from the Earth orientation kernels, which NAIF reissues). Each has its own epoch and, for small bodies, its own force model, and a test uses it with those, not with the epoch of the data under test. A build never writes them, and rebuilding the data never requires regenerating them.
+- **Committed references** (`app/tests/fixtures/`, `pipeline/tests/fixtures/`) hold values for stated inputs: orbit solutions with their orbit id, Horizons vectors with their query URL, SPICE values with the kernel files they came from (sha256; fixed kernel files only, so nothing from the Earth orientation kernels, which NAIF reissues). Each has its own epoch and, for small bodies, its own force model, and a test uses it with those, not with the epoch of the data under test. Profile builds preserve them (`build.writeRepoFiles=0`); development `--only sbphotometry` builds can refresh the photometry reference. Ordinary catalogue and orientation rebuilds use build records and do not require new fixtures.
 - **Build records** (`verification/<stage>.json` in the built data, listed in the manifest) are written by a stage in the same run as its products and name their sha256: the states the `smallbodies` stage put in `core.bin` with its integrator's positions and Horizons' through the window, the CNEOS close approaches of this window on the orbit solutions the catalogue holds, and SPICE's own evaluation of the kernels the `bodies` stage copied the orientation products from. A test of "the app reads this product as the pipeline wrote it" compares with the record of the build it runs against.
 
-A comparison that cannot be made is not dropped: it is a skipped test whose name starts with `NOT COMPARED:` and says what and why (a reference epoch outside the built ephemeris, a product copied from another kernel file, a published eclipse outside the window, a build made before its stage wrote a record). The number of skipped tests in the summary of `npm test` on a full build is the number of comparisons that build could not make; `npm test -- --reporter=verbose | grep "NOT COMPARED"` lists them.
+A comparison that cannot be made is not dropped: it is a skipped test whose name starts with `NOT COMPARED:` and says what and why (a reference epoch outside the built ephemeris, a product copied from another kernel file, a published eclipse outside the window, a build made before its stage wrote a record). Data comparisons that the build cannot make appear among the skipped tests; opt-in diagnostic/report tests can also skip. For the unavailable comparisons, `npm test -- --reporter=verbose | grep "NOT COMPARED"` lists them.
 
 Regenerate a committed reference only when what it describes changes (the force model, the integrator, the verification set, the planetary kernel), or when the window has moved so far that most of its epochs are reported as not compared:
 
@@ -96,9 +96,14 @@ cd pipeline
 uv run python -m pipeline.sb_fixtures                 # small bodies; needs the smallbodies stage built
 uv run python -m pipeline.ephem_fixtures              # ephemeris, time, rotation, lunar orientation; queries Horizons
 uv run python -m pipeline.ephem_fixtures orientation  # only the lunar orientation reference, from data/raw, no network
+uv run python -m pipeline.stages.comets --write-fixture # explicit comet reference renewal, needs Horizons
 ```
 
 `TEST_DATA_DIR=<built data> npm test` and `TEST_FIXTURE_DIR=<references> npm test` run the app suite against another build or another set of references.
+
+Validation uses eleven calibrated-image cases, 4 × 4 samples per pixel by default, and reports in-frame ratios, scene-dependent comparisons and cases that could not render. `cd app && node scripts/validate-sampling.mjs` measures sampling convergence on the GPU; `cd pipeline && uv run python -m pipeline.validation report` generates the report from the recorded run. The GPU is also the reference renderer for the 36-scene regression suite, whose frame-cost and held-eye-clock gates apply even when accepting a baseline ([scene and validation tooling](app/e2e/README.md)).
+
+A refused frame or WebGPU error appears in the app's persistent top alert, including when the UI is hidden. Frame sizes are checked against the device's texture, buffer and dispatch limits; a refused size needs a smaller viewport or device pixel ratio.
 
 ## Layout
 

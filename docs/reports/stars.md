@@ -6,7 +6,9 @@ fetching the XP spectra of the 440 702 selected sources, 0.61 GB; with `--set st
 streaming all 114 GB of Gaia XP bulk files; from the cache ≈ 1 min; §8). Code: `pipeline/src/pipeline/stages/stars.py` and
 `pipeline/src/pipeline/stars_*.py`; tests `pipeline/tests/test_stars_*.py`. Dataset notes:
 `docs/sources/gaia-dr3.md`, `hipparcos.md`, `star-spectrophotometry.md`, `star-names.md`. Numbers below are from
-the build of 2026-09-30 (window mid-epoch J2026.746); the stage writes them to `data/cache/stars/diagnostics.json`.
+the build of 2026-09-30 (window mid-epoch J2026.746), with the M4 updates identified below; the stage writes them to `data/cache/stars/diagnostics.json`.
+
+The shared product read on 7 October 2026 holds **482 458** stars. The M1 count below (482 459) predates the M4 rebuild; numerical tables and download/timing comparisons are historical measurements, not a current-run certificate.
 
 ## Summary
 
@@ -378,15 +380,15 @@ variable designations; names product).
 * **No observer parallax.** Directions are barycentric. From the outer planets nearby stars shift by up to
   ~23″ (α Cen from 30 au) — below eye resolution, but a zoomed "enhanced" view would show it. Adding parallax
   (f32, with a label) would cost 4 bytes per record.
-* **Proper motion within the window** is not in the file; over ±18 months the fastest bright star (α Cen,
-  3.7″/yr) moves 5.5″. The app treats `dir` as fixed at `epochEt`.
+* **Proper motion within the window** is not in the file. For example, Barnard's star (10.4″/yr in the
+  comparison above) moves about 15.6″ over 18 months. The app treats `dir` as fixed at `epochEt`.
 * **Brightest stars without spectra.** The 436 stars on the Hipparcos V, B − V route (Betelgeuse, Antares,
   α Cen A/B, Hadar, Acrux, ...: brighter than G = 4 or missing from Gaia) are `estimated`. Since M4 the Sternberg
   catalogues (III/208 + III/207) make 50 of the former ones `derived`, among them Aldebaran, Spica and Polaris.
 * **Pulkovo absolute scale** differs from HST by 3–7 % and ~0.005 in chromaticity (§3); not corrected (a
   cross-calibration would itself be an assumption).
 * **Variable stars** carry catalogue-mean brightness (flag 1); Betelgeuse varies by ~1 mag.
-* **Stars fainter than the limit** (and the unresolved Milky Way) hold ~47 % of all starlight: M4 (diffuse light).
+* **Stars fainter than the bright-tier limit** hold ~47 % of all starlight; M4 now supplies them through deep points and sky maps (docs/reports/sky.md).
 * **Environment note for other stages:** `import colour` without matplotlib installs a MagicMock as
   `sys.modules['matplotlib']`, after which importing `astropy.time` fails ("matplotlib.__spec__ is not set").
   The stars stage works around it locally (`stages/stars.py::_import_astropy`); installing matplotlib or fixing
