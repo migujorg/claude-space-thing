@@ -335,3 +335,107 @@ def centaur_selection_comparison(arch: dict, classifier: dict, tab: dict, grid: 
                        'unknownDomain': int(np.sum(inside & (status == -1))),
                        'unknownBright': int(np.sum(inside & (states[:,6] <= 21))),
                        'unknownFaint': int(np.sum(inside & (states[:,6] >= 23.5)))}}
+
+
+# ---------------------------------------------------------------------------------------------- CFEPS
+# SI definition of light speed: exactly 299792458 m/s (BIPM SI Brochure, 9th ed.).
+_C_KM_S = 299792.458
+# Bowell, Hapke, Domingue, Lumme, Peltoniemi & Harris (1989), Application of photometric models to
+# asteroids, Asteroids II, pp. 524–556: H-G basis coefficients. G is the conventional assumption
+# already used by the synthetic stage; none of these coefficients is fitted to this survey or its yield.
+_HG_A = (3.33, 1.87)
+_HG_B = (.63, 1.22)
+_HG_G = .15
+
+
+def cfeps_field_probability(field: dict, ra, dec, mag, rate, angle) -> np.ndarray:
+    """Discovery probability within published characterized domain, including filling factor.
+
+    Polygons match getsur.f95: each vertex x offset is divided by cos(vertex declination).
+    Direction is atan2(north rate, west rate), as in surveysub.f95. Tracking is deliberately separate.
+    """
+    ra, dec, mag, rate, angle = (np.asarray(x) for x in (ra, dec, mag, rate, angle))
+    x = (ra - field['ra'] + 180) % 360 - 180
+    verts = np.asarray(field['vertices'])
+    vy = verts[:, 1] + field['dec']
+    vx = verts[:, 0] / np.cos(np.radians(vy))
+    inside = np.zeros(x.shape, dtype=bool)
+    for j in range(len(vx)):
+        k = (j+1) % len(vx)
+        if vy[j] == vy[k]:
+            continue
+        cross = (vx[k]-vx[j]) * (dec-vy[j]) / (vy[k]-vy[j]) + vx[j]
+        inside ^= ((vy[j] > dec) != (vy[k] > dec)) & (x < cross)
+    eff = field['eff']
+    lo, hi, mean, half = eff['rate_cut']
+    r0, r1 = eff['rates']
+    eligible = inside & (mag <= eff['mag_lim'][0]) & (rate >= max(lo, r0)) & (rate <= min(hi, r1))
+    eligible &= np.abs((angle-mean+180) % 360-180) <= half
+    A, m0, s1, s2 = eff['double_param']
+    eta = A / 4 * (1-np.tanh((mag-m0)/s1)) * (1-np.tanh((mag-m0)/s2))
+    return np.where(eligible, np.clip(field['fill'] * eta, 0, 1), 0.)
+
+
+def cfeps_keep(probability, prefix: str, member) -> np.ndarray:
+    """One independent SHA256 uniform per original L7 member, independent of order and cell counts.
+
+    Keep iff u >= P(any characterized discovery). No redraw or replacement after a veto.
+    """
+    u = np.array([(int.from_bytes(hashlib.sha256(f'{prefix}|cfeps-discovery-v1|{int(m)}'.encode()).digest()[:8], 'big') >> 11)
+                  / 2**53 for m in member])
+    return u >= np.asarray(probability)
+
+
+def cfeps_probability(el: dict, epoch_et: float, fields: list[dict], observer,
+                      mu: float, au_km: float, obliquity: float, band_minus_v: dict) -> tuple[np.ndarray, dict]:
+    """Orbit-specific P(any discovery) = 1 - product(1 - fill*eta) across published pointings.
+
+    Assumes independent detection/filling draws across pointings, as the released simulator does.
+    observer(JD) returns TDB et and geocentric heliocentric ICRF position/velocity in km, km/s.
+    Two-body orbit is the candidate's own; light time iterated, no invented measured-magnitude noise.
+    """
+    n = len(el['a'])
+    missed = np.ones(n)
+    per_field = []
+    for field in fields:
+        band = field['eff']['filter']
+        if band not in band_minus_v:
+            raise ValueError(f'unknown CFEPS band conversion: {band}')
+        et, earth, earth_v = observer(field['epochJd'])
+        mean_motion = np.degrees(np.sqrt(mu / (el['a'] * au_km)**3))
+        def state(t):
+            return sm.elements_to_icrf(el['a'], el['e'], el['i'], el['node'], el['peri'],
+                                      (el['M'] + mean_motion*(t-epoch_et)) % 360, mu, au_km, obliquity)
+        if n == 0:
+            per_field.append({'block': field['block'], 'epochJd': field['epochJd'], 'candidates': 0, 'expectedDetections': 0.})
+            continue
+        pos, vel = state(et)
+        for _ in range(4):
+            delta = np.linalg.norm(pos-earth, axis=1)
+            pos, vel = state(et - delta/_C_KM_S)
+        ray = pos - earth
+        delta = np.linalg.norm(ray, axis=1)
+        direction = ray / delta[:, None]
+        # Derivative of the converged light-time equation; velocities are km/s.
+        emit_rate = (1 + direction @ earth_v / _C_KM_S) / (1 + np.sum(direction*vel, axis=1)/_C_KM_S)
+        rv = vel * emit_rate[:, None] - earth_v
+        x, y, z = ray.T
+        rho = np.hypot(x, y)
+        ra = np.degrees(np.arctan2(y, x)) % 360
+        dec = np.degrees(np.arctan2(z, rho))
+        east = (-y*rv[:, 0]+x*rv[:, 1]) / (rho*delta)
+        north = (rho*rv[:, 2]-z*(x*rv[:, 0]+y*rv[:, 1])/rho) / delta**2
+        scale = np.degrees(1.) * 3600 * 3600  # rad/s -> arcsec/hour (unit conversion)
+        rate = np.hypot(east, north) * scale
+        angle = np.degrees(np.arctan2(north, -east))
+        r = np.linalg.norm(pos, axis=1)
+        phase = np.arccos(np.clip(np.sum(pos*ray, axis=1)/(r*delta), -1, 1))
+        tan = np.tan(phase/2)
+        phi = (1-_HG_G)*np.exp(-_HG_A[0]*tan**_HG_B[0]) + _HG_G*np.exp(-_HG_A[1]*tan**_HG_B[1])
+        mag = el['H'] + band_minus_v[band] + 5*np.log10(r*delta / au_km**2) - 2.5*np.log10(phi)
+        probability = cfeps_field_probability(field, ra, dec, mag, rate, angle)
+        missed *= 1-probability
+        per_field.append({'block': field['block'], 'epochJd': field['epochJd'],
+                          'candidates': int(np.sum(probability > 0)), 'expectedDetections': float(probability.sum())})
+    return 1-missed, {'candidatesInCharacterizedSpace': int(np.sum(missed < 1)),
+                      'expectedVetoes': float((1-missed).sum()), 'pointings': per_field}

@@ -472,3 +472,15 @@ it('names comet nuclei whose nuclear H cannot condition the Centaur population',
   expect(row?.method).toContain('P/bound: unqualified');
   expect(row?.method).toContain('M1 and lower bounds do not count');
 });
+
+it('discloses the CFEPS discovery residual separately from the fitted completeness proxy', () => {
+  const t = syntheticTables();
+  const p = { ...POP, name: 'tno', model: { surveyVeto: {
+    method: "CFEPS discovery residual; other surveys' histories are not used.", before: 10, after: 7, removed: 3,
+  } } };
+  const s = readSynthetic({ ...t.objects.header, populations: [p] }, t.objects.buffer, t.cells.header, t.cells.buffer);
+  const facts = syntheticFacts(s, 0, 'complete', 'fixture');
+  expect(facts.rows.find(r => r.key === 'syn:survey')?.method).toContain("other surveys' histories are not used");
+  expect(facts.rows.find(r => r.key === 'syn:survey')?.value).toContain('3');
+  expect(facts.rows.find(r => r.key === 'syn:limit')?.value).toContain('separate CFEPS');
+});

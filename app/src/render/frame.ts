@@ -6,7 +6,7 @@ import type { AlbedoMeasurementView } from '../data/schema';
 import type { SceneAtmosphere, SceneBody, SceneSnapshot } from './scene';
 import { AU_KM } from './constants';
 import { diskIlluminance, diskModelPPhi, evalPhase, extrapolatePhase, LAMBERT_ALBEDO_PER_GEOMETRIC_ALBEDO, limbDarkenedI0, meanRadius, phaseRangeDeg, type XYZS } from './photometry';
-import { LAMBERT_LAW, lawRadf, MotionNormalization, EllipsoidNormalization, mapDiskIntegral, NormalizationCache, photometricFrame, resolveLaw, TEXEL_LAW, type ResolvedLaw, type ZonalProfile } from './spatial';
+import { LAMBERT_LAW, hapkePhaseTableIssue, lawRadf, MotionNormalization, EllipsoidNormalization, mapDiskIntegral, NormalizationCache, photometricFrame, resolveLaw, TEXEL_LAW, type ResolvedLaw, type ZonalProfile } from './spatial';
 import { sampleLevel0, type Level0Map } from './surface';
 import { MAX_POPULATION_NODES, NIGHT_LAMP, type CloudPopulation } from './earth';
 import { ATM_DISK_NODES, atmosphereDiskFactors, marsDustScale, modelDiskXYZS } from './atmosphere';
@@ -426,6 +426,8 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
     const lr = resolveLaw(b.spatialModel, alpha);
     if ('error' in lr) warnings.push(`${b.name}: ${lr.error} → Lambert spatial distribution`);
     else law = lr.law;
+    const hapkeIssue = hapkePhaseTableIssue(law, alpha);
+    if (hapkeIssue) warnings.push(`${b.name}: ${hapkeIssue}`);
     // Surface maps need the body-fixed frame.
     let surface = b.orient && b.surface && opts.surfaces ? opts.surfaces(b) : null;
     if (!b.orient && b.surface && (b.surface.albedo || b.surface.height)) warnings.push(`${b.name}: orientation unknown → surface maps not shown`);

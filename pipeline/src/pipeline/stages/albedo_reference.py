@@ -69,11 +69,48 @@ def reference_table(naif: int, entry: dict) -> dict | None:
     return table
 
 
+
+def hapke_table(entry: dict) -> dict | None:
+    """Bare, geometry-independent phase integral; no map or calibration-view assumption."""
+    import hashlib
+    from ..paths import CACHE
+    model = entry.get("spatialModel", {}).get("value")
+    if not model or model["kind"] != "hapke":
+        return None
+    check_toolchain()
+    repo = Path(__file__).resolve().parents[4]
+    source_hash = hashlib.sha256(b"".join((repo / p).read_bytes() for p in CODE_INPUTS)).hexdigest()
+    spatial_hash = hashlib.sha256((repo / CODE_INPUTS[0]).read_bytes()).hexdigest()
+    request = {"kind": "hapke-phase", "model": model, "sourceHash": source_hash, "spatialHash": spatial_hash}
+    key = hashlib.sha256(json.dumps(request, sort_keys=True).encode()).hexdigest()
+    cached = CACHE / "albedo-reference" / f"hapke-{key}.json"
+    if cached.exists():
+        return json.loads(cached.read_text())
+    cached.parent.mkdir(parents=True, exist_ok=True)
+    request["bundle"] = str(cached.parent / f"integrator-{source_hash}.mjs")
+    result = subprocess.run(["node", str(repo / BRIDGE)], input=json.dumps(request),
+                            cwd=repo / "app", capture_output=True, text=True, check=True)
+    table = json.loads(result.stdout)
+    cached.write_text(json.dumps(table) + "\n")
+    return table
+
+
 def run(ctx: BuildContext) -> None:
     check_toolchain()
     photometry = json.loads((OUT / "photometry.json").read_text())
     product = {}
+    phases = {}
     for key, entry in photometry.items():
+        phase = hapke_table(entry)
+        if phase is not None:
+            law = entry["spatialModel"]
+            phases[key] = sourced(phase, worst(law["label"], "derived"), law["sources"],
+                method="Bare spherical Hapke integral, computed by the app's converged TypeScript integrator "
+                       "at build time. Piecewise cubic interpolation of log(I / particle phase factor) "
+                       "in log(pi/(pi-alpha)), checked at seven interlaced points per cell to 1e-7. "
+                       "Numerical relative accuracy contract 1e-5 over 0 to 179.9 degrees; "
+                       "the table extends to crescent width 1e-4 rad. No map/view assumption is introduced.")
+            print(f"[albedo_reference] {key} bare Hapke: {len(phase['cells'])} cells", flush=True)
         table = reference_table(int(key), entry)
         if table is not None:
             header = OUT/f"surfaces/{key}/albedo.json"
@@ -102,4 +139,15 @@ def run(ctx: BuildContext) -> None:
                          "view": entry["value"]["view"],
                          "mapTileSha256": entry["value"].get("mapTileSha256"),
                          "cells": len(entry["value"]["cells"])} for key, entry in product.items()},
+    }, "albedo_reference")
+
+    write_json(ctx, "hapke-phase.json", phases, "albedo_reference")
+    write_json(ctx, "verification/hapke-phase.json", {
+        "method": "Build record: bare Hapke table inputs and numerical tolerances, not observational fixtures.",
+        "products": {"hapke-phase.json": ctx.products["hapke-phase.json"]["sha256"]},
+        "bodies": {key: {"sourceCodeSha256": entry["value"]["sourceCodeSha256"],
+                         "spatialCodeSha256": entry["value"]["spatialCodeSha256"],
+                         "relativeTolerance": entry["value"]["relativeTolerance"],
+                         "interpolationTolerance": entry["value"]["interpolationTolerance"],
+                         "cells": len(entry["value"]["cells"])} for key, entry in phases.items()},
     }, "albedo_reference")
