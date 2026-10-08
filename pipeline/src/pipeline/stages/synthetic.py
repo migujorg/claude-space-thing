@@ -823,7 +823,8 @@ def run(ctx: BuildContext) -> None:
                     "attribute stream of model-realization populations); u0 = first 8 bytes of sha256(same string + "
                     "'|round') / 2^64",
         "yieldRule": "shown = the first floor(deficit + u0) candidates of the cell's stream that pass its current "
-                     "limits. Yield is aggregate, not one-to-one replacement of a discovery. With fixed model, limits and "
+                     "limits, then thinned by the CFEPS discovery residual for TNOs without replacement. "
+                     "Yield is aggregate, not one-to-one replacement of a discovery. With fixed model, limits and "
                      "templates, increased eligible counts reduce group deficits (subject to cell rounding); catalogue "
                      "refits can change limits, normalization, orbit and attribute templates and do not guarantee "
                      "monotonic counts or stable identities.",

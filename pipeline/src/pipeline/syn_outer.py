@@ -375,8 +375,8 @@ def cfeps_keep(probability, prefix: str, member) -> np.ndarray:
 
     Keep iff u >= P(any characterized discovery). No redraw or replacement after a veto.
     """
-    u = np.array([int.from_bytes(hashlib.sha256(f'{prefix}|cfeps-discovery-v1|{int(m)}'.encode()).digest()[:8], 'big')
-                  / 2**64 for m in member])
+    u = np.array([(int.from_bytes(hashlib.sha256(f'{prefix}|cfeps-discovery-v1|{int(m)}'.encode()).digest()[:8], 'big') >> 11)
+                  / 2**53 for m in member])
     return u >= np.asarray(probability)
 
 

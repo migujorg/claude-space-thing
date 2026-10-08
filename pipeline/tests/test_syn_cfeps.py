@@ -1,5 +1,4 @@
 """CFEPS published characterization and orbit-specific residuals; analytic fixtures stay here."""
-import copy
 import math
 
 import numpy as np
@@ -50,9 +49,29 @@ def test_candidate_orbit_inside_published_field_consumes_probability():
     f = ss.read_cfeps()[0]
     # Analytic circular ICRF orbit aimed at the published pointing; observer at Sun is a test fixture.
     el = {k: np.array([v]) for k, v in dict(a=40., e=.001, i=abs(f['dec']), node=f['ra']+90., peri=0., M=270., H=4.).items()}
-    # Test survey rate domain widened analytically; all measured probability parameters retained.
-    field = copy.deepcopy(f); field['eff']['rate_cut'] = [0., 20., 0., 180.]
-    p, report = so.cfeps_probability(el, 0., [field], lambda jd: (0., np.zeros(3), np.zeros(3)),
+    # A fixture geocentre velocity gives west-referenced motion within the unmodified published domain.
+    pos, vel = sm.elements_to_icrf(el['a'], el['e'], el['i'], el['node'], el['peri'], el['M'],
+                                  1.32712440041e11, 149597870.7, 0.)
+    ra, dec = math.radians(f['ra']), math.radians(f['dec'])
+    east = np.array([-math.sin(ra), math.cos(ra), 0.])
+    north = np.array([-math.sin(dec)*math.cos(ra), -math.sin(dec)*math.sin(ra), math.cos(dec)])
+    rv = (-east*math.cos(math.radians(20))+north*math.sin(math.radians(20))) * 3 / (math.degrees(1)*3600**2) * np.linalg.norm(pos)
+    earth_v = vel[0]-rv
+    p, report = so.cfeps_probability(el, 0., [f], lambda jd: (0., np.zeros(3), earth_v),
                                      1.32712440041e11, 149597870.7, 0., {'g': .423})
     assert 0 < p[0] <= .8
     assert report['candidatesInCharacterizedSpace'] == 1
+    # Independent published-pointing detection draws combine as a miss product.
+    doubled, _ = so.cfeps_probability(el, 0., [f, f], lambda jd: (0., np.zeros(3), earth_v),
+                                      1.32712440041e11, 149597870.7, 0., {'g': .423})
+    assert doubled[0] == pytest.approx(1-(1-p[0])**2)
+
+
+def test_input_checksum_rejects_changed_bytes(monkeypatch, tmp_path):
+    from shutil import copytree
+    copytree(ss.TABLES / 'cfeps', tmp_path / 'cfeps')
+    (tmp_path / 'cfeps.json').write_text((ss.TABLES / 'cfeps.json').read_text())
+    (tmp_path / 'cfeps' / 'L3h-smooth.eff').write_text('invented')
+    monkeypatch.setattr(ss, 'TABLES', tmp_path)
+    with pytest.raises(ValueError, match='changed CFEPS input'):
+        ss.read_cfeps()

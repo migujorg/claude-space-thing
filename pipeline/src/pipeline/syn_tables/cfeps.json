@@ -6,7 +6,7 @@
     "url": "https://github.com/OSSOS/SurveySimulator/tree/8e615762278566c2c524c2acc2e1526c172c3c82/F95/tests/Surveys/CFEPS",
     "version": "8e615762278566c2c524c2acc2e1526c172c3c82",
     "retrieved": "2026-10-07",
-    "sha256": "4c9b4831b800c003fc30a3942b6b7a6e88ef560dfa8e011ba3accb03f782e6a4",
+    "sha256": "013809d6943f55165db9de9d5c4a69fd1857668d0fc72115ac38dfff1c486a6c",
     "license": "EUPL (upstream LICENCE.txt)",
     "notes": "Unmodified public CFEPS records: 45 pointings / 22 efficiency files. Individual URLs, retrieval instants and raw checksums in syn_tables/cfeps.json; docs/sources/cfeps-characterization.md."
   },
@@ -24,13 +24,6 @@
       "sha256": "332f7dabce20b718fd463ba6aaf939c620c362f564a1c6fa3e7531a9f825a440",
       "retrievedUTC": "2026-10-08T01:46:09.560437+00:00",
       "name": "L3h-smooth.eff"
-    },
-    {
-      "url": "https://raw.githubusercontent.com/OSSOS/SurveySimulator/8e615762278566c2c524c2acc2e1526c172c3c82/docs/Template.eff",
-      "bytes": 4250,
-      "sha256": "aa9f7ee994e9f8712570d6f67ff7260422983d2e74422f764dfa9dc47c9d2254",
-      "retrievedUTC": "2026-10-08T01:46:10.042405+00:00",
-      "name": "Template.eff"
     },
     {
       "url": "https://raw.githubusercontent.com/OSSOS/SurveySimulator/8e615762278566c2c524c2acc2e1526c172c3c82/F95/tests/Surveys/CFEPS/L3f-smooth.eff",
