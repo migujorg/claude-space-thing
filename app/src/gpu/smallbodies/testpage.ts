@@ -843,8 +843,10 @@ async function moonAccuracy(): Promise<unknown> {
       const timeSamples:Measurement[]=[];
       let maxInitialKm=0;
       for (let k=0;k<debug.rows.length;k++) {
-        const j=debug.rows[k], st=syntheticState(syn,j,et,center)!, baseline=syntheticState(production,j,et,center)!;
-        const pop=compact.find(p=>p.code===syn.table.get('pop',j))!, cid=pop.center!.naifId, cs=center(cid,et)!;
+        const j=debug.rows[k], st=syntheticState(syn,j,et,center), baseline=syntheticState(production,j,et,center);
+        const pop=compact.find(p=>p.code===syn.table.get('pop',j))!, cid=pop.center!.naifId, cs=center(cid,et);
+        // A null here is a missing state, not a number: say which one (the first GPU runs of this page died on a bare null).
+        if (!st || !baseline || !cs) throw new Error(`no ${!st?`CPU state (variant ${name})`:!baseline?'production CPU state':`centre ${cid} state`} for moon row ${originalRows[j]} at ET ${et}`);
         const relative=[...st.pos.map((v,c)=>v-cs.pos[c]),...st.vel.map((v,c)=>v-cs.vel[c])];
         const got=Array.from(debug.states.subarray(k*6,k*6+6));
         if (!got.every(Number.isFinite)) throw new Error(`unknown GPU state at moon ${originalRows[j]}, ET ${et}`);
@@ -866,7 +868,8 @@ async function moonAccuracy(): Promise<unknown> {
         const cpuApparent=apparent(st.pos,st.vel,cam),gpuApparent=apparent(gpuPos,gpuVel,cam);
         const rec=Array.from(records.subarray((field.count+j)*8,(field.count+j)*8+3));
         const edge=reference.objects[j].edges.find(e=>e.et===et);
-        const selected=field.stateOf(field.count+j,et)!;
+        const selected=field.stateOf(field.count+j,et);
+        if (!selected) throw new Error(`field.stateOf gave no state for moon row ${originalRows[j]} (index ${field.count+j}) at ET ${et}, variant ${name}`);
         const id=`${pop.prefix}:row:${originalRows[j]}`;
         const row:Measurement={id,et,deltaKm,cpuKm:Math.hypot(...deltaKm),
           defaultCpuKm:Math.hypot(...gpuPos.map((v,c)=>v-baseline.pos[c])),cpuGridChangeKm:Math.hypot(...st.pos.map((v,c)=>v-baseline.pos[c])),
@@ -878,7 +881,8 @@ async function moonAccuracy(): Promise<unknown> {
         if(camera==='close') cameras.close={geometricRad:directionAngle(st.pos.map((v,c)=>v+sun[c]-cam[c]),gpuPos.map((v,c)=>v+sun[c]-cam[c])),
           apparentRad:directionAngle(cpuApparent,gpuApparent),renderedRad:row.shadeRad,distanceKm:Math.hypot(...cpuApparent),arcsec:row.shadeRad*ARCSEC_PER_RAD,pixels:row.shadeRad*pxPerRad,
           position45KmArcsec:Math.atan2(45,Math.hypot(...cpuApparent))*ARCSEC_PER_RAD,position45KmPixels:Math.atan2(45,Math.hypot(...cpuApparent))*pxPerRad};
-        const initial=syntheticState(production,j,E)!,c0=center(cid,E)!;
+        const initial=syntheticState(production,j,E,center),c0=center(cid,E);
+        if (!initial || !c0) throw new Error(`no epoch ${!initial?'CPU state':`centre ${cid} state`} for moon row ${originalRows[j]}`);
         maxInitialKm=Math.max(maxInitialKm,Math.hypot(...initial.pos.map((v,c)=>v-c0.pos[c]-reference.objects[j].initial[c])));
         timeSamples.push(Object.assign(row,{shadeArithmeticRad}));samples.push(row);
       }
