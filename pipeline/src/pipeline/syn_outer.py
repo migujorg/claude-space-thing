@@ -338,8 +338,14 @@ def centaur_selection_comparison(arch: dict, classifier: dict, tab: dict, grid: 
 
 
 # ---------------------------------------------------------------------------------------------- CFEPS
-# IAU 2012 Resolution B2 and SI definition of light speed; Bowell et al. 1989 H-G coefficients.
+# SI definition of light speed: exactly 299792458 m/s (BIPM SI Brochure, 9th ed.).
 _C_KM_S = 299792.458
+# Bowell, Hapke, Domingue, Lumme, Peltoniemi & Harris (1989), Application of photometric models to
+# asteroids, Asteroids II, pp. 524–556: H-G basis coefficients. G is the conventional assumption
+# already used by the synthetic stage; none of these coefficients is fitted to this survey or its yield.
+_HG_A = (3.33, 1.87)
+_HG_B = (.63, 1.22)
+_HG_G = .15
 
 
 def cfeps_field_probability(field: dict, ra, dec, mag, rate, angle) -> np.ndarray:
@@ -425,7 +431,7 @@ def cfeps_probability(el: dict, epoch_et: float, fields: list[dict], observer,
         r = np.linalg.norm(pos, axis=1)
         phase = np.arccos(np.clip(np.sum(pos*ray, axis=1)/(r*delta), -1, 1))
         tan = np.tan(phase/2)
-        phi = .85*np.exp(-3.33*tan**.63) + .15*np.exp(-1.87*tan**1.22)
+        phi = (1-_HG_G)*np.exp(-_HG_A[0]*tan**_HG_B[0]) + _HG_G*np.exp(-_HG_A[1]*tan**_HG_B[1])
         mag = el['H'] + band_minus_v[band] + 5*np.log10(r*delta / au_km**2) - 2.5*np.log10(phi)
         probability = cfeps_field_probability(field, ra, dec, mag, rate, angle)
         missed *= 1-probability
