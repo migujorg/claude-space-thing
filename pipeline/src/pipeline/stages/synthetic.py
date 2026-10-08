@@ -53,7 +53,7 @@ from ..paths import OUT
 from ..sb_table import LABEL_CODE, Field, read_table, write_table
 from ..schema import BuildContext
 
-DEPENDS: tuple[str, ...] = ("smallbodies", "bodies")
+DEPENDS: tuple[str, ...] = ("smallbodies", "bodies", "ephemeris")
 STAGE = "synthetic"
 DIR = "synthetic"
 REPORT = Path(__file__).resolve().parents[4] / "docs" / "reports" / "synthetic-populations.json"
@@ -762,6 +762,32 @@ def moon_population(pop: str, rows: list[dict], tab: dict, p: dict, templates: d
     }
 
 
+def moon_integration_metadata(core: dict, center: dict) -> dict:
+    """Runtime force inputs: elements stay byte-identical; f64 epoch states are stored beside them.
+
+    The host monopole includes its satellites. Differential external forces follow the same Newtonian
+    law as the catalogue kernel; solar PN / Earth J2 cannot be transplanted to this frame.
+    """
+    import copy
+    fm = copy.deepcopy(core["forceModel"])
+    host = next(p for p in fm["perturbers"] if p["naifId"] == center["naifId"])
+    if host["gm"] != center["gm"]:
+        raise ValueError("synthetic host GM differs from catalogue system GM")
+    fm["perturbers"] = [{**fm["sun"], "name": "Sun"}, *[p for p in fm["perturbers"] if p["naifId"] != center["naifId"]]]
+    fm["sun"] = {**host, "sources": core["forceModel"]["sun"]["sources"]}
+    fm["frame"] = f"host {center['naifId']} system-barycentric ICRF, km and s"
+    fm["relativity"]["enabled"] = False
+    fm["zonal"]["perturber"] = None
+    fm["nonGravitational"] = "none: synthetic irregular moons are massless test particles"
+    return {"kind": "host-smallbody-v1", "window": dict(core["window"]), "forceModel": fm,
+            "initialization": "Stored f64 ICRF epoch states are computed from the unchanged f32 elements using center.gm and retained beside those elements.",
+            "budgets": {"label": "synthetic", "individualTruePosition": None, "gpuNumericalKm": 1.941,
+                        "cpuNumerical": "All 458 original draws, both 2025-04-04/2028-04-04 edges: maximum 0.042166 km against same-force DOP853; regression threshold 0.1 km. Numerical check only, not an interval certificate.",
+                        "gpuAcceptance": "NVIDIA Blackwell hardware check, all 458 moons at 15 sampled times in the 2025-04-04 to 2028-04-04 window: stable tidal GPU minus f64 CPU maximum 1.941 km, p90 0.416 km; versus same-force DOP853 maximum 1.944 km at epoch/window edges. Rendered direction maxima: physical planet camera 0.028 arcsec, 10-radius camera 0.028 arcsec, Earth 0.022 arcsec; each below the predeclared 3.408-arcsec angular budget at 1280x720, 50-degree vertical field. Rendered-ray arithmetic alone maximum 0.022 arcsec. Sampled numerical evidence, not an interval, arbitrary-close-view or omitted-force certificate. Baseline direct-minus-indirect maximum 51.754 km, H/4 53.721 km: cancellation, not the step, dominates.",
+                        "omittedForces": "Historical Sun+host trials: Jupiter J2 168.915 km, resolved planet/Galileans 342.042 km; Saturn J2 144.471 km, resolved planet/Titan 762.623 km. Individual sampled increments, not a total bound for the Sun+external-planet model or arbitrary close views. Other satellites, higher zonals, radiation and relativistic frame corrections unbounded.",
+                        "evidence": "docs/reports/synthetic-moon-kernel.md; app/tests/fixtures/synthetic_moon_all_reference.json; lane synthetic-moons-kernel/root-gpu/moon-comparison.json (hardware, NVIDIA Blackwell, df64-fma, 4096 exact-arithmetic self-test cases, max relative error 2e-14)."}}
+
+
 # ---------------------------------------------------------------------------------------------- stage
 def run(ctx: BuildContext) -> None:
     t_stage = time.time()
@@ -799,13 +825,46 @@ def run(ctx: BuildContext) -> None:
         obj_cols["k"].append(r["k"][order])
         obj_cols["pop"].append(np.full(n_obj, r["code"]))
         obj_cols["colorClass"].append(np.asarray(o["colorClass"])[order])
-        pops_hdr.append(_pop_header(pop, r, src, first_cell, first_obj))
+        population = _pop_header(pop, r, src, first_cell, first_obj)
+        if population.get("center"):
+            integration = moon_integration_metadata(core_hdr, population["center"])
+            inputs = ["smallbodies/core.json", "smallbodies/core.bin", "ephem/centers.json", "ephem/centers.bin",
+                      core_hdr["forceModel"]["ephemeris"] + ".json", core_hdr["forceModel"]["ephemeris"] + ".bin"]
+            integration["inputProducts"] = {name: sha256_file(OUT / name) for name in inputs}
+            population["sources"] = sorted(set(population["sources"] + integration["forceModel"]["sun"]["sources"]
+                                               + integration["forceModel"]["perturberSources"]))
+            population["model"]["integration"] = integration
+            population["model"]["motion"] = ("Synthetic initial orbit propagated by the existing small-body kernel in the host system-barycentric frame: "
+                                              "system monopole plus stable tidal differential Sun and external catalogue perturbers; host excluded from perturbers. "
+                                              "Same translated CPU model for selection and GPU records for picking. Host J2 and resolved internal moon forces omitted.")
+            population["model"]["positionUncertainty"] = ("Individual true position/covariance and total omitted-force/current-view budget unknown. "
+                + integration["budgets"]["cpuNumerical"] + " " + integration["budgets"]["gpuAcceptance"] + " "
+                + integration["budgets"]["omittedForces"] + " Historical C3 fixed-element drift is superseded as the motion model; it is not a bound on this model.")
+        pops_hdr.append(population)
         first_obj += n_obj
         first_cell += c.n
     cells = {k: np.concatenate(v) for k, v in cell_cols.items()}
     objs = {k: np.concatenate(v) for k, v in obj_cols.items()}
     if not np.all(objs["H"].astype(np.float32) >= cells["hLim"][objs["cell"]].astype(np.float32)):
         raise AssertionError("a synthetic object is brighter than its cell's completeness limit")
+    # Explicit f64 initial states beside the unchanged f32 elements. Use the values AFTER storage rounding,
+    # in the final draw order, so this is the same realization the app used before host propagation.
+    for population in pops_hdr:
+        if not population.get("center"):
+            continue
+        a = slice(population["firstObject"], population["firstObject"] + population["objects"])
+        initial_value = []
+        if population["objects"]:
+            initial_pos, initial_vel = sm.elements_to_icrf(
+                *[objs[k][a].astype(np.float32).astype(np.float64) for k in ("a", "e", "i", "node", "peri", "M")],
+                population["center"]["gm"], AU_KM, cat["obliquity"])
+            initial_value = np.column_stack([initial_pos, initial_vel]).tolist()
+        population["model"]["integration"]["initialState"] = {
+            "value": initial_value, "label": "synthetic",
+            "sources": population["sources"], "epochEt": core_hdr["epochEt"],
+            "frame": f"{population['center']['name']}-relative ICRF", "units": ["km", "km/s"],
+            "indexing": "value[k] is [x,y,z,vx,vy,vz] for firstObject+k; identities/elements are unchanged",
+            "method": "Kepler initialization from the stored f32 elements (not the generator's unrounded draws), center.gm and the product obliquity; f64 JSON numbers beside the original elements"}
     n_obj, n_cell = int(objs["a"].size), int(cells["pop"].size)
     common = {
         "algorithm": sm.ALGORITHM, "seed": res["seed"], "epochEt": core_hdr["epochEt"],

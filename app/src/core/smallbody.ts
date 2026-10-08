@@ -30,6 +30,24 @@ export interface PlanetPositions {
   positionSSB(id: number, et: number): Vec3 | null;
 }
 
+/** Translate the catalogue Newtonian law to a system-barycentric origin. Internal moon mass is already
+ * in the host GM; never double-count the host or transplant solar 1PN / Earth J2 to a different origin. */
+export function hostForceModel(base: SmallBodyForceModel, hostId: number, hostGm: number): SmallBodyForceModel {
+  const host = base.perturbers.find(p => p.naifId === hostId);
+  if (!host || host.gm !== hostGm) throw new Error('host force model requires the sourced system GM');
+  return { ...base, frame: `host ${hostId} system-barycentric ICRF, km and s`,
+    sun: { ...host, sources:base.sun.sources }, perturbers: [{ ...base.sun, name:'Sun' }, ...base.perturbers.filter(p => p.naifId !== hostId)],
+    relativity: { ...base.relativity, enabled: false }, zonal: { ...base.zonal, perturber: null },
+    nonGravitational: 'none: synthetic irregular moons are massless test particles' };
+}
+
+/** Host batches subtract nearly equal external accelerations (moon distance << solar distance).
+ * Catalogue batches drift about the Sun; it is not an external perturber, so there is no
+ * direct-minus-indirect solar kick to cancel. The old arithmetic is a named diagnostic only. */
+export function stableDifferential(model: SmallBodyForceModel, diagnosticForceVariant?: 'baseline' | 'tidal'): boolean {
+  return diagnosticForceVariant ? diagnosticForceVariant === 'tidal' : model.sun.naifId !== 10;
+}
+
 export const SB_OK = 0;
 /** Passed inside a perturber's (or the Sun's) radius: later positions are meaningless. */
 export const SB_COLLIDED = 1;
@@ -260,11 +278,13 @@ export class SmallBodyPropagator {
   private readonly j2: number;
   private readonly j2R: number;
   private readonly pole: [number, number, number];
+  private readonly stableDifferential: boolean;
   private readonly rp: Float64Array;
   private readonly rpe: Float64Array;
   private readonly a = new Float64Array(3);
 
-  constructor(model: SmallBodyForceModel, eph: PlanetPositions) {
+  constructor(model: SmallBodyForceModel, eph: PlanetPositions, diagnosticForceVariant?: 'baseline' | 'tidal') {
+    this.stableDifferential = stableDifferential(model, diagnosticForceVariant);
     this.model = model;
     this.eph = eph;
     this.mu = model.sun.gm;
@@ -313,9 +333,20 @@ export class SmallBodyPropagator {
       const rp2 = px * px + py * py + pz * pz;
       const rp3 = rp2 * Math.sqrt(rp2);
       const g = this.gm[p];
-      a0 += g * (dx / d3 - px / rp3);
-      a1 += g * (dy / d3 - py / rp3);
-      a2 += g * (dz / d3 - pz / rp3);
+      const q = this.stableDifferential ? (x0*x0 + x1*x1 + x2*x2 - 2*(px*x0 + py*x1 + pz*x2)) / rp2 : Infinity;
+      if (this.stableDifferential && Math.abs(q) < 0.5) {
+        const w = 1 + q, A = w * Math.sqrt(w);
+        const f = -q * (3 + q * (3 + q)) / (A * (1 + A));
+        const scale = g / rp3;
+        a0 += scale * (f * px - (1 + f) * x0);
+        a1 += scale * (f * py - (1 + f) * x1);
+        a2 += scale * (f * pz - (1 + f) * x2);
+      } else {
+        // Near an external perturber q approaches -1: retain the direct separation.
+        a0 += g * (dx / d3 - px / rp3);
+        a1 += g * (dy / d3 - py / rp3);
+        a2 += g * (dz / d3 - pz / rp3);
+      }
     }
     const jp = this.j2Index;
     if (jp >= 0) {

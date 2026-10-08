@@ -115,11 +115,11 @@ For the eye, H 20 is far below anything visible (§9), so a fainter floor change
 
 **GPU.** `SmallBodyField` puts the synthetic records after the catalogue's in the same point buffer (index = catalogue count + j), so the renderer hook, pick and record layout are unchanged. The kernel `syntheticShader`:
 
-- moves each object on its fixed Kepler ellipse, with the mean motion and mean anomaly in double-single and the rest in float32;
-- evaluates sin/cos with Cody-Waite reduction and the Cephes minimax polynomials. WGSL's built-in sin/cos only guarantee 2^−11 absolute accuracy; on SwiftShader that moved objects by ~1e-4 of their distance;
+- moves heliocentric draws on fixed Kepler ellipses (mean anomaly in double-single), and consumes integrated double-single host-barycentric states for irregular moons ([motion model](synthetic-moon-kernel.md));
+- for the fixed-element path, evaluates sin/cos with Cody-Waite reduction and the Cephes minimax polynomials. WGSL's built-in sin/cos only guarantee 2^−11 absolute accuracy; on SwiftShader that moved objects by ~1e-4 of their distance;
 - applies the light time and H-G photometry with the class colours.
 
-The records are zero below Complete: nothing is drawn or pickable, and one clearBuffer runs on the switch. Against float64 two-body positions of the same elements, for 20 000 objects over ±548 d (test page mode=synthetic, SwiftShader):
+The records are zero below Complete: nothing is drawn or pickable, and one clearBuffer runs on the switch. The following historical fixed-motion device check was against float64 two-body positions of the same elements, for 20 000 objects over ±548 d (test page mode=synthetic, SwiftShader):
 
 - direction p50 1.1e-7 rad, p99 8e-7 rad, max 8e-6 rad (1.7″; the largest errors are distant TNOs);
 - photometry within 0.0007 mag for V < 30. The ~V 36 extreme TNOs differ by up to 3 mag, because the device's exp2 is coarse there; that is 10 magnitudes below anything visible.
@@ -133,7 +133,7 @@ Pick finds a synthetic object at Complete and returns nothing at Best. With the 
   - a name that says what they are (e.g. "Synthetic main-belt asteroid #12,346");
   - no flags;
   - position label `synthetic`, so the reality filter admits them, their ring and label included, at Complete only;
-  - float64 two-body positions and a Kepler orbit track;
+  - float64 fixed heliocentric or integrated host-barycentric positions, and an osculating Kepler orbit guide;
   - no resolved shape, and a navigation radius from D(H, p_V).
 - The HUD reads "N catalogued + M synthetic small bodies drawn / K withheld at Complete". The Data panel lists the layer per population.
 - **Complete is the default level** when the build has a synthetic layer and small bodies are enabled (reality.ts `defaultReality({ syntheticLayerAvailable })`, driven by the manifest; with `smallbodies=0` Best estimate stays the default). A level chosen by the user or the URL is kept.
@@ -161,7 +161,7 @@ Pick finds a synthetic object at Complete and returns nothing at Best. With the 
 
 ## 10. Limitations
 
-- Synthetic orbits are statistical samples on fixed two-body ellipses, outside the catalogue force-model integration path. GPU arithmetic agreement with that same Kepler law does not bound omitted-force position drift. Individual true positions and object/viewpoint position budgets are unknown; [audit C3](synthetic-limitations.md#sampled-propagation-drift-c3) gives representative discrepancies over the built window, including degree-scale moon errors. Perturbations matter for the time coherence of the sampled universe.
+- Heliocentric synthetic orbits are statistical samples on fixed two-body ellipses, outside the catalogue force-model integration path. Irregular moons now use the catalogue propagator in a translated host frame; GPU precision and total omitted-force/viewpoint budgets remain unverified ([evidence](synthetic-moon-kernel.md)). GPU arithmetic agreement with that same Kepler law does not bound omitted-force position drift. Individual true positions and object/viewpoint position budgets are unknown; [audit C3](synthetic-limitations.md#sampled-propagation-drift-c3) gives representative discrepancies over the built window, including degree-scale moon errors. Perturbations matter for the time coherence of the sampled universe.
 - Within a cell, a, e and i are uniform. Within an a-bin, (e, i) comes from the bright catalogue; families and their different size distributions are not modelled separately.
 - The main-belt slope is one slope for the whole belt: Maeda's sample reaches R ≤ 3.0 au, and the outer belt and Hungarias use it by assumption. The slope's ±0.01 changes the synthetic main belt by −5.4 % / +5.6 % (1.88 M / 2.10 M at H 20).
 - The layer is conditioned on the SBDB snapshot. Its known counts include single-opposition objects: they were detected.
@@ -251,7 +251,7 @@ The limits lie fainter than the surveys' own statements of completeness. Sheppar
 
 Synthetic jovian moons have D 0.8–2.3 km (V ≥ 24.3 from the Earth), saturnian ones D 2.3–3.7 km (V ≥ 25.5).
 
-**Motion.** The elements are about the planet-system barycentre (`populations[].center`: its NAIF id and the system GM from gm_de440). Fixed two-body elements are translated with the host ephemeris. Solar perturbations, oblateness and other moons are omitted. The [C3 sampled drift table](synthetic-limitations.md#sampled-propagation-drift-c3) reports a Jovian representative maximum of 7,943,358.2 km and 27.285603° from the planet centre, and a Saturnian maximum of 1,647,439.4 km and 5.000635° over 2025-04-04 to 2028-04-04. These are sampled diagnostic discrepancies, not bounds for all objects or observers. The inspector displays them as historical evidence and states the individual position budget as unknown.
+**Motion.** The elements are about the planet-system barycentre (`populations[].center`: its NAIF id and the system GM from gm_de440). The existing catalogue propagator integrates their sampled epoch states under the system monopole and differential Sun/external catalogue perturbers, then translates with the host ephemeris. Host oblateness and resolved internal moon forces are omitted; inspectable numerical checks and separate historical omission increments are described in [the motion report](synthetic-moon-kernel.md). The [C3 sampled drift table](synthetic-limitations.md#sampled-propagation-drift-c3) reports a Jovian representative maximum of 7,943,358.2 km and 27.285603° from the planet centre, and a Saturnian maximum of 1,647,439.4 km and 5.000635° over 2025-04-04 to 2028-04-04. These are sampled diagnostic discrepancies, not bounds for all objects or observers. These figures describe the superseded fixed motion. The inspector now displays the integrated model and separate numerical/omission information, keeping individual true position and total current-view budget unknown.
 
 ### 12.3 The app
 
@@ -303,3 +303,7 @@ conditions or the Trojan coupled stability mask, and the real-valued family
 densities below fitted offsets remain unspecified. No missing coefficient is
 invented, and no part of those inactive fits controls the draw (`syn_sources.py`
 `RESONANT_MODEL_NOTES`).
+
+## Integrated irregular-moon motion
+
+The initial deterministic elements and populations described above remain unchanged. Jupiter/Saturn irregular moons now use two host-system-barycentric batches of the existing catalogue propagator, with differential solar and external catalogue-perturber gravity. Stored elements initialize the epoch state; orbit overlays show the osculating ellipse guide. The selected-object CPU law and GPU point/picking path share the force metadata. Host J2/resolved internal moon forces and individual true astrometry remain unknown/unmodelled; GPU moon precision requires device checks. [Representation, numerical evidence, cost and scene predictions](synthetic-moon-kernel.md). Heliocentric synthetic motion remains fixed Kepler. Historical screenshots and fixed-motion arithmetic comparisons above describe the previous implementation.

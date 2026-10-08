@@ -19,9 +19,12 @@
 // fma() when the device's fma is verified exact by the self-test (./field.ts).
 
 import type { SmallBodyForceModel, SmallBodyPhotometry } from '../../data/schema';
+import { stableDifferential } from '../../core/smallbody';
 import { df, f32 } from './wgslConst';
 
 export interface KernelConfig {
+  /** Named diagnostic override; host production uses stable tides, catalogue production stays direct. */
+  diagnosticForceVariant?: 'baseline' | 'tidal';
   model: SmallBodyForceModel;
   /** Planet samples per grid interval (including both ends). */
   samples: number;
@@ -310,7 +313,28 @@ fn kick_accel(xh: vec3f, xl: vec3f, v: vec3f, u: f32, iv: u32, ngi: u32, out: pt
     let d2 = dot(d, d);
     if (d2 < RAD2[b]) { return 1u; }
     let id = inverseSqrt(d2);
-    acc = acc + (GM[b] * id * id * id) * d;
+    if (STABLE_DIFFERENTIAL) {
+      // R is perturber - origin. Avoid subtracting two independently rounded large accelerations.
+      // q = (|R-x|^2-|R|^2)/|R|^2; A = (1+q)^(3/2).
+      // f = 1/A - 1 = -q(3+3q+q^2)/(A(1+A)), without cancellation as x/R -> 0.
+      let R = prel(b, iv, s, vec3f(0.0), vec3f(0.0));
+      let x = xh + xl;
+      let R2 = dot(R, R);
+      let q = (dot(x, x) - 2.0 * dot(R, x)) / R2;
+      let w = 1.0 + q;
+      if (abs(q) < 0.5) {
+        let A = w * sqrt(w);
+        let f = -q * (3.0 + q * (3.0 + q)) / (A * (1.0 + A));
+        let invR = inverseSqrt(R2);
+        acc = acc + (GM[b] * invR * invR * invR) * (f * R - (1.0 + f) * x);
+      } else {
+        // No large cancellation near a perturber; avoid q -> -1 losing the separation.
+        let invR = inverseSqrt(R2);
+        acc = acc + GM[b] * (id * id * id * d - invR * invR * invR * R);
+      }
+    } else {
+      acc = acc + (GM[b] * id * id * id) * d;
+    }
     if (i32(b) == J2_INDEX) {
       let zz = -dot(d, POLE);
       let f = J2K * (id * id) * (id * id * id);
@@ -319,7 +343,9 @@ fn kick_accel(xh: vec3f, xl: vec3f, v: vec3f, u: f32, iv: u32, ngi: u32, out: pt
     }
   }
   let bi = tix(iv, NB, s.j0);
-  acc = acc + s.w.x * T[bi].xyz + s.w.y * T[bi + 2u].xyz + s.w.z * T[bi + 4u].xyz + s.w.w * T[bi + 6u].xyz;
+  if (!STABLE_DIFFERENTIAL) {
+    acc = acc + s.w.x * T[bi].xyz + s.w.y * T[bi + 2u].xyz + s.w.z * T[bi + 4u].xyz + s.w.w * T[bi + 6u].xyz;
+  }
   let r = sqrt(r2);
   if (C2INV != 0.0) {
     let k = MU_F * C2INV / (r2 * r);
@@ -608,6 +634,7 @@ export function stepShader(cfg: KernelConfig): string {
   return /* wgsl */ `
 ${DF64_WGSL}
 ${perturberConsts(cfg.model)}
+const STABLE_DIFFERENTIAL: bool = ${stableDifferential(cfg.model, cfg.diagnosticForceVariant)};
 const NS: u32 = ${cfg.samples}u;
 const INV_SAMPLE_DT: f32 = ${f32((cfg.samples - 1) / cfg.model.grid.baseStepS)};
 struct FieldU { count: u32, zeroBits: u32, pad0: u32, pad1: u32 };
@@ -648,6 +675,7 @@ export function shadeShader(cfg: KernelConfig): string {
   return /* wgsl */ `
 ${DF64_WGSL}
 ${perturberConsts(cfg.model)}
+const STABLE_DIFFERENTIAL: bool = ${stableDifferential(cfg.model, cfg.diagnosticForceVariant)};
 const NS: u32 = ${cfg.samples}u;
 const INV_SAMPLE_DT: f32 = ${f32((cfg.samples - 1) / cfg.model.grid.baseStepS)};
 const C_KM_S: f32 = ${f32(cfg.cKmS)};
@@ -814,13 +842,15 @@ struct SynU {
   dt: vec2f, mode: u32, zeroBits: u32,
   first: u32, n: u32, groupsX: u32, base: u32,
   // centres 1..${SYN_MAX_CENTERS}: cen[k - 1] = centre - camera (km), cen[k - 1 + ${SYN_MAX_CENTERS}] = its SSB velocity (km/s)
-  cen: array<vec4f, ${2 * SYN_MAX_CENTERS}>,
+  cen: array<vec4f, ${3 * SYN_MAX_CENTERS}>,
 };
 @group(0) @binding(0) var<uniform> U: SynU;
 @group(0) @binding(1) var<storage, read> EL: array<vec4f>;
 @group(0) @binding(2) var<storage, read_write> R: array<vec4u>;
 // [catalogue drawn, catalogue withheld, synthetic drawn, synthetic withheld]
 @group(0) @binding(3) var<storage, read_write> CNT: array<atomic<u32>, 4>;
+@group(0) @binding(4) var<storage, read> MOON_SLOT: array<u32>;
+@group(0) @binding(5) var<storage, read> MOON: array<vec4f>;
 
 fn ecl_to_icrf(v: vec3f) -> vec3f { return vec3f(v.x, COS_OBL * v.y - SIN_OBL * v.z, SIN_OBL * v.y + COS_OBL * v.z); }
 
@@ -853,6 +883,10 @@ fn sincos_acc(x: f32) -> vec2f {
   let ecc = e0.y;
   let word = bitcast<u32>(e1.w);
   let cid = min((word >> 8u) & 0xffu, NCEN - 1u);
+  var pos: vec3f;
+  var vel: vec3f;
+  var posLow = vec3f(0.0);
+  if (cid == 0u) {
   // Mean anomaly M0 + n dt in df64, reduced to [0, 2 pi).
   let a_dd = dd_mul_f(AU_DD, e0.x);
   let nn = dd_sqrt(dd_div(MU_C[cid], dd_mul(dd_mul(a_dd, a_dd), a_dd)));
@@ -879,8 +913,19 @@ fn sincos_acc(x: f32) -> vec2f {
   let tw = sincos_acc(e1.x); let cw = tw.y; let sw = tw.x;
   let P = vec3f(cO * cw - sO * sw * ci, sO * cw + cO * sw * ci, sw * si);
   let Q = vec3f(-cO * sw - sO * cw * ci, -sO * sw + cO * cw * ci, cw * si);
-  let pos = ecl_to_icrf((a * (cE - ecc)) * P + (b * sE) * Q);
-  let vel = ecl_to_icrf((-a * sE * edot) * P + (b * cE * edot) * Q);
+  pos = ecl_to_icrf((a * (cE - ecc)) * P + (b * sE) * Q);
+  vel = ecl_to_icrf((-a * sE * edot) * P + (b * cE * edot) * Q);
+  } else {
+    let slot = MOON_SLOT[i];
+    if (slot == 0xffffffffu || bad(MOON[4u * slot].x)) {
+      R[2u * idx] = vec4u(0u);
+      R[2u * idx + 1u] = vec4u(0u,0u,0u,idx);
+      return;
+    }
+    pos = MOON[4u * slot].xyz;
+    posLow = MOON[4u * slot + 1u].xyz;
+    vel = MOON[4u * slot + 2u].xyz + MOON[4u * slot + 3u].xyz;
+  }
   // Camera-relative position, back-dated by the light time (first order, SSB velocity). pos and vel are relative to
   // the object's centre: the Sun (cid = 0), or a planet-system barycentre.
   var rel: vec3f;
@@ -894,9 +939,13 @@ fn sincos_acc(x: f32) -> vec2f {
     vh = vel;
   } else {
     let c = U.cen[cid - 1u].xyz;
-    rel = c + pos;
+    let cl = U.cen[cid - 1u + ${2*SYN_MAX_CENTERS}u].xyz;
+    let rx = dd_add(vec2f(c.x,cl.x),vec2f(pos.x,posLow.x));
+    let ry = dd_add(vec2f(c.y,cl.y),vec2f(pos.y,posLow.y));
+    let rz = dd_add(vec2f(c.z,cl.z),vec2f(pos.z,posLow.z));
+    rel = vec3f(rx.x+rx.y,ry.x+ry.y,rz.x+rz.y);
     vssb = vel + U.cen[cid - 1u + ${SYN_MAX_CENTERS}u].xyz;
-    helio = ((c + U.camH.xyz) + U.camL.xyz) + pos;
+    helio = ((rel + U.camH.xyz) + U.camL.xyz);
     vh = vssb - U.sunV.xyz;
   }
   let tau = length(rel) / C_KM_S;
@@ -944,6 +993,7 @@ export function unitTestShader(cfg: KernelConfig): string {
   return /* wgsl */ `
 ${DF64_WGSL}
 ${perturberConsts(cfg.model)}
+const STABLE_DIFFERENTIAL: bool = ${stableDifferential(cfg.model, cfg.diagnosticForceVariant)};
 const NS: u32 = ${cfg.samples}u;
 const INV_SAMPLE_DT: f32 = ${f32((cfg.samples - 1) / cfg.model.grid.baseStepS)};
 struct FieldU { count: u32, zeroBits: u32, mode: u32, iv: u32 };

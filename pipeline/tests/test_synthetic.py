@@ -385,7 +385,26 @@ def test_product_statements_disclose_limits_and_motion():
         assert "not a detection probability" in p["limit"]["uncertainty"]
         assert "pointing" in p["limit"]["uncertainty"]
         assert "unknown" in p["model"]["positionUncertainty"]
-        assert "fixed" in p["model"]["motion"]
+        if p.get("center"):
+            assert "differential Sun" in p["model"]["motion"]
+            integration = p["model"]["integration"]
+            fm = integration["forceModel"]
+            assert fm["sun"]["naifId"] == p["center"]["naifId"]
+            assert fm["sun"]["gm"] == p["center"]["gm"]
+            assert fm["sun"]["naifId"] not in [q["naifId"] for q in fm["perturbers"]]
+            assert 10 in [q["naifId"] for q in fm["perturbers"]]
+            assert not fm["relativity"]["enabled"] and fm["zonal"]["perturber"] is None
+            budget = integration["budgets"]
+            assert budget["gpuNumericalKm"] == pytest.approx(1.941)
+            assert budget["individualTruePosition"] is None
+            assert "3.408-arcsec" in budget["gpuAcceptance"]
+            assert "not an interval" in budget["gpuAcceptance"]
+            assert "root-gpu/moon-comparison.json" in budget["evidence"]
+            from pipeline.download import sha256_file
+            assert integration["inputProducts"]["ephem/centers.bin"] == sha256_file(OUT / "ephem/centers.bin")
+            assert set(fm["sun"]["sources"] + fm["perturberSources"]).issubset(p["sources"])
+        else:
+            assert "fixed" in p["model"]["motion"]
         if p["objects"]:
             assert "C3" in p["model"]["positionUncertainty"]
             assert "not a bound" in p["model"]["positionUncertainty"]
@@ -502,3 +521,38 @@ def test_og392_nuclear_h_reproduces_published_photometry_reduction():
     expected = 22.4 - 5 * math.log10(10.10 * 10.01) + 2.5 * math.log10(phi)
     assert math.isclose(r['H_V']['value'], expected, abs_tol=5e-5)
     assert r['H_V']['label'] == 'estimated'
+
+
+@pytest.mark.skipif(not HAVE_SB, reason="smallbodies products not built")
+def test_moon_force_translation_preserves_inputs_and_external_set():
+    import copy
+    import json
+    from pipeline.stages.synthetic import moon_integration_metadata
+    core = json.loads((OUT / "smallbodies/core.json").read_text())
+    before = copy.deepcopy(core)
+    for host_id in (5, 6):
+        host = next(p for p in core["forceModel"]["perturbers"] if p["naifId"] == host_id)
+        m = moon_integration_metadata(core, {"naifId": host_id, "gm": host["gm"]})
+        assert m["window"] == core["window"]
+        assert m["forceModel"]["sun"]["gm"] == host["gm"]
+        assert [p["naifId"] for p in m["forceModel"]["perturbers"]] == [10] + [p["naifId"] for p in core["forceModel"]["perturbers"] if p["naifId"] != host_id]
+    assert core == before
+
+
+@pytest.mark.skipif(not HAVE_SYN, reason="synthetic products not built")
+def test_moon_epoch_states_in_product_preserve_stored_elements():
+    """Cartesian states live beside the immutable stored elements, with their synthetic label and sources."""
+    import math
+    header, objects = read_table(OUT / 'synthetic/objects.json')
+    moons = [p for p in header['populations'] if p.get('center') and p['objects']]
+    assert sum(p['objects'] for p in moons) == 458
+    for p in moons:
+        initial = p['model']['integration']['initialState']
+        assert initial['label'] == 'synthetic'
+        assert initial['epochEt'] == header['epochEt']
+        assert set(initial['sources']) == set(p['sources'])
+        a = slice(p['firstObject'], p['firstObject'] + p['objects'])
+        pos, vel = sm.elements_to_icrf(*[objects[k][a].astype(np.float64) for k in ('a','e','i','node','peri','M')],
+                                      p['center']['gm'], header['auKm'], math.radians(header['obliquityArcsec']/3600))
+        expected = np.column_stack([pos, vel])
+        assert np.array_equal(np.asarray(initial['value']), expected)
