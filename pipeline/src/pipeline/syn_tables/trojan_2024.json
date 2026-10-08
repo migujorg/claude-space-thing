@@ -1,0 +1,133 @@
+{
+  "_about": "Inactive publication audit, not a draw. All supplied numerical values are measured fit inputs or source-defined model settings, with source/section inherited from the enclosing record. Missing inputs are null/unknown. Formal errors are not full systematics or independent covariance. See docs/sources/vokrouhlicky-2024-trojans.md.",
+  "activation": "inactive-missing-inputs",
+  "source": {
+    "id": "vokrouhlicky-2024-trojans",
+    "title": "Orbital and absolute magnitude distribution of Jupiter Trojans",
+    "citation": "Vokrouhlický, D., Nesvorný, D., Brož, M., Bottke, W. F., Deienno, R., Fuls, C. D. & Shelly, F. C. (2024). Orbital and absolute magnitude distribution of Jupiter Trojans. arXiv:2401.15537v1 (author manuscript, submitted to AJ).",
+    "url": "https://arxiv.org/pdf/2401.15537",
+    "version": "arXiv v1 (2024-01-28); manuscript draft 2024-01-30",
+    "retrieved": "2026-10-07T15:25:24.517932+00:00",
+    "sha256": "06f6b55c6edc1ca40c0f4a7ba2c508c576e3ea0404bfba97e53c4ff258186814"
+  },
+  "domain": {
+    "source": "vokrouhlicky-2024-trojans", "section": "Table 2; §§3.1.2, 5.2",
+    "band": "V", "HFit": [7, 15], "L5UnreliableAboveH": 14,
+    "selectionGridH": [7, 17],
+    "selectionGrid": {"A": [0, 0.7], "B": [0, 0.25], "C": [1.5, 2.05], "binWidthsABCH": [0.025, 0.01, 0.01, 0.10]},
+    "L4Extension": {"HMax": 15.5, "adopted": false, "reason": "§5.2: cautionary fit, local slope at H=15 inconsistent with nominal fit; improved detection modeling/data needed."}
+  },
+  "background": {
+    "source": "vokrouhlicky-2024-trojans", "section": "Eqs. 5–8; Table 3",
+    "label": "measured",
+    "orbitalParameterOrder": ["sA", "alpha1", "alpha2", "sB", "beta1", "beta2", "sC", "gamma"],
+    "density": "Product of A^alpha1 exp[-0.5(A/sA)^alpha2], B^beta1 exp[-0.5(B/sB)^beta2], exp[-0.5((C-1.5)/sC)^gamma], restricted to numerical coupled stability region.",
+    "knotsH": [7, 8.5, 10, 12, 13, 14, 15],
+    "slopeDefinition": "Mean slopes of log10 cumulative N(<H), not differential power-law coefficients. Table caption says seven segments but lists six, consistent with six gamma rows and §5.2.",
+    "splineEndConditions": {"value": null, "label": "unknown"},
+    "L4": {
+      "orbitalMedian": [0.0533, 1.274, 1.008, 0.0191, 1.156, 1.144, 0.0507, 0.941],
+      "orbitalSigma": [0.0105, 0.091, 0.063, 0.0028, 0.077, 0.061, 0.0031, 0.030],
+      "normalization": {"H": 14.5, "value": 3951, "sigma": 44, "label": "measured", "scope": "background only"},
+      "meanSlopes": [1.236, 0.656, 0.429, 0.497, 0.447, 0.388],
+      "slopeSigma": [0.448, 0.094, 0.021, 0.014, 0.008, 0.055]
+    },
+    "L5": {
+      "orbitalMedian": [0.3352, 0.644, 3.012, 0.0307, 1.106, 1.140, 0.0443, 0.929],
+      "orbitalSigma": [0.0178, 0.046, 0.247, 0.0041, 0.086, 0.088, 0.0036, 0.038],
+      "normalization": {"H": 14.5, "value": 2664, "sigma": 39, "label": "measured", "scope": "background only"},
+      "meanSlopes": [1.404, 0.638, 0.431, 0.468, 0.473, 0.344],
+      "slopeSigma": [0.386, 0.090, 0.025, 0.016, 0.010, 0.009]
+    }
+  },
+  "familyOrbitalParameterOrder": ["Aref", "sA", "alpha", "Bref", "sB", "beta", "Cref", "sC", "gamma1", "gamma2"],
+  "familySignedPowerConvention": {"value": null, "label": "unknown", "section": "Eqs. 10–12", "reason": "Eqs. 10–11 print signed offsets with noninteger exponents and no absolute values or support restriction below Aref/Bref; Eq. 12 also has Cref above Cmin for two families."},
+  "families": {
+    "Eurybates": {
+      "source": "vokrouhlicky-2024-trojans", "section": "Table 1; §5.2", "label": "measured", "cloud": "L4",
+      "orbitalCoefficients": [0.129, 0.004, 3.5, 0.049, 0.009, 2.6, 1.553, 0.04, 1.1, 1.75],
+      "largestRemnantProperSinIAndE": [0.129, 0.044], "largestRemnantH": 9.82, "hcmMembers": 875,
+      "normalization": {"H": 14.5, "value": 385, "sigma": 20, "label": "measured", "scope": "fitted component"},
+      "reportedSlopeChange": {"H": 14.5, "values": [0.78, 0.60], "sigma": [0.05, 0.04], "note": "Not a complete spline fit; last segment described as inexact."},
+      "fitRangeH": {"value": null, "label": "unknown"}, "knotsH": null, "meanSlopes": null
+    },
+    "Arkesilaos": {
+      "source": "vokrouhlicky-2024-trojans", "section": "Table 1; §5.2", "label": "measured", "cloud": "L4",
+      "orbitalCoefficients": [0.153, 0.004, 2.8, 0.035, 0.007, 3.5, 1.5, 0.02, 0.6, 1.3],
+      "largestRemnantProperSinIAndE": [0.155, 0.029], "largestRemnantH": 11.97, "hcmMembers": 235,
+      "normalization": {"H": 14.5, "value": null, "sigma": null, "label": "unknown"},
+      "fitRangeH": {"value": null, "label": "unknown"}, "knotsH": null, "meanSlopes": null
+    },
+    "Hektor": {
+      "source": "vokrouhlicky-2024-trojans", "section": "Table 1; §5.2", "label": "measured", "cloud": "L4",
+      "orbitalCoefficients": [0.323, 0.004, 3.5, 0.0553, 0.007, 3.5, 1.558, 0.05, 1.3, 2.1],
+      "largestRemnantProperSinIAndE": [0.326, 0.054], "largestRemnantH": 7.45, "hcmMembers": 118,
+      "normalization": {"H": 14.5, "value": null, "sigma": null, "label": "unknown"},
+      "fitRangeH": {"value": null, "label": "unknown"}, "knotsH": null, "meanSlopes": null
+    },
+    "Thronium": {
+      "source": "vokrouhlicky-2024-trojans", "section": "Table 1 footnote a; §5.2", "label": "measured", "cloud": "L4",
+      "orbitalCoefficients": [0.5252, 0.004, 4.5, 0.0415, 0.007, 5, null, null, null, null], "CBoxcar": [1.5, 1.53],
+      "largestRemnantProperSinIAndE": [0.526, 0.049], "largestRemnantH": 9.69, "hcmMembers": 69,
+      "normalization": {"H": 14.5, "value": null, "sigma": null, "label": "unknown"},
+      "fitRangeH": {"value": null, "label": "unknown"}, "knotsH": null, "meanSlopes": null
+    },
+    "Teucer": {
+      "source": "vokrouhlicky-2024-trojans", "section": "Table 1; §5.2", "label": "measured", "cloud": "L4",
+      "orbitalCoefficients": [0.3565, 0.004, 3, 0.0715, 0.01, 4, 1.5, 0.055, 1.7, 2],
+      "largestRemnantProperSinIAndE": [0.358, 0.073], "largestRemnantH": 8.87, "hcmMembers": 86,
+      "normalization": {"H": 14.5, "value": null, "sigma": null, "label": "unknown"},
+      "fitRangeH": {"value": null, "label": "unknown"}, "knotsH": null, "meanSlopes": null
+    },
+    "Ennomos": {
+      "source": "vokrouhlicky-2024-trojans", "section": "Table 1; §5.2", "label": "measured", "cloud": "L5",
+      "orbitalCoefficients": [0.464, 0.011, 4, 0.03, 0.01, 3, 1.5, 0.055, 1.4, 1.3],
+      "largestRemnantProperSinIAndE": [0.459, 0.032], "largestRemnantH": 8.68, "hcmMembers": 88,
+      "normalization": {"H": 14.5, "value": null, "sigma": null, "label": "unknown"},
+      "fitRangeH": {"value": null, "label": "unknown"}, "knotsH": null, "meanSlopes": null
+    },
+    "Deiphobus": {
+      "source": "vokrouhlicky-2024-trojans", "section": "Table 1; §5.2", "label": "measured", "cloud": "L5",
+      "orbitalCoefficients": [0.505, 0.018, 4.5, 0.032, 0.008, 4, 1.5, 0.05, 0.9, 1.6],
+      "largestRemnantProperSinIAndE": [0.475, 0.029], "largestRemnantH": 8.45, "hcmMembers": 233,
+      "normalization": {"H": 14.5, "value": 210, "sigma": 10, "label": "measured", "scope": "fitted component"},
+      "reportedSlopeChange": {"H": 14.5, "values": [0.65, 0.40], "sigma": [0.12, 0.09], "note": "Not a complete spline fit; last segment underestimated and overlaps Ennomos."},
+      "fitRangeH": {"value": null, "label": "unknown"}, "knotsH": null, "meanSlopes": null
+    },
+    "2001 UV209": {
+      "source": "vokrouhlicky-2024-trojans", "section": "Table 1; §5.2", "label": "measured", "cloud": "L5",
+      "orbitalCoefficients": [0.415, 0.007, 2.5, 0.041, 0.006, 3, 1.5, 0.01, 0.1, 3.5],
+      "largestRemnantProperSinIAndE": [0.415, 0.041], "largestRemnantH": 12.62, "hcmMembers": 46,
+      "normalization": {"H": 14.5, "value": null, "sigma": null, "label": "unknown"},
+      "fitRangeH": {"value": null, "label": "unknown"}, "knotsH": null, "meanSlopes": null
+    }
+  },
+  "stability": {
+    "source": "vokrouhlicky-2024-trojans", "section": "§3.1.1; Figs. 12–14; §4.2",
+    "mask": {"value": null, "label": "unknown"},
+    "years": 100000000, "initialEpochMjd": 60000, "binWidthsBC": [0.01, 0.015], "cellsBC": 1040,
+    "cloneOrbitsPerCell": 28, "numberOfAValues": 7, "stepYears": 0.25,
+    "boundary": "First bins with 50% partial instability for each B value; curves shown in figures, numerical bin mask not tabulated. Symmetric L4/L5 stability does not remove coupling among A/B/C."
+  },
+  "osculatingMapping": {
+    "source": "vokrouhlicky-2024-trojans", "section": "§3.1.1; §4.1 Eqs. 1–4, 19–22",
+    "equations": [1, 2, 3, 4, 19, 20, 21, 22],
+    "inclinationAndNode": "sin(I) exp(i Omega) = sin(I_J) exp(i Omega_J) + A exp(i phi)",
+    "eccentricityAndPerihelion": "e exp(i(varpi-varpi_J)) = e_J exp(±i pi/3) + B exp(i psi)",
+    "semimajorAxisAndLongitude": "Joint inversion of (da/a_J)^2 = 8 mu/3 [C-f(sigma)] and da = 0.2783 (sigma-chiStar) tan(theta); both polar branches, chiStar=±pi/3; not independent marginals.",
+    "polarScale": {"value": 0.2783, "label": "measured", "unit": null, "note": "Eq. 19 prints coefficient without explicit angular/unit convention; retain as printed pending clarification."},
+    "angleLaw": "§4.1: phi, psi, theta uniform on a full turn; theta is shifted/scaled polar angle on the C isoline, not uniform sigma.",
+    "paperEpochMjd": 60000,
+    "origin": "heliocentric elements; stability integrations correct the center for omitted terrestrial planets",
+    "referenceEquinox": {"value": null, "label": "unknown"},
+    "frameNote": "MPC-derived heliocentric elements and ecliptic language; exact equinox/rotation and Eq. 19 unit convention not explicitly stated in model sections. No invariable-frame transform like the Hilda Appendix is supplied.",
+    "productEpochMapping": "Analytical approximate mapping is supplied; paper initializes at MJD 60000. A product implementation would require sourced same-frame Jupiter a/e/I/Omega/varpi/lambda and mass ratio at its epoch, resolved units/axes, and declared epoch transfer. No such implementation is enabled.",
+    "implemented": false
+  },
+  "catalogue": {
+    "source": "vokrouhlicky-2024-trojans", "section": "Appendix A",
+    "url": "https://sirrah.troja.mff.cuni.cz/~mira/tmp/trojans/", "modelParameters": false,
+    "note": "Public numerical proper elements/HCM membership differ from fitted quasi-proper A/B/C. Table 1 masks are fixed from biased observed families; observed membership counts cannot replace fitted normalizations. Index only read; catalogue not downloaded in this continuation."
+  },
+  "uncertainty": "§5.2: strongly correlated orbital parameters; overlapping/diffuse L5 families and sparse faint detections. Faint L5 flattening beyond about H=14 is an artifact not to be trusted; L4 extension is cautionary. No full posterior covariance, individual orbit error budget, debiased colour/albedo/rotation law or supported extension to the current faint floor follows from this paper."
+}

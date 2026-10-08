@@ -603,6 +603,10 @@ def _order(res: dict) -> dict:
                                "These orbit templates have no survey selection correction. "
                                + ("Hungaria borrows the main-belt faint slope; no separately debiased faint Hungaria model."
                                   if pop == "hungaria" else ""))
+                if pop in ss.RESONANT_MODEL_NOTES:
+                    m["method"] = ("Catalogue counts continued with the cited faint magnitude slope, assuming "
+                                   "the bright catalogue's e/i cell proportions represent faint objects without "
+                                   "a survey selection correction. " + ss.RESONANT_MODEL_NOTES[pop])
             elif pop == "centaur":
                 m["method"] = ("Literature orbit model of Nesvorny et al. 2019 with independent Lawler et al. 2018 H law, "
                                "normalized by Kurlander et al. 2025; magnitude-selected archive reweighted by 1/P(selected "
@@ -855,6 +859,10 @@ def _pop_sources(pop: str) -> list[str]:
         srcs = srcs + ["jpl-sbdb-orbits"]
     if pop == "centaur":
         srcs += [r["id"] for r in ss.centaur_nuclei()["sources"]]
+    if pop == "hilda":
+        srcs += [ss.hilda_model()["source"]["id"]]
+    elif pop == "trojan":
+        srcs += [ss.trojan_model()["source"]["id"]]
     return srcs + ["neowise-v2", "jpl-sbdb-physical", "lcdb-2023-10", "smallbody-class-colors", "bowell-1989"]
 
 
