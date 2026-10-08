@@ -288,6 +288,28 @@ up to 90°, falling to 0.14–0.27 at 150°. It falls because a wide-field pixel
 steep core, and that light stays in its pixel. Light scattered beyond the frame edge is lost (the scene
 outside the frame is not rendered).
 
+**The frame's edge.** The model is this pyramid on an unbounded dark canvas, read inside the frame: the scene
+beyond the frame is dark, light the eye scatters beyond the frame is lost, and light it scatters within the
+frame is not. A level's blur puts light into the texels just beyond that level's edge, and the upsampling of
+the level below reads them: a texel takes three quarters of its parent and one quarter of the parent's
+neighbour, and the outermost texel's neighbour lies beyond the edge. So each level's blurred image and its
+accumulation keep one texel beyond each edge (`VEIL_RING` in `eye/points.ts`; `eye/veil.ts` is the CPU twin of
+the pyramid). The level itself keeps its size: beyond the frame it is dark, exactly.
+
+- **One texel is enough, and it is exact.** Texels −1 to n of a level read texels −1 to n of the level above,
+  and the blur at −1 to n reads only the level itself. By induction from the coarsest level, the frame and its
+  ring never need anything else of the unbounded canvas.
+- **Checked on the CPU:** the twin equals the pyramid's arithmetic without any ring, run on a canvas with a dark
+  margin as wide as the coarsest texel, within 10⁻¹² at even and odd sizes (`eye-veil.test.ts`).
+- **Checked on the GPU** (`scripts/veil-edges.mjs`): the renderer's own passes at the frame's size equal the same
+  passes on a dark-margin canvas to the bit, in every pixel, for a uniform frame and for scenes of the regression
+  suite, at 1280 × 720 and 1283 × 723.
+- **The numbers** for a uniform frame of luminance L at 1280 × 720 and a 50° field: the veil is 0.935·L·Σw at the
+  centre, 0.592 at the middle of an edge and 0.377 in a corner, and 91.5 % of the veil's light stays in the frame.
+  The rest is scattered beyond it.
+
+Until 8 October 2026 nothing was kept beyond a level's edge; §10 has what that cost.
+
 The Sun, and bodies whose centre is outside the frame, are veiled analytically per pixel
 (E·f_CIE(θ)), because their glare reaches far beyond the frame and the Sun's disk is too bright for a
 pyramid. The Sun's E is reduced by the fraction of its disk covered by bodies in front of it. A source
@@ -443,7 +465,8 @@ At m = 0 this is Crumey's own scotopic colour correction; at m = 1 it is the pho
 **Background.** B = the local background, and the eye judging the point is adapted to it: its own
 fixation (§2). Crumey's thresholds are measured this way. The local background is:
 - the physical veil at scales at or above the Ricco area (the pyramid level whose Gaussian first reaches
-  A_R, sampled bilinearly), from the previous frame;
+  A_R, sampled bilinearly), from the previous frame. At the frame's edge the read continues into the one texel
+  the level keeps beyond its edge (§3), as the level does on the unbounded canvas, and stops there;
 - plus the analytic veil;
 - plus, in the point shader, the extended image at the point.
 
@@ -810,21 +833,34 @@ checks that the Sun's light on the bodies is unaffected.
   cut-off at 3σ is hard, so the samples of one splat sum to between 0.990 and 1.005 at σ = 0.6 px depending
   on where the source sits in the pixels (the mean is 1). The own-light term uses the samples themselves and
   is not affected.
-- **The veil is too dark at the frame's edges, also for light that is in the frame.** The pyramid's
-  upsampling reads zero beyond a level's edge, where that level's blur has in fact put light. §3's model
-  (dark beyond the frame; light scattered beyond the edge is lost) is the same pyramid on an unbounded
-  dark canvas. Against that, by a float twin of the pyramid with the fitted weights at 1280 × 720 and a
-  50° field (October 2026; not rendered):
-  - a uniform frame's veil is 17 % low at the middle of each edge and 23 % low in the corners, and the
-    veil light inside the frame is 0.75 % low;
-  - level by level the outermost pixel gets 0.70·(¾)^k of a uniform field instead of about a half: 0.30
-    against 0.53 at level 3, 0.17 against 0.51 at level 5;
-  - at 1283 × 723 the far edges are 4 to 6 % low and the near ones 17 %.
+- **The veil at the frame's edges** (§3). Until 8 October 2026 the pyramid kept nothing beyond a level's edge,
+  and the upsampling read zero where that level's blur had put light. The outermost pixel of level k then held
+  (¾)^k of what the level's edge texel holds: 0.42 at level 3, 0.075 at level 9. Measured on the GPU against
+  the same passes on a dark-margin canvas, at 1280 × 720 and a 50° field unless said:
+  - A uniform frame's veil was 17 to 18 % low at the middle of each edge, 22.5 % low in the corners and 0.09 %
+    low at the centre, and the veil light inside the frame 0.76 % low. At 3840 × 2160 it was 37 to 39 % and 55
+    to 56 % low. At 1283 × 723 the far edges were 4 to 6 % low and the near ones 17 to 18 %.
+  - A uniform frame is the mildest case. Where the veil at an edge comes from a bright body elsewhere in the
+    frame, only the coarse levels carry it: with Jupiter cut by the bottom edge the veil was 88 % low at the
+    middle of the other three edges and 97 to 98 % low in the corners, 64 % low 8 px in and 13 % low 128 px in.
+  - The level a point's background reads was 15 to 30 % low within a texel of the edge of a uniform frame
+    (levels 2 to 6), and 62 to 88 % low at the far edge of the Jupiter view.
+  - The darkest background in the frame, which sets the sky's point cut (§6 "Culling"), was a vignetted
+    corner. With the veil put right that limit moved by up to 3.2 mag in the regression suite (mercury-map 3.88
+    → 0.71, jupiter-galileans 6.54 → 5.15), and stars near the edges of a frame with a bright body, which its
+    glare hides, were no longer drawn (jupiter-galileans 171 → 156, pluto-charon 602 → 568).
+  - The adaptation moved little: +0.2 to +0.44 % in dark scenes, +0.35 % inside Jupiter's disk.
 
-  It reaches the background of points near the edges, the painted glare there and the adaptation's
-  retinal image. The pyramid loses nothing on the way down: its sides round up, and four times the sum
-  over a level is the sum over the level below at odd and even sides (tested). Not changed: a fix alters
-  the two stages that the points' own-light term takes as zero beyond the edge, and comes after it.
+  Now each level keeps one texel beyond its edge, and the frame holds what the unbounded canvas holds. The
+  pyramid loses nothing on the way down either: its sides round up, and four times the sum over a level is the
+  sum over the level below at odd and even sides (tested).
+- **Not right yet: the veil of a source smaller than a level's texel depends on where the source sits in that
+  texel.** The mean of 2 × 2 puts a source at its texel's centre, and the upsampling spreads it from there. By
+  the float twin (one lit pixel, 1280 × 720, 50° field, October 2026; not rendered): averaged over the source's
+  positions the veil is right, 0.98 to 1.03 of the sum of Gaussians the weights are fitted with. At one
+  position it is between 0.52 and 1.67 of it, at 10, 30, 100, 300 and 600 px from the source alike. A body
+  larger than the texel averages it out. It reaches the background of a faint point beside a bright one, and a
+  bright point that crosses texels as the view moves must flicker its neighbours' backgrounds.
 - **The veil level of a point's background** comes from the Ricco area of the frame's adaptation, not of
   the point's own background. In a frame adapted to a sunlit body, a star in the dark sky beside it is
   judged against a much finer veil than its own Ricco area, in which its own light dominates.
