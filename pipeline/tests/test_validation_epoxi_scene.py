@@ -3,12 +3,23 @@ import copy
 import json
 import shutil
 
+import pytest
+
 from pipeline.paths import REPO
 from pipeline.validation import build, report, reproducibility
 from pipeline.validation.cases import EARTH_MOON
 
 
+@pytest.mark.skip_group("missing-input")
 def test_epoxi_scene_annotation_rebuild_changes_only_two_fields_and_lock(tmp_path, monkeypatch):
+    old_dir = REPO / "validation/cases/earth-moon-epoxi-2008"
+    old = json.loads((old_dir / "case.json").read_text())
+    missing = [key for key in old["reproducibility"]["inputs"]
+               if not reproducibility.input_path(key).is_file()]
+    if missing:
+        pytest.skip("locked validation inputs absent: " + ", ".join(missing))
+    if reproducibility.runtime() != old["reproducibility"]["runtime"]:
+        pytest.skip("locked validation numerical environment absent (including single-thread settings)")
     from pipeline import paths
     cache = tmp_path / "cache"
     cache.mkdir()
@@ -16,8 +27,6 @@ def test_epoxi_scene_annotation_rebuild_changes_only_two_fields_and_lock(tmp_pat
         shutil.copytree(paths.CACHE / "validation", cache / "validation")
     monkeypatch.setattr(paths, "CACHE", cache)
     monkeypatch.setattr(build, "CACHE", cache)
-    old_dir = REPO / "validation/cases/earth-moon-epoxi-2008"
-    old = json.loads((old_dir / "case.json").read_text())
     built = build.build_case(EARTH_MOON, expected=old, renew=True)
     centre = next(q for q in built["json"]["rois"] if q["id"] == "earth-centre")
     dependence = centre["sceneDependence"]
