@@ -239,7 +239,7 @@ Calibration-free ratio terminator / disk-centre: XYZS 0.46, 0.464, 0.451, 0.459 
 
 Notes:
 
-* Clouds: the app's Earth cloud layer is VIIRS/NOAA-20 of 2026-09-28 at ~13:30 local solar time; each ROI's 'cloudTimeOffsetH' is Himawari's local solar time minus 13.5 h at the ROI's mean longitude. Only ROIs within ~±1 h compare the same clouds; elsewhere the ROI tests the cloud statistics only.
+* Clouds: the app's Earth cloud layer is the SatCORPS mosaic of 2026-09-28 near 13:30 local solar time; each ROI's 'cloudTimeOffsetH' is Himawari's local solar time minus 13.5 h at the ROI's mean longitude. Only ROIs within ~±1 h are near the target local hour, not a guarantee of identical clouds; actual strip times and retrievals differ, and the existing budget has no cloud-variation term.
 * Only segment 6 of 10 was fetched (the swath from the equator to ~16°S): pixels outside it are NaN.
 * The Earth's shape spectrum p̃ is the app's (Himawari 2025-03-20 disk average, 'estimated'); it only shapes the spectrum between the three band centres.
 

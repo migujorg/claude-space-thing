@@ -32,6 +32,8 @@ def test_surface_report_describes_built_three_layer_cloud_admission():
     assert "cloud layer is unknown in polar night" not in text
     assert "Clouds are VIIRS NOAA-20" not in text
     assert "at that day's overpass" not in text
+    assert "Several bodies (the Galilean moons, Charon) have no photometry.json entry" not in text
+    assert "Galilean moons: DN scaling undocumented" not in text
 
 
 def test_photometry_report_distinguishes_classic_and_component_reflectance():
@@ -46,6 +48,8 @@ def test_photometry_report_distinguishes_classic_and_component_reflectance():
     assert "Uranus lambda and Neptune Galle remain unknown" in text
     assert "Jupiter's, Uranus's and Neptune's unknown" not in text
     assert "Jupiter's, Uranus's and Neptune's are **unknown**" not in text
+    assert "so their reflectance stays unknown" not in text
+    assert "[published high-phase measurements](../sources/rings-high-phase.md)" in text
 
 
 def test_himawari_pinned_text_rebuild_preserves_science_and_artifact_bytes(tmp_path, monkeypatch):

@@ -406,9 +406,12 @@ def generate() -> str:
               "on the built products: every tile present or listed as missing, sampled sha256, no NaN / negative / "
               "infinite albedo texels at any level, disk mean 1 ± 0.01 per channel at every level, and:", "",
               *verification(hs), "", "## Open issues", "",
-              "- Galilean moons: DN scaling undocumented (brightness `estimated`). The headers record the leading/trailing "
-              "brightness ratio each map implies (`diagnostics.leadingOverTrailing`); comparing it with measured orbital "
-              "light curves would confirm or reject the linear-DN assumption, as it rejected the Iapetus map.",
+              "- Galilean moons: pixel scale/offset are decoded, while per-frame tone corrections and reference geometry "
+              "remain unavailable (brightness `estimated`). `diagnostics.leadingOverTrailing` records the map-only "
+              "ratio and the fitted rotation slices with identical projected-area weights, plus the renderer's "
+              "different Lambert-kernel disk ratio. Slice-ratio uncertainty is unknown: Mayorga Table 4 has no "
+              "numerical errors/covariance, and Table 7 modulation errors are a different statistic. The nominal "
+              "Ganymede/Callisto discrepancy persists; it does not establish a unique contrast correction.",
               "- Saturn's mid-size moons: both public map series (USGS/CICLOPS, DLR COISS_3xxx) fail the brightness "
               "check. A usable map needs mosaics built from calibrated Cassini ISS images (COISS_2xxx) with a "
               "published photometric model, or a published albedo map.",
@@ -427,8 +430,9 @@ def generate() -> str:
               "(research note 1c) is left to the renderer/M2 follow-up and would be `estimated`.",
               "- Moon: normal albedo excludes the opposition surge by definition (see above); the renderer's opposition "
               "effect must come from the disk phase curve or the exported Hapke layer.",
-              "- Several bodies (the Galilean moons, Charon) have no photometry.json entry yet, so the renderer has no "
-              "absolute colour/brightness for them; their maps are ready for when it does.",
+              "- The Galilean moons have `photometry.json` entries, including `rotation-slices-v1`; the renderer normalizes "
+              "their maps at the actual viewing geometry and leaves disk-integrated rotational brightness to "
+              "those fitted slices.",
               "- Panchromatic layers are stored as four identical float16 channels to keep one albedo tile format; a "
               "one-channel variant would make them 4x smaller if the renderer accepts it.", ""]
     return "\n".join(parts)
