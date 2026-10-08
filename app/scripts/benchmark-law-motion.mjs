@@ -11,6 +11,8 @@ import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import { build } from 'esbuild';
 import { createHash } from 'node:crypto';
+import { cpuUsage } from 'node:process';
+const cpuNow = () => { const t = cpuUsage(); return (t.user + t.system) / 1000; };
 // Some restricted lane runtimes cannot reap a synchronous child even after exit 0.
 function git(args) {
   try { return execFileSync('git', args, { cwd: app, encoding: 'utf8' }); }
@@ -36,7 +38,7 @@ const tiles = new Map(sets.map(set => [set.ids[0], [0, 1].map(t => {
 })]));
 async function bundle(ref, tag) {
   const filename = path.join(temp, tag + '.mjs');
-  await build({ stdin: { contents: `export { lawIntegral } from './src/render/frame.ts'; export { resolveLaw, LAMBERT_LAW, lawDiskIntegral, LAW } from './src/render/spatial.ts'; export { zonalMeanOfLevel0 } from './src/render/surface.ts';`, resolveDir: app, loader: 'ts' },
+  await build({ stdin: { contents: `export { lawIntegral } from './src/render/frame.ts'; export { resolveLaw, LAMBERT_LAW, lawDiskIntegral, LAW${ref ? '' : ', installHapkePhaseTables'} } from './src/render/spatial.ts'; export { zonalMeanOfLevel0 } from './src/render/surface.ts';`, resolveDir: app, loader: 'ts' },
     outfile: filename, bundle: true, platform: 'node', format: 'esm', logLevel: 'silent',
     plugins: [{ name: 'baseline', setup(b) { b.onLoad({ filter: /src\/render\/(frame|spatial)\.ts$/ }, args => {
       const relative = path.relative(path.dirname(app), args.path);
@@ -75,20 +77,26 @@ function frame(lib, set, z, step, f, verify) {
 const quantile = (a, q) => a[Math.min(a.length - 1, Math.floor(q * a.length))];
 let failed = false, failedAccuracy = false;
 try {
-  console.log(JSON.stringify({ benchmark: 'normalization through prepareFrame lawIntegral', frames: 600, runs, baseline, bodies: sets.map(s => ({ scene: s.scene, ids: s.ids })), inputHashes: { photometry: createHash('sha256').update(fs.readFileSync(path.join(app, 'public/data/photometry.json'))).digest('hex'), tiles: Object.fromEntries([...tiles].map(([id, data]) => [id, data.map(bytes => createHash('sha256').update(new Uint8Array(bytes)).digest('hex'))])) }, note: 'Cold frame excluded from warm percentiles; warm frames include every real geometry query, no prefilled orbit cache.' }));
+  console.log(JSON.stringify({ benchmark: 'normalization through prepareFrame lawIntegral', frames: 600, runs, baseline, bodies: sets.map(s => ({ scene: s.scene, ids: s.ids })), inputHashes: { photometry: createHash('sha256').update(fs.readFileSync(path.join(app, 'public/data/photometry.json'))).digest('hex'), tiles: Object.fromEntries([...tiles].map(([id, data]) => [id, data.map(bytes => createHash('sha256').update(new Uint8Array(bytes)).digest('hex'))])) }, clock: 'process.cpuUsage user + system', note: 'Cold frame excluded from warm percentiles; warm frames include every real geometry query, no prefilled orbit cache.' }));
   // Fresh bundles per run reset the exact cache and all cold table construction.
   const variants = process.argv.includes('--current-only') ? [['current', null]] : process.argv.includes('--old-only') ? [['old', baseline]] : [['current', null], ['old', baseline]];
   for (let run = 0; run < runs; run++) for (const [tag, ref] of variants) {
     const lib = await bundle(ref, `${tag}-${run}`);
+    if (!ref) {
+      const phasePath = path.join(app, 'public/data/hapke-phase.json');
+      const notes = lib.installHapkePhaseTables(fs.existsSync(phasePath) ? JSON.parse(fs.readFileSync(phasePath)) : null,
+        createHash('sha256').update(fs.readFileSync(path.join(app, 'src/render/spatial.ts'))).digest('hex'));
+      if (notes.length) console.warn(notes.join('\n'));
+    }
     for (const set of sets) for (const step of [1e-3, 1e-2]) {
       const z = profile(lib, set.ids[0]);
-      const start = performance.now(); let checksum = frame(lib, set, z, step, 0);
-      const cold = performance.now() - start;
+      const start = cpuNow(); let checksum = frame(lib, set, z, step, 0);
+      const cold = cpuNow() - start;
       const times = [], slow = [];
       for (let f = 1; f <= 600; f++) {
         globalThis.__lawWork = [];
-        const before = performance.now(); checksum += frame(lib, set, z, step, f);
-        const elapsed = performance.now() - before; times.push(elapsed); if (elapsed > 2) slow.push({ f, ms: elapsed, phaseDeg: Math.acos(Math.cos(0.2 + step * f)) * 180 / Math.PI, ...(process.argv.includes('--trace') ? { work: globalThis.__lawWork } : {}) });
+        const before = cpuNow(); checksum += frame(lib, set, z, step, f);
+        const elapsed = cpuNow() - before; times.push(elapsed); if (elapsed > 2) slow.push({ f, ms: elapsed, phaseDeg: Math.acos(Math.cos(0.2 + step * f)) * 180 / Math.PI, ...(process.argv.includes('--trace') ? { work: globalThis.__lawWork } : {}) });
       }
       times.sort((a, b) => a - b);
       const median = quantile(times, 0.5), p99 = quantile(times, 0.99);
