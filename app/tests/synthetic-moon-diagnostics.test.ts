@@ -76,7 +76,13 @@ it('reports float32 force-error scales for all pinned moons at the epoch and bot
   const f=Math.fround;
   const norm=(r:number[])=>f(Math.sqrt(r.reduce((s,v)=>f(s+f(v*v)),0)));
   const direct=(x:number[],R:number[],gm:number)=>{
-    const d=R.map((v,k)=>f(f(v)-f(x[k]))),id=f(1/norm(d));
+    // prel's nearest-sample high/low difference before its final f32 collapse. At these
+    // exact sample times interpolation weights select the sample, so no stencil error is charged.
+    const d=R.map((v,k)=>{
+      const Rh=f(v),Rl=f(v-Rh),xh=f(x[k]),xl=f(x[k]-xh);
+      return f(f(Rh-xh)+f(Rl-xl));
+    });
+    const id=f(1/norm(d));
     const kd=f(f(f(f(gm)*id)*id)*id);
     // CPU indirect table is evaluated in f64, stored in f32; direct term is evaluated in f32.
     const indirect=R.map(v=>f(-gm*v/Math.hypot(...R)**3));
