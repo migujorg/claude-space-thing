@@ -85,6 +85,18 @@ describe('disk quadrature: relative accuracy across 0–179.9°, including thin 
       }
     });
   }
+  it.skipIf(![0, 1].every(t => fs.existsSync(new URL(`../public/data/surfaces/504/albedo/0/0/${t}.bin`, import.meta.url))))('Callisto at 16°: the roughness azimuth cusp is resolved in body coordinates', () => {
+    const profile = zonalMeanOfLevel0([0, 1].map(t => {
+      const b = fs.readFileSync(new URL(`../public/data/surfaces/504/albedo/0/0/${t}.bin`, import.meta.url));
+      return b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) as ArrayBuffer;
+    }));
+    const a = 16 * Math.PI / 180, resolved = resolveLaw(photometry['504'].spatialModel!.value, a);
+    if ('error' in resolved) throw new Error(resolved.error);
+    const zonal = { profile, pole: [Math.cos(a / 2), 0, -Math.sin(a / 2)] as [number, number, number] };
+    const coarse = lawDiskIntegral(resolved.law, a, zonal, 32);
+    const refined = lawDiskIntegral(resolved.law, a, zonal, 256);
+    for (let c = 0; c < 4; c++) expect(Math.abs(coarse[c] / refined[c] - 1)).toBeLessThan(1e-8);
+  });
   it('Akimov 179.9° with a tilted smooth zonal profile (test input) agrees within 1e-4', () => {
     const rows = 64, mean = new Float64Array(4 * rows);
     for (let j = 0; j < rows; j++) for (let c = 0; c < 4; c++) mean[4 * j + c] = 1 + 0.5 * Math.sin(Math.PI * (0.5 - (j + 0.5) / rows));
