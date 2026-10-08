@@ -4,6 +4,8 @@ import { fixture, loadEphemerisSet } from './core-data';
 import type { SmallBodyForceModel } from '../src/data/schema';
 import { shadeShader, stepShader, unitTestShader } from '../src/gpu/smallbodies/kernels';
 import { AU_KM, C_KM_S } from '../src/core/constants';
+import { SmallBodyPropagator, hostForceModel } from '../src/core/smallbody';
+import { checkRecordPicks, moonPickRows } from '../src/gpu/smallbodies/moonDiagnostics';
 import { solarDifferential } from './synthetic-moon-reference';
 
 const input = fixture<{ epochEt:number; objects:{centerId:number;initial:number[];edges:{et:number}[]}[] }>('synthetic_moon_all_reference.json');
@@ -60,14 +62,40 @@ it('the tidal algebra preserves small forces and agrees with the independent for
   }
 });
 
-it('both step and partial-display shaders enable the diagnostic only on explicit request', () => {
+it('production moon step/display/twin use tides; catalogue arithmetic and named baseline remain direct', () => {
   const cfg={model:fm,samples:65,cKmS:C_KM_S,auKm:AU_KM,photometry:null};
+  const host=fm.perturbers.find(p=>p.naifId===5)!;
+  const model=hostForceModel(fm,5,host.gm);
   for(const shader of [stepShader,shadeShader,unitTestShader]) {
-    expect(shader(cfg)).toContain('const DIAGNOSTIC_STABLE_DIFFERENTIAL: bool = false;');
-    const source=shader({...cfg,diagnosticStableDifferential:true});
-    expect(source).toContain('const DIAGNOSTIC_STABLE_DIFFERENTIAL: bool = true;');
-    expect(source).toContain('-q * (3.0 + q * (3.0 + q)) / (A * (1.0 + A))');
+    expect(shader(cfg)).toContain('const STABLE_DIFFERENTIAL: bool = false;');
+    expect(shader({...cfg,model})).toContain('const STABLE_DIFFERENTIAL: bool = true;');
+    expect(shader({...cfg,model,diagnosticForceVariant:'baseline'})).toContain('const STABLE_DIFFERENTIAL: bool = false;');
   }
+  const law={...model,perturbers:[{...fm.sun,name:'Sun'}]};
+  const prop=new SmallBodyPropagator(law,{positionSSB:()=>null});
+  const a=new Float64Array(3), x=1e-4, R=1e9;
+  prop.acceleration([x,0,0,0,0,0],0,new Float64Array([R,0,0]),null,a);
+  expect(a[0]/(2*fm.sun.gm*x/R**3)).toBeCloseTo(1,10);
+});
+
+it('picking uses current combined-buffer records and global indices across both host batches', async () => {
+  const count=7, records=new Float32Array((count+24)*8), words=new Uint32Array(records.buffer);
+  for(let index=0;index<count+24;index++) {
+    records.set([1,index/100,0],index*8);words[index*8+7]=index;
+  }
+  // Both host boundaries are represented: this is synthetic row order, never child sorted slots.
+  const rows=moonPickRows([{firstObject:0,objects:21},{firstObject:21,objects:3}]);
+  expect(rows).toEqual([0,10,20,21]);
+  const calls:number[]=[];
+  const checks=await checkRecordPicks({count,readRecords:async()=>records,
+    pick:async(dir)=>{const index=Math.round(dir[1]*100);calls.push(index);return index;}},rows,1e-7);
+  expect(calls).toEqual([0,7,17,27,28]); // catalogue control, then count + j
+  expect(checks.every(c=>c.returnedIndex===c.expectedIndex && c.storedIndex===c.expectedIndex && c.askedStoredAngleRad===0)).toBe(true);
+  // A batch-local identity is a defect even when the angular pick finds that record.
+  words[28*8+7]=0;
+  const bad=await checkRecordPicks({count,readRecords:async()=>records,pick:async()=>0},[21],1e-7);
+  expect(bad[1].storedIndex).toBe(0);
+  expect(bad[1].expectedIndex).toBe(28);
 });
 
 it('reports float32 force-error scales for all pinned moons at the epoch and both edges', () => {

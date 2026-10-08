@@ -3,6 +3,7 @@
 //   /sb-test.html?mode=timing[&chunk=65536] full catalogue: create, one grid step, shade
 //   /sb-test.html?mode=render&scene=above|inside  real-data frame through the renderer (enhanced / eye)
 //   /sb-test.html?mode=moon-accuracy&timestamps=1  compact all-moon reference, restore, picking and timing checks
+//   /sb-test.html?mode=moon-pick                  every tenth moon per host + catalogue control, three times
 //   /sb-test.html?mode=moon-compare&timestamps=1   all moons/times/cameras, baseline/fine-grid/tidal in one JSON
 //   /sb-test.html?mode=synthetic[&syncam=5]       synthetic layer: GPU records vs float64 positions and
 //                                                  photometry, level gating, pick, timing
@@ -23,7 +24,7 @@ import { luxFromMagnitude, magnitudeFromLux } from '../../eye/crumey';
 import { resolveBinPath } from '../../data/load';
 import { SmallBodyField, type SmallBodyTables } from './field';
 import type { Vec3 } from '../../core/vec';
-import { MOON_EPHEMERIDES, moonCameraState, moonAngularBudget, ARCSEC_PER_RAD, directionAngle, metricSummary } from './moonDiagnostics';
+import { MOON_EPHEMERIDES, moonPickRows, checkRecordPicks, moonCameraState, moonAngularBudget, ARCSEC_PER_RAD, directionAngle, metricSummary } from './moonDiagnostics';
 
 declare global {
   interface Window {
@@ -765,12 +766,13 @@ async function moonAccuracy(): Promise<unknown> {
   const production = readSynthetic(tables.synthetic.header,packed.buffer), center = centerStateFrom(eph,10);
   const reference = await json<{ epochEt:number;objects:{initial:number[];edges:{et:number;state:number[]}[]}[] }>('/tests/fixtures/synthetic_moon_all_reference.json');
   if (reference.epochEt !== production.epochEt || reference.objects.length !== production.count) throw new Error('reference/build epoch or count mismatch: regenerate reference, do not patch tolerance');
+  const picking = params.get('mode') === 'moon-pick';
   const comparison = params.get('mode') === 'moon-compare', DAY = 86400;
   const {startEt,endEt} = tables.coreHeader.window, E = production.epochEt;
-  const epochs = comparison
+  const epochs = picking ? [E,endEt,startEt] : comparison
     ? [E,...[-365,-180,-90,-30,-15,15,30,90,180,365].map(d=>E+d*DAY+12345).filter(t=>t>startEt&&t<endEt),endEt,startEt,endEt,E]
     : [E,endEt,E+15*DAY,startEt,E-30*DAY,endEt,E];
-  const names = (params.get('variants') ?? (comparison ? 'baseline,fine-grid,tidal' : params.get('variant') ?? 'baseline')).split(',');
+  const names = (params.get('variants') ?? (comparison ? 'baseline,fine-grid,tidal' : params.get('variant') ?? 'tidal')).split(',');
   if (new Set(names).size !== names.length || names.some(n=>!['baseline','fine-grid','tidal'].includes(n))) throw new Error('variants must be unique baseline,fine-grid,tidal');
   const gridDivisor = Number(params.get('gridDivisor')??4);
   if (![2,4,8].includes(gridDivisor)) throw new Error('gridDivisor must be 2, 4 or 8');
@@ -792,7 +794,7 @@ async function moonAccuracy(): Promise<unknown> {
     const syn = readSynthetic(cpuHeader,packed.buffer);
     const field = await SmallBodyField.create(dev,tables,eph,{backgroundStepsPerUpdate:0,debug:true,
       minCheckpointSpacing:Number(params.get('checkpointSpacing')??8),
-      moonDiagnostics:{gridDivisor:divisor,stableDifferential:name==='tidal'}});
+      moonDiagnostics:{gridDivisor:divisor,forceVariant:name==='tidal'?'tidal':'baseline'}});
     const selfTest = field.info.selfTest;
     const timedSubmit = async (et:number,cam:Vec3,level:'best'|'complete') => {
       const enc=dev.createCommandEncoder(),start=performance.now();
@@ -890,17 +892,24 @@ async function moonAccuracy(): Promise<unknown> {
       if(et===E&&maxCpuKm>1e-6) failures.push(`epoch initialization: ${maxCpuKm} km`);
       if(maxInitialKm>1e-5) failures.push(`reference realization: ${maxInitialKm} km`);
       if(maxSelectionKm!==0) failures.push(`selection: ${maxSelectionKm} km`);
-      const row=field.count,rec=records.slice(row*8,row*8+3),picked=await field.pick([rec[0],rec[1],rec[2]],1e-7);
-      if(picked!==row) failures.push(`pick at ${et}: ${picked} vs ${row}`);
+      // Camera probes above changed the live buffer. Restore this camera before asking for its rays.
+      await timedSubmit(et,cam,'complete');
+      const picks=await checkRecordPicks(field,picking?moonPickRows(compact):[0],1e-7);
+      for(const pick of picks) {
+        if(pick.returnedIndex!==pick.expectedIndex || pick.storedIndex!==pick.expectedIndex || pick.askedStoredAngleRad===null || pick.askedStoredAngleRad>1e-7)
+          failures.push(`pick ${pick.kind} at ${et}: ${pick.returnedIndex} vs ${pick.expectedIndex}, stored angle ${pick.askedStoredAngleRad}`);
+        if(picking) log(`pick ET ${et} ${pick.kind}: returned ${pick.returnedIndex}, expected ${pick.expectedIndex}, asked/stored angle ${pick.askedStoredAngleRad} rad`);
+      }
+      const row=field.count,picked=picks[1].returnedIndex;
       // Collect timing without aborting on an angular failure: all variants must survive to JSON.
-      const repeats=Number(params.get('repeats')??(comparison?0:16)),warm=[],baseline=[];
+      const repeats=Number(params.get('repeats')??(comparison||picking?0:16)),warm=[],baseline=[];
       if(!Number.isInteger(repeats)||repeats<0) throw new Error('repeats must be a nonnegative integer');
       for(let n=0;n<repeats;n++) warm.push(await timedSubmit(et,cam,'complete'));
       for(let n=0;n<repeats;n++) baseline.push(await timedSubmit(et,cam,'best'));
       const metric=(f:(s:Measurement)=>number)=>metricSummary(timeSamples.map(s=>({value:f(s),id:s.id,et:s.et})));
       results.push({sampleIndex,et,daysFromEpoch:(et-E)/DAY,camera,timing,warmComplete:warm,baselineBest:baseline,
         positionKm:metric(s=>s.cpuKm),cameras:Object.fromEntries(['planet','earth','near'].map(view=>[view,metric(s=>s.cameras[view].arcsec)])),
-        maxInitialKm,pick:picked,want:row,batches:coldBatches,samples:timeSamples});
+        maxInitialKm,pick:picked,want:row,picks,batches:coldBatches,samples:timeSamples});
       log(`${name} t=${((et-E)/DAY).toFixed(4)} d: GPU-minus-CPU max ${maxCpuKm.toFixed(6)} km`);
     }
     await submit(dev,field,E,moonCameraState(eph,E,5,1,'earth'),'best');
@@ -926,7 +935,7 @@ async function moonAccuracy(): Promise<unknown> {
     field.destroy();
   }
   query?.destroy();resolved?.destroy();read?.destroy();
-  return {mode:comparison?'moon-compare':'moon-accuracy',schema:'moon-comparison-v1',passed:variants.every(v=>v.summary.passed),
+  return {mode:picking?'moon-pick':comparison?'moon-compare':'moon-accuracy',schema:'moon-comparison-v1',passed:variants.every(v=>v.summary.passed),
     epochEt:E,window:{startEt,endEt},epochs,moons:originalRows.length,originalRows,
     budget:{angleRad:budgetRad,angleArcsec:budgetRad*ARCSEC_PER_RAD,centrePixels:budgetRad*pxPerRad,fovDeg:fovY*180/Math.PI,height,
       reason:'one tenth of the finest half-cycle in Ward/Shlaer eye acuity, capped at one tenth of a centre pixel; numerical allocation only'},
@@ -935,7 +944,7 @@ async function moonAccuracy(): Promise<unknown> {
 
 async function main(): Promise<void> {
   const mode = params.get('mode') ?? 'accuracy';
-  const r = (mode === 'moon-accuracy' || mode === 'moon-compare') ? await moonAccuracy() : mode === 'timing' ? await timing() : mode === 'render' ? await render() : mode === 'unit' ? await unit() : mode === 'synthetic' ? await synthetic()
+  const r = (mode === 'moon-accuracy' || mode === 'moon-compare' || mode === 'moon-pick') ? await moonAccuracy() : mode === 'timing' ? await timing() : mode === 'render' ? await render() : mode === 'unit' ? await unit() : mode === 'synthetic' ? await synthetic()
     : mode === 'comet' ? await cometGpuFlux() : await accuracy();
   window.__sbResult = r;
 }

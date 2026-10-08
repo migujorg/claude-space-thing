@@ -126,8 +126,8 @@ export function syntheticFacts(s: SyntheticCatalog, j: number, level: ExistsLeve
   if (pop?.center && moonIntegration(pop)) {
     const budget = (pop.model.integration as { budgets?: Record<string,unknown> }).budgets;
     rows.push(row('motion-budget','Numerical and omitted-force budgets',
-      'Individual true position and current-view total budget unknown; GPU moon error unverified.',
-      budget ? [budget.cpuNumerical,budget.gpuAcceptance,budget.omittedForces,budget.evidence].join(' ') : 'This product supplies no checked numerical or omission budgets.'));
+      `Individual true position and current-view total budget unknown. ${budget?.gpuAcceptance ?? 'GPU numerical evidence unknown in this product.'}`,
+      budget ? [budget.cpuNumerical,budget.omittedForces,budget.evidence].join(' ') : 'This product supplies no checked numerical or omission budgets.'));
   }
   const orbitRow = rows.find((r) => r.key === 'syn:orbit');
   if (orbitRow) orbitRow.uncertainty = String(pop?.model.positionUncertainty ?? unknownPosition);

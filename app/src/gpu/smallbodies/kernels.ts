@@ -19,11 +19,12 @@
 // fma() when the device's fma is verified exact by the self-test (./field.ts).
 
 import type { SmallBodyForceModel, SmallBodyPhotometry } from '../../data/schema';
+import { stableDifferential } from '../../core/smallbody';
 import { df, f32 } from './wgslConst';
 
 export interface KernelConfig {
-  /** Algebraically equivalent external force, diagnostic only; default arithmetic is unchanged. */
-  diagnosticStableDifferential?: boolean;
+  /** Named diagnostic override; host production uses stable tides, catalogue production stays direct. */
+  diagnosticForceVariant?: 'baseline' | 'tidal';
   model: SmallBodyForceModel;
   /** Planet samples per grid interval (including both ends). */
   samples: number;
@@ -312,7 +313,7 @@ fn kick_accel(xh: vec3f, xl: vec3f, v: vec3f, u: f32, iv: u32, ngi: u32, out: pt
     let d2 = dot(d, d);
     if (d2 < RAD2[b]) { return 1u; }
     let id = inverseSqrt(d2);
-    if (DIAGNOSTIC_STABLE_DIFFERENTIAL) {
+    if (STABLE_DIFFERENTIAL) {
       // R is perturber - origin. Avoid subtracting two independently rounded large accelerations.
       // q = (|R-x|^2-|R|^2)/|R|^2; A = (1+q)^(3/2).
       // f = 1/A - 1 = -q(3+3q+q^2)/(A(1+A)), without cancellation as x/R -> 0.
@@ -342,7 +343,7 @@ fn kick_accel(xh: vec3f, xl: vec3f, v: vec3f, u: f32, iv: u32, ngi: u32, out: pt
     }
   }
   let bi = tix(iv, NB, s.j0);
-  if (!DIAGNOSTIC_STABLE_DIFFERENTIAL) {
+  if (!STABLE_DIFFERENTIAL) {
     acc = acc + s.w.x * T[bi].xyz + s.w.y * T[bi + 2u].xyz + s.w.z * T[bi + 4u].xyz + s.w.w * T[bi + 6u].xyz;
   }
   let r = sqrt(r2);
@@ -633,7 +634,7 @@ export function stepShader(cfg: KernelConfig): string {
   return /* wgsl */ `
 ${DF64_WGSL}
 ${perturberConsts(cfg.model)}
-const DIAGNOSTIC_STABLE_DIFFERENTIAL: bool = ${cfg.diagnosticStableDifferential === true};
+const STABLE_DIFFERENTIAL: bool = ${stableDifferential(cfg.model, cfg.diagnosticForceVariant)};
 const NS: u32 = ${cfg.samples}u;
 const INV_SAMPLE_DT: f32 = ${f32((cfg.samples - 1) / cfg.model.grid.baseStepS)};
 struct FieldU { count: u32, zeroBits: u32, pad0: u32, pad1: u32 };
@@ -674,7 +675,7 @@ export function shadeShader(cfg: KernelConfig): string {
   return /* wgsl */ `
 ${DF64_WGSL}
 ${perturberConsts(cfg.model)}
-const DIAGNOSTIC_STABLE_DIFFERENTIAL: bool = ${cfg.diagnosticStableDifferential === true};
+const STABLE_DIFFERENTIAL: bool = ${stableDifferential(cfg.model, cfg.diagnosticForceVariant)};
 const NS: u32 = ${cfg.samples}u;
 const INV_SAMPLE_DT: f32 = ${f32((cfg.samples - 1) / cfg.model.grid.baseStepS)};
 const C_KM_S: f32 = ${f32(cfg.cKmS)};
@@ -992,7 +993,7 @@ export function unitTestShader(cfg: KernelConfig): string {
   return /* wgsl */ `
 ${DF64_WGSL}
 ${perturberConsts(cfg.model)}
-const DIAGNOSTIC_STABLE_DIFFERENTIAL: bool = ${cfg.diagnosticStableDifferential === true};
+const STABLE_DIFFERENTIAL: bool = ${stableDifferential(cfg.model, cfg.diagnosticForceVariant)};
 const NS: u32 = ${cfg.samples}u;
 const INV_SAMPLE_DT: f32 = ${f32((cfg.samples - 1) / cfg.model.grid.baseStepS)};
 struct FieldU { count: u32, zeroBits: u32, mode: u32, iv: u32 };

@@ -47,3 +47,31 @@ export function metricSummary(samples: { value: number; id: string; et: number }
   const sorted = [...samples].sort((a,b)=>a.value-b.value), worst = sorted[sorted.length-1];
   return { max: worst.value, p90: sorted[Math.ceil(0.9*sorted.length)-1].value, worstMoonId: worst.id, worstEt: worst.et, samples: sorted.length };
 }
+
+/** Sample each host separately so even the smaller Saturn batch is represented. */
+export function moonPickRows(populations: { firstObject: number; objects: number }[]): number[] {
+  return populations.flatMap(p => Array.from({ length: Math.ceil(p.objects / 10) }, (_, k) => p.firstObject + 10*k));
+}
+
+/** The pick shader scans this combined display buffer, not child batch states or sorted slots.
+ * Read directions immediately before asking; a camera update invalidates an earlier snapshot. */
+export async function checkRecordPicks(field: { count: number; readRecords(): Promise<Float32Array>;
+  pick(dir: Vec3, toleranceRad: number): Promise<number | null> }, moonRows: number[], toleranceRad: number) {
+  const records = await field.readRecords();
+  const words = new Uint32Array(records.buffer, records.byteOffset, records.length);
+  const checks = [];
+  for (const [k, index] of [0, ...moonRows.map(j => field.count + j)].entries()) {
+    const asked = Array.from(records.subarray(index*8,index*8+3)) as Vec3;
+    const returnedIndex = await field.pick(asked,toleranceRad);
+    // Re-read what the pass actually saw: detects a stale camera/snapshot in the harness.
+    const stored = await field.readRecords();
+    const direction = (i: number) => Array.from(stored.subarray(i*8,i*8+3));
+    const valid = Math.hypot(...direction(index)) > 0 && Math.hypot(...asked) > 0;
+    checks.push({ kind: k === 0 ? 'catalogue' : 'moon', syntheticRow: k === 0 ? null : moonRows[k-1],
+      expectedIndex: index, storedIndex: words[index*8+7], returnedIndex,
+      askedStoredAngleRad: valid ? directionAngle(asked,direction(index)) : null,
+      askedReturnedAngleRad: returnedIndex !== null && Math.hypot(...direction(returnedIndex)) > 0 && valid
+        ? directionAngle(asked,direction(returnedIndex)) : null });
+  }
+  return checks;
+}

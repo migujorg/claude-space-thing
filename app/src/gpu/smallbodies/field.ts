@@ -52,10 +52,10 @@ export interface SmallBodyTables {
 
 export interface SmallBodyFieldOptions {
   /** DEVICE HARNESS ONLY. Moon grid divisor and algebraically equivalent differential kicks.
-   * Omission leaves production motion unchanged. Neither option changes a physical parameter. */
-  moonDiagnostics?: { gridDivisor?: number; stableDifferential?: boolean };
-  /** Internal harness option forwarded only to a moon child; production leaves it false. */
-  diagnosticStableDifferential?: boolean;
+   * Production uses stable tidal arithmetic. Neither option changes a physical parameter. */
+  moonDiagnostics?: { gridDivisor?: number; forceVariant?: 'baseline' | 'tidal' };
+  /** Internal named harness override forwarded only to a moon child; production omits it. */
+  diagnosticForceVariant?: 'baseline' | 'tidal';
   /** GPU memory for checkpoint states (and the background builder), bytes. Default 1 GiB. */
   checkpointBudgetBytes?: number;
   /** Smallest checkpoint spacing in grid steps (default 8). */
@@ -196,7 +196,7 @@ export class SmallBodyField {
   private readonly nongrav: Map<number, NonGrav>;
   private readonly table: PlanetTable;
   private readonly H: number;
-  private readonly opts: Required<Omit<SmallBodyFieldOptions, 'useFma' | 'synthetic' | 'syntheticDiagnosticColour' | 'moonDiagnostics' | 'diagnosticStableDifferential'>>;
+  private readonly opts: Required<Omit<SmallBodyFieldOptions, 'useFma' | 'synthetic' | 'syntheticDiagnosticColour' | 'moonDiagnostics' | 'diagnosticForceVariant'>>;
   private readonly spacing: number;
   private readonly slots: number;
 
@@ -406,7 +406,7 @@ export class SmallBodyField {
     this.pointSources = { buffer: this.records, count: n + S, strideFloats: RECORD_FLOATS };
 
     const cfg: KernelConfig = { model: this.model, samples: SAMPLES, cKmS: C_KM_S, auKm: AU_KM, photometry: tables.photometry ?? null,
-      diagnosticStableDifferential: options.diagnosticStableDifferential };
+      diagnosticForceVariant: options.diagnosticForceVariant };
     const ro = { type: 'read-only-storage' as const };
     const C = GPUShaderStage.COMPUTE;
     this.stepLayout = d.createBindGroupLayout({
@@ -530,7 +530,7 @@ export class SmallBodyField {
           epochEt:syn!.epochEt, window:integration.window, forceModel, flagBits:{} };
         const field = new SmallBodyField(d,{ core,coreHeader:moonHeader },planets,
           { ...options,synthetic:false,debug:true,checkpointBudgetBytes:16*2**20,chunkObjects:rows.length,
-            diagnosticStableDifferential:options.moonDiagnostics?.stableDifferential },st,useFma);
+            diagnosticForceVariant:options.moonDiagnostics?.forceVariant },st,useFma);
         rows.forEach((row,i)=>{ mapping[row] = offset+field.slotOf(i); });
         this.moonFields.push({ field,rows,offset }); offset += rows.length;
       }

@@ -781,11 +781,11 @@ def moon_integration_metadata(core: dict, center: dict) -> dict:
     fm["nonGravitational"] = "none: synthetic irregular moons are massless test particles"
     return {"kind": "host-smallbody-v1", "window": dict(core["window"]), "forceModel": fm,
             "initialization": "Stored f64 ICRF epoch states are computed from the unchanged f32 elements using center.gm and retained beside those elements.",
-            "budgets": {"label": "synthetic", "individualTruePosition": None, "gpuNumericalKm": None,
+            "budgets": {"label": "synthetic", "individualTruePosition": None, "gpuNumericalKm": 1.941,
                         "cpuNumerical": "All 458 original draws, both 2025-04-04/2028-04-04 edges: maximum 0.042166 km against same-force DOP853; regression threshold 0.1 km. Numerical check only, not an interval certificate.",
-                        "gpuAcceptance": "Provisional same-force test threshold 2 km, rounded up from the catalogue GPU report maximum 1.597638 km. Unverified for moons; no transferred certification.",
+                        "gpuAcceptance": "NVIDIA Blackwell hardware check, all 458 moons at 15 sampled times in the 2025-04-04 to 2028-04-04 window: stable tidal GPU minus f64 CPU maximum 1.941 km, p90 0.416 km; versus same-force DOP853 maximum 1.944 km at epoch/window edges. Rendered direction maxima: physical planet camera 0.028 arcsec, 10-radius camera 0.028 arcsec, Earth 0.022 arcsec; each below the predeclared 3.408-arcsec angular budget at 1280x720, 50-degree vertical field. Rendered-ray arithmetic alone maximum 0.022 arcsec. Sampled numerical evidence, not an interval, arbitrary-close-view or omitted-force certificate. Baseline direct-minus-indirect maximum 51.754 km, H/4 53.721 km: cancellation, not the step, dominates.",
                         "omittedForces": "Historical Sun+host trials: Jupiter J2 168.915 km, resolved planet/Galileans 342.042 km; Saturn J2 144.471 km, resolved planet/Titan 762.623 km. Individual sampled increments, not a total bound for the Sun+external-planet model or arbitrary close views. Other satellites, higher zonals, radiation and relativistic frame corrections unbounded.",
-                        "evidence": "docs/reports/synthetic-moon-kernel.md; app/tests/fixtures/synthetic_moon_all_reference.json; docs/reports/smallbodies-gpu-accuracy.json"}}
+                        "evidence": "docs/reports/synthetic-moon-kernel.md; app/tests/fixtures/synthetic_moon_all_reference.json; lane synthetic-moons-kernel/root-gpu/moon-comparison.json (hardware, NVIDIA Blackwell, df64-fma, 4096 exact-arithmetic self-test cases, max relative error 2e-14)."}}
 
 
 # ---------------------------------------------------------------------------------------------- stage
@@ -835,7 +835,7 @@ def run(ctx: BuildContext) -> None:
                                                + integration["forceModel"]["perturberSources"]))
             population["model"]["integration"] = integration
             population["model"]["motion"] = ("Synthetic initial orbit propagated by the existing small-body kernel in the host system-barycentric frame: "
-                                              "system monopole plus differential Sun and external catalogue perturbers; host excluded from perturbers. "
+                                              "system monopole plus stable tidal differential Sun and external catalogue perturbers; host excluded from perturbers. "
                                               "Same translated CPU model for selection and GPU records for picking. Host J2 and resolved internal moon forces omitted.")
             population["model"]["positionUncertainty"] = ("Individual true position/covariance and total omitted-force/current-view budget unknown. "
                 + integration["budgets"]["cpuNumerical"] + " " + integration["budgets"]["gpuAcceptance"] + " "
