@@ -1058,7 +1058,7 @@ export class SmallBodyField {
   /** Device-harness diagnostics; CPU milliseconds are wall time, GPU time requires submitted-work timing. */
   get moonBatchInfo(): { host: number; objects: number; tableBytes: number; stateBytes: number; checkpoints: number; last: SmallBodyFieldInfo['last'] }[] {
     return this.moonFields.map(({field:f,rows})=>({ host:f.model.sun.naifId,objects:rows.length,
-      tableBytes:f.table.data.byteLength, stateBytes:(2+f.checkpoints.size+(f.B?1:0))*rows.length*STATE_BYTES+rows.length*64,
+      tableBytes:f.table.data.byteLength, stateBytes:(1+f.checkpoints.size+(f.B?1:0))*rows.length*STATE_BYTES+rows.length*64,
       checkpoints:f.checkpoints.size,last:{...f.info.last} }));
   }
 
