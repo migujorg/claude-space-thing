@@ -730,10 +730,7 @@ These offsets are the missions' attitude-knowledge errors plus ours; the fits th
 
 ## 7. The renderer against the cases
 
-Run of 2026-10-07 13:02 UTC (git 2f33e69, data built 2026-10-07 11:04), reality level best, 4 × 4 samples per pixel, rendered by the machine's GPU, adapter `nvidia blackwell`, on AMD Ryzen 9 9950X3D 16-Core Processor (32 threads): `cd app && npm run validate -- --ss 4 --gpu hardware` (the full table, with X, Z, S, is in `app/shots/validation/report.md`). Y in cd/m²; the verdict covers X, Y, Z and S (failing channels named).
-
-
-Ratio reassessment from stored region means: new ratio rows below are CPU predictions from `run-2f33e69-ss4.json`, with the rebuilt case budgets; no new GPU render was performed. Existing region measurements retain the recorded render commit and date. Scene annotations were applied from the rebuilt cases. Root must confirm these predictions with the validation runner after landing.
+Run of 2026-10-08 01:52 UTC (git d1b5e33, data built 2026-10-08 01:23), reality level best, 4 × 4 samples per pixel, rendered by the machine's GPU, adapter `nvidia blackwell`, on AMD Ryzen 9 9950X3D 16-Core Processor (32 threads): `cd app && npm run validate -- --ss 4 --gpu hardware` (the full table, with X, Z, S, is in `app/shots/validation/report.md`). Y in cd/m²; the verdict covers X, Y, Z and S (failing channels named).
 
 | case | ROI | expected Y ± 2σ | rendered Y | rendered / expected | σ | verdict |
 |---|---|---|---|---|---|---|
@@ -748,27 +745,27 @@ Ratio reassessment from stored region means: new ratio rows below are CPU predic
 | `callisto-nh-lorri-2007` | disk-centre / disk-integrated | 1.35 ± 0.057 | 1.361 | — | 0.3778 | pass |
 | `callisto-nh-lorri-2007` | limb / disk-integrated | 3.431 ± 0.065 | 4.48 | — | 32.11 | **fail** (XYZS) |
 | `callisto-nh-lorri-2007` | terminator / disk-integrated | 0.4814 ± 0.066 | 0.404 | — | -2.342 | **fail** (XYZS) |
-| `earth-himawari9-2026` | disk-centre | 4678 ± 6e+02 | 7054 | 1.508 | +8.0 | **fail** (XYZS) |
-| `earth-himawari9-2026` | limb | 6411 ± 7.7e+02 | 6363 | 0.992 | -0.1 | pass |
-| `earth-himawari9-2026` | terminator | 2169 ± 2.3e+02 | 1377 | 0.635 | -6.9 | **fail** (XYZS) |
-| `earth-himawari9-2026` | near-centre-130E | 6032 ± 6.3e+02 | 8339 | 1.383 | +7.4 | **fail** (XYZS) |
-| `earth-himawari9-2026` | near-centre-150E | 2.274e+04 ± 2.5e+03 | 2.319e+04 | 1.020 | +0.4 | pass |
-| `earth-himawari9-2026` | near-centre-141E-12S | 4779 ± 6.2e+02 | 6574 | 1.375 | +5.8 | **fail** (XYZS) |
+| `earth-himawari9-2026` | disk-centre | 4678 ± 6e+02 | 5982 | 1.279 | +4.4 | **fail** (XYZS) |
+| `earth-himawari9-2026` | limb | 6411 ± 7.7e+02 | 6467 | 1.009 | +0.1 | **fail** (Z) |
+| `earth-himawari9-2026` | terminator | 2169 ± 2.3e+02 | 1633 | 0.753 | -4.7 | **fail** (XYS) |
+| `earth-himawari9-2026` | near-centre-130E | 6032 ± 6.3e+02 | 7277 | 1.206 | +4.0 | **fail** (XYZS) |
+| `earth-himawari9-2026` | near-centre-150E | 2.274e+04 ± 2.5e+03 | 2.685e+04 | 1.181 | +3.2 | **fail** (XYS) |
+| `earth-himawari9-2026` | near-centre-141E-12S | 4779 ± 6.2e+02 | 5287 | 1.106 | +1.6 | **fail** (ZS) |
 | `earth-himawari9-2026` | sky-near | ≤ 12.88 | 0.0008047 | — | — | pass |
 | `earth-himawari9-2026` | sky-far | ≤ 43.94 | 0 | — | — | pass |
-| `earth-himawari9-2026` | limb / disk-centre | 1.371 ± 0.13 | 0.902 | — | -7.184 | **fail** (XYZS) |
-| `earth-himawari9-2026` | terminator / disk-centre | 0.4636 ± 0.04 | 0.1952 | — | -13.55 | **fail** (XYZS) |
-| `earth-moon-epoxi-2008` | earth-disk-integrated | 1616 ± 1.6e+02 | 1560 | 0.966 | -0.7 | pass |
+| `earth-himawari9-2026` | limb / disk-centre | 1.371 ± 0.13 | 1.081 | — | -4.438 | **fail** (XYZS) |
+| `earth-himawari9-2026` | terminator / disk-centre | 0.4636 ± 0.04 | 0.2731 | — | -9.619 | **fail** (XYZS) |
+| `earth-moon-epoxi-2008` | earth-disk-integrated | 1616 ± 1.6e+02 | 1640 | 1.015 | +0.3 | pass |
 | `earth-moon-epoxi-2008` | moon-disk-integrated | 164.3 ± 16 | 157.1 | 0.956 | -0.9 | pass |
-| `earth-moon-epoxi-2008` | earth-centre | 3260 ± 4.8e+02 | 3228 | 0.990 | -0.1 | pass |
+| `earth-moon-epoxi-2008` | earth-centre | 3260 ± 4.8e+02 | 3142 | 0.964 | -0.5 | pass |
 | `earth-moon-epoxi-2008` | sky-near | ≤ 183.6 | 0 | — | — | pass |
 | `earth-moon-epoxi-2008` | sky-far | ≤ 63.72 | 0 | — | — | pass |
-| `earth-moon-epoxi-2008` | moon-disk-integrated / earth-disk-integrated | 0.1017 ± 0.00077 | 0.1007 | — | -2.514 | scene-dependent (**fail** (YZ)) |
-| `earth-moon-epoxi-2008` | earth-centre / earth-disk-integrated | 2.018 ± 0.22 | 2.069 | — | 0.4647 | pass |
-| `europa-nh-lorri-2007` | disk-centre | 721.1 ± 43 | 650.1 | 0.902 | -3.3 | **fail** (XY) |
-| `europa-nh-lorri-2007` | limb | 843.4 ± 48 | 759.3 | 0.900 | -3.5 | **fail** (XY) |
+| `earth-moon-epoxi-2008` | moon-disk-integrated / earth-disk-integrated | 0.1017 ± 0.00077 | 0.09576 | — | -15.27 | scene-dependent (**fail** (XYS)) |
+| `earth-moon-epoxi-2008` | earth-centre / earth-disk-integrated | 2.018 ± 0.22 | 1.916 | — | -0.9315 | pass |
+| `europa-nh-lorri-2007` | disk-centre | 721.1 ± 43 | 650 | 0.901 | -3.3 | **fail** (XY) |
+| `europa-nh-lorri-2007` | limb | 843.4 ± 48 | 759.2 | 0.900 | -3.5 | **fail** (XY) |
 | `europa-nh-lorri-2007` | terminator | 219.9 ± 44 | 168.6 | 0.767 | -2.3 | **fail** (XY) |
-| `europa-nh-lorri-2007` | disk-integrated | 407.4 ± 23 | 362.3 | 0.889 | -4.0 | **fail** (XY) |
+| `europa-nh-lorri-2007` | disk-integrated | 407.4 ± 23 | 362.2 | 0.889 | -4.0 | **fail** (XY) |
 | `europa-nh-lorri-2007` | sky-near | ≤ 5.058 | 0 | — | — | pass |
 | `europa-nh-lorri-2007` | sky-far | ≤ 0.7535 | 0 | — | — | pass |
 | `europa-nh-lorri-2007` | limb / disk-centre | 1.17 ± 0.027 | 1.168 | — | -0.1152 | pass |
@@ -787,9 +784,9 @@ Ratio reassessment from stored region means: new ratio rows below are CPU predic
 | `ganymede-nh-lorri-2007` | disk-centre / disk-integrated | 1.769 ± 0.12 | 1.601 | — | -2.919 | **fail** (XYZS) |
 | `ganymede-nh-lorri-2007` | limb / disk-integrated | 2.681 ± 0.04 | 2.616 | — | -3.263 | **fail** (XYZS) |
 | `ganymede-nh-lorri-2007` | terminator / disk-integrated | 0.5203 ± 0.077 | 0.3402 | — | -4.651 | **fail** (XYZS) |
-| `io-nh-lorri-2007` | disk-centre | 673.7 ± 53 | 570.8 | 0.847 | -3.9 | **fail** (XY) |
-| `io-nh-lorri-2007` | limb | 839.7 ± 63 | 751 | 0.894 | -2.8 | **fail** (XY) |
-| `io-nh-lorri-2007` | terminator | 146.4 ± 32 | 128.4 | 0.878 | -1.1 | pass |
+| `io-nh-lorri-2007` | disk-centre | 673.7 ± 53 | 570.7 | 0.847 | -3.9 | **fail** (XY) |
+| `io-nh-lorri-2007` | limb | 839.7 ± 63 | 750.9 | 0.894 | -2.8 | **fail** (XY) |
+| `io-nh-lorri-2007` | terminator | 146.4 ± 32 | 128.4 | 0.877 | -1.1 | pass |
 | `io-nh-lorri-2007` | disk-integrated | 348.2 ± 26 | 308.5 | 0.886 | -3.0 | **fail** (XY) |
 | `io-nh-lorri-2007` | sky-near | ≤ 6.166 | 0 | — | — | pass |
 | `io-nh-lorri-2007` | sky-far | ≤ 1.127 | 0 | — | — | pass |
@@ -798,10 +795,10 @@ Ratio reassessment from stored region means: new ratio rows below are CPU predic
 | `io-nh-lorri-2007` | disk-centre / disk-integrated | 1.935 ± 0.05 | 1.85 | — | -3.412 | **fail** (XYZS) |
 | `io-nh-lorri-2007` | limb / disk-integrated | 2.412 ± 0.024 | 2.434 | — | 1.834 | pass |
 | `io-nh-lorri-2007` | terminator / disk-integrated | 0.4204 ± 0.085 | 0.4163 | — | -0.09543 | pass |
-| `jupiter-nh-lorri-2007` | disk-centre | 1063 ± 2e+02 | 1280 | 1.204 | +2.1 | scene-dependent (**fail** (XYZS)) |
-| `jupiter-nh-lorri-2007` | limb | 698 ± 1.5e+02 | 720.3 | 1.032 | +0.3 | pass |
-| `jupiter-nh-lorri-2007` | terminator | 311 ± 87 | 300.2 | 0.965 | -0.2 | pass |
-| `jupiter-nh-lorri-2007` | disk-integrated | 500.1 ± 95 | 464.9 | 0.930 | -0.7 | pass |
+| `jupiter-nh-lorri-2007` | disk-centre | 1063 ± 2e+02 | 1326 | 1.247 | +2.6 | scene-dependent (**fail** (XYZS)) |
+| `jupiter-nh-lorri-2007` | limb | 698 ± 1.5e+02 | 746.3 | 1.069 | +0.6 | pass |
+| `jupiter-nh-lorri-2007` | terminator | 311 ± 87 | 311 | 1.000 | +0.0 | pass |
+| `jupiter-nh-lorri-2007` | disk-integrated | 500.1 ± 95 | 481.7 | 0.963 | -0.4 | pass |
 | `jupiter-nh-lorri-2007` | sky-near | ≤ 4.339 | 0 | — | — | pass |
 | `jupiter-nh-lorri-2007` | sky-far | ≤ 0.4903 | 0 | — | — | pass |
 | `jupiter-nh-lorri-2007` | limb / disk-centre | 0.6567 ± 0.066 | 0.5629 | — | -2.838 | scene-dependent (**fail** (XYZS)) |
@@ -809,10 +806,10 @@ Ratio reassessment from stored region means: new ratio rows below are CPU predic
 | `jupiter-nh-lorri-2007` | disk-centre / disk-integrated | 2.125 ± 0.039 | 2.752 | — | 31.92 | scene-dependent (**fail** (XYZS)) |
 | `jupiter-nh-lorri-2007` | limb / disk-integrated | 1.396 ± 0.14 | 1.549 | — | 2.224 | **fail** (XYZS) |
 | `jupiter-nh-lorri-2007` | terminator / disk-integrated | 0.6218 ± 0.13 | 0.6456 | — | 0.3732 | pass |
-| `neptune-voyager2-1989` | disk-centre | 23.11 ± 4.7 | 23.16 | 1.002 | +0.0 | pass |
-| `neptune-voyager2-1989` | limb | 19.95 ± 4.7 | 19.12 | 0.959 | -0.3 | pass |
-| `neptune-voyager2-1989` | terminator | 8.56 ± 6.5 | 7.064 | 0.825 | -0.5 | pass |
-| `neptune-voyager2-1989` | disk-integrated | 11.69 ± 2.4 | 11.16 | 0.954 | -0.4 | pass |
+| `neptune-voyager2-1989` | disk-centre | 23.11 ± 4.7 | 23.28 | 1.007 | +0.1 | pass |
+| `neptune-voyager2-1989` | limb | 19.95 ± 4.7 | 19.22 | 0.963 | -0.3 | pass |
+| `neptune-voyager2-1989` | terminator | 8.56 ± 6.5 | 7.1 | 0.830 | -0.5 | pass |
+| `neptune-voyager2-1989` | disk-integrated | 11.69 ± 2.4 | 11.22 | 0.959 | -0.4 | pass |
 | `neptune-voyager2-1989` | sky-near | ≤ 0.1781 | 0 | — | — | pass |
 | `neptune-voyager2-1989` | sky-far | ≤ 0.1115 | 0 | — | — | pass |
 | `neptune-voyager2-1989` | limb / disk-centre | 0.863 ± 0.1 | 0.8254 | — | -0.7215 | pass |
@@ -820,9 +817,9 @@ Ratio reassessment from stored region means: new ratio rows below are CPU predic
 | `neptune-voyager2-1989` | disk-centre / disk-integrated | 1.977 ± 0.01 | 2.076 | — | 18.87 | **fail** (XYZS) |
 | `neptune-voyager2-1989` | limb / disk-integrated | 1.706 ± 0.21 | 1.713 | — | 0.07108 | pass |
 | `neptune-voyager2-1989` | terminator / disk-integrated | 0.7321 ± 0.53 | 0.633 | — | -0.3728 | pass |
-| `pluto-nh-lorri-2015` | disk-centre | 19.49 ± 6.6 | 20.81 | 1.067 | +0.4 | pass |
+| `pluto-nh-lorri-2015` | disk-centre | 19.49 ± 6.6 | 20.81 | 1.068 | +0.4 | pass |
 | `pluto-nh-lorri-2015` | limb | 19.32 ± 6.6 | 19.96 | 1.033 | +0.2 | pass |
-| `pluto-nh-lorri-2015` | terminator | 6.802 ± 2.7 | 6.2 | 0.911 | -0.4 | pass |
+| `pluto-nh-lorri-2015` | terminator | 6.802 ± 2.7 | 6.201 | 0.912 | -0.4 | pass |
 | `pluto-nh-lorri-2015` | disk-integrated | 11.47 ± 3.9 | 11.43 | 0.996 | -0.0 | pass |
 | `pluto-nh-lorri-2015` | sky-near | ≤ 0.231 | 0.01247 | — | — | pass |
 | `pluto-nh-lorri-2015` | sky-far | ≤ 0.01838 | 0 | — | — | pass |
@@ -831,9 +828,9 @@ Ratio reassessment from stored region means: new ratio rows below are CPU predic
 | `pluto-nh-lorri-2015` | disk-centre / disk-integrated | 1.699 ± 0.053 | 1.821 | — | 4.628 | **fail** (XYZS) |
 | `pluto-nh-lorri-2015` | limb / disk-integrated | 1.684 ± 0.037 | 1.746 | — | 3.368 | **fail** (XYZS) |
 | `pluto-nh-lorri-2015` | terminator / disk-integrated | 0.5929 ± 0.13 | 0.5426 | — | -0.789 | pass |
-| `saturn-cassini-wac-2016` | disk-centre | 117.5 ± 24 | 104 | 0.885 | -1.1 | pass |
-| `saturn-cassini-wac-2016` | limb | 99.81 ± 20 | 109 | 1.092 | +0.9 | pass |
-| `saturn-cassini-wac-2016` | terminator | 20.36 ± 4.6 | 14.38 | 0.706 | -2.6 | **fail** (XYZS) |
+| `saturn-cassini-wac-2016` | disk-centre | 117.5 ± 24 | 107.1 | 0.911 | -0.9 | pass |
+| `saturn-cassini-wac-2016` | limb | 99.81 ± 20 | 112.2 | 1.124 | +1.2 | pass |
+| `saturn-cassini-wac-2016` | terminator | 20.36 ± 4.6 | 14.8 | 0.727 | -2.4 | **fail** (XYZS) |
 | `saturn-cassini-wac-2016` | ring-c | 8.468 ± 1.8 | 0 | 0.000 | -9.5 | **fail** (XYZS) |
 | `saturn-cassini-wac-2016` | ring-b | 84.39 ± 17 | 0 | 0.000 | -9.9 | **fail** (XYZS) |
 | `saturn-cassini-wac-2016` | ring-a | 40.35 ± 8.1 | 0 | 0.000 | -9.9 | **fail** (XYZS) |
@@ -841,10 +838,10 @@ Ratio reassessment from stored region means: new ratio rows below are CPU predic
 | `saturn-cassini-wac-2016` | sky-far | ≤ 0.4074 | 0 | — | — | pass |
 | `saturn-cassini-wac-2016` | limb / disk-centre | 0.8494 ± 0.029 | 1.048 | — | 13.92 | **fail** (XYZS) |
 | `saturn-cassini-wac-2016` | terminator / disk-centre | 0.1733 ± 0.018 | 0.1382 | — | -3.923 | **fail** (XYZS) |
-| `uranus-voyager2-1986` | disk-centre | 69.51 ± 14 | 69.29 | 0.997 | -0.0 | pass |
-| `uranus-voyager2-1986` | limb | 54.33 ± 12 | 57.91 | 1.066 | +0.6 | pass |
-| `uranus-voyager2-1986` | terminator | 24.86 ± 8.5 | 22.52 | 0.906 | -0.6 | pass |
-| `uranus-voyager2-1986` | disk-integrated | 34.63 ± 6.9 | 34.69 | 1.002 | +0.0 | pass |
+| `uranus-voyager2-1986` | disk-centre | 69.51 ± 14 | 68.73 | 0.989 | -0.1 | pass |
+| `uranus-voyager2-1986` | limb | 54.33 ± 12 | 57.44 | 1.057 | +0.5 | pass |
+| `uranus-voyager2-1986` | terminator | 24.86 ± 8.5 | 22.34 | 0.899 | -0.6 | pass |
+| `uranus-voyager2-1986` | disk-integrated | 34.63 ± 6.9 | 34.4 | 0.993 | -0.1 | pass |
 | `uranus-voyager2-1986` | sky-near | ≤ 0.7942 | 0 | — | — | pass |
 | `uranus-voyager2-1986` | sky-far | ≤ 0.2333 | 0 | — | — | pass |
 | `uranus-voyager2-1986` | limb / disk-centre | 0.7816 ± 0.056 | 0.8357 | — | 1.935 | pass |
@@ -861,9 +858,9 @@ Scene-dependent comparisons are diagnostic and excluded from brightness and rati
 * `jupiter-nh-lorri-2007` terminator / disk-centre: The observed centre is in Jupiter's 2007 equatorial zone; the app holds the OPAL 2025-12-11 map, not that atmospheric scene at the observation epoch. Sources: LORRI observation: lor_0031736039 (2007-01-22); Simon et al. (2015), OPAL, ApJ 812, 55, doi:10.1088/0004-637X/812/1/55; MAST doi:10.17909/T9G593, cycle 32 Jupiter map 2025-12-11.
 * `jupiter-nh-lorri-2007` disk-centre / disk-integrated: The observed centre is in Jupiter's 2007 equatorial zone; the app holds the OPAL 2025-12-11 map, not that atmospheric scene at the observation epoch. Sources: LORRI observation: lor_0031736039 (2007-01-22); Simon et al. (2015), OPAL, ApJ 812, 55, doi:10.1088/0004-637X/812/1/55; MAST doi:10.17909/T9G593, cycle 32 Jupiter map 2025-12-11.
 
-**Regions: 45 pass, 24 fail, 0 not rendered, 0 not compared.**
+**Regions: 43 pass, 26 fail, 0 not rendered, 0 not compared.**
 
-**Brightness regions: 23 pass, 23 fail, 0 not rendered, 0 not compared.**
+**Brightness regions: 21 pass, 25 fail, 0 not rendered, 0 not compared.**
 
 **Sky upper limits: 22 pass, 0 fail, 0 not rendered, 0 not compared.**
 
@@ -874,22 +871,22 @@ Scene-dependent comparisons are diagnostic and excluded from brightness and rati
 How each body was drawn:
 
 * `callisto-nh-lorri-2007`: Callisto: disk photometry, disk model rotation-slices-v1, spatial model, map albedo.
-* `earth-himawari9-2026`: Earth: disk photometry, map albedo, map clouds, map cloudTau, map water, map night, map wind, partly-cloudy τ statistic for the cloud without a retrieval (estimated), atmosphere.
-* `earth-moon-epoxi-2008`: Earth: disk photometry, map albedo, map clouds, map cloudTau, map water, map night, map wind, partly-cloudy τ statistic for the cloud without a retrieval (estimated), atmosphere; Moon: disk photometry, disk model rolo-v1, map albedo, map height, map photometry.
+* `earth-himawari9-2026`: Earth: disk photometry, map albedo, map clouds, map cloudTauEstimated, map water, map night, map wind, atmosphere.
+* `earth-moon-epoxi-2008`: Earth: disk photometry, map albedo, map clouds, map cloudTauEstimated, map water, map night, map wind, atmosphere; Moon: disk photometry, disk model rolo-v1, map albedo, map height, map hapke.
 * `europa-nh-lorri-2007`: Europa: disk photometry, disk model rotation-slices-v1, spatial model, map albedo.
 * `ganymede-nh-lorri-2007`: Ganymede: disk photometry, disk model rotation-slices-v1, spatial model, map albedo.
 * `io-nh-lorri-2007`: Io: disk photometry, disk model rotation-slices-v1, spatial model, map albedo.
 * `jupiter-nh-lorri-2007`: Jupiter: disk photometry, spatial model, map albedo.
 * `neptune-voyager2-1989`: Neptune: disk photometry, spatial model, map albedo.
 * `pluto-nh-lorri-2015`: Pluto: disk photometry, spatial model, map albedo, atmosphere. Renderer warnings: Pluto: phase extrapolated beyond measured range (0–1.74°) with the spatial law → estimated.
-* `saturn-cassini-wac-2016`: Saturn: disk photometry, spatial model, map albedo, rings. Renderer warnings: Saturn rings: phase angle 54.58° outside the reflectance model's 0.25–47° → ring brightness not measured (hatched).
+* `saturn-cassini-wac-2016`: Saturn: disk photometry, spatial model, map albedo, rings. Renderer warnings: Saturn rings: phase angle 54.58° outside the reflectance model's 0.25–47° → ring brightness unknown in this product (hatched).
 * `uranus-voyager2-1986`: Uranus: disk photometry, spatial model, map albedo.
 
 **What the failures say.**
 
 ### Findings computed from this run
 
-45 failing rows: 23 regions and 22 ratio rows (valid frames only). Each row below names a failing channel; relative error and tolerance are percentages of the expected value. ROI radiance is in cd/m² (S: scotopic cd/m²); ratios are dimensionless.
+47 failing rows: 25 regions and 22 ratio rows (valid frames only). Each row below names a failing channel; relative error and tolerance are percentages of the expected value. ROI radiance is in cd/m² (S: scotopic cd/m²); ratios are dimensionless.
 
 #### Galilean moons
 
@@ -906,14 +903,14 @@ How each body was drawn:
 | `callisto-nh-lorri-2007` | disk-integrated | X | 62.245 ± 2.96 | 50.547 | -18.79 | 4.8 | -7.90 |
 | `callisto-nh-lorri-2007` | disk-integrated | Y | 64.852 ± 3.82 | 52.664 | -18.79 | 5.9 | -6.38 |
 | `callisto-nh-lorri-2007` | disk-integrated | S | 144.62 ± 13.6 | 117.44 | -18.79 | 9.4 | -4.01 |
-| `europa-nh-lorri-2007` | disk-centre | X | 691.07 ± 52.3 | 623.01 | -9.85 | 7.6 | -2.60 |
-| `europa-nh-lorri-2007` | disk-centre | Y | 721.11 ± 43.1 | 650.09 | -9.85 | 6.0 | -3.29 |
-| `europa-nh-lorri-2007` | limb | X | 808.24 ± 59 | 727.66 | -9.97 | 7.3 | -2.73 |
-| `europa-nh-lorri-2007` | limb | Y | 843.37 ± 47.6 | 759.28 | -9.97 | 5.6 | -3.54 |
-| `europa-nh-lorri-2007` | terminator | X | 210.72 ± 43.5 | 161.56 | -23.33 | 20.7 | -2.26 |
-| `europa-nh-lorri-2007` | terminator | Y | 219.88 ± 44.3 | 168.58 | -23.33 | 20.1 | -2.32 |
-| `europa-nh-lorri-2007` | disk-integrated | X | 390.41 ± 28.3 | 347.18 | -11.07 | 7.3 | -3.05 |
-| `europa-nh-lorri-2007` | disk-integrated | Y | 407.37 ± 22.7 | 362.27 | -11.07 | 5.6 | -3.97 |
+| `europa-nh-lorri-2007` | disk-centre | X | 691.07 ± 52.3 | 622.94 | -9.86 | 7.6 | -2.61 |
+| `europa-nh-lorri-2007` | disk-centre | Y | 721.11 ± 43.1 | 650.02 | -9.86 | 6.0 | -3.30 |
+| `europa-nh-lorri-2007` | limb | X | 808.24 ± 59 | 727.58 | -9.98 | 7.3 | -2.74 |
+| `europa-nh-lorri-2007` | limb | Y | 843.37 ± 47.6 | 759.21 | -9.98 | 5.6 | -3.54 |
+| `europa-nh-lorri-2007` | terminator | X | 210.72 ± 43.5 | 161.54 | -23.34 | 20.7 | -2.26 |
+| `europa-nh-lorri-2007` | terminator | Y | 219.88 ± 44.3 | 168.56 | -23.34 | 20.1 | -2.32 |
+| `europa-nh-lorri-2007` | disk-integrated | X | 390.41 ± 28.3 | 347.14 | -11.08 | 7.3 | -3.06 |
+| `europa-nh-lorri-2007` | disk-integrated | Y | 407.37 ± 22.7 | 362.23 | -11.08 | 5.6 | -3.97 |
 | `ganymede-nh-lorri-2007` | disk-centre | X | 509.41 ± 40.1 | 411.82 | -19.16 | 7.9 | -4.87 |
 | `ganymede-nh-lorri-2007` | disk-centre | Y | 529.34 ± 40.5 | 427.92 | -19.16 | 7.7 | -5.00 |
 | `ganymede-nh-lorri-2007` | disk-centre | S | 1199.7 ± 153 | 969.88 | -19.16 | 12.8 | -3.00 |
@@ -926,12 +923,12 @@ How each body was drawn:
 | `ganymede-nh-lorri-2007` | terminator | S | 352.83 ± 65.3 | 206.1 | -41.59 | 18.5 | -4.49 |
 | `ganymede-nh-lorri-2007` | disk-integrated | X | 287.95 ± 12.8 | 257.21 | -10.67 | 4.4 | -4.81 |
 | `ganymede-nh-lorri-2007` | disk-integrated | Y | 299.21 ± 12.1 | 267.27 | -10.67 | 4.1 | -5.26 |
-| `io-nh-lorri-2007` | disk-centre | X | 646.85 ± 60.8 | 548.09 | -15.27 | 9.4 | -3.25 |
-| `io-nh-lorri-2007` | disk-centre | Y | 673.7 ± 53.2 | 570.84 | -15.27 | 7.9 | -3.87 |
-| `io-nh-lorri-2007` | limb | X | 806.25 ± 73.3 | 721.1 | -10.56 | 9.1 | -2.32 |
-| `io-nh-lorri-2007` | limb | Y | 839.72 ± 63.3 | 751.03 | -10.56 | 7.5 | -2.80 |
-| `io-nh-lorri-2007` | disk-integrated | X | 334.29 ± 30.3 | 296.23 | -11.39 | 9.1 | -2.52 |
-| `io-nh-lorri-2007` | disk-integrated | Y | 348.17 ± 26.1 | 308.52 | -11.39 | 7.5 | -3.04 |
+| `io-nh-lorri-2007` | disk-centre | X | 646.85 ± 60.8 | 547.99 | -15.28 | 9.4 | -3.25 |
+| `io-nh-lorri-2007` | disk-centre | Y | 673.7 ± 53.2 | 570.73 | -15.28 | 7.9 | -3.87 |
+| `io-nh-lorri-2007` | limb | X | 806.25 ± 73.3 | 720.96 | -10.58 | 9.1 | -2.33 |
+| `io-nh-lorri-2007` | limb | Y | 839.72 ± 63.3 | 750.89 | -10.58 | 7.5 | -2.81 |
+| `io-nh-lorri-2007` | disk-integrated | X | 334.29 ± 30.3 | 296.17 | -11.40 | 9.1 | -2.52 |
+| `io-nh-lorri-2007` | disk-integrated | Y | 348.17 ± 26.1 | 308.47 | -11.40 | 7.5 | -3.05 |
 
 #### Ratio rows
 
@@ -953,14 +950,14 @@ How each body was drawn:
 | `callisto-nh-lorri-2007` | terminator / disk-integrated | Y | 0.48139 ± 0.0661 | 0.40401 | -16.07 | 13.7 | -2.34 |
 | `callisto-nh-lorri-2007` | terminator / disk-integrated | Z | 0.48139 ± 0.0661 | 0.40401 | -16.07 | 13.7 | -2.34 |
 | `callisto-nh-lorri-2007` | terminator / disk-integrated | S | 0.48139 ± 0.0661 | 0.40401 | -16.07 | 13.7 | -2.34 |
-| `earth-himawari9-2026` | limb / disk-centre | X | 1.3576 ± 0.127 | 0.89642 | -33.97 | 9.4 | -7.24 |
-| `earth-himawari9-2026` | limb / disk-centre | Y | 1.3706 ± 0.13 | 0.90196 | -34.19 | 9.5 | -7.18 |
-| `earth-himawari9-2026` | limb / disk-centre | Z | 1.5116 ± 0.129 | 1.1618 | -23.14 | 8.5 | -5.44 |
-| `earth-himawari9-2026` | limb / disk-centre | S | 1.4629 ± 0.105 | 1.059 | -27.61 | 7.1 | -7.73 |
-| `earth-himawari9-2026` | terminator / disk-centre | X | 0.46038 ± 0.0382 | 0.19274 | -58.13 | 8.3 | -14.02 |
-| `earth-himawari9-2026` | terminator / disk-centre | Y | 0.46363 ± 0.0396 | 0.1952 | -57.90 | 8.5 | -13.55 |
-| `earth-himawari9-2026` | terminator / disk-centre | Z | 0.45136 ± 0.0367 | 0.25463 | -43.59 | 8.1 | -10.71 |
-| `earth-himawari9-2026` | terminator / disk-centre | S | 0.45856 ± 0.0302 | 0.23311 | -49.16 | 6.6 | -14.92 |
+| `earth-himawari9-2026` | limb / disk-centre | X | 1.3576 ± 0.127 | 1.0715 | -21.07 | 9.4 | -4.49 |
+| `earth-himawari9-2026` | limb / disk-centre | Y | 1.3706 ± 0.13 | 1.0811 | -21.12 | 9.5 | -4.44 |
+| `earth-himawari9-2026` | limb / disk-centre | Z | 1.5116 ± 0.129 | 1.2976 | -14.16 | 8.5 | -3.33 |
+| `earth-himawari9-2026` | limb / disk-centre | S | 1.4629 ± 0.105 | 1.2191 | -16.67 | 7.1 | -4.66 |
+| `earth-himawari9-2026` | terminator / disk-centre | X | 0.46038 ± 0.0382 | 0.26575 | -42.28 | 8.3 | -10.20 |
+| `earth-himawari9-2026` | terminator / disk-centre | Y | 0.46363 ± 0.0396 | 0.27306 | -41.10 | 8.5 | -9.62 |
+| `earth-himawari9-2026` | terminator / disk-centre | Z | 0.45136 ± 0.0367 | 0.329 | -27.11 | 8.1 | -6.66 |
+| `earth-himawari9-2026` | terminator / disk-centre | S | 0.45856 ± 0.0302 | 0.31394 | -31.54 | 6.6 | -9.57 |
 | `europa-nh-lorri-2007` | limb / disk-integrated | X | 2.0702 ± 0.0182 | 2.0959 | +1.24 | 0.9 | +2.81 |
 | `europa-nh-lorri-2007` | limb / disk-integrated | Y | 2.0702 ± 0.0182 | 2.0959 | +1.24 | 0.9 | +2.81 |
 | `europa-nh-lorri-2007` | limb / disk-integrated | Z | 2.0702 ± 0.0182 | 2.0959 | +1.24 | 0.9 | +2.81 |
@@ -1027,31 +1024,32 @@ How each body was drawn:
 
 | case | row | channel | expected ± tolerance | rendered | relative error (%) | tolerance (%) | σ |
 |---|---|---|---|---|---|---|---|
-| `earth-himawari9-2026` | disk-centre | X | 4569.8 ± 575 | 6895.6 | +50.89 | 12.6 | +8.09 |
-| `earth-himawari9-2026` | disk-centre | Y | 4677.9 ± 596 | 7054.3 | +50.80 | 12.8 | +7.97 |
-| `earth-himawari9-2026` | disk-centre | Z | 7132.9 ± 883 | 10293 | +44.31 | 12.4 | +7.16 |
-| `earth-himawari9-2026` | disk-centre | S | 13497 ± 1.57e+03 | 20075 | +48.73 | 11.7 | +8.36 |
-| `earth-himawari9-2026` | terminator | X | 2103.9 ± 222 | 1329.1 | -36.83 | 10.5 | -6.99 |
-| `earth-himawari9-2026` | terminator | Y | 2168.8 ± 229 | 1377 | -36.51 | 10.5 | -6.93 |
-| `earth-himawari9-2026` | terminator | Z | 3219.5 ± 342 | 2621 | -18.59 | 10.6 | -3.50 |
-| `earth-himawari9-2026` | terminator | S | 6189.4 ± 642 | 4679.8 | -24.39 | 10.4 | -4.71 |
-| `earth-himawari9-2026` | near-centre-130E | X | 5890.9 ± 610 | 8097.4 | +37.46 | 10.4 | +7.23 |
-| `earth-himawari9-2026` | near-centre-130E | Y | 6031.8 ± 626 | 8339.1 | +38.25 | 10.4 | +7.37 |
-| `earth-himawari9-2026` | near-centre-130E | Z | 8576.8 ± 891 | 11007 | +28.34 | 10.4 | +5.46 |
-| `earth-himawari9-2026` | near-centre-130E | S | 16711 ± 1.71e+03 | 22490 | +34.58 | 10.2 | +6.75 |
-| `earth-himawari9-2026` | near-centre-141E-12S | X | 4457.1 ± 547 | 6240.2 | +40.01 | 12.3 | +6.52 |
-| `earth-himawari9-2026` | near-centre-141E-12S | Y | 4779.2 ± 617 | 6573.7 | +37.55 | 12.9 | +5.82 |
-| `earth-himawari9-2026` | near-centre-141E-12S | Z | 8032.9 ± 855 | 10242 | +27.50 | 10.6 | +5.17 |
-| `earth-himawari9-2026` | near-centre-141E-12S | S | 15048 ± 1.63e+03 | 19876 | +32.08 | 10.8 | +5.94 |
+| `earth-himawari9-2026` | disk-centre | X | 4569.8 ± 575 | 5862 | +28.28 | 12.6 | +4.50 |
+| `earth-himawari9-2026` | disk-centre | Y | 4677.9 ± 596 | 5982 | +27.88 | 12.8 | +4.37 |
+| `earth-himawari9-2026` | disk-centre | Z | 7132.9 ± 883 | 9266.2 | +29.91 | 12.4 | +4.83 |
+| `earth-himawari9-2026` | disk-centre | S | 13497 ± 1.57e+03 | 17603 | +30.42 | 11.7 | +5.21 |
+| `earth-himawari9-2026` | limb | Z | 10782 ± 1.18e+03 | 12024 | +11.51 | 10.9 | +2.11 |
+| `earth-himawari9-2026` | terminator | X | 2103.9 ± 222 | 1557.8 | -25.96 | 10.5 | -4.92 |
+| `earth-himawari9-2026` | terminator | Y | 2168.8 ± 229 | 1633.4 | -24.69 | 10.5 | -4.68 |
+| `earth-himawari9-2026` | terminator | S | 6189.4 ± 642 | 5526.2 | -10.71 | 10.4 | -2.07 |
+| `earth-himawari9-2026` | near-centre-130E | X | 5890.9 ± 610 | 7076.2 | +20.12 | 10.4 | +3.89 |
+| `earth-himawari9-2026` | near-centre-130E | Y | 6031.8 ± 626 | 7277.1 | +20.65 | 10.4 | +3.98 |
+| `earth-himawari9-2026` | near-centre-130E | Z | 8576.8 ± 891 | 10021 | +16.84 | 10.4 | +3.24 |
+| `earth-himawari9-2026` | near-centre-130E | S | 16711 ± 1.71e+03 | 20087 | +20.20 | 10.2 | +3.94 |
+| `earth-himawari9-2026` | near-centre-150E | X | 22409 ± 2.47e+03 | 25960 | +15.85 | 11.0 | +2.88 |
+| `earth-himawari9-2026` | near-centre-150E | Y | 22741 ± 2.53e+03 | 26848 | +18.06 | 11.1 | +3.25 |
+| `earth-himawari9-2026` | near-centre-150E | S | 56900 ± 6.21e+03 | 65086 | +14.39 | 10.9 | +2.64 |
+| `earth-himawari9-2026` | near-centre-141E-12S | Z | 8032.9 ± 855 | 8994 | +11.96 | 10.6 | +2.25 |
+| `earth-himawari9-2026` | near-centre-141E-12S | S | 15048 ± 1.63e+03 | 16901 | +12.31 | 10.8 | +2.28 |
 
 #### Saturn globe
 
 | case | row | channel | expected ± tolerance | rendered | relative error (%) | tolerance (%) | σ |
 |---|---|---|---|---|---|---|---|
-| `saturn-cassini-wac-2016` | terminator | X | 19.465 ± 4.3 | 13.829 | -28.96 | 22.1 | -2.62 |
-| `saturn-cassini-wac-2016` | terminator | Y | 20.361 ± 4.57 | 14.377 | -29.39 | 22.4 | -2.62 |
-| `saturn-cassini-wac-2016` | terminator | Z | 16.381 ± 3.97 | 10.391 | -36.57 | 24.2 | -3.02 |
-| `saturn-cassini-wac-2016` | terminator | S | 43.617 ± 9.85 | 29.209 | -33.03 | 22.6 | -2.93 |
+| `saturn-cassini-wac-2016` | terminator | X | 19.465 ± 4.3 | 14.308 | -26.50 | 22.1 | -2.40 |
+| `saturn-cassini-wac-2016` | terminator | Y | 20.361 ± 4.57 | 14.799 | -27.32 | 22.4 | -2.43 |
+| `saturn-cassini-wac-2016` | terminator | Z | 16.381 ± 3.97 | 10.941 | -33.21 | 24.2 | -2.74 |
+| `saturn-cassini-wac-2016` | terminator | S | 43.617 ± 9.85 | 30.226 | -30.70 | 22.6 | -2.72 |
 
 #### Saturn rings
 
@@ -1096,3 +1094,662 @@ How each body was drawn:
   spatial pattern or spectral convention is correct.
 
 These readings follow the validation triage's findings, not a fit of any case, tolerance or model.
+
+### Sampling convergence
+
+Sweep of 2026-10-08T01:46:39.953Z through 2026-10-08T01:56:33.648Z (git d1b5e33, data 2026-10-08T01:23:42+00:00), rendered by the machine's GPU, adapter `nvidia blackwell`, on AMD Ryzen 9 9950X3D 16-Core Processor (32 threads). Source: `app/shots/validation/sampling-convergence.json` (`cd app && node scripts/validate-sampling.mjs`).
+
+Every ROI and ratio, all channels. ROI X/Y/Z: cd/m²; S: scotopic cd/m²; ratios: dimensionless. Δ 4→6 = 100 × (value at 4 / value at 6 − 1); zero/zero is 0%, nonzero/zero is unknown. These finite grids show convergence evidence, not a proof. Choose the coarsest stable grid by the values and every verdict; a stable tally alone is insufficient. No law, source or tolerance is selected here.
+
+| case | region | channel | 1 × 1 | 2 × 2 | 3 × 3 | 4 × 4 | 6 × 6 | Δ 4→6 |
+|---|---|---|---|---|---|---|---|---|
+| `callisto-nh-lorri-2007` | disk-centre | X | 68.30274 | 68.82787 | 68.76726 | 68.8023 | 68.72547 | +0.111785 % |
+| `callisto-nh-lorri-2007` | disk-centre | Y | 71.16333 | 71.71046 | 71.64731 | 71.68381 | 71.60377 | +0.111786 % |
+| `callisto-nh-lorri-2007` | disk-centre | Z | 64.71481 | 65.21236 | 65.15493 | 65.18813 | 65.11534 | +0.111785 % |
+| `callisto-nh-lorri-2007` | disk-centre | S | 158.6923 | 159.9123 | 159.7715 | 159.8529 | 159.6744 | +0.111785 % |
+| `callisto-nh-lorri-2007` | limb | X | 227.9257 | 225.3704 | 227.5369 | 226.4611 | 226.2908 | +0.0752421 % |
+| `callisto-nh-lorri-2007` | limb | Y | 237.4715 | 234.8092 | 237.0664 | 235.9455 | 235.7681 | +0.0752433 % |
+| `callisto-nh-lorri-2007` | limb | Z | 215.9528 | 213.5318 | 215.5845 | 214.5652 | 214.4038 | +0.0752427 % |
+| `callisto-nh-lorri-2007` | limb | S | 529.5549 | 523.618 | 528.6515 | 526.152 | 525.7564 | +0.0752425 % |
+| `callisto-nh-lorri-2007` | terminator | X | 20.34561 | 20.4322 | 20.43572 | 20.42168 | 20.41568 | +0.0293534 % |
+| `callisto-nh-lorri-2007` | terminator | Y | 21.19771 | 21.28793 | 21.29159 | 21.27696 | 21.27072 | +0.0293541 % |
+| `callisto-nh-lorri-2007` | terminator | Z | 19.27686 | 19.35891 | 19.36224 | 19.34893 | 19.34325 | +0.0293537 % |
+| `callisto-nh-lorri-2007` | terminator | S | 47.2703 | 47.47149 | 47.47967 | 47.44703 | 47.43311 | +0.0293533 % |
+| `callisto-nh-lorri-2007` | disk-integrated | X | 50.45352 | 50.51887 | 50.54669 | 50.54744 | 50.55412 | -0.0132157 % |
+| `callisto-nh-lorri-2007` | disk-integrated | Y | 52.56657 | 52.63465 | 52.66364 | 52.66442 | 52.67138 | -0.0132157 % |
+| `callisto-nh-lorri-2007` | disk-integrated | Z | 47.80321 | 47.86513 | 47.89148 | 47.89219 | 47.89852 | -0.0132157 % |
+| `callisto-nh-lorri-2007` | disk-integrated | S | 117.222 | 117.3738 | 117.4385 | 117.4402 | 117.4557 | -0.0132157 % |
+| `callisto-nh-lorri-2007` | sky-near | X | 0 | 0 | 0 | 0 | 0 | +0 % |
+| `callisto-nh-lorri-2007` | sky-near | Y | 0 | 0 | 0 | 0 | 0 | +0 % |
+| `callisto-nh-lorri-2007` | sky-near | Z | 0 | 0 | 0 | 0 | 0 | +0 % |
+| `callisto-nh-lorri-2007` | sky-near | S | 0 | 0 | 0 | 0 | 0 | +0 % |
+| `callisto-nh-lorri-2007` | sky-far | X | 0 | 0 | 0 | 0 | 0 | +0 % |
+| `callisto-nh-lorri-2007` | sky-far | Y | 0 | 0 | 0 | 0 | 0 | +0 % |
+| `callisto-nh-lorri-2007` | sky-far | Z | 0 | 0 | 0 | 0 | 0 | +0 % |
+| `callisto-nh-lorri-2007` | sky-far | S | 0 | 0 | 0 | 0 | 0 | +0 % |
+| `callisto-nh-lorri-2007` | limb / disk-centre | X | 3.336992 | 3.274406 | 3.308797 | 3.291476 | 3.292678 | -0.0365025 % |
+| `callisto-nh-lorri-2007` | limb / disk-centre | Y | 3.336992 | 3.274406 | 3.308797 | 3.291476 | 3.292678 | -0.0365014 % |
+| `callisto-nh-lorri-2007` | limb / disk-centre | Z | 3.336992 | 3.274406 | 3.308797 | 3.291476 | 3.292678 | -0.0365018 % |
+| `callisto-nh-lorri-2007` | limb / disk-centre | S | 3.336992 | 3.274406 | 3.308797 | 3.291476 | 3.292678 | -0.036502 % |
+| `callisto-nh-lorri-2007` | terminator / disk-centre | X | 0.297874 | 0.2968594 | 0.2971723 | 0.2968168 | 0.2970614 | -0.0823399 % |
+| `callisto-nh-lorri-2007` | terminator / disk-centre | Y | 0.297874 | 0.2968594 | 0.2971723 | 0.2968168 | 0.2970614 | -0.0823394 % |
+| `callisto-nh-lorri-2007` | terminator / disk-centre | Z | 0.297874 | 0.2968594 | 0.2971723 | 0.2968168 | 0.2970614 | -0.0823396 % |
+| `callisto-nh-lorri-2007` | terminator / disk-centre | S | 0.297874 | 0.2968594 | 0.2971723 | 0.2968168 | 0.2970614 | -0.08234 % |
+| `callisto-nh-lorri-2007` | disk-centre / disk-integrated | X | 1.353775 | 1.362419 | 1.36047 | 1.361143 | 1.359444 | +0.125018 % |
+| `callisto-nh-lorri-2007` | disk-centre / disk-integrated | Y | 1.353775 | 1.362419 | 1.36047 | 1.361143 | 1.359444 | +0.125018 % |
+| `callisto-nh-lorri-2007` | disk-centre / disk-integrated | Z | 1.353775 | 1.362419 | 1.36047 | 1.361143 | 1.359444 | +0.125018 % |
+| `callisto-nh-lorri-2007` | disk-centre / disk-integrated | S | 1.353775 | 1.362419 | 1.36047 | 1.361143 | 1.359444 | +0.125018 % |
+| `callisto-nh-lorri-2007` | limb / disk-integrated | X | 4.517538 | 4.461113 | 4.50152 | 4.48017 | 4.47621 | +0.0884695 % |
+| `callisto-nh-lorri-2007` | limb / disk-integrated | Y | 4.517538 | 4.461113 | 4.50152 | 4.48017 | 4.47621 | +0.0884707 % |
+| `callisto-nh-lorri-2007` | limb / disk-integrated | Z | 4.517538 | 4.461113 | 4.50152 | 4.48017 | 4.47621 | +0.0884701 % |
+| `callisto-nh-lorri-2007` | limb / disk-integrated | S | 4.517538 | 4.461113 | 4.50152 | 4.48017 | 4.476209 | +0.0884699 % |
+| `callisto-nh-lorri-2007` | terminator / disk-integrated | X | 0.4032545 | 0.404447 | 0.404294 | 0.4040101 | 0.4038382 | +0.0425748 % |
+| `callisto-nh-lorri-2007` | terminator / disk-integrated | Y | 0.4032545 | 0.404447 | 0.404294 | 0.4040101 | 0.4038382 | +0.0425754 % |
+| `callisto-nh-lorri-2007` | terminator / disk-integrated | Z | 0.4032545 | 0.404447 | 0.404294 | 0.4040101 | 0.4038382 | +0.0425751 % |
+| `callisto-nh-lorri-2007` | terminator / disk-integrated | S | 0.4032545 | 0.404447 | 0.404294 | 0.4040101 | 0.4038382 | +0.0425747 % |
+| `earth-himawari9-2026` | disk-centre | X | 5877.481 | 5850.642 | 5857.023 | 5861.98 | 5854.991 | +0.119371 % |
+| `earth-himawari9-2026` | disk-centre | Y | 5998.407 | 5969.978 | 5976.542 | 5981.956 | 5974.875 | +0.118507 % |
+| `earth-himawari9-2026` | disk-centre | Z | 9281.375 | 9254.162 | 9260.521 | 9266.168 | 9258.945 | +0.0780108 % |
+| `earth-himawari9-2026` | disk-centre | S | 17641.22 | 17575.28 | 17590.41 | 17602.73 | 17585.85 | +0.0959826 % |
+| `earth-himawari9-2026` | limb | X | 6309.268 | 6284.209 | 6281.287 | 6281.186 | 6281.353 | -0.00266391 % |
+| `earth-himawari9-2026` | limb | Y | 6496.897 | 6470.166 | 6467.161 | 6466.835 | 6467.563 | -0.0112532 % |
+| `earth-himawari9-2026` | limb | Z | 12044.92 | 12025.22 | 12023.28 | 12023.86 | 12023.88 | -0.000188139 % |
+| `earth-himawari9-2026` | limb | S | 21523.56 | 21466.23 | 21460.52 | 21459.56 | 21460.39 | -0.00384257 % |
+| `earth-himawari9-2026` | terminator | X | 1558.606 | 1558.027 | 1557.788 | 1557.796 | 1557.915 | -0.00761684 % |
+| `earth-himawari9-2026` | terminator | Y | 1634.238 | 1633.573 | 1633.334 | 1633.44 | 1633.552 | -0.00688604 % |
+| `earth-himawari9-2026` | terminator | Z | 3048.395 | 3049.121 | 3048.992 | 3048.543 | 3048.436 | +0.00351432 % |
+| `earth-himawari9-2026` | terminator | S | 5526.572 | 5526.334 | 5525.868 | 5526.214 | 5526.024 | +0.0034443 % |
+| `earth-himawari9-2026` | near-centre-130E | X | 7099.512 | 7080.647 | 7076.752 | 7076.165 | 7076.558 | -0.00555712 % |
+| `earth-himawari9-2026` | near-centre-130E | Y | 7301.065 | 7281.968 | 7277.9 | 7277.066 | 7277.544 | -0.00657557 % |
+| `earth-himawari9-2026` | near-centre-130E | Z | 10049.28 | 10027.91 | 10022.62 | 10021.47 | 10022.07 | -0.00600142 % |
+| `earth-himawari9-2026` | near-centre-130E | S | 20145.33 | 20099.22 | 20088.36 | 20086.5 | 20087.83 | -0.00660122 % |
+| `earth-himawari9-2026` | near-centre-150E | X | 25893.28 | 25995.95 | 25967.86 | 25960.45 | 25969.08 | -0.0332401 % |
+| `earth-himawari9-2026` | near-centre-150E | Y | 26779.81 | 26885.98 | 26856.76 | 26848.49 | 26857.43 | -0.0332794 % |
+| `earth-himawari9-2026` | near-centre-150E | Z | 28699.93 | 28802.43 | 28771.6 | 28766.55 | 28776.37 | -0.0341424 % |
+| `earth-himawari9-2026` | near-centre-150E | S | 64927.45 | 65173.06 | 65101.77 | 65085.55 | 65107.84 | -0.034232 % |
+| `earth-himawari9-2026` | near-centre-141E-12S | X | 5017.084 | 4997.966 | 4994.619 | 4994.84 | 4996.589 | -0.0350024 % |
+| `earth-himawari9-2026` | near-centre-141E-12S | Y | 5313.787 | 5290.393 | 5286.645 | 5287.143 | 5288.903 | -0.0332791 % |
+| `earth-himawari9-2026` | near-centre-141E-12S | Z | 8997.196 | 8998.783 | 8995.356 | 8993.963 | 8996.144 | -0.024252 % |
+| `earth-himawari9-2026` | near-centre-141E-12S | S | 16939.58 | 16911.73 | 16903.15 | 16901.45 | 16906.21 | -0.0281401 % |
+| `earth-himawari9-2026` | sky-near | X | 0.0009217062 | 0.001023577 | 0.001047816 | 0.001056939 | 0.001061509 | -0.430534 % |
+| `earth-himawari9-2026` | sky-near | Y | 0.0006606399 | 0.0007691878 | 0.0007951222 | 0.000804652 | 0.0008095802 | -0.60874 % |
+| `earth-himawari9-2026` | sky-near | Z | 0.00340244 | 0.003671496 | 0.00374501 | 0.003772207 | 0.00378746 | -0.402717 % |
+| `earth-himawari9-2026` | sky-near | S | 0.003958627 | 0.004421645 | 0.004545203 | 0.004590142 | 0.004615977 | -0.559691 % |
+| `earth-himawari9-2026` | sky-far | X | 0 | 0 | 0 | 0 | 0 | +0 % |
+| `earth-himawari9-2026` | sky-far | Y | 0 | 0 | 0 | 0 | 0 | +0 % |
+| `earth-himawari9-2026` | sky-far | Z | 0 | 0 | 0 | 0 | 0 | +0 % |
+| `earth-himawari9-2026` | sky-far | S | 0 | 0 | 0 | 0 | 0 | +0 % |
+| `earth-himawari9-2026` | limb / disk-centre | X | 1.073465 | 1.074106 | 1.072437 | 1.071513 | 1.07282 | -0.121889 % |
+| `earth-himawari9-2026` | limb / disk-centre | Y | 1.083104 | 1.083784 | 1.082091 | 1.081057 | 1.08246 | -0.129606 % |
+| `earth-himawari9-2026` | limb / disk-centre | Z | 1.297752 | 1.299439 | 1.298337 | 1.297609 | 1.298623 | -0.078138 % |
+| `earth-himawari9-2026` | limb / disk-centre | S | 1.220072 | 1.221388 | 1.220013 | 1.219104 | 1.220321 | -0.0997294 % |
+| `earth-himawari9-2026` | terminator / disk-centre | X | 0.2651827 | 0.2663002 | 0.2659692 | 0.2657457 | 0.2660832 | -0.126836 % |
+| `earth-himawari9-2026` | terminator / disk-centre | Y | 0.2724454 | 0.2736314 | 0.2732908 | 0.2730611 | 0.2734036 | -0.125244 % |
+| `earth-himawari9-2026` | terminator / disk-centre | Z | 0.3284422 | 0.3294864 | 0.3292463 | 0.3289972 | 0.3292422 | -0.0744384 % |
+| `earth-himawari9-2026` | terminator / disk-centre | S | 0.3132761 | 0.3144378 | 0.314141 | 0.3139407 | 0.3142312 | -0.0924495 % |
+| `earth-moon-epoxi-2008` | earth-disk-integrated | X | 1594.505 | 1590.389 | 1590.307 | 1591.291 | 1591.151 | +0.00880289 % |
+| `earth-moon-epoxi-2008` | earth-disk-integrated | Y | 1643.626 | 1639.28 | 1639.169 | 1640.223 | 1640.053 | +0.0103923 % |
+| `earth-moon-epoxi-2008` | earth-disk-integrated | Z | 2139.345 | 2136.137 | 2136.879 | 2138.943 | 2139.457 | -0.0239952 % |
+| `earth-moon-epoxi-2008` | earth-disk-integrated | S | 4408.229 | 4398.961 | 4399.538 | 4403.229 | 4403.518 | -0.00656811 % |
+| `earth-moon-epoxi-2008` | moon-disk-integrated | X | 150.7848 | 154.9131 | 154.7444 | 155.3652 | 155.4315 | -0.0426642 % |
+| `earth-moon-epoxi-2008` | moon-disk-integrated | Y | 152.4264 | 156.6191 | 156.4382 | 157.0689 | 157.1361 | -0.042756 % |
+| `earth-moon-epoxi-2008` | moon-disk-integrated | Z | 132.1529 | 135.874 | 135.6671 | 136.2251 | 136.2857 | -0.0444707 % |
+| `earth-moon-epoxi-2008` | moon-disk-integrated | S | 328.1293 | 337.2785 | 336.8177 | 338.1986 | 338.344 | -0.0429757 % |
+| `earth-moon-epoxi-2008` | earth-centre | X | 3034.031 | 3027.827 | 3038.087 | 3043.692 | 3040.065 | +0.119313 % |
+| `earth-moon-epoxi-2008` | earth-centre | Y | 3131.727 | 3125.474 | 3136.148 | 3141.953 | 3138.195 | +0.119747 % |
+| `earth-moon-epoxi-2008` | earth-centre | Z | 4221.726 | 4228.589 | 4239.677 | 4254.532 | 4251.372 | +0.0743246 % |
+| `earth-moon-epoxi-2008` | earth-centre | S | 8580.078 | 8579.499 | 8605.225 | 8628.575 | 8620.353 | +0.0953876 % |
+| `earth-moon-epoxi-2008` | sky-near | X | 0 | 0 | 0 | 0 | 0 | +0 % |
+| `earth-moon-epoxi-2008` | sky-near | Y | 0 | 0 | 0 | 0 | 0 | +0 % |
+| `earth-moon-epoxi-2008` | sky-near | Z | 0 | 0 | 0 | 0 | 0 | +0 % |
+| `earth-moon-epoxi-2008` | sky-near | S | 0 | 0 | 0 | 0 | 0 | +0 % |
+| `earth-moon-epoxi-2008` | sky-far | X | 0 | 0 | 0 | 0 | 0 | +0 % |
+| `earth-moon-epoxi-2008` | sky-far | Y | 0 | 0 | 0 | 0 | 0 | +0 % |
+| `earth-moon-epoxi-2008` | sky-far | Z | 0 | 0 | 0 | 0 | 0 | +0 % |
+| `earth-moon-epoxi-2008` | sky-far | S | 0 | 0 | 0 | 0 | 0 | +0 % |
+| `earth-moon-epoxi-2008` | moon-disk-integrated / earth-disk-integrated | X | 0.0945653 | 0.0974058 | 0.09730473 | 0.09763467 | 0.09768494 | -0.0514625 % |
+| `earth-moon-epoxi-2008` | moon-disk-integrated / earth-disk-integrated | Y | 0.09273789 | 0.09554141 | 0.09543748 | 0.09576071 | 0.09581163 | -0.0531427 % |
+| `earth-moon-epoxi-2008` | moon-disk-integrated / earth-disk-integrated | Z | 0.06177262 | 0.06360732 | 0.06348847 | 0.06368804 | 0.06370109 | -0.0204804 % |
+| `earth-moon-epoxi-2008` | moon-disk-integrated / earth-disk-integrated | S | 0.07443563 | 0.07667231 | 0.07655752 | 0.07680696 | 0.07683493 | -0.03641 % |
+| `earth-moon-epoxi-2008` | earth-centre / earth-disk-integrated | X | 1.902804 | 1.903828 | 1.910377 | 1.912718 | 1.910607 | +0.1105 % |
+| `earth-moon-epoxi-2008` | earth-centre / earth-disk-integrated | Y | 1.905377 | 1.906614 | 1.913255 | 1.915564 | 1.913472 | +0.109343 % |
+| `earth-moon-epoxi-2008` | earth-centre / earth-disk-integrated | Z | 1.973373 | 1.979549 | 1.984051 | 1.989081 | 1.987127 | +0.0983434 % |
+| `earth-moon-epoxi-2008` | earth-centre / earth-disk-integrated | S | 1.946377 | 1.950347 | 1.955938 | 1.959602 | 1.957606 | +0.101962 % |
+| `europa-nh-lorri-2007` | disk-centre | X | 624.1435 | 624.0243 | 622.8261 | 622.9438 | 622.7657 | +0.0285921 % |
+| `europa-nh-lorri-2007` | disk-centre | Y | 651.2716 | 651.1472 | 649.8969 | 650.0197 | 649.8339 | +0.028592 % |
+| `europa-nh-lorri-2007` | disk-centre | Z | 602.8978 | 602.7826 | 601.6253 | 601.7389 | 601.5669 | +0.0285925 % |
+| `europa-nh-lorri-2007` | disk-centre | S | 1465.721 | 1465.441 | 1462.628 | 1462.904 | 1462.486 | +0.0285923 % |
+| `europa-nh-lorri-2007` | limb | X | 722.63 | 730.9043 | 729.7419 | 727.5822 | 729.2049 | -0.222535 % |
+| `europa-nh-lorri-2007` | limb | Y | 754.0388 | 762.6727 | 761.4598 | 759.2062 | 760.8994 | -0.222536 % |
+| `europa-nh-lorri-2007` | limb | Z | 698.0319 | 706.0245 | 704.9017 | 702.8154 | 704.3829 | -0.222535 % |
+| `europa-nh-lorri-2007` | limb | S | 1697.004 | 1716.436 | 1713.706 | 1708.634 | 1712.445 | -0.222536 % |
+| `europa-nh-lorri-2007` | terminator | X | 160.1035 | 161.7244 | 161.8195 | 161.5404 | 161.8228 | -0.174486 % |
+| `europa-nh-lorri-2007` | terminator | Y | 167.0623 | 168.7537 | 168.8529 | 168.5617 | 168.8563 | -0.174486 % |
+| `europa-nh-lorri-2007` | terminator | Z | 154.6536 | 156.2194 | 156.3112 | 156.0416 | 156.3144 | -0.174486 % |
+| `europa-nh-lorri-2007` | terminator | S | 375.9826 | 379.7892 | 380.0125 | 379.3571 | 380.0201 | -0.174486 % |
+| `europa-nh-lorri-2007` | disk-integrated | X | 346.4898 | 346.9854 | 347.0549 | 347.1416 | 347.1761 | -0.00992884 % |
+| `europa-nh-lorri-2007` | disk-integrated | Y | 361.5498 | 362.0669 | 362.1395 | 362.23 | 362.2659 | -0.00992888 % |
+| `europa-nh-lorri-2007` | disk-integrated | Z | 334.6954 | 335.1741 | 335.2412 | 335.325 | 335.3583 | -0.00992886 % |
+| `europa-nh-lorri-2007` | disk-integrated | S | 813.6871 | 814.8509 | 815.0141 | 815.2178 | 815.2987 | -0.00992885 % |
+| `europa-nh-lorri-2007` | sky-near | X | 0 | 0 | 0 | 0 | 0 | +0 % |
+| `europa-nh-lorri-2007` | sky-near | Y | 0 | 0 | 0 | 0 | 0 | +0 % |
+| `europa-nh-lorri-2007` | sky-near | Z | 0 | 0 | 0 | 0 | 0 | +0 % |
+| `europa-nh-lorri-2007` | sky-near | S | 0 | 0 | 0 | 0 | 0 | +0 % |
+| `europa-nh-lorri-2007` | sky-far | X | 0 | 0 | 0 | 0 | 0 | +0 % |
+| `europa-nh-lorri-2007` | sky-far | Y | 0 | 0 | 0 | 0 | 0 | +0 % |
+| `europa-nh-lorri-2007` | sky-far | Z | 0 | 0 | 0 | 0 | 0 | +0 % |
+| `europa-nh-lorri-2007` | sky-far | S | 0 | 0 | 0 | 0 | 0 | +0 % |
+| `europa-nh-lorri-2007` | limb / disk-centre | X | 1.157795 | 1.171276 | 1.171662 | 1.167974 | 1.170914 | -0.251055 % |
+| `europa-nh-lorri-2007` | limb / disk-centre | Y | 1.157795 | 1.171276 | 1.171662 | 1.167974 | 1.170914 | -0.251056 % |
+| `europa-nh-lorri-2007` | limb / disk-centre | Z | 1.157795 | 1.171276 | 1.171662 | 1.167974 | 1.170914 | -0.251056 % |
+| `europa-nh-lorri-2007` | limb / disk-centre | S | 1.157795 | 1.171276 | 1.171662 | 1.167974 | 1.170914 | -0.251056 % |
+| `europa-nh-lorri-2007` | terminator / disk-centre | X | 0.2565171 | 0.2591637 | 0.2598149 | 0.2593178 | 0.2598454 | -0.20302 % |
+| `europa-nh-lorri-2007` | terminator / disk-centre | Y | 0.2565171 | 0.2591637 | 0.2598149 | 0.2593178 | 0.2598454 | -0.20302 % |
+| `europa-nh-lorri-2007` | terminator / disk-centre | Z | 0.2565171 | 0.2591637 | 0.2598149 | 0.2593178 | 0.2598454 | -0.20302 % |
+| `europa-nh-lorri-2007` | terminator / disk-centre | S | 0.2565171 | 0.2591637 | 0.2598149 | 0.2593178 | 0.2598454 | -0.20302 % |
+| `europa-nh-lorri-2007` | disk-centre / disk-integrated | X | 1.801333 | 1.798416 | 1.794604 | 1.794495 | 1.793804 | +0.0385247 % |
+| `europa-nh-lorri-2007` | disk-centre / disk-integrated | Y | 1.801333 | 1.798416 | 1.794604 | 1.794495 | 1.793804 | +0.0385247 % |
+| `europa-nh-lorri-2007` | disk-centre / disk-integrated | Z | 1.801333 | 1.798416 | 1.794604 | 1.794495 | 1.793804 | +0.0385252 % |
+| `europa-nh-lorri-2007` | disk-centre / disk-integrated | S | 1.801333 | 1.798416 | 1.794604 | 1.794495 | 1.793804 | +0.038525 % |
+| `europa-nh-lorri-2007` | limb / disk-integrated | X | 2.085574 | 2.106441 | 2.10267 | 2.095923 | 2.100389 | -0.212627 % |
+| `europa-nh-lorri-2007` | limb / disk-integrated | Y | 2.085574 | 2.106441 | 2.10267 | 2.095923 | 2.100389 | -0.212628 % |
+| `europa-nh-lorri-2007` | limb / disk-integrated | Z | 2.085574 | 2.106441 | 2.10267 | 2.095923 | 2.100389 | -0.212628 % |
+| `europa-nh-lorri-2007` | limb / disk-integrated | S | 2.085574 | 2.106441 | 2.10267 | 2.095923 | 2.100389 | -0.212628 % |
+| `europa-nh-lorri-2007` | terminator / disk-integrated | X | 0.4620727 | 0.4660843 | 0.4662649 | 0.4653445 | 0.4661116 | -0.164574 % |
+| `europa-nh-lorri-2007` | terminator / disk-integrated | Y | 0.4620727 | 0.4660843 | 0.4662649 | 0.4653445 | 0.4661116 | -0.164573 % |
+| `europa-nh-lorri-2007` | terminator / disk-integrated | Z | 0.4620727 | 0.4660843 | 0.4662649 | 0.4653445 | 0.4661116 | -0.164573 % |
+| `europa-nh-lorri-2007` | terminator / disk-integrated | S | 0.4620727 | 0.4660843 | 0.4662649 | 0.4653445 | 0.4661116 | -0.164573 % |
+| `ganymede-nh-lorri-2007` | disk-centre | X | 410.9029 | 411.7671 | 411.806 | 411.8172 | 411.8208 | -0.000888929 % |
+| `ganymede-nh-lorri-2007` | disk-centre | Y | 426.974 | 427.872 | 427.9124 | 427.924 | 427.9278 | -0.000888647 % |
+| `ganymede-nh-lorri-2007` | disk-centre | Z | 402.7558 | 403.6029 | 403.641 | 403.6519 | 403.6555 | -0.000889012 % |
+| `ganymede-nh-lorri-2007` | disk-centre | S | 967.7218 | 969.7572 | 969.8487 | 969.8751 | 969.8837 | -0.000889044 % |
+| `ganymede-nh-lorri-2007` | limb | X | 673.4407 | 671.5916 | 672.7431 | 672.783 | 673.2971 | -0.0763456 % |
+| `ganymede-nh-lorri-2007` | limb | Y | 699.78 | 697.8586 | 699.0552 | 699.0967 | 699.6308 | -0.0763456 % |
+| `ganymede-nh-lorri-2007` | limb | Z | 660.0881 | 658.2757 | 659.4044 | 659.4435 | 659.9474 | -0.0763459 % |
+| `ganymede-nh-lorri-2007` | limb | S | 1586.027 | 1581.673 | 1584.384 | 1584.479 | 1585.689 | -0.0763458 % |
+| `ganymede-nh-lorri-2007` | terminator | X | 87.84993 | 87.52299 | 87.5219 | 87.51346 | 87.60088 | -0.0997918 % |
+| `ganymede-nh-lorri-2007` | terminator | Y | 91.28588 | 90.94616 | 90.94503 | 90.93625 | 91.02709 | -0.0997912 % |
+| `ganymede-nh-lorri-2007` | terminator | Z | 86.1081 | 85.78764 | 85.78657 | 85.7783 | 85.86398 | -0.0997914 % |
+| `ganymede-nh-lorri-2007` | terminator | S | 206.8963 | 206.1263 | 206.1238 | 206.1039 | 206.3098 | -0.0997914 % |
+| `ganymede-nh-lorri-2007` | disk-integrated | X | 256.8427 | 257.1015 | 257.1426 | 257.2081 | 257.2301 | -0.0085383 % |
+| `ganymede-nh-lorri-2007` | disk-integrated | Y | 266.8882 | 267.1572 | 267.1998 | 267.268 | 267.2908 | -0.00853828 % |
+| `ganymede-nh-lorri-2007` | disk-integrated | Z | 251.7501 | 252.0039 | 252.0441 | 252.1084 | 252.1299 | -0.0085383 % |
+| `ganymede-nh-lorri-2007` | disk-integrated | S | 604.8929 | 605.5026 | 605.5992 | 605.7537 | 605.8054 | -0.00853831 % |
+| `ganymede-nh-lorri-2007` | sky-near | X | 0 | 0 | 0 | 0 | 0 | +0 % |
+| `ganymede-nh-lorri-2007` | sky-near | Y | 0 | 0 | 0 | 0 | 0 | +0 % |
+| `ganymede-nh-lorri-2007` | sky-near | Z | 0 | 0 | 0 | 0 | 0 | +0 % |
+| `ganymede-nh-lorri-2007` | sky-near | S | 0 | 0 | 0 | 0 | 0 | +0 % |
+| `ganymede-nh-lorri-2007` | sky-far | X | 0 | 0 | 0 | 0 | 0 | +0 % |
+| `ganymede-nh-lorri-2007` | sky-far | Y | 0 | 0 | 0 | 0 | 0 | +0 % |
+| `ganymede-nh-lorri-2007` | sky-far | Z | 0 | 0 | 0 | 0 | 0 | +0 % |
+| `ganymede-nh-lorri-2007` | sky-far | S | 0 | 0 | 0 | 0 | 0 | +0 % |
+| `ganymede-nh-lorri-2007` | limb / disk-centre | X | 1.638929 | 1.630998 | 1.633641 | 1.633693 | 1.634927 | -0.0754574 % |
+| `ganymede-nh-lorri-2007` | limb / disk-centre | Y | 1.638929 | 1.630998 | 1.633641 | 1.633693 | 1.634927 | -0.0754577 % |
+| `ganymede-nh-lorri-2007` | limb / disk-centre | Z | 1.638929 | 1.630998 | 1.633641 | 1.633693 | 1.634927 | -0.0754576 % |
+| `ganymede-nh-lorri-2007` | limb / disk-centre | S | 1.638929 | 1.630998 | 1.633641 | 1.633693 | 1.634927 | -0.0754574 % |
+| `ganymede-nh-lorri-2007` | terminator / disk-centre | X | 0.2137973 | 0.2125546 | 0.2125319 | 0.2125056 | 0.212716 | -0.0989037 % |
+| `ganymede-nh-lorri-2007` | terminator / disk-centre | Y | 0.2137973 | 0.2125546 | 0.2125319 | 0.2125056 | 0.212716 | -0.0989034 % |
+| `ganymede-nh-lorri-2007` | terminator / disk-centre | Z | 0.2137973 | 0.2125546 | 0.2125319 | 0.2125056 | 0.212716 | -0.0989032 % |
+| `ganymede-nh-lorri-2007` | terminator / disk-centre | S | 0.2137973 | 0.2125546 | 0.2125319 | 0.2125056 | 0.212716 | -0.0989032 % |
+| `ganymede-nh-lorri-2007` | disk-centre / disk-integrated | X | 1.599823 | 1.601574 | 1.60147 | 1.601105 | 1.600982 | +0.00765002 % |
+| `ganymede-nh-lorri-2007` | disk-centre / disk-integrated | Y | 1.599823 | 1.601574 | 1.60147 | 1.601105 | 1.600982 | +0.00765029 % |
+| `ganymede-nh-lorri-2007` | disk-centre / disk-integrated | Z | 1.599823 | 1.601574 | 1.60147 | 1.601105 | 1.600982 | +0.00764994 % |
+| `ganymede-nh-lorri-2007` | disk-centre / disk-integrated | S | 1.599823 | 1.601574 | 1.60147 | 1.601105 | 1.600982 | +0.00764992 % |
+| `ganymede-nh-lorri-2007` | limb / disk-integrated | X | 2.621997 | 2.612165 | 2.616226 | 2.615714 | 2.617489 | -0.0678131 % |
+| `ganymede-nh-lorri-2007` | limb / disk-integrated | Y | 2.621997 | 2.612165 | 2.616226 | 2.615714 | 2.617489 | -0.0678132 % |
+| `ganymede-nh-lorri-2007` | limb / disk-integrated | Z | 2.621997 | 2.612165 | 2.616226 | 2.615714 | 2.617489 | -0.0678134 % |
+| `ganymede-nh-lorri-2007` | limb / disk-integrated | S | 2.621997 | 2.612165 | 2.616226 | 2.615714 | 2.617489 | -0.0678133 % |
+| `ganymede-nh-lorri-2007` | terminator / disk-integrated | X | 0.3420379 | 0.3404219 | 0.3403634 | 0.3402437 | 0.3405545 | -0.0912613 % |
+| `ganymede-nh-lorri-2007` | terminator / disk-integrated | Y | 0.3420379 | 0.3404219 | 0.3403633 | 0.3402437 | 0.3405545 | -0.0912607 % |
+| `ganymede-nh-lorri-2007` | terminator / disk-integrated | Z | 0.3420379 | 0.3404219 | 0.3403633 | 0.3402437 | 0.3405545 | -0.0912608 % |
+| `ganymede-nh-lorri-2007` | terminator / disk-integrated | S | 0.3420379 | 0.3404219 | 0.3403634 | 0.3402437 | 0.3405545 | -0.0912609 % |
+| `io-nh-lorri-2007` | disk-centre | X | 548.5313 | 548.1389 | 548.0201 | 547.9871 | 547.9684 | +0.00342917 % |
+| `io-nh-lorri-2007` | disk-centre | Y | 571.2978 | 570.8891 | 570.7654 | 570.7311 | 570.7115 | +0.00342943 % |
+| `io-nh-lorri-2007` | disk-centre | Z | 404.3298 | 404.0405 | 403.953 | 403.9287 | 403.9149 | +0.00342903 % |
+| `io-nh-lorri-2007` | disk-centre | S | 1141.147 | 1140.33 | 1140.083 | 1140.015 | 1139.976 | +0.00342892 % |
+| `io-nh-lorri-2007` | limb | X | 720.6581 | 721.1251 | 720.6951 | 720.9641 | 720.8007 | +0.0226674 % |
+| `io-nh-lorri-2007` | limb | Y | 750.5685 | 751.055 | 750.6072 | 750.8873 | 750.7171 | +0.0226675 % |
+| `io-nh-lorri-2007` | limb | Z | 531.2068 | 531.551 | 531.2341 | 531.4324 | 531.3119 | +0.0226671 % |
+| `io-nh-lorri-2007` | limb | S | 1499.234 | 1500.205 | 1499.311 | 1499.87 | 1499.53 | +0.0226676 % |
+| `io-nh-lorri-2007` | terminator | X | 123.2252 | 123.0324 | 123.3255 | 123.3041 | 123.3691 | -0.0527356 % |
+| `io-nh-lorri-2007` | terminator | Y | 128.3396 | 128.1388 | 128.4441 | 128.4218 | 128.4895 | -0.0527354 % |
+| `io-nh-lorri-2007` | terminator | Z | 90.83099 | 90.68885 | 90.90492 | 90.88911 | 90.93706 | -0.0527354 % |
+| `io-nh-lorri-2007` | terminator | S | 256.3538 | 255.9526 | 256.5625 | 256.5178 | 256.6532 | -0.0527349 % |
+| `io-nh-lorri-2007` | disk-integrated | X | 295.9614 | 296.0946 | 296.1493 | 296.1745 | 296.2254 | -0.0171833 % |
+| `io-nh-lorri-2007` | disk-integrated | Y | 308.2451 | 308.3839 | 308.4408 | 308.467 | 308.5201 | -0.0171833 % |
+| `io-nh-lorri-2007` | disk-integrated | Z | 218.1571 | 218.2553 | 218.2956 | 218.3142 | 218.3517 | -0.0171833 % |
+| `io-nh-lorri-2007` | disk-integrated | S | 615.7084 | 615.9856 | 616.0994 | 616.1518 | 616.2577 | -0.0171833 % |
+| `io-nh-lorri-2007` | sky-near | X | 0 | 0 | 0 | 0 | 0 | +0 % |
+| `io-nh-lorri-2007` | sky-near | Y | 0 | 0 | 0 | 0 | 0 | +0 % |
+| `io-nh-lorri-2007` | sky-near | Z | 0 | 0 | 0 | 0 | 0 | +0 % |
+| `io-nh-lorri-2007` | sky-near | S | 0 | 0 | 0 | 0 | 0 | +0 % |
+| `io-nh-lorri-2007` | sky-far | X | 0 | 0 | 0 | 0 | 0 | +0 % |
+| `io-nh-lorri-2007` | sky-far | Y | 0 | 0 | 0 | 0 | 0 | +0 % |
+| `io-nh-lorri-2007` | sky-far | Z | 0 | 0 | 0 | 0 | 0 | +0 % |
+| `io-nh-lorri-2007` | sky-far | S | 0 | 0 | 0 | 0 | 0 | +0 % |
+| `io-nh-lorri-2007` | limb / disk-centre | X | 1.313796 | 1.315588 | 1.315089 | 1.315659 | 1.315406 | +0.0192375 % |
+| `io-nh-lorri-2007` | limb / disk-centre | Y | 1.313796 | 1.315588 | 1.315089 | 1.315659 | 1.315406 | +0.0192374 % |
+| `io-nh-lorri-2007` | limb / disk-centre | Z | 1.313796 | 1.315588 | 1.315089 | 1.315659 | 1.315406 | +0.0192374 % |
+| `io-nh-lorri-2007` | limb / disk-centre | S | 1.313796 | 1.315588 | 1.315089 | 1.315659 | 1.315406 | +0.019238 % |
+| `io-nh-lorri-2007` | terminator / disk-centre | X | 0.2246458 | 0.2244548 | 0.2250383 | 0.2250127 | 0.2251392 | -0.0561629 % |
+| `io-nh-lorri-2007` | terminator / disk-centre | Y | 0.2246458 | 0.2244548 | 0.2250383 | 0.2250127 | 0.2251392 | -0.0561629 % |
+| `io-nh-lorri-2007` | terminator / disk-centre | Z | 0.2246458 | 0.2244548 | 0.2250383 | 0.2250127 | 0.2251392 | -0.0561625 % |
+| `io-nh-lorri-2007` | terminator / disk-centre | S | 0.2246458 | 0.2244548 | 0.2250383 | 0.2250127 | 0.2251392 | -0.0561619 % |
+| `io-nh-lorri-2007` | disk-centre / disk-integrated | X | 1.853388 | 1.851229 | 1.850486 | 1.850217 | 1.849836 | +0.020616 % |
+| `io-nh-lorri-2007` | disk-centre / disk-integrated | Y | 1.853388 | 1.851229 | 1.850486 | 1.850217 | 1.849836 | +0.0206163 % |
+| `io-nh-lorri-2007` | disk-centre / disk-integrated | Z | 1.853388 | 1.851229 | 1.850486 | 1.850217 | 1.849836 | +0.0206159 % |
+| `io-nh-lorri-2007` | disk-centre / disk-integrated | S | 1.853388 | 1.851229 | 1.850486 | 1.850217 | 1.849836 | +0.0206158 % |
+| `io-nh-lorri-2007` | limb / disk-integrated | X | 2.434973 | 2.435455 | 2.433553 | 2.434255 | 2.433285 | +0.0398575 % |
+| `io-nh-lorri-2007` | limb / disk-integrated | Y | 2.434973 | 2.435455 | 2.433553 | 2.434255 | 2.433285 | +0.0398577 % |
+| `io-nh-lorri-2007` | limb / disk-integrated | Z | 2.434973 | 2.435455 | 2.433553 | 2.434255 | 2.433285 | +0.0398573 % |
+| `io-nh-lorri-2007` | limb / disk-integrated | S | 2.434973 | 2.435455 | 2.433553 | 2.434255 | 2.433285 | +0.0398578 % |
+| `io-nh-lorri-2007` | terminator / disk-integrated | X | 0.4163558 | 0.4155172 | 0.4164303 | 0.4163225 | 0.4164705 | -0.0355584 % |
+| `io-nh-lorri-2007` | terminator / disk-integrated | Y | 0.4163558 | 0.4155172 | 0.4164303 | 0.4163225 | 0.4164705 | -0.0355582 % |
+| `io-nh-lorri-2007` | terminator / disk-integrated | Z | 0.4163558 | 0.4155172 | 0.4164303 | 0.4163225 | 0.4164705 | -0.0355582 % |
+| `io-nh-lorri-2007` | terminator / disk-integrated | S | 0.4163558 | 0.4155172 | 0.4164303 | 0.4163225 | 0.4164705 | -0.0355577 % |
+| `jupiter-nh-lorri-2007` | disk-centre | X | 1252.727 | 1253.049 | 1252.916 | 1253.365 | 1253.203 | +0.0129504 % |
+| `jupiter-nh-lorri-2007` | disk-centre | Y | 1325.159 | 1325.503 | 1325.356 | 1325.84 | 1325.65 | +0.0143519 % |
+| `jupiter-nh-lorri-2007` | disk-centre | Z | 1278.338 | 1278.767 | 1278.552 | 1279.179 | 1278.996 | +0.0143335 % |
+| `jupiter-nh-lorri-2007` | disk-centre | S | 3080.325 | 3081.224 | 3080.775 | 3082.186 | 3081.703 | +0.0156558 % |
+| `jupiter-nh-lorri-2007` | limb | X | 707.3326 | 704.9798 | 705.1552 | 705.5015 | 705.445 | +0.00800414 % |
+| `jupiter-nh-lorri-2007` | limb | Y | 748.3358 | 745.7285 | 745.9136 | 746.3038 | 746.2359 | +0.00910958 % |
+| `jupiter-nh-lorri-2007` | limb | Z | 718.5606 | 716.7752 | 716.9387 | 717.3769 | 717.3215 | +0.00771943 % |
+| `jupiter-nh-lorri-2007` | limb | S | 1736.938 | 1731.619 | 1732.06 | 1732.929 | 1732.702 | +0.0130849 % |
+| `jupiter-nh-lorri-2007` | terminator | X | 294.7801 | 294.1446 | 293.9794 | 294.1765 | 294.0871 | +0.0303875 % |
+| `jupiter-nh-lorri-2007` | terminator | Y | 311.631 | 310.9936 | 310.8117 | 311.0053 | 310.9188 | +0.027811 % |
+| `jupiter-nh-lorri-2007` | terminator | Z | 291.535 | 290.9231 | 290.7973 | 290.9981 | 290.9115 | +0.0297796 % |
+| `jupiter-nh-lorri-2007` | terminator | S | 714.7493 | 713.4213 | 713.0283 | 713.503 | 713.304 | +0.0279013 % |
+| `jupiter-nh-lorri-2007` | disk-integrated | X | 458.3891 | 458.5692 | 458.5875 | 458.6376 | 458.6364 | +0.000275043 % |
+| `jupiter-nh-lorri-2007` | disk-integrated | Y | 481.4423 | 481.6299 | 481.651 | 481.7045 | 481.7023 | +0.000463215 % |
+| `jupiter-nh-lorri-2007` | disk-integrated | Z | 434.6423 | 434.8043 | 434.8232 | 434.8697 | 434.8691 | +0.000131659 % |
+| `jupiter-nh-lorri-2007` | disk-integrated | S | 1080.674 | 1081.085 | 1081.127 | 1081.246 | 1081.242 | +0.000370689 % |
+| `jupiter-nh-lorri-2007` | sky-near | X | 0 | 0 | 0 | 0 | 0 | +0 % |
+| `jupiter-nh-lorri-2007` | sky-near | Y | 0 | 0 | 0 | 0 | 0 | +0 % |
+| `jupiter-nh-lorri-2007` | sky-near | Z | 0 | 0 | 0 | 0 | 0 | +0 % |
+| `jupiter-nh-lorri-2007` | sky-near | S | 0 | 0 | 0 | 0 | 0 | +0 % |
+| `jupiter-nh-lorri-2007` | sky-far | X | 0 | 0 | 0 | 0 | 0 | +0 % |
+| `jupiter-nh-lorri-2007` | sky-far | Y | 0 | 0 | 0 | 0 | 0 | +0 % |
+| `jupiter-nh-lorri-2007` | sky-far | Z | 0 | 0 | 0 | 0 | 0 | +0 % |
+| `jupiter-nh-lorri-2007` | sky-far | S | 0 | 0 | 0 | 0 | 0 | +0 % |
+| `jupiter-nh-lorri-2007` | limb / disk-centre | X | 0.5646342 | 0.5626114 | 0.562811 | 0.5628857 | 0.5629135 | -0.00494561 % |
+| `jupiter-nh-lorri-2007` | limb / disk-centre | Y | 0.5647139 | 0.5626003 | 0.5628024 | 0.5628912 | 0.5629207 | -0.00524158 % |
+| `jupiter-nh-lorri-2007` | limb / disk-centre | Z | 0.5621052 | 0.5605206 | 0.5607427 | 0.5608103 | 0.5608474 | -0.00661315 % |
+| `jupiter-nh-lorri-2007` | limb / disk-centre | S | 0.5638814 | 0.5619907 | 0.5622157 | 0.5622402 | 0.5622547 | -0.00257055 % |
+| `jupiter-nh-lorri-2007` | terminator / disk-centre | X | 0.2353107 | 0.2347431 | 0.2346361 | 0.2347093 | 0.2346684 | +0.0174349 % |
+| `jupiter-nh-lorri-2007` | terminator / disk-centre | Y | 0.235165 | 0.234623 | 0.2345118 | 0.2345722 | 0.2345406 | +0.0134571 % |
+| `jupiter-nh-lorri-2007` | terminator / disk-centre | Z | 0.2280578 | 0.2275028 | 0.2274427 | 0.2274881 | 0.227453 | +0.0154439 % |
+| `jupiter-nh-lorri-2007` | terminator / disk-centre | S | 0.232037 | 0.2315383 | 0.2314445 | 0.2314925 | 0.2314642 | +0.0122435 % |
+| `jupiter-nh-lorri-2007` | disk-centre / disk-integrated | X | 2.732891 | 2.732519 | 2.732121 | 2.732801 | 2.732455 | +0.0126753 % |
+| `jupiter-nh-lorri-2007` | disk-centre / disk-integrated | Y | 2.752478 | 2.75212 | 2.751694 | 2.752393 | 2.752011 | +0.0138886 % |
+| `jupiter-nh-lorri-2007` | disk-centre / disk-integrated | Z | 2.941127 | 2.941017 | 2.940395 | 2.941523 | 2.941105 | +0.0142018 % |
+| `jupiter-nh-lorri-2007` | disk-centre / disk-integrated | S | 2.850374 | 2.850121 | 2.849596 | 2.850588 | 2.850152 | +0.0152851 % |
+| `jupiter-nh-lorri-2007` | limb / disk-integrated | X | 1.543084 | 1.537347 | 1.537668 | 1.538255 | 1.538136 | +0.00772907 % |
+| `jupiter-nh-lorri-2007` | limb / disk-integrated | Y | 1.554362 | 1.548343 | 1.54866 | 1.549298 | 1.549164 | +0.00864633 % |
+| `jupiter-nh-lorri-2007` | limb / disk-integrated | Z | 1.653223 | 1.648501 | 1.648805 | 1.649636 | 1.649511 | +0.00758776 % |
+| `jupiter-nh-lorri-2007` | limb / disk-integrated | S | 1.607273 | 1.601742 | 1.602088 | 1.602715 | 1.602511 | +0.0127141 % |
+| `jupiter-nh-lorri-2007` | terminator / disk-integrated | X | 0.6430784 | 0.64144 | 0.6410541 | 0.6414138 | 0.6412207 | +0.0301124 % |
+| `jupiter-nh-lorri-2007` | terminator / disk-integrated | Y | 0.6472864 | 0.6457107 | 0.6453047 | 0.6456349 | 0.6454584 | +0.0273477 % |
+| `jupiter-nh-lorri-2007` | terminator / disk-integrated | Z | 0.6707471 | 0.6690897 | 0.6687713 | 0.6691615 | 0.6689632 | +0.0296479 % |
+| `jupiter-nh-lorri-2007` | terminator / disk-integrated | S | 0.6613921 | 0.6599121 | 0.6595233 | 0.6598897 | 0.6597081 | +0.0275305 % |
+| `neptune-voyager2-1989` | disk-centre | X | 20.64984 | 20.64982 | 20.64901 | 20.64912 | 20.64913 | -1.20003e-05 % |
+| `neptune-voyager2-1989` | disk-centre | Y | 23.2823 | 23.28178 | 23.28227 | 23.28234 | 23.28234 | +2.78082e-06 % |
+| `neptune-voyager2-1989` | disk-centre | Z | 32.19105 | 32.19352 | 32.19358 | 32.1936 | 32.1937 | -0.000323403 % |
+| `neptune-voyager2-1989` | disk-centre | S | 67.16202 | 67.16138 | 67.15998 | 67.16008 | 67.16018 | -0.000145433 % |
+| `neptune-voyager2-1989` | limb | X | 17.06528 | 17.06408 | 17.0635 | 17.06516 | 17.06484 | +0.00189091 % |
+| `neptune-voyager2-1989` | limb | Y | 19.21444 | 19.21747 | 19.21691 | 19.21793 | 19.21765 | +0.00142559 % |
+| `neptune-voyager2-1989` | limb | Z | 26.6264 | 26.6174 | 26.61895 | 26.61638 | 26.61588 | +0.00190467 % |
+| `neptune-voyager2-1989` | limb | S | 55.46588 | 55.46081 | 55.46231 | 55.46116 | 55.46014 | +0.00182762 % |
+| `neptune-voyager2-1989` | terminator | X | 6.306317 | 6.298755 | 6.29711 | 6.296409 | 6.295876 | +0.00846107 % |
+| `neptune-voyager2-1989` | terminator | Y | 7.111833 | 7.102829 | 7.101129 | 7.100371 | 7.099801 | +0.0080333 % |
+| `neptune-voyager2-1989` | terminator | Z | 9.923979 | 9.919173 | 9.917498 | 9.915876 | 9.915167 | +0.00714345 % |
+| `neptune-voyager2-1989` | terminator | S | 20.62624 | 20.60971 | 20.60542 | 20.60142 | 20.59987 | +0.00750755 % |
+| `neptune-voyager2-1989` | disk-integrated | X | 9.951707 | 9.95897 | 9.960892 | 9.962015 | 9.963309 | -0.0129893 % |
+| `neptune-voyager2-1989` | disk-integrated | Y | 11.20589 | 11.2142 | 11.21641 | 11.21769 | 11.21915 | -0.0130235 % |
+| `neptune-voyager2-1989` | disk-integrated | Z | 15.45313 | 15.46372 | 15.46687 | 15.46868 | 15.47059 | -0.0123664 % |
+| `neptune-voyager2-1989` | disk-integrated | S | 32.25625 | 32.27928 | 32.2859 | 32.28964 | 32.29373 | -0.01267 % |
+| `neptune-voyager2-1989` | sky-near | X | 0 | 0 | 0 | 0 | 0 | +0 % |
+| `neptune-voyager2-1989` | sky-near | Y | 0 | 0 | 0 | 0 | 0 | +0 % |
+| `neptune-voyager2-1989` | sky-near | Z | 0 | 0 | 0 | 0 | 0 | +0 % |
+| `neptune-voyager2-1989` | sky-near | S | 0 | 0 | 0 | 0 | 0 | +0 % |
+| `neptune-voyager2-1989` | sky-far | X | 0 | 0 | 0 | 0 | 0 | +0 % |
+| `neptune-voyager2-1989` | sky-far | Y | 0 | 0 | 0 | 0 | 0 | +0 % |
+| `neptune-voyager2-1989` | sky-far | Z | 0 | 0 | 0 | 0 | 0 | +0 % |
+| `neptune-voyager2-1989` | sky-far | S | 0 | 0 | 0 | 0 | 0 | +0 % |
+| `neptune-voyager2-1989` | limb / disk-centre | X | 0.8264124 | 0.8263548 | 0.826359 | 0.8264351 | 0.8264194 | +0.00190291 % |
+| `neptune-voyager2-1989` | limb / disk-centre | Y | 0.8252808 | 0.8254295 | 0.8253882 | 0.8254292 | 0.8254174 | +0.00142281 % |
+| `neptune-voyager2-1989` | limb / disk-centre | Z | 0.8271369 | 0.8267937 | 0.8268402 | 0.8267602 | 0.8267417 | +0.00222808 % |
+| `neptune-voyager2-1989` | limb / disk-centre | S | 0.8258519 | 0.8257843 | 0.8258237 | 0.8258054 | 0.8257891 | +0.00197305 % |
+| `neptune-voyager2-1989` | terminator / disk-centre | X | 0.305393 | 0.3050271 | 0.3049594 | 0.3049238 | 0.3048979 | +0.00847307 % |
+| `neptune-voyager2-1989` | terminator / disk-centre | Y | 0.3054609 | 0.305081 | 0.3050015 | 0.3049681 | 0.3049436 | +0.00803052 % |
+| `neptune-voyager2-1989` | terminator / disk-centre | Z | 0.3082838 | 0.3081109 | 0.3080582 | 0.3080077 | 0.3079847 | +0.00746687 % |
+| `neptune-voyager2-1989` | terminator / disk-centre | S | 0.3071117 | 0.3068685 | 0.3068109 | 0.3067509 | 0.3067274 | +0.00765299 % |
+| `neptune-voyager2-1989` | disk-centre / disk-integrated | X | 2.075005 | 2.07349 | 2.073008 | 2.072786 | 2.072517 | +0.0129789 % |
+| `neptune-voyager2-1989` | disk-centre / disk-integrated | Y | 2.077685 | 2.076098 | 2.075733 | 2.075502 | 2.075232 | +0.013028 % |
+| `neptune-voyager2-1989` | disk-centre / disk-integrated | Z | 2.083142 | 2.081874 | 2.081454 | 2.081211 | 2.080961 | +0.0120445 % |
+| `neptune-voyager2-1989` | disk-centre / disk-integrated | S | 2.08214 | 2.080634 | 2.080165 | 2.079927 | 2.079666 | +0.0125262 % |
+| `neptune-voyager2-1989` | limb / disk-integrated | X | 1.71481 | 1.713438 | 1.713049 | 1.713023 | 1.712768 | +0.0148821 % |
+| `neptune-voyager2-1989` | limb / disk-integrated | Y | 1.714673 | 1.713672 | 1.713285 | 1.71318 | 1.712933 | +0.014451 % |
+| `neptune-voyager2-1989` | limb / disk-integrated | Z | 1.723043 | 1.72128 | 1.72103 | 1.720663 | 1.720417 | +0.0142728 % |
+| `neptune-voyager2-1989` | limb / disk-integrated | S | 1.719539 | 1.718155 | 1.717849 | 1.717615 | 1.717366 | +0.0144995 % |
+| `neptune-voyager2-1989` | terminator / disk-integrated | X | 0.633692 | 0.6324705 | 0.6321833 | 0.6320417 | 0.6319061 | +0.0214531 % |
+| `neptune-voyager2-1989` | terminator / disk-integrated | Y | 0.6346514 | 0.6333779 | 0.6331016 | 0.6329619 | 0.6328286 | +0.0210595 % |
+| `neptune-voyager2-1989` | terminator / disk-integrated | Z | 0.6421988 | 0.6414479 | 0.641209 | 0.6410291 | 0.6409041 | +0.0195123 % |
+| `neptune-voyager2-1989` | terminator / disk-integrated | S | 0.6394494 | 0.6384812 | 0.6382173 | 0.6380194 | 0.6378907 | +0.0201801 % |
+| `pluto-nh-lorri-2015` | disk-centre | X | 20.7083 | 20.72612 | 20.76477 | 20.76854 | 20.77526 | -0.0323779 % |
+| `pluto-nh-lorri-2015` | disk-centre | Y | 20.75307 | 20.77049 | 20.80924 | 20.81326 | 20.81966 | -0.0307459 % |
+| `pluto-nh-lorri-2015` | disk-centre | Z | 16.47372 | 16.48179 | 16.51102 | 16.51486 | 16.52035 | -0.033226 % |
+| `pluto-nh-lorri-2015` | disk-centre | S | 42.69884 | 42.72463 | 42.80211 | 42.81159 | 42.82551 | -0.032514 % |
+| `pluto-nh-lorri-2015` | limb | X | 19.02928 | 19.68185 | 19.77366 | 19.77773 | 19.77024 | +0.0378729 % |
+| `pluto-nh-lorri-2015` | limb | Y | 19.19891 | 19.8625 | 19.95545 | 19.95918 | 19.9524 | +0.0339864 % |
+| `pluto-nh-lorri-2015` | limb | Z | 15.21521 | 15.73889 | 15.81365 | 15.816 | 15.81158 | +0.0279081 % |
+| `pluto-nh-lorri-2015` | limb | S | 39.62523 | 40.99978 | 41.19646 | 41.20387 | 41.19097 | +0.0312994 % |
+| `pluto-nh-lorri-2015` | terminator | X | 6.155994 | 6.139634 | 6.138189 | 6.132519 | 6.132405 | +0.00186676 % |
+| `pluto-nh-lorri-2015` | terminator | Y | 6.225184 | 6.208075 | 6.206676 | 6.200839 | 6.200742 | +0.00156122 % |
+| `pluto-nh-lorri-2015` | terminator | Z | 4.959801 | 4.949342 | 4.948132 | 4.943114 | 4.943024 | +0.00181069 % |
+| `pluto-nh-lorri-2015` | terminator | S | 12.88788 | 12.85744 | 12.85335 | 12.84092 | 12.84062 | +0.00237628 % |
+| `pluto-nh-lorri-2015` | disk-integrated | X | 11.33432 | 11.34417 | 11.34615 | 11.34657 | 11.34766 | -0.00958167 % |
+| `pluto-nh-lorri-2015` | disk-integrated | Y | 11.4158 | 11.42586 | 11.42783 | 11.42827 | 11.42934 | -0.00935751 % |
+| `pluto-nh-lorri-2015` | disk-integrated | Z | 9.176715 | 9.184686 | 9.185976 | 9.186204 | 9.186917 | -0.00776339 % |
+| `pluto-nh-lorri-2015` | disk-integrated | S | 23.6954 | 23.71646 | 23.72016 | 23.72092 | 23.72296 | -0.00860173 % |
+| `pluto-nh-lorri-2015` | sky-near | X | 0.01207853 | 0.01226405 | 0.01229943 | 0.01231148 | 0.01231595 | -0.0362294 % |
+| `pluto-nh-lorri-2015` | sky-near | Y | 0.01223097 | 0.01242125 | 0.01245644 | 0.01246856 | 0.01247312 | -0.0365484 % |
+| `pluto-nh-lorri-2015` | sky-near | Z | 0.02667466 | 0.02707952 | 0.02715788 | 0.02718356 | 0.02719259 | -0.0331973 % |
+| `pluto-nh-lorri-2015` | sky-near | S | 0.04319181 | 0.04385612 | 0.04398155 | 0.04402275 | 0.04403774 | -0.0340255 % |
+| `pluto-nh-lorri-2015` | sky-far | X | 0 | 0 | 0 | 0 | 0 | +0 % |
+| `pluto-nh-lorri-2015` | sky-far | Y | 0 | 0 | 0 | 0 | 0 | +0 % |
+| `pluto-nh-lorri-2015` | sky-far | Z | 0 | 0 | 0 | 0 | 0 | +0 % |
+| `pluto-nh-lorri-2015` | sky-far | S | 0 | 0 | 0 | 0 | 0 | +0 % |
+| `pluto-nh-lorri-2015` | limb / disk-centre | X | 0.9189205 | 0.9496157 | 0.9522694 | 0.9522928 | 0.951624 | +0.0702736 % |
+| `pluto-nh-lorri-2015` | limb / disk-centre | Y | 0.9251121 | 0.9562849 | 0.9589705 | 0.9589645 | 0.958344 | +0.0647522 % |
+| `pluto-nh-lorri-2015` | limb / disk-centre | Z | 0.9236047 | 0.9549259 | 0.9577634 | 0.9576826 | 0.9570973 | +0.0611545 % |
+| `pluto-nh-lorri-2015` | limb / disk-centre | S | 0.9280164 | 0.9596286 | 0.9624865 | 0.9624466 | 0.9618326 | +0.0638342 % |
+| `pluto-nh-lorri-2015` | terminator / disk-centre | X | 0.2972719 | 0.2962269 | 0.2956059 | 0.2952793 | 0.2951782 | +0.0342558 % |
+| `pluto-nh-lorri-2015` | terminator / disk-centre | Y | 0.2999646 | 0.2988892 | 0.2982654 | 0.2979274 | 0.2978311 | +0.032317 % |
+| `pluto-nh-lorri-2015` | terminator / disk-centre | Z | 0.3010734 | 0.3002915 | 0.2996867 | 0.299313 | 0.2992082 | +0.0350484 % |
+| `pluto-nh-lorri-2015` | terminator / disk-centre | S | 0.3018322 | 0.3009373 | 0.300297 | 0.2999404 | 0.2998357 | +0.0349017 % |
+| `pluto-nh-lorri-2015` | disk-centre / disk-integrated | X | 1.827043 | 1.827028 | 1.830116 | 1.83038 | 1.830797 | -0.0227985 % |
+| `pluto-nh-lorri-2015` | disk-centre / disk-integrated | Y | 1.817924 | 1.817849 | 1.820926 | 1.821208 | 1.821598 | -0.0213904 % |
+| `pluto-nh-lorri-2015` | disk-centre / disk-integrated | Z | 1.795166 | 1.794486 | 1.797416 | 1.79779 | 1.798248 | -0.0254646 % |
+| `pluto-nh-lorri-2015` | disk-centre / disk-integrated | S | 1.801988 | 1.801476 | 1.804461 | 1.804803 | 1.805235 | -0.0239144 % |
+| `pluto-nh-lorri-2015` | limb / disk-integrated | X | 1.678908 | 1.734975 | 1.742764 | 1.743057 | 1.74223 | +0.0474591 % |
+| `pluto-nh-lorri-2015` | limb / disk-integrated | Y | 1.681784 | 1.738382 | 1.746214 | 1.746474 | 1.745717 | +0.043348 % |
+| `pluto-nh-lorri-2015` | limb / disk-integrated | Z | 1.658023 | 1.713601 | 1.721499 | 1.721712 | 1.721098 | +0.0356743 % |
+| `pluto-nh-lorri-2015` | limb / disk-integrated | S | 1.672275 | 1.728748 | 1.73677 | 1.737027 | 1.736334 | +0.0399045 % |
+| `pluto-nh-lorri-2015` | terminator / disk-integrated | X | 0.5431286 | 0.5412148 | 0.5409932 | 0.5404732 | 0.5404113 | +0.0114495 % |
+| `pluto-nh-lorri-2015` | terminator / disk-integrated | Y | 0.5453128 | 0.5433356 | 0.5431192 | 0.5425877 | 0.5425284 | +0.0109198 % |
+| `pluto-nh-lorri-2015` | terminator / disk-integrated | Z | 0.5404767 | 0.5388689 | 0.5386616 | 0.5381019 | 0.5380504 | +0.00957482 % |
+| `pluto-nh-lorri-2015` | terminator / disk-integrated | S | 0.5438981 | 0.5421314 | 0.5418744 | 0.5413333 | 0.5412738 | +0.010979 % |
+| `saturn-cassini-wac-2016` | disk-centre | X | 104.4846 | 104.4971 | 104.5026 | 104.5028 | 104.5024 | +0.000307793 % |
+| `saturn-cassini-wac-2016` | disk-centre | Y | 107.0446 | 107.0699 | 107.0721 | 107.0717 | 107.0716 | +1.66776e-05 % |
+| `saturn-cassini-wac-2016` | disk-centre | Z | 83.91773 | 83.9457 | 83.95142 | 83.95052 | 83.95034 | +0.00022417 % |
+| `saturn-cassini-wac-2016` | disk-centre | S | 222.6381 | 222.7072 | 222.7281 | 222.724 | 222.7248 | -0.000346617 % |
+| `saturn-cassini-wac-2016` | limb | X | 108.671 | 108.6704 | 108.6702 | 108.6702 | 108.6702 | -5.45352e-05 % |
+| `saturn-cassini-wac-2016` | limb | Y | 112.1958 | 112.1952 | 112.1949 | 112.1949 | 112.195 | -5.41442e-05 % |
+| `saturn-cassini-wac-2016` | limb | Z | 85.0361 | 85.03566 | 85.03547 | 85.03545 | 85.03549 | -5.43344e-05 % |
+| `saturn-cassini-wac-2016` | limb | S | 231.6689 | 231.6677 | 231.6672 | 231.6672 | 231.6673 | -5.41443e-05 % |
+| `saturn-cassini-wac-2016` | terminator | X | 14.30719 | 14.30916 | 14.30688 | 14.30804 | 14.3085 | -0.00320642 % |
+| `saturn-cassini-wac-2016` | terminator | Y | 14.79751 | 14.8001 | 14.79781 | 14.79945 | 14.7999 | -0.00303586 % |
+| `saturn-cassini-wac-2016` | terminator | Z | 10.93938 | 10.94165 | 10.9399 | 10.9408 | 10.94115 | -0.00324191 % |
+| `saturn-cassini-wac-2016` | terminator | S | 30.21623 | 30.2259 | 30.22151 | 30.22575 | 30.22653 | -0.00260175 % |
+| `saturn-cassini-wac-2016` | ring-c | X | 0 | 0 | 0 | 0 | 0 | +0 % |
+| `saturn-cassini-wac-2016` | ring-c | Y | 0 | 0 | 0 | 0 | 0 | +0 % |
+| `saturn-cassini-wac-2016` | ring-c | Z | 0 | 0 | 0 | 0 | 0 | +0 % |
+| `saturn-cassini-wac-2016` | ring-c | S | 0 | 0 | 0 | 0 | 0 | +0 % |
+| `saturn-cassini-wac-2016` | ring-b | X | 0 | 0 | 0 | 0 | 0 | +0 % |
+| `saturn-cassini-wac-2016` | ring-b | Y | 0 | 0 | 0 | 0 | 0 | +0 % |
+| `saturn-cassini-wac-2016` | ring-b | Z | 0 | 0 | 0 | 0 | 0 | +0 % |
+| `saturn-cassini-wac-2016` | ring-b | S | 0 | 0 | 0 | 0 | 0 | +0 % |
+| `saturn-cassini-wac-2016` | ring-a | X | 0 | 0 | 0 | 0 | 0 | +0 % |
+| `saturn-cassini-wac-2016` | ring-a | Y | 0 | 0 | 0 | 0 | 0 | +0 % |
+| `saturn-cassini-wac-2016` | ring-a | Z | 0 | 0 | 0 | 0 | 0 | +0 % |
+| `saturn-cassini-wac-2016` | ring-a | S | 0 | 0 | 0 | 0 | 0 | +0 % |
+| `saturn-cassini-wac-2016` | sky-near | X | 0 | 0 | 0 | 0 | 0 | +0 % |
+| `saturn-cassini-wac-2016` | sky-near | Y | 0 | 0 | 0 | 0 | 0 | +0 % |
+| `saturn-cassini-wac-2016` | sky-near | Z | 0 | 0 | 0 | 0 | 0 | +0 % |
+| `saturn-cassini-wac-2016` | sky-near | S | 0 | 0 | 0 | 0 | 0 | +0 % |
+| `saturn-cassini-wac-2016` | sky-far | X | 0 | 0 | 0 | 0 | 0 | +0 % |
+| `saturn-cassini-wac-2016` | sky-far | Y | 0 | 0 | 0 | 0 | 0 | +0 % |
+| `saturn-cassini-wac-2016` | sky-far | Z | 0 | 0 | 0 | 0 | 0 | +0 % |
+| `saturn-cassini-wac-2016` | sky-far | S | 0 | 0 | 0 | 0 | 0 | +0 % |
+| `saturn-cassini-wac-2016` | limb / disk-centre | X | 1.040067 | 1.039937 | 1.039881 | 1.039878 | 1.039882 | -0.000362327 % |
+| `saturn-cassini-wac-2016` | limb / disk-centre | Y | 1.048121 | 1.047868 | 1.047844 | 1.047849 | 1.04785 | -7.08218e-05 % |
+| `saturn-cassini-wac-2016` | limb / disk-centre | Z | 1.013327 | 1.012984 | 1.012913 | 1.012923 | 1.012926 | -0.000278504 % |
+| `saturn-cassini-wac-2016` | limb / disk-centre | S | 1.040563 | 1.040235 | 1.040135 | 1.040153 | 1.04015 | +0.000292473 % |
+| `saturn-cassini-wac-2016` | terminator / disk-centre | X | 0.1369311 | 0.1369335 | 0.1369045 | 0.1369154 | 0.1369202 | -0.0035142 % |
+| `saturn-cassini-wac-2016` | terminator / disk-centre | Y | 0.1382368 | 0.1382284 | 0.1382042 | 0.13822 | 0.1382242 | -0.00305254 % |
+| `saturn-cassini-wac-2016` | terminator / disk-centre | Z | 0.1303584 | 0.130342 | 0.1303123 | 0.1303244 | 0.1303289 | -0.00346607 % |
+| `saturn-cassini-wac-2016` | terminator / disk-centre | S | 0.135719 | 0.1357204 | 0.1356879 | 0.1357094 | 0.1357125 | -0.00225514 % |
+| `uranus-voyager2-1986` | disk-centre | X | 61.23489 | 61.23445 | 61.23431 | 61.23432 | 61.2343 | +2.39842e-05 % |
+| `uranus-voyager2-1986` | disk-centre | Y | 68.72771 | 68.72721 | 68.72706 | 68.72707 | 68.72705 | +2.3565e-05 % |
+| `uranus-voyager2-1986` | disk-centre | Z | 82.93529 | 82.93469 | 82.93451 | 82.93452 | 82.9345 | +2.37598e-05 % |
+| `uranus-voyager2-1986` | disk-centre | S | 184.432 | 184.4307 | 184.4303 | 184.4303 | 184.4303 | +2.3823e-05 % |
+| `uranus-voyager2-1986` | limb | X | 51.184 | 51.17771 | 51.17713 | 51.1765 | 51.1768 | -0.000586522 % |
+| `uranus-voyager2-1986` | limb | Y | 57.44697 | 57.43991 | 57.43926 | 57.43856 | 57.43889 | -0.000586583 % |
+| `uranus-voyager2-1986` | limb | Z | 69.32257 | 69.31405 | 69.31327 | 69.31242 | 69.31282 | -0.00058626 % |
+| `uranus-voyager2-1986` | limb | S | 154.16 | 154.141 | 154.1393 | 154.1374 | 154.1383 | -0.000585853 % |
+| `uranus-voyager2-1986` | terminator | X | 19.93133 | 19.90862 | 19.9054 | 19.90427 | 19.90451 | -0.00118911 % |
+| `uranus-voyager2-1986` | terminator | Y | 22.37016 | 22.34468 | 22.34106 | 22.3398 | 22.34006 | -0.00118902 % |
+| `uranus-voyager2-1986` | terminator | Z | 26.99459 | 26.96383 | 26.95946 | 26.95794 | 26.95826 | -0.00118931 % |
+| `uranus-voyager2-1986` | terminator | S | 60.03073 | 59.96234 | 59.95263 | 59.94924 | 59.94995 | -0.00118943 % |
+| `uranus-voyager2-1986` | disk-integrated | X | 30.63929 | 30.64319 | 30.64982 | 30.65101 | 30.65358 | -0.00836494 % |
+| `uranus-voyager2-1986` | disk-integrated | Y | 34.39067 | 34.39513 | 34.40258 | 34.40371 | 34.40652 | -0.00817848 % |
+| `uranus-voyager2-1986` | disk-integrated | Z | 41.50598 | 41.51148 | 41.52054 | 41.52132 | 41.52454 | -0.00775225 % |
+| `uranus-voyager2-1986` | disk-integrated | S | 92.29813 | 92.31033 | 92.33043 | 92.33248 | 92.33974 | -0.00785981 % |
+| `uranus-voyager2-1986` | sky-near | X | 0 | 0 | 0 | 0 | 0 | +0 % |
+| `uranus-voyager2-1986` | sky-near | Y | 0 | 0 | 0 | 0 | 0 | +0 % |
+| `uranus-voyager2-1986` | sky-near | Z | 0 | 0 | 0 | 0 | 0 | +0 % |
+| `uranus-voyager2-1986` | sky-near | S | 0 | 0 | 0 | 0 | 0 | +0 % |
+| `uranus-voyager2-1986` | sky-far | X | 0 | 0 | 0 | 0 | 0 | +0 % |
+| `uranus-voyager2-1986` | sky-far | Y | 0 | 0 | 0 | 0 | 0 | +0 % |
+| `uranus-voyager2-1986` | sky-far | Z | 0 | 0 | 0 | 0 | 0 | +0 % |
+| `uranus-voyager2-1986` | sky-far | S | 0 | 0 | 0 | 0 | 0 | +0 % |
+| `uranus-voyager2-1986` | limb / disk-centre | X | 0.8358633 | 0.8357666 | 0.835759 | 0.8357487 | 0.8357538 | -0.000610506 % |
+| `uranus-voyager2-1986` | limb / disk-centre | Y | 0.8358633 | 0.8357666 | 0.835759 | 0.8357487 | 0.8357538 | -0.000610148 % |
+| `uranus-voyager2-1986` | limb / disk-centre | Z | 0.8358633 | 0.8357666 | 0.835759 | 0.8357487 | 0.8357538 | -0.00061002 % |
+| `uranus-voyager2-1986` | limb / disk-centre | S | 0.8358633 | 0.8357666 | 0.835759 | 0.8357487 | 0.8357538 | -0.000609676 % |
+| `uranus-voyager2-1986` | terminator / disk-centre | X | 0.3254898 | 0.3251212 | 0.3250693 | 0.3250509 | 0.3250549 | -0.0012131 % |
+| `uranus-voyager2-1986` | terminator / disk-centre | Y | 0.3254898 | 0.3251212 | 0.3250693 | 0.3250509 | 0.3250549 | -0.00121259 % |
+| `uranus-voyager2-1986` | terminator / disk-centre | Z | 0.3254898 | 0.3251212 | 0.3250693 | 0.3250509 | 0.3250549 | -0.00121307 % |
+| `uranus-voyager2-1986` | terminator / disk-centre | S | 0.3254898 | 0.3251212 | 0.3250693 | 0.3250509 | 0.3250549 | -0.00121325 % |
+| `uranus-voyager2-1986` | disk-centre / disk-integrated | X | 1.998574 | 1.998305 | 1.997869 | 1.997791 | 1.997623 | +0.00838962 % |
+| `uranus-voyager2-1986` | disk-centre / disk-integrated | Y | 1.99844 | 1.998167 | 1.99773 | 1.997665 | 1.997501 | +0.00820272 % |
+| `uranus-voyager2-1986` | disk-centre / disk-integrated | Z | 1.998153 | 1.997874 | 1.997434 | 1.997396 | 1.99724 | +0.00777662 % |
+| `uranus-voyager2-1986` | disk-centre / disk-integrated | S | 1.99822 | 1.997942 | 1.997503 | 1.997458 | 1.997301 | +0.00788425 % |
+| `uranus-voyager2-1986` | limb / disk-integrated | X | 1.670535 | 1.670117 | 1.669737 | 1.669651 | 1.669521 | +0.00777907 % |
+| `uranus-voyager2-1986` | limb / disk-integrated | Y | 1.670423 | 1.670001 | 1.669621 | 1.669546 | 1.669419 | +0.00759252 % |
+| `uranus-voyager2-1986` | limb / disk-integrated | Z | 1.670183 | 1.669756 | 1.669373 | 1.669321 | 1.669201 | +0.00716655 % |
+| `uranus-voyager2-1986` | limb / disk-integrated | S | 1.670239 | 1.669813 | 1.669431 | 1.669373 | 1.669252 | +0.00727453 % |
+| `uranus-voyager2-1986` | terminator / disk-integrated | X | 0.6505154 | 0.6496915 | 0.6494458 | 0.6493838 | 0.6493372 | +0.00717643 % |
+| `uranus-voyager2-1986` | terminator / disk-integrated | Y | 0.6504718 | 0.6496466 | 0.6494007 | 0.6493427 | 0.6492973 | +0.00699003 % |
+| `uranus-voyager2-1986` | terminator / disk-integrated | Z | 0.6503783 | 0.6495511 | 0.6493043 | 0.6492554 | 0.6492128 | +0.00656345 % |
+| `uranus-voyager2-1986` | terminator / disk-integrated | S | 0.6504003 | 0.6495734 | 0.6493269 | 0.6492757 | 0.6492324 | +0.00667091 % |
+
+| case | region | 1 × 1 | 2 × 2 | 3 × 3 | 4 × 4 | 6 × 6 |
+|---|---|---|---|---|---|---|
+| `callisto-nh-lorri-2007` | disk-centre | fail (XYS) | fail (XYS) | fail (XYS) | fail (XYS) | fail (XYS) |
+| `callisto-nh-lorri-2007` | limb | fail (XY) | fail (X) | fail (XY) | fail (X) | fail (X) |
+| `callisto-nh-lorri-2007` | terminator | fail (XYZS) | fail (XYZS) | fail (XYZS) | fail (XYZS) | fail (XYZS) |
+| `callisto-nh-lorri-2007` | disk-integrated | fail (XYS) | fail (XYS) | fail (XYS) | fail (XYS) | fail (XYS) |
+| `callisto-nh-lorri-2007` | sky-near | pass | pass | pass | pass | pass |
+| `callisto-nh-lorri-2007` | sky-far | pass | pass | pass | pass | pass |
+| `callisto-nh-lorri-2007` | limb / disk-centre | fail (XYZS) | fail (XYZS) | fail (XYZS) | fail (XYZS) | fail (XYZS) |
+| `callisto-nh-lorri-2007` | terminator / disk-centre | fail (XYZS) | fail (XYZS) | fail (XYZS) | fail (XYZS) | fail (XYZS) |
+| `callisto-nh-lorri-2007` | disk-centre / disk-integrated | pass | pass | pass | pass | pass |
+| `callisto-nh-lorri-2007` | limb / disk-integrated | fail (XYZS) | fail (XYZS) | fail (XYZS) | fail (XYZS) | fail (XYZS) |
+| `callisto-nh-lorri-2007` | terminator / disk-integrated | fail (XYZS) | fail (XYZS) | fail (XYZS) | fail (XYZS) | fail (XYZS) |
+| `earth-himawari9-2026` | disk-centre | fail (XYZS) | fail (XYZS) | fail (XYZS) | fail (XYZS) | fail (XYZS) |
+| `earth-himawari9-2026` | limb | fail (Z) | fail (Z) | fail (Z) | fail (Z) | fail (Z) |
+| `earth-himawari9-2026` | terminator | fail (XYS) | fail (XYS) | fail (XYS) | fail (XYS) | fail (XYS) |
+| `earth-himawari9-2026` | near-centre-130E | fail (XYZS) | fail (XYZS) | fail (XYZS) | fail (XYZS) | fail (XYZS) |
+| `earth-himawari9-2026` | near-centre-150E | fail (XYS) | fail (XYS) | fail (XYS) | fail (XYS) | fail (XYS) |
+| `earth-himawari9-2026` | near-centre-141E-12S | fail (XZS) | fail (ZS) | fail (ZS) | fail (ZS) | fail (ZS) |
+| `earth-himawari9-2026` | sky-near | pass | pass | pass | pass | pass |
+| `earth-himawari9-2026` | sky-far | pass | pass | pass | pass | pass |
+| `earth-himawari9-2026` | limb / disk-centre | fail (XYZS) | fail (XYZS) | fail (XYZS) | fail (XYZS) | fail (XYZS) |
+| `earth-himawari9-2026` | terminator / disk-centre | fail (XYZS) | fail (XYZS) | fail (XYZS) | fail (XYZS) | fail (XYZS) |
+| `earth-moon-epoxi-2008` | earth-disk-integrated | pass | pass | pass | pass | pass |
+| `earth-moon-epoxi-2008` | moon-disk-integrated | pass | pass | pass | pass | pass |
+| `earth-moon-epoxi-2008` | earth-centre | pass | pass | pass | pass | pass |
+| `earth-moon-epoxi-2008` | sky-near | pass | pass | pass | pass | pass |
+| `earth-moon-epoxi-2008` | sky-far | pass | pass | pass | pass | pass |
+| `earth-moon-epoxi-2008` | moon-disk-integrated / earth-disk-integrated | fail (XYZS) | fail (XYS) | fail (XYS) | fail (XYS) | fail (XYS) |
+| `earth-moon-epoxi-2008` | earth-centre / earth-disk-integrated | pass | pass | pass | pass | pass |
+| `europa-nh-lorri-2007` | disk-centre | fail (XY) | fail (XY) | fail (XY) | fail (XY) | fail (XY) |
+| `europa-nh-lorri-2007` | limb | fail (XY) | fail (XY) | fail (XY) | fail (XY) | fail (XY) |
+| `europa-nh-lorri-2007` | terminator | fail (XY) | fail (XY) | fail (XY) | fail (XY) | fail (XY) |
+| `europa-nh-lorri-2007` | disk-integrated | fail (XY) | fail (XY) | fail (XY) | fail (XY) | fail (XY) |
+| `europa-nh-lorri-2007` | sky-near | pass | pass | pass | pass | pass |
+| `europa-nh-lorri-2007` | sky-far | pass | pass | pass | pass | pass |
+| `europa-nh-lorri-2007` | limb / disk-centre | pass | pass | pass | pass | pass |
+| `europa-nh-lorri-2007` | terminator / disk-centre | pass | pass | pass | pass | pass |
+| `europa-nh-lorri-2007` | disk-centre / disk-integrated | pass | pass | pass | pass | pass |
+| `europa-nh-lorri-2007` | limb / disk-integrated | pass | fail (XYZS) | fail (XYZS) | fail (XYZS) | fail (XYZS) |
+| `europa-nh-lorri-2007` | terminator / disk-integrated | pass | pass | pass | pass | pass |
+| `ganymede-nh-lorri-2007` | disk-centre | fail (XYS) | fail (XYS) | fail (XYS) | fail (XYS) | fail (XYS) |
+| `ganymede-nh-lorri-2007` | limb | fail (XYS) | fail (XYS) | fail (XYS) | fail (XYS) | fail (XYS) |
+| `ganymede-nh-lorri-2007` | terminator | fail (XYZS) | fail (XYZS) | fail (XYZS) | fail (XYZS) | fail (XYZS) |
+| `ganymede-nh-lorri-2007` | disk-integrated | fail (XY) | fail (XY) | fail (XY) | fail (XY) | fail (XY) |
+| `ganymede-nh-lorri-2007` | sky-near | pass | pass | pass | pass | pass |
+| `ganymede-nh-lorri-2007` | sky-far | pass | pass | pass | pass | pass |
+| `ganymede-nh-lorri-2007` | limb / disk-centre | fail (XYZS) | fail (XYZS) | fail (XYZS) | fail (XYZS) | fail (XYZS) |
+| `ganymede-nh-lorri-2007` | terminator / disk-centre | fail (XYZS) | fail (XYZS) | fail (XYZS) | fail (XYZS) | fail (XYZS) |
+| `ganymede-nh-lorri-2007` | disk-centre / disk-integrated | fail (XYZS) | fail (XYZS) | fail (XYZS) | fail (XYZS) | fail (XYZS) |
+| `ganymede-nh-lorri-2007` | limb / disk-integrated | fail (XYZS) | fail (XYZS) | fail (XYZS) | fail (XYZS) | fail (XYZS) |
+| `ganymede-nh-lorri-2007` | terminator / disk-integrated | fail (XYZS) | fail (XYZS) | fail (XYZS) | fail (XYZS) | fail (XYZS) |
+| `io-nh-lorri-2007` | disk-centre | fail (XY) | fail (XY) | fail (XY) | fail (XY) | fail (XY) |
+| `io-nh-lorri-2007` | limb | fail (XY) | fail (XY) | fail (XY) | fail (XY) | fail (XY) |
+| `io-nh-lorri-2007` | terminator | pass | pass | pass | pass | pass |
+| `io-nh-lorri-2007` | disk-integrated | fail (XY) | fail (XY) | fail (XY) | fail (XY) | fail (XY) |
+| `io-nh-lorri-2007` | sky-near | pass | pass | pass | pass | pass |
+| `io-nh-lorri-2007` | sky-far | pass | pass | pass | pass | pass |
+| `io-nh-lorri-2007` | limb / disk-centre | fail (XYZS) | fail (XYZS) | fail (XYZS) | fail (XYZS) | fail (XYZS) |
+| `io-nh-lorri-2007` | terminator / disk-centre | pass | pass | pass | pass | pass |
+| `io-nh-lorri-2007` | disk-centre / disk-integrated | fail (XYZS) | fail (XYZS) | fail (XYZS) | fail (XYZS) | fail (XYZS) |
+| `io-nh-lorri-2007` | limb / disk-integrated | pass | pass | pass | pass | pass |
+| `io-nh-lorri-2007` | terminator / disk-integrated | pass | pass | pass | pass | pass |
+| `jupiter-nh-lorri-2007` | disk-centre | fail (XYZS) | fail (XYZS) | fail (XYZS) | fail (XYZS) | fail (XYZS) |
+| `jupiter-nh-lorri-2007` | limb | pass | pass | pass | pass | pass |
+| `jupiter-nh-lorri-2007` | terminator | pass | pass | pass | pass | pass |
+| `jupiter-nh-lorri-2007` | disk-integrated | pass | pass | pass | pass | pass |
+| `jupiter-nh-lorri-2007` | sky-near | pass | pass | pass | pass | pass |
+| `jupiter-nh-lorri-2007` | sky-far | pass | pass | pass | pass | pass |
+| `jupiter-nh-lorri-2007` | limb / disk-centre | fail (XYZS) | fail (XYZS) | fail (XYZS) | fail (XYZS) | fail (XYZS) |
+| `jupiter-nh-lorri-2007` | terminator / disk-centre | fail (ZS) | fail (ZS) | fail (ZS) | fail (ZS) | fail (ZS) |
+| `jupiter-nh-lorri-2007` | disk-centre / disk-integrated | fail (XYZS) | fail (XYZS) | fail (XYZS) | fail (XYZS) | fail (XYZS) |
+| `jupiter-nh-lorri-2007` | limb / disk-integrated | fail (XYZS) | fail (XYZS) | fail (XYZS) | fail (XYZS) | fail (XYZS) |
+| `jupiter-nh-lorri-2007` | terminator / disk-integrated | pass | pass | pass | pass | pass |
+| `neptune-voyager2-1989` | disk-centre | pass | pass | pass | pass | pass |
+| `neptune-voyager2-1989` | limb | pass | pass | pass | pass | pass |
+| `neptune-voyager2-1989` | terminator | pass | pass | pass | pass | pass |
+| `neptune-voyager2-1989` | disk-integrated | pass | pass | pass | pass | pass |
+| `neptune-voyager2-1989` | sky-near | pass | pass | pass | pass | pass |
+| `neptune-voyager2-1989` | sky-far | pass | pass | pass | pass | pass |
+| `neptune-voyager2-1989` | limb / disk-centre | pass | pass | pass | pass | pass |
+| `neptune-voyager2-1989` | terminator / disk-centre | pass | pass | pass | pass | pass |
+| `neptune-voyager2-1989` | disk-centre / disk-integrated | fail (XYZS) | fail (XYZS) | fail (XYZS) | fail (XYZS) | fail (XYZS) |
+| `neptune-voyager2-1989` | limb / disk-integrated | pass | pass | pass | pass | pass |
+| `neptune-voyager2-1989` | terminator / disk-integrated | pass | pass | pass | pass | pass |
+| `pluto-nh-lorri-2015` | disk-centre | pass | pass | pass | pass | pass |
+| `pluto-nh-lorri-2015` | limb | pass | pass | pass | pass | pass |
+| `pluto-nh-lorri-2015` | terminator | pass | pass | pass | pass | pass |
+| `pluto-nh-lorri-2015` | disk-integrated | pass | pass | pass | pass | pass |
+| `pluto-nh-lorri-2015` | sky-near | pass | pass | pass | pass | pass |
+| `pluto-nh-lorri-2015` | sky-far | pass | pass | pass | pass | pass |
+| `pluto-nh-lorri-2015` | limb / disk-centre | fail (XYZS) | fail (X) | fail (X) | fail (X) | fail (X) |
+| `pluto-nh-lorri-2015` | terminator / disk-centre | pass | pass | pass | pass | pass |
+| `pluto-nh-lorri-2015` | disk-centre / disk-integrated | fail (XYZS) | fail (XYZS) | fail (XYZS) | fail (XYZS) | fail (XYZS) |
+| `pluto-nh-lorri-2015` | limb / disk-integrated | pass | fail (XYS) | fail (XYZS) | fail (XYZS) | fail (XYZS) |
+| `pluto-nh-lorri-2015` | terminator / disk-integrated | pass | pass | pass | pass | pass |
+| `saturn-cassini-wac-2016` | disk-centre | pass | pass | pass | pass | pass |
+| `saturn-cassini-wac-2016` | limb | pass | pass | pass | pass | pass |
+| `saturn-cassini-wac-2016` | terminator | fail (XYZS) | fail (XYZS) | fail (XYZS) | fail (XYZS) | fail (XYZS) |
+| `saturn-cassini-wac-2016` | ring-c | fail (XYZS) | fail (XYZS) | fail (XYZS) | fail (XYZS) | fail (XYZS) |
+| `saturn-cassini-wac-2016` | ring-b | fail (XYZS) | fail (XYZS) | fail (XYZS) | fail (XYZS) | fail (XYZS) |
+| `saturn-cassini-wac-2016` | ring-a | fail (XYZS) | fail (XYZS) | fail (XYZS) | fail (XYZS) | fail (XYZS) |
+| `saturn-cassini-wac-2016` | sky-near | pass | pass | pass | pass | pass |
+| `saturn-cassini-wac-2016` | sky-far | pass | pass | pass | pass | pass |
+| `saturn-cassini-wac-2016` | limb / disk-centre | fail (XYZS) | fail (XYZS) | fail (XYZS) | fail (XYZS) | fail (XYZS) |
+| `saturn-cassini-wac-2016` | terminator / disk-centre | fail (XYZS) | fail (XYZS) | fail (XYZS) | fail (XYZS) | fail (XYZS) |
+| `uranus-voyager2-1986` | disk-centre | pass | pass | pass | pass | pass |
+| `uranus-voyager2-1986` | limb | pass | pass | pass | pass | pass |
+| `uranus-voyager2-1986` | terminator | pass | pass | pass | pass | pass |
+| `uranus-voyager2-1986` | disk-integrated | pass | pass | pass | pass | pass |
+| `uranus-voyager2-1986` | sky-near | pass | pass | pass | pass | pass |
+| `uranus-voyager2-1986` | sky-far | pass | pass | pass | pass | pass |
+| `uranus-voyager2-1986` | limb / disk-centre | pass | pass | pass | pass | pass |
+| `uranus-voyager2-1986` | terminator / disk-centre | pass | pass | pass | pass | pass |
+| `uranus-voyager2-1986` | disk-centre / disk-integrated | fail (XYZS) | fail (XYZS) | fail (XYZS) | fail (XYZS) | fail (XYZS) |
+| `uranus-voyager2-1986` | limb / disk-integrated | pass | pass | pass | pass | pass |
+| `uranus-voyager2-1986` | terminator / disk-integrated | pass | pass | pass | pass | pass |
+
+Invalid frames contribute no convergence statistics or verdict changes.
+
+| sampling | case | finest valid sampling | largest relative difference (%) |
+|---|---|---|---|
+| 1 × 1 | `callisto-nh-lorri-2007` | 6 | 1.345861 % |
+| 1 × 1 | `earth-himawari9-2026` | 6 | 18.39723 % |
+| 1 × 1 | `earth-moon-epoxi-2008` | 6 | 3.208106 % |
+| 1 × 1 | `europa-nh-lorri-2007` | 6 | 1.280865 % |
+| 1 × 1 | `ganymede-nh-lorri-2007` | 6 | 0.5083457 % |
+| 1 × 1 | `io-nh-lorri-2007` | 6 | 0.2191634 % |
+| 1 × 1 | `jupiter-nh-lorri-2007` | 6 | 0.3355649 % |
+| 1 × 1 | `neptune-voyager2-1989` | 6 | 0.288039 % |
+| 1 × 1 | `pluto-nh-lorri-2015` | 6 | 3.801191 % |
+| 1 × 1 | `saturn-cassini-wac-2016` | 6 | 0.03964961 % |
+| 1 × 1 | `uranus-voyager2-1986` | 6 | 0.1814333 % |
+| 2 × 2 | `callisto-nh-lorri-2007` | 6 | 0.5549146 % |
+| 2 × 2 | `earth-himawari9-2026` | 6 | 4.989307 % |
+| 2 × 2 | `earth-moon-epoxi-2008` | 6 | 0.5359039 % |
+| 2 × 2 | `europa-nh-lorri-2007` | 6 | 0.2881365 % |
+| 2 × 2 | `ganymede-nh-lorri-2007` | 6 | 0.2533035 % |
+| 2 × 2 | `io-nh-lorri-2007` | 6 | 0.3039714 % |
+| 2 × 2 | `jupiter-nh-lorri-2007` | 6 | 0.07615578 % |
+| 2 × 2 | `neptune-voyager2-1989` | 6 | 0.09256695 % |
+| 2 × 2 | `pluto-nh-lorri-2015` | 6 | 0.4641642 % |
+| 2 × 2 | `saturn-cassini-wac-2016` | 6 | 0.01007195 % |
+| 2 × 2 | `uranus-voyager2-1986` | 6 | 0.05454983 % |
+| 3 × 3 | `callisto-nh-lorri-2007` | 6 | 0.5654377 % |
+| 3 × 3 | `earth-himawari9-2026` | 6 | 1.785873 % |
+| 3 × 3 | `earth-moon-epoxi-2008` | 6 | 0.4538842 % |
+| 3 × 3 | `europa-nh-lorri-2007` | 6 | 0.1085849 % |
+| 3 × 3 | `ganymede-nh-lorri-2007` | 6 | 0.09015188 % |
+| 3 × 3 | `io-nh-lorri-2007` | 6 | 0.04479158 % |
+| 3 × 3 | `jupiter-nh-lorri-2007` | 6 | 0.0533647 % |
+| 3 × 3 | `neptune-voyager2-1989` | 6 | 0.05119633 % |
+| 3 × 3 | `pluto-nh-lorri-2015` | 6 | 0.1599147 % |
+| 3 × 3 | `saturn-cassini-wac-2016` | 6 | 0.01809514 % |
+| 3 × 3 | `uranus-voyager2-1986` | 6 | 0.01672303 % |
+| 4 × 4 | `callisto-nh-lorri-2007` | 6 | 0.1250178 % |
+| 4 × 4 | `earth-himawari9-2026` | 6 | 0.60874 % |
+| 4 × 4 | `earth-moon-epoxi-2008` | 6 | 0.1197467 % |
+| 4 × 4 | `europa-nh-lorri-2007` | 6 | 0.251056 % |
+| 4 × 4 | `ganymede-nh-lorri-2007` | 6 | 0.09979177 % |
+| 4 × 4 | `io-nh-lorri-2007` | 6 | 0.05616292 % |
+| 4 × 4 | `jupiter-nh-lorri-2007` | 6 | 0.03038749 % |
+| 4 × 4 | `neptune-voyager2-1989` | 6 | 0.02145312 % |
+| 4 × 4 | `pluto-nh-lorri-2015` | 6 | 0.0702736 % |
+| 4 × 4 | `saturn-cassini-wac-2016` | 6 | 0.003514205 % |
+| 4 × 4 | `uranus-voyager2-1986` | 6 | 0.008389625 % |
+| 6 × 6 | `callisto-nh-lorri-2007` | 6 | 0 % |
+| 6 × 6 | `earth-himawari9-2026` | 6 | 0 % |
+| 6 × 6 | `earth-moon-epoxi-2008` | 6 | 0 % |
+| 6 × 6 | `europa-nh-lorri-2007` | 6 | 0 % |
+| 6 × 6 | `ganymede-nh-lorri-2007` | 6 | 0 % |
+| 6 × 6 | `io-nh-lorri-2007` | 6 | 0 % |
+| 6 × 6 | `jupiter-nh-lorri-2007` | 6 | 0 % |
+| 6 × 6 | `neptune-voyager2-1989` | 6 | 0 % |
+| 6 × 6 | `pluto-nh-lorri-2015` | 6 | 0 % |
+| 6 × 6 | `saturn-cassini-wac-2016` | 6 | 0 % |
+| 6 × 6 | `uranus-voyager2-1986` | 6 | 0 % |
+
+| sampling | pass | fail | not rendered | largest relative difference (%) |
+|---|---|---|---|---|
+| 1 × 1 | 65 | 50 | 0 | 18.39723 % |
+| 2 × 2 | 63 | 52 | 0 | 4.989307 % |
+| 3 × 3 | 63 | 52 | 0 | 1.785873 % |
+| 4 × 4 | 63 | 52 | 0 | 0.60874 % |
+| 6 × 6 | 63 | 52 | 0 | 0 % |
+
+Reported default 4 × 4: largest relative difference 0.60874 % against each case's finest valid level. These run values supply the numerical justification; a case whose finest valid level is the default has no finer check.
+
+Verdict depends on sampling: europa-nh-lorri-2007 / limb / disk-integrated; pluto-nh-lorri-2015 / limb / disk-integrated (valid frames only).
