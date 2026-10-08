@@ -1,14 +1,10 @@
-// The synthetic layer (pipeline stage `synthetic`, docs/reports/synthetic-populations.md): objects no survey has
-// found yet, each standing in for one of the undiscovered members of an (a, e, i, H) cell of a debiased population
-// model. Reading synthetic/objects + cells, and their float64 two-body positions. Pure, no DOM/GPU.
-//
-// Their orbits are statistical samples (osculating elements at the small-body epoch), so they move on fixed Kepler
-// ellipses about the Sun: planetary perturbations would change nothing a synthetic object could claim. Synthetic
-// irregular moons (populations with a `center`) move on fixed Kepler ellipses about their planet-system barycentre
-// (GM of the system); their heliocentric state adds the barycentre's, which the caller supplies (CenterState).
+// Synthetic initial elements retain their deterministic product identity. Heliocentric draws use fixed
+// Kepler motion; irregular moons use the existing small-body force/step model translated to the host
+// barycentre. Their individual true position remains unknown. See docs/reports/synthetic-moon-kernel.md.
 
 import { D_H_CONSTANT_KM } from './constants';
 import type { SyntheticCellsHeader, SyntheticObjectsHeader, SyntheticPopulation } from '../data/schema';
+import { SB_OK, SmallBodyPropagator, type PlanetPositions, type SmallBodyForceModel } from './smallbody';
 import { BinaryTable } from '../data/binaryTable';
 
 type Vec3 = [number, number, number];
@@ -30,7 +26,62 @@ export interface SyntheticCatalog {
 }
 
 /** Heliocentric ICRF state (km, km/s) of a NAIF body at et, or null: the centre of a planet-centred population. */
-export type CenterState = (naifId: number, et: number) => { pos: Vec3; vel: Vec3 } | null;
+export type CenterState = ((naifId: number, et: number) => { pos: Vec3; vel: Vec3 } | null) & { planets?: PlanetPositions };
+
+export interface MoonIntegration {
+  kind: 'host-smallbody-v1';
+  initialState?: { value: number[][]; label: 'synthetic'; sources: string[]; epochEt: number };
+  window: { startEt: number; endEt: number };
+  forceModel: SmallBodyForceModel;
+}
+
+/** Versioned metadata is in the existing population model dictionary; old products have unknown motion. */
+export function moonIntegration(p: SyntheticPopulation): MoonIntegration | null {
+  const m = p.model.integration as MoonIntegration | undefined;
+  return m?.kind === 'host-smallbody-v1' && m.forceModel?.sun.naifId === p.center?.naifId
+    && m.forceModel.sun.gm === p.center.gm ? m : null;
+}
+
+/** Shared initializer for CPU and GPU, serialized f64 states beside the unchanged elements. Legacy
+ * headers without a state payload can still initialize directly from their stored epoch elements. */
+export function syntheticEpochState(s: SyntheticCatalog, j: number): { pos: Vec3; vel: Vec3 } | null {
+  const p = syntheticPopulation(s,j), initial = p ? moonIntegration(p)?.initialState : null;
+  if (!initial) return syntheticRelativeState(s,j,s.epochEt);
+  if (initial.epochEt !== s.epochEt || initial.label !== 'synthetic' || initial.value.length !== p!.objects) return null;
+  const v = initial.value[j-p!.firstObject];
+  if (!v || v.length !== 6 || !v.every(Number.isFinite)) return null;
+  return { pos:[v[0],v[1],v[2]], vel:[v[3],v[4],v[5]] };
+}
+
+const moonCaches = new WeakMap<SyntheticCatalog, WeakMap<PlanetPositions, { props: Map<number, SmallBodyPropagator>; states: Map<number, { et: number; state: Float64Array }> }>>();
+
+/** Same epoch grid, force law and partial step as the GPU batch. Cache grid states, never display states. */
+export function syntheticMoonState(s: SyntheticCatalog, j: number, et: number, planets?: PlanetPositions): { pos: Vec3; vel: Vec3 } | null {
+  const pop = syntheticPopulation(s,j);
+  if (!pop?.center || !Number.isFinite(et)) return null;
+  const initial = syntheticEpochState(s,j);
+  if (!initial) return null;
+  if (et === s.epochEt) return initial;
+  const integration = moonIntegration(pop);
+  if (!integration || !planets || et < integration.window.startEt || et > integration.window.endEt) return null;
+  let providers = moonCaches.get(s);
+  if (!providers) { providers = new WeakMap(); moonCaches.set(s,providers); }
+  let cache = providers.get(planets);
+  if (!cache) { cache = { props: new Map(), states: new Map() }; providers.set(planets,cache); }
+  let prop = cache.props.get(pop.code);
+  if (!prop) { prop = new SmallBodyPropagator(integration.forceModel,planets); cache.props.set(pop.code,prop); }
+  const H = integration.forceModel.grid.baseStepS, dt = (et-s.epochEt)/H;
+  const gridEt = s.epochEt + (dt >= 0 ? Math.floor(dt) : Math.ceil(dt))*H;
+  const prior = cache.states.get(j);
+  const usable = prior && Math.sign(prior.et-s.epochEt) === Math.sign(gridEt-s.epochEt) && Math.abs(prior.et-s.epochEt) <= Math.abs(gridEt-s.epochEt);
+  const state = usable ? prior.state.slice() : Float64Array.from([...initial.pos,...initial.vel]);
+  const from = usable ? prior.et : s.epochEt;
+  if (prop.propagateOne(state,0,from,gridEt,s.epochEt) !== SB_OK) return null;
+  cache.states.delete(j); cache.states.set(j,{ et:gridEt,state:state.slice() });
+  if (cache.states.size > 64) cache.states.delete(cache.states.keys().next().value!);
+  if (prop.propagateOne(state,0,gridEt,et,s.epochEt) !== SB_OK) return null;
+  return { pos:[state[0],state[1],state[2]], vel:[state[3],state[4],state[5]] };
+}
 
 const DEG = Math.PI / 180;
 
@@ -89,11 +140,11 @@ export function syntheticCenter(s: SyntheticCatalog, j: number): { naifId: numbe
 }
 
 /**
- * Heliocentric ICRF state (km, km/s) of synthetic object j at et: two-body motion of its elements. An object of a
+ * Heliocentric ICRF state (km, km/s) of synthetic object j at et: integrated moons, fixed heliocentric elements. An object of a
  * planet-centred population needs `center` (the barycentre's heliocentric state); without it, null.
  */
 export function syntheticState(s: SyntheticCatalog, j: number, et: number, center?: CenterState): { pos: Vec3; vel: Vec3 } | null {
-  const rel = syntheticRelativeState(s, j, et);
+  const rel = syntheticCenter(s,j) ? syntheticMoonState(s,j,et,center?.planets) : syntheticRelativeState(s, j, et);
   if (!rel) return null;
   const c = syntheticCenter(s, j);
   if (!c) return rel;
@@ -105,7 +156,8 @@ export function syntheticState(s: SyntheticCatalog, j: number, et: number, cente
   };
 }
 
-/** State of synthetic object j relative to the centre of its orbit (the Sun, or its planet-system barycentre). */
+/** Two-body osculating ellipse guide, relative to its centre. For moons this initializes the epoch state;
+ * away from the epoch it is an orbit overlay, NOT the physical trajectory (use syntheticMoonState). */
 export function syntheticRelativeState(s: SyntheticCatalog, j: number, et: number): { pos: Vec3; vel: Vec3 } | null {
   if (!(j >= 0 && j < s.count)) return null;
   const el = syntheticElements(s, j);
@@ -147,7 +199,7 @@ export function syntheticPeriod(s: SyntheticCatalog, j: number): number {
  * states), velocity by a central difference over ±1 s (the GPU kernel uses the same difference).
  */
 export function centerStateFrom(eph: { positionSSB(id: number, et: number): readonly number[] | null }, sunId: number): CenterState {
-  return (id, et) => {
+  const state: CenterState = (id, et) => {
     const p = eph.positionSSB(id, et), s = eph.positionSSB(sunId, et);
     const pa = eph.positionSSB(id, et - 1), pb = eph.positionSSB(id, et + 1);
     const sa = eph.positionSSB(sunId, et - 1), sb = eph.positionSSB(sunId, et + 1);
@@ -157,6 +209,8 @@ export function centerStateFrom(eph: { positionSSB(id: number, et: number): read
       vel: [0, 1, 2].map((k) => (pb[k] - sb[k] - (pa[k] - sa[k])) / 2) as Vec3,
     };
   };
+  state.planets = eph as PlanetPositions;
+  return state;
 }
 
 export function syntheticPopulation(s: SyntheticCatalog, j: number): SyntheticPopulation | null {

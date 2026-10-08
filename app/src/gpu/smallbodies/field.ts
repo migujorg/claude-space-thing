@@ -27,7 +27,7 @@ import type { Vec3 } from '../../core/vec';
 import { AU_KM, C_KM_S } from '../../core/constants';
 import { SB_OK, SmallBodyPropagator, type NonGrav, type PlanetPositions } from '../../core/smallbody';
 import { coreState, readCore, readNonGrav, type SmallBodyCatalog } from '../../core/smallbodyCatalog';
-import { centerStateFrom, readSynthetic, syntheticState, type CenterState, type SyntheticCatalog } from '../../core/smallbodySynthetic';
+import { centerStateFrom, moonIntegration, readSynthetic, syntheticEpochState, syntheticState, type CenterState, type SyntheticCatalog } from '../../core/smallbodySynthetic';
 import { LEVEL_CODE, SmallBodyLight, type ExistsLevel } from '../../core/smallbodyPhotometry';
 import { PICK_SHADER, SELFTEST_SHADER, SYN_MAX_CENTERS, WG, shadeShader, stepShader, syntheticShader, type KernelConfig } from './kernels';
 import { PlanetTable, SAMPLES } from './planetTable';
@@ -51,6 +51,11 @@ export interface SmallBodyTables {
 }
 
 export interface SmallBodyFieldOptions {
+  /** DEVICE HARNESS ONLY. Moon grid divisor and algebraically equivalent differential kicks.
+   * Production uses stable tidal arithmetic. Neither option changes a physical parameter. */
+  moonDiagnostics?: { gridDivisor?: number; forceVariant?: 'baseline' | 'tidal' };
+  /** Internal named harness override forwarded only to a moon child; production omits it. */
+  diagnosticForceVariant?: 'baseline' | 'tidal';
   /** GPU memory for checkpoint states (and the background builder), bytes. Default 1 GiB. */
   checkpointBudgetBytes?: number;
   /** Smallest checkpoint spacing in grid steps (default 8). */
@@ -119,8 +124,8 @@ const INVALID = 0x80000000;
 const EXCLUDED = 0x20000000;
 /** Synthetic objects: 8 float32 of elements each (kernels.ts syntheticShader); uniform slot per dispatch chunk. */
 const SYN_FLOATS = 8;
-const SYN_SLOT = 256;
-const SYN_U_BYTES = 80 + 2 * SYN_MAX_CENTERS * 16;
+const SYN_SLOT = 512;
+const SYN_U_BYTES = 80 + 3 * SYN_MAX_CENTERS * 16;
 const DEG = Math.PI / 180;
 
 type Op =
@@ -179,6 +184,11 @@ export class SmallBodyField {
   private synBG: GPUBindGroup | null = null;
   /** Whether the synthetic records hold points (they are cleared when the layer is not shown). */
   private synLive = false;
+  // Two tiny instances reuse the catalogue's integration/table/checkpoint machinery, with no photometry.
+  // Their debug display states feed the existing synthetic photometry/identity pass.
+  private moonFields: { field: SmallBodyField; rows: number[]; offset: number }[] = [];
+  private synMoonMap: GPUBuffer | null = null;
+  private synMoonStates: GPUBuffer | null = null;
   /** NAIF ids of the centres of planet-centred synthetic populations (kernel centre k + 1). */
   private synCenters: number[] = [];
   /** Heliocentric state of a planet-system barycentre (centres of synthetic irregular moons). */
@@ -186,7 +196,7 @@ export class SmallBodyField {
   private readonly nongrav: Map<number, NonGrav>;
   private readonly table: PlanetTable;
   private readonly H: number;
-  private readonly opts: Required<Omit<SmallBodyFieldOptions, 'useFma' | 'synthetic' | 'syntheticDiagnosticColour'>>;
+  private readonly opts: Required<Omit<SmallBodyFieldOptions, 'useFma' | 'synthetic' | 'syntheticDiagnosticColour' | 'moonDiagnostics' | 'diagnosticForceVariant'>>;
   private readonly spacing: number;
   private readonly slots: number;
 
@@ -395,7 +405,8 @@ export class SmallBodyField {
     this.checkpoints.set(0, this.epochBuf);
     this.pointSources = { buffer: this.records, count: n + S, strideFloats: RECORD_FLOATS };
 
-    const cfg: KernelConfig = { model: this.model, samples: SAMPLES, cKmS: C_KM_S, auKm: AU_KM, photometry: tables.photometry ?? null };
+    const cfg: KernelConfig = { model: this.model, samples: SAMPLES, cKmS: C_KM_S, auKm: AU_KM, photometry: tables.photometry ?? null,
+      diagnosticForceVariant: options.diagnosticForceVariant };
     const ro = { type: 'read-only-storage' as const };
     const C = GPUShaderStage.COMPUTE;
     this.stepLayout = d.createBindGroupLayout({
@@ -471,6 +482,8 @@ export class SmallBodyField {
           { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },
           { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
           { binding: 3, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
+          { binding: 4, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },
+          { binding: 5, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },
         ],
       });
       this.synPipe = d.createComputePipeline({
@@ -491,6 +504,41 @@ export class SmallBodyField {
       checkpointSpacingSteps: this.spacing, checkpointSlots: this.slots, checkpoints: 1,
       last: { et: NaN, targetStep: 0, steps: 0, backgroundSteps: 0, restoredFrom: null, tableIntervalsBuilt: 0, displayStepS: 0, cpuMs: 0, hidden: null },
     };
+    if (S) {
+      const mapping = new Uint32Array(S).fill(0xffffffff);
+      let offset = 0;
+      for (const id of centers) {
+        const pops = syn!.header.populations.filter(p => p.center?.naifId === id && p.objects > 0);
+        if (!pops.length) continue;
+        const integration = moonIntegration(pops[0]);
+        if (!integration) continue; // old metadata: unknown motion, never revert to fixed elements
+        if (pops.some(p => JSON.stringify(moonIntegration(p)) !== JSON.stringify(integration))) throw new Error('inconsistent moon force model within a host');
+        const rows = pops.flatMap(p => Array.from({ length:p.objects },(_,k)=>p.firstObject+k));
+        const core = new ArrayBuffer(rows.length * 56), dv = new DataView(core);
+        rows.forEach((row,i) => {
+          const initial = syntheticEpochState(syn!,row);
+          [...(initial?.pos ?? [NaN,NaN,NaN]),...(initial?.vel ?? [NaN,NaN,NaN])].forEach((v,k)=>dv.setFloat64(i*56+k*8,v,true));
+          dv.setUint8(i*56+48,3); // synthetic label (runtime adapter, no new product)
+        });
+        const divisor = options.moonDiagnostics?.gridDivisor ?? 1;
+        if (![1,2,4,8].includes(divisor)) throw new Error('diagnostic moon grid divisor must be 1, 2, 4 or 8');
+        const forceModel = divisor === 1 ? integration.forceModel : { ...integration.forceModel,
+          grid: { ...integration.forceModel.grid, baseStepS: integration.forceModel.grid.baseStepS / divisor } };
+        const moonHeader: SmallBodyCoreHeader = { ...hdr, count:rows.length, stride:56,
+          fields:[{ name:'pos',type:'f64',count:3,offset:0 },{ name:'vel',type:'f64',count:3,offset:24 },
+            { name:'posLabel',type:'u8',count:1,offset:48 },{ name:'flags',type:'u16',count:1,offset:50 }],
+          epochEt:syn!.epochEt, window:integration.window, forceModel, flagBits:{} };
+        const field = new SmallBodyField(d,{ core,coreHeader:moonHeader },planets,
+          { ...options,synthetic:false,debug:true,checkpointBudgetBytes:16*2**20,chunkObjects:rows.length,
+            diagnosticForceVariant:options.moonDiagnostics?.forceVariant },st,useFma);
+        rows.forEach((row,i)=>{ mapping[row] = offset+field.slotOf(i); });
+        this.moonFields.push({ field,rows,offset }); offset += rows.length;
+      }
+      this.synMoonMap = buf(mapping.byteLength,SU.STORAGE|SU.COPY_DST,'synthetic moon row map');
+      this.synMoonStates = buf(Math.max(1,offset)*64,SU.STORAGE|SU.COPY_DST,'synthetic moon display states');
+      d.queue.writeBuffer(this.synMoonMap,0,mapping);
+      this.info.synthetic.gpuBytes += mapping.byteLength + Math.max(1,offset)*64;
+    }
     if (precision === 'degraded') console.warn('[SmallBodyField] double-single arithmetic is not exact on this device: positions may be off by tens to hundreds of km');
   }
 
@@ -606,6 +654,13 @@ export class SmallBodyField {
     this.pollStats();
     this.device.queue.writeBuffer(this.counters, 0, new Uint32Array(4));
 
+    // The moon display states must be available before the synthetic shade pass. Each host uses
+    // precisely the existing grid/restore/partial-step planner; no CPU upload of integrated trajectories.
+    if (allowed.brightness === 'complete' && !hide) for (const batch of this.moonFields) {
+      batch.field.update(encoder,et,cameraSSB,allowed);
+      encoder.copyBufferToBuffer(batch.field.debugBuf,0,this.synMoonStates!,batch.offset*64,batch.rows.length*64);
+    }
+
     // Encode.
     const bg = this.stepBindGroups();
     let pass: GPUComputePassEncoder | null = null;
@@ -653,11 +708,13 @@ export class SmallBodyField {
       const [dth, dtl] = split64(et - this.synthetic!.epochEt);
       // Centres of planet-centred populations: camera-relative position (f64 difference) and SSB velocity. A centre
       // without an ephemeris parks its objects at infinity (they draw nothing).
-      const cen = new Float32Array(8 * SYN_MAX_CENTERS);
+      const cen = new Float32Array(12 * SYN_MAX_CENTERS);
       this.synCenters.forEach((id, k) => {
         const p = this.planets.positionSSB(id, et), pa = this.planets.positionSSB(id, et - 1), pb = this.planets.positionSSB(id, et + 1);
         if (!p || !pa || !pb) { cen.set([Infinity, Infinity, Infinity], 4 * k); return; }
-        cen.set([p[0] - cameraSSB[0], p[1] - cameraSSB[1], p[2] - cameraSSB[2]], 4 * k);
+        const relative = [0,1,2].map(c => split64(p[c]-cameraSSB[c]));
+        cen.set(relative.map(v=>v[0]),4*k);
+        cen.set(relative.map(v=>v[1]),4*(k+2*SYN_MAX_CENTERS));
         cen.set([(pb[0] - pa[0]) / 2, (pb[1] - pa[1]) / 2, (pb[2] - pa[2]) / 2], 4 * (k + SYN_MAX_CENTERS));
       });
       for (let ch = 0; ch < synChunks; ch++) {
@@ -846,6 +903,8 @@ export class SmallBodyField {
         { binding: 1, resource: { buffer: this.synEl! } },
         { binding: 2, resource: { buffer: this.records } },
         { binding: 3, resource: { buffer: this.counters } },
+        { binding: 4, resource: { buffer: this.synMoonMap! } },
+        { binding: 5, resource: { buffer: this.synMoonStates! } },
       ],
     });
     return this.synBG;
@@ -997,6 +1056,23 @@ export class SmallBodyField {
     return out;
   }
 
+  /** Test hook: host-relative ICRF display states, in original synthetic row order. */
+  async readMoonDebugStates(): Promise<{ rows: number[]; states: Float64Array }> {
+    const rows = this.moonFields.flatMap(b=>b.rows);
+    const parts = await Promise.all(this.moonFields.map(b=>b.field.readDebugStates(b.rows.map((_,k)=>k))));
+    const states = new Float64Array(rows.length*6);
+    let offset = 0;
+    for (const part of parts) { states.set(part,offset); offset += part.length; }
+    return { rows,states };
+  }
+
+  /** Device-harness diagnostics; CPU milliseconds are wall time, GPU time requires submitted-work timing. */
+  get moonBatchInfo(): { host: number; objects: number; tableBytes: number; stateBytes: number; checkpoints: number; gridStepS:number; checkpointSpacingSteps:number; last: SmallBodyFieldInfo['last'] }[] {
+    return this.moonFields.map(({field:f,rows})=>({ host:f.model.sun.naifId,objects:rows.length,
+      tableBytes:f.table.data.byteLength, stateBytes:(1+f.checkpoints.size+(f.B?1:0))*rows.length*STATE_BYTES+rows.length*64,
+      checkpoints:f.checkpoints.size,gridStepS:f.H,checkpointSpacingSteps:f.spacing,last:{...f.info.last} }));
+  }
+
   /** Test hook: the point-source records ((count + syntheticCount) * 8 floats): catalogue in GPU slot order, then synthetic. */
   async readRecords(): Promise<Float32Array> {
     return new Float32Array(await this.readBuffer(this.records, (this.count + this.syntheticCount) * RECORD_FLOATS * 4));
@@ -1014,6 +1090,8 @@ export class SmallBodyField {
   }
 
   destroy(): void {
+    for (const batch of this.moonFields) batch.field.destroy();
+    this.synMoonMap?.destroy(); this.synMoonStates?.destroy();
     for (const b of this.checkpoints.values()) b.destroy();
     for (const b of [this.W, this.B, this.records, this.debugBuf, this.tableBuf, this.infoBuf, this.ngBuf, this.photBuf, this.stepUB, this.frameUB, this.fieldUB, this.pickOut, this.pickRead, this.counters, this.synEl, this.synUB, ...this.pickU, ...this.statsRead.map((r) => r.buf)]) b?.destroy();
     this.checkpoints.clear();
