@@ -266,6 +266,7 @@ describe('bare Hapke tables at data load', () => {
     const tampered = await fakeServer(await files(),{tamper:'hapke-phase.json'});
     const bad = await loadAll({fetch:tampered.fetch,base:'/data/'});
     expect(bad.report.products.find(p=>p.path==='hapke-phase.json')?.hash).toBe('mismatch');
+    expect(bad.report.products.find(p=>p.path==='hapke-phase.json')?.consequence).toMatch(/fixed-order/);
     expect(hapkePhaseTableIssue(law.law,.3)).toMatch(/missing or stale/);
   });
 });

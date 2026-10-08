@@ -333,7 +333,8 @@ export async function loadAll(opts: LoadOptions): Promise<LoadedData> {
       ? L.get('albedo-reference.json', (b) => json(b) as import('./schema').AlbedoReferenceFile)
       : Promise.resolve(null),
     productPaths.includes('hapke-phase.json')
-      ? L.get('hapke-phase.json', (b) => json(b) as import('./schema').HapkePhaseFile)
+      ? L.get('hapke-phase.json', (b) => json(b) as import('./schema').HapkePhaseFile,
+          'Bare Hapke normalization uses the bounded fixed-order rule; affected bodies carry renderer warnings.')
       : Promise.resolve(null),
   ]);
 

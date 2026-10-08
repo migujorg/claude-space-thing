@@ -146,9 +146,10 @@ These are per-body constant parameter sets. Per-texel parameters (the Moon's `ha
 
 computed per channel. Here pΦ is albedoXYZS·Φ(α), or the disk model's value (§4), and M̄ is the map's
 zonal (rotation-averaged) mean. For a sphere, the float64 `MotionNormalization` uses analytic bare laws,
-Hapke phase interpolation, and converged quadrature/harmonic sums for zonal maps, with actual phase/pole.
-The sphere's rendered integral reproduces pΦ·(1/d²)(R/Δ)², exactly for zonal maps and on average over
-rotation for maps with longitude structure. Relief is omitted.
+build-time bare Hapke phase interpolation, harmonic sums for Minnaert/Barkstrom zonal maps, and
+a fixed-order fallback for the other mapped laws. The converged quadratures remain the numerical
+oracle. The sphere's integral targets pΦ·(1/d²)(R/Δ)², over rotation for maps with longitude
+structure, subject to each path's numerical error budget; mapped Hapke still has the gap stated above. Relief is omitted.
 
 For an unequal-radii ellipsoid, I is the **reference-view ellipsoid integral**, as declared by
 `photometry.json` `albedoMeasurementView` (architecture §4.3). The denominator depends on the phase,
