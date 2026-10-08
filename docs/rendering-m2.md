@@ -31,7 +31,7 @@ behaves exactly as in M1.
 | Field | From | Meaning |
 |---|---|---|
 | `allowPhaseExtrapolation` | reality level | `exists !== 'strict'`. Already set in `app/src/app/snapshot.ts` (one line). |
-| `spatialModel` | `photometry.json` → `BodyPhotometry.spatialModel.value`, if admitted at the level | Measured spatial law. Absent → Lambert. No body has one in the current products. |
+| `spatialModel` | `photometry.json` → `BodyPhotometry.spatialModel.value`, if admitted at the level | Sourced spatial law, with its measured or estimated label. Absent → Lambert. Current products include spatial laws; assumptions and sources are recorded in each body’s product. |
 | `diskReflectanceModel` | `photometry.json` → `BodyPhotometry.diskReflectanceModel.value` (the Moon: ROLO), if admitted | Disk-integrated brightness from the model inside its domain (§4). Needs `orient`. Include its label (`derived`) in `worstLabel`. |
 | `surface.albedo` / `surface.height` | `surfaces/index.json` → `surfaces/<id>/<layer>.json` | `{ url: '<data root>', header: <the parsed SurfaceLayerHeader> }`. Example: `{ url: '/data', header }` for `surfaces/301/albedo.json`. The renderer builds tile URLs from `header.tilePath`, skips `header.missingTiles`, and checks `format`, `channels`, `bytesPerTexel`, `tileSize` and `minLevel`. Only used when `orient` is non-null. |
 | `surface.photometry` | a layer of kind `photometric-parameters` (the Moon: `surfaces/301/hapke.json`), same form as above | The per-texel Hapke law (§2b). Needs `surface.albedo` too, since its header carries the band → XYZS weights. `app/src/app/extras.ts` passes it when its label is admitted (a 3-line edit in the shell). |

@@ -38,7 +38,7 @@ Every entry is therefore **estimated**, and its `method` states the assumptions.
 - **Why this k:** rendering the OPAL map with the law that was divided out of it reproduces the HST view.
 - **Values:** k = 0.972 (Jupiter), 0.719 (Saturn, at 0°), 0.788 (Uranus), 0.790 (Neptune).
 - **Jupiter at larger phase:** Dyudina et al. (2016, Sec. 2.1.1) found that I/F ∝ μ0 (k = 1 at every phase) fits the Pioneer 10 and 11 red-filter reflectances of belts and zones reasonably well up to 150°, although their Cassini near-infrared images show limb brightening at slanted geometry that this form misses. This supports a phase-independent k near 1; OPAL's 0.972 is kept and the paper is cited in the method. No quantitative phase-dependent law was found.
-- **Uranus and Neptune:** no disk-resolved photometry at large phase angles was found, so k stays phase-independent.
+- **Uranus and Neptune:** current products retain phase-independent OPAL k. Independent Neptune evidence exists in Irwin et al. (2022), JGR Planets 127, e2022JE007189, DOI:10.1029/2022JE007189, Sec. 3.11 and Fig. 20 (arXiv:2201.04516v2, pp.35–37): Voyager NAC measurements from 16–18 August 1989 give k = 0.83/0.78/0.74 (violet/green/orange) at 15–25°S and 0.75/0.67/0.65 at 45–55°S. These exclude the validation case’s 15 August frames by date. They establish filter and latitude dependence, not a complete phase-dependent law or a coefficient at every latitude; no new coefficient is adopted here.
 
 ### Saturn: Barkstrom B(α) from Pioneer 11
 
