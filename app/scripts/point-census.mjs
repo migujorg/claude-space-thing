@@ -14,6 +14,17 @@
 // Exit 1 when a scene with adapt=instant changes between two consecutive frames, or does not return to the first
 // settled set after a perturbation. A scene with adapt=realtime may gain stars as its pigments regenerate: it fails
 // only if a star goes back and forth (changes on at least half of the frame pairs).
+//
+//   node scripts/point-census.mjs --gpu hardware --lone --only starfield,pluto-charon
+//
+// --lone checks a different property (docs/eye-model.md §6 "A source's own light"): a point source alone in the
+// frame is judged against a background that holds none of its own light. The scene's stars are replaced by one
+// source at each of --positions places (default 24, and the frame's edges); the veil level its background is read
+// at is read back (Renderer.readVeilLevel) with and without the source, and the cull's own-light value from the
+// list (Renderer.readPointList). What is left, as a fraction of the source's own light, must be under 1e-6 where
+// the HDR targets are float32 and under 1e-3 where they are half float. Options: --lux 1e-6 (the source's
+// illuminance at least; it is raised where needed so that its light at its own position is 30 times the background), --query "fov=2", --size 1283x723, --line x0,y0,x1,y1,n (n places along a line in pixels, for
+// instance across a body's limb, where a source is either hidden whole or drawn whole).
 import { chromium } from 'playwright';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -31,6 +42,13 @@ const pixels = Number(opt('pixels', '0'));
 const settle = Number(opt('settle', '40'));
 const measure = Number(opt('measure', '40'));
 const only = opt('only') ? opt('only').split(',') : null;
+const lone = flag('lone');
+const positions = Number(opt('positions', '24'));
+const lux = Number(opt('lux', '1e-6'));
+const size = opt('size') ? opt('size').split('x').map(Number) : null;
+const line = opt('line') ? opt('line').split(',').map(Number) : null;
+/** What may be left of a lone source's own light in its background, as a fraction of it, by the HDR targets' format. */
+const LONE_BOUND = { rgba32float: 1e-6, rgba16float: 1e-3 };
 const extra = opt('query', '');
 const suite = JSON.parse(readFileSync(resolve(ROOT, 'e2e/scenes.json'), 'utf8'));
 
@@ -176,6 +194,60 @@ const pagePerturb = async ({ settle, measure }) => {
       return out;
     };
 
+/** Runs in the page: one source alone, at n places and at the frame's edges; the residual of its own light in its background. */
+const pageLone = async ({ n, lux, line }) => {
+  const P = window.__app.sky.renderer;
+  const R = P.r ?? P;
+  const set = R.setStars.bind(R);
+  R.setStars = () => {};   // the sky controller must not put its catalogue back while this runs
+  // The eye stays as the scene left it: the adaptation is not measured again while the test source comes and goes.
+  // Otherwise the source would change the pupil, and with it the width of every other point's splat at a narrow
+  // field, and the veil without the source would not be the veil the source is seen against.
+  R.debugSkip.add('adapt');
+  if (P !== R) P.setStars = () => {};
+  const snap = window.__app.snapshot();
+  const o = snap.camera.orient, W = R.targets.W, H = R.targets.H;
+  const tanY = Math.tan(snap.camera.fovY / 2), tanX = (tanY * W) / H;
+  const right = [o[0], o[3], o[6]], up = [o[1], o[4], o[7]], back = [o[2], o[5], o[8]];
+  const dirOf = (px, py) => {
+    const nx = (px / W) * 2 - 1, ny = 1 - (py / H) * 2;
+    const v = [0, 1, 2].map((i) => right[i] * nx * tanX + up[i] * ny * tanY - back[i]);
+    const l = Math.hypot(...v);
+    return v.map((x) => x / l);
+  };
+  const frames = async (k) => { let last = R.frameIndex; for (let i = 0; i < k;) { await new Promise(requestAnimationFrame); if (R.frameIndex !== last) { last = R.frameIndex; i++; } } };
+  const one = async (px, py, e) => {
+    set({ count: 1, stride: 7, data: new Float32Array([...dirOf(px, py), 0.95 * e, e, 1.09 * e, 2 * e]) });
+    await frames(3);   // the cull reads the veil of the frame before
+    const [p, t] = await Promise.all([R.readPointList(), R.readVeilLevel()]);
+    const rec = p.count === 1 ? p.data : p.unseenCount === 1 ? p.unseen : null;
+    if (!rec) return null;   // behind a body, or outside the frame
+    // the shaders' read (bgAt): linear between the level's texels on the level's own grid, indices clamped
+    const inv = 2 ** -t.level, cx = rec[0] * inv - 0.5, cy = rec[1] * inv - 0.5, ix = Math.floor(cx), iy = Math.floor(cy), fx = cx - ix, fy = cy - iy;
+    const at = (x, y) => t.data[(Math.min(Math.max(y, 0), t.height - 1) * t.width + Math.min(Math.max(x, 0), t.width - 1)) * 4 + 1] / t.preExposure;
+    const tex = (at(ix, iy) * (1 - fx) + at(ix + 1, iy) * fx) * (1 - fy) + (at(ix, iy + 1) * (1 - fx) + at(ix + 1, iy + 1) * fx) * fy;
+    return { tex, own: rec[3] * rec[5], ownPerLux: rec[3], level: t.level };
+  };
+  let seed = 987654321;
+  const rnd = () => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 2 ** 32; };
+  const pos = [];
+  if (line) for (let i = 0; i < line[4]; i++) pos.push([line[0] + ((line[2] - line[0]) * i) / (line[4] - 1), line[1] + ((line[3] - line[1]) * i) / (line[4] - 1)]);
+  else {
+    for (let i = 0; i < n; i++) pos.push([8 + rnd() * (W - 16), 8 + rnd() * (H - 16)]);
+    pos.push([0.4, 0.3], [W - 0.3, H - 0.4], [1.7, H - 2.2], [W - 1.1, 3.3]);
+  }
+  const rows = [];
+  for (const [x, y] of pos) {
+    const a = await one(x, y, 1e-30);
+    // Bright enough to measure: the texture is float32, so what is left of the source can only be told from the
+    // background's own rounding when the source's light there is well above the background (30 times, here).
+    const b = a && await one(x, y, Math.max(lux, a.ownPerLux > 0 ? (30 * a.tex) / a.ownPerLux : lux));
+    if (!a || !b) { rows.push({ hidden: true, x, y }); continue; }
+    rows.push({ x, y, residual: (b.tex - b.own - a.tex) / b.own, ownOverBackground: b.own / Math.max(a.tex, 1e-30), level: b.level, levelMoved: a.level !== b.level });
+  }
+  return { rows, format: R.hdrFormat, size: [W, H] };
+};
+
 const { server, base } = await startLocalServer(ROOT, runServerOptions());
 const browser = await chromium.launch({ headless: true, args: gpuLaunchArgs(mode) });
 const rows = [];
@@ -185,7 +257,7 @@ try {
     if (only && !only.includes(scene.id)) continue;
     const query = sceneQuery(suite, scene);
     const instant = /(^|&)adapt=instant(&|$)/.test(query);
-    const page = await browser.newPage({ viewport: suite.viewport });
+    const page = await browser.newPage({ viewport: size ? { width: size[0], height: size[1] } : suite.viewport });
     const row = { id: scene.id, instant };
     try {
       await page.goto(`${base}/?${query}&present=offscreen${extra ? `&${extra}` : ''}`);
@@ -195,12 +267,29 @@ try {
       adapter ??= adapterLabel(info);
       const wrong = gpuMismatch(mode, info);
       if (err || wrong) throw new Error(err ?? wrong);
-      row.census = await page.evaluate(pageCensus, { frames, pixels });
-      if (flag('perturb')) row.perturb = await page.evaluate(pagePerturb, { settle, measure });
+      if (lone) row.lone = await page.evaluate(pageLone, { n: positions, lux, line });
+      else {
+        row.census = await page.evaluate(pageCensus, { frames, pixels });
+        if (flag('perturb')) row.perturb = await page.evaluate(pagePerturb, { settle, measure });
+      }
     } catch (e) {
       row.error = String(e?.message ?? e).slice(0, 600);
     }
     await page.close();
+    if (lone && !row.error) {
+      const clear = row.lone.rows.filter((r) => !r.hidden), bound = LONE_BOUND[row.lone.format];
+      // A source that moves the adaptation enough to change the level read gives no measurement at that place.
+      const ok = clear.filter((r) => !r.levelMoved), moved = clear.length - ok.length;
+      const worst = ok.length ? Math.max(...ok.map((r) => Math.abs(r.residual))) : NaN;
+      row.fail = ok.length > 0 && !(worst < bound);
+      rows.push(row);
+      console.log(`${scene.id.padEnd(28)} ${row.lone.size.join('x')} ${row.lone.format} ` + (ok.length
+        ? `level ${ok[0].level}: ${ok.length} positions  largest |residual| / own light ${worst.toExponential(2)} (bound ${bound})  own / background, median ${ok.map((r) => r.ownOverBackground).sort((a, b) => a - b)[ok.length >> 1].toExponential(1)}`
+        : 'no position to measure') +
+        (row.lone.rows.length - clear.length ? `  (${row.lone.rows.length - clear.length} behind a body)` : '') + (moved ? `  (${moved} not measured: the level read moved with the source)` : '') + (row.fail ? '  FAIL' : ''));
+      if (line) console.log('  along the line: ' + row.lone.rows.map((r) => `${r.x.toFixed(2)}: ${r.hidden ? 'hidden' : r.residual.toExponential(1)}`).join('  '));
+      continue;
+    }
     const c = row.census;
     const moved = row.perturb ? row.perturb.filter((s) => s.fromK0 > 0 || s.maxDiff > 0).length : 0;
     row.fail = !!row.error || (instant ? c.maxDiff > 0 || moved > 0 : c.alternating > 0);
@@ -217,5 +306,5 @@ try {
 }
 const failed = rows.filter((r) => r.fail);
 console.log(`\n${mode} (${adapter}): ${rows.length} scenes, ${failed.length} failed${failed.length ? ': ' + failed.map((r) => r.id).join(', ') : ''}`);
-if (opt('out')) writeFileSync(opt('out'), JSON.stringify({ mode, adapter, frames, perturbed: flag('perturb'), rows }, null, 1));
+if (opt('out')) writeFileSync(opt('out'), JSON.stringify({ mode, adapter, frames, perturbed: flag('perturb'), lone, rows }, null, 1));
 process.exit(failed.length ? 1 : 0);

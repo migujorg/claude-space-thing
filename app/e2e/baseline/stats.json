@@ -1,9 +1,9 @@
 {
- "acceptedAt": "2026-10-07T11:07:29.033Z",
- "git": "0ccd90f",
+ "acceptedAt": "2026-10-08T01:37:20.425Z",
+ "git": "a9277cd",
  "data": {
-  "manifestGeneratedAt": "2026-10-07T11:04:06+00:00",
-  "manifestSha256": "9150581f09d62734360c2da516c2ee0e3589e068ab08f7009f6c24da931f3392"
+  "manifestGeneratedAt": "2026-10-08T01:23:42+00:00",
+  "manifestSha256": "6e7dc216c0b7f61b4165a011e7cc9665177ef5ab6ebb7a03fb7ad83a5f2197ea"
  },
  "viewport": {
   "width": 1280,
@@ -26,7 +26,7 @@
    "stats": {
     "adaptationLuminance": 10072.908424456073,
     "scotopicAdaptationLuminance": 27993.0094677931,
-    "pupilDiameterMm": 2.2391805960538003,
+    "pupilDiameterMm": 2.2391805960537936,
     "mesopicM": 1,
     "limitingMagnitude": -4.531120022901071,
     "starsDrawn": 0,
@@ -361,36 +361,17 @@
     ]
    },
    "consoleErrors": [],
-   "readyMs": 10300.774397000001,
-   "accepted": {
-    "acceptedAt": "2026-10-07T14:45:55.139Z",
-    "git": "7f6662a",
-    "data": {
-     "manifestGeneratedAt": "2026-10-07T14:31:45+00:00",
-     "manifestSha256": "af7556c30f880dca57adaecaed04ea7103eee047306e51d0c18e50155e8e8031"
-    },
-    "gpu": {
-     "mode": "hardware",
-     "adapter": {
-      "vendor": "nvidia",
-      "architecture": "blackwell",
-      "device": "",
-      "description": "",
-      "fallback": false,
-      "float32Blendable": true
-     }
-    }
-   }
+   "readyMs": 3771.147508
   },
   "earth-day-strict": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=instant&target=399&dist=20000&az=0&el=0&exists=strict",
    "stats": {
     "adaptationLuminance": 0.00001,
     "scotopicAdaptationLuminance": 0.00001408,
-    "pupilDiameterMm": 7.890004873339091,
+    "pupilDiameterMm": 7.889950519895487,
     "mesopicM": 0,
     "limitingMagnitude": 7.601985293005745,
-    "starsDrawn": 2163,
+    "starsDrawn": 1283,
     "bodiesDrawn": 310,
     "bodies": [
      {
@@ -725,36 +706,17 @@
     ]
    },
    "consoleErrors": [],
-   "readyMs": 3189,
-   "accepted": {
-    "acceptedAt": "2026-10-07T13:38:57.673Z",
-    "git": "6ccaf4a",
-    "data": {
-     "manifestGeneratedAt": "2026-10-07T11:04:06+00:00",
-     "manifestSha256": "9150581f09d62734360c2da516c2ee0e3589e068ab08f7009f6c24da931f3392"
-    },
-    "gpu": {
-     "mode": "hardware",
-     "adapter": {
-      "vendor": "nvidia",
-      "architecture": "blackwell",
-      "device": "",
-      "description": "",
-      "fallback": false,
-      "float32Blendable": true
-     }
-    }
-   }
+   "readyMs": 3023.424298
   },
   "earth-night": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=instant&target=399&dist=20000&az=180&el=0",
    "stats": {
-    "adaptationLuminance": 0.0016278794446870338,
-    "scotopicAdaptationLuminance": 0.0027953745600503084,
-    "pupilDiameterMm": 7.394740274154975,
+    "adaptationLuminance": 0.0016278805967733134,
+    "scotopicAdaptationLuminance": 0.0027953765362238674,
+    "pupilDiameterMm": 7.394740724400461,
     "mesopicM": 0,
-    "limitingMagnitude": 5.303210426937174,
-    "starsDrawn": 520,
+    "limitingMagnitude": 5.303210200170154,
+    "starsDrawn": 242,
     "bodiesDrawn": 4,
     "bodies": [
      {
@@ -784,36 +746,17 @@
     ]
    },
    "consoleErrors": [],
-   "readyMs": 4678.961412999999,
-   "accepted": {
-    "acceptedAt": "2026-10-07T14:45:55.139Z",
-    "git": "7f6662a",
-    "data": {
-     "manifestGeneratedAt": "2026-10-07T14:31:45+00:00",
-     "manifestSha256": "af7556c30f880dca57adaecaed04ea7103eee047306e51d0c18e50155e8e8031"
-    },
-    "gpu": {
-     "mode": "hardware",
-     "adapter": {
-      "vendor": "nvidia",
-      "architecture": "blackwell",
-      "device": "",
-      "description": "",
-      "fallback": false,
-      "float32Blendable": true
-     }
-    }
-   }
+   "readyMs": 4061.5795309999994
   },
   "night-limb-iss": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=instant&target=399&dist=6771&az=180&el=0&look=0%2C-15&fov=30",
    "stats": {
-    "adaptationLuminance": 0.0011835143605688307,
-    "scotopicAdaptationLuminance": 0.0014305070480255628,
-    "pupilDiameterMm": 7.730247047862478,
+    "adaptationLuminance": 0.0011835128333021567,
+    "scotopicAdaptationLuminance": 0.0014305064318423343,
+    "pupilDiameterMm": 7.73024909994076,
     "mesopicM": 0,
-    "limitingMagnitude": 5.533780400676749,
-    "starsDrawn": 581,
+    "limitingMagnitude": 5.533780558111484,
+    "starsDrawn": 252,
     "bodiesDrawn": 0,
     "bodies": [],
     "points": [],
@@ -827,35 +770,16 @@
     ]
    },
    "consoleErrors": [],
-   "readyMs": 4789.440741,
-   "accepted": {
-    "acceptedAt": "2026-10-07T14:45:55.139Z",
-    "git": "7f6662a",
-    "data": {
-     "manifestGeneratedAt": "2026-10-07T14:31:45+00:00",
-     "manifestSha256": "af7556c30f880dca57adaecaed04ea7103eee047306e51d0c18e50155e8e8031"
-    },
-    "gpu": {
-     "mode": "hardware",
-     "adapter": {
-      "vendor": "nvidia",
-      "architecture": "blackwell",
-      "device": "",
-      "description": "",
-      "fallback": false,
-      "float32Blendable": true
-     }
-    }
-   }
+   "readyMs": 4246.849028
   },
   "night-limb-iss-daylight-eye": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=realtime&target=399&dist=6771&az=180&el=0&look=0%2C-15&fov=30&adaptfrom=10000%2C600%2C60&adapttime=60",
    "stats": {
-    "adaptationLuminance": 0.0011732334186086938,
-    "scotopicAdaptationLuminance": 0.0014256200081672055,
-    "pupilDiameterMm": 7.730247259440082,
+    "adaptationLuminance": 0.0011732324183706933,
+    "scotopicAdaptationLuminance": 0.0014256206166876999,
+    "pupilDiameterMm": 7.730249189027397,
     "mesopicM": 0,
-    "limitingMagnitude": 4.549589661179399,
+    "limitingMagnitude": 4.549589666798548,
     "starsDrawn": 37,
     "bodiesDrawn": 0,
     "bodies": [],
@@ -870,33 +794,14 @@
     ]
    },
    "consoleErrors": [],
-   "readyMs": 5200.674199000001,
-   "accepted": {
-    "acceptedAt": "2026-10-07T14:45:55.139Z",
-    "git": "7f6662a",
-    "data": {
-     "manifestGeneratedAt": "2026-10-07T14:31:45+00:00",
-     "manifestSha256": "af7556c30f880dca57adaecaed04ea7103eee047306e51d0c18e50155e8e8031"
-    },
-    "gpu": {
-     "mode": "hardware",
-     "adapter": {
-      "vendor": "nvidia",
-      "architecture": "blackwell",
-      "device": "",
-      "description": "",
-      "fallback": false,
-      "float32Blendable": true
-     }
-    }
-   }
+   "readyMs": 3567.766875000001
   },
   "aurora-2025-11-12": {
    "query": "t=2025-11-12T01:00:00Z&smallbodies=0&adapt=instant&target=399&dist=6771&az=173.26110422279018&el=46.95923411082049&look=0%2C-89&fov=60",
    "stats": {
     "adaptationLuminance": 0.004537500300868658,
     "scotopicAdaptationLuminance": 0.005558877606421292,
-    "pupilDiameterMm": 6.829957654206978,
+    "pupilDiameterMm": 6.829957677539993,
     "mesopicM": 0.014252131147999614,
     "limitingMagnitude": 5.101799554093916,
     "starsDrawn": 0,
@@ -918,33 +823,14 @@
     ]
    },
    "consoleErrors": [],
-   "readyMs": 5047.795409999999,
-   "accepted": {
-    "acceptedAt": "2026-10-07T14:45:55.139Z",
-    "git": "7f6662a",
-    "data": {
-     "manifestGeneratedAt": "2026-10-07T14:31:45+00:00",
-     "manifestSha256": "af7556c30f880dca57adaecaed04ea7103eee047306e51d0c18e50155e8e8031"
-    },
-    "gpu": {
-     "mode": "hardware",
-     "adapter": {
-      "vendor": "nvidia",
-      "architecture": "blackwell",
-      "device": "",
-      "description": "",
-      "fallback": false,
-      "float32Blendable": true
-     }
-    }
-   }
+   "readyMs": 3976.217847
   },
   "aurora-2025-11-14-quiet": {
    "query": "t=2025-11-14T01:00:00Z&smallbodies=0&adapt=instant&target=399&dist=6771&az=173.2804022752983&el=46.43408307185946&look=0%2C-89&fov=60",
    "stats": {
     "adaptationLuminance": 0.000975690991001533,
     "scotopicAdaptationLuminance": 0.0009514868732948107,
-    "pupilDiameterMm": 7.171299327654425,
+    "pupilDiameterMm": 7.17129937257114,
     "mesopicM": 0,
     "limitingMagnitude": 5.687387935566037,
     "starsDrawn": 0,
@@ -966,33 +852,14 @@
     ]
    },
    "consoleErrors": [],
-   "readyMs": 4884.592249000001,
-   "accepted": {
-    "acceptedAt": "2026-10-07T14:45:55.139Z",
-    "git": "7f6662a",
-    "data": {
-     "manifestGeneratedAt": "2026-10-07T14:31:45+00:00",
-     "manifestSha256": "af7556c30f880dca57adaecaed04ea7103eee047306e51d0c18e50155e8e8031"
-    },
-    "gpu": {
-     "mode": "hardware",
-     "adapter": {
-      "vendor": "nvidia",
-      "architecture": "blackwell",
-      "device": "",
-      "description": "",
-      "fallback": false,
-      "float32Blendable": true
-     }
-    }
-   }
+   "readyMs": 3816.25208
   },
   "moon-quarter": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=instant&target=301&dist=6000&az=90&el=0",
    "stats": {
     "adaptationLuminance": 1635.2770258530552,
     "scotopicAdaptationLuminance": 3618.91753352757,
-    "pupilDiameterMm": 2.045251064177909,
+    "pupilDiameterMm": 2.0452510641779083,
     "mesopicM": 1,
     "limitingMagnitude": -2.7816534152109638,
     "starsDrawn": 1,
@@ -1135,17 +1002,17 @@
     ]
    },
    "consoleErrors": [],
-   "readyMs": 4417
+   "readyMs": 4078.3602680000004
   },
   "jupiter-galileans": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=instant&target=599&dist=4000000",
    "stats": {
-    "adaptationLuminance": 669.2343080187762,
+    "adaptationLuminance": 669.234044908121,
     "scotopicAdaptationLuminance": 1501.2813512577352,
-    "pupilDiameterMm": 5.46789413230264,
+    "pupilDiameterMm": 5.467890765848731,
     "mesopicM": 1,
-    "limitingMagnitude": -1.9531687160786948,
-    "starsDrawn": 177,
+    "limitingMagnitude": -1.9531683565354863,
+    "starsDrawn": 171,
     "bodiesDrawn": 36,
     "bodies": [
      {
@@ -1207,33 +1074,14 @@
     ]
    },
    "consoleErrors": [],
-   "readyMs": 5988.242201,
-   "accepted": {
-    "acceptedAt": "2026-10-07T16:20:47.007Z",
-    "git": "4f5be77",
-    "data": {
-     "manifestGeneratedAt": "2026-10-07T16:06:17+00:00",
-     "manifestSha256": "081d96d1218a3868633d679137463c9f3a9292f84578dbe47df18f7c858b8144"
-    },
-    "gpu": {
-     "mode": "hardware",
-     "adapter": {
-      "vendor": "nvidia",
-      "architecture": "blackwell",
-      "device": "",
-      "description": "",
-      "fallback": false,
-      "float32Blendable": true
-     }
-    }
-   }
+   "readyMs": 3105.021507999998
   },
   "saturn-rings": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=instant&target=699&dist=400000&el=25",
    "stats": {
     "adaptationLuminance": 113.09857100311503,
     "scotopicAdaptationLuminance": 233.37566965139362,
-    "pupilDiameterMm": 3.970778534467291,
+    "pupilDiameterMm": 3.9707785683012666,
     "mesopicM": 1,
     "limitingMagnitude": -0.37630117838703486,
     "starsDrawn": 92,
@@ -1329,35 +1177,16 @@
     ]
    },
    "consoleErrors": [],
-   "readyMs": 10921.322212,
-   "accepted": {
-    "acceptedAt": "2026-10-07T16:20:47.007Z",
-    "git": "4f5be77",
-    "data": {
-     "manifestGeneratedAt": "2026-10-07T16:06:17+00:00",
-     "manifestSha256": "081d96d1218a3868633d679137463c9f3a9292f84578dbe47df18f7c858b8144"
-    },
-    "gpu": {
-     "mode": "hardware",
-     "adapter": {
-      "vendor": "nvidia",
-      "architecture": "blackwell",
-      "device": "",
-      "description": "",
-      "fallback": false,
-      "float32Blendable": true
-     }
-    }
-   }
+   "readyMs": 15664.050509
   },
   "uranus-epsilon-estimate": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=instant&target=799&dist=100000&az=25&el=12&fov=1&look=-64.44491889269331%2C-63.83801785178568&exists=best&view=eye&labels=0&orbits=0&ui=0",
    "stats": {
-    "adaptationLuminance": 0.975737142113119,
-    "scotopicAdaptationLuminance": 2.350241570791568,
-    "pupilDiameterMm": 3.874928202193522,
-    "mesopicM": 0.7826065319653834,
-    "limitingMagnitude": 3.246022058923451,
+    "adaptationLuminance": 0.9765631578263189,
+    "scotopicAdaptationLuminance": 2.3524598934635024,
+    "pupilDiameterMm": 3.870762645671643,
+    "mesopicM": 0.7827211605618029,
+    "limitingMagnitude": 3.2454556997179203,
     "starsDrawn": 0,
     "bodiesDrawn": 0,
     "bodies": [],
@@ -1372,36 +1201,17 @@
     ]
    },
    "consoleErrors": [],
-   "readyMs": 7948,
-   "accepted": {
-    "acceptedAt": "2026-10-07T13:38:57.673Z",
-    "git": "6ccaf4a",
-    "data": {
-     "manifestGeneratedAt": "2026-10-07T11:04:06+00:00",
-     "manifestSha256": "9150581f09d62734360c2da516c2ee0e3589e068ab08f7009f6c24da931f3392"
-    },
-    "gpu": {
-     "mode": "hardware",
-     "adapter": {
-      "vendor": "nvidia",
-      "architecture": "blackwell",
-      "device": "",
-      "description": "",
-      "fallback": false,
-      "float32Blendable": true
-     }
-    }
-   }
+   "readyMs": 7663.289887999999
   },
   "uranus": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=instant&target=799&dist=150000",
    "stats": {
     "adaptationLuminance": 54.842398903918784,
     "scotopicAdaptationLuminance": 139.6729333848193,
-    "pupilDiameterMm": 4.212527381973719,
+    "pupilDiameterMm": 4.212527326918266,
     "mesopicM": 1,
     "limitingMagnitude": 0.2359612967689051,
-    "starsDrawn": 170,
+    "starsDrawn": 169,
     "bodiesDrawn": 16,
     "bodies": [
      {
@@ -1439,26 +1249,7 @@
     ]
    },
    "consoleErrors": [],
-   "readyMs": 6888.626240000001,
-   "accepted": {
-    "acceptedAt": "2026-10-07T16:20:47.007Z",
-    "git": "4f5be77",
-    "data": {
-     "manifestGeneratedAt": "2026-10-07T16:06:17+00:00",
-     "manifestSha256": "081d96d1218a3868633d679137463c9f3a9292f84578dbe47df18f7c858b8144"
-    },
-    "gpu": {
-     "mode": "hardware",
-     "adapter": {
-      "vendor": "nvidia",
-      "architecture": "blackwell",
-      "device": "",
-      "description": "",
-      "fallback": false,
-      "float32Blendable": true
-     }
-    }
-   }
+   "readyMs": 7529.978879000002
   },
   "neptune": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=instant&target=899&dist=150000",
@@ -1506,36 +1297,17 @@
     ]
    },
    "consoleErrors": [],
-   "readyMs": 6065.7189610000005,
-   "accepted": {
-    "acceptedAt": "2026-10-07T16:20:47.007Z",
-    "git": "4f5be77",
-    "data": {
-     "manifestGeneratedAt": "2026-10-07T16:06:17+00:00",
-     "manifestSha256": "081d96d1218a3868633d679137463c9f3a9292f84578dbe47df18f7c858b8144"
-    },
-    "gpu": {
-     "mode": "hardware",
-     "adapter": {
-      "vendor": "nvidia",
-      "architecture": "blackwell",
-      "device": "",
-      "description": "",
-      "fallback": false,
-      "float32Blendable": true
-     }
-    }
-   }
+   "readyMs": 9002.771564000002
   },
   "pluto-charon": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=instant&target=999&dist=60000",
    "stats": {
-    "adaptationLuminance": 10.99582776115129,
-    "scotopicAdaptationLuminance": 23.202604542534544,
-    "pupilDiameterMm": 7.112780712636673,
+    "adaptationLuminance": 10.972539756878101,
+    "scotopicAdaptationLuminance": 23.136222980090885,
+    "pupilDiameterMm": 7.113339351290744,
     "mesopicM": 1,
-    "limitingMagnitude": 1.5304196494155136,
-    "starsDrawn": 798,
+    "limitingMagnitude": 1.532067727122941,
+    "starsDrawn": 602,
     "bodiesDrawn": 3,
     "bodies": [
      {
@@ -1565,17 +1337,17 @@
     ]
    },
    "consoleErrors": [],
-   "readyMs": 3589
+   "readyMs": 4869.153013999996
   },
   "starfield": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=instant&target=999&dist=3000000000&labels=0",
    "stats": {
-    "adaptationLuminance": 0.000056480702519988256,
-    "scotopicAdaptationLuminance": 0.00012046153522475927,
-    "pupilDiameterMm": 7.835268764555614,
+    "adaptationLuminance": 0.00005648316394704403,
+    "scotopicAdaptationLuminance": 0.00012046676201209067,
+    "pupilDiameterMm": 7.835274847524642,
     "mesopicM": 0,
-    "limitingMagnitude": 6.571261840695466,
-    "starsDrawn": 3400,
+    "limitingMagnitude": 6.571241909402112,
+    "starsDrawn": 1667,
     "bodiesDrawn": 6,
     "bodies": [],
     "points": [
@@ -1597,36 +1369,17 @@
     ]
    },
    "consoleErrors": [],
-   "readyMs": 7812,
-   "accepted": {
-    "acceptedAt": "2026-10-07T13:38:57.673Z",
-    "git": "6ccaf4a",
-    "data": {
-     "manifestGeneratedAt": "2026-10-07T11:04:06+00:00",
-     "manifestSha256": "9150581f09d62734360c2da516c2ee0e3589e068ab08f7009f6c24da931f3392"
-    },
-    "gpu": {
-     "mode": "hardware",
-     "adapter": {
-      "vendor": "nvidia",
-      "architecture": "blackwell",
-      "device": "",
-      "description": "",
-      "fallback": false,
-      "float32Blendable": true
-     }
-    }
-   }
+   "readyMs": 3014.945894000004
   },
   "starfield-enhanced": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=instant&target=999&dist=3000000000&labels=0&view=enhanced&boost=6",
    "stats": {
-    "adaptationLuminance": 0.00004266927907016036,
-    "scotopicAdaptationLuminance": 0.00008955819008632568,
-    "pupilDiameterMm": 7.835271107738915,
+    "adaptationLuminance": 0.00004267232185329588,
+    "scotopicAdaptationLuminance": 0.00008956510812540253,
+    "pupilDiameterMm": 7.835277426068638,
     "mesopicM": 0,
-    "limitingMagnitude": 11.22390812693233,
-    "starsDrawn": 210122,
+    "limitingMagnitude": 11.22387212026421,
+    "starsDrawn": 136996,
     "bodiesDrawn": 6,
     "bodies": [],
     "points": [
@@ -1649,14 +1402,14 @@
     ]
    },
    "consoleErrors": [],
-   "readyMs": 5243
+   "readyMs": 3826.7412389999954
   },
   "sun-1au": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=instant&target=10&dist=149597871",
    "stats": {
     "adaptationLuminance": 2265.974478657677,
     "scotopicAdaptationLuminance": 5382.330653869305,
-    "pupilDiameterMm": 2.0461160101500537,
+    "pupilDiameterMm": 2.0461160101500546,
     "mesopicM": 1,
     "limitingMagnitude": -3.0895827618346914,
     "starsDrawn": 0,
@@ -1681,14 +1434,14 @@
     ]
    },
    "consoleErrors": [],
-   "readyMs": 2833
+   "readyMs": 2434.7738769999996
   },
   "juno-closeup": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=1&adapt=instant&target=20000003",
    "stats": {
     "adaptationLuminance": 1392.608341460264,
     "scotopicAdaptationLuminance": 3104.9431460800156,
-    "pupilDiameterMm": 2.915459483277096,
+    "pupilDiameterMm": 2.915459483251924,
     "mesopicM": 1,
     "limitingMagnitude": -2.6310550213201847,
     "starsDrawn": 14,
@@ -1738,17 +1491,17 @@
     ]
    },
    "consoleErrors": [],
-   "readyMs": 8177
+   "readyMs": 11820.137553000008
   },
   "comet-lemmon": {
    "query": "t=2025-10-27T00:00:00Z&smallbodies=1&adapt=instant&target=1004054&sbfield=0&dist=40000000&az=90&el=20&shield=1",
    "stats": {
-    "adaptationLuminance": 0.0005488477472025278,
-    "scotopicAdaptationLuminance": 0.0012532650135140264,
-    "pupilDiameterMm": 7.67610362940016,
+    "adaptationLuminance": 0.0005488492614000632,
+    "scotopicAdaptationLuminance": 0.001253267604936962,
+    "pupilDiameterMm": 7.676118155031326,
     "mesopicM": 0,
-    "limitingMagnitude": 5.582625593561213,
-    "starsDrawn": 2381,
+    "limitingMagnitude": 5.58262482235742,
+    "starsDrawn": 944,
     "bodiesDrawn": 3,
     "bodies": [],
     "points": [
@@ -1765,35 +1518,16 @@
     ]
    },
    "consoleErrors": [],
-   "readyMs": 8025,
-   "accepted": {
-    "acceptedAt": "2026-10-07T13:38:57.673Z",
-    "git": "6ccaf4a",
-    "data": {
-     "manifestGeneratedAt": "2026-10-07T11:04:06+00:00",
-     "manifestSha256": "9150581f09d62734360c2da516c2ee0e3589e068ab08f7009f6c24da931f3392"
-    },
-    "gpu": {
-     "mode": "hardware",
-     "adapter": {
-      "vendor": "nvidia",
-      "architecture": "blackwell",
-      "device": "",
-      "description": "",
-      "fallback": false,
-      "float32Blendable": true
-     }
-    }
-   }
+   "readyMs": 8034.229324999993
   },
   "mars-map": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=instant&target=499&dist=15000&az=0&el=10",
    "stats": {
-    "adaptationLuminance": 2676.1766225899314,
-    "scotopicAdaptationLuminance": 4397.439253902421,
-    "pupilDiameterMm": 2.495567286092431,
+    "adaptationLuminance": 2673.47169270465,
+    "scotopicAdaptationLuminance": 4404.865179622367,
+    "pupilDiameterMm": 2.4957529911520466,
     "mesopicM": 1,
-    "limitingMagnitude": -3.247714305017577,
+    "limitingMagnitude": -3.246751083335055,
     "starsDrawn": 8,
     "bodiesDrawn": 32,
     "bodies": [
@@ -1853,7 +1587,7 @@
     ]
    },
    "consoleErrors": [],
-   "readyMs": 4016
+   "readyMs": 4631.159138999996
   },
   "mercury-map": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=instant&target=199&dist=8000&az=0&el=10",
@@ -1889,36 +1623,17 @@
     ]
    },
    "consoleErrors": [],
-   "readyMs": 4781.310965000001,
-   "accepted": {
-    "acceptedAt": "2026-10-07T16:20:47.007Z",
-    "git": "4f5be77",
-    "data": {
-     "manifestGeneratedAt": "2026-10-07T16:06:17+00:00",
-     "manifestSha256": "081d96d1218a3868633d679137463c9f3a9292f84578dbe47df18f7c858b8144"
-    },
-    "gpu": {
-     "mode": "hardware",
-     "adapter": {
-      "vendor": "nvidia",
-      "architecture": "blackwell",
-      "device": "",
-      "description": "",
-      "fallback": false,
-      "float32Blendable": true
-     }
-    }
-   }
+   "readyMs": 2492.8365630000044
   },
   "starfield-dark-2min": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=realtime&target=999&dist=3000000000&labels=0&adaptfrom=10000%2C600%2C120&adapttime=120",
    "stats": {
-    "adaptationLuminance": 0.00006498327484961393,
-    "scotopicAdaptationLuminance": 0.0001396426346858794,
-    "pupilDiameterMm": 7.835258707605631,
+    "adaptationLuminance": 0.00006498401509939951,
+    "scotopicAdaptationLuminance": 0.00013964394367383675,
+    "pupilDiameterMm": 7.835265020748154,
     "mesopicM": 0,
-    "limitingMagnitude": 4.783550271610421,
-    "starsDrawn": 174,
+    "limitingMagnitude": 4.783550329319976,
+    "starsDrawn": 175,
     "bodiesDrawn": 6,
     "bodies": [],
     "points": [
@@ -1940,36 +1655,17 @@
     ]
    },
    "consoleErrors": [],
-   "readyMs": 6616.797817000001,
-   "accepted": {
-    "acceptedAt": "2026-10-07T14:33:37.269Z",
-    "git": "2abf4e2",
-    "data": {
-     "manifestGeneratedAt": "2026-10-07T13:55:50+00:00",
-     "manifestSha256": "6569540151f6ee09a4ce4b901adfa8f36d76da6d4821c2693d382623a515ec51"
-    },
-    "gpu": {
-     "mode": "hardware",
-     "adapter": {
-      "vendor": "nvidia",
-      "architecture": "blackwell",
-      "device": "",
-      "description": "",
-      "fallback": false,
-      "float32Blendable": true
-     }
-    }
-   }
+   "readyMs": 2762.61114600001
   },
   "starfield-dark-12min": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=realtime&target=999&dist=3000000000&labels=0&adaptfrom=10000%2C600%2C720&adapttime=720",
    "stats": {
-    "adaptationLuminance": 0.0000642402790266568,
-    "scotopicAdaptationLuminance": 0.0001379368807029935,
-    "pupilDiameterMm": 7.835260207340099,
+    "adaptationLuminance": 0.0000642413392248254,
+    "scotopicAdaptationLuminance": 0.00013793882148138172,
+    "pupilDiameterMm": 7.835266350362266,
     "mesopicM": 0,
-    "limitingMagnitude": 5.046093682363089,
-    "starsDrawn": 235,
+    "limitingMagnitude": 5.046093768655144,
+    "starsDrawn": 239,
     "bodiesDrawn": 6,
     "bodies": [],
     "points": [
@@ -1991,36 +1687,17 @@
     ]
    },
    "consoleErrors": [],
-   "readyMs": 7936.033579000001,
-   "accepted": {
-    "acceptedAt": "2026-10-07T14:33:37.269Z",
-    "git": "2abf4e2",
-    "data": {
-     "manifestGeneratedAt": "2026-10-07T13:55:50+00:00",
-     "manifestSha256": "6569540151f6ee09a4ce4b901adfa8f36d76da6d4821c2693d382623a515ec51"
-    },
-    "gpu": {
-     "mode": "hardware",
-     "adapter": {
-      "vendor": "nvidia",
-      "architecture": "blackwell",
-      "device": "",
-      "description": "",
-      "fallback": false,
-      "float32Blendable": true
-     }
-    }
-   }
+   "readyMs": 2984.3075240000035
   },
   "starfield-dark-30min": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=realtime&target=999&dist=3000000000&labels=0&adaptfrom=10000%2C600%2C1800&adapttime=1800",
    "stats": {
-    "adaptationLuminance": 0.000057259348808546596,
-    "scotopicAdaptationLuminance": 0.00012222108196125085,
-    "pupilDiameterMm": 7.83527114422537,
+    "adaptationLuminance": 0.00005726165170927427,
+    "scotopicAdaptationLuminance": 0.0001222262540951749,
+    "pupilDiameterMm": 7.83527719496879,
     "mesopicM": 0,
-    "limitingMagnitude": 6.307496979208013,
-    "starsDrawn": 2619,
+    "limitingMagnitude": 6.30747755501906,
+    "starsDrawn": 1276,
     "bodiesDrawn": 6,
     "bodies": [],
     "points": [
@@ -2042,33 +1719,14 @@
     ]
    },
    "consoleErrors": [],
-   "readyMs": 7638.212809000001,
-   "accepted": {
-    "acceptedAt": "2026-10-07T14:33:37.269Z",
-    "git": "2abf4e2",
-    "data": {
-     "manifestGeneratedAt": "2026-10-07T13:55:50+00:00",
-     "manifestSha256": "6569540151f6ee09a4ce4b901adfa8f36d76da6d4821c2693d382623a515ec51"
-    },
-    "gpu": {
-     "mode": "hardware",
-     "adapter": {
-      "vendor": "nvidia",
-      "architecture": "blackwell",
-      "device": "",
-      "description": "",
-      "fallback": false,
-      "float32Blendable": true
-     }
-    }
-   }
+   "readyMs": 2844.845915999991
   },
   "phobos-stickney": {
    "query": "t=2026-10-15T05:20:00Z&smallbodies=0&adapt=instant&target=401&dist=45&az=-21&el=5",
    "stats": {
     "adaptationLuminance": 451.926141462671,
     "scotopicAdaptationLuminance": 1012.6928422174205,
-    "pupilDiameterMm": 2.934838485074702,
+    "pupilDiameterMm": 2.9348384850982634,
     "mesopicM": 1,
     "limitingMagnitude": -1.5964176424396728,
     "starsDrawn": 37,
@@ -2124,16 +1782,16 @@
     ]
    },
    "consoleErrors": [],
-   "readyMs": 4544
+   "readyMs": 5207.110963999992
   },
   "titan-haze": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=instant&target=606&dist=12000&az=60&el=10",
    "stats": {
-    "adaptationLuminance": 61.33065835165088,
+    "adaptationLuminance": 61.33063336556119,
     "scotopicAdaptationLuminance": 112.52642545654214,
-    "pupilDiameterMm": 3.8569328094302233,
+    "pupilDiameterMm": 3.8570583536167415,
     "mesopicM": 1,
-    "limitingMagnitude": 0.14254388440234628,
+    "limitingMagnitude": 0.14254422554979782,
     "starsDrawn": 128,
     "bodiesDrawn": 29,
     "bodies": [
@@ -2184,16 +1842,16 @@
     ]
    },
    "consoleErrors": [],
-   "readyMs": 8351
+   "readyMs": 4552.006053000005
   },
   "titan-haze-ring": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=instant&target=606&dist=12000&az=170&el=0",
    "stats": {
-    "adaptationLuminance": 918.9953530997409,
-    "scotopicAdaptationLuminance": 1670.4748102230767,
-    "pupilDiameterMm": 3.7363951844179373,
+    "adaptationLuminance": 918.9613755596566,
+    "scotopicAdaptationLuminance": 1670.4396464488575,
+    "pupilDiameterMm": 3.736377256070226,
     "mesopicM": 1,
-    "limitingMagnitude": -2.244672598257382,
+    "limitingMagnitude": -2.2446384451889774,
     "starsDrawn": 66,
     "bodiesDrawn": 192,
     "bodies": [
@@ -2426,17 +2084,17 @@
     ]
    },
    "consoleErrors": [],
-   "readyMs": 9444
+   "readyMs": 5273.668460000001
   },
   "hyperion-fallback": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=instant&target=607&dist=900&az=30&el=10",
    "stats": {
-    "adaptationLuminance": 0.00004473630292859586,
-    "scotopicAdaptationLuminance": 0.00009736467650227955,
-    "pupilDiameterMm": 7.841576417651896,
+    "adaptationLuminance": 0.00004474201208941943,
+    "scotopicAdaptationLuminance": 0.00009737804882239699,
+    "pupilDiameterMm": 7.841566991726177,
     "mesopicM": 0,
-    "limitingMagnitude": 6.669576849724821,
-    "starsDrawn": 3455,
+    "limitingMagnitude": 6.66951308614242,
+    "starsDrawn": 1673,
     "bodiesDrawn": 34,
     "bodies": [
      {
@@ -2491,36 +2149,17 @@
     ]
    },
    "consoleErrors": [],
-   "readyMs": 6553,
-   "accepted": {
-    "acceptedAt": "2026-10-07T13:38:57.673Z",
-    "git": "6ccaf4a",
-    "data": {
-     "manifestGeneratedAt": "2026-10-07T11:04:06+00:00",
-     "manifestSha256": "9150581f09d62734360c2da516c2ee0e3589e068ab08f7009f6c24da931f3392"
-    },
-    "gpu": {
-     "mode": "hardware",
-     "adapter": {
-      "vendor": "nvidia",
-      "architecture": "blackwell",
-      "device": "",
-      "description": "",
-      "fallback": false,
-      "float32Blendable": true
-     }
-    }
-   }
+   "readyMs": 2469.8583269999945
   },
   "bennu-closeup": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=1&adapt=instant&target=20101955&dist=1.5&az=40&el=10",
    "stats": {
     "adaptationLuminance": 918.8742986354064,
     "scotopicAdaptationLuminance": 2162.3609062982005,
-    "pupilDiameterMm": 3.012638318642954,
+    "pupilDiameterMm": 3.0126383186215437,
     "mesopicM": 1,
     "limitingMagnitude": -2.2445509128375716,
-    "starsDrawn": 43,
+    "starsDrawn": 42,
     "bodiesDrawn": 7,
     "bodies": [
      {
@@ -2549,14 +2188,14 @@
     ]
    },
    "consoleErrors": [],
-   "readyMs": 11410
+   "readyMs": 11529.62255
   },
   "earth-moon-first-run": {
    "query": "t=2026-09-30T17:00:00Z&smallbodies=0&adapt=instant&target=399&dist=45828.8&az=32.84&el=-17.26",
    "stats": {
     "adaptationLuminance": 9308.154152910318,
     "scotopicAdaptationLuminance": 24878.062754733193,
-    "pupilDiameterMm": 2.4951226323283495,
+    "pupilDiameterMm": 2.495122632331078,
     "mesopicM": 1,
     "limitingMagnitude": -4.453563941087571,
     "starsDrawn": 7,
@@ -2929,33 +2568,14 @@
     ]
    },
    "consoleErrors": [],
-   "readyMs": 4717.976213999995,
-   "accepted": {
-    "acceptedAt": "2026-10-07T14:45:55.139Z",
-    "git": "7f6662a",
-    "data": {
-     "manifestGeneratedAt": "2026-10-07T14:31:45+00:00",
-     "manifestSha256": "af7556c30f880dca57adaecaed04ea7103eee047306e51d0c18e50155e8e8031"
-    },
-    "gpu": {
-     "mode": "hardware",
-     "adapter": {
-      "vendor": "nvidia",
-      "architecture": "blackwell",
-      "device": "",
-      "description": "",
-      "fallback": false,
-      "float32Blendable": true
-     }
-    }
-   }
+   "readyMs": 3362.0124230000074
   },
   "eclipse-2027-above": {
    "query": "t=2027-08-02T10:06:41.000Z&smallbodies=0&adapt=instant&target=399&dist=28715.92&az=0.65&el=1.69",
    "stats": {
     "adaptationLuminance": 8432.361416600159,
     "scotopicAdaptationLuminance": 22557.203310260444,
-    "pupilDiameterMm": 2.3411372768570025,
+    "pupilDiameterMm": 2.34113727685586,
     "mesopicM": 1,
     "limitingMagnitude": -4.3566910088822315,
     "starsDrawn": 1,
@@ -2984,35 +2604,16 @@
     ]
    },
    "consoleErrors": [],
-   "readyMs": 7832.331796999992,
-   "accepted": {
-    "acceptedAt": "2026-10-07T14:45:55.139Z",
-    "git": "7f6662a",
-    "data": {
-     "manifestGeneratedAt": "2026-10-07T14:31:45+00:00",
-     "manifestSha256": "af7556c30f880dca57adaecaed04ea7103eee047306e51d0c18e50155e8e8031"
-    },
-    "gpu": {
-     "mode": "hardware",
-     "adapter": {
-      "vendor": "nvidia",
-      "architecture": "blackwell",
-      "device": "",
-      "description": "",
-      "fallback": false,
-      "float32Blendable": true
-     }
-    }
-   }
+   "readyMs": 5065.847899
   },
   "eclipse-2027-totality": {
    "query": "t=2027-08-02T10:06:41.000Z&smallbodies=0&adapt=instant&target=301&dist=350939.1&az=179.99&el=0&fov=6",
    "stats": {
-    "adaptationLuminance": 203.92333235107492,
-    "scotopicAdaptationLuminance": 480.52633252210023,
-    "pupilDiameterMm": 6.569166783483561,
+    "adaptationLuminance": 203.92341497755982,
+    "scotopicAdaptationLuminance": 480.526721925398,
+    "pupilDiameterMm": 6.569165092222475,
     "mesopicM": 1,
-    "limitingMagnitude": -0.887942737766909,
+    "limitingMagnitude": -0.8879430933655607,
     "starsDrawn": 0,
     "bodiesDrawn": 3,
     "bodies": [
@@ -3042,26 +2643,7 @@
     ]
    },
    "consoleErrors": [],
-   "readyMs": 7364,
-   "accepted": {
-    "acceptedAt": "2026-10-07T13:38:57.673Z",
-    "git": "6ccaf4a",
-    "data": {
-     "manifestGeneratedAt": "2026-10-07T11:04:06+00:00",
-     "manifestSha256": "9150581f09d62734360c2da516c2ee0e3589e068ab08f7009f6c24da931f3392"
-    },
-    "gpu": {
-     "mode": "hardware",
-     "adapter": {
-      "vendor": "nvidia",
-      "architecture": "blackwell",
-      "device": "",
-      "description": "",
-      "fallback": false,
-      "float32Blendable": true
-     }
-    }
-   }
+   "readyMs": 3182.797781000001
   },
   "jupiter-double-shadow": {
    "query": "t=2027-01-30T15:12:07.461Z&smallbodies=0&adapt=instant&target=599&dist=300266.4&az=2.32&el=0.58",
@@ -3121,33 +2703,14 @@
     ]
    },
    "consoleErrors": [],
-   "readyMs": 4582.255519999999,
-   "accepted": {
-    "acceptedAt": "2026-10-07T16:20:47.007Z",
-    "git": "4f5be77",
-    "data": {
-     "manifestGeneratedAt": "2026-10-07T16:06:17+00:00",
-     "manifestSha256": "081d96d1218a3868633d679137463c9f3a9292f84578dbe47df18f7c858b8144"
-    },
-    "gpu": {
-     "mode": "hardware",
-     "adapter": {
-      "vendor": "nvidia",
-      "architecture": "blackwell",
-      "device": "",
-      "description": "",
-      "fallback": false,
-      "float32Blendable": true
-     }
-    }
-   }
+   "readyMs": 2687.3196469999966
   },
   "ganymede-narrow-field": {
    "query": "t=2026-10-07T08:00:00Z&smallbodies=0&adapt=instant&target=503&dist=5000000&fov=1",
    "stats": {
     "adaptationLuminance": 291.40516217099395,
     "scotopicAdaptationLuminance": 660.4549464714083,
-    "pupilDiameterMm": 5.954384073666982,
+    "pupilDiameterMm": 5.954475973543203,
     "mesopicM": 1,
     "limitingMagnitude": -1.2032787789753399,
     "starsDrawn": 0,
@@ -3169,35 +2732,16 @@
     ]
    },
    "consoleErrors": [],
-   "readyMs": 7928,
-   "accepted": {
-    "acceptedAt": "2026-10-07T13:38:57.673Z",
-    "git": "6ccaf4a",
-    "data": {
-     "manifestGeneratedAt": "2026-10-07T11:04:06+00:00",
-     "manifestSha256": "9150581f09d62734360c2da516c2ee0e3589e068ab08f7009f6c24da931f3392"
-    },
-    "gpu": {
-     "mode": "hardware",
-     "adapter": {
-      "vendor": "nvidia",
-      "architecture": "blackwell",
-      "device": "",
-      "description": "",
-      "fallback": false,
-      "float32Blendable": true
-     }
-    }
-   }
+   "readyMs": 3244.373545999999
   },
   "pluto-narrow-field": {
    "query": "t=2026-10-07T08:00:00Z&smallbodies=0&adapt=instant&target=999&dist=2720000&fov=1",
    "stats": {
-    "adaptationLuminance": 7.429987144915728,
-    "scotopicAdaptationLuminance": 15.624134015494047,
-    "pupilDiameterMm": 7.897433702926044,
+    "adaptationLuminance": 7.429983231259989,
+    "scotopicAdaptationLuminance": 15.624125785674348,
+    "pupilDiameterMm": 7.8974337676268345,
     "mesopicM": 1,
-    "limitingMagnitude": 1.8324491769495976,
+    "limitingMagnitude": 1.8324495791776791,
     "starsDrawn": 1,
     "bodiesDrawn": 3,
     "bodies": [
@@ -3228,26 +2772,7 @@
     ]
    },
    "consoleErrors": [],
-   "readyMs": 8809,
-   "accepted": {
-    "acceptedAt": "2026-10-07T13:38:57.673Z",
-    "git": "6ccaf4a",
-    "data": {
-     "manifestGeneratedAt": "2026-10-07T11:04:06+00:00",
-     "manifestSha256": "9150581f09d62734360c2da516c2ee0e3589e068ab08f7009f6c24da931f3392"
-    },
-    "gpu": {
-     "mode": "hardware",
-     "adapter": {
-      "vendor": "nvidia",
-      "architecture": "blackwell",
-      "device": "",
-      "description": "",
-      "fallback": false,
-      "float32Blendable": true
-     }
-    }
-   }
+   "readyMs": 3184.2968330000003
   },
   "jupiter-odd-frame": {
    "query": "t=2026-10-15T00:00:00Z&smallbodies=0&adapt=instant&target=599&dist=300000&fov=3.6",
@@ -3278,26 +2803,7 @@
     ]
    },
    "consoleErrors": [],
-   "readyMs": 2410.010075,
-   "accepted": {
-    "acceptedAt": "2026-10-08T01:27:01.282Z",
-    "git": "ac7354d",
-    "data": {
-     "manifestGeneratedAt": "2026-10-08T01:23:42+00:00",
-     "manifestSha256": "6e7dc216c0b7f61b4165a011e7cc9665177ef5ab6ebb7a03fb7ad83a5f2197ea"
-    },
-    "gpu": {
-     "mode": "hardware",
-     "adapter": {
-      "vendor": "nvidia",
-      "architecture": "blackwell",
-      "device": "",
-      "description": "",
-      "fallback": false,
-      "float32Blendable": true
-     }
-    }
-   }
+   "readyMs": 4874.008094999997
   }
  }
 }

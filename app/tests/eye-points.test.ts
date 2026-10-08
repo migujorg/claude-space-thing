@@ -3,9 +3,10 @@
 import { describe, expect, it } from 'vitest';
 import { AdaptationState, computeEyeFrame } from '../src/eye/model';
 import { DEFAULT_EYE_SETTINGS } from '../src/eye/settings';
-import { backgroundLevel, cullBackground, intendedDisplayLd, ownVeilPerPixel, pointAppearance, pointObserver, pointVeil, pointVisible, veilKernelPerPixel, type PointSource, type VeilLevel } from '../src/eye/points';
+import { VEIL_BLUR_TAPS, backgroundLevel, erf, intendedDisplayLd, ownVeilAxis, ownVeilExact, ownVeilPerPixel, pointAppearance, pointBackground, pointHidden, pointObserver, pointVeil, pointVisible, splatNorm, veilKernelPerPixel, veilLevelSize, veilTexelCoord, veilTexelEmpty, veilTexelOfPixel, type PointSource, type PointSplat, type VeilLevel } from '../src/eye/points';
 import { luxFromMagnitude, riccoArea } from '../src/eye/crumey';
 import { fitScatterKernel } from '../src/eye/glare';
+import { SIGMA_MIN_PX } from '../src/render/frame';
 import { CRUMEY, HECHT1947, PATTANAIK } from '../src/eye/constants';
 import { inverseDisplay, lumResponse } from '../src/eye/tonemap';
 
@@ -18,6 +19,9 @@ const eyeAt = (A: number) => {
 const splat = 2 * Math.PI * 0.36 * ((50 * Math.PI) / 180 / 720) ** 2;
 const star = (V: number, sp = 2) => ({ Y: luxFromMagnitude(V), S: sp * luxFromMagnitude(V) });
 const dark = eyeAt(1e-5);
+type YS = { Y: number; S: number };
+/** A source's background where no extended light lies behind it (pointBackground's direct term is zero). */
+const veilBackground = (texture: YS, own: YS, analytic: YS) => pointBackground(texture, own, analytic, { Y: 0, S: 0 });
 const bg = { Y: 2e-6, S: 4e-6 };
 
 describe('point sources are drawn as points', () => {
@@ -106,7 +110,7 @@ describe('the star cull: no verdict depends on an earlier verdict (twin of CULL_
   // One frame of the renderer, as it is: every source is in the point image; each is judged against the veil of
   // the frame before (the texture the cull reads) less its own light there. The only history is that texture.
   const frame = (sources: PointSource[], texBefore: { Y: number; S: number }[]) => ({
-    verdicts: sources.map((s, i) => pointVisible(eye, s.E, cullBackground(texBefore[i], own(s), none))),
+    verdicts: sources.map((s, i) => pointVisible(eye, s.E, veilBackground(texBefore[i], own(s), none))),
     tex: pointVeil(sources, levels, kR, pixelSr).map((v) => add(v, other)),
   });
   // The texture when only some of the sources are in the point image (the rules below; not what the renderer does).
@@ -122,13 +126,13 @@ describe('the star cull: no verdict depends on an earlier verdict (twin of CULL_
   });
   // The rule before the fix: only the sources that passed are in the image, and own light is always subtracted.
   const frameOld = (sources: PointSource[], texBefore: { Y: number; S: number }[]) => {
-    const verdicts = sources.map((s, i) => pointVisible(eye, s.E, cullBackground(texBefore[i], own(s), none)));
+    const verdicts = sources.map((s, i) => pointVisible(eye, s.E, veilBackground(texBefore[i], own(s), none)));
     return { verdicts, tex: texOfDrawn(sources, verdicts) };
   };
   // The rule that was tried and rejected: only the sources that passed are in the image, and a source's own light
   // is subtracted only if it was drawn the frame before (one flag per source).
   const frameFlags = (sources: PointSource[], texBefore: { Y: number; S: number }[], was: boolean[]) => {
-    const verdicts = sources.map((s, i) => pointVisible(eye, s.E, cullBackground(texBefore[i], was[i] ? own(s) : none, none)));
+    const verdicts = sources.map((s, i) => pointVisible(eye, s.E, veilBackground(texBefore[i], was[i] ? own(s) : none, none)));
     return { verdicts, tex: texOfDrawn(sources, verdicts) };
   };
   const run = <T extends { verdicts: boolean[]; tex: { Y: number; S: number }[] }>(n: number, first: T, step: (prev: T) => T) => {
@@ -144,7 +148,10 @@ describe('the star cull: no verdict depends on an earlier verdict (twin of CULL_
     // never beyond the last level, even for an area no level reaches
     expect(backgroundLevel(levels, pixelSr, 1e9)).toBe(levels.length - 1);
   });
-  it('a source\'s own light in its background is the veil kernel at zero distance, and the cull removes exactly that', () => {
+  // This block models the veil as the continuous kernel (pointVeil), which is enough to state the rule: there a
+  // source's own light is the kernel at zero distance. What the shaders take out is what the pyramid holds
+  // (ownVeilExact, tested at the end of this file).
+  it('in the continuous model a source\'s own light in its background is the veil kernel at zero distance, and taking it out leaves the others\' light', () => {
     const k0 = ownVeilPerPixel(levels, kR);
     let sum = 0;
     for (let k = kR; k < levels.length; k++) sum += levels[k].weight / (2 * Math.PI * levels[k].sigmaPx ** 2);
@@ -154,12 +161,12 @@ describe('the star cull: no verdict depends on an earlier verdict (twin of CULL_
     // an isolated source: what is left of its background is the other light, to rounding
     const s = at(100, 100, luxFromMagnitude(5));
     const tex = add(pointVeil([s], levels, kR, pixelSr)[0], other);
-    const bg = cullBackground(tex, own(s), none);
+    const bg = veilBackground(tex, own(s), none);
     expect(bg.Y / other.Y - 1).toBeLessThan(1e-12);
     expect(Math.abs(bg.S / other.S - 1)).toBeLessThan(1e-12);
     // and it is never negative: against a texture that does not hold the source (the first frame after a cut)
-    expect(cullBackground({ Y: 0.5 * own(s).Y, S: 0 }, own(s), none)).toEqual({ Y: 0, S: 0 });
-    expect(cullBackground({ Y: 0, S: 0 }, own(s), { Y: 1e-4, S: 2e-4 })).toEqual({ Y: 1e-4, S: 2e-4 });
+    expect(veilBackground({ Y: 0.5 * own(s).Y, S: 0 }, own(s), none)).toEqual({ Y: 0, S: 0 });
+    expect(veilBackground({ Y: 0, S: 0 }, own(s), { Y: 1e-4, S: 2e-4 })).toEqual({ Y: 1e-4, S: 2e-4 });
   });
   it('the point image holds every source: one the eye cannot pick out still lights its neighbours\' background', () => {
     // a source far below the threshold, 2 px from one above it
@@ -167,8 +174,8 @@ describe('the star cull: no verdict depends on an earlier verdict (twin of CULL_
     const seen = at(100, 100, 3 * thr(other));
     const f = frame([seen, faint], pointVeil([seen, faint], levels, kR, pixelSr).map((v) => add(v, other)));
     expect(f.verdicts).toEqual([true, false]);
-    const withFaint = cullBackground(f.tex[0], own(seen), none).Y;
-    const alone = cullBackground(add(pointVeil([seen], levels, kR, pixelSr)[0], other), own(seen), none).Y;
+    const withFaint = veilBackground(f.tex[0], own(seen), none).Y;
+    const alone = veilBackground(add(pointVeil([seen], levels, kR, pixelSr)[0], other), own(seen), none).Y;
     expect(withFaint - alone).toBeCloseTo((faint.E.Y * veilKernelPerPixel(levels, kR, 2)) / pixelSr, 12);
     expect(withFaint).toBeGreaterThan(alone);
     // no light is lost: each source, seen or not, carries its whole scattered light into the veil (the kernel's
@@ -189,7 +196,7 @@ describe('the star cull: no verdict depends on an earlier verdict (twin of CULL_
     for (let i = 0; i < 60; i++) E = 0.5 * (thr({ Y: Math.max(other.Y - E * k0, 0), S: Math.max(other.S - CRUMEY.spRatioBlackwell * E * k0, 0) }) + thr(other));
     const star = { ...probe, E: lamp(E) };
     expect(pointVisible(eye, star.E, other)).toBe(false);
-    expect(pointVisible(eye, star.E, cullBackground(other, own(star), none))).toBe(true);
+    expect(pointVisible(eye, star.E, veilBackground(other, own(star), none))).toBe(true);
     const zero = [none];
     // old rule: on, off, on, off … for ever
     const old = run(12, frameOld([star], zero), (p) => frameOld([star], p.tex));
@@ -242,7 +249,7 @@ describe('the star cull: no verdict depends on an earlier verdict (twin of CULL_
       field.push(at(200 * u, 200 * v, thr(other) * 10 ** (0.4 * (2 * m - 1))));
     }
     const truth = pointVeil(field, levels, kR, pixelSr).map((v) => add(v, other));
-    const expected = field.map((s, i) => pointVisible(eye, s.E, cullBackground(truth[i], own(s), none)));
+    const expected = field.map((s, i) => pointVisible(eye, s.E, veilBackground(truth[i], own(s), none)));
     const nSeen = expected.filter(Boolean).length;
     expect(nSeen).toBeGreaterThan(50);
     expect(nSeen).toBeLessThan(350);
@@ -260,14 +267,51 @@ describe('the star cull: no verdict depends on an earlier verdict (twin of CULL_
   });
 });
 
-// How good is the own-light term? The pyramid's own arithmetic, run on the CPU for one splat (shaders.ts
-// PYRAMID_SHADER: 2 × 2 box downsampling, the 7-tap blur, the accumulation w_k·blur_k + bilinear upsample of the
-// level above, textures zero outside; POINT_SHADER's splat; BG's bilinear read), gives what the background texture
-// really holds of a source at its own position. The term is each level's Gaussian at full resolution, at its peak:
-// it leaves out the splat's own width and the fact that level kR is read, not level 0, and it is one number per
-// frame while the texture's value depends on where the source sits in the texels. These tests state the size of
-// that error; they are the measure a better term has to beat (the lane's handoff of 7 Oct 2026 has the consequences).
-describe('known limit: a point source\'s own light in its background against the retina pyramid run on the CPU', () => {
+describe('one test for the cull and the display: the background includes the extended image\'s direct light', () => {
+  const eye = eyeAt(2e-4);
+  const none = { Y: 0, S: 0 };
+  it('a star on a dark veil but in front of the sky\'s own luminance is judged against that sky', () => {
+    const veil = { Y: 2e-5, S: 4e-5 }, sky = { Y: 2e-4, S: 4.4e-4 };
+    // the faintest star that passes against the veil alone (what the cull tested until 7 October 2026)
+    let V = 4;
+    while (pointVisible(eye, star(V + 0.05), pointBackground(veil, none, none, none))) V += 0.05;
+    const s = star(V);
+    expect(pointVisible(eye, s, pointBackground(veil, none, none, none))).toBe(true);
+    // against what the display judged it by, it is not seen: the cull counted it and the screen did not show it
+    expect(pointVisible(eye, s, pointBackground(veil, none, none, sky))).toBe(false);
+    // and the limit against the sky is brighter by a good part of a magnitude
+    let Vs = 4;
+    while (pointVisible(eye, star(Vs + 0.05), pointBackground(veil, none, none, sky))) Vs += 0.05;
+    expect(V - Vs).toBeGreaterThan(0.3);
+  });
+  it('the direct light adds to the veil and the analytic veil; the own light comes out of the texture only', () => {
+    const bg = pointBackground({ Y: 5, S: 9 }, { Y: 2, S: 3 }, { Y: 0.5, S: 1 }, { Y: 10, S: 20 });
+    expect(bg).toEqual({ Y: 13.5, S: 27 });
+    expect(pointBackground({ Y: 1, S: 1 }, { Y: 2, S: 3 }, none, { Y: 10, S: 20 })).toEqual({ Y: 10, S: 20 });
+  });
+});
+
+describe('occlusion belongs to the source, not to its splat\'s pixels', () => {
+  // reverse depth, as the renderer stores it: larger is nearer; 0 is infinity, and no surface
+  it('a star (at infinity) is hidden where a body covers its centre, and nowhere else', () => {
+    expect(pointHidden(0.3, 0)).toBe(true);
+    expect(pointHidden(0, 0)).toBe(false);
+  });
+  it('a moon in front of its planet is drawn, behind it hidden, and its own disk at its own depth does not hide it', () => {
+    expect(pointHidden(0.3, 0.5)).toBe(false);
+    expect(pointHidden(0.5, 0.3)).toBe(true);
+    expect(pointHidden(0.5, 0.5)).toBe(false);
+  });
+});
+
+// The own-light term as it was until 7 October 2026: one number per frame, the kernel at zero distance
+// (ownVeilPerPixel). The pyramid's own arithmetic, run on the CPU for one splat as the shaders drew it then (a round
+// cut-off; shaders.ts PYRAMID_SHADER: 2 × 2 box downsampling, the 7-tap blur, the accumulation w_k·blur_k + bilinear
+// upsample of the level above, textures zero outside; BG's bilinear read), gives what the background texture really
+// held of a source at its own position. The term left out the splat's own width and the fact that level kR is
+// read, not level 0, and it was one number while the texture's value depends on where the source sits in the
+// texels. These tests keep the size of that error on record; the exact term that replaced it is tested below.
+describe('the own-light term as it was (one number per frame) against the retina pyramid run on the CPU', () => {
   const W = 1280, H = 720;
   const sigma = (k: number) => { const p = 4 ** k; return Math.sqrt(p + (p - 1) / 12 + (4 * p - 4) / 18); };
   const nLevels = Math.ceil(Math.log2(Math.max(W, H))) + 1;
@@ -374,6 +418,299 @@ describe('known limit: a point source\'s own light in its background against the
       let sum = 0;
       for (let y = 360 - half; y < 360 + half; y++) for (let x = 640 - half; x < 640 + half; x++) sum += pyramidAt(w, 0, 640.3, 360.7, x + 0.5, y + 0.5);
       expect(Math.abs(sum - 1), `level ${k}`).toBeLessThan(5e-3);
+    }
+  });
+});
+
+// The exact own-light term (eye/points.ts ownVeilExact) against the retina pyramid run in full, in two dimensions,
+// on the CPU: PYRAMID_SHADER's passes level by level over whole images, with no factorisation and no knowledge of
+// where the source is. The property the cull needs: a source alone on a dark background is judged against zero,
+// wherever it sits in the pixels and whichever level is read.
+describe('a point source\'s own light in its background, exactly: the product form against the pyramid run in two dimensions', () => {
+  type Img = Float64Array | Float32Array;
+  type Ctor = Float64ArrayConstructor | Float32ArrayConstructor;
+  interface Src { x: number; y: number; E: number }
+  const sizes = (W: number, H: number) => {
+    const d = [{ w: W, h: H }];
+    while (d[d.length - 1].w > 1 || d[d.length - 1].h > 1) d.push({ w: Math.max(1, Math.ceil(d[d.length - 1].w / 2)), h: Math.max(1, Math.ceil(d[d.length - 1].h / 2)) });
+    return d;
+  };
+  /** The point image: every source's splat, a Gaussian per axis sampled at the pixel centres within the cut-off. */
+  function pointImage(W: number, H: number, splat: PointSplat, sources: Src[], A: Ctor): Img {
+    const im = new A(W * H);
+    const N = splatNorm(splat), e = splat.extentPx, s2 = 2 * splat.sigmaPx * splat.sigmaPx;
+    for (const q of sources) {
+      for (let y = Math.max(0, Math.floor(q.y - e - 1)); y <= Math.min(H - 1, Math.ceil(q.y + e + 1)); y++) {
+        for (let x = Math.max(0, Math.floor(q.x - e - 1)); x <= Math.min(W - 1, Math.ceil(q.x + e + 1)); x++) {
+          const dx = x + 0.5 - q.x, dy = y + 0.5 - q.y;
+          if (Math.abs(dx) > e || Math.abs(dy) > e) continue;
+          im[y * W + x] += q.E * N * Math.exp(-(dx * dx + dy * dy) / s2);
+        }
+      }
+    }
+    return im;
+  }
+  /** PYRAMID_SHADER on whole images: down, blurH, blurV (levels with weight), accum from the top; acc of every level. */
+  function veilPyramid(W: number, H: number, weights: readonly number[], base: Img, A: Ctor): { w: number; h: number; data: Img }[] {
+    const d = sizes(W, H);
+    expect(weights.length).toBe(d.length);
+    const lvl: Img[] = [base];
+    for (let k = 1; k < d.length; k++) {
+      const { w, h } = d[k], pw = d[k - 1].w, ph = d[k - 1].h, src = lvl[k - 1], o = new A(w * h);
+      const ld = (x: number, y: number) => (x < pw && y < ph ? src[y * pw + x] : 0);
+      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) o[y * w + x] = (ld(2 * x, 2 * y) + ld(2 * x + 1, 2 * y) + ld(2 * x, 2 * y + 1) + ld(2 * x + 1, 2 * y + 1)) * 0.25;
+      lvl.push(o);
+    }
+    const acc: { w: number; h: number; data: Img }[] = new Array(d.length);
+    let above: Img = new A(1), aw = 1, ah = 1, top = true;
+    for (let k = d.length - 1; k >= 0; k--) {
+      const { w, h } = d[k], o = new A(w * h);
+      let blur: Img | null = null;
+      if (weights[k] > 0) {
+        const src = lvl[k], tmp = new A(w * h);
+        blur = new A(w * h);
+        const at = (im: Img, x: number, y: number) => (x >= 0 && y >= 0 && x < w && y < h ? im[y * w + x] : 0);
+        for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+          let v = at(src, x, y) * VEIL_BLUR_TAPS[0];
+          for (let t = 1; t <= 3; t++) v += (at(src, x + t, y) + at(src, x - t, y)) * VEIL_BLUR_TAPS[t];
+          tmp[y * w + x] = v;
+        }
+        for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+          let v = at(tmp, x, y) * VEIL_BLUR_TAPS[0];
+          for (let t = 1; t <= 3; t++) v += (at(tmp, x, y + t) + at(tmp, x, y - t)) * VEIL_BLUR_TAPS[t];
+          blur[y * w + x] = v;
+        }
+      }
+      const prev = above, pw = aw, ph = ah, isTop = top;
+      const ld = (x: number, y: number) => (!isTop && x >= 0 && y >= 0 && x < pw && y < ph ? prev[y * pw + x] : 0);
+      const mix = (p: number, q: number, t: number) => p * (1 - t) + q * t;
+      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+        const cx = (x + 0.5) * 0.5 - 0.5, cy = (y + 0.5) * 0.5 - 0.5;
+        const ix = Math.floor(cx), iy = Math.floor(cy), fx = cx - ix, fy = cy - iy;
+        o[y * w + x] = (blur ? weights[k] * blur[y * w + x] : 0) + mix(mix(ld(ix, iy), ld(ix + 1, iy), fx), mix(ld(ix, iy + 1), ld(ix + 1, iy + 1), fx), fy);
+      }
+      acc[k] = { w, h, data: o };
+      above = o; aw = w; ah = h; top = false;
+    }
+    return acc;
+  }
+  /** The read: linear between the texels of level kR on that level's own grid, indices clamped. */
+  function readAt(level: { w: number; h: number; data: Img }, kR: number, x: number, y: number): number {
+    const cx = x / 2 ** kR - 0.5, cy = y / 2 ** kR - 0.5;
+    const ix = Math.floor(cx), iy = Math.floor(cy), fx = cx - ix, fy = cy - iy;
+    const at = (X: number, Y: number) => level.data[Math.min(Math.max(Y, 0), level.h - 1) * level.w + Math.min(Math.max(X, 0), level.w - 1)];
+    return (at(ix, iy) * (1 - fx) + at(ix + 1, iy) * fx) * (1 - fy) + (at(ix, iy + 1) * (1 - fx) + at(ix + 1, iy + 1) * fx) * fy;
+  }
+  let seed = 20261007;
+  const rnd = () => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 2 ** 32; };
+  /** Positions over the frame, with the edges, the corners and centres just outside it. */
+  const positionsIn = (W: number, H: number, n: number, e: number): [number, number][] => {
+    const p: [number, number][] = [];
+    for (let i = 0; i < n; i++) p.push([rnd() * W, rnd() * H]);
+    p.push([0.3, 0.2], [W - 0.4, H - 0.3], [W / 2, H / 2], [W / 2 + 0.5, H / 2 + 0.5], [1.9, H - 2.2], [W - 1.1, 3.3], [-0.6 * e, H / 3], [W / 3, H + 0.5 * e]);
+    return p;
+  };
+  // frames with even and odd sizes at every level, and splats from the reconstruction minimum to a narrow field's
+  const cases: { W: number; H: number; splat: PointSplat }[] = [
+    { W: 96, H: 54, splat: { sigmaPx: 0.6, extentPx: 1.8 } },
+    { W: 97, H: 61, splat: { sigmaPx: 0.6, extentPx: 1.8 } },
+    { W: 131, H: 77, splat: { sigmaPx: 1.613, extentPx: 4.839 } },
+    { W: 160, H: 91, splat: { sigmaPx: 8.058, extentPx: 24.174 } },
+  ];
+  const someWeights = (K: number) => [0.173, 0.0829, 0, 0.0241, 0.014, 0.0112, 0.00867, 0.0098, 0.0383, 0, 0.000587, 0.02].slice(0, K);
+
+  it('equals the pyramid at every position, at every level read, in even and odd frames, for narrow and wide splats', () => {
+    let worst = 0, checked = 0;
+    for (const c of cases) {
+      const K = sizes(c.W, c.H).length, w = someWeights(K);
+      for (const [x, y] of positionsIn(c.W, c.H, 24, c.splat.extentPx)) {
+        const acc = veilPyramid(c.W, c.H, w, pointImage(c.W, c.H, c.splat, [{ x, y, E: 1 }], Float64Array), Float64Array);
+        for (let kR = 0; kR < K; kR++) {
+          const tex = readAt(acc[kR], kR, x, y), own = ownVeilExact(x, y, c.W, c.H, c.splat, kR, w);
+          if (tex === 0 && own === 0) continue;
+          worst = Math.max(worst, Math.abs(own - tex) / tex);
+          checked++;
+        }
+      }
+    }
+    expect(checked).toBeGreaterThan(700);
+    expect(worst).toBeLessThan(1e-12);
+  });
+
+  it('level by level: each level\'s part alone is rho_k(x)·rho_k(y), so no level\'s error hides behind a heavier one', () => {
+    const c = cases[1], K = sizes(c.W, c.H).length;
+    let worst = 0;
+    for (const [x, y] of positionsIn(c.W, c.H, 6, c.splat.extentPx)) {
+      const base = pointImage(c.W, c.H, c.splat, [{ x, y, E: 1 }], Float64Array);
+      for (let k = 0; k < K; k++) {
+        const w = Array.from({ length: K }, (_, j) => (j === k ? 1 : 0));
+        const acc = veilPyramid(c.W, c.H, w, base, Float64Array);
+        for (let kR = 0; kR <= k; kR++) {
+          const tex = readAt(acc[kR], kR, x, y);
+          const rx = ownVeilAxis(x, c.W, c.splat, kR, w), ry = ownVeilAxis(y, c.H, c.splat, kR, w);
+          if (tex === 0) { expect(rx[k] * ry[k]).toBe(0); continue; }
+          worst = Math.max(worst, Math.abs(rx[k] * ry[k] * splatNorm(c.splat) - tex) / tex);
+        }
+      }
+    }
+    expect(worst).toBeLessThan(1e-12);
+  });
+
+  it('a source alone on a dark background is judged against zero: nothing of its own light is left, at any position or level', () => {
+    const E = { Y: 3.2e-7, S: 6.9e-7 }, omega = 1.68e-6;   // a 2nd magnitude star, a pixel of a 50° field at 720 px
+    for (const c of cases.slice(0, 3)) {
+      const K = sizes(c.W, c.H).length, w = someWeights(K);
+      for (const [x, y] of positionsIn(c.W, c.H, 12, c.splat.extentPx)) {
+        const acc = veilPyramid(c.W, c.H, w, pointImage(c.W, c.H, c.splat, [{ x, y, E: 1 }], Float64Array), Float64Array);
+        for (let kR = 0; kR < K; kR++) {
+          const tex = readAt(acc[kR], kR, x, y) / omega, own = ownVeilExact(x, y, c.W, c.H, c.splat, kR, w) / omega;
+          const bg = veilBackground({ Y: E.Y * tex, S: E.S * tex }, { Y: E.Y * own, S: E.S * own }, { Y: 0, S: 0 });
+          expect(bg.Y, `${c.W}x${c.H} (${x}, ${y}) level ${kR}`).toBeLessThanOrEqual(1e-12 * E.Y * own);
+          expect(bg.S).toBeLessThanOrEqual(1e-12 * E.S * own);
+          expect(bg.Y).toBeGreaterThanOrEqual(0);
+        }
+      }
+    }
+  });
+
+  it('beside a neighbour, what is left is the neighbour\'s light there and nothing else', () => {
+    const c = cases[1], K = sizes(c.W, c.H).length, w = someWeights(K);
+    for (let i = 0; i < 12; i++) {
+      const a: Src = { x: 20 + rnd() * 50, y: 15 + rnd() * 30, E: 1 };
+      const b: Src = { x: a.x + (rnd() - 0.5) * 9, y: a.y + (rnd() - 0.5) * 9, E: 10 ** (4 * rnd() - 2) };   // from overlapping to 4.5 px away, 1/100 to 100 times as bright
+      const both = veilPyramid(c.W, c.H, w, pointImage(c.W, c.H, c.splat, [a, b], Float64Array), Float64Array);
+      const alone = veilPyramid(c.W, c.H, w, pointImage(c.W, c.H, c.splat, [b], Float64Array), Float64Array);
+      for (let kR = 0; kR < 5; kR++) {
+        const own = ownVeilExact(a.x, a.y, c.W, c.H, c.splat, kR, w);
+        const left = readAt(both[kR], kR, a.x, a.y) - own, others = readAt(alone[kR], kR, a.x, a.y);
+        expect(Math.abs(left - others), `pair ${i} level ${kR}`).toBeLessThan(1e-12 * (own + others));
+      }
+    }
+  });
+
+  it('in single precision, as the GPU stores it, what is left of a lone source is under a millionth of its own light', () => {
+    let worst = 0;
+    for (const c of cases.slice(0, 3)) {
+      const K = sizes(c.W, c.H).length, w = someWeights(K);
+      const w32 = w.map((v) => Math.fround(v));
+      for (const [x, y] of positionsIn(c.W, c.H, 12, c.splat.extentPx)) {
+        const acc = veilPyramid(c.W, c.H, w32, pointImage(c.W, c.H, c.splat, [{ x, y, E: 1 }], Float32Array), Float32Array);
+        for (let kR = 0; kR < K; kR++) {
+          const tex = readAt(acc[kR], kR, x, y), own = ownVeilExact(x, y, c.W, c.H, c.splat, kR, w32);
+          if (own === 0) { expect(tex).toBe(0); continue; }
+          worst = Math.max(worst, Math.abs(tex - own) / own);
+        }
+      }
+    }
+    expect(worst).toBeLessThan(1e-6);
+    expect(worst).toBeGreaterThan(0);   // it is rounding, not an identity of the test with itself
+  });
+
+  it('with the point image stored in half floats (the fallback without float32 blending) what is left is under a thousandth', () => {
+    // a half float keeps 11 significant bits; a GPU may round to nearest or toward zero when it stores one
+    const half = (v: number, floor: boolean) => {
+      if (v === 0) return 0;
+      const e = Math.floor(Math.log2(v)), m = (v / 2 ** e) * 1024;
+      return ((floor ? Math.floor(m) : Math.round(m)) / 1024) * 2 ** e;
+    };
+    for (const floor of [false, true]) {
+      let worst = 0;
+      for (const c of cases.slice(0, 3)) {
+        const K = sizes(c.W, c.H).length, w = someWeights(K).map((v) => Math.fround(v));
+        for (const [x, y] of positionsIn(c.W, c.H, 10, c.splat.extentPx)) {
+          const base = pointImage(c.W, c.H, c.splat, [{ x, y, E: 1 }], Float32Array).map((v) => half(v, floor));
+          const acc = veilPyramid(c.W, c.H, w, base, Float32Array);
+          for (let kR = 0; kR < K; kR++) {
+            const own = ownVeilExact(x, y, c.W, c.H, c.splat, kR, w);
+            if (own > 0) worst = Math.max(worst, Math.abs(readAt(acc[kR], kR, x, y) - own) / own);
+          }
+        }
+      }
+      expect(worst, floor ? 'rounded toward zero' : 'rounded to nearest').toBeLessThan(1e-3);
+      expect(worst).toBeGreaterThan(1e-5);   // and it is far from the float32 bound: the storage is what limits it
+    }
+  });
+
+  it('a splat cut by the frame: only the part inside is in the point image, and only that is taken out', () => {
+    const c = cases[0], K = sizes(c.W, c.H).length, w = someWeights(K);
+    // wholly outside: nothing in the image, nothing to take out
+    expect(ownVeilExact(-c.splat.extentPx - 0.6, 20, c.W, c.H, c.splat, 0, w)).toBe(0);
+    // half outside: less than the same source well inside
+    const inside = ownVeilExact(40.5, 20.5, c.W, c.H, c.splat, 0, w), half = ownVeilExact(0, 20.5, c.W, c.H, c.splat, 0, w);
+    expect(half).toBeGreaterThan(0.3 * inside);
+    expect(half).toBeLessThan(0.8 * inside);
+  });
+
+  it('the pyramid\'s grid in one place: level sizes round up, a texel covers 2^k pixels, nothing lies beyond a level\'s edge', () => {
+    // the sizes the renderer allocates (resize: halve and round up until 1 × 1), against the one function
+    for (const n0 of [1280, 720, 1283, 723, 1375, 138, 250, 256, 512, 97, 61, 3, 1]) {
+      let n = n0;
+      for (let k = 0; k < 14; k++) {
+        expect(veilLevelSize(n0, k), `${n0} px, level ${k}`).toBe(n);
+        n = Math.max(1, Math.ceil(n / 2));
+      }
+    }
+    // texel t of level k covers the pixels [t·2^k, (t+1)·2^k); its centre is at (t + ½)·2^k px
+    expect([0, 7, 8, 15, 16].map((i) => veilTexelOfPixel(i, 3))).toEqual([0, 0, 1, 1, 2]);
+    expect(veilTexelCoord(12, 3)).toBe(1);
+    expect(veilTexelCoord(4, 3)).toBe(0);
+    // every pixel of the frame lies in a texel of every level, and the texel after the last holds nothing
+    for (const n0 of [1283, 723, 97]) for (let k = 0; k < 12; k++) {
+      expect(veilTexelEmpty(veilTexelOfPixel(n0 - 1, k), veilLevelSize(n0, k))).toBe(false);
+      expect(veilTexelEmpty(veilLevelSize(n0, k), veilLevelSize(n0, k))).toBe(true);
+      expect(veilTexelEmpty(-1, veilLevelSize(n0, k))).toBe(true);
+    }
+  });
+
+  it('one splat\'s samples sum to between 0.99 and 1.005 at the smallest splat, to one on average; and erf is erf', () => {
+    expect(erf(0.5)).toBeCloseTo(0.5204998778130465, 14);
+    expect(erf(3 / Math.SQRT2)).toBeCloseTo(0.9973002039367398, 14);
+    expect(erf(-1)).toBeCloseTo(-0.8427007929497149, 14);
+    expect(Math.abs(erf(2.5 - 1e-9) - erf(2.5 + 1e-9))).toBeLessThan(1e-11);   // the two branches meet
+    const splat = cases[0].splat;
+    expect(splat.sigmaPx).toBe(SIGMA_MIN_PX);   // the renderer's smallest splat (render/frame.ts, whose comment this test proves)
+    expect(splat.extentPx).toBeCloseTo(3 * SIGMA_MIN_PX, 12);
+    // The normalisation is the integral's, not each splat's sum: a pixel centre crossing the hard cut-off at 3σ
+    // carries e^−4.5 of the peak, so the sum steps with the sub-pixel position. A point's light in the point image
+    // is therefore right to a percent, not to the 2·10⁻³ of an uncut Gaussian on the pixel grid.
+    let lo = Infinity, hi = 0, mean = 0;
+    const n = 400;
+    for (let i = 0; i < n; i++) {
+      const x = 40 + rnd(), y = 25 + rnd();
+      let sum = 0;
+      for (const v of pointImage(96, 54, splat, [{ x, y, E: 1 }], Float64Array)) sum += v;
+      lo = Math.min(lo, sum); hi = Math.max(hi, sum); mean += sum / n;
+    }
+    expect(lo).toBeGreaterThan(0.989);
+    expect(lo).toBeLessThan(0.995);
+    expect(hi).toBeLessThan(1.006);
+    expect(hi).toBeGreaterThan(1.002);
+    expect(Math.abs(mean - 1)).toBeLessThan(1.5e-3);
+  });
+
+  it('the kernel at zero distance is not that number: 30 to 60 % more at level 0, a fifth either way above (1280 × 720, 50°)', () => {
+    const W = 1280, H = 720, K = sizes(W, H).length;
+    const sig = (k: number) => { const p = 4 ** k; return Math.sqrt(p + (p - 1) / 12 + (4 * p - 4) / 18); };
+    const fit = fitScatterKernel(Array.from({ length: K }, (_, k) => ({ sigmaPx: sig(k) })), 50 / H, Math.hypot(W, H), 25, 0.5);
+    const levels: VeilLevel[] = fit.weights.map((weight, k) => ({ weight, sigmaPx: sig(k) }));
+    const splat = { sigmaPx: 0.6, extentPx: 1.8 };
+    const range = (kR: number) => {
+      const term = ownVeilPerPixel(levels, kR);
+      let lo = Infinity, hi = 0;
+      for (let i = 0; i < 300; i++) {
+        const r = term / ownVeilExact(100 + rnd() * 1000, 100 + rnd() * 500, W, H, splat, kR, fit.weights);
+        lo = Math.min(lo, r); hi = Math.max(hi, r);
+      }
+      return [lo, hi];
+    };
+    const [lo0, hi0] = range(0);
+    expect(lo0).toBeGreaterThan(1.25);
+    expect(hi0).toBeLessThan(1.65);
+    for (let kR = 1; kR <= 5; kR++) {
+      const [lo, hi] = range(kR);
+      expect(lo, `level ${kR}`).toBeGreaterThan(0.78);
+      expect(hi, `level ${kR}`).toBeLessThan(1.28);
+      expect(hi / lo, `level ${kR}`).toBeGreaterThan(1.2);
     }
   });
 });
