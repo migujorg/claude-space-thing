@@ -290,7 +290,8 @@ function zonalDiskIntegral(law: ResolvedLaw, a: number, zonal: { profile: ZonalP
   const pv = P[2], ps = incidence(P), ev = E[2], es = incidence(E), fv = F[2], fs = incidence(F);
   const cuts = [-Math.PI / 2, Math.PI / 2];
   cuts.push(...profileCuts(zonal.profile));
-  // Latitudes where a circle becomes tangent to the limb, terminator, or i=e great circle.
+  // Latitudes where a circle becomes tangent to the limb, terminator, i=e plane,
+  // or Hapke roughness azimuth cusp in the Sun/observer plane.
   const sd = Math.hypot(sa, ca - 1);
   for (const pd of [pv, ps, ...(law.kind === LAW.hapke && law.thetaBar > 0 ? [P[1]] : []), ...(sd > 1e-12 ? [(ps - pv) / sd] : [])]) {
     const lat = Math.acos(Math.min(1, Math.abs(pd)));

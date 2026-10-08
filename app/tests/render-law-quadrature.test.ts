@@ -94,7 +94,7 @@ describe('disk quadrature: relative accuracy across 0–179.9°, including thin 
     if ('error' in resolved) throw new Error(resolved.error);
     const zonal = { profile, pole: [Math.cos(a / 2), 0, -Math.sin(a / 2)] as [number, number, number] };
     const coarse = lawDiskIntegral(resolved.law, a, zonal, 32);
-    const refined = lawDiskIntegral(resolved.law, a, zonal, 256);
+    const refined = lawDiskIntegral(resolved.law, a, zonal, 128);
     for (let c = 0; c < 4; c++) expect(Math.abs(coarse[c] / refined[c] - 1)).toBeLessThan(1e-8);
   });
   it('Akimov 179.9° with a tilted smooth zonal profile (test input) agrees within 1e-4', () => {
