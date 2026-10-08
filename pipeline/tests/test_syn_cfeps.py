@@ -75,3 +75,14 @@ def test_input_checksum_rejects_changed_bytes(monkeypatch, tmp_path):
     monkeypatch.setattr(ss, 'TABLES', tmp_path)
     with pytest.raises(ValueError, match='changed CFEPS input'):
         ss.read_cfeps()
+
+
+def test_product_header_excludes_execution_timing():
+    from pipeline import syn_model as sm
+    from pipeline.stages import synthetic as sy
+    r = dict(cells=sm.cells_from_rows([]), totals={}, code=5, modelId='fixture', prefix='fixture',
+             grid=sy.GRIDS['tno'], hFloor=8., limit={}, extra={}, knownInGrid=0, seconds=1.)
+    r['cells'].n_shown = np.zeros(0, dtype=np.int64)
+    h1 = sy._pop_header('tno', r, {}, 0, 0)
+    r['seconds'] = 2.
+    assert sy._pop_header('tno', r, {}, 0, 0) == h1

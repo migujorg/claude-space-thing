@@ -91,7 +91,7 @@ inferred. These remain unknown. All retained objects/attributes remain
 `synthetic`, with the characterization SourceRecord in their population's
 source list. Product/inspector text names both the veto and its limits.
 
-Retrieval evidence: lane `cfeps-veto/retrievals.json`, 2026-10-07. Every raw
+Retrieval evidence: lane `cfeps-veto/retrievals.json`, 2026-10-08 UTC (2026-10-07 Pacific). Every raw
 request was preceded by HEAD size inspection; when GitHub omitted the
 length, the audit's pinned tree/file byte inventory supplied size evidence.
 The publication HEAD reports 1,857,586 bytes. No input approached 100 MB.

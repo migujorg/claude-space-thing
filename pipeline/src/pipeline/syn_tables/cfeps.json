@@ -5,7 +5,7 @@
     "citation": "Petit et al. (2011), AJ 142, 131, DOI:10.1088/0004-6256/142/4/131; OSSOS SurveySimulator public CFEPS characterization.",
     "url": "https://github.com/OSSOS/SurveySimulator/tree/8e615762278566c2c524c2acc2e1526c172c3c82/F95/tests/Surveys/CFEPS",
     "version": "8e615762278566c2c524c2acc2e1526c172c3c82",
-    "retrieved": "2026-10-07",
+    "retrieved": "2026-10-08",
     "sha256": "013809d6943f55165db9de9d5c4a69fd1857668d0fc72115ac38dfff1c486a6c",
     "license": "EUPL (upstream LICENCE.txt)",
     "notes": "Unmodified public CFEPS records: 45 pointings / 22 efficiency files. Individual URLs, retrieval instants and raw checksums in syn_tables/cfeps.json; docs/sources/cfeps-characterization.md."

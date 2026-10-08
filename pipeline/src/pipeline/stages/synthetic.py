@@ -937,7 +937,7 @@ def _pop_header(pop: str, r: dict, src: dict, first_cell: int, first_obj: int) -
         "name": pop, "code": r["code"], "modelId": r["modelId"], "sources": _pop_sources(pop), "prefix": r["prefix"],
         "grid": r["grid"].to_json(), "hFloor": r["hFloor"], "limit": r["limit"], "model": r["extra"],
         "firstCell": first_cell, "cells": c.n, "firstObject": first_obj, "objects": int(c.n_shown.sum()),
-        "knownInGrid": r["knownInGrid"], "totals": {**t, "shown": int(c.n_shown.sum())}, "seconds": r["seconds"],
+        "knownInGrid": r["knownInGrid"], "totals": {**t, "shown": int(c.n_shown.sum())},
     }
     if "center" in r:
         h["center"] = r["center"]
