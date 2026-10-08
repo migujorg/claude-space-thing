@@ -95,7 +95,7 @@ After a reboot, restore the app and resumable workers from their checkpoints wit
 the independent bulk download queue, spectrum reduction, and bandwidth controller.
 The services survive terminal closure but are transient and must be restored
 after a reboot. The script leaves services that are already active running.
-Its completed-build shortcut still requires exactly 13 stages; the pipeline now has 14, so the
+Its completed-build shortcut still requires exactly 13 stages; the pipeline now has 15, so the
 current full manifest does not select its app-only recovery path.
 
 The DAMIT export is pinned to the official October 4 snapshot; the prior
@@ -151,7 +151,7 @@ the running Vite server's file list. Otherwise Vite can return index.html for a
 new binary URL, which the surface cache rejects as malformed and displays as a
 striped unknown surface. This was confirmed with an existing 524288-byte cloud
 tile returning HTML before restart and the correct binary response after restart.
-Earth's maps and clouds have been visually verified in Brave.
+Earth's maps and the earlier clouds were visually verified in Brave during setup; that observation does not verify the later SatCORPS mosaic.
 
 Sky sums also use GAVO (`https://dc.g-vo.org/tap`, `gaia.dr3lite`) and AIP
 (`https://gaia.aip.de/tap`, `gaiadr3.gaia_source_lite`) when requested by the helper's
@@ -201,3 +201,14 @@ kernels are fixed files), names the kernel files of each case, and is compared
 only where the built product was copied from the same files. Nothing needs
 refreshing after a body-data rebuild. A minimal-profile build has no small-body catalogue: the NEO
 event test then reports itself as not compared.
+
+The 7 October cloud product is a SatCORPS 2026-09-28 mosaic of local early afternoons,
+with `clouds`, `cloudTau` and `cloudTauEstimated` layers. There is no partly-cloudy
+statistic substituted for missing thickness. Full builds also run `nightglow` and
+`albedo_reference`; the latter needs Node and the app's esbuild before the pipeline
+starts. The launcher prepares the app packages first.
+
+For current renderer checks, use `cd app && npm run e2e -- --gpu hardware`
+(36 scenes), and the validation sampling sweep documented in
+[app/e2e/README.md](app/e2e/README.md#validation-against-calibrated-images).
+The older timing and visual measurements above describe their recorded setup runs.

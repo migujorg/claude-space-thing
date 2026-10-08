@@ -8,7 +8,7 @@ The data come first, and the labels say what is known:
 - **Split, colour and shape:** these come from measured activity (production rates, Afρ, band strengths, colours) and from published physics. They are **estimated**. For a comet whose own composition A'Hearn et al. (1995) measured, the composition is **derived**.
 - **Strict level:** nothing is drawn extended.
 
-Numbers here come from the 2026-09-30 build. The stage writes `docs/reports/comets.json`. The stage is `pipeline/src/pipeline/stages/comets.py`, and it takes about 5 minutes, most of it propagating 1992 comets over the window. The app module is `app/src/render/comets/`.
+Numbers and pictures here describe the 2026-09-30 build. With `build.writeRepoFiles` enabled the stage writes `docs/reports/comets.json` and its diagnostic figure; profile builds preserve them. The committed comet reference is preserved by builds and renewed explicitly with `python -m pipeline.stages.comets --write-fixture`. The stage is `pipeline/src/pipeline/stages/comets.py`, and it takes about 5 minutes, most of it propagating 1992 comets over the window. The app module is `app/src/render/comets/`.
 
 ![C/2025 A6 (Lemmon) on 2025-10-27, from 0.27 au, naked eye](img/comets-lemmon-side.png)
 
@@ -220,7 +220,7 @@ The "why does it look like this" line says the comet is drawn with coma and tail
 
 ## 5. Verification
 
-- `app/tests/comets.test.ts` (fixture `app/tests/fixtures/comet_reference.json`, written by the stage):
+- `app/tests/comets.test.ts` (fixture `app/tests/fixtures/comet_reference.json`, written by the explicit reference command):
   - The total V light equals the M1/K1 law, and our m1 equals Horizons T-mag to within 0.01 mag at three epochs.
   - The coma radius and gas fraction do not depend on Δ. Enclosed light is monotone and reaches the total.
   - The rendered coma integrates to the M1/K1 illuminance within 0.5 % for 1, 2, 8 and 40 px comae, with the nucleus on and off pixel centres.

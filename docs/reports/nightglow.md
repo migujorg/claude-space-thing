@@ -97,19 +97,19 @@ window, e.g. 2026-01-20 09 UT at 65 000) is held at the last node.
 **Driver: measured solar wind.** The Newell et al. (2007) coupling dΦ_MP/dt = v^{4/3} B_T^{2/3} sin^{8/3}(θ_c/2) from
 hourly OMNI 2 (King & Papitashvili 2005, DOI:10.1029/2004JA010649; NASA SPDF): By, Bz in GSM and the flow speed, then
 OP2010's average of the four preceding hours (weights 1, 0.65, 0.65², 0.65³; at least two hours measured). Over the
-window this covers 2025-04-04 to 2026-09-03 03 UT (12 412 hours, 331 gaps): label `derived`.
+window this covers 2025-04-04 to 2026-09-18 03 UT in the shared product read on 7 October: label `derived`.
 
-**Outside the measured solar wind** (after 2026-09-03, and in gaps) there is no nowcast. Following NORTH_STAR §3.2
+**Outside the measured solar wind** (after 2026-09-18, and in gaps) there is no nowcast. Following NORTH_STAR §3.2
 (no invention; unknowns shown as unknown) and architecture §2 (estimated values only at Best/Complete, labelled), the
 choices are:
 
 - *Strict*: the aurora is never drawn, because OVATION itself is an empirical statistical model (`estimated`) even with
   measured input. The inspector says so.
 - *Best estimate / Complete*: with measured coupling, the OP2010 aurora of that hour; without, the **climatological
-  oval**: OP2010 at the median coupling of the last 365 measured days (3555; OP2010's own mean is 4421), labelled
+  oval**: OP2010 at the median coupling of the last 365 measured days (3475.5 in the shared product read on 7 October; OP2010's own mean is 4421), labelled
   `estimated`, and the inspector says that no measured solar wind exists for the time. No synthetic storms are
-  invented. The SWPC real-time solar wind (DSCOVR/ACE, 7 days) is not archived by the pipeline, so the month between
-  the end of OMNI and today is climatological too.
+  invented. The SWPC real-time solar wind (DSCOVR/ACE, 7 days) is not archived by the pipeline, so dates between
+  the end of OMNI and the present are climatological too.
 - The SWPC OVATION nowcast (`ovation_aurora_latest.json`) is downloaded only as a location check (§6).
 
 **Magnetic coordinates.** IGRF-14 (IAGA Division V Working Group V-MOD; NOAA NCEI coefficient file) at the window's mid-epoch (2026.757);
@@ -191,7 +191,7 @@ is weighted by the uncovered share of the pixel), and:
 The CPU model and product checks below were run on this machine (`app/tests/nightglow.test.ts`,
 `pipeline/tests/test_nightglow.py`). Checks against measurements test the model; nothing was tuned to them.
 The historical SWPC nowcast comparison was not rerun: its downloaded snapshot is time-dependent. GPU emission,
-occlusion, attenuation, adaptation and the three rendered scenes remain unverified here.
+occlusion, attenuation, adaptation and the four rendered scenes were not rerun for this document audit. Their GPU acceptance is recorded in the 36-scene baseline (app/e2e/README.md); that record does not replace the emission/readback checks below.
 
 | Check | Result |
 |---|---|
@@ -220,7 +220,7 @@ occlusion, attenuation, adaptation and the three rendered scenes remain unverifi
   figure; the mean energy outside 0.104–9.81 keV holds the end ratios. Brightness uncertain by 30–50 %, the red line
   within a factor 2.
 - OP2010 is statistical: arcs, substorm breakups and pulsating aurora are not reproduced; coupling above 24 000 is held.
-- No measured solar wind after 2026-09-03 (OMNI's latency): the climatological oval is shown at Best estimate. Adding
+- No measured solar wind after 2026-09-18 (OMNI's latency): the climatological oval is shown at Best estimate. Adding
   the SWPC real-time solar wind would make the last week live.
 - Field-line tilt neglected (vertical columns); the magnetic grid is fixed at the window's mid-epoch (the secular
   variation over 3 years moves the pole by < 0.5°).
