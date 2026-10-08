@@ -1,5 +1,7 @@
 # M4 "the real sky" — report (data side §1–5, rendering §6)
 
+The numerical build, timing and screenshot measurements below describe the M4/corona runs, not a new run of the 7 October renderer. Current code changes are distinguished where they affect those claims.
+
 Stages `deepstars` and `sky` (pipeline/src/pipeline/stages/), after `stars`. Products in app/public/data:
 
 | product | content | size | labels |
@@ -492,7 +494,7 @@ threshold contrast against the retinal image gets no weight. That alone removes 
 tried first; it is not needed, and the code does not use it. In totality nothing veils the corona, and it sets the
 adaptation.
 
-**e2e** (merged tree, main's data build of 2026-10-01 with `sky/corona.json`, against the current baseline):
+**Historical e2e** (merged tree, main's data build of 2026-10-01 with `sky/corona.json`, against the baseline then):
 - `eclipse-2027-totality` changes as intended. The adaptation goes from 2.9 to 204 cd/m² and the limiting magnitude
   from 2.5 to −0.9.
 - The suite reports that image as gone black (mean lightness 0.092 → 0.008). The baseline's grey haze is now a bright
@@ -664,25 +666,25 @@ convergence to 2 %.)
 * **XP wavelengths** are used as vacuum without the Edlén conversion the light stage applies (< 0.1 % in Y); the
   Pioneer bands are top-hats.
 * **Deep-tier flags** 1 (variable) and 2 (multiple) are not evaluated (0), as the header says.
-* **Gaia DR4** (2 Dec 2026): add its `RELEASES` entry from the released data model, then rebuild `stars`,
+* **A later Gaia release:** add its `RELEASES` entry from the released data model, then rebuild `stars`,
   `deepstars`, `sky`.
-* **Points the renderer culls** (V_lim < V < V_cut, a 0.25–1.25 mag band) are in neither the point list nor the
-  sky map, so their light is lost while they are invisible. At the NGP in eye mode the points fainter than V 6.5
-  carry 2.5 of 36 S10⊙. The renderer's cull could hand them to the background, or the controller could bin by the
-  renderer's per-star verdict.
+* **Points the renderer culls** remain in its physical point image through a separate unseen list, so their
+  light still feeds the veil and adaptation. They do not re-enter the sky map. Since 7 October `starsDrawn`
+  counts displayed stars after the shared visibility test and body occlusion; the historical screenshot
+  counts above used the earlier statistic and are not directly comparable (app/e2e/README.md).
 * **Rebuilds run on the main thread:** 0.8–1.2 s for 0.6–1.2 M deep records, once per cut change or batch of tiles.
   A worker would remove the stall.
 * **Deep tiles are read by HTTP range and not sha256-verified** (the manifest hash covers whole files). Sizes are
   checked, and the Data panel says so.
 * **The 3° diffuse layer at high exposure:** its per-pixel noise (Pioneer's 2–3 S10⊙) and zero-clamped pixels show
   as blotches and dark 3° patches at +6 stops.
-* **SwiftShader:** screenshots use a 256² cube and `smallbodies=0`. No frame timing on a hardware GPU yet.
+* **SwiftShader:** these screenshots use a 256² cube and `smallbodies=0`. GPU scene-suite timings and adapter/cube comparisons are now recorded in app/e2e/README.md; these specific sky-shot timings have not been repeated on hardware.
 * **The corona is an average corona** (§5.6). It is axisymmetric about the rotation pole and interpolated between
   van de Hulst's minimum and maximum, so the real streamers and holes of a date are not there. A date-specific
   corona would need a 3-D density from rotational tomography of coronagraph data (the LASCO Ne "cubes" announced by
   Lamy et al. 2020), which do not exist for future dates.
 * **Polar K-corona beyond 1.5 R⊙:** the model exceeds van de Hulst's polar law (×1.7 at 2 R⊙, ×3.6 at 3 R⊙) and
-  stays below Skylab's polar corona (×0.6–0.7). The 3-D latitude structure is one belt boundary fitted to one total
+  stays above Skylab's polar corona (×1.4–1.7; the equatorial comparison is ×0.63–0.69). The 3-D latitude structure is one belt boundary fitted to one total
   (§5.3); a radius-dependent boundary (streamers narrowing outward) would need more data than these laws.
 * **F-corona for observers within 0.26 AU of the Sun** is the zodiacal model alone. Parker Solar Probe/WISPR find the
   F-corona there depleted by a dust-free zone (Howard et al. 2019; Stenborg et al. 2021); not modelled.
