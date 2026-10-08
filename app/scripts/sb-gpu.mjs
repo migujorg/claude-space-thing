@@ -42,7 +42,7 @@ try {
   console.log('[gpu]', `${gpuMode}, adapter ${adapterLabel(adapter)}`);
   const wrongGpu = gpuMismatch(gpuMode, adapter);
   if (wrongGpu) { console.log('[gpu]', wrongGpu); failed = true; }
-  if (res?.mode === 'moon-compare' || res?.mode === 'moon-accuracy') {
+  if (res?.mode === 'moon-compare' || res?.mode === 'moon-accuracy' || res?.mode === 'moon-pick') {
     res.runner = { gpuMode, adapter, query, width, height };
   }
   console.log(`[done in ${((Date.now() - t0) / 1000).toFixed(0)} s]`);

@@ -104,6 +104,11 @@ it('picking uses current combined-buffer records and global indices across both 
   const bad=await checkRecordPicks({count,readRecords:async()=>records,pick:async()=>0},[21],1e-7);
   expect(bad[1].storedIndex).toBe(0);
   expect(bad[1].expectedIndex).toBe(28);
+  const changed=records.slice();changed.set([0,1,0],7*8);
+  let reads=0;
+  const stale=await checkRecordPicks({count,readRecords:async()=>reads++===0?records:changed,pick:async()=>null},[0],1e-7);
+  expect(stale[1].askedStoredAngleRad).toBeGreaterThan(1);
+  expect(stale[1].returnedIndex).toBeNull();
 });
 
 it('reports float32 force-error scales for all pinned moons at the epoch and both edges', () => {
