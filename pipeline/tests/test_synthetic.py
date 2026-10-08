@@ -386,6 +386,9 @@ def test_product_statements_disclose_limits_and_motion():
             assert 10 in [q["naifId"] for q in fm["perturbers"]]
             assert not fm["relativity"]["enabled"] and fm["zonal"]["perturber"] is None
             assert integration["budgets"]["gpuNumericalKm"] is None
+            from pipeline.download import sha256_file
+            assert integration["inputProducts"]["ephem/centers.bin"] == sha256_file(OUT / "ephem/centers.bin")
+            assert set(fm["sun"]["sources"] + fm["perturberSources"]).issubset(p["sources"])
         else:
             assert "fixed" in p["model"]["motion"]
         if p["objects"]:

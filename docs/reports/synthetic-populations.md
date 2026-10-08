@@ -292,3 +292,7 @@ cd ../app && npx vitest run tests/smallbody-synthetic.test.ts
 node scripts/sb-gpu.mjs --query "mode=synthetic" --json out/sb-synthetic.json
 node scripts/sb-gpu.mjs --query "mode=synthetic&syncam=5" --json out/sb-synthetic-jupiter.json
 ```
+
+## Integrated irregular-moon motion
+
+The initial deterministic elements and populations described above remain unchanged. Jupiter/Saturn irregular moons now use two host-system-barycentric batches of the existing catalogue propagator, with differential solar and external catalogue-perturber gravity. Stored elements initialize the epoch state; orbit overlays show the osculating ellipse guide. The selected-object CPU law and GPU point/picking path share the force metadata. Host J2/resolved internal moon forces and individual true astrometry remain unknown/unmodelled; GPU moon precision requires device checks. [Representation, numerical evidence, cost and scene predictions](synthetic-moon-kernel.md). Heliocentric synthetic motion remains fixed Kepler. Historical screenshots and fixed-motion arithmetic comparisons above describe the previous implementation.

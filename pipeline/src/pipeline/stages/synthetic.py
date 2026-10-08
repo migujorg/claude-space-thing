@@ -53,7 +53,7 @@ from ..paths import OUT
 from ..sb_table import LABEL_CODE, Field, read_table, write_table
 from ..schema import BuildContext
 
-DEPENDS: tuple[str, ...] = ("smallbodies", "bodies")
+DEPENDS: tuple[str, ...] = ("smallbodies", "bodies", "ephemeris")
 STAGE = "synthetic"
 DIR = "synthetic"
 REPORT = Path(__file__).resolve().parents[4] / "docs" / "reports" / "synthetic-populations.json"
@@ -766,6 +766,11 @@ def run(ctx: BuildContext) -> None:
         population = _pop_header(pop, r, src, first_cell, first_obj)
         if population.get("center"):
             integration = moon_integration_metadata(core_hdr, population["center"])
+            inputs = ["smallbodies/core.json", "smallbodies/core.bin", "ephem/centers.json", "ephem/centers.bin",
+                      core_hdr["forceModel"]["ephemeris"] + ".json", core_hdr["forceModel"]["ephemeris"] + ".bin"]
+            integration["inputProducts"] = {name: sha256_file(OUT / name) for name in inputs}
+            population["sources"] = sorted(set(population["sources"] + integration["forceModel"]["sun"]["sources"]
+                                               + integration["forceModel"]["perturberSources"]))
             population["model"]["integration"] = integration
             population["model"]["motion"] = ("Synthetic initial orbit propagated by the existing small-body kernel in the host system-barycentric frame: "
                                               "system monopole plus differential Sun and external catalogue perturbers; host excluded from perturbers. "

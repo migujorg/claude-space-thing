@@ -1045,6 +1045,23 @@ export class SmallBodyField {
     return out;
   }
 
+  /** Test hook: host-relative ICRF display states, in original synthetic row order. */
+  async readMoonDebugStates(): Promise<{ rows: number[]; states: Float64Array }> {
+    const rows = this.moonFields.flatMap(b=>b.rows);
+    const parts = await Promise.all(this.moonFields.map(b=>b.field.readDebugStates(b.rows.map((_,k)=>k))));
+    const states = new Float64Array(rows.length*6);
+    let offset = 0;
+    for (const part of parts) { states.set(part,offset); offset += part.length; }
+    return { rows,states };
+  }
+
+  /** Device-harness diagnostics; CPU milliseconds are wall time, GPU time requires submitted-work timing. */
+  get moonBatchInfo(): { host: number; objects: number; tableBytes: number; stateBytes: number; checkpoints: number; last: SmallBodyFieldInfo['last'] }[] {
+    return this.moonFields.map(({field:f,rows})=>({ host:f.model.sun.naifId,objects:rows.length,
+      tableBytes:f.table.data.byteLength, stateBytes:(2+f.checkpoints.size+(f.B?1:0))*rows.length*STATE_BYTES+rows.length*64,
+      checkpoints:f.checkpoints.size,last:{...f.info.last} }));
+  }
+
   /** Test hook: the point-source records ((count + syntheticCount) * 8 floats): catalogue in GPU slot order, then synthetic. */
   async readRecords(): Promise<Float32Array> {
     return new Float32Array(await this.readBuffer(this.records, (this.count + this.syntheticCount) * RECORD_FLOATS * 4));
