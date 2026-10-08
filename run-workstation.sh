@@ -12,6 +12,8 @@ export PIPELINE_XP_CACHE_BULK=1
 export PIPELINE_KEEP_RAW=1
 export UV_CACHE_DIR="$PWD/data/cache/uv"
 export UV_LINK_MODE=copy
+(cd app; if [ ! -d node_modules ]; then npm ci --no-audit --no-fund; fi)
+
 if [ ! -x pipeline/.venv/bin/python ]; then
   (cd pipeline && uv sync --locked)
 fi
@@ -39,5 +41,4 @@ if systemctl --user is-active --quiet space-thing-app.service 2>/dev/null; then
   exit 0
 fi
 cd app
-if [ ! -d node_modules ]; then npm ci --no-audit --no-fund; fi
 exec npm run dev -- --host 127.0.0.1 --port 5173 --strictPort

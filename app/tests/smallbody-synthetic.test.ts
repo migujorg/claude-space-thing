@@ -302,6 +302,25 @@ describe.skipIf(!built)('the built synthetic layer', () => {
     return { header, buffer: u8.buffer.slice(u8.byteOffset, u8.byteOffset + u8.byteLength) as ArrayBuffer };
   };
 
+  it.each([
+    ['hilda', '2025', ['family orbital coefficients', 'magnitude coefficients', 'spline end conditions', 'real-valued']],
+    ['trojan', '2024', ['stability mask', 'family magnitude', 'spline end conditions', 'real-valued']],
+  ])('explains why the published %s model is inactive in the inspector', (name, year, missing) => {
+    const o = read<SyntheticObjectsHeader>('objects');
+    const c = read<SyntheticCellsHeader>('cells');
+    const s = readSynthetic(o.header, o.buffer, c.header, c.buffer);
+    const p = o.header.populations.find(p => p.name === name)!;
+    const f = syntheticFacts(s, p.firstObject, 'complete', o.header.epochTdb);
+    const row = f.rows.find(r => r.key === 'syn:population')!;
+    expect(row.method).toBe(p.model.method);
+    expect(row.method).toContain(`Vokrouhlický et al. (${year})`);
+    expect(row.method).toContain('published bias-corrected model');
+    expect(row.method).toContain('not used');
+    expect(row.method).toContain('https://arxiv.org/');
+    for (const phrase of missing) expect(row.method).toContain(phrase);
+    expect(p.modelId).toMatch(/^catalogue\+hendler-malhotra-2020\+/);
+  });
+
   it('never shows an object brighter than its cell\'s completeness limit; cells tile the object table', () => {
     const o = read<SyntheticObjectsHeader>('objects');
     const c = read<SyntheticCellsHeader>('cells');

@@ -133,3 +133,25 @@ def xyzs_radiance(bands: list[BandValue], shape: ShapeSpectrum, sun_au: float) -
 def band_radiance(key: str, iof: float, sun_au: float) -> float:
     """W m⁻² sr⁻¹ nm⁻¹."""
     return float(iof * band_solar_irradiance(key) / (np.pi * sun_au ** 2))
+
+
+def ratio_spectral_spread(rho_a, rho_b, centers_nm, shape: ShapeSpectrum) -> np.ndarray:
+    """Non-cancelling linear/PCHIP spread of a same-body ratio, in ratio units.
+
+    Apply each existing spectral convention to BOTH regions before dividing. A
+    common multiplicative spectral factor cancels; differences in local band
+    colours can leave a differential interpolation term. This extends the region
+    budget's established convention (linear/PCHIP difference counted as 1 sigma).
+    """
+    from scipy.interpolate import PchipInterpolator
+    centers = np.asarray(centers_nm, float)
+    if centers.size == 1:
+        return np.zeros(4)
+    p_grid, e_grid = shape.on_grid(), solar.spectrum().grid
+    W = surf_color.channel_weights(centers, p_grid, e_grid)
+    weights = surf_color.integrands(p_grid, e_grid)
+    x = np.clip(cie.WAVELENGTHS, centers[0], centers[-1])
+    a, b = np.asarray(rho_a), np.asarray(rho_b)
+    lin = (W @ a) / (W @ b)
+    cub = (weights @ PchipInterpolator(centers, a)(x)) / (weights @ PchipInterpolator(centers, b)(x))
+    return np.abs(cub - lin)

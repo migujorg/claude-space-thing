@@ -55,6 +55,12 @@ try {
         }
     }
 
+    Write-Host '== App toolchain (required by albedo_reference)' -ForegroundColor Cyan
+    Set-Location ..\app
+    if (Test-Path node_modules) { npm install --no-audit --no-fund } else { npm ci --no-audit --no-fund }
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    Set-Location ..\pipeline
+
     if (-not $SkipBuild) {
         Write-Host "== Building the data (profile $BuildProfile); run the same command again to resume if it stops" -ForegroundColor Cyan
         uv run python -m pipeline build --profile $BuildProfile @BuildArgs
@@ -70,8 +76,6 @@ try {
 
     Write-Host '== App (app\)' -ForegroundColor Cyan
     Set-Location ..\app
-    if (Test-Path node_modules) { npm install --no-audit --no-fund } else { npm ci --no-audit --no-fund }
-    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
     Write-Host '== Starting the app at http://localhost:5173 (Ctrl-C stops it). Use Chrome or Edge (WebGPU).' -ForegroundColor Cyan
     # '--' quoted: PowerShell would otherwise swallow it when calling npm's .ps1 shim, and --open would go to npm
     npm run dev '--' --open

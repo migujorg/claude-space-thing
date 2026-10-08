@@ -131,6 +131,27 @@ export function sceneBodyOf(
       used.push(mesh.worstLabel);
     } else extras!.shapes!.asPoint(sb.id);
   }
+  const calibration = g.body.photometry?.albedoMeasurementView;
+  const absoluteEarth = !!sb.surface?.clouds && !!sb.surface?.albedo?.header.normalization?.absoluteDiskMean;
+  const rCal = sb.radii;
+  // Only a body that has a disk albedo at this level has a disk scale to calibrate: a moon with unequal radii
+  // and no photometry record is drawn from other data and keeps its label.
+  if (sb.albedoXYZS && sb.orient && rCal && !sb.shape && !sb.atmosphere?.surface && !absoluteEarth
+      && !(rCal[0] === rCal[1] && rCal[1] === rCal[2])) {
+    // A compiled mean defines its own reference. Only an unrecoverable single
+    // observation introduces an assumed view; its estimated label follows §2.1.
+    sb.albedoReferenceNormalization = allowedValue(g.body.photometry?.albedoReferenceNormalization, level);
+    sb.albedoMeasurementView = calibration?.value ?? {kind: 'orientation-mean'};
+    sb.albedoScaleLabel = calibration?.label ?? 'estimated';
+    if (labelAllowed(sb.albedoScaleLabel, level)) used.push(sb.albedoScaleLabel);
+    else {
+      // Match an unadmitted phase function: no albedo/phase light, known shape
+      // retained as the existing hatched silhouette. No new Strict behaviour.
+      sb.albedoXYZS = null;
+      sb.phase = null;
+      sb.surfaceUnknown = true;
+    }
+  }
   if (used.length) sb.worstLabel = worstOf([sb.worstLabel, ...used]);
   return { body: sb };
 }

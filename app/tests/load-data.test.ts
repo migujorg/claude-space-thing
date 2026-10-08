@@ -203,3 +203,19 @@ describe('path helpers', () => {
     expect(ephemPath('ephem/de440s.json')).toBe('ephem/de440s.json');
   });
 });
+
+describe('downstream albedo reference product',()=>{
+  it('loads and merges the independently sourced table',async()=>{
+    const table={value:{radiiKm:[1,1,.9],cells:[],relativeTolerance:1e-5},label:'derived',sources:['test']};
+    const {fetch}=await fakeServer({...full(),'albedo-reference.json':{'399':table}});
+    const d=await loadAll({fetch,base:'/data/'});
+    expect(d.bodies.find(b=>b.id===399)!.photometry!.albedoReferenceNormalization).toEqual(table);
+    expect(d.report.products.find(p=>p.path==='albedo-reference.json')!.hash).toBe('verified');
+  });
+  it('rejects a changed table through the ordinary integrity check',async()=>{
+    const {fetch}=await fakeServer({...full(),'albedo-reference.json':{'399':{value:{cells:[]},label:'derived',sources:['test']}}},{tamper:'albedo-reference.json'});
+    const d=await loadAll({fetch,base:'/data/'});
+    expect(d.bodies.find(b=>b.id===399)!.photometry!.albedoReferenceNormalization).toBeUndefined();
+    expect(d.report.products.find(p=>p.path==='albedo-reference.json')!.status).toBe('error');
+  });
+});

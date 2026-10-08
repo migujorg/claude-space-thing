@@ -129,7 +129,19 @@ angle *without* rendering: it tells in advance whether a disagreement is in the 
    ring (radius band), disk-integrated (rectangle around the whole disk; sums all its light, immune to PSF blur;
    the local sky level in a 5-pixel frame around it, i.e. the camera's scattered light, is subtracted),
    sky-near / sky-far (upper limits).
-6. **Tolerance** = 2σ of the combined budget, two-sided.
+6. **Same-frame spatial ratios** use R_c = L_a,c/L_b,c and σ(R_c) = |R_c| ·
+   hypot(u_a,c/L_a,c, u_b,c/L_b,c), where u is the ROI's noise-and-registration budget above.
+   Per-band tolerance is 2σ. Shared calibration and a common multiplicative spectral factor cancel, exactly
+   for one band. With multiple bands, different local colours can leave a non-cancelling interpolation term:
+   apply the existing linear and PCHIP conversions to both ROIs, then take |R_PCHIP − R_linear| as 1σ,
+   following the region budget's spectral convention. XYZS total σ is its quadrature sum with the formula above.
+   Proportional band spectra cancel this term too. No interpolation convention is selected by these tests. The two ROI
+   errors are treated independently as in the region budgets: no measured cross-ROI covariance is available.
+   Disk background uncertainty is additive, band dependent and already in disk noise; it remains. The
+   cross-body Moon/Earth ratio retains its distinct spectral terms. Missing regions are never manufactured.
+   Rows with `sceneDependence` retain their numerical verdict as diagnostics and are counted separately;
+   neither they nor ratios inheriting their epoch mismatch select or reject a spatial law.
+7. **Tolerance** = 2σ of the combined budget, two-sided.
 
 ## 4. The cases
 
@@ -178,6 +190,16 @@ App data preview (informational, no rendering: `photometry.json` disk brightness
 
 * disk-integrated: app Y = 55.11 cd/m², ratio to observed 0.850, 0.850, 0.850, 0.850 (X, Y, Z, S), i.e. -6.3, -5.1, -1.2, -3.2 σ; Φ(46.5°) = 0.325 (measured).
 
+Calibration-free ratio limb / disk-centre: XYZS 2.541, 2.541, 2.541, 2.541 ± 0.116, 0.116, 0.116, 0.116 (2σ); per band lorri.Pan 2.5409.
+
+Calibration-free ratio terminator / disk-centre: XYZS 0.356, 0.356, 0.356, 0.356 ± 0.0511, 0.0511, 0.0511, 0.0511 (2σ); per band lorri.Pan 0.3565.
+
+Calibration-free ratio disk-centre / disk-integrated: XYZS 1.35, 1.35, 1.35, 1.35 ± 0.057, 0.057, 0.057, 0.057 (2σ); per band lorri.Pan 1.3504.
+
+Calibration-free ratio limb / disk-integrated: XYZS 3.431, 3.431, 3.431, 3.431 ± 0.0653, 0.0653, 0.0653, 0.0653 (2σ); per band lorri.Pan 3.4312.
+
+Calibration-free ratio terminator / disk-integrated: XYZS 0.481, 0.481, 0.481, 0.481 ± 0.0661, 0.0661, 0.0661, 0.0661 (2σ); per band lorri.Pan 0.4814.
+
 Notes:
 
 * Single band (350-850 nm): the XYZS expectation takes its spectral shape from the body's disk-integrated spectrum ('estimated'), with the difference to a grey spectrum as uncertainty.
@@ -210,6 +232,10 @@ The swath from the sub-satellite point (0°, 140.7°E; 13:23 local solar time) t
 | near-centre-141E-12S (cloud offset -0.0 h) | point | [690, 133, 694, 137] | i 25.8°, e 11.6°, α 24.6°, lat -9.8° | 0.174, 0.142, 0.069 | 4779 ± 616.6 | 4457, 8033, 1.505e+04 | estimated |
 | sky-near | sky-near | [1370, 92, 1374, 96] |  | 7.544e-05, 9.742e-06, 1.109e-05 | ≤ 12.88 | ≤ 12.48, 13.44, 30.6 | derived |
 | sky-far | sky-far | [1, 133, 5, 137] |  | 8.426e-04, 5.986e-04, 3.925e-04 | ≤ 43.94 | ≤ 42.56, 45.85, 104.4 | derived |
+
+Calibration-free ratio limb / disk-centre: XYZS 1.358, 1.371, 1.512, 1.463 ± 0.127, 0.13, 0.129, 0.105 (2σ); per band ahi9.B01 1.5174, ahi9.B02 1.4474, ahi9.B03 1.2059.
+
+Calibration-free ratio terminator / disk-centre: XYZS 0.46, 0.464, 0.451, 0.459 ± 0.0382, 0.0396, 0.0367, 0.0302 (2σ); per band ahi9.B01 0.4502, ahi9.B02 0.4658, ahi9.B03 0.4627.
 
 Notes:
 
@@ -253,6 +279,8 @@ App data preview (informational, no rendering: `photometry.json` disk brightness
 
 Calibration-free ratio moon-disk-integrated / earth-disk-integrated: XYZS 0.102, 0.102, 0.0638, 0.0812 ± 8.103e-04, 7.742e-04, 7.597e-04, 9.146e-04 (2σ); per band hriv.Violet 0.0403, hriv.Blue 0.0639, hriv.Green 0.1010, hriv.Orange 0.1253, hriv.Red 0.1372.
 
+Calibration-free ratio earth-centre / earth-disk-integrated: XYZS 2.013, 2.018, 2.04, 2.032 ± 0.184, 0.22, 0.231, 0.204 (2σ); per band hriv.Violet 2.0815, hriv.Blue 2.0366, hriv.Green 2.0259, hriv.Orange 1.9831, hriv.Red 1.9650.
+
 Notes:
 
 * The pointing is fitted to the Earth and the Moon together (each with its own amplitude); their places come from Horizons (EPOXI → Earth, EPOXI → Moon). The roll is then set from the Moon's observed position (its centroid brought onto its predicted place) and the Earth's position refitted; the parity is the one that then also explains the Earth's lit side.
@@ -288,6 +316,16 @@ App data preview (informational, no rendering: `photometry.json` disk brightness
 
 * disk-integrated: app Y = 433.1 cd/m², ratio to observed 1.063, 1.063, 1.063, 1.063 (X, Y, Z, S), i.e. +1.7, +2.3, +0.4, +0.8 σ; Φ(28.2°) = 0.716 (measured).
 
+Calibration-free ratio limb / disk-centre: XYZS 1.17, 1.17, 1.17, 1.17 ± 0.0273, 0.0273, 0.0273, 0.0273 (2σ); per band lorri.Pan 1.1695.
+
+Calibration-free ratio terminator / disk-centre: XYZS 0.305, 0.305, 0.305, 0.305 ± 0.0594, 0.0594, 0.0594, 0.0594 (2σ); per band lorri.Pan 0.3049.
+
+Calibration-free ratio disk-centre / disk-integrated: XYZS 1.77, 1.77, 1.77, 1.77 ± 0.0387, 0.0387, 0.0387, 0.0387 (2σ); per band lorri.Pan 1.7701.
+
+Calibration-free ratio limb / disk-integrated: XYZS 2.07, 2.07, 2.07, 2.07 ± 0.0182, 0.0182, 0.0182, 0.0182 (2σ); per band lorri.Pan 2.0702.
+
+Calibration-free ratio terminator / disk-integrated: XYZS 0.54, 0.54, 0.54, 0.54 ± 0.104, 0.104, 0.104, 0.104 (2σ); per band lorri.Pan 0.5398.
+
 Notes:
 
 * Single band (350-850 nm): the XYZS expectation takes its spectral shape from the body's disk-integrated spectrum ('estimated'), with the difference to a grey spectrum as uncertainty.
@@ -320,6 +358,16 @@ Ganymede from 4.96 million km at phase 29.0°, 24.6 km per pixel.
 App data preview (informational, no rendering: `photometry.json` disk brightness at this phase):
 
 * disk-integrated: app Y = 251.8 cd/m², ratio to observed 0.842, 0.842, 0.842, 0.842 (X, Y, Z, S), i.e. -7.1, -7.8, -1.4, -2.9 σ; Φ(29.0°) = 0.630 (measured).
+
+Calibration-free ratio limb / disk-centre: XYZS 1.515, 1.515, 1.515, 1.515 ± 0.101, 0.101, 0.101, 0.101 (2σ); per band lorri.Pan 1.5154.
+
+Calibration-free ratio terminator / disk-centre: XYZS 0.294, 0.294, 0.294, 0.294 ± 0.0477, 0.0477, 0.0477, 0.0477 (2σ); per band lorri.Pan 0.2941.
+
+Calibration-free ratio disk-centre / disk-integrated: XYZS 1.769, 1.769, 1.769, 1.769 ± 0.115, 0.115, 0.115, 0.115 (2σ); per band lorri.Pan 1.7691.
+
+Calibration-free ratio limb / disk-integrated: XYZS 2.681, 2.681, 2.681, 2.681 ± 0.0399, 0.0399, 0.0399, 0.0399 (2σ); per band lorri.Pan 2.6809.
+
+Calibration-free ratio terminator / disk-integrated: XYZS 0.52, 0.52, 0.52, 0.52 ± 0.0774, 0.0774, 0.0774, 0.0774 (2σ); per band lorri.Pan 0.5203.
 
 Notes:
 
@@ -354,6 +402,16 @@ App data preview (informational, no rendering: `photometry.json` disk brightness
 
 * disk-integrated: app Y = 311.9 cd/m², ratio to observed 0.896, 0.896, 0.896, 0.896 (X, Y, Z, S), i.e. -2.3, -2.8, -0.2, -0.5 σ; Φ(35.6°) = 0.521 (measured).
 
+Calibration-free ratio limb / disk-centre: XYZS 1.246, 1.246, 1.246, 1.246 ± 0.0339, 0.0339, 0.0339, 0.0339 (2σ); per band lorri.Pan 1.2464.
+
+Calibration-free ratio terminator / disk-centre: XYZS 0.217, 0.217, 0.217, 0.217 ± 0.0444, 0.0444, 0.0444, 0.0444 (2σ); per band lorri.Pan 0.2173.
+
+Calibration-free ratio disk-centre / disk-integrated: XYZS 1.935, 1.935, 1.935, 1.935 ± 0.0497, 0.0497, 0.0497, 0.0497 (2σ); per band lorri.Pan 1.9350.
+
+Calibration-free ratio limb / disk-integrated: XYZS 2.412, 2.412, 2.412, 2.412 ± 0.0245, 0.0245, 0.0245, 0.0245 (2σ); per band lorri.Pan 2.4118.
+
+Calibration-free ratio terminator / disk-integrated: XYZS 0.42, 0.42, 0.42, 0.42 ± 0.0852, 0.0852, 0.0852, 0.0852 (2σ); per band lorri.Pan 0.4204.
+
 Notes:
 
 * Single band (350-850 nm): the XYZS expectation takes its spectral shape from the body's disk-integrated spectrum ('estimated'), with the difference to a grey spectrum as uncertainty.
@@ -386,6 +444,16 @@ The whole disk of Jupiter from 60.4 million km at phase 9.8°, five weeks before
 App data preview (informational, no rendering: `photometry.json` disk brightness at this phase):
 
 * disk-integrated: app Y = 484.6 cd/m², ratio to observed 0.969, 0.969, 0.969, 0.969 (X, Y, Z, S), i.e. -0.4, -0.3, -0.6, -0.7 σ; Φ(9.8°) = 0.950 (measured).
+
+Calibration-free ratio limb / disk-centre: XYZS 0.657, 0.657, 0.657, 0.657 ± 0.0661, 0.0661, 0.0661, 0.0661 (2σ); per band lorri.Pan 0.6567.
+
+Calibration-free ratio terminator / disk-centre: XYZS 0.293, 0.293, 0.293, 0.293 ± 0.0604, 0.0604, 0.0604, 0.0604 (2σ); per band lorri.Pan 0.2926.
+
+Calibration-free ratio disk-centre / disk-integrated: XYZS 2.125, 2.125, 2.125, 2.125 ± 0.0393, 0.0393, 0.0393, 0.0393 (2σ); per band lorri.Pan 2.1252.
+
+Calibration-free ratio limb / disk-integrated: XYZS 1.396, 1.396, 1.396, 1.396 ± 0.138, 0.138, 0.138, 0.138 (2σ); per band lorri.Pan 1.3956.
+
+Calibration-free ratio terminator / disk-integrated: XYZS 0.622, 0.622, 0.622, 0.622 ± 0.128, 0.128, 0.128, 0.128 (2σ); per band lorri.Pan 0.6218.
 
 Notes:
 
@@ -422,6 +490,16 @@ App data preview (informational, no rendering: `photometry.json` disk brightness
 
 * disk-integrated: app Y = 11.19 cd/m², ratio to observed 0.985, 0.957, 1.002, 0.967 (X, Y, Z, S), i.e. -0.2, -0.4, +0.0, -0.3 σ; Φ(15.1°) = 0.877 (measured).
 
+Calibration-free ratio limb / disk-centre: XYZS 0.87, 0.863, 0.822, 0.837 ± 0.0924, 0.104, 0.169, 0.131 (2σ); per band voyager.nac.Violet 0.8084, voyager.nac.Green 0.8545, voyager.nac.Orange 0.9064.
+
+Calibration-free ratio terminator / disk-centre: XYZS 0.372, 0.37, 0.34, 0.353 ± 0.259, 0.269, 0.298, 0.278 (2σ); per band voyager.nac.Violet 0.3269, voyager.nac.Green 0.3696, voyager.nac.Orange 0.3923.
+
+Calibration-free ratio disk-centre / disk-integrated: XYZS 1.963, 1.977, 2.006, 2 ± 0.0107, 0.0105, 0.0122, 0.0123 (2σ); per band voyager.nac.Violet 2.0114, voyager.nac.Green 1.9949, voyager.nac.Orange 1.9246.
+
+Calibration-free ratio limb / disk-integrated: XYZS 1.709, 1.706, 1.65, 1.674 ± 0.181, 0.206, 0.339, 0.261 (2σ); per band voyager.nac.Violet 1.6260, voyager.nac.Green 1.7046, voyager.nac.Orange 1.7444.
+
+Calibration-free ratio terminator / disk-integrated: XYZS 0.73, 0.732, 0.682, 0.706 ± 0.508, 0.532, 0.597, 0.556 (2σ); per band voyager.nac.Violet 0.6575, voyager.nac.Green 0.7374, voyager.nac.Orange 0.7549.
+
 Notes:
 
 * A second ORANGE frame of the same sequence (C1109153, 30.72 s) reads ~5 % brighter at the 99th percentile and has a +0.02 sky offset; the 15.36 s frame (sky ≈ 0) is used.
@@ -457,6 +535,16 @@ App data preview (informational, no rendering: `photometry.json` disk brightness
 
 * disk-integrated: phase angle 15.82° is outside the app's phase function range: the app has no measured disk brightness here (the renderer hatches or extrapolates, by reality level)
 
+Calibration-free ratio limb / disk-centre: XYZS 0.991, 0.991, 0.991, 0.991 ± 0.0377, 0.0377, 0.0377, 0.0377 (2σ); per band lorri.Pan 0.9909.
+
+Calibration-free ratio terminator / disk-centre: XYZS 0.349, 0.349, 0.349, 0.349 ± 0.0758, 0.0758, 0.0758, 0.0758 (2σ); per band lorri.Pan 0.3489.
+
+Calibration-free ratio disk-centre / disk-integrated: XYZS 1.699, 1.699, 1.699, 1.699 ± 0.0527, 0.0527, 0.0527, 0.0527 (2σ); per band lorri.Pan 1.6991.
+
+Calibration-free ratio limb / disk-integrated: XYZS 1.684, 1.684, 1.684, 1.684 ± 0.0373, 0.0373, 0.0373, 0.0373 (2σ); per band lorri.Pan 1.6836.
+
+Calibration-free ratio terminator / disk-integrated: XYZS 0.593, 0.593, 0.593, 0.593 ± 0.127, 0.127, 0.127, 0.127 (2σ); per band lorri.Pan 0.5929.
+
 Notes:
 
 * Single band: the XYZS expectation takes the ROI's spectral shape from Pluto's disk-integrated spectrum (label 'estimated'), with the difference to a grey spectrum as its uncertainty; Pluto's regional colour differences (Cthulhu's red vs. Sputnik's white) are larger than that inside some ROIs.
@@ -490,6 +578,10 @@ Saturn's northern hemisphere, the lit north face of the main rings and the plane
 | ring-a | ring | [184, 135, 188, 139] | i 63.9°, e 61.3°, α 52.1°, r 130.6 Mm | 0.106, 0.0988, 0.0733 | 40.35 ± 8.149 | 39.61, 33.28, 84.4 | estimated |
 | sky-near | sky-near | [91, 142, 96, 147] |  | 0.00272, 0.00216, 0.00163 | ≤ 1.195 | ≤ 1.157, 1.246, 2.838 | derived |
 | sky-far | sky-far | [250, 1, 255, 6] |  | 5.334e-04, 2.303e-04, 3.744e-04 | ≤ 0.407 | ≤ 0.395, 0.425, 0.968 | derived |
+
+Calibration-free ratio limb / disk-centre: XYZS 0.831, 0.849, 0.877, 0.871 ± 0.0265, 0.0285, 0.0437, 0.0351 (2σ); per band cassini.wac.RED 0.7657, cassini.wac.GRN 0.8628, cassini.wac.BL1 0.8785.
+
+Calibration-free ratio terminator / disk-centre: XYZS 0.169, 0.173, 0.203, 0.19 ± 0.0161, 0.0179, 0.028, 0.0202 (2σ); per band cassini.wac.RED 0.1538, cassini.wac.GRN 0.1695, cassini.wac.BL1 0.2051.
 
 Notes:
 
@@ -526,6 +618,16 @@ The whole, nearly featureless disk of Uranus (south pole towards the Sun) from 1
 App data preview (informational, no rendering: `photometry.json` disk brightness at this phase):
 
 * disk-integrated: app Y = 33.94 cd/m², ratio to observed 0.998, 0.980, 1.062, 1.014 (X, Y, Z, S), i.e. -0.0, -0.2, +0.6, +0.1 σ; Φ(13.8°) = 0.903 (measured).
+
+Calibration-free ratio limb / disk-centre: XYZS 0.788, 0.782, 0.807, 0.789 ± 0.0577, 0.056, 0.0738, 0.0653 (2σ); per band voyager.nac.Violet 0.8301, voyager.nac.Blue 0.7937, voyager.nac.Green 0.7722, voyager.nac.Orange 0.7867.
+
+Calibration-free ratio terminator / disk-centre: XYZS 0.36, 0.358, 0.369, 0.36 ± 0.0959, 0.0986, 0.133, 0.118 (2σ); per band voyager.nac.Violet 0.3922, voyager.nac.Blue 0.3556, voyager.nac.Green 0.3591, voyager.nac.Orange 0.3561.
+
+Calibration-free ratio disk-centre / disk-integrated: XYZS 2.009, 2.007, 1.948, 1.976 ± 0.00587, 0.00749, 0.00416, 0.00721 (2σ); per band voyager.nac.Violet 1.9222, voyager.nac.Blue 1.9617, voyager.nac.Green 2.0093, voyager.nac.Orange 2.0362.
+
+Calibration-free ratio limb / disk-integrated: XYZS 1.584, 1.569, 1.571, 1.56 ± 0.116, 0.112, 0.144, 0.129 (2σ); per band voyager.nac.Violet 1.5955, voyager.nac.Blue 1.5570, voyager.nac.Green 1.5517, voyager.nac.Orange 1.6018.
+
+Calibration-free ratio terminator / disk-integrated: XYZS 0.723, 0.718, 0.72, 0.711 ± 0.193, 0.198, 0.259, 0.232 (2σ); per band voyager.nac.Violet 0.7538, voyager.nac.Blue 0.6976, voyager.nac.Green 0.7215, voyager.nac.Orange 0.7251.
 
 ## 5. Checks of the set itself
 
@@ -579,7 +681,7 @@ These offsets are the missions' attitude-knowledge errors plus ours; the fits th
 * `pluto-nh-lorri-2015` disk-integrated: phase angle 15.82° is outside the app's phase function range: the app has no measured disk brightness here (the renderer hatches or extrapolates, by reality level).
 * `uranus-voyager2-1986` disk-integrated (phase 13.8°, sub-observer -72.5° 105.0° E): app/observed Y = 0.980 (-0.2 σ), X 0.998, Z 1.062; phase function measured.
 
-**Sizes:** `validation/` 15.7 MB (committed); downloaded inputs 194.9 MB (download ledger), git-ignored in `data/raw/validation/` (194.9 MB present now: `python -m pipeline.validation clean` deletes the images after a build; `build` fetches them again, and the pointing-fit cache is keyed by each image's sha256, so a changed archive file is refitted).
+**Sizes:** `validation/` 15.8 MB (committed); downloaded inputs 194.9 MB (download ledger), git-ignored in `data/raw/validation/` (194.9 MB present now: `python -m pipeline.validation clean` deletes the images after a build; `build` fetches them again, and the pointing-fit cache is keyed by each image's sha256, so a changed archive file is refitted).
 
 **Unit tests** (`pipeline/tests/test_validation.py`): the camera puts the target at the requested pixel with the pole up; ray casting reproduces a sphere's projected area to 1 % and face-on emission; ring classes and radii; the pointing fit recovers a synthetic pose to 0.15 px and 2°; grey closure (I/F = 1 in every band gives exactly the XYZS of sunlight / π d²); band radiance definition; PDS3 label parsing; the Himawari grid mapping round trip; the companion parity test; and every committed case.json (orthonormal camera and body matrices, fovY/pitch consistency, reference.bin size, ROI rectangles inside the view, tolerance = 2σ, fitted target centre = the view's projection of the target).
 
@@ -630,6 +732,9 @@ These offsets are the missions' attitude-knowledge errors plus ours; the fits th
 
 Run of 2026-10-07 13:02 UTC (git 2f33e69, data built 2026-10-07 11:04), reality level best, 4 × 4 samples per pixel, rendered by the machine's GPU, adapter `nvidia blackwell`, on AMD Ryzen 9 9950X3D 16-Core Processor (32 threads): `cd app && npm run validate -- --ss 4 --gpu hardware` (the full table, with X, Z, S, is in `app/shots/validation/report.md`). Y in cd/m²; the verdict covers X, Y, Z and S (failing channels named).
 
+
+Ratio reassessment from stored region means: new ratio rows below are CPU predictions from `run-2f33e69-ss4.json`, with the rebuilt case budgets; no new GPU render was performed. Existing region measurements retain the recorded render commit and date. Scene annotations were applied from the rebuilt cases. Root must confirm these predictions with the validation runner after landing.
+
 | case | ROI | expected Y ± 2σ | rendered Y | rendered / expected | σ | verdict |
 |---|---|---|---|---|---|---|
 | `callisto-nh-lorri-2007` | disk-centre | 87.57 ± 6.3 | 71.68 | 0.819 | -5.0 | **fail** (XYS) |
@@ -638,6 +743,11 @@ Run of 2026-10-07 13:02 UTC (git 2f33e69, data built 2026-10-07 11:04), reality 
 | `callisto-nh-lorri-2007` | disk-integrated | 64.85 ± 3.8 | 52.66 | 0.812 | -6.4 | **fail** (XYS) |
 | `callisto-nh-lorri-2007` | sky-near | ≤ 1.197 | 0 | — | — | pass |
 | `callisto-nh-lorri-2007` | sky-far | ≤ 0.2372 | 0 | — | — | pass |
+| `callisto-nh-lorri-2007` | limb / disk-centre | 2.541 ± 0.12 | 3.291 | — | 12.96 | **fail** (XYZS) |
+| `callisto-nh-lorri-2007` | terminator / disk-centre | 0.3565 ± 0.051 | 0.2968 | — | -2.335 | **fail** (XYZS) |
+| `callisto-nh-lorri-2007` | disk-centre / disk-integrated | 1.35 ± 0.057 | 1.361 | — | 0.3778 | pass |
+| `callisto-nh-lorri-2007` | limb / disk-integrated | 3.431 ± 0.065 | 4.48 | — | 32.11 | **fail** (XYZS) |
+| `callisto-nh-lorri-2007` | terminator / disk-integrated | 0.4814 ± 0.066 | 0.404 | — | -2.342 | **fail** (XYZS) |
 | `earth-himawari9-2026` | disk-centre | 4678 ± 6e+02 | 7054 | 1.508 | +8.0 | **fail** (XYZS) |
 | `earth-himawari9-2026` | limb | 6411 ± 7.7e+02 | 6363 | 0.992 | -0.1 | pass |
 | `earth-himawari9-2026` | terminator | 2169 ± 2.3e+02 | 1377 | 0.635 | -6.9 | **fail** (XYZS) |
@@ -646,48 +756,81 @@ Run of 2026-10-07 13:02 UTC (git 2f33e69, data built 2026-10-07 11:04), reality 
 | `earth-himawari9-2026` | near-centre-141E-12S | 4779 ± 6.2e+02 | 6574 | 1.375 | +5.8 | **fail** (XYZS) |
 | `earth-himawari9-2026` | sky-near | ≤ 12.88 | 0.0008047 | — | — | pass |
 | `earth-himawari9-2026` | sky-far | ≤ 43.94 | 0 | — | — | pass |
+| `earth-himawari9-2026` | limb / disk-centre | 1.371 ± 0.13 | 0.902 | — | -7.184 | **fail** (XYZS) |
+| `earth-himawari9-2026` | terminator / disk-centre | 0.4636 ± 0.04 | 0.1952 | — | -13.55 | **fail** (XYZS) |
 | `earth-moon-epoxi-2008` | earth-disk-integrated | 1616 ± 1.6e+02 | 1560 | 0.966 | -0.7 | pass |
 | `earth-moon-epoxi-2008` | moon-disk-integrated | 164.3 ± 16 | 157.1 | 0.956 | -0.9 | pass |
 | `earth-moon-epoxi-2008` | earth-centre | 3260 ± 4.8e+02 | 3228 | 0.990 | -0.1 | pass |
 | `earth-moon-epoxi-2008` | sky-near | ≤ 183.6 | 0 | — | — | pass |
 | `earth-moon-epoxi-2008` | sky-far | ≤ 63.72 | 0 | — | — | pass |
-| `earth-moon-epoxi-2008` | moon-disk-integrated / earth-disk-integrated | 0.1017 ± 0.00077 | 0.1007 | — | — | **fail** (YZ) |
+| `earth-moon-epoxi-2008` | moon-disk-integrated / earth-disk-integrated | 0.1017 ± 0.00077 | 0.1007 | — | -2.514 | scene-dependent (**fail** (YZ)) |
+| `earth-moon-epoxi-2008` | earth-centre / earth-disk-integrated | 2.018 ± 0.22 | 2.069 | — | 0.4647 | pass |
 | `europa-nh-lorri-2007` | disk-centre | 721.1 ± 43 | 650.1 | 0.902 | -3.3 | **fail** (XY) |
 | `europa-nh-lorri-2007` | limb | 843.4 ± 48 | 759.3 | 0.900 | -3.5 | **fail** (XY) |
 | `europa-nh-lorri-2007` | terminator | 219.9 ± 44 | 168.6 | 0.767 | -2.3 | **fail** (XY) |
 | `europa-nh-lorri-2007` | disk-integrated | 407.4 ± 23 | 362.3 | 0.889 | -4.0 | **fail** (XY) |
 | `europa-nh-lorri-2007` | sky-near | ≤ 5.058 | 0 | — | — | pass |
 | `europa-nh-lorri-2007` | sky-far | ≤ 0.7535 | 0 | — | — | pass |
+| `europa-nh-lorri-2007` | limb / disk-centre | 1.17 ± 0.027 | 1.168 | — | -0.1152 | pass |
+| `europa-nh-lorri-2007` | terminator / disk-centre | 0.3049 ± 0.059 | 0.2593 | — | -1.537 | pass |
+| `europa-nh-lorri-2007` | disk-centre / disk-integrated | 1.77 ± 0.039 | 1.794 | — | 1.26 | pass |
+| `europa-nh-lorri-2007` | limb / disk-integrated | 2.07 ± 0.018 | 2.096 | — | 2.815 | **fail** (XYZS) |
+| `europa-nh-lorri-2007` | terminator / disk-integrated | 0.5398 ± 0.1 | 0.4653 | — | -1.425 | pass |
 | `ganymede-nh-lorri-2007` | disk-centre | 529.3 ± 41 | 427.9 | 0.808 | -5.0 | **fail** (XYS) |
 | `ganymede-nh-lorri-2007` | limb | 802.1 ± 35 | 699.1 | 0.872 | -6.0 | **fail** (XYS) |
 | `ganymede-nh-lorri-2007` | terminator | 155.7 ± 24 | 90.94 | 0.584 | -5.4 | **fail** (XYZS) |
 | `ganymede-nh-lorri-2007` | disk-integrated | 299.2 ± 12 | 267.3 | 0.893 | -5.3 | **fail** (XY) |
 | `ganymede-nh-lorri-2007` | sky-near | ≤ 4.09 | 0 | — | — | pass |
 | `ganymede-nh-lorri-2007` | sky-far | ≤ 0.8382 | 0 | — | — | pass |
+| `ganymede-nh-lorri-2007` | limb / disk-centre | 1.515 ± 0.1 | 1.634 | — | 2.343 | **fail** (XYZS) |
+| `ganymede-nh-lorri-2007` | terminator / disk-centre | 0.2941 ± 0.048 | 0.2125 | — | -3.417 | **fail** (XYZS) |
+| `ganymede-nh-lorri-2007` | disk-centre / disk-integrated | 1.769 ± 0.12 | 1.601 | — | -2.919 | **fail** (XYZS) |
+| `ganymede-nh-lorri-2007` | limb / disk-integrated | 2.681 ± 0.04 | 2.616 | — | -3.263 | **fail** (XYZS) |
+| `ganymede-nh-lorri-2007` | terminator / disk-integrated | 0.5203 ± 0.077 | 0.3402 | — | -4.651 | **fail** (XYZS) |
 | `io-nh-lorri-2007` | disk-centre | 673.7 ± 53 | 570.8 | 0.847 | -3.9 | **fail** (XY) |
 | `io-nh-lorri-2007` | limb | 839.7 ± 63 | 751 | 0.894 | -2.8 | **fail** (XY) |
 | `io-nh-lorri-2007` | terminator | 146.4 ± 32 | 128.4 | 0.878 | -1.1 | pass |
 | `io-nh-lorri-2007` | disk-integrated | 348.2 ± 26 | 308.5 | 0.886 | -3.0 | **fail** (XY) |
 | `io-nh-lorri-2007` | sky-near | ≤ 6.166 | 0 | — | — | pass |
 | `io-nh-lorri-2007` | sky-far | ≤ 1.127 | 0 | — | — | pass |
-| `jupiter-nh-lorri-2007` | disk-centre | 1063 ± 2e+02 | 1280 | 1.204 | +2.1 | **fail** (XYZS) |
+| `io-nh-lorri-2007` | limb / disk-centre | 1.246 ± 0.034 | 1.316 | — | 4.081 | **fail** (XYZS) |
+| `io-nh-lorri-2007` | terminator / disk-centre | 0.2173 ± 0.044 | 0.225 | — | 0.3495 | pass |
+| `io-nh-lorri-2007` | disk-centre / disk-integrated | 1.935 ± 0.05 | 1.85 | — | -3.412 | **fail** (XYZS) |
+| `io-nh-lorri-2007` | limb / disk-integrated | 2.412 ± 0.024 | 2.434 | — | 1.834 | pass |
+| `io-nh-lorri-2007` | terminator / disk-integrated | 0.4204 ± 0.085 | 0.4163 | — | -0.09543 | pass |
+| `jupiter-nh-lorri-2007` | disk-centre | 1063 ± 2e+02 | 1280 | 1.204 | +2.1 | scene-dependent (**fail** (XYZS)) |
 | `jupiter-nh-lorri-2007` | limb | 698 ± 1.5e+02 | 720.3 | 1.032 | +0.3 | pass |
 | `jupiter-nh-lorri-2007` | terminator | 311 ± 87 | 300.2 | 0.965 | -0.2 | pass |
 | `jupiter-nh-lorri-2007` | disk-integrated | 500.1 ± 95 | 464.9 | 0.930 | -0.7 | pass |
 | `jupiter-nh-lorri-2007` | sky-near | ≤ 4.339 | 0 | — | — | pass |
 | `jupiter-nh-lorri-2007` | sky-far | ≤ 0.4903 | 0 | — | — | pass |
+| `jupiter-nh-lorri-2007` | limb / disk-centre | 0.6567 ± 0.066 | 0.5629 | — | -2.838 | scene-dependent (**fail** (XYZS)) |
+| `jupiter-nh-lorri-2007` | terminator / disk-centre | 0.2926 ± 0.06 | 0.2346 | — | -1.922 | scene-dependent (**fail** (ZS)) |
+| `jupiter-nh-lorri-2007` | disk-centre / disk-integrated | 2.125 ± 0.039 | 2.752 | — | 31.92 | scene-dependent (**fail** (XYZS)) |
+| `jupiter-nh-lorri-2007` | limb / disk-integrated | 1.396 ± 0.14 | 1.549 | — | 2.224 | **fail** (XYZS) |
+| `jupiter-nh-lorri-2007` | terminator / disk-integrated | 0.6218 ± 0.13 | 0.6456 | — | 0.3732 | pass |
 | `neptune-voyager2-1989` | disk-centre | 23.11 ± 4.7 | 23.16 | 1.002 | +0.0 | pass |
 | `neptune-voyager2-1989` | limb | 19.95 ± 4.7 | 19.12 | 0.959 | -0.3 | pass |
 | `neptune-voyager2-1989` | terminator | 8.56 ± 6.5 | 7.064 | 0.825 | -0.5 | pass |
 | `neptune-voyager2-1989` | disk-integrated | 11.69 ± 2.4 | 11.16 | 0.954 | -0.4 | pass |
 | `neptune-voyager2-1989` | sky-near | ≤ 0.1781 | 0 | — | — | pass |
 | `neptune-voyager2-1989` | sky-far | ≤ 0.1115 | 0 | — | — | pass |
+| `neptune-voyager2-1989` | limb / disk-centre | 0.863 ± 0.1 | 0.8254 | — | -0.7215 | pass |
+| `neptune-voyager2-1989` | terminator / disk-centre | 0.3703 ± 0.27 | 0.305 | — | -0.4861 | pass |
+| `neptune-voyager2-1989` | disk-centre / disk-integrated | 1.977 ± 0.01 | 2.076 | — | 18.87 | **fail** (XYZS) |
+| `neptune-voyager2-1989` | limb / disk-integrated | 1.706 ± 0.21 | 1.713 | — | 0.07108 | pass |
+| `neptune-voyager2-1989` | terminator / disk-integrated | 0.7321 ± 0.53 | 0.633 | — | -0.3728 | pass |
 | `pluto-nh-lorri-2015` | disk-centre | 19.49 ± 6.6 | 20.81 | 1.067 | +0.4 | pass |
 | `pluto-nh-lorri-2015` | limb | 19.32 ± 6.6 | 19.96 | 1.033 | +0.2 | pass |
 | `pluto-nh-lorri-2015` | terminator | 6.802 ± 2.7 | 6.2 | 0.911 | -0.4 | pass |
 | `pluto-nh-lorri-2015` | disk-integrated | 11.47 ± 3.9 | 11.43 | 0.996 | -0.0 | pass |
 | `pluto-nh-lorri-2015` | sky-near | ≤ 0.231 | 0.01247 | — | — | pass |
 | `pluto-nh-lorri-2015` | sky-far | ≤ 0.01838 | 0 | — | — | pass |
+| `pluto-nh-lorri-2015` | limb / disk-centre | 0.9909 ± 0.038 | 0.959 | — | -1.694 | **fail** (X) |
+| `pluto-nh-lorri-2015` | terminator / disk-centre | 0.3489 ± 0.076 | 0.2979 | — | -1.346 | pass |
+| `pluto-nh-lorri-2015` | disk-centre / disk-integrated | 1.699 ± 0.053 | 1.821 | — | 4.628 | **fail** (XYZS) |
+| `pluto-nh-lorri-2015` | limb / disk-integrated | 1.684 ± 0.037 | 1.746 | — | 3.368 | **fail** (XYZS) |
+| `pluto-nh-lorri-2015` | terminator / disk-integrated | 0.5929 ± 0.13 | 0.5426 | — | -0.789 | pass |
 | `saturn-cassini-wac-2016` | disk-centre | 117.5 ± 24 | 104 | 0.885 | -1.1 | pass |
 | `saturn-cassini-wac-2016` | limb | 99.81 ± 20 | 109 | 1.092 | +0.9 | pass |
 | `saturn-cassini-wac-2016` | terminator | 20.36 ± 4.6 | 14.38 | 0.706 | -2.6 | **fail** (XYZS) |
@@ -696,20 +839,37 @@ Run of 2026-10-07 13:02 UTC (git 2f33e69, data built 2026-10-07 11:04), reality 
 | `saturn-cassini-wac-2016` | ring-a | 40.35 ± 8.1 | 0 | 0.000 | -9.9 | **fail** (XYZS) |
 | `saturn-cassini-wac-2016` | sky-near | ≤ 1.195 | 0 | — | — | pass |
 | `saturn-cassini-wac-2016` | sky-far | ≤ 0.4074 | 0 | — | — | pass |
+| `saturn-cassini-wac-2016` | limb / disk-centre | 0.8494 ± 0.029 | 1.048 | — | 13.92 | **fail** (XYZS) |
+| `saturn-cassini-wac-2016` | terminator / disk-centre | 0.1733 ± 0.018 | 0.1382 | — | -3.923 | **fail** (XYZS) |
 | `uranus-voyager2-1986` | disk-centre | 69.51 ± 14 | 69.29 | 0.997 | -0.0 | pass |
 | `uranus-voyager2-1986` | limb | 54.33 ± 12 | 57.91 | 1.066 | +0.6 | pass |
 | `uranus-voyager2-1986` | terminator | 24.86 ± 8.5 | 22.52 | 0.906 | -0.6 | pass |
 | `uranus-voyager2-1986` | disk-integrated | 34.63 ± 6.9 | 34.69 | 1.002 | +0.0 | pass |
 | `uranus-voyager2-1986` | sky-near | ≤ 0.7942 | 0 | — | — | pass |
 | `uranus-voyager2-1986` | sky-far | ≤ 0.2333 | 0 | — | — | pass |
+| `uranus-voyager2-1986` | limb / disk-centre | 0.7816 ± 0.056 | 0.8357 | — | 1.935 | pass |
+| `uranus-voyager2-1986` | terminator / disk-centre | 0.3577 ± 0.099 | 0.3251 | — | -0.6618 | pass |
+| `uranus-voyager2-1986` | disk-centre / disk-integrated | 2.007 ± 0.0075 | 1.998 | — | -2.486 | **fail** (XYZS) |
+| `uranus-voyager2-1986` | limb / disk-integrated | 1.569 ± 0.11 | 1.67 | — | 1.799 | pass |
+| `uranus-voyager2-1986` | terminator / disk-integrated | 0.7178 ± 0.2 | 0.6493 | — | -0.6924 | pass |
+
+Scene-dependent comparisons are diagnostic and excluded from brightness and ratio tallies:
+
+* `earth-moon-epoxi-2008` moon-disk-integrated / earth-disk-integrated: The ratio depends on Earth's clouds and surface visibility at 2008-05-29; the app holds clouds from another epoch. The existing budget has no Earth scene variation term: the held calibration document gives no rotational-variation value. Sources: EPOXI observation: HV08052902_1000116_001 (2008-05-29); Livengood et al. (2011), Astrobiology 11, 907-930, doi:10.1089/ast.2011.0614 (cited by the archive; paper needed for an Earth variation budget); epoxi-cal-pipeline-summary-2014, section 3, pp. 13-14.
+* `jupiter-nh-lorri-2007` disk-centre: The observed centre is in Jupiter's 2007 equatorial zone; the app holds the OPAL 2025-12-11 map, not that atmospheric scene at the observation epoch. Sources: LORRI observation: lor_0031736039 (2007-01-22); Simon et al. (2015), OPAL, ApJ 812, 55, doi:10.1088/0004-637X/812/1/55; MAST doi:10.17909/T9G593, cycle 32 Jupiter map 2025-12-11.
+* `jupiter-nh-lorri-2007` limb / disk-centre: The observed centre is in Jupiter's 2007 equatorial zone; the app holds the OPAL 2025-12-11 map, not that atmospheric scene at the observation epoch. Sources: LORRI observation: lor_0031736039 (2007-01-22); Simon et al. (2015), OPAL, ApJ 812, 55, doi:10.1088/0004-637X/812/1/55; MAST doi:10.17909/T9G593, cycle 32 Jupiter map 2025-12-11.
+* `jupiter-nh-lorri-2007` terminator / disk-centre: The observed centre is in Jupiter's 2007 equatorial zone; the app holds the OPAL 2025-12-11 map, not that atmospheric scene at the observation epoch. Sources: LORRI observation: lor_0031736039 (2007-01-22); Simon et al. (2015), OPAL, ApJ 812, 55, doi:10.1088/0004-637X/812/1/55; MAST doi:10.17909/T9G593, cycle 32 Jupiter map 2025-12-11.
+* `jupiter-nh-lorri-2007` disk-centre / disk-integrated: The observed centre is in Jupiter's 2007 equatorial zone; the app holds the OPAL 2025-12-11 map, not that atmospheric scene at the observation epoch. Sources: LORRI observation: lor_0031736039 (2007-01-22); Simon et al. (2015), OPAL, ApJ 812, 55, doi:10.1088/0004-637X/812/1/55; MAST doi:10.17909/T9G593, cycle 32 Jupiter map 2025-12-11.
 
 **Regions: 45 pass, 24 fail, 0 not rendered, 0 not compared.**
 
-**Brightness regions: 23 pass, 24 fail, 0 not rendered, 0 not compared.**
+**Brightness regions: 23 pass, 23 fail, 0 not rendered, 0 not compared.**
 
 **Sky upper limits: 22 pass, 0 fail, 0 not rendered, 0 not compared.**
 
-**Ratio rows: 0 pass, 1 fail, 0 not rendered, 0 not compared.**
+**Ratio rows: 20 pass, 22 fail, 0 not rendered, 0 not compared.**
+
+**Scene-dependent rows: 0 pass, 5 fail, 0 not rendered, 0 not compared.**
 
 How each body was drawn:
 
@@ -729,7 +889,7 @@ How each body was drawn:
 
 ### Findings computed from this run
 
-25 failing rows: 24 regions and 1 ratio row (valid frames only). Each row below names a failing channel; relative error and tolerance are percentages of the expected value. ROI radiance is in cd/m² (S: scotopic cd/m²); ratios are dimensionless.
+45 failing rows: 23 regions and 22 ratio rows (valid frames only). Each row below names a failing channel; relative error and tolerance are percentages of the expected value. ROI radiance is in cd/m² (S: scotopic cd/m²); ratios are dimensionless.
 
 #### Galilean moons
 
@@ -773,6 +933,96 @@ How each body was drawn:
 | `io-nh-lorri-2007` | disk-integrated | X | 334.29 ± 30.3 | 296.23 | -11.39 | 9.1 | -2.52 |
 | `io-nh-lorri-2007` | disk-integrated | Y | 348.17 ± 26.1 | 308.52 | -11.39 | 7.5 | -3.04 |
 
+#### Ratio rows
+
+| case | row | channel | expected ± tolerance | rendered | relative error (%) | tolerance (%) | σ |
+|---|---|---|---|---|---|---|---|
+| `callisto-nh-lorri-2007` | limb / disk-centre | X | 2.5409 ± 0.116 | 3.2915 | +29.54 | 4.6 | +12.96 |
+| `callisto-nh-lorri-2007` | limb / disk-centre | Y | 2.5409 ± 0.116 | 3.2915 | +29.54 | 4.6 | +12.96 |
+| `callisto-nh-lorri-2007` | limb / disk-centre | Z | 2.5409 ± 0.116 | 3.2915 | +29.54 | 4.6 | +12.96 |
+| `callisto-nh-lorri-2007` | limb / disk-centre | S | 2.5409 ± 0.116 | 3.2915 | +29.54 | 4.6 | +12.96 |
+| `callisto-nh-lorri-2007` | terminator / disk-centre | X | 0.35648 ± 0.0511 | 0.29682 | -16.74 | 14.3 | -2.33 |
+| `callisto-nh-lorri-2007` | terminator / disk-centre | Y | 0.35648 ± 0.0511 | 0.29682 | -16.74 | 14.3 | -2.33 |
+| `callisto-nh-lorri-2007` | terminator / disk-centre | Z | 0.35648 ± 0.0511 | 0.29682 | -16.74 | 14.3 | -2.33 |
+| `callisto-nh-lorri-2007` | terminator / disk-centre | S | 0.35648 ± 0.0511 | 0.29682 | -16.74 | 14.3 | -2.33 |
+| `callisto-nh-lorri-2007` | limb / disk-integrated | X | 3.4312 ± 0.0653 | 4.4802 | +30.57 | 1.9 | +32.11 |
+| `callisto-nh-lorri-2007` | limb / disk-integrated | Y | 3.4312 ± 0.0653 | 4.4802 | +30.57 | 1.9 | +32.11 |
+| `callisto-nh-lorri-2007` | limb / disk-integrated | Z | 3.4312 ± 0.0653 | 4.4802 | +30.57 | 1.9 | +32.11 |
+| `callisto-nh-lorri-2007` | limb / disk-integrated | S | 3.4312 ± 0.0653 | 4.4802 | +30.57 | 1.9 | +32.11 |
+| `callisto-nh-lorri-2007` | terminator / disk-integrated | X | 0.48139 ± 0.0661 | 0.40401 | -16.07 | 13.7 | -2.34 |
+| `callisto-nh-lorri-2007` | terminator / disk-integrated | Y | 0.48139 ± 0.0661 | 0.40401 | -16.07 | 13.7 | -2.34 |
+| `callisto-nh-lorri-2007` | terminator / disk-integrated | Z | 0.48139 ± 0.0661 | 0.40401 | -16.07 | 13.7 | -2.34 |
+| `callisto-nh-lorri-2007` | terminator / disk-integrated | S | 0.48139 ± 0.0661 | 0.40401 | -16.07 | 13.7 | -2.34 |
+| `earth-himawari9-2026` | limb / disk-centre | X | 1.3576 ± 0.127 | 0.89642 | -33.97 | 9.4 | -7.24 |
+| `earth-himawari9-2026` | limb / disk-centre | Y | 1.3706 ± 0.13 | 0.90196 | -34.19 | 9.5 | -7.18 |
+| `earth-himawari9-2026` | limb / disk-centre | Z | 1.5116 ± 0.129 | 1.1618 | -23.14 | 8.5 | -5.44 |
+| `earth-himawari9-2026` | limb / disk-centre | S | 1.4629 ± 0.105 | 1.059 | -27.61 | 7.1 | -7.73 |
+| `earth-himawari9-2026` | terminator / disk-centre | X | 0.46038 ± 0.0382 | 0.19274 | -58.13 | 8.3 | -14.02 |
+| `earth-himawari9-2026` | terminator / disk-centre | Y | 0.46363 ± 0.0396 | 0.1952 | -57.90 | 8.5 | -13.55 |
+| `earth-himawari9-2026` | terminator / disk-centre | Z | 0.45136 ± 0.0367 | 0.25463 | -43.59 | 8.1 | -10.71 |
+| `earth-himawari9-2026` | terminator / disk-centre | S | 0.45856 ± 0.0302 | 0.23311 | -49.16 | 6.6 | -14.92 |
+| `europa-nh-lorri-2007` | limb / disk-integrated | X | 2.0702 ± 0.0182 | 2.0959 | +1.24 | 0.9 | +2.81 |
+| `europa-nh-lorri-2007` | limb / disk-integrated | Y | 2.0702 ± 0.0182 | 2.0959 | +1.24 | 0.9 | +2.81 |
+| `europa-nh-lorri-2007` | limb / disk-integrated | Z | 2.0702 ± 0.0182 | 2.0959 | +1.24 | 0.9 | +2.81 |
+| `europa-nh-lorri-2007` | limb / disk-integrated | S | 2.0702 ± 0.0182 | 2.0959 | +1.24 | 0.9 | +2.81 |
+| `ganymede-nh-lorri-2007` | limb / disk-centre | X | 1.5154 ± 0.101 | 1.6337 | +7.81 | 6.7 | +2.34 |
+| `ganymede-nh-lorri-2007` | limb / disk-centre | Y | 1.5154 ± 0.101 | 1.6337 | +7.81 | 6.7 | +2.34 |
+| `ganymede-nh-lorri-2007` | limb / disk-centre | Z | 1.5154 ± 0.101 | 1.6337 | +7.81 | 6.7 | +2.34 |
+| `ganymede-nh-lorri-2007` | limb / disk-centre | S | 1.5154 ± 0.101 | 1.6337 | +7.81 | 6.7 | +2.34 |
+| `ganymede-nh-lorri-2007` | terminator / disk-centre | X | 0.29409 ± 0.0477 | 0.21251 | -27.74 | 16.2 | -3.42 |
+| `ganymede-nh-lorri-2007` | terminator / disk-centre | Y | 0.29409 ± 0.0477 | 0.21251 | -27.74 | 16.2 | -3.42 |
+| `ganymede-nh-lorri-2007` | terminator / disk-centre | Z | 0.29409 ± 0.0477 | 0.21251 | -27.74 | 16.2 | -3.42 |
+| `ganymede-nh-lorri-2007` | terminator / disk-centre | S | 0.29409 ± 0.0477 | 0.21251 | -27.74 | 16.2 | -3.42 |
+| `ganymede-nh-lorri-2007` | disk-centre / disk-integrated | X | 1.7691 ± 0.115 | 1.6011 | -9.50 | 6.5 | -2.92 |
+| `ganymede-nh-lorri-2007` | disk-centre / disk-integrated | Y | 1.7691 ± 0.115 | 1.6011 | -9.50 | 6.5 | -2.92 |
+| `ganymede-nh-lorri-2007` | disk-centre / disk-integrated | Z | 1.7691 ± 0.115 | 1.6011 | -9.50 | 6.5 | -2.92 |
+| `ganymede-nh-lorri-2007` | disk-centre / disk-integrated | S | 1.7691 ± 0.115 | 1.6011 | -9.50 | 6.5 | -2.92 |
+| `ganymede-nh-lorri-2007` | limb / disk-integrated | X | 2.6809 ± 0.0399 | 2.6157 | -2.43 | 1.5 | -3.26 |
+| `ganymede-nh-lorri-2007` | limb / disk-integrated | Y | 2.6809 ± 0.0399 | 2.6157 | -2.43 | 1.5 | -3.26 |
+| `ganymede-nh-lorri-2007` | limb / disk-integrated | Z | 2.6809 ± 0.0399 | 2.6157 | -2.43 | 1.5 | -3.26 |
+| `ganymede-nh-lorri-2007` | limb / disk-integrated | S | 2.6809 ± 0.0399 | 2.6157 | -2.43 | 1.5 | -3.26 |
+| `ganymede-nh-lorri-2007` | terminator / disk-integrated | X | 0.52029 ± 0.0774 | 0.34024 | -34.60 | 14.9 | -4.65 |
+| `ganymede-nh-lorri-2007` | terminator / disk-integrated | Y | 0.52029 ± 0.0774 | 0.34024 | -34.60 | 14.9 | -4.65 |
+| `ganymede-nh-lorri-2007` | terminator / disk-integrated | Z | 0.52029 ± 0.0774 | 0.34024 | -34.60 | 14.9 | -4.65 |
+| `ganymede-nh-lorri-2007` | terminator / disk-integrated | S | 0.52029 ± 0.0774 | 0.34024 | -34.60 | 14.9 | -4.65 |
+| `io-nh-lorri-2007` | limb / disk-centre | X | 1.2464 ± 0.0339 | 1.3157 | +5.55 | 2.7 | +4.08 |
+| `io-nh-lorri-2007` | limb / disk-centre | Y | 1.2464 ± 0.0339 | 1.3157 | +5.55 | 2.7 | +4.08 |
+| `io-nh-lorri-2007` | limb / disk-centre | Z | 1.2464 ± 0.0339 | 1.3157 | +5.55 | 2.7 | +4.08 |
+| `io-nh-lorri-2007` | limb / disk-centre | S | 1.2464 ± 0.0339 | 1.3157 | +5.55 | 2.7 | +4.08 |
+| `io-nh-lorri-2007` | disk-centre / disk-integrated | X | 1.935 ± 0.0497 | 1.8502 | -4.38 | 2.6 | -3.41 |
+| `io-nh-lorri-2007` | disk-centre / disk-integrated | Y | 1.935 ± 0.0497 | 1.8502 | -4.38 | 2.6 | -3.41 |
+| `io-nh-lorri-2007` | disk-centre / disk-integrated | Z | 1.935 ± 0.0497 | 1.8502 | -4.38 | 2.6 | -3.41 |
+| `io-nh-lorri-2007` | disk-centre / disk-integrated | S | 1.935 ± 0.0497 | 1.8502 | -4.38 | 2.6 | -3.41 |
+| `jupiter-nh-lorri-2007` | limb / disk-integrated | X | 1.3956 ± 0.138 | 1.5383 | +10.22 | 9.9 | +2.06 |
+| `jupiter-nh-lorri-2007` | limb / disk-integrated | Y | 1.3956 ± 0.138 | 1.5493 | +11.01 | 9.9 | +2.22 |
+| `jupiter-nh-lorri-2007` | limb / disk-integrated | Z | 1.3956 ± 0.138 | 1.6496 | +18.20 | 9.9 | +3.68 |
+| `jupiter-nh-lorri-2007` | limb / disk-integrated | S | 1.3956 ± 0.138 | 1.6027 | +14.84 | 9.9 | +3.00 |
+| `neptune-voyager2-1989` | disk-centre / disk-integrated | X | 1.963 ± 0.0107 | 2.0728 | +5.59 | 0.5 | +20.49 |
+| `neptune-voyager2-1989` | disk-centre / disk-integrated | Y | 1.9768 ± 0.0105 | 2.0755 | +4.99 | 0.5 | +18.87 |
+| `neptune-voyager2-1989` | disk-centre / disk-integrated | Z | 2.0064 ± 0.0122 | 2.0812 | +3.73 | 0.6 | +12.24 |
+| `neptune-voyager2-1989` | disk-centre / disk-integrated | S | 1.9998 ± 0.0123 | 2.0799 | +4.01 | 0.6 | +13.07 |
+| `pluto-nh-lorri-2015` | limb / disk-centre | X | 0.99087 ± 0.0377 | 0.95229 | -3.89 | 3.8 | -2.05 |
+| `pluto-nh-lorri-2015` | disk-centre / disk-integrated | X | 1.6991 ± 0.0527 | 1.8304 | +7.72 | 3.1 | +4.98 |
+| `pluto-nh-lorri-2015` | disk-centre / disk-integrated | Y | 1.6991 ± 0.0527 | 1.8212 | +7.18 | 3.1 | +4.63 |
+| `pluto-nh-lorri-2015` | disk-centre / disk-integrated | Z | 1.6991 ± 0.0527 | 1.7978 | +5.81 | 3.1 | +3.74 |
+| `pluto-nh-lorri-2015` | disk-centre / disk-integrated | S | 1.6991 ± 0.0527 | 1.8048 | +6.22 | 3.1 | +4.01 |
+| `pluto-nh-lorri-2015` | limb / disk-integrated | X | 1.6836 ± 0.0373 | 1.7431 | +3.53 | 2.2 | +3.18 |
+| `pluto-nh-lorri-2015` | limb / disk-integrated | Y | 1.6836 ± 0.0373 | 1.7465 | +3.73 | 2.2 | +3.37 |
+| `pluto-nh-lorri-2015` | limb / disk-integrated | Z | 1.6836 ± 0.0373 | 1.7217 | +2.26 | 2.2 | +2.04 |
+| `pluto-nh-lorri-2015` | limb / disk-integrated | S | 1.6836 ± 0.0373 | 1.737 | +3.17 | 2.2 | +2.86 |
+| `saturn-cassini-wac-2016` | limb / disk-centre | X | 0.83147 ± 0.0265 | 1.0399 | +25.07 | 3.2 | +15.75 |
+| `saturn-cassini-wac-2016` | limb / disk-centre | Y | 0.8494 ± 0.0285 | 1.0478 | +23.36 | 3.4 | +13.92 |
+| `saturn-cassini-wac-2016` | limb / disk-centre | Z | 0.87748 ± 0.0437 | 1.0129 | +15.44 | 5.0 | +6.19 |
+| `saturn-cassini-wac-2016` | limb / disk-centre | S | 0.87088 ± 0.0351 | 1.0402 | +19.44 | 4.0 | +9.65 |
+| `saturn-cassini-wac-2016` | terminator / disk-centre | X | 0.16896 ± 0.0161 | 0.13692 | -18.97 | 9.5 | -3.99 |
+| `saturn-cassini-wac-2016` | terminator / disk-centre | Y | 0.17328 ± 0.0179 | 0.13822 | -20.23 | 10.3 | -3.92 |
+| `saturn-cassini-wac-2016` | terminator / disk-centre | Z | 0.20274 ± 0.028 | 0.13032 | -35.72 | 13.8 | -5.17 |
+| `saturn-cassini-wac-2016` | terminator / disk-centre | S | 0.18954 ± 0.0202 | 0.13571 | -28.40 | 10.6 | -5.34 |
+| `uranus-voyager2-1986` | disk-centre / disk-integrated | X | 2.0091 ± 0.00587 | 1.9978 | -0.56 | 0.3 | -3.83 |
+| `uranus-voyager2-1986` | disk-centre / disk-integrated | Y | 2.007 ± 0.00749 | 1.9977 | -0.46 | 0.4 | -2.49 |
+| `uranus-voyager2-1986` | disk-centre / disk-integrated | Z | 1.9483 ± 0.00416 | 1.9974 | +2.52 | 0.2 | +23.60 |
+| `uranus-voyager2-1986` | disk-centre / disk-integrated | S | 1.9762 ± 0.00721 | 1.9975 | +1.08 | 0.4 | +5.91 |
+
 #### Earth
 
 | case | row | channel | expected ± tolerance | rendered | relative error (%) | tolerance (%) | σ |
@@ -793,22 +1043,6 @@ How each body was drawn:
 | `earth-himawari9-2026` | near-centre-141E-12S | Y | 4779.2 ± 617 | 6573.7 | +37.55 | 12.9 | +5.82 |
 | `earth-himawari9-2026` | near-centre-141E-12S | Z | 8032.9 ± 855 | 10242 | +27.50 | 10.6 | +5.17 |
 | `earth-himawari9-2026` | near-centre-141E-12S | S | 15048 ± 1.63e+03 | 19876 | +32.08 | 10.8 | +5.94 |
-
-#### Ratio rows
-
-| case | row | channel | expected ± tolerance | rendered | relative error (%) | tolerance (%) | σ |
-|---|---|---|---|---|---|---|---|
-| `earth-moon-epoxi-2008` | moon-disk-integrated / earth-disk-integrated | Y | 0.10167 ± 0.000774 | 0.1007 | -0.96 | 0.8 | -2.51 |
-| `earth-moon-epoxi-2008` | moon-disk-integrated / earth-disk-integrated | Z | 0.063763 ± 0.00076 | 0.066173 | +3.78 | 1.2 | +6.34 |
-
-#### jupiter-nh-lorri-2007
-
-| case | row | channel | expected ± tolerance | rendered | relative error (%) | tolerance (%) | σ |
-|---|---|---|---|---|---|---|---|
-| `jupiter-nh-lorri-2007` | disk-centre | X | 1011.6 ± 162 | 1209.9 | +19.60 | 16.0 | +2.45 |
-| `jupiter-nh-lorri-2007` | disk-centre | Y | 1062.9 ± 203 | 1279.7 | +20.39 | 19.1 | +2.14 |
-| `jupiter-nh-lorri-2007` | disk-centre | Z | 960.88 ± 99.6 | 1235 | +28.52 | 10.4 | +5.51 |
-| `jupiter-nh-lorri-2007` | disk-centre | S | 2388.2 ± 222 | 2974.6 | +24.56 | 9.3 | +5.27 |
 
 #### Saturn globe
 
@@ -862,23 +1096,3 @@ How each body was drawn:
   spatial pattern or spectral convention is correct.
 
 These readings follow the validation triage's findings, not a fit of any case, tolerance or model.
-
-### History: sampling sweep
-
-Measured 2026-10-07T12:28:27.747Z through 2026-10-07T12:39:08.097Z at git `306c576`, data 2026-10-07T11:04:06+00:00, rendered by the machine's GPU, adapter `nvidia blackwell`, on AMD Ryzen 9 9950X3D 16-Core Processor (32 threads). Source: `app/shots/validation/sampling-history.json`. This is a separate historical sweep, not measurements of the run above.
-
-Frame-validity audit: Root's validation-report-text brief of 2026-10-07 identifies the Himawari Earth frames at 3 × 3 and 6 × 6 as not rendered. Legacy run-level GPU errors are attributed to those cases only on that explicit audit; their measurements and verdicts are removed. Original: sweep-306c576.json, SHA-256 2027d0a12064396b3e5d27102124bea9298ddea42ef8f6a063ab69ccbe89780d.
-
-Largest absolute relative difference over all ROI and ratio channels, against each case's finest valid level. Invalid frames contribute no measurements. Zero/zero contributes zero; nonzero/zero has no relative difference.
-
-| sampling | largest relative difference (%) | not rendered cases |
-|---|---|---|
-| 1 × 1 | 17.8974 | none |
-| 2 × 2 | 4.4074 | none |
-| 3 × 3 | 0.550659 | `earth-himawari9-2026` |
-| 4 × 4 | 0.222535 | none |
-| 6 × 6 | 0 | `earth-himawari9-2026` |
-
-`earth-himawari9-2026`: finest valid level is 4 × 4; it has no finer valid check.
-
-Current run sampling 4 × 4: the historical sweep's matching level differs by at most 0.222535 % from each case's finest valid level. The default remains provisional, with the missing finer checks stated above; finite grids do not establish the coarsest converged grid.

@@ -140,7 +140,19 @@ angle *without* rendering: it tells in advance whether a disagreement is in the 
    ring (radius band), disk-integrated (rectangle around the whole disk; sums all its light, immune to PSF blur;
    the local sky level in a 5-pixel frame around it, i.e. the camera's scattered light, is subtracted),
    sky-near / sky-far (upper limits).
-6. **Tolerance** = """ + f"{TOLERANCE_K:g}" + """σ of the combined budget, two-sided.
+6. **Same-frame spatial ratios** use R_c = L_a,c/L_b,c and σ(R_c) = |R_c| ·
+   hypot(u_a,c/L_a,c, u_b,c/L_b,c), where u is the ROI's noise-and-registration budget above.
+   Per-band tolerance is 2σ. Shared calibration and a common multiplicative spectral factor cancel, exactly
+   for one band. With multiple bands, different local colours can leave a non-cancelling interpolation term:
+   apply the existing linear and PCHIP conversions to both ROIs, then take |R_PCHIP − R_linear| as 1σ,
+   following the region budget's spectral convention. XYZS total σ is its quadrature sum with the formula above.
+   Proportional band spectra cancel this term too. No interpolation convention is selected by these tests. The two ROI
+   errors are treated independently as in the region budgets: no measured cross-ROI covariance is available.
+   Disk background uncertainty is additive, band dependent and already in disk noise; it remains. The
+   cross-body Moon/Earth ratio retains its distinct spectral terms. Missing regions are never manufactured.
+   Rows with `sceneDependence` retain their numerical verdict as diagnostics and are counted separately;
+   neither they nor ratios inheriting their epoch mismatch select or reject a spatial law.
+7. **Tolerance** = """ + f"{TOLERANCE_K:g}" + """σ of the combined budget, two-sided.
 
 """
 
@@ -521,10 +533,12 @@ def tally_lines(run: dict) -> str:
         yes, no, invalid, uncompared = counts(rows)
         return f"**{name}: {yes} pass, {no} fail, {invalid} not rendered, {uncompared} not compared.**"
 
-    brightness = [(c, q) for c, q in regions if q["expectedType"] == "value"]
+    scene = [(c, q) for c, q in [*regions, *ratios] if q.get("sceneDependence")]
+    brightness = [(c, q) for c, q in regions if q["expectedType"] == "value" and not q.get("sceneDependence")]
+    ratios = [(c, q) for c, q in ratios if not q.get("sceneDependence")]
     sky = [(c, q) for c, q in regions if q["expectedType"] == "upper-limit"]
     return "\n\n".join((line("Regions", regions), line("Brightness regions", brightness),
-                          line("Sky upper limits", sky), line("Ratio rows", ratios)))
+                          line("Sky upper limits", sky), line("Ratio rows", ratios), line("Scene-dependent rows", scene)))
 
 
 def run_findings(run: dict) -> str:
@@ -537,7 +551,7 @@ def run_findings(run: dict) -> str:
             continue
         for is_ratio, qs in ((False, c.get("rois", [])), (True, c.get("ratios", []))):
             for q in qs:
-                if q["pass"] is not False:
+                if q.get("sceneDependence") or q["pass"] is not False:
                     continue
                 ratio_count += int(is_ratio)
                 region_count += int(not is_ratio)
@@ -659,6 +673,8 @@ def run_section(run: dict, interpretation: str) -> str:
          f"{o['ss']} × {o['ss']} samples per pixel{rendered_by(run)}: `{cmd}` (the full table, with X, Z, S, is in "
          "`app/shots/validation/report.md`). Y in cd/m²; the verdict covers X, Y, Z and S (failing channels named).",
          "", "| case | ROI | expected Y ± 2σ | rendered Y | rendered / expected | σ | verdict |", "|---|---|---|---|---|---|---|"]
+    if run.get("ratioReassessment"):
+        L[3:3] = ["", run["ratioReassessment"], ""]
     for c in run["cases"]:
         if c.get("error") and not c.get("rois"):
             L.append(f"| `{c['id']}` | — | — | — | — | — | did not render: {c['error'][:120]} |")
@@ -676,6 +692,8 @@ def run_section(run: dict, interpretation: str) -> str:
             else:
                 exp, ratio, dev = "—", "—", "—"
             v = {True: "pass", False: f"**fail** ({''.join(q['failing'])})", None: "not compared"}[q["pass"]]
+            if q.get("sceneDependence"):
+                v = f"scene-dependent ({v})"
             L.append(f"| `{c['id']}` | {q['id']} | {exp} | {_g(q['rendered']['mean'][1])} | {ratio} | {dev} | {v} |")
         for r in c.get("ratios", []):
             if not_rendered(c):
@@ -683,8 +701,20 @@ def run_section(run: dict, interpretation: str) -> str:
                 L.append(f"| `{c['id']}` | {r['numerator']} / {r['denominator']} | — | — | — | — | not rendered: {reason} |")
                 continue
             v = {True: "pass", False: f"**fail** ({''.join(r['failing'])})", None: "not compared"}[r["pass"]]
+            if r.get("sceneDependence"):
+                v = f"scene-dependent ({v})"
+            sigma = r.get("sigma", [t / TOLERANCE_K for t in r["tolerance"]])[1]
+            dev = (r["rendered"][1] - r["expected"][1]) / sigma if r["rendered"] and sigma else None
             L.append(f"| `{c['id']}` | {r['numerator']} / {r['denominator']} | {_g(r['expected'][1])} ± "
-                     f"{_g(r['tolerance'][1], 2)} | {_g(r['rendered'][1]) if r['rendered'] else '—'} | — | — | {v} |")
+                     f"{_g(r['tolerance'][1], 2)} | {_g(r['rendered'][1]) if r['rendered'] else '—'} | — | {_g(dev)} | {v} |")
+    scene_rows = [(c, q) for c in run["cases"] for q in [*c.get("rois", []), *c.get("ratios", [])]
+                  if q.get("sceneDependence")]
+    if scene_rows:
+        L += ["", "Scene-dependent comparisons are diagnostic and excluded from brightness and ratio tallies:", ""]
+        for c, q in scene_rows:
+            name = q.get("id") or f"{q['numerator']} / {q['denominator']}"
+            d = q["sceneDependence"]
+            L.append(f"* `{c['id']}` {name}: {d['reason']} Sources: {'; '.join(d['sources'])}.")
     L += ["", tally_lines(run) + "\n\nHow each body was drawn:", ""]
     for c in run["cases"]:
         if not_rendered(c):

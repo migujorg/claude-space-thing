@@ -191,11 +191,52 @@ export interface Body {
 /** photometry.json: NAIF id (as string) → photometry. */
 export type PhotometryFile = Record<string, BodyPhotometry>;
 
+/** Reference of the albedo, independent of the frame. A dated interval carries
+ * quadrature views; their epochs are numerical nodes, not claimed exposure times. */
+export interface CalibrationLatitude {
+  latitudeDeg: number;
+  epoch?: string;
+  subSolarLatitudeDeg?: number;
+  phaseAngleDeg?: number;
+  /** Unit tangent of the source Sun direction at the observer, longitude-zero frame. */
+  solarTangent?: [number, number, number];
+  earthCentreParallaxBoundDeg?: number;
+}
+export type AlbedoMeasurementView =
+  | ({ kind: 'latitude'; views?: (CalibrationLatitude & {weight: number})[] } & CalibrationLatitude)
+  | { kind: 'orientation-mean'; epoch?: string };
+
+/** Pipeline-computed fixed calibration integral / bare-sphere integral. */
+export interface CalibrationNormalizationTable {
+  model: SpatialPhotometricModel;
+  endLogCrescent: number;
+  sphereFloor: number;
+  radiiKm: [number,number,number];
+  view: AlbedoMeasurementView;
+  sourceCodeSha256: string;
+  relativeTolerance: number;
+  quadrature: string;
+  cells: {lo: number; hi: number; sphere: number[]; bare: number[][]; mapped?: number[][]}[];
+  zonalRows?: number[];
+  mapTileSha256?: (string | null)[];
+}
+
+/** Informational spread of a single bare-ellipsoid view around its mean. */
+export interface AlbedoViewSpread {
+  bareMaxRelative: number;
+}
+
+/** albedo-reference.json: fixed integrals built after light and surfaces. */
+export type AlbedoReferenceFile = Record<string, Sourced<CalibrationNormalizationTable>>;
+
 export interface BodyPhotometry {
   /** See docs/architecture.md §4.3. Four numbers (X, Y, Z, scotopic) in "lux at 1 AU". */
   geometricAlbedoXYZS: Sourced<[number, number, number, number]>;
   /** Visual geometric albedo, for display. */
   geometricAlbedoV: Sourced<number>;
+  albedoMeasurementView?: Sourced<AlbedoMeasurementView>;
+  albedoViewSpread?: Sourced<AlbedoViewSpread>;
+  albedoReferenceNormalization?: Sourced<CalibrationNormalizationTable>;
   /** Disk-integrated phase function. */
   phaseFunction: Sourced<PhaseFunction>;
   /**
@@ -1546,7 +1587,15 @@ export interface ValidationView {
 export type ValidationRoiKind =
   | 'disk-centre' | 'limb' | 'terminator' | 'point' | 'ring' | 'disk-integrated' | 'sky-near' | 'sky-far';
 
+/** Observation-epoch scene unavailable to the app; comparison stays diagnostic, outside model tallies. */
+export interface ValidationSceneDependence {
+  reason: string;
+  /** Source IDs or explicit citations/product identifiers supporting the epoch mismatch. */
+  sources: string[];
+}
+
 export interface ValidationRoi {
+  sceneDependence?: ValidationSceneDependence;
   id: string;
   kind: ValidationRoiKind;
   note: string | null;
@@ -1581,6 +1630,9 @@ export interface ValidationRoi {
 }
 
 export interface ValidationRatio {
+  sceneDependence?: ValidationSceneDependence;
+  label?: Label;
+  budget?: Record<string, unknown>;
   numerator: string;
   denominator: string;
   ratioXYZS: [number, number, number, number];

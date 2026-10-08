@@ -341,7 +341,7 @@ const expectedRequests: Record<string, string[]> = {
   'earth-day': ['Earth'], 'earth-day-strict': [], 'earth-night': ['Earth'],
   'night-limb-iss': ['Earth'], 'night-limb-iss-daylight-eye': ['Earth'],
   'aurora-2025-11-12': ['Earth'], 'aurora-2025-11-14-quiet': ['Earth'], 'moon-quarter': ['Earth'],
-  'jupiter-galileans': [], 'ganymede-narrow-field': [], 'pluto-narrow-field': ['Pluto'],
+  'jupiter-galileans': [], 'ganymede-narrow-field': [], 'pluto-narrow-field': ['Pluto'], 'jupiter-odd-frame': [],
   'saturn-rings': ['Titan'], 'uranus-epsilon-estimate': [], 'uranus': [], 'neptune': [],
   'pluto-charon': ['Pluto'], 'starfield': [], 'starfield-enhanced': [], 'sun-1au': [],
   'juno-closeup': ['Titan'], 'comet-lemmon': [], 'mars-map': ['Mars', 'Titan'], 'mercury-map': [],

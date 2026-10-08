@@ -21,7 +21,7 @@ from dataclasses import dataclass, field
 from typing import Any, Callable
 
 # Order matters: later stages may read earlier stages' outputs (each stage's DEPENDS names them).
-STAGES = ["time", "ephemeris", "light", "surfaces", "shapes", "bodies", "smallbodies", "sbphotometry", "synthetic",
+STAGES = ["time", "ephemeris", "light", "surfaces", "albedo_reference", "shapes", "bodies", "smallbodies", "sbphotometry", "synthetic",
           "comets", "stars", "deepstars", "sky", "nightglow"]
 
 
@@ -191,6 +191,9 @@ COSTS: dict[str, Cost] = {
                       "DE442s + range-request excerpts of 20 NAIF satellite kernels"),
     "light": Cost(1.0, 1.0, 1.0, 0.002, 7, 1, MEASURED,
                   "0.8 GB of it is Earth photometry (EPOXI, Himawari-9 full-disk scans)"),
+    "albedo_reference": Cost(0, 0, 0.001, 0.000255, 0.3, 0.01,
+                             "measured offline rebuild 2026-10-07: 16 s; exact-input cache reused",
+                             "Node.js + app esbuild; runs after light and surfaces"),
     "surfaces": Cost(22, 3.0, 15, 4.2, 55, 45, "docs/reports/surfaces.md (per-module cold times, ledger)",
                      "the Moon's 13 GB of LROC mosaics, Mercury's 4.3 GB and Pluto's 1.3 GB are deleted right after "
                      "reduction, so a rebuild downloads them again; 1.3 GB of products at surfaces.maxLevel=3"),
