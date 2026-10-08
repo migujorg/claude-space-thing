@@ -48,9 +48,9 @@ describe('normalization lookups have a bounded cost on the main thread', () => {
       const a = (deg * Math.PI) / 180, r = resolveLaw(model, a);
       if ('error' in r) continue;
       const cache = new MotionNormalization();
-      expect(cpuMs(() => cache.get(r.law, a)), `${id} ${model.kind} at ${deg}°, first use`).toBeLessThan(FIRST_LOOKUP_BUDGET_MS);
+      expect(cpuMs(() => cache.get(r.law, a)), `${id} ${model.kind} at ${deg}°, first use`).toBeLessThan(model.kind === 'hapke' ? 5 : FIRST_LOOKUP_BUDGET_MS);
       const moving = [1, 2, 3, 4, 5].map((i) => cpuMs(() => cache.get(r.law, a + i * 1e-4)));
-      expect(median(moving), `${id} ${model.kind} at ${deg}°, moving`).toBeLessThan(MOVING_LOOKUP_BUDGET_MS);
+      expect(median(moving), `${id} ${model.kind} at ${deg}°, moving`).toBeLessThan(model.kind === 'hapke' ? 0.1 : MOVING_LOOKUP_BUDGET_MS);
     }
   }, 120000);
   it.skipIf(!built)('every built law under its own map: the first lookup and lookups at moving phases and poles', () => {
@@ -76,14 +76,14 @@ describe('normalization lookups have a bounded cost on the main thread', () => {
     }
     expect(mapped).toBeGreaterThan(0);
   }, 120000);
-  it.skipIf(!built)('a cached value stands for every phase of its cell within 2e-5, at the opposition peak and in a thin crescent', () => {
+  it.skipIf(!built)('a cached value stands for every phase of its cell within 1e-5, at the opposition peak and in a thin crescent', () => {
     for (const { id, model } of models.filter((m) => m.model.kind === 'hapke')) {
       const cache = new MotionNormalization();
       for (const a0 of [0, 1e-7, 1e-5, 1e-3, 0.3, Math.PI - 1e-2, Math.PI - 1e-3]) for (const d of [0, 3e-9, 1e-7, 4e-6]) {
         const a = a0 + d, r = resolveLaw(model, a);
         if ('error' in r) continue;
         const value = cache.get(r.law, a)[1], exact = lawDiskIntegral(r.law, a, undefined, 24)[1];
-        expect(Math.abs(value / exact - 1), `${id} at ${a0} + ${d} rad`).toBeLessThan(2e-5);
+        expect(Math.abs(value / exact - 1), `${id} at ${a0} + ${d} rad`).toBeLessThan(1e-5);
       }
     }
   }, 60000);

@@ -23,6 +23,8 @@ import type {
   AirglowProduct,
   AuroraModel,
 } from './schema';
+import spatialSource from '../render/spatial.ts?raw';
+import { installHapkePhaseTables } from '../render/spatial';
 import { BinaryTable } from './binaryTable';
 import { parseStarNames, type StarName } from './stars';
 import { discoverSmallBodies, type SmallBodyProducts } from './smallbodies';
@@ -317,7 +319,7 @@ export async function loadAll(opts: LoadOptions): Promise<LoadedData> {
   const manifest = (L.manifest = await L.get('manifest.json', (b) => validateManifest(json(b))));
   const productPaths = Object.keys(manifest?.products ?? {});
 
-  const [sourcesArr, time, bodiesArr, photometry, light, starHeader, namesJson, rings, atmospheres, albedoReference] = await Promise.all([
+  const [sourcesArr, time, bodiesArr, photometry, light, starHeader, namesJson, rings, atmospheres, albedoReference, hapkePhases] = await Promise.all([
     L.get('sources.json', (b) => validateArray<SourceRecord>(json(b), 'sources.json', (s) => typeof s.id === 'string')),
     L.get('time.json', (b) => validateTime(json(b))),
     L.get('bodies.json', (b) => validateArray<Body>(json(b), 'bodies.json', (x) => typeof x.id === 'number' && typeof x.name === 'string')),
@@ -330,7 +332,14 @@ export async function loadAll(opts: LoadOptions): Promise<LoadedData> {
     productPaths.includes('albedo-reference.json')
       ? L.get('albedo-reference.json', (b) => json(b) as import('./schema').AlbedoReferenceFile)
       : Promise.resolve(null),
+    productPaths.includes('hapke-phase.json')
+      ? L.get('hapke-phase.json', (b) => json(b) as import('./schema').HapkePhaseFile)
+      : Promise.resolve(null),
   ]);
+
+  // Match the actual shipped integrator source once at load, outside the frame path.
+  const spatialHash = hapkePhases ? await sha256Hex(new TextEncoder().encode(spatialSource).buffer) : null;
+  notes.push(...installHapkePhaseTables(hapkePhases, spatialHash));
 
   const sources = new Map<string, SourceRecord>();
   for (const s of sourcesArr ?? []) sources.set(s.id, s);
