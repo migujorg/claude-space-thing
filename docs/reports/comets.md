@@ -207,7 +207,7 @@ The layer's CPU work is:
 - per comet per frame: the coma model, its table and the tail packets' light, a few ms;
 - when time moves: the tail geometry, about 20 ms per comet. It is cached while time is paused.
 
-On SwiftShader, the software WebGPU the tests use, the comet pass takes about 160 ms in the showcase scene (1764 packets). Up close, at 3e6 km, the old tail packets cover much of the screen and the pass takes 4–5 s. A hardware GPU does this in milliseconds.
+On SwiftShader, the software WebGPU the tests use, the comet pass takes about 160 ms in the showcase scene (1764 packets). Up close, at 3e6 km, the old tail packets cover much of the screen and the pass takes 4–5 s. Hardware cost for these specific tail views was not measured in this report.
 
 ### Inspector
 
