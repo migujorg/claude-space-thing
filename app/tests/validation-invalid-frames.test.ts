@@ -1,5 +1,6 @@
 // Stubbed page results; test values only. No GPU or products.
 import { expect, it } from 'vitest';
+import epoxi from '../../validation/cases/earth-moon-epoxi-2008/case.json';
 const { assessCase, frameLimitReason, tally, validationExitCode } = await import(
   /* @vite-ignore */ '../src/validation/results.mjs' as string);
 const { markdownReport } = await import(/* @vite-ignore */ '../src/validation/report.mjs' as string);
@@ -64,4 +65,32 @@ it('counts scene-dependent rows separately, lists reasons and excludes them from
   expect(md).toContain('Scene-dependent rows: 0 pass, 2 fail');
   expect(md).toContain('clouds at another epoch');
   expect(md).toContain('frame-source');
+});
+
+it.each([true, false])('the committed EPOXI centre and centre/disk are scene diagnostics for verdict %s', (pass) => {
+  const frame = {
+    id: epoxi.id, ss: 4, scene: { bodies: [], notes: [] }, renderMs: 1,
+    rois: epoxi.rois.map((q) => ({ id: q.id, expectedType: q.expected.type,
+      expected: [10, 10, 10, 10], tolerance: [1, 1, 1, 1], upperLimit: [1, 1, 1, 1],
+      rendered: { mean: [10, 10, 10, 10], std: [0, 0, 0, 0], n: 4 },
+      pass: q.id === 'earth-centre' ? pass : true, failing: pass ? [] : ['Y'] })),
+    ratios: epoxi.ratios.map((q) => ({ numerator: q.numerator, denominator: q.denominator,
+      expected: [1, 1, 1, 1], tolerance: [.1, .1, .1, .1], rendered: [1, 1, 1, 1],
+      pass: q.numerator === 'earth-centre' ? pass : true, failing: pass ? [] : ['Y'] })),
+  };
+  const assessed = assessCase(epoxi, frame);
+  const centre = assessed.rois[epoxi.rois.findIndex((q) => q.id === 'earth-centre')];
+  const ratio = assessed.ratios[epoxi.ratios.findIndex((q) => q.numerator === 'earth-centre')];
+  expect(centre.sceneDependence.reason).toContain('one region');
+  expect(centre.sceneDependence.sources.length).toBeGreaterThan(0);
+  expect(ratio.sceneDependence).toEqual(centre.sceneDependence);
+  expect(assessed.rois[epoxi.rois.findIndex((q) => q.id === 'earth-disk-integrated')].sceneDependence).toBeUndefined();
+  expect(tally([assessed])).toEqual({ pass: 4, fail: 0, notRendered: 0, notCompared: 0, sceneDependent: 3 });
+  expect(validationExitCode([assessed], true)).toBe(0);
+  const md = markdownReport({ generatedAt: 'fixture', options: { ss: 4 }, cases: [assessed] });
+  expect(md).toContain('Brightness regions: 2 pass, 0 fail');
+  expect(md).toContain('Ratio rows: 0 pass, 0 fail');
+  expect(md).toContain(`Scene-dependent rows: ${pass ? '3 pass, 0 fail' : '1 pass, 2 fail'}`);
+  expect(md).toContain('earth-centre / earth-disk-integrated:');
+  expect(md).toContain('earth-centre:');
 });

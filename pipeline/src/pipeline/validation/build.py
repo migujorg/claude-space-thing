@@ -595,6 +595,22 @@ def measure(p: Prepared, sub: int = 4) -> dict:
                 "sources": ["LORRI observation: lor_0031736039 (2007-01-22)",
                             "Simon et al. (2015), OPAL, ApJ 812, 55, doi:10.1088/0004-637X/812/1/55; "
                             "MAST doi:10.17909/T9G593, cycle 32 Jupiter map 2025-12-11"]}
+        if p.id == "earth-moon-epoxi-2008" and r.spec.id == "earth-centre":
+            entry["sceneDependence"] = {
+                "reason": "Earth-centre and earth-centre / earth-disk-integrated compare one region of the "
+                          "2008-05-29 frame with Earth drawn using the satellite cloud mosaic of 2026-09-28. "
+                          "Whether cloud lies in that region is weather the app does not hold for 2008. "
+                          "The whole-disk earth-disk-integrated row remains a brightness comparison of cloud "
+                          "statistics, as the case's own note states. Root decided this on 2026-10-07 at "
+                          "19:30 PDT when the cloud-angular-law correction was about to turn both rows from "
+                          "pass to fail: both rows passed until then with a cloud law that was two to eight "
+                          "times too bright at this geometry. The decision rests on what the rows compare, "
+                          "not on either verdict.",
+                "sources": ["EPOXI observation: HV08052902_1000116_001 (2008-05-29)",
+                            "earth-moon-epoxi-2008 case note: renderer cloud epoch 2026-09-28; "
+                            "docs/architecture.md section 6, Earth cloud mosaic",
+                            "Root decision, 2026-10-07 19:30 PDT, epoxi-scene-rows lane brief; "
+                            ".lanes/run/cloud-angular-law/PROPOSAL.md section 4"]}
         roi_json.append(entry)
 
     ratio_json = _ratios(p, roi_json)
