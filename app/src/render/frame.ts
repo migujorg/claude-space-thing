@@ -232,6 +232,24 @@ const ATM_FACTOR_BIN_DEG = 1;
 const atmCache = new Map<string, number[]>();
 const motionNormalization = new MotionNormalization();
 const ellipsoidNormalization = new EllipsoidNormalization(motionNormalization);
+// Map profiles are immutable, replaced when level 0 finishes loading. A moving view still
+// evaluates its actual geometry; a stopped view reuses the result bit for bit. Shortest
+// round-trip float64 strings introduce no geometry cells or extra integration error.
+const referenceTableIds = new WeakMap<object, number>();
+let nextReferenceTableId = 1;
+function referenceTableKey(table: object | null | undefined): number {
+  if (!table) return 0;
+  let id = referenceTableIds.get(table);
+  if (id === undefined) referenceTableIds.set(table, id = nextReferenceTableId++);
+  return id;
+}
+const mappedIntegrals = new WeakMap<ZonalProfile, NormalizationCache>();
+function mappedIntegral(profile: ZonalProfile | undefined, key: string, compute: () => XYZS): XYZS {
+  if (!profile) return compute();
+  let cache = mappedIntegrals.get(profile);
+  if (!cache) mappedIntegrals.set(profile, cache = new NormalizationCache());
+  return cache.get(key, compute);
+}
 /** Scene wiring is supplied by the shell; see the outside-lease diff in this lane handoff. */
 type CalibratedSceneBody = SceneBody & { albedoMeasurementView?: AlbedoMeasurementView | null };
 const lawKey = (l: ResolvedLaw) => `${l.kind}:${l.p}:${l.b}:${l.c}:${l.bs0}:${l.hs}:${l.bc0}:${l.hc}:${l.thetaBar}:${l.K}:${l.hFn}`;
@@ -255,7 +273,8 @@ function lawBond(law: ResolvedLaw): XYZS {
 
 /** The same motion-normalization entry point used by prepareFrame and the opt-in benchmark. */
 export function lawIntegral(law: ResolvedLaw, alpha: number, zonal?: { profile: ZonalProfile; pole: V3 }): XYZS {
-  return motionNormalization.get(law, alpha, zonal);
+  return mappedIntegral(zonal?.profile, `sphere|${lawKey(law)}|${alpha}|${zonal?.pole.join(',')}`,
+    () => motionNormalization.get(law, alpha, zonal));
 }
 
 const worse = (a: Label, b: Label): Label => (LABEL_ORDER.indexOf(a) >= LABEL_ORDER.indexOf(b) ? a : b);
@@ -473,7 +492,8 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
     const measurementView = (b as CalibratedSceneBody).albedoMeasurementView ?? { kind: 'orientation-mean' as const };
     const profile = surface?.albedo?.zonal ?? undefined;
     const referenceIntegral = (lawAt: ResolvedLaw, a: number): XYZS => ellipsoid
-      ? ellipsoidNormalization.reference(lawAt, a, b.radii!, measurementView, profile, b.albedoReferenceNormalization ?? undefined)
+      ? mappedIntegral(profile, `reference|${lawKey(lawAt)}|${a}|${b.radii!.join(',')}|${JSON.stringify(measurementView)}|${referenceTableKey(b.albedoReferenceNormalization)}`,
+        () => ellipsoidNormalization.reference(lawAt, a, b.radii!, measurementView, profile, b.albedoReferenceNormalization ?? undefined))
       : lawIntegral(lawAt, a);
     let pPhi: XYZS | null = b.surfaceUnknown ? null
       : diskModelPPhi(b.diskReflectanceModel, b.orient, R, b.toSun, scale(b.pos, -1), irr);
@@ -520,8 +540,10 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
       warnings.push(`${b.name}: phase extrapolated beyond measured range (${range?.[0]}–${range?.[1]}°) with the spatial law → estimated`);
     }
     let Idisk: XYZS | null = null;
-    if (pPhi) {
-      E = diskIlluminance(pPhi, dAU, R, D, 1);
+    if (pPhi) E = diskIlluminance(pPhi, dAU, R, D, 1);
+    // Earth's absolute surface reflectance sets K below. Its disk photometry supplies
+    // the point E only: no mapped denominator is used by the Earth or atmosphere paths.
+    if (pPhi && !earth) {
       // Normalization: the disk integral of law × map equals p·Φ(α). A zonal map with a constant law:
       // rotation-averaged zonal mean (exact for any rotation phase). A per-texel law, or photometry measured
       // at this geometry: the map (level 0) and law over the actual disk, at this geometry or averaged over
@@ -545,7 +567,8 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
           const toBf = (v: V3): V3 => [Rm[0]*v[0]+Rm[3]*v[1]+Rm[6]*v[2], Rm[1]*v[0]+Rm[4]*v[1]+Rm[7]*v[2], Rm[2]*v[0]+Rm[5]*v[1]+Rm[8]*v[2]];
           const axes: [V3,V3,V3] = [toBf(px),toBf(py),toBf(pz)];
           const pole: V3 = [axes[0][2],axes[1][2],axes[2][2]];
-          const current = ellipsoidNormalization.get(law, alpha, { radii: b.radii!, pole, axes }, profile);
+          const current = mappedIntegral(profile, `current|${lawKey(law)}|${alpha}|${b.radii!.join(',')}|${axes.flat().join(',')}`,
+            () => ellipsoidNormalization.get(law, alpha, { radii: b.radii!, pole, axes }, profile));
           if (atThisGeometry) I = current;
           else E = E!.map((v,k) => I[k] > 0 ? v*current[k]/I[k] : 0) as XYZS;
         }
