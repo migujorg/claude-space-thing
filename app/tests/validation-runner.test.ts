@@ -164,3 +164,14 @@ describe('validate-lib markdownReport', () => {
       .toContain('· HDR f16 (rgba16float) · GPU swiftshader: none\n');
   });
 });
+
+it('computes spatial ratios in one frame and retains scene dependence and sigma', () => {
+  const c = testCase();
+  const sceneDependence = { reason: 'map from another epoch', sources: ['frame-source'] };
+  c.ratios = [{ numerator: 'limb', denominator: 'centre', ratioXYZS: [.5, .5, .5, .5], sigma: [.1, .1, .1, .1],
+    tolerance: [.2, .2, .2, .2], bands: [], comparison: '', method: '', sceneDependence }];
+  const rr = (id: string, m: number): RoiResult => ({ id, kind: 'disk-centre', target: 599, rect: [0, 0, 1, 1],
+    expectedType: 'value', rendered: { mean: [m, m, m, m], std: [0, 0, 0, 0], n: 1 }, pass: true, failing: [] });
+  expect(compareRatios(c, [rr('limb', 60), rr('centre', 100)])[0]).toMatchObject({
+    rendered: [.6, .6, .6, .6], sigma: [.1, .1, .1, .1], sceneDependence, pass: true });
+});

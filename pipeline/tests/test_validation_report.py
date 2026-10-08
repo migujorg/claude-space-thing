@@ -105,3 +105,16 @@ def test_ring_domain_distinguishes_product_coverage_from_published_measurements(
     assert "product's calibrated 0.25–47° domain" in text
     assert "[published measurements beyond 47° exist](../sources/rings-high-phase.md)" in text
     assert "and are not yet included" in text
+
+
+def test_scene_rows_have_separate_tally_and_reasons():
+    run = stub_run()
+    c = run["cases"][0]
+    for q in [*c["rois"], *c["ratios"]]:
+        q["sceneDependence"] = {"reason": "clouds at another epoch", "sources": ["observed-frame"]}
+    text = report.run_section(run, "")
+    assert "Brightness regions: 0 pass, 0 fail" in text
+    assert "Ratio rows: 0 pass, 0 fail" in text
+    assert "Scene-dependent rows: 0 pass, 2 fail" in text
+    assert "clouds at another epoch" in text and "observed-frame" in text
+    assert "0 failing rows: 0 regions and 0 ratio rows" in text

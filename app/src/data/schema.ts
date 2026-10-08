@@ -1587,7 +1587,15 @@ export interface ValidationView {
 export type ValidationRoiKind =
   | 'disk-centre' | 'limb' | 'terminator' | 'point' | 'ring' | 'disk-integrated' | 'sky-near' | 'sky-far';
 
+/** Observation-epoch scene unavailable to the app; comparison stays diagnostic, outside model tallies. */
+export interface ValidationSceneDependence {
+  reason: string;
+  /** Source IDs or explicit citations/product identifiers supporting the epoch mismatch. */
+  sources: string[];
+}
+
 export interface ValidationRoi {
+  sceneDependence?: ValidationSceneDependence;
   id: string;
   kind: ValidationRoiKind;
   note: string | null;
@@ -1622,6 +1630,9 @@ export interface ValidationRoi {
 }
 
 export interface ValidationRatio {
+  sceneDependence?: ValidationSceneDependence;
+  label?: Label;
+  budget?: Record<string, unknown>;
   numerator: string;
   denominator: string;
   ratioXYZS: [number, number, number, number];
