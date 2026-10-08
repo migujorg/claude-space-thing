@@ -701,7 +701,7 @@ def moon_population(pop: str, rows: list[dict], tab: dict, p: dict, templates: d
 
 
 def moon_integration_metadata(core: dict, center: dict) -> dict:
-    """Runtime inputs only: elements stay byte-identical, converted to f64 ICRF epoch states by the app.
+    """Runtime force inputs: elements stay byte-identical; f64 epoch states are stored beside them.
 
     The host monopole includes its satellites. Differential external forces follow the same Newtonian
     law as the catalogue kernel; solar PN / Earth J2 cannot be transplanted to this frame.
@@ -718,7 +718,7 @@ def moon_integration_metadata(core: dict, center: dict) -> dict:
     fm["zonal"]["perturber"] = None
     fm["nonGravitational"] = "none: synthetic irregular moons are massless test particles"
     return {"kind": "host-smallbody-v1", "window": dict(core["window"]), "forceModel": fm,
-            "initialState": "Convert the unchanged stored f32 elements at epochEt to float64 ICRF using center.gm; no rounded Cartesian product replaces the elements.",
+            "initialization": "Stored f64 ICRF epoch states are computed from the unchanged f32 elements using center.gm and retained beside those elements.",
             "budgets": {"label": "synthetic", "individualTruePosition": None, "gpuNumericalKm": None,
                         "cpuNumerical": "All 458 original draws, both 2025-04-04/2028-04-04 edges: maximum 0.042166 km against same-force DOP853; regression threshold 0.1 km. Numerical check only, not an interval certificate.",
                         "gpuAcceptance": "Provisional same-force test threshold 2 km, rounded up from the catalogue GPU report maximum 1.597638 km. Unverified for moons; no transferred certification.",
@@ -785,6 +785,24 @@ def run(ctx: BuildContext) -> None:
     objs = {k: np.concatenate(v) for k, v in obj_cols.items()}
     if not np.all(objs["H"].astype(np.float32) >= cells["hLim"][objs["cell"]].astype(np.float32)):
         raise AssertionError("a synthetic object is brighter than its cell's completeness limit")
+    # Explicit f64 initial states beside the unchanged f32 elements. Use the values AFTER storage rounding,
+    # in the final draw order, so this is the same realization the app used before host propagation.
+    for population in pops_hdr:
+        if not population.get("center"):
+            continue
+        a = slice(population["firstObject"], population["firstObject"] + population["objects"])
+        initial_value = []
+        if population["objects"]:
+            initial_pos, initial_vel = sm.elements_to_icrf(
+                *[objs[k][a].astype(np.float32).astype(np.float64) for k in ("a", "e", "i", "node", "peri", "M")],
+                population["center"]["gm"], AU_KM, cat["obliquity"])
+            initial_value = np.column_stack([initial_pos, initial_vel]).tolist()
+        population["model"]["integration"]["initialState"] = {
+            "value": initial_value, "label": "synthetic",
+            "sources": population["sources"], "epochEt": core_hdr["epochEt"],
+            "frame": f"{population['center']['name']}-relative ICRF", "units": ["km", "km/s"],
+            "indexing": "value[k] is [x,y,z,vx,vy,vz] for firstObject+k; identities/elements are unchanged",
+            "method": "Kepler initialization from the stored f32 elements (not the generator's unrounded draws), center.gm and the product obliquity; f64 JSON numbers beside the original elements"}
     n_obj, n_cell = int(objs["a"].size), int(cells["pop"].size)
     common = {
         "algorithm": sm.ALGORITHM, "seed": res["seed"], "epochEt": core_hdr["epochEt"],

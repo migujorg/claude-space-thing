@@ -27,7 +27,7 @@ import type { Vec3 } from '../../core/vec';
 import { AU_KM, C_KM_S } from '../../core/constants';
 import { SB_OK, SmallBodyPropagator, type NonGrav, type PlanetPositions } from '../../core/smallbody';
 import { coreState, readCore, readNonGrav, type SmallBodyCatalog } from '../../core/smallbodyCatalog';
-import { centerStateFrom, moonIntegration, readSynthetic, syntheticRelativeState, syntheticState, type CenterState, type SyntheticCatalog } from '../../core/smallbodySynthetic';
+import { centerStateFrom, moonIntegration, readSynthetic, syntheticEpochState, syntheticState, type CenterState, type SyntheticCatalog } from '../../core/smallbodySynthetic';
 import { LEVEL_CODE, SmallBodyLight, type ExistsLevel } from '../../core/smallbodyPhotometry';
 import { PICK_SHADER, SELFTEST_SHADER, SYN_MAX_CENTERS, WG, shadeShader, stepShader, syntheticShader, type KernelConfig } from './kernels';
 import { PlanetTable, SAMPLES } from './planetTable';
@@ -510,7 +510,7 @@ export class SmallBodyField {
         const rows = pops.flatMap(p => Array.from({ length:p.objects },(_,k)=>p.firstObject+k));
         const core = new ArrayBuffer(rows.length * 56), dv = new DataView(core);
         rows.forEach((row,i) => {
-          const initial = syntheticRelativeState(syn!,row,syn!.epochEt);
+          const initial = syntheticEpochState(syn!,row);
           [...(initial?.pos ?? [NaN,NaN,NaN]),...(initial?.vel ?? [NaN,NaN,NaN])].forEach((v,k)=>dv.setFloat64(i*56+k*8,v,true));
           dv.setUint8(i*56+48,3); // synthetic label (runtime adapter, no new product)
         });

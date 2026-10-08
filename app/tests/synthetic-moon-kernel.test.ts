@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { centerStateFrom, readSynthetic, syntheticRelativeState, syntheticState, syntheticMoonState } from '../src/core/smallbodySynthetic';
+import { centerStateFrom, readSynthetic, syntheticRelativeState, syntheticState, syntheticMoonState, syntheticEpochState } from '../src/core/smallbodySynthetic';
 import type { SmallBodyForceModel, SyntheticObjectsHeader } from '../src/data/schema';
 import { SmallBodies } from '../src/app/smallbodies';
 import { SmallBodyField } from '../src/gpu/smallbodies/field';
 import { hostForceModel } from '../src/core/smallbody';
 import { PlanetTable } from '../src/gpu/smallbodies/planetTable';
 import { fakeTables, makeTable } from './sb-fixtures';
-import { fixture, loadEphemerisSet } from './core-data';
+import { DATA_DIR, fixture, loadEphemerisSet } from './core-data';
 
 const input = fixture<{ epochEt: number; objects: { row: number; centerId: number; centerGm: number; radiusKm: number; initial: number[]; elements: Record<string, number>; edges: { et: number; state: number[] }[] }[]; provenance: { objectsHeader: SyntheticObjectsHeader } }>('synthetic_moon_all_reference.json');
 const fm = fixture<{ forceModel: SmallBodyForceModel }>('smallbody_reference.json').forceModel;
@@ -14,7 +14,9 @@ const window = { startEt: input.objects[0].edges[0].et, endEt: input.objects[0].
 const header = structuredClone(input.provenance.objectsHeader);
 for (const p of header.populations.filter(p => p.center)) {
   const host = fm.perturbers.find(q => q.naifId === p.center!.naifId)!;
-  p.model.integration = { kind: 'host-smallbody-v1', window, forceModel: hostForceModel(fm,host.naifId,host.gm) };
+  p.firstObject = input.objects.findIndex(o=>o.centerId===host.naifId);
+  p.model.integration = { kind: 'host-smallbody-v1', window, forceModel: hostForceModel(fm,host.naifId,host.gm),
+    initialState:{value:input.objects.filter(o=>o.centerId===host.naifId).map(o=>o.initial),label:'synthetic',sources:p.sources,epochEt:input.epochEt} };
 }
 const packed = makeTable<SyntheticObjectsHeader>([['a','f32'],['e','f32'],['i','f32'],['node','f32'],['peri','f32'],['M','f32'],['H','f32'],['cell','u32'],['pop','u8']], input.objects.map(o => o.elements), (({ count, stride, fields, ...rest }) => rest)(header));
 // The helper header count describes the compact slice, not the original 3-million-row table.
@@ -63,6 +65,32 @@ describe.skipIf(!eph)('production moon motion, all 458 pinned draws', () => {
       expect(selected).not.toBeNull();
     }
   });
+  it('the rebuilt product stores the same epoch states beside the unchanged elements', async (ctx) => {
+    const fs: { existsSync(p:string):boolean; readFileSync(p:string,e:'utf8'):string; openSync(p:string,f:string):number; closeSync(fd:number):void; readSync(fd:number,b:Uint8Array,o:number,n:number,p:number):number } = await import(/* @vite-ignore */ 'node:fs' as string);
+    if(!fs.existsSync(DATA_DIR+'synthetic/objects.json')) return ctx.skip('synthetic products not built');
+    const h = JSON.parse(fs.readFileSync(DATA_DIR+'synthetic/objects.json','utf8')) as SyntheticObjectsHeader;
+    const populations=h.populations.filter(p=>p.center&&p.objects);
+    expect(populations.reduce((n,p)=>n+p.objects,0)).toBe(458);
+    for (const p of populations) {
+      const initial = (p.model.integration as {initialState?:{value:number[][];label:string;epochEt:number;sources:string[]}}).initialState;
+      expect(initial?.value).toHaveLength(p.objects);
+      expect(initial?.label).toBe('synthetic');
+      expect(initial?.epochEt).toBe(h.epochEt);
+      expect(initial?.sources).toEqual(p.sources);
+    }
+    const rows=populations.flatMap(p=>Array.from({length:p.objects},(_,k)=>p.firstObject+k));
+    const bytes=new Uint8Array(rows.length*h.stride),fd=fs.openSync(DATA_DIR+h.bin,'r');
+    try { rows.forEach((row,j)=>expect(fs.readSync(fd,bytes,j*h.stride,h.stride,row*h.stride)).toBe(h.stride)); } finally { fs.closeSync(fd); }
+    let first=0;
+    const compact=populations.map(p=>{const q={...p,firstObject:first};first+=p.objects;return q;});
+    const catalog=readSynthetic({...h,count:rows.length,populations:compact},bytes.buffer);
+    rows.forEach((_,j)=>{
+      const fromProduct=syntheticEpochState(catalog,j)!;
+      expect(Math.hypot(...fromProduct.pos.map((v,k)=>v-input.objects[j].initial[k]))).toBeLessThan(1e-7);
+      expect(Math.hypot(...fromProduct.vel.map((v,k)=>v-input.objects[j].initial[k+3]))).toBeLessThan(1e-13);
+      expect(fromProduct).toEqual(syntheticMoonState(catalog,j,h.epochEt,eph!));
+    });
+  });
   it('missing metadata, missing perturbers and out-of-window motion are unknown', () => {
     const center = centerStateFrom(eph!,10);
     expect(syntheticState(syn,0,window.endEt+1,center)).toBeNull();
@@ -78,11 +106,11 @@ describe.skipIf(!eph)('production moon motion, all 458 pinned draws', () => {
       expect(translated.zonal.perturber).toBeNull();
     }
   });
-  it.skipIf(!((globalThis as {process?:{env?:Record<string,string>}}).process?.env?.MOON_CPU_BENCH))('measures in-process CPU initial conversion and two-host table costs', async () => {
+  it.skipIf(!((globalThis as {process?:{env?:Record<string,string>}}).process?.env?.MOON_CPU_BENCH))('measures in-process CPU stored initializer and two-host table costs', async () => {
     const process: { cpuUsage(p?:{user:number;system:number}):{user:number;system:number} } = await import(/* @vite-ignore */ 'node:process' as string);
     const measure = (f:()=>void) => { const t=process.cpuUsage(); f();const d=process.cpuUsage(t);return (d.user+d.system)/1000; };
     const iterations=100, H=fm.grid.baseStepS;
-    const initCpuMs=measure(()=>{for(let n=0;n<iterations;n++) for(let j=0;j<syn.count;j++) syntheticRelativeState(syn,j,syn.epochEt);})/iterations;
+    const initCpuMs=measure(()=>{for(let n=0;n<iterations;n++) for(let j=0;j<syn.count;j++) syntheticEpochState(syn,j);})/iterations;
     const hosts=[5,6].map(id=>fm.perturbers.find(p=>p.naifId===id)!);
     const tableCpuMs=measure(()=>{for(let n=0;n<iterations;n++) for(const host of hosts) {
       const t=new PlanetTable(hostForceModel(fm,host.naifId,host.gm),eph!,syn.epochEt,{startEt:syn.epochEt,endEt:syn.epochEt+H});

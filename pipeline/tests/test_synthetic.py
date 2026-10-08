@@ -509,6 +509,7 @@ def test_og392_nuclear_h_reproduces_published_photometry_reduction():
     assert r['H_V']['label'] == 'estimated'
 
 
+@pytest.mark.skipif(not HAVE_SB, reason="smallbodies products not built")
 def test_moon_force_translation_preserves_inputs_and_external_set():
     import copy
     import json
@@ -522,3 +523,22 @@ def test_moon_force_translation_preserves_inputs_and_external_set():
         assert m["forceModel"]["sun"]["gm"] == host["gm"]
         assert [p["naifId"] for p in m["forceModel"]["perturbers"]] == [10] + [p["naifId"] for p in core["forceModel"]["perturbers"] if p["naifId"] != host_id]
     assert core == before
+
+
+@pytest.mark.skipif(not HAVE_SYN, reason="synthetic products not built")
+def test_moon_epoch_states_in_product_preserve_stored_elements():
+    """Cartesian states live beside the immutable stored elements, with their synthetic label and sources."""
+    import math
+    header, objects = read_table(OUT / 'synthetic/objects.json')
+    moons = [p for p in header['populations'] if p.get('center') and p['objects']]
+    assert sum(p['objects'] for p in moons) == 458
+    for p in moons:
+        initial = p['model']['integration']['initialState']
+        assert initial['label'] == 'synthetic'
+        assert initial['epochEt'] == header['epochEt']
+        assert set(initial['sources']) == set(p['sources'])
+        a = slice(p['firstObject'], p['firstObject'] + p['objects'])
+        pos, vel = sm.elements_to_icrf(*[objects[k][a].astype(np.float64) for k in ('a','e','i','node','peri','M')],
+                                      p['center']['gm'], header['auKm'], math.radians(header['obliquityArcsec']/3600))
+        expected = np.column_stack([pos, vel])
+        assert np.array_equal(np.asarray(initial['value']), expected)

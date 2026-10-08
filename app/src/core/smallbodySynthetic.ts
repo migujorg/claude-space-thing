@@ -30,6 +30,7 @@ export type CenterState = ((naifId: number, et: number) => { pos: Vec3; vel: Vec
 
 export interface MoonIntegration {
   kind: 'host-smallbody-v1';
+  initialState?: { value: number[][]; label: 'synthetic'; sources: string[]; epochEt: number };
   window: { startEt: number; endEt: number };
   forceModel: SmallBodyForceModel;
 }
@@ -41,13 +42,24 @@ export function moonIntegration(p: SyntheticPopulation): MoonIntegration | null 
     && m.forceModel.sun.gm === p.center.gm ? m : null;
 }
 
+/** Shared initializer for CPU and GPU, serialized f64 states beside the unchanged elements. Legacy
+ * headers without a state payload can still initialize directly from their stored epoch elements. */
+export function syntheticEpochState(s: SyntheticCatalog, j: number): { pos: Vec3; vel: Vec3 } | null {
+  const p = syntheticPopulation(s,j), initial = p ? moonIntegration(p)?.initialState : null;
+  if (!initial) return syntheticRelativeState(s,j,s.epochEt);
+  if (initial.epochEt !== s.epochEt || initial.label !== 'synthetic' || initial.value.length !== p!.objects) return null;
+  const v = initial.value[j-p!.firstObject];
+  if (!v || v.length !== 6 || !v.every(Number.isFinite)) return null;
+  return { pos:[v[0],v[1],v[2]], vel:[v[3],v[4],v[5]] };
+}
+
 const moonCaches = new WeakMap<SyntheticCatalog, WeakMap<PlanetPositions, { props: Map<number, SmallBodyPropagator>; states: Map<number, { et: number; state: Float64Array }> }>>();
 
 /** Same epoch grid, force law and partial step as the GPU batch. Cache grid states, never display states. */
 export function syntheticMoonState(s: SyntheticCatalog, j: number, et: number, planets?: PlanetPositions): { pos: Vec3; vel: Vec3 } | null {
   const pop = syntheticPopulation(s,j);
   if (!pop?.center || !Number.isFinite(et)) return null;
-  const initial = syntheticRelativeState(s,j,s.epochEt);
+  const initial = syntheticEpochState(s,j);
   if (!initial) return null;
   if (et === s.epochEt) return initial;
   const integration = moonIntegration(pop);
