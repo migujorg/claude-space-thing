@@ -380,8 +380,8 @@ variable designations; names product).
 * **No observer parallax.** Directions are barycentric. From the outer planets nearby stars shift by up to
   ~23″ (α Cen from 30 au) — below eye resolution, but a zoomed "enhanced" view would show it. Adding parallax
   (f32, with a label) would cost 4 bytes per record.
-* **Proper motion within the window** is not in the file; over ±18 months the fastest bright star (α Cen,
-  3.7″/yr) moves 5.5″. The app treats `dir` as fixed at `epochEt`.
+* **Proper motion within the window** is not in the file. For example, Barnard's star (10.4″/yr in the
+  comparison above) moves about 15.6″ over 18 months. The app treats `dir` as fixed at `epochEt`.
 * **Brightest stars without spectra.** The 436 stars on the Hipparcos V, B − V route (Betelgeuse, Antares,
   α Cen A/B, Hadar, Acrux, ...: brighter than G = 4 or missing from Gaia) are `estimated`. Since M4 the Sternberg
   catalogues (III/208 + III/207) make 50 of the former ones `derived`, among them Aldebaran, Spica and Polaris.

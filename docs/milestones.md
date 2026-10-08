@@ -101,7 +101,7 @@ Checked against published predictions (tests/app-events-real.test.ts):
 - The 2027-08-02 total eclipse: greatest eclipse within 30 s of 10:07:50 TD, at 25.5°N 33.2°E, gamma 0.1421, duration 6 min 23 s ± 10 s. Published durations use a slightly smaller lunar radius.
 - The other five solar eclipses of the window, and the lunar totals of 2025-09-07 and 2026-03-03 within 60 s. The lunar shadow is geometric, so its magnitudes are a little smaller than published ones.
 - Saturn's equinox on 2025-05-06, and oppositions and elongations on their almanac dates.
-- The JPL CNEOS close approaches: all 2,816 Earth approaches in the window reproduced (median 0.1 s, relative distance 5e-9).
+- The earlier full CNEOS check reproduced 2,816 Earth approaches (median 0.1 s, relative distance 5e-9). Current tests use the closest, first and last comparable approaches from the build record, rather than asserting that historical count for every build.
 
 Curated views start with the longest total solar and lunar eclipses, then:
 
