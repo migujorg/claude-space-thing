@@ -1,6 +1,6 @@
 # Small bodies (M3): every catalogued asteroid and comet
 
-Status: first full build on 2026-09-30. The stage is `smallbodies` (`pipeline/src/pipeline/stages/smallbodies.py`) and the reference propagator is `app/src/core/smallbody.ts`. The numbers below come from `uv run python -m pipeline.sb_report` after `uv run python -m pipeline build --only smallbodies`. Fixtures are regenerated with `uv run python -m pipeline.sb_fixtures`.
+Status: first full build on 2026-09-30. The stage is `smallbodies` (`pipeline/src/pipeline/stages/smallbodies.py`) and the reference propagator is `app/src/core/smallbody.ts`. The numbers below come from `uv run python -m pipeline.sb_report` after `uv run python -m pipeline build --only smallbodies`. Committed propagation references are regenerated explicitly with `uv run python -m pipeline.sb_fixtures`; ordinary rebuilds use `verification/smallbodies.json` instead. The shared product read on 7 October has 1,574,145 rows at 2026-10-04 TDB (ET 844344000), in the 2025-04-04 to 2028-04-04 window. Numerical tables and GPU timings below describe the stated earlier builds.
 
 ## 1. What was built
 
@@ -280,7 +280,7 @@ Products total 215.9 MB (§2). Raw downloads for this stage come to about 1.55 G
 
 ## 9. Tests
 
-- **pytest, 31 small-body tests** (80 in the whole suite, all passing):
+- **Historical pytest run: 31 small-body tests** (80 in the whole suite then, all passing):
   - `test_sb_parsers.py`: MPC packed designations, SBDB pages and non-grav model_pars, NEOWISE, LCDB, Gaia, MPCORB, the ssoBFT reader's band and spin preference, and time-since-perihelion consistency.
   - `test_sb_dynamics.py`:
     - Kepler drift conservation and reversibility for all conic types.
@@ -294,10 +294,10 @@ Products total 215.9 MB (§2). Raw downloads for this stage come to about 1.55 G
   - `test_sb_table.py`: layout alignment, float64 round-trip, and consistency of the built products: NaN ⇔ unknown, sources exist, physRow back-links, no measured diameter alongside diameterFromH, names line count, and SABA coefficients summing to 1.
 - **pytest `test_sb_photometry.py`** (5): class-colour assignment order and aliases, filling of physical records (measured p_V, class median, orbit-class median), the sbpy constants and the spline construction (nodes, end slopes, clipping), and the built products.
 - **vitest, GPU field and photometry** (§11.8): `smallbody-photometry.test.ts` (6) and `smallbody-gpu-table.test.ts` (3). The GPU itself is tested on the device with `node scripts/sb-gpu.mjs` (§11.3).
-- **vitest, 16 small-body tests** (130 in the whole suite at the time; 340 now, all passing):
+- **Historical vitest run: 16 small-body tests** (130 in the whole suite at M3; 340 at the later report update, all passing then):
   - `smallbody-kepler.test.ts`: Stumpff, conservation, reversibility, period closure, elements, obliquity rotation and the step grid.
   - `smallbody-catalog.test.ts`: core, non-grav and names readers, labels and flags.
-  - `smallbody-propagation.test.ts`: elementsToState against Python to 10⁻¹⁴; propagation against Python (0.0 km) and against Horizons within tolerance; the built core holds the fixture states bit for bit.
+  - `smallbody-propagation.test.ts`: elementsToState against Python to 10⁻¹⁴; propagation against Python (0.0 km) and against Horizons within tolerance; committed orbit solutions use their own epochs, while the built core is checked against its build record.
 
 ## 10. Open issues
 
@@ -308,7 +308,7 @@ Products total 215.9 MB (§2). Raw downloads for this stage come to about 1.55 G
 5. **Orbit uncertainty.** Only U and the condition code are carried. There are no covariances or sigma columns, and no per-object uncertainty ellipsoid yet.
 6. **Physical data not yet ingested:**
    - The rest of SsODNet ssoBFT: diameters, albedos, masses, densities and colours with their errors. SsODNet's phase-curve H and G1/G2 are stored, but `core.H` and `core.G` remain the SBDB H-G values (G is `measured` for only 120 objects).
-   - DAMIT shape models. Poles are ingested; shapes are not.
+   - (Done since: the `shapes` stage ingests DAMIT meshes and poles; the app loads them for resolved close-ups.)
    - SDSS MOC colours.
    - The TNO/Centaur albedo compilation. TNOs currently fall back to the all-class median p_V 0.078, which is poor for TNOs.
    - (Done since: class-mean colours for objects without Gaia spectra, from the light stage's `smallbody-class-colors.json`; see §2 `colorClass`.)
@@ -415,7 +415,7 @@ Records (direction and light):
 |---|---|---|
 | strict | position and brightness measured or derived. Brightness = worst of H and phase function at the current phase angle: a V-band H-G1-G2 fit counts only inside its fitted phase range (outside it is extrapolated, hence estimated), and SBDB G only where fitted (120 objects). Comets are never drawn (their laws are estimates). | The Gaia colour where its spectral shape is derived (37,811 objects). Otherwise **brightness only**: the measured V drawn with the Sun's colour (c = 1), which is neutral rather than a plausible asteroid colour. The Y error of that rule is the object's c_Y, which lies in 0.992–1.022 for 98% of the Gaia sample (0.975–1.036 overall). |
 | best | adds estimated inputs: G = 0.15, H-G1-G2 outside its range, estimated positions (pre-1850 epochs), comet laws | Gaia colour (derived or estimated), else the class colour (estimated) |
-| complete | as best (no synthetic small bodies yet) | as best |
+| complete | as best, plus the built synthetic layer (§12) | as best |
 
 At the epoch, seen from 6 au above the Sun, 107,728 objects are admitted at strict and 1,570,433 at best.
 
@@ -448,8 +448,8 @@ All 1,573,014 objects on SwiftShader (headless Chromium, 4 vCPUs shared with oth
 
 ### 11.6 Renderer hook
 
-- **New `app/src/render/extraPoints.ts`.** It holds the extra-source cull dispatch: its own info uniform, and a bind group on the renderer's existing cull pipeline.
-- **`app/src/render/renderer.ts`** (17 lines):
+- **`app/src/render/extraPoints.ts`.** It holds the extra-source cull dispatch: its own info uniform, and a bind group on the renderer's existing cull pipeline.
+- **`app/src/render/renderer.ts`**, at the original field integration:
   - an import;
   - a field `extraPts`;
   - `get gpuDevice()`;
@@ -503,10 +503,18 @@ All 1,573,014 objects on SwiftShader (headless Chromium, 4 vCPUs shared with oth
 4. **Deep encounters and near-Sun objects.** The planetary acceleration is float32 and the table's positions carry up to 0.018 km. After a flyby within ~10⁵ km the GPU drifts from the CPU by up to ~1.5 km (the 2026 RT34 fixture flies by at 21,000 km). Phaethon reaches 1.6 km at the far window edge.
 5. **Deep substep levels run serially in one thread.** Level 16 means 65,536 RK4 substeps. A grazing encounter inside a step can hitch a frame.
 6. **Other limitations:**
-   - Comets are drawn as points with the Sun's colour.
+   - Unresolved field comets use the Sun's colour; the shell now draws admitted nearby/notable comets with a coma and tails (comets.md).
    - Non-V-band H-G1-G2 fits are unused.
    - The checkpoint budget (default 1 GiB) should be tuned per device.
 
 ## 12. The synthetic layer (M6)
 
-The field also draws the synthetic objects of `synthetic/objects` (pipeline stage `synthetic`), at the Complete level only. Their records follow the catalogue's in the same buffer (index = catalogue count + j). They move on fixed Kepler ellipses: mean anomaly in double-single, the rest float32, with accurate sin/cos. They agree with float64 positions of the same two-body law to 1e-7 of the distance (p50); that arithmetic check does not bound missing-force propagation drift. [Audit C3](synthetic-limitations.md#sampled-propagation-drift-c3) supplies historical representative discrepancies while individual position budgets remain unknown. Completeness is a fitted count proxy and discovery yield is aggregate, without an observation veto or one-to-one replacement. Algorithm, verification and screenshots: docs/reports/synthetic-populations.md.
+The field also draws the synthetic objects of `synthetic/objects` (pipeline stage `synthetic`), at the Complete level only. Their records follow the catalogue's in the same buffer (index = catalogue count + j). They move on fixed Kepler ellipses: mean anomaly in double-single, the rest float32, with accurate sin/cos. They agree with float64 positions of the same two-body law to 1e-7 of the distance (p50); that arithmetic check does not bound missing-force propagation drift. [Audit C3](synthetic-limitations.md#sampled-propagation-drift-c3) supplies historical representative discrepancies while individual position budgets remain unknown. Completeness is a fitted count proxy and discovery yield is aggregate, with a separate CFEPS discovery veto for TNOs and no orbit-specific survey veto for the other populations; no discovery has one-to-one replacement. Algorithm, verification and screenshots: docs/reports/synthetic-populations.md.
+
+Resolved catalogue close-ups remain luminous at narrow fields: the point/disk switch
+uses the eye's optical splat footprint, and resolved disks keep their retinal
+luminance without a Ricco brightness weight. The acuity filter uses the visible
+light-weighted adaptation over the fovea's 1° field, so a small bright disk is not
+blurred as a dark empty field (eye/acuity.ts; render/frame.ts). The canonical
+Ganymede and Pluto narrow-field scenes test this; their GPU appearance is recorded
+by the scene baseline, not by the historical small-body renders above.
