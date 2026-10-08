@@ -3,7 +3,8 @@
 import { describe, expect, it } from 'vitest';
 import { AdaptationState, computeEyeFrame } from '../src/eye/model';
 import { DEFAULT_EYE_SETTINGS } from '../src/eye/settings';
-import { VEIL_BLUR_TAPS, backgroundLevel, erf, intendedDisplayLd, ownVeilAxis, ownVeilExact, ownVeilPerPixel, pointAppearance, pointBackground, pointHidden, pointObserver, pointVeil, pointVisible, splatNorm, veilKernelPerPixel, veilLevelSize, veilTexelCoord, veilTexelEmpty, veilTexelOfPixel, type PointSource, type PointSplat, type VeilLevel } from '../src/eye/points';
+import { VEIL_RING, backgroundLevel, erf, intendedDisplayLd, ownVeilAxis, ownVeilExact, ownVeilPerPixel, pointAppearance, pointBackground, pointHidden, pointObserver, pointVeil, pointVisible, splatNorm, veilKernelPerPixel, veilLevelSize, veilTexelCoord, veilTexelEmpty, veilTexelKept, veilTexelOfPixel, type PointSource, type PointSplat, type VeilLevel } from '../src/eye/points';
+import { veilPyramid as veilPyramidTwin, veilRead, type VeilLevelImage } from '../src/eye/veil';
 import { luxFromMagnitude, riccoArea } from '../src/eye/crumey';
 import { fitScatterKernel } from '../src/eye/glare';
 import { SIGMA_MIN_PX } from '../src/render/frame';
@@ -450,57 +451,16 @@ describe('a point source\'s own light in its background, exactly: the product fo
     }
     return im;
   }
-  /** PYRAMID_SHADER on whole images: down, blurH, blurV (levels with weight), accum from the top; acc of every level. */
-  function veilPyramid(W: number, H: number, weights: readonly number[], base: Img, A: Ctor): { w: number; h: number; data: Img }[] {
-    const d = sizes(W, H);
-    expect(weights.length).toBe(d.length);
-    const lvl: Img[] = [base];
-    for (let k = 1; k < d.length; k++) {
-      const { w, h } = d[k], pw = d[k - 1].w, ph = d[k - 1].h, src = lvl[k - 1], o = new A(w * h);
-      const ld = (x: number, y: number) => (x < pw && y < ph ? src[y * pw + x] : 0);
-      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) o[y * w + x] = (ld(2 * x, 2 * y) + ld(2 * x + 1, 2 * y) + ld(2 * x, 2 * y + 1) + ld(2 * x + 1, 2 * y + 1)) * 0.25;
-      lvl.push(o);
-    }
-    const acc: { w: number; h: number; data: Img }[] = new Array(d.length);
-    let above: Img = new A(1), aw = 1, ah = 1, top = true;
-    for (let k = d.length - 1; k >= 0; k--) {
-      const { w, h } = d[k], o = new A(w * h);
-      let blur: Img | null = null;
-      if (weights[k] > 0) {
-        const src = lvl[k], tmp = new A(w * h);
-        blur = new A(w * h);
-        const at = (im: Img, x: number, y: number) => (x >= 0 && y >= 0 && x < w && y < h ? im[y * w + x] : 0);
-        for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-          let v = at(src, x, y) * VEIL_BLUR_TAPS[0];
-          for (let t = 1; t <= 3; t++) v += (at(src, x + t, y) + at(src, x - t, y)) * VEIL_BLUR_TAPS[t];
-          tmp[y * w + x] = v;
-        }
-        for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-          let v = at(tmp, x, y) * VEIL_BLUR_TAPS[0];
-          for (let t = 1; t <= 3; t++) v += (at(tmp, x, y + t) + at(tmp, x, y - t)) * VEIL_BLUR_TAPS[t];
-          blur[y * w + x] = v;
-        }
-      }
-      const prev = above, pw = aw, ph = ah, isTop = top;
-      const ld = (x: number, y: number) => (!isTop && x >= 0 && y >= 0 && x < pw && y < ph ? prev[y * pw + x] : 0);
-      const mix = (p: number, q: number, t: number) => p * (1 - t) + q * t;
-      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-        const cx = (x + 0.5) * 0.5 - 0.5, cy = (y + 0.5) * 0.5 - 0.5;
-        const ix = Math.floor(cx), iy = Math.floor(cy), fx = cx - ix, fy = cy - iy;
-        o[y * w + x] = (blur ? weights[k] * blur[y * w + x] : 0) + mix(mix(ld(ix, iy), ld(ix + 1, iy), fx), mix(ld(ix, iy + 1), ld(ix + 1, iy + 1), fx), fy);
-      }
-      acc[k] = { w, h, data: o };
-      above = o; aw = w; ah = h; top = false;
-    }
-    return acc;
+  /**
+   * PYRAMID_SHADER on whole images (eye/veil.ts, the CPU twin: down, blurH, blurV on the levels with weight, accum
+   * from the top): the accumulation of every level, with the ring it keeps beyond the level's edges.
+   */
+  function veilPyramid(W: number, H: number, weights: readonly number[], base: Img, A: Ctor): VeilLevelImage[] {
+    expect(weights.length).toBe(sizes(W, H).length);
+    return veilPyramidTwin(base, W, H, weights, VEIL_RING, A);
   }
-  /** The read: linear between the texels of level kR on that level's own grid, indices clamped. */
-  function readAt(level: { w: number; h: number; data: Img }, kR: number, x: number, y: number): number {
-    const cx = x / 2 ** kR - 0.5, cy = y / 2 ** kR - 0.5;
-    const ix = Math.floor(cx), iy = Math.floor(cy), fx = cx - ix, fy = cy - iy;
-    const at = (X: number, Y: number) => level.data[Math.min(Math.max(Y, 0), level.h - 1) * level.w + Math.min(Math.max(X, 0), level.w - 1)];
-    return (at(ix, iy) * (1 - fx) + at(ix + 1, iy) * fx) * (1 - fy) + (at(ix, iy + 1) * (1 - fx) + at(ix + 1, iy + 1) * fx) * fy;
-  }
+  /** The read (BG bgAt; eye/veil.ts): linear between the texels of level kR on that level's own grid, into the ring. */
+  const readAt = veilRead;
   let seed = 20261007;
   const rnd = () => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 2 ** 32; };
   /** Positions over the frame, with the edges, the corners and centres just outside it. */
@@ -641,7 +601,7 @@ describe('a point source\'s own light in its background, exactly: the product fo
     expect(half).toBeLessThan(0.8 * inside);
   });
 
-  it('the pyramid\'s grid in one place: level sizes round up, a texel covers 2^k pixels, nothing lies beyond a level\'s edge', () => {
+  it('the pyramid\'s grid in one place: level sizes round up, a texel covers 2^k pixels, the level is dark beyond its edge and its blur keeps one ring', () => {
     // the sizes the renderer allocates (resize: halve and round up until 1 × 1), against the one function
     for (const n0 of [1280, 720, 1283, 723, 1375, 138, 250, 256, 512, 97, 61, 3, 1]) {
       let n = n0;
@@ -654,11 +614,22 @@ describe('a point source\'s own light in its background, exactly: the product fo
     expect([0, 7, 8, 15, 16].map((i) => veilTexelOfPixel(i, 3))).toEqual([0, 0, 1, 1, 2]);
     expect(veilTexelCoord(12, 3)).toBe(1);
     expect(veilTexelCoord(4, 3)).toBe(0);
-    // every pixel of the frame lies in a texel of every level, and the texel after the last holds nothing
+    // every pixel of the frame lies in a texel of every level, and the texel after the last holds nothing of the image
     for (const n0 of [1283, 723, 97]) for (let k = 0; k < 12; k++) {
       expect(veilTexelEmpty(veilTexelOfPixel(n0 - 1, k), veilLevelSize(n0, k))).toBe(false);
       expect(veilTexelEmpty(veilLevelSize(n0, k), veilLevelSize(n0, k))).toBe(true);
       expect(veilTexelEmpty(-1, veilLevelSize(n0, k))).toBe(true);
+    }
+    // the blurred level and the accumulation keep one texel beyond each edge, and no more
+    expect(VEIL_RING).toBe(1);
+    for (const n of [1, 2, 45, 640]) {
+      expect([-2, -1, 0, n - 1, n, n + 1].map((t) => veilTexelKept(t, n))).toEqual([false, true, true, true, true, false]);
+      // the upsample of a kept texel reads kept texels only: texels -1 … n read -1 … n of the level above
+      const above = Math.max(1, Math.ceil(n / 2));
+      for (let t = -1; t <= n; t++) {
+        const parent = t >> 1, neighbour = t & 1 ? parent + 1 : parent - 1;
+        expect(veilTexelKept(parent, above) && veilTexelKept(neighbour, above), `texel ${t} of ${n}`).toBe(true);
+      }
     }
   });
 

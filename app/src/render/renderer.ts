@@ -47,7 +47,7 @@ import { NO_SKY_DISC, skyDisc } from '../eye/fixation';
 import { magnitudeFromLux } from '../eye/crumey';
 import { DEFAULT_EYE_SETTINGS, type EyeSettings } from '../eye/settings';
 import { fitScatterKernel } from '../eye/glare';
-import { backgroundLevel, erf, ownVeilExact, type PointSplat } from '../eye/points';
+import { VEIL_RING, backgroundLevel, erf, ownVeilExact, type PointSplat } from '../eye/points';
 import { DEG2_PER_SR, pupilDiameterMm } from '../eye/pupil';
 import { adaptationStatus, adaptationStatusText, trolands } from '../eye/bleaching';
 import { DARK_LIGHT_CONE, DARK_LIGHT_ROD, response } from '../eye/tonemap';
@@ -552,10 +552,13 @@ export class Renderer {
       levels.push({
         w, h,
         lvl: tex(w, h, 'rgba32float', ST, `pyr lvl ${k}`),
-        tmp: tex(w, h, 'rgba32float', ST, `pyr tmp ${k}`),
-        blur: tex(w, h, 'rgba32float', ST, `pyr blur ${k}`),
-        acc: tex(w, h, 'rgba32float', ST, `pyr acc ${k}`),
-        accR: tex(w, h, 'rgba32float', ST, `pyr accR ${k}`),
+        // The blurred level and the accumulations keep VEIL_RING texels beyond each edge of the level, so that the
+        // frame holds what the pyramid holds on an unbounded dark canvas (PYRAMID_SHADER RING; eye/veil.ts): texel
+        // (x, y) of the level is at (x + VEIL_RING, y + VEIL_RING). The level itself (lvl) is dark beyond the frame.
+        tmp: tex(w + 2 * VEIL_RING, h + 2 * VEIL_RING, 'rgba32float', ST, `pyr tmp ${k}`),
+        blur: tex(w + 2 * VEIL_RING, h + 2 * VEIL_RING, 'rgba32float', ST, `pyr blur ${k}`),
+        acc: tex(w + 2 * VEIL_RING, h + 2 * VEIL_RING, 'rgba32float', ST, `pyr acc ${k}`),
+        accR: tex(w + 2 * VEIL_RING, h + 2 * VEIL_RING, 'rgba32float', ST, `pyr accR ${k}`),
         ub: d.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST }),
         ubR: d.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST }),
       });
@@ -689,10 +692,12 @@ export class Renderer {
 
   /**
    * Test hook (scripts/point-census.mjs --lone): the veil level a point's background is read at, as the shaders
-   * see it. Store units: divide by preExposure for cd/m².
+   * see it, with its ring: `data` is (width + 2·ring) × (height + 2·ring) texels, the level's texel (x, y) at
+   * (x + ring, y + ring). Store units: divide by preExposure for cd/m².
    */
-  async readVeilLevel(): Promise<{ level: number; width: number; height: number; preExposure: number; data: Float32Array }> {
-    const l = this.targets!.levels[this.pointOwn.kR];
+  async readVeilLevel(): Promise<{ level: number; width: number; height: number; ring: number; preExposure: number; data: Float32Array }> {
+    const lv = this.targets!.levels[this.pointOwn.kR];
+    const l = { w: lv.w + 2 * VEIL_RING, h: lv.h + 2 * VEIL_RING, acc: lv.acc };
     const bpr = Math.ceil((l.w * 16) / 256) * 256;
     const buf = this.device.createBuffer({ size: bpr * l.h, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ });
     const enc = this.device.createCommandEncoder();
@@ -704,7 +709,7 @@ export class Renderer {
     buf.destroy();
     const data = new Float32Array(l.w * l.h * 4);
     for (let y = 0; y < l.h; y++) data.set(raw.subarray((y * bpr) / 4, (y * bpr) / 4 + l.w * 4), y * l.w * 4);
-    return { level: this.pointOwn.kR, width: l.w, height: l.h, preExposure: this.hdrPreExposure, data };
+    return { level: this.pointOwn.kR, width: lv.w, height: lv.h, ring: VEIL_RING, preExposure: this.hdrPreExposure, data };
   }
 
   private destroyTargets(): void {
@@ -1759,13 +1764,15 @@ export class Renderer {
     // A level the kernel fit gives no weight (often the finest ones: narrow fields, high resolutions) needs
     // no blur, and its accumulation reads a zero texture instead: the costliest full-resolution passes.
     const used = (k: number) => (this.glareCache.weights[k] ?? 0) > 0;
+    // The blur and the accumulation run over the level and its ring (resize: VEIL_RING texels beyond each edge).
+    const R2 = 2 * VEIL_RING;
     for (let k = 0; k < L.length; k++) {
       if (!used(k)) continue;
-      run(this.pyr.blurH, L[k].w, L[k].h, [{ binding: 0, resource: L[k].lvl.createView() }, { binding: 2, resource: L[k].tmp.createView() }]);
-      run(this.pyr.blurV, L[k].w, L[k].h, [{ binding: 0, resource: L[k].tmp.createView() }, { binding: 2, resource: L[k].blur.createView() }]);
+      run(this.pyr.blurH, L[k].w + R2, L[k].h + R2, [{ binding: 0, resource: L[k].lvl.createView() }, { binding: 2, resource: L[k].tmp.createView() }]);
+      run(this.pyr.blurV, L[k].w + R2, L[k].h + R2, [{ binding: 0, resource: L[k].tmp.createView() }, { binding: 2, resource: L[k].blur.createView() }]);
     }
     for (let k = L.length - 1; k >= 0; k--) {
-      run(this.pyr.accum, L[k].w, L[k].h, [
+      run(this.pyr.accum, L[k].w + R2, L[k].h + R2, [
         { binding: 0, resource: (used(k) ? L[k].blur : t.zero).createView() },
         { binding: 1, resource: (k + 1 < L.length ? L[k + 1][out] : t.zero).createView() },
         { binding: 2, resource: L[k][out].createView() },
