@@ -1,6 +1,6 @@
 # Surface maps: review report
 
-Generated 2026-10-07 (commit b125012) by `cd pipeline && uv run python -m pipeline.surf_report`, from the layer headers and tiles in `app/public/data/surfaces/`. Numbers are computed; prose is hand-written in `pipeline/src/pipeline/surf_report.py`. Contract: docs/architecture.md §4.4; header type `SurfaceLayerHeader` in app/src/data/schema.ts.
+Generated 2026-10-07 (commit 573f1dd) by `cd pipeline && uv run python -m pipeline.surf_report`, from the layer headers and tiles in `app/public/data/surfaces/`. Numbers are computed; prose is hand-written in `pipeline/src/pipeline/surf_report.py`. Contract: docs/architecture.md §4.4; header type `SurfaceLayerHeader` in app/src/data/schema.ts.
 
 ## What the tiles contain
 
