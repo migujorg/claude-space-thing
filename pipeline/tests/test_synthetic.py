@@ -394,7 +394,12 @@ def test_product_statements_disclose_limits_and_motion():
             assert fm["sun"]["naifId"] not in [q["naifId"] for q in fm["perturbers"]]
             assert 10 in [q["naifId"] for q in fm["perturbers"]]
             assert not fm["relativity"]["enabled"] and fm["zonal"]["perturber"] is None
-            assert integration["budgets"]["gpuNumericalKm"] is None
+            budget = integration["budgets"]
+            assert budget["gpuNumericalKm"] == pytest.approx(1.941)
+            assert budget["individualTruePosition"] is None
+            assert "3.408-arcsec" in budget["gpuAcceptance"]
+            assert "not an interval" in budget["gpuAcceptance"]
+            assert "root-gpu/moon-comparison.json" in budget["evidence"]
             from pipeline.download import sha256_file
             assert integration["inputProducts"]["ephem/centers.bin"] == sha256_file(OUT / "ephem/centers.bin")
             assert set(fm["sun"]["sources"] + fm["perturberSources"]).issubset(p["sources"])
