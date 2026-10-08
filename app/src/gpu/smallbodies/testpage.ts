@@ -894,7 +894,11 @@ async function moonAccuracy(): Promise<unknown> {
       if(maxSelectionKm!==0) failures.push(`selection: ${maxSelectionKm} km`);
       // Camera probes above changed the live buffer. Restore this camera before asking for its rays.
       await timedSubmit(et,cam,'complete');
-      const picks=await checkRecordPicks(field,picking?moonPickRows(compact):[0],1e-7);
+      // The pick pass compares squared chords in single precision: a unit direction's own rounding is about 1e-7 rad, so a
+      // 1e-7 tolerance is a coin toss (root's GPU run, 8 October: 3 of 144 exact picks returned nothing at 1e-7, none at 3e-7
+      // or 1e-6). The asked/stored angle below is still held to 1e-7 in double precision.
+      const PICK_PROOF_TOL_RAD=1e-6;
+      const picks=await checkRecordPicks(field,picking?moonPickRows(compact):[0],PICK_PROOF_TOL_RAD);
       for(const pick of picks) {
         if(pick.returnedIndex!==pick.expectedIndex || pick.storedIndex!==pick.expectedIndex || pick.askedStoredAngleRad===null || pick.askedStoredAngleRad>1e-7)
           failures.push(`pick ${pick.kind} at ${et}: ${pick.returnedIndex} vs ${pick.expectedIndex}, stored angle ${pick.askedStoredAngleRad}`);
