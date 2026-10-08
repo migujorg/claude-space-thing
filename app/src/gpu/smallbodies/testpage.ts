@@ -22,6 +22,7 @@ import { luxFromMagnitude, magnitudeFromLux } from '../../eye/crumey';
 import { resolveBinPath } from '../../data/load';
 import { SmallBodyField, type SmallBodyTables } from './field';
 import type { Vec3 } from '../../core/vec';
+import { MOON_EPHEMERIDES, moonCameraState, moonAngularBudget, ARCSEC_PER_RAD, directionAngle, metricSummary } from './moonDiagnostics';
 
 declare global {
   interface Window {
@@ -51,7 +52,7 @@ async function bin(path: string): Promise<ArrayBuffer> {
 
 async function loadEphemeris(): Promise<EphemerisSet> {
   const set = new EphemerisSet();
-  for (const name of ['de442s', 'sat-plu']) {
+  for (const name of MOON_EPHEMERIDES) {
     const h = await json<EphemHeader>(`/data/ephem/${name}.json`);
     set.add(new Ephemeris(h, new Float64Array(await bin(`/data/${h.bin}`))));
   }
