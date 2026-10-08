@@ -24,6 +24,7 @@ if (process.argv.includes('--check') && process.argv.includes('--giant-only')) t
 const baseline = process.argv.find(s => s.startsWith('--baseline='))?.split('=')[1] ?? '18b70e2';
 const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'law-motion-'));
 globalThis.__lawWork = [];
+globalThis.__lawCpuNow = cpuNow;
 const phot = JSON.parse(fs.readFileSync(path.join(app, 'public/data/photometry.json')));
 const scenes = JSON.parse(fs.readFileSync(path.join(app, 'e2e/scenes.json'))).scenes;
 const sets = [
@@ -45,11 +46,11 @@ async function bundle(ref, tag) {
       let contents = ref ? git(['show', `${ref}:${relative}`]) : fs.readFileSync(args.path, 'utf8');
       if (!ref && args.path.endsWith('/spatial.ts') && process.argv.includes('--trace')) {
         contents = contents.replace('const results = spectralIntegral(law, a, zonal.pole, spectrum, R, degree, choices.filter(d => d <= degree), correction);',
-          "const stageStart = performance.now(); const results = spectralIntegral(law, a, zonal.pole, spectrum, R, degree, choices.filter(d => d <= degree), correction); globalThis.__lawWork.push({ method: 'spectral', degree, ms: performance.now()-stageStart });");
+          "const stageStart = globalThis.__lawCpuNow(); const results = spectralIntegral(law, a, zonal.pole, spectrum, R, degree, choices.filter(d => d <= degree), correction); globalThis.__lawWork.push({ method: 'spectral', degree, ms: globalThis.__lawCpuNow()-stageStart });");
         contents = contents.replace('let prev = crescentIntegral(law, a, zonal.pole, zonal.profile, spectrum.knots, n, nb);',
-          "let stageStart = performance.now(); let prev = crescentIntegral(law, a, zonal.pole, zonal.profile, spectrum.knots, n, nb); globalThis.__lawWork.push({ method: 'row', n, ms: performance.now()-stageStart });");
+          "let stageStart = globalThis.__lawCpuNow(); let prev = crescentIntegral(law, a, zonal.pole, zonal.profile, spectrum.knots, n, nb); globalThis.__lawWork.push({ method: 'row', n, ms: globalThis.__lawCpuNow()-stageStart });");
         contents = contents.replace('const value = crescentIntegral(law, a, zonal.pole, zonal.profile, spectrum.knots, n, nb);',
-          "stageStart = performance.now(); const value = crescentIntegral(law, a, zonal.pole, zonal.profile, spectrum.knots, n, nb); globalThis.__lawWork.push({ method: 'row', n, ms: performance.now()-stageStart, change: Math.max(...value.map((v,c)=>Math.abs(v/prev[c]-1))) });");
+          "stageStart = globalThis.__lawCpuNow(); const value = crescentIntegral(law, a, zonal.pole, zonal.profile, spectrum.knots, n, nb); globalThis.__lawWork.push({ method: 'row', n, ms: globalThis.__lawCpuNow()-stageStart, change: Math.max(...value.map((v,c)=>Math.abs(v/prev[c]-1))) });");
       }
       if (args.path.endsWith('/frame.ts') && !contents.includes('export function lawIntegral')) contents += '\nexport { lawIntegral };\n';
       return { contents, loader: 'ts' };
