@@ -3,6 +3,7 @@
 //   /sb-test.html?mode=timing[&chunk=65536] full catalogue: create, one grid step, shade
 //   /sb-test.html?mode=render&scene=above|inside  real-data frame through the renderer (enhanced / eye)
 //   /sb-test.html?mode=moon-accuracy&timestamps=1  compact all-moon reference, restore, picking and timing checks
+//   /sb-test.html?mode=moon-compare&timestamps=1   all moons/times/cameras, baseline/fine-grid/tidal in one JSON
 //   /sb-test.html?mode=synthetic[&syncam=5]       synthetic layer: GPU records vs float64 positions and
 //                                                  photometry, level gating, pick, timing
 //   /sb-test.html?mode=comet                       comet coma shader: rendered flux vs the M1/K1 illuminance
@@ -761,80 +762,176 @@ async function moonAccuracy(): Promise<unknown> {
   const tables = subsetTables(all,[0]);
   tables.synthetic = {objects:packed.buffer,header:{...old,count:originalRows.length,populations:compact,
     counts:{...old.counts,synthetic:originalRows.length}}};
-  const field = await SmallBodyField.create(dev,tables,eph,{backgroundStepsPerUpdate:0,debug:true});
-  const syn = readSynthetic(tables.synthetic.header,tables.synthetic.objects), center = centerStateFrom(eph,10);
+  const production = readSynthetic(tables.synthetic.header,packed.buffer), center = centerStateFrom(eph,10);
   const reference = await json<{ epochEt:number;objects:{initial:number[];edges:{et:number;state:number[]}[]}[] }>('/tests/fixtures/synthetic_moon_all_reference.json');
-  if (reference.epochEt !== syn.epochEt || reference.objects.length !== syn.count) throw new Error('reference/build epoch or count mismatch: regenerate reference, do not patch tolerance');
-  const DAY = 86400;
-  const epochs = [syn.epochEt,tables.coreHeader.window.endEt,syn.epochEt+15*DAY,tables.coreHeader.window.startEt,syn.epochEt-30*DAY,tables.coreHeader.window.endEt,syn.epochEt];
+  if (reference.epochEt !== production.epochEt || reference.objects.length !== production.count) throw new Error('reference/build epoch or count mismatch: regenerate reference, do not patch tolerance');
+  const comparison = params.get('mode') === 'moon-compare', DAY = 86400;
+  const {startEt,endEt} = tables.coreHeader.window, E = production.epochEt;
+  const epochs = comparison
+    ? [E,...[-365,-180,-90,-30,-15,15,30,90,180,365].map(d=>E+d*DAY+12345).filter(t=>t>startEt&&t<endEt),endEt,startEt,endEt,E]
+    : [E,endEt,E+15*DAY,startEt,E-30*DAY,endEt,E];
+  const names = (params.get('variants') ?? (comparison ? 'baseline,fine-grid,tidal' : params.get('variant') ?? 'baseline')).split(',');
+  if (new Set(names).size !== names.length || names.some(n=>!['baseline','fine-grid','tidal'].includes(n))) throw new Error('variants must be unique baseline,fine-grid,tidal');
+  const gridDivisor = Number(params.get('gridDivisor')??4);
+  if (![2,4,8].includes(gridDivisor)) throw new Error('gridDivisor must be 2, 4 or 8');
+  // Match the app default 50-degree field at the runner's actual resolution; report centre-pixel equivalents.
+  const fovY = Number(params.get('fov')??50)*Math.PI/180, height = innerHeight;
+  if (!(fovY>0&&fovY<Math.PI&&height>0)) throw new Error('invalid diagnostic viewport');
+  const pxPerRad = height/(2*Math.tan(fovY/2)), budgetRad = moonAngularBudget(fovY,height);
   const query = dev.features.has('timestamp-query') ? dev.createQuerySet({type:'timestamp',count:2}) : null;
   const resolved = query ? dev.createBuffer({size:16,usage:GPUBufferUsage.QUERY_RESOLVE|GPUBufferUsage.COPY_SRC}) : null;
   const read = query ? dev.createBuffer({size:16,usage:GPUBufferUsage.MAP_READ|GPUBufferUsage.COPY_DST}) : null;
-  const timedSubmit = async (et:number,cam:Vec3,level:'best'|'complete') => {
-    const enc=dev.createCommandEncoder(),start=performance.now();
-    if(query) enc.beginComputePass({timestampWrites:{querySet:query,beginningOfPassWriteIndex:0}}).end();
-    field.update(enc,et,cam,{brightness:level});
-    if(query) {
-      enc.beginComputePass({timestampWrites:{querySet:query,endOfPassWriteIndex:1}}).end();
-      enc.resolveQuerySet(query,0,2,resolved!,0);enc.copyBufferToBuffer(resolved!,0,read!,0,16);
+  const variants = [];
+  for (const name of names) {
+    const divisor = name==='fine-grid' ? gridDivisor : 1;
+    const cpuHeader = structuredClone(tables.synthetic.header);
+    for (const p of cpuHeader.populations) {
+      const law = p.model.integration as {forceModel: {grid:{baseStepS:number}}};
+      law.forceModel.grid.baseStepS /= divisor;
     }
-    const encodingWallMs=performance.now()-start,t=performance.now();
-    dev.queue.submit([enc.finish()]);await dev.queue.onSubmittedWorkDone();
-    const completionWallMs=performance.now()-t;
-    let timestampGpuMs:number|null=null;
-    if(query) {await read!.mapAsync(GPUMapMode.READ);const a=new BigUint64Array(read!.getMappedRange());timestampGpuMs=Number(a[1]-a[0])/1e6;read!.unmap();}
-    return {timestampGpuMs,completionWallMs,encodingWallMs};
-  };
-  const res:unknown[] = [];
-  for (const et of epochs) {
-    const host = Number(params.get('syncam')??5), p = eph.positionSSB(host*100+99,et)!, sun = eph.positionSSB(10,et)!;
-    const camera = params.get('camera')??'earth';
-    const radius = all.coreHeader.forceModel.perturbers.find(p=>p.naifId===host)!.radius;
-    const closeRow = compact.find(p=>p.center!.naifId===host)!.firstObject;
-    const initialTarget = field.stateOf(field.count+closeRow,et)!;
-    const cam:Vec3 = camera==='planet' ? [...p] : camera==='near' ? [p[0],p[1],p[2]+10*radius] : camera==='close'
-      ? [initialTarget.pos[0]+sun[0]+10,initialTarget.pos[1]+sun[1],initialTarget.pos[2]+sun[2]] : [...eph.positionSSB(399,et)!];
-    const timing = await timedSubmit(et,cam,'complete');
-    const coldBatches = field.moonBatchInfo;
-    const debug = await field.readMoonDebugStates(), records = await field.readRecords();
-    let maxCpuKm=0,maxReferenceKm=0,maxVelocityKmS=0,maxDirRad=0,maxSelectionKm=0,maxInitialKm=0;
-    for (let k=0;k<debug.rows.length;k++) {
-      const j=debug.rows[k], st=syntheticState(syn,j,et,center)!, cid=compact.find(p=>p.code===syn.table.get('pop',j))!.center!.naifId, cs=center(cid,et)!;
-      const relative=[...st.pos.map((v,c)=>v-cs.pos[c]),...st.vel.map((v,c)=>v-cs.vel[c])];
-      const got=Array.from(debug.states.subarray(k*6,k*6+6));
-      if (!got.every(Number.isFinite)) throw new Error(`unknown GPU state at moon ${originalRows[j]}, ET ${et}`);
-      maxCpuKm=Math.max(maxCpuKm,Math.hypot(...got.slice(0,3).map((v,c)=>v-relative[c])));
-      maxVelocityKmS=Math.max(maxVelocityKmS,Math.hypot(...got.slice(3).map((v,c)=>v-relative[c+3])));
-      const initial=syntheticState(syn,j,syn.epochEt,center)!, c0=center(cid,syn.epochEt)!;
-      maxInitialKm=Math.max(maxInitialKm,Math.hypot(...initial.pos.map((v,c)=>v-c0.pos[c]-reference.objects[j].initial[c])));
-      const edge=reference.objects[j].edges.find(e=>e.et===et);
-      if(edge) maxReferenceKm=Math.max(maxReferenceKm,Math.hypot(...got.slice(0,3).map((v,c)=>v-edge.state[c])));
-      const selected=field.stateOf(field.count+j,et)!;
-      maxSelectionKm=Math.max(maxSelectionKm,Math.hypot(...selected.pos.map((v,c)=>v-st.pos[c])));
-      const ssba=eph.positionSSB(10,et-1)!,ssbb=eph.positionSSB(10,et+1)!;
-      const rel=st.pos.map((v,c)=>v+sun[c]-cam[c]), tau=Math.hypot(...rel)/C_KM_S;
-      const apparent=rel.map((v,c)=>v-tau*(st.vel[c]+(ssbb[c]-ssba[c])/2)),dist=Math.hypot(...apparent);
-      maxDirRad=Math.max(maxDirRad,Math.hypot(...apparent.map((v,c)=>v/dist-records[(field.count+j)*8+c])));
+    const syn = readSynthetic(cpuHeader,packed.buffer);
+    const field = await SmallBodyField.create(dev,tables,eph,{backgroundStepsPerUpdate:0,debug:true,
+      minCheckpointSpacing:Number(params.get('checkpointSpacing')??8),
+      moonDiagnostics:{gridDivisor:divisor,stableDifferential:name==='tidal'}});
+    const selfTest = field.info.selfTest;
+    const timedSubmit = async (et:number,cam:Vec3,level:'best'|'complete') => {
+      const enc=dev.createCommandEncoder(),start=performance.now();
+      if(query) enc.beginComputePass({timestampWrites:{querySet:query,beginningOfPassWriteIndex:0}}).end();
+      field.update(enc,et,cam,{brightness:level});
+      if(query) {
+        enc.beginComputePass({timestampWrites:{querySet:query,endOfPassWriteIndex:1}}).end();
+        enc.resolveQuerySet(query,0,2,resolved!,0);enc.copyBufferToBuffer(resolved!,0,read!,0,16);
+      }
+      const encodingWallMs=performance.now()-start,t=performance.now();
+      dev.queue.submit([enc.finish()]);await dev.queue.onSubmittedWorkDone();
+      const completionWallMs=performance.now()-t;
+      let timestampGpuMs:number|null=null;
+      if(query) {await read!.mapAsync(GPUMapMode.READ);const a=new BigUint64Array(read!.getMappedRange());timestampGpuMs=Number(a[1]-a[0])/1e6;read!.unmap();}
+      return {timestampGpuMs,completionWallMs,encodingWallMs};
+    };
+    const results = [], failures:string[] = [];
+    if(field.info.precision==='degraded') failures.push('device double-single self-test failed');
+    type Measurement = {id:string;et:number;deltaKm:number[];cpuKm:number;defaultCpuKm:number;referenceKm:number|null;velocityKmS:number;cpuGridChangeKm:number;
+      cameras:Record<string,{geometricRad:number;apparentRad:number;renderedRad:number;distanceKm:number;arcsec:number;pixels:number;position45KmArcsec:number;position45KmPixels:number}>;
+      shadeRad:number;selectionKm:number};
+    const samples:Measurement[] = [];
+    for (const [sampleIndex,et] of epochs.entries()) {
+      const host = Number(params.get('syncam')??5), camera = params.get('camera')??'earth';
+      const sun = eph.positionSSB(10,et)!;
+      const radius = all.coreHeader.forceModel.perturbers.find(p=>p.naifId===host)?.radius;
+      const closeRow = compact.find(p=>p.center!.naifId===host)?.firstObject;
+      if(radius===undefined||closeRow===undefined) throw new Error('syncam must be a built moon host');
+      const target = field.stateOf(field.count+closeRow,et);
+      const cam = moonCameraState(eph,et,host,radius,camera,target?.pos.map((v,k)=>v+sun[k]) as Vec3|undefined);
+      const timing = await timedSubmit(et,cam,'complete');
+      const coldBatches = field.moonBatchInfo;
+      const debug = await field.readMoonDebugStates(), records = await field.readRecords();
+      if(debug.rows.length!==production.count) throw new Error('missing GPU moon batch');
+      const cameraRecords = new Map<string,Float32Array>();
+      for (const cid of [5,6]) for (const view of ['planet','earth','near']) {
+        const key = view==='earth' ? 'earth' : `${view}-${cid}`;
+        if(cameraRecords.has(key)) continue;
+        const radius=all.coreHeader.forceModel.perturbers.find(p=>p.naifId===cid)!.radius;
+        await timedSubmit(et,moonCameraState(eph,et,cid,radius,view),'complete');
+        cameraRecords.set(key,await field.readRecords());
+      }
+      const sunA=eph.positionSSB(10,et-1)!,sunB=eph.positionSSB(10,et+1)!;
+      const apparent = (pos:readonly number[],vel:readonly number[],camera:Vec3) => {
+        const r = pos.map((v,k)=>v+sun[k]-camera[k]), tau=Math.hypot(...r)/C_KM_S;
+        return r.map((v,k)=>v-tau*(vel[k]+(sunB[k]-sunA[k])/2));
+      };
+      const timeSamples:Measurement[]=[];
+      let maxInitialKm=0;
+      for (let k=0;k<debug.rows.length;k++) {
+        const j=debug.rows[k], st=syntheticState(syn,j,et,center)!, baseline=syntheticState(production,j,et,center)!;
+        const pop=compact.find(p=>p.code===syn.table.get('pop',j))!, cid=pop.center!.naifId, cs=center(cid,et)!;
+        const relative=[...st.pos.map((v,c)=>v-cs.pos[c]),...st.vel.map((v,c)=>v-cs.vel[c])];
+        const got=Array.from(debug.states.subarray(k*6,k*6+6));
+        if (!got.every(Number.isFinite)) throw new Error(`unknown GPU state at moon ${originalRows[j]}, ET ${et}`);
+        const gpuPos=got.slice(0,3).map((v,c)=>v+cs.pos[c]),gpuVel=got.slice(3).map((v,c)=>v+cs.vel[c]);
+        const deltaKm=got.slice(0,3).map((v,c)=>v-relative[c]);
+        const cameras:Measurement['cameras']={};
+        const ownRadius=all.coreHeader.forceModel.perturbers.find(p=>p.naifId===cid)!.radius;
+        for(const view of ['planet','earth','near']) {
+          const observer=moonCameraState(eph,et,cid,ownRadius,view);
+          const truth=apparent(st.pos,st.vel,observer),gpu=apparent(gpuPos,gpuVel,observer);
+          const rad=directionAngle(truth,gpu),distanceKm=Math.hypot(...truth);
+          const rr=cameraRecords.get(view==='earth'?'earth':`${view}-${cid}`)!;
+          const renderedRad=directionAngle(truth,Array.from(rr.subarray((field.count+j)*8,(field.count+j)*8+3)));
+          const displacementRad=Math.atan2(45,distanceKm);
+          cameras[view]={geometricRad:directionAngle(st.pos.map((v,c)=>v+sun[c]-observer[c]),gpuPos.map((v,c)=>v+sun[c]-observer[c])),
+            apparentRad:rad,renderedRad,distanceKm,arcsec:renderedRad*ARCSEC_PER_RAD,pixels:renderedRad*pxPerRad,
+            position45KmArcsec:displacementRad*ARCSEC_PER_RAD,position45KmPixels:displacementRad*pxPerRad};
+        }
+        const cpuApparent=apparent(st.pos,st.vel,cam),gpuApparent=apparent(gpuPos,gpuVel,cam);
+        const rec=Array.from(records.subarray((field.count+j)*8,(field.count+j)*8+3));
+        const edge=reference.objects[j].edges.find(e=>e.et===et);
+        const selected=field.stateOf(field.count+j,et)!;
+        const id=`${pop.prefix}:row:${originalRows[j]}`;
+        const row:Measurement={id,et,deltaKm,cpuKm:Math.hypot(...deltaKm),
+          defaultCpuKm:Math.hypot(...gpuPos.map((v,c)=>v-baseline.pos[c])),cpuGridChangeKm:Math.hypot(...st.pos.map((v,c)=>v-baseline.pos[c])),
+          referenceKm:edge?Math.hypot(...got.slice(0,3).map((v,c)=>v-edge.state[c])):null,
+          velocityKmS:Math.hypot(...got.slice(3).map((v,c)=>v-relative[c+3])),cameras,
+          shadeRad:directionAngle(cpuApparent,rec),selectionKm:Math.hypot(...selected.pos.map((v,c)=>v-baseline.pos[c]))};
+        // The rendered ray has its own f32 normalization/first-order arithmetic. Isolate it from state error.
+        const shadeArithmeticRad=directionAngle(gpuApparent,rec);
+        if(camera==='close') cameras.close={geometricRad:directionAngle(st.pos.map((v,c)=>v+sun[c]-cam[c]),gpuPos.map((v,c)=>v+sun[c]-cam[c])),
+          apparentRad:directionAngle(cpuApparent,gpuApparent),renderedRad:row.shadeRad,distanceKm:Math.hypot(...cpuApparent),arcsec:row.shadeRad*ARCSEC_PER_RAD,pixels:row.shadeRad*pxPerRad,
+          position45KmArcsec:Math.atan2(45,Math.hypot(...cpuApparent))*ARCSEC_PER_RAD,position45KmPixels:Math.atan2(45,Math.hypot(...cpuApparent))*pxPerRad};
+        const initial=syntheticState(production,j,E)!,c0=center(cid,E)!;
+        maxInitialKm=Math.max(maxInitialKm,Math.hypot(...initial.pos.map((v,c)=>v-c0.pos[c]-reference.objects[j].initial[c])));
+        timeSamples.push(Object.assign(row,{shadeArithmeticRad}));samples.push(row);
+      }
+      const maxCpuKm=Math.max(...timeSamples.map(s=>s.cpuKm)), maxSelectionKm=Math.max(...timeSamples.map(s=>s.selectionKm));
+      if(et===E&&maxCpuKm>1e-6) failures.push(`epoch initialization: ${maxCpuKm} km`);
+      if(maxInitialKm>1e-5) failures.push(`reference realization: ${maxInitialKm} km`);
+      if(maxSelectionKm!==0) failures.push(`selection: ${maxSelectionKm} km`);
+      const row=field.count,rec=records.slice(row*8,row*8+3),picked=await field.pick([rec[0],rec[1],rec[2]],1e-7);
+      if(picked!==row) failures.push(`pick at ${et}: ${picked} vs ${row}`);
+      // Collect timing without aborting on an angular failure: all variants must survive to JSON.
+      const repeats=Number(params.get('repeats')??(comparison?0:16)),warm=[],baseline=[];
+      if(!Number.isInteger(repeats)||repeats<0) throw new Error('repeats must be a nonnegative integer');
+      for(let n=0;n<repeats;n++) warm.push(await timedSubmit(et,cam,'complete'));
+      for(let n=0;n<repeats;n++) baseline.push(await timedSubmit(et,cam,'best'));
+      const metric=(f:(s:Measurement)=>number)=>metricSummary(timeSamples.map(s=>({value:f(s),id:s.id,et:s.et})));
+      results.push({sampleIndex,et,daysFromEpoch:(et-E)/DAY,camera,timing,warmComplete:warm,baselineBest:baseline,
+        positionKm:metric(s=>s.cpuKm),cameras:Object.fromEntries(['planet','earth','near'].map(view=>[view,metric(s=>s.cameras[view].arcsec)])),
+        maxInitialKm,pick:picked,want:row,batches:coldBatches,samples:timeSamples});
+      log(`${name} t=${((et-E)/DAY).toFixed(4)} d: GPU-minus-CPU max ${maxCpuKm.toFixed(6)} km`);
     }
-    if(et===syn.epochEt && maxCpuKm>1e-6) throw new Error('GPU epoch initialization changed');
-    if(maxInitialKm>1e-5) throw new Error('reference initial realization differs from product');
-    if(maxCpuKm>2 || maxReferenceKm>2.1 || maxSelectionKm!==0) throw new Error(`moon numerical/selection budget exceeded: ${JSON.stringify({maxCpuKm,maxReferenceKm,maxSelectionKm})}`);
-    const row=field.count, rec=records.slice(row*8,row*8+3),picked=await field.pick([rec[0],rec[1],rec[2]],1e-7);
-    if(picked!==row) throw new Error(`GPU picking disagrees: ${picked} vs ${row}`);
-    const repeats=Number(params.get('repeats')??16),warm:unknown[]=[],baseline:unknown[]=[];
-    for(let n=0;n<repeats;n++) warm.push(await timedSubmit(et,cam,'complete'));
-    for(let n=0;n<repeats;n++) baseline.push(await timedSubmit(et,cam,'best'));
-    res.push({et,camera,timing,warmComplete:warm,baselineBest:baseline,maxCpuKm,maxReferenceKm,maxVelocityKmS,maxDirRad,maxSelectionKm,maxInitialKm,pick:picked,want:row,batches:coldBatches,warmBatches:field.moonBatchInfo});
+    await submit(dev,field,E,moonCameraState(eph,E,5,1,'earth'),'best');
+    const off=await field.readRecords();
+    if(off.slice(field.count*8).some(v=>v!==0)) failures.push('synthetic records survive below Complete');
+    const metric=(f:(s:Measurement)=>number)=>metricSummary(samples.map(s=>({value:f(s),id:s.id,et:s.et})));
+    const cameras=Object.fromEntries(['planet','earth','near',...(params.get('camera')==='close'?['close']:[])].map(view=>{
+      const angleRad=metric(s=>s.cameras[view].renderedRad);
+      const passed=angleRad.max<=budgetRad;
+      if(!passed) failures.push(`${view} angular budget: ${angleRad.max*ARCSEC_PER_RAD} > ${budgetRad*ARCSEC_PER_RAD} arcsec`);
+      return [view,{angleRad,geometricRad:metric(s=>s.cameras[view].geometricRad),stateApparentRad:metric(s=>s.cameras[view].apparentRad),
+        angleArcsec:metric(s=>s.cameras[view].arcsec),centrePixels:metric(s=>s.cameras[view].pixels),passed}];
+    }));
+    // Also assert the actually shaded camera ray, not only reconstructed geometric states.
+    const shaded=metric(s=>s.shadeRad);
+    if(shaded.max>budgetRad) failures.push(`rendered ${params.get('camera')??'earth'} ray: ${shaded.max*ARCSEC_PER_RAD} arcsec`);
+    const summary={positionKm:metric(s=>s.cpuKm),defaultCpuKm:metric(s=>s.defaultCpuKm),cpuGridChangeKm:metric(s=>s.cpuGridChangeKm),
+      velocityKmS:metric(s=>s.velocityKmS),cameras,renderedCameraRad:shaded,
+      referenceKm:metricSummary(samples.filter(s=>s.referenceKm!==null).map(s=>({value:s.referenceKm!,id:s.id,et:s.et}))),
+      passed:failures.length===0,failures};
+    log(`${name}: ${JSON.stringify(summary)}`);
+    variants.push({name,gridDivisor:divisor,stableDifferential:name==='tidal',precision:field.info.precision,selfTest,summary,results});
+    field.destroy();
   }
-  await submit(dev,field,syn.epochEt,eph.positionSSB(399,syn.epochEt)!,'best');
-  const off=await field.readRecords();
-  if(off.slice(field.count*8).some(v=>v!==0)) throw new Error('synthetic records survive below Complete');
-  field.destroy();query?.destroy();resolved?.destroy();read?.destroy(); return {precision:field.info.precision,moons:originalRows.length,originalRows,results:res};
+  query?.destroy();resolved?.destroy();read?.destroy();
+  return {mode:comparison?'moon-compare':'moon-accuracy',schema:'moon-comparison-v1',passed:variants.every(v=>v.summary.passed),
+    epochEt:E,window:{startEt,endEt},epochs,moons:originalRows.length,originalRows,
+    budget:{angleRad:budgetRad,angleArcsec:budgetRad*ARCSEC_PER_RAD,centrePixels:budgetRad*pxPerRad,fovDeg:fovY*180/Math.PI,height,
+      reason:'one tenth of the finest half-cycle in Ward/Shlaer eye acuity, capped at one tenth of a centre pixel; numerical allocation only'},
+    variants};
 }
 
 async function main(): Promise<void> {
   const mode = params.get('mode') ?? 'accuracy';
-  const r = mode === 'moon-accuracy' ? await moonAccuracy() : mode === 'timing' ? await timing() : mode === 'render' ? await render() : mode === 'unit' ? await unit() : mode === 'synthetic' ? await synthetic()
+  const r = (mode === 'moon-accuracy' || mode === 'moon-compare') ? await moonAccuracy() : mode === 'timing' ? await timing() : mode === 'render' ? await render() : mode === 'unit' ? await unit() : mode === 'synthetic' ? await synthetic()
     : mode === 'comet' ? await cometGpuFlux() : await accuracy();
   window.__sbResult = r;
 }

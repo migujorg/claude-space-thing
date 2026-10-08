@@ -51,6 +51,11 @@ export interface SmallBodyTables {
 }
 
 export interface SmallBodyFieldOptions {
+  /** DEVICE HARNESS ONLY. Moon grid divisor and algebraically equivalent differential kicks.
+   * Omission leaves production motion unchanged. Neither option changes a physical parameter. */
+  moonDiagnostics?: { gridDivisor?: number; stableDifferential?: boolean };
+  /** Internal harness option forwarded only to a moon child; production leaves it false. */
+  diagnosticStableDifferential?: boolean;
   /** GPU memory for checkpoint states (and the background builder), bytes. Default 1 GiB. */
   checkpointBudgetBytes?: number;
   /** Smallest checkpoint spacing in grid steps (default 8). */
@@ -191,7 +196,7 @@ export class SmallBodyField {
   private readonly nongrav: Map<number, NonGrav>;
   private readonly table: PlanetTable;
   private readonly H: number;
-  private readonly opts: Required<Omit<SmallBodyFieldOptions, 'useFma' | 'synthetic' | 'syntheticDiagnosticColour'>>;
+  private readonly opts: Required<Omit<SmallBodyFieldOptions, 'useFma' | 'synthetic' | 'syntheticDiagnosticColour' | 'moonDiagnostics' | 'diagnosticStableDifferential'>>;
   private readonly spacing: number;
   private readonly slots: number;
 
@@ -400,7 +405,8 @@ export class SmallBodyField {
     this.checkpoints.set(0, this.epochBuf);
     this.pointSources = { buffer: this.records, count: n + S, strideFloats: RECORD_FLOATS };
 
-    const cfg: KernelConfig = { model: this.model, samples: SAMPLES, cKmS: C_KM_S, auKm: AU_KM, photometry: tables.photometry ?? null };
+    const cfg: KernelConfig = { model: this.model, samples: SAMPLES, cKmS: C_KM_S, auKm: AU_KM, photometry: tables.photometry ?? null,
+      diagnosticStableDifferential: options.diagnosticStableDifferential };
     const ro = { type: 'read-only-storage' as const };
     const C = GPUShaderStage.COMPUTE;
     this.stepLayout = d.createBindGroupLayout({
@@ -514,12 +520,17 @@ export class SmallBodyField {
           [...(initial?.pos ?? [NaN,NaN,NaN]),...(initial?.vel ?? [NaN,NaN,NaN])].forEach((v,k)=>dv.setFloat64(i*56+k*8,v,true));
           dv.setUint8(i*56+48,3); // synthetic label (runtime adapter, no new product)
         });
+        const divisor = options.moonDiagnostics?.gridDivisor ?? 1;
+        if (![1,2,4,8].includes(divisor)) throw new Error('diagnostic moon grid divisor must be 1, 2, 4 or 8');
+        const forceModel = divisor === 1 ? integration.forceModel : { ...integration.forceModel,
+          grid: { ...integration.forceModel.grid, baseStepS: integration.forceModel.grid.baseStepS / divisor } };
         const moonHeader: SmallBodyCoreHeader = { ...hdr, count:rows.length, stride:56,
           fields:[{ name:'pos',type:'f64',count:3,offset:0 },{ name:'vel',type:'f64',count:3,offset:24 },
             { name:'posLabel',type:'u8',count:1,offset:48 },{ name:'flags',type:'u16',count:1,offset:50 }],
-          epochEt:syn!.epochEt, window:integration.window, forceModel:integration.forceModel, flagBits:{} };
+          epochEt:syn!.epochEt, window:integration.window, forceModel, flagBits:{} };
         const field = new SmallBodyField(d,{ core,coreHeader:moonHeader },planets,
-          { ...options,synthetic:false,debug:true,checkpointBudgetBytes:16*2**20,chunkObjects:rows.length },st,useFma);
+          { ...options,synthetic:false,debug:true,checkpointBudgetBytes:16*2**20,chunkObjects:rows.length,
+            diagnosticStableDifferential:options.moonDiagnostics?.stableDifferential },st,useFma);
         rows.forEach((row,i)=>{ mapping[row] = offset+field.slotOf(i); });
         this.moonFields.push({ field,rows,offset }); offset += rows.length;
       }
@@ -1056,10 +1067,10 @@ export class SmallBodyField {
   }
 
   /** Device-harness diagnostics; CPU milliseconds are wall time, GPU time requires submitted-work timing. */
-  get moonBatchInfo(): { host: number; objects: number; tableBytes: number; stateBytes: number; checkpoints: number; last: SmallBodyFieldInfo['last'] }[] {
+  get moonBatchInfo(): { host: number; objects: number; tableBytes: number; stateBytes: number; checkpoints: number; gridStepS:number; checkpointSpacingSteps:number; last: SmallBodyFieldInfo['last'] }[] {
     return this.moonFields.map(({field:f,rows})=>({ host:f.model.sun.naifId,objects:rows.length,
       tableBytes:f.table.data.byteLength, stateBytes:(1+f.checkpoints.size+(f.B?1:0))*rows.length*STATE_BYTES+rows.length*64,
-      checkpoints:f.checkpoints.size,last:{...f.info.last} }));
+      checkpoints:f.checkpoints.size,gridStepS:f.H,checkpointSpacingSteps:f.spacing,last:{...f.info.last} }));
   }
 
   /** Test hook: the point-source records ((count + syntheticCount) * 8 floats): catalogue in GPU slot order, then synthetic. */

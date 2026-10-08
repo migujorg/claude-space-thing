@@ -22,6 +22,8 @@ import type { SmallBodyForceModel, SmallBodyPhotometry } from '../../data/schema
 import { df, f32 } from './wgslConst';
 
 export interface KernelConfig {
+  /** Algebraically equivalent external force, diagnostic only; default arithmetic is unchanged. */
+  diagnosticStableDifferential?: boolean;
   model: SmallBodyForceModel;
   /** Planet samples per grid interval (including both ends). */
   samples: number;
@@ -310,7 +312,28 @@ fn kick_accel(xh: vec3f, xl: vec3f, v: vec3f, u: f32, iv: u32, ngi: u32, out: pt
     let d2 = dot(d, d);
     if (d2 < RAD2[b]) { return 1u; }
     let id = inverseSqrt(d2);
-    acc = acc + (GM[b] * id * id * id) * d;
+    if (DIAGNOSTIC_STABLE_DIFFERENTIAL) {
+      // R is perturber - origin. Avoid subtracting two independently rounded large accelerations.
+      // q = (|R-x|^2-|R|^2)/|R|^2; A = (1+q)^(3/2).
+      // f = 1/A - 1 = -q(3+3q+q^2)/(A(1+A)), without cancellation as x/R -> 0.
+      let R = prel(b, iv, s, vec3f(0.0), vec3f(0.0));
+      let x = xh + xl;
+      let R2 = dot(R, R);
+      let q = (dot(x, x) - 2.0 * dot(R, x)) / R2;
+      let w = 1.0 + q;
+      if (abs(q) < 0.5) {
+        let A = w * sqrt(w);
+        let f = -q * (3.0 + q * (3.0 + q)) / (A * (1.0 + A));
+        let invR = inverseSqrt(R2);
+        acc = acc + (GM[b] * invR * invR * invR) * (f * R - (1.0 + f) * x);
+      } else {
+        // No large cancellation near a perturber; avoid q -> -1 losing the separation.
+        let invR = inverseSqrt(R2);
+        acc = acc + GM[b] * (id * id * id * d - invR * invR * invR * R);
+      }
+    } else {
+      acc = acc + (GM[b] * id * id * id) * d;
+    }
     if (i32(b) == J2_INDEX) {
       let zz = -dot(d, POLE);
       let f = J2K * (id * id) * (id * id * id);
@@ -319,7 +342,9 @@ fn kick_accel(xh: vec3f, xl: vec3f, v: vec3f, u: f32, iv: u32, ngi: u32, out: pt
     }
   }
   let bi = tix(iv, NB, s.j0);
-  acc = acc + s.w.x * T[bi].xyz + s.w.y * T[bi + 2u].xyz + s.w.z * T[bi + 4u].xyz + s.w.w * T[bi + 6u].xyz;
+  if (!DIAGNOSTIC_STABLE_DIFFERENTIAL) {
+    acc = acc + s.w.x * T[bi].xyz + s.w.y * T[bi + 2u].xyz + s.w.z * T[bi + 4u].xyz + s.w.w * T[bi + 6u].xyz;
+  }
   let r = sqrt(r2);
   if (C2INV != 0.0) {
     let k = MU_F * C2INV / (r2 * r);
@@ -608,6 +633,7 @@ export function stepShader(cfg: KernelConfig): string {
   return /* wgsl */ `
 ${DF64_WGSL}
 ${perturberConsts(cfg.model)}
+const DIAGNOSTIC_STABLE_DIFFERENTIAL: bool = ${cfg.diagnosticStableDifferential === true};
 const NS: u32 = ${cfg.samples}u;
 const INV_SAMPLE_DT: f32 = ${f32((cfg.samples - 1) / cfg.model.grid.baseStepS)};
 struct FieldU { count: u32, zeroBits: u32, pad0: u32, pad1: u32 };
@@ -648,6 +674,7 @@ export function shadeShader(cfg: KernelConfig): string {
   return /* wgsl */ `
 ${DF64_WGSL}
 ${perturberConsts(cfg.model)}
+const DIAGNOSTIC_STABLE_DIFFERENTIAL: bool = ${cfg.diagnosticStableDifferential === true};
 const NS: u32 = ${cfg.samples}u;
 const INV_SAMPLE_DT: f32 = ${f32((cfg.samples - 1) / cfg.model.grid.baseStepS)};
 const C_KM_S: f32 = ${f32(cfg.cKmS)};
@@ -965,6 +992,7 @@ export function unitTestShader(cfg: KernelConfig): string {
   return /* wgsl */ `
 ${DF64_WGSL}
 ${perturberConsts(cfg.model)}
+const DIAGNOSTIC_STABLE_DIFFERENTIAL: bool = ${cfg.diagnosticStableDifferential === true};
 const NS: u32 = ${cfg.samples}u;
 const INV_SAMPLE_DT: f32 = ${f32((cfg.samples - 1) / cfg.model.grid.baseStepS)};
 struct FieldU { count: u32, zeroBits: u32, mode: u32, iv: u32 };

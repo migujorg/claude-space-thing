@@ -42,11 +42,19 @@ try {
   console.log('[gpu]', `${gpuMode}, adapter ${adapterLabel(adapter)}`);
   const wrongGpu = gpuMismatch(gpuMode, adapter);
   if (wrongGpu) { console.log('[gpu]', wrongGpu); failed = true; }
+  if (res?.mode === 'moon-compare' || res?.mode === 'moon-accuracy') {
+    res.runner = { gpuMode, adapter, query, width, height };
+  }
   console.log(`[done in ${((Date.now() - t0) / 1000).toFixed(0)} s]`);
   if (args.json && res !== undefined) {
     mkdirSync(dirname(resolve(args.json)), { recursive: true });
     writeFileSync(resolve(args.json), JSON.stringify(res, null, 1));
     console.log('wrote', resolve(args.json));
+  }
+  // Numerical comparison modes report every variant before asserting, so failure still writes evidence.
+  if (res?.passed === false) {
+    console.log('[assertion]', 'per-camera moon budget or identity checks failed; inspect JSON variants');
+    failed = true;
   }
   if (args.out) {
     mkdirSync(dirname(resolve(args.out)), { recursive: true });
