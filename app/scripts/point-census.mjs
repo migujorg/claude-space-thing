@@ -222,9 +222,11 @@ const pageLone = async ({ n, lux, line }) => {
     const [p, t] = await Promise.all([R.readPointList(), R.readVeilLevel()]);
     const rec = p.count === 1 ? p.data : p.unseenCount === 1 ? p.unseen : null;
     if (!rec) return null;   // behind a body, or outside the frame
-    // the shaders' read (bgAt): linear between the level's texels on the level's own grid, indices clamped
+    // the shaders' read (bgAt): linear between the level's texels on the level's own grid; at the frame's edge it
+    // continues into the ring the texture keeps beyond the level's edge and stops at the ring's end
     const inv = 2 ** -t.level, cx = rec[0] * inv - 0.5, cy = rec[1] * inv - 0.5, ix = Math.floor(cx), iy = Math.floor(cy), fx = cx - ix, fy = cy - iy;
-    const at = (x, y) => t.data[(Math.min(Math.max(y, 0), t.height - 1) * t.width + Math.min(Math.max(x, 0), t.width - 1)) * 4 + 1] / t.preExposure;
+    const g = t.ring, tw = t.width + 2 * g;
+    const at = (x, y) => t.data[((Math.min(Math.max(y, -g), t.height - 1 + g) + g) * tw + Math.min(Math.max(x, -g), t.width - 1 + g) + g) * 4 + 1] / t.preExposure;
     const tex = (at(ix, iy) * (1 - fx) + at(ix + 1, iy) * fx) * (1 - fy) + (at(ix, iy + 1) * (1 - fx) + at(ix + 1, iy + 1) * fx) * fy;
     return { tex, own: rec[3] * rec[5], ownPerLux: rec[3], level: t.level };
   };

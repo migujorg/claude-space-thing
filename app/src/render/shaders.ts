@@ -3,6 +3,7 @@
 
 import { CIE146, CIE191, CRUMEY, HUNT, PATTANAIK, SRGB, WARD1997_ACUITY } from '../eye/constants';
 import { P3_TO_XYZ, SRGB_TO_XYZ, XYZ_TO_P3, inv3 } from '../eye/display';
+import { VEIL_RING } from '../eye/points';
 import { XYZ_TO_HPE } from '../eye/tonemap';
 import { LAW_WGSL, MASK_HATCH_SHADER, RING_COMMON, RING_SHADER as RING_SHADER_OF, SURFACE_WGSL } from './shaders-m2';
 import { FORESHORTEN_MIN_MU } from './surface';
@@ -318,6 +319,9 @@ fn displayChroma(xyz: vec3f, k: f32) -> vec3f {
  * A veil level's texture at a full-resolution pixel position, linear between its texels. Texel t of level k covers
  * the pixels [t·2^k, (t+1)·2^k): the levels' sizes round up, so a texture's own size is not the frame's over 2^k,
  * and a read scaled by the texture's size would be displaced in a frame that is not a multiple of 2^k. inv = 2^-k.
+ * The texture keeps VEIL_RING texels beyond each edge of its level (PYRAMID_SHADER RING; eye/points.ts): texel t is
+ * at t + VEIL_RING, and at the frame's edge the read continues into the ring, as the level does on an unbounded dark
+ * canvas, and stops at the ring's end (eye/veil.ts veilRead).
  */
 const BG = /* wgsl */ `
 /** A full-resolution position (px) in a level's texel coordinates; inv = 2^-k (eye/points.ts veilTexelCoord). */
@@ -327,9 +331,10 @@ fn veilTexelCoord(px: f32, inv: f32) -> f32 {
 fn bgAt(t: texture_2d<f32>, px: vec2f, inv: f32) -> vec4f {
   let d = vec2i(textureDimensions(t));
   let c = vec2f(veilTexelCoord(px.x, inv), veilTexelCoord(px.y, inv));
-  let i0 = vec2i(floor(c));
-  let fr = c - vec2f(i0);
-  let l = vec2i(0);
+  let f0 = floor(c);
+  let i0 = vec2i(f0) + ${VEIL_RING};   // texel t of the level is at t + VEIL_RING in the texture
+  let fr = c - f0;
+  let l = vec2i(0);                    // the texture's own first and last texel: the ring's ends
   let h = d - 1;
   let a = mix(textureLoad(t, clamp(i0, l, h), 0), textureLoad(t, clamp(i0 + vec2i(1, 0), l, h), 0), fr.x);
   let b = mix(textureLoad(t, clamp(i0 + vec2i(0, 1), l, h), 0), textureLoad(t, clamp(i0 + vec2i(1, 1), l, h), 0), fr.x);
@@ -1106,9 +1111,13 @@ fn veilLevelSize(n0: i32, k: i32) -> i32 {
 fn veilTexelOfPixel(i: i32, k: i32) -> i32 {
   return i >> u32(k);
 }
-/** Zero beyond the edge: a texel outside its level holds nothing (PYRAMID_SHADER load). The read clamps instead. */
+/** Dark beyond the frame: a texel outside its level holds nothing of the image (PYRAMID_SHADER load: the blur's source). */
 fn veilTexelEmpty(t: i32, n: i32) -> bool {
   return t < 0 || t >= n;
+}
+/** A texel the blurred level and the accumulation hold: the level's own and the ring around them (PYRAMID_SHADER RING). */
+fn veilTexelKept(t: i32, n: i32) -> bool {
+  return t >= -${VEIL_RING} && t < n + ${VEIL_RING};
 }
 
 /**
@@ -1136,20 +1145,21 @@ fn ownAxis(c: f32, n0: i32) -> array<f32, 16> {
   }
   let K = i32(own.levels);
   let kR = i32(own.kR);
-  // The read (bgAt): two texels of level kR. l holds the read's weights on texels a, a+1, a+2 of the current level.
+  // The read (bgAt): two texels of level kR, continuing into the ring and stopping at its end. l holds the read's
+  // weights on texels a, a+1, a+2 of the current level.
   var n = veilLevelSize(n0, kR);
   let cc = veilTexelCoord(c, E.pts.w);
   let i0 = i32(floor(cc));
   let fr = cc - f32(i0);
-  let t0 = clamp(i0, 0, n - 1);
+  let t0 = clamp(i0, -${VEIL_RING}, n - 1 + ${VEIL_RING});
   var a = t0;
   var l = vec3f(1.0 - fr, 0.0, 0.0);
-  l[clamp(i0 + 1, 0, n - 1) - t0] += fr;
+  l[clamp(i0 + 1, -${VEIL_RING}, n - 1 + ${VEIL_RING}) - t0] += fr;
   var scale = E.pts.w;
   for (var k = kR; k < K; k++) {
     if (k > kR) {
       // One more upsampling of the accumulation: a texel takes 3/4 of its parent and 1/4 of the parent's neighbour
-      // on its side; a texel beyond the level's edge holds nothing.
+      // on its side, ring texels included (for a read inside the ring both are always kept).
       n = veilLevelSize(n0, k);
       let b = (a - 1) >> 1u;
       var m = vec3f(0.0);
@@ -1159,8 +1169,8 @@ fn ownAxis(c: f32, n0: i32) -> array<f32, 16> {
         let t = a + j;
         let par = t >> 1u;
         let nb = select(par - 1, par + 1, (t & 1) == 1);
-        if (!veilTexelEmpty(par, n)) { m[par - b] += 0.75 * wt; }
-        if (!veilTexelEmpty(nb, n)) { m[nb - b] += 0.25 * wt; }
+        if (veilTexelKept(par, n)) { m[par - b] += 0.75 * wt; }
+        if (veilTexelKept(nb, n)) { m[nb - b] += 0.25 * wt; }
       }
       a = b;
       l = m;
@@ -1526,6 +1536,15 @@ const W1: f32 = 0.24203623;
 const W2: f32 = 0.05400558;
 const W3: f32 = 0.00443305;
 
+// The frame's edge (docs/eye-model.md §3; eye/veil.ts is the CPU twin). The scene beyond the frame is dark, and light
+// scattered beyond the frame is lost: the same pyramid on an unbounded dark canvas, read inside the frame. A level's
+// blur puts light into the texels just beyond the level's edge, and the upsampling of the level below reads them.
+// So the blurred level (tmp, blur) and the accumulations keep RING texels beyond each edge of their level: texel t of
+// the level is at t + RING there. The level itself (lvl: blurH's source) has none, and "load" reads it as zero beyond
+// its edge, which is exact. One texel is enough: texels -1 … n of a level read -1 … n of the level above.
+const RING: i32 = ${VEIL_RING};
+
+/** Seven taps about p along dir, in srcA's own texel coordinates; nothing beyond srcA's edge. */
 fn blur(p: vec2i, dir: vec2i) -> vec4f {
   var s = load(srcA, p) * W0;
   s += (load(srcA, p + dir) + load(srcA, p - dir)) * W1;
@@ -1534,13 +1553,15 @@ fn blur(p: vec2i, dir: vec2i) -> vec4f {
   return s;
 }
 
+// srcA is the level (no ring), dst its blur along x with the ring: dst's texel p is the level's texel p - RING.
 @compute @workgroup_size(8, 8) fn blurH(@builtin(global_invocation_id) g: vec3u) {
   let p = vec2i(g.xy);
   let d = vec2i(textureDimensions(dst));
   if (p.x >= d.x || p.y >= d.y) { return; }
-  textureStore(dst, p, blur(p, vec2i(1, 0)));
+  textureStore(dst, p, blur(p - RING, vec2i(1, 0)));
 }
 
+// srcA (blurH's output) and dst both carry the ring: the same texel coordinates.
 @compute @workgroup_size(8, 8) fn blurV(@builtin(global_invocation_id) g: vec3u) {
   let p = vec2i(g.xy);
   let d = vec2i(textureDimensions(dst));
@@ -1552,10 +1573,12 @@ fn blur(p: vec2i, dir: vec2i) -> vec4f {
 // top level). The pyramid runs twice per frame: on the physical image (the veil on the retina: adaptation,
 // visibility thresholds) and on the overflow image (the viewer's glare that is painted, eye-model.md §3).
 
+/** The level above, read linearly at the centre of the level texel p (which may be a ring texel); t carries its ring. */
 fn upsample(t: texture_2d<f32>, p: vec2i) -> vec4f {
   let c = (vec2f(p) + 0.5) * 0.5 - 0.5;
-  let i0 = vec2i(floor(c));
-  let fr = c - vec2f(i0);
+  let f0 = floor(c);
+  let i0 = vec2i(f0) + RING;
+  let fr = c - f0;
   let a = mix(load(t, i0), load(t, i0 + vec2i(1, 0)), fr.x);
   let b = mix(load(t, i0 + vec2i(0, 1)), load(t, i0 + vec2i(1, 1)), fr.x);
   return mix(a, b, fr.y);
@@ -1565,7 +1588,7 @@ fn upsample(t: texture_2d<f32>, p: vec2i) -> vec4f {
   let p = vec2i(g.xy);
   let d = vec2i(textureDimensions(dst));
   if (p.x >= d.x || p.y >= d.y) { return; }
-  textureStore(dst, p, lvl.weight * load(srcA, p) + upsample(srcB, p));
+  textureStore(dst, p, lvl.weight * load(srcA, p) + upsample(srcB, p - RING));   // dst's texel p is the level's p - RING
 }
 `;
 
@@ -1637,7 +1660,7 @@ fn adaptSample(p: vec2i) -> AdaptSample {
     let om = pixelSolidAngle(F, ndc);
     let ext = textureLoad(extTex, p, 0) / F.proj.w;
     let pt = textureLoad(ptTex, p, 0) / F.proj.w;
-    ret = E.glare.x * ext + textureLoad(veilTex, p, 0) / F.proj.w + analyticVeil(E, dir);
+    ret = E.glare.x * ext + textureLoad(veilTex, p + ${VEIL_RING}, 0) / F.proj.w + analyticVeil(E, dir);   // the veil texture keeps a ring
     let lc = log(max(ret.y, 0.0) + E.dark.x);
     let lr = log(max(ret.w, 0.0) + E.dark.y);
     // Fixations drawn to the objects in proportion to their light (the unscattered scene, not the glare
@@ -1856,7 +1879,7 @@ fn hash(p: vec2u) -> f32 {
   var chroma = WHITE_XYZ;
   if (perc.y > 0.0) { chroma = displayChroma(perc.xyz, colourK(perc.y, Ld)); }
   // Display-linear, relative to display white (SDR white on HDR), plus the painted glare.
-  let xyzD = chroma * (Ld / E.disp.w) + textureLoad(paintTex, p, 0).xyz / E.disp.w;
+  let xyzD = chroma * (Ld / E.disp.w) + textureLoad(paintTex, p + ${VEIL_RING}, 0).xyz / E.disp.w;   // the glare texture keeps a ring
   let Yd = xyzD.y;
   var rgb = toOutRgb(xyzD);
   // The output's ceiling relative to white: 1 on SDR, HDR peak / white on HDR (docs/eye-model.md §7).
