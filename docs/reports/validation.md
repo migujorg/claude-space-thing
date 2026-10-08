@@ -757,11 +757,11 @@ Run of 2026-10-08 01:52 UTC (git d1b5e33, data built 2026-10-08 01:23), reality 
 | `earth-himawari9-2026` | terminator / disk-centre | 0.4636 ± 0.04 | 0.2731 | — | -9.619 | **fail** (XYZS) |
 | `earth-moon-epoxi-2008` | earth-disk-integrated | 1616 ± 1.6e+02 | 1640 | 1.015 | +0.3 | pass |
 | `earth-moon-epoxi-2008` | moon-disk-integrated | 164.3 ± 16 | 157.1 | 0.956 | -0.9 | pass |
-| `earth-moon-epoxi-2008` | earth-centre | 3260 ± 4.8e+02 | 3142 | 0.964 | -0.5 | pass |
+| `earth-moon-epoxi-2008` | earth-centre | 3260 ± 4.8e+02 | 3142 | 0.964 | -0.5 | scene-dependent (pass) |
 | `earth-moon-epoxi-2008` | sky-near | ≤ 183.6 | 0 | — | — | pass |
 | `earth-moon-epoxi-2008` | sky-far | ≤ 63.72 | 0 | — | — | pass |
 | `earth-moon-epoxi-2008` | moon-disk-integrated / earth-disk-integrated | 0.1017 ± 0.00077 | 0.09576 | — | -15.27 | scene-dependent (**fail** (XYS)) |
-| `earth-moon-epoxi-2008` | earth-centre / earth-disk-integrated | 2.018 ± 0.22 | 1.916 | — | -0.9315 | pass |
+| `earth-moon-epoxi-2008` | earth-centre / earth-disk-integrated | 2.018 ± 0.22 | 1.916 | — | -0.9315 | scene-dependent (pass) |
 | `europa-nh-lorri-2007` | disk-centre | 721.1 ± 43 | 650 | 0.901 | -3.3 | **fail** (XY) |
 | `europa-nh-lorri-2007` | limb | 843.4 ± 48 | 759.2 | 0.900 | -3.5 | **fail** (XY) |
 | `europa-nh-lorri-2007` | terminator | 219.9 ± 44 | 168.6 | 0.767 | -2.3 | **fail** (XY) |
@@ -852,7 +852,9 @@ Run of 2026-10-08 01:52 UTC (git d1b5e33, data built 2026-10-08 01:23), reality 
 
 Scene-dependent comparisons are diagnostic and excluded from brightness and ratio tallies:
 
+* `earth-moon-epoxi-2008` earth-centre: Earth-centre and earth-centre / earth-disk-integrated compare one region of the 2008-05-29 frame with Earth drawn using the satellite cloud mosaic of 2026-09-28. Whether cloud lies in that region is weather the app does not hold for 2008. The whole-disk earth-disk-integrated row remains a brightness comparison of cloud statistics, as the case's own note states. Root decided this on 2026-10-07 at 19:30 PDT when the cloud-angular-law correction was about to turn both rows from pass to fail: both rows passed until then with a cloud law that was two to eight times too bright at this geometry. The decision rests on what the rows compare, not on either verdict. Sources: EPOXI observation: HV08052902_1000116_001 (2008-05-29); earth-moon-epoxi-2008 case note: renderer cloud epoch 2026-09-28; docs/architecture.md section 6, Earth cloud mosaic; Root decision, 2026-10-07 19:30 PDT, epoxi-scene-rows lane brief; .lanes/run/cloud-angular-law/PROPOSAL.md section 4.
 * `earth-moon-epoxi-2008` moon-disk-integrated / earth-disk-integrated: The ratio depends on Earth's clouds and surface visibility at 2008-05-29; the app holds clouds from another epoch. The existing budget has no Earth scene variation term: the held calibration document gives no rotational-variation value. Sources: EPOXI observation: HV08052902_1000116_001 (2008-05-29); Livengood et al. (2011), Astrobiology 11, 907-930, doi:10.1089/ast.2011.0614 (cited by the archive; paper needed for an Earth variation budget); epoxi-cal-pipeline-summary-2014, section 3, pp. 13-14.
+* `earth-moon-epoxi-2008` earth-centre / earth-disk-integrated: Earth-centre and earth-centre / earth-disk-integrated compare one region of the 2008-05-29 frame with Earth drawn using the satellite cloud mosaic of 2026-09-28. Whether cloud lies in that region is weather the app does not hold for 2008. The whole-disk earth-disk-integrated row remains a brightness comparison of cloud statistics, as the case's own note states. Root decided this on 2026-10-07 at 19:30 PDT when the cloud-angular-law correction was about to turn both rows from pass to fail: both rows passed until then with a cloud law that was two to eight times too bright at this geometry. The decision rests on what the rows compare, not on either verdict. Sources: EPOXI observation: HV08052902_1000116_001 (2008-05-29); earth-moon-epoxi-2008 case note: renderer cloud epoch 2026-09-28; docs/architecture.md section 6, Earth cloud mosaic; Root decision, 2026-10-07 19:30 PDT, epoxi-scene-rows lane brief; .lanes/run/cloud-angular-law/PROPOSAL.md section 4.
 * `jupiter-nh-lorri-2007` disk-centre: The observed centre is in Jupiter's 2007 equatorial zone; the app holds the OPAL 2025-12-11 map, not that atmospheric scene at the observation epoch. Sources: LORRI observation: lor_0031736039 (2007-01-22); Simon et al. (2015), OPAL, ApJ 812, 55, doi:10.1088/0004-637X/812/1/55; MAST doi:10.17909/T9G593, cycle 32 Jupiter map 2025-12-11.
 * `jupiter-nh-lorri-2007` limb / disk-centre: The observed centre is in Jupiter's 2007 equatorial zone; the app holds the OPAL 2025-12-11 map, not that atmospheric scene at the observation epoch. Sources: LORRI observation: lor_0031736039 (2007-01-22); Simon et al. (2015), OPAL, ApJ 812, 55, doi:10.1088/0004-637X/812/1/55; MAST doi:10.17909/T9G593, cycle 32 Jupiter map 2025-12-11.
 * `jupiter-nh-lorri-2007` terminator / disk-centre: The observed centre is in Jupiter's 2007 equatorial zone; the app holds the OPAL 2025-12-11 map, not that atmospheric scene at the observation epoch. Sources: LORRI observation: lor_0031736039 (2007-01-22); Simon et al. (2015), OPAL, ApJ 812, 55, doi:10.1088/0004-637X/812/1/55; MAST doi:10.17909/T9G593, cycle 32 Jupiter map 2025-12-11.
@@ -860,13 +862,13 @@ Scene-dependent comparisons are diagnostic and excluded from brightness and rati
 
 **Regions: 43 pass, 26 fail, 0 not rendered, 0 not compared.**
 
-**Brightness regions: 21 pass, 25 fail, 0 not rendered, 0 not compared.**
+**Brightness regions: 20 pass, 25 fail, 0 not rendered, 0 not compared.**
 
 **Sky upper limits: 22 pass, 0 fail, 0 not rendered, 0 not compared.**
 
-**Ratio rows: 20 pass, 22 fail, 0 not rendered, 0 not compared.**
+**Ratio rows: 19 pass, 22 fail, 0 not rendered, 0 not compared.**
 
-**Scene-dependent rows: 0 pass, 5 fail, 0 not rendered, 0 not compared.**
+**Scene-dependent rows: 2 pass, 5 fail, 0 not rendered, 0 not compared.**
 
 How each body was drawn:
 
