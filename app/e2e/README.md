@@ -125,6 +125,15 @@ real-time scene fails only if a star goes back and forth. Exit 1 on a failure.
 time, and what is left of its light in the background it is judged against must be under 10⁻⁶ of it (10⁻³ where
 the HDR targets are half float).
 
+### The veil at the edges
+
+`node scripts/veil-edges.mjs --gpu hardware` checks that the veil pyramid holds, inside the frame, what it holds on
+an unbounded dark canvas (docs/eye-model.md §3 "The frame's edge"). It runs the renderer's own pyramid passes on the
+frame's input at the frame's size and again on a canvas with a dark margin as wide as the coarsest weighted texel,
+for a uniform frame at 1280 × 720 and 1283 × 723 and for three scenes of the suite (`--scenes a,b` for others). The
+two must agree within 10⁻⁶ of the peak veil in every pixel; on the GPU they agree to the bit. Run it after any
+change to the pyramid, its textures or their readers. Exit 1 on a failure.
+
 ## Running
 
 ```sh
