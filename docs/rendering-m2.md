@@ -100,6 +100,17 @@ relief along the terminator (12 tiles, 91 MiB at 960×540).
 
 ## 2. Spatial photometric models and the normalization
 
+Bare Hapke motion normalization reads `hapke-phase.json`, built by
+`albedo_reference` through the app's converged integrator. Cubic phase cells factor
+out the particle/opposition term, resolving Pluto's narrow coherent peak without
+main-thread construction. The bare lookup contract is 1e-5 relative over
+0–179.9°, first use below 5 ms and moving median below 0.1 ms CPU. The loader checks
+exact law parameters and the shipped integrator source hash. Missing/stale tables
+or phases beyond their crescent-width domain use one fixed order and a warning
+naming the body. Mapped Hapke normalization remains the older cached 24×24 rule;
+it needs a separately verified representation to meet 1e-4 and 0.1 ms. The current
+2.5e-3 mapped test allowance is a regression guard, not that accuracy claim.
+
 Available models (`schema.ts` `SpatialPhotometricModel`; float64 reference in `spatial.ts`, mirrored in WGSL):
 
 - Lambert.

@@ -338,3 +338,16 @@ describe('point or disk: decided by the eye\'s point spread as drawn (docs/eye-m
     }
   });
 });
+
+describe('unavailable bare Hapke normalization product', () => {
+  it('uses a bounded fallback and names the affected body in the renderer warning', async () => {
+    const {installHapkePhaseTables} = await import('../src/render/spatial');
+    installHapkePhaseTables(null,null);
+    const eye = computeEyeFrame(DEFAULT_EYE_SETTINGS, eyeState(), 'eye', 0, null);
+    const s = snap([body(1e5, {name:'Hapke fixture', spatialModel:{kind:'hapke', w:.5, b:.2, c:.3, bs0:1, hs:.02, thetaBarDeg:10}})],60);
+    const p = prepareFrame(s,cameraGeom(s,W,H,1e-7),eye,1e-9);
+    expect(p.warnings.join(' ')).toMatch(/Hapke fixture: bare Hapke phase table missing or stale.*fixed-order/);
+    expect(p.resolved[0].K.every(Number.isFinite)).toBe(true);
+    expect(p.resolved[0].lit).toBe(true);
+  });
+});

@@ -424,10 +424,10 @@ export function prepareFrame(snap: SceneSnapshot, g: CameraGeom, eye: EyeFrame, 
     // Spatial law at this phase angle (Lambert when none is measured or its fit does not cover α).
     let law = LAMBERT_LAW;
     const lr = resolveLaw(b.spatialModel, alpha);
-    const hapkeIssue = hapkePhaseTableIssue(law, alpha);
-    if (hapkeIssue) warnings.push(`${b.name}: ${hapkeIssue}`);
     if ('error' in lr) warnings.push(`${b.name}: ${lr.error} → Lambert spatial distribution`);
     else law = lr.law;
+    const hapkeIssue = hapkePhaseTableIssue(law, alpha);
+    if (hapkeIssue) warnings.push(`${b.name}: ${hapkeIssue}`);
     // Surface maps need the body-fixed frame.
     let surface = b.orient && b.surface && opts.surfaces ? opts.surfaces(b) : null;
     if (!b.orient && b.surface && (b.surface.albedo || b.surface.height)) warnings.push(`${b.name}: orientation unknown → surface maps not shown`);

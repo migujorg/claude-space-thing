@@ -262,6 +262,7 @@ Stages (`config.STAGES`): `time`, `ephemeris`, `light`, `surfaces`, `albedo_refe
 | `verification/orientation.json` | `bodies` | Build record: SPICE's body-fixed → J2000 matrices (pxform) from the kernel files `orient/earth` and `orient/moon` were copied from, at 16 epochs inside every segment, with the sha256 of those kernels and products. Not read by the app |
 | `verification/smallbodies.json` | `smallbodies` | Build record: for the verification objects, their rows and states as written to `smallbodies/core.bin`, the integrator's positions every 20 days through the window next to JPL Horizons' (query URLs, tolerances); the JPL CNEOS Earth and Moon approaches of the window computed from the orbit solutions the catalogue holds (the closest, the first and the last); the sha256 of the products it describes. Not read by the app |
 | `bodies.json` | `bodies` | `Body[]` with `Sourced` attributes (geometry, rotation, GM, ephemeris wiring) |
+| `hapke-phase.json` + `verification/hapke-phase.json` | `albedo_reference` | Bare spherical Hapke phase integrals per built law, exact model and implementation hashes, interpolation tolerance and build record |
 | `albedo-reference.json` + `verification/albedo-reference.json` | `albedo_reference` | Fixed giant-planet disk-reference integrals, their exact law/radii/view/map inputs, relative numerical tolerance and build record; depends on `light` and `surfaces` |
 | `photometry.json` | `light` | NAIF id → `BodyPhotometry` (albedo spectra integrated per §4.3, phase functions); merged into bodies by the app loader |
 | `light.json` | `light` | Sun spectrum-derived quantities, CIE constants actually used |
@@ -330,6 +331,24 @@ in addition to the Python closure and both stages' product hashes. Tables record
 exact level-0 tile hashes. The app suite recomputes one cell per giant from the
 recorded inputs with the same integrator against the table's stated tolerance.
 Absolute Earth layers, physical atmosphere models and meshes keep their own rules.
+
+The same `albedo_reference` bridge also writes `hapke-phase.json` and
+`verification/hapke-phase.json` for every built Hapke spatial model. These are bare
+spherical integrals, independent of albedo measurement view or surface map. Their
+label is the worst of `derived` and the input law's label; sources are the law's.
+The app's converged `lawDiskIntegral` builds cubic cells for log(I / particle phase
+factor) against log(pi/(pi-alpha)), checked at seven interlaced points to 1e-7.
+The tested relative error budget is 1e-5 on 0–179.9 degrees, including the coherent
+opposition peak; the product extends to crescent width 1e-4 rad. Hashes record all
+three numerical code inputs above and the exact spatial TypeScript source separately.
+At data load, the app compares that digest with its shipped source, validates cells,
+and registers exact resolved-law keys. A missing, stale, invalid or out-of-domain
+bare table uses one endpoint-smoothed order-24 rule and a renderer warning naming
+the body. A frame never builds a table or refines the fallback. This bare product
+does **not** replace mapped Hapke normalization: that path still uses the cached
+24×24 rule, with its existing 2.5e-3 regression allowance, and does not yet meet
+the requested 1e-4 mapped accuracy or 0.1 ms moving-lookup budget.
+
 
 
 Headers (`*.json` next to a `*.bin`) define byte layout explicitly (field name, type, count, stride) so the loader is generic.

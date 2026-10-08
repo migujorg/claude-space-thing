@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { ephemPath, loadAll, resolveBinPath } from '../src/data/load';
+import spatialSource from '../src/render/spatial.ts?raw';
+import { hapkePhaseTableIssue, LAMBERT_LAW, resolveLaw } from '../src/render/spatial';
 import type { Manifest } from '../src/data/schema';
 import { body, fakeLight, src } from './app-fakes';
 
@@ -217,5 +219,53 @@ describe('downstream albedo reference product',()=>{
     const d=await loadAll({fetch,base:'/data/'});
     expect(d.bodies.find(b=>b.id===399)!.photometry!.albedoReferenceNormalization).toBeUndefined();
     expect(d.report.products.find(p=>p.path==='albedo-reference.json')!.status).toBe('error');
+  });
+});
+
+describe('bare Hapke tables at data load', () => {
+  const model = {kind:'hapke' as const,w:.5,b:.2,c:.3,bs0:1,hs:.02,thetaBarDeg:10};
+  const law = resolveLaw(model, .3);
+  if ('error' in law) throw new Error(law.error);
+  async function files(hash?: string) {
+    const f = full();
+    (f['photometry.json'] as Record<string,unknown>)['399'] = {...(f['photometry.json'] as Record<string,object>)['399'],spatialModel:src(model,'estimated')};
+    const spatialCodeSha256 = hash ?? await hex(new TextEncoder().encode(spatialSource));
+    f['hapke-phase.json'] = {'399':src({algorithm:'hapke-phase-v1',model,
+      cells:[{lo:0,hi:Math.log(Math.PI/1e-4),values:[0,0,0,0]}], minCrescentRad:1e-4,
+      interpolationTolerance:1e-7,relativeTolerance:1e-5,spatialCodeSha256,sourceCodeSha256:'test-fixture'},'estimated')};
+    return f;
+  }
+  it('loads the integrity-checked product and matches the actual shipped integrator source', async () => {
+    const {fetch} = await fakeServer(await files());
+    const d = await loadAll({fetch,base:'/data/'});
+    expect(d.report.products.find(p=>p.path==='hapke-phase.json')?.hash).toBe('verified');
+    expect(hapkePhaseTableIssue(law.law,.3)).toBeNull();
+  });
+  it('rejects stale code even when the product hash matches its manifest', async () => {
+    const {fetch} = await fakeServer(await files('old-code'));
+    const d = await loadAll({fetch,base:'/data/'});
+    expect(d.report.notes.join(' ')).toMatch(/399:.*stale.*fixed-order/);
+    expect(hapkePhaseTableIssue(law.law,.3)).toMatch(/missing or stale/);
+  });
+  it('rejects a different fit, and resets tables on a later data load with no table product', async () => {
+    const {fetch} = await fakeServer(await files());
+    await loadAll({fetch,base:'/data/'});
+    expect(hapkePhaseTableIssue({...law.law,p:.6},.3)).toMatch(/missing or stale/);
+    expect(hapkePhaseTableIssue(law.law,Math.PI-1e-5)).toMatch(/outside table domain/);
+    const next = await fakeServer(full());
+    await loadAll({fetch:next.fetch,base:'/data/'});
+    expect(hapkePhaseTableIssue(law.law,.3)).toMatch(/missing or stale/);
+    expect(hapkePhaseTableIssue(LAMBERT_LAW,.3)).toBeNull();
+  });
+  it('rejects malformed cells and integrity failures', async () => {
+    const f = await files();
+    (f['hapke-phase.json'] as Record<string,{value:{cells:{lo:number}[]}}>)['399'].value.cells[0].lo = 1;
+    const {fetch} = await fakeServer(f);
+    const d = await loadAll({fetch,base:'/data/'});
+    expect(d.report.notes.join(' ')).toMatch(/399:.*invalid/);
+    const tampered = await fakeServer(await files(),{tamper:'hapke-phase.json'});
+    const bad = await loadAll({fetch:tampered.fetch,base:'/data/'});
+    expect(bad.report.products.find(p=>p.path==='hapke-phase.json')?.hash).toBe('mismatch');
+    expect(hapkePhaseTableIssue(law.law,.3)).toMatch(/missing or stale/);
   });
 });

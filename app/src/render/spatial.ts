@@ -365,32 +365,32 @@ function bareDiskIntegralAtOrder(law: ResolvedLaw, a: number, order: number): XY
   const delta = Math.PI - a;
   const scale = law.kind === LAW.akimov ? Math.sqrt(delta / Math.PI) : 1;
 
-    const { x, w } = gaussLegendre(order);
-    // Split at the equator and mu0=mu (eps=delta/2), where roughness changes branch.
-    // The bare law is even in beta (zonal profiles use the row-split path above).
-    const latitudes = Array.from(x, (v, q) => {
-      const u = (v + 1) * Math.PI / 4, t = Math.tan(u);
-      const beta = Math.atan(scale * t);
-      const jac = scale * (1 + t * t) / (1 + scale * scale * t * t);
-      return { cb: Math.cos(beta), sb: Math.sin(beta), wb: w[q] * Math.PI / 4 * jac };
-    }).map(v => ({ ...v, wb: 2 * v.wb }));
-    const acc: XYZS = [0, 0, 0, 0];
-    for (const side of [-1, 1]) for (let p = 0; p < order; p++) {
-      const u = side * (x[p] + 1) * Math.PI / 4;
-      const eps = delta * (1 + Math.sin(u)) / 2;
-      const wl = w[p] * delta * Math.PI / 8 * Math.cos(u);
-      const cl = Math.sin(eps);
-      // mu0 = cos(beta)*sin(delta-eps) avoids cancellation in the thin crescent.
-      const ci = Math.sin(delta - eps);
-      for (const { cb, wb } of latitudes) {
-        const mu = cb * cl, mu0 = cb * ci;
-        const r = lawRadf(law, mu0, mu, a);
-        if (!(r > 0)) continue;
-        const f = r * mu * cb * wl * wb;
-        for (let k = 0; k < 4; k++) acc[k] += f;
-      }
+  const { x, w } = gaussLegendre(order);
+  // Split at the equator and mu0=mu (eps=delta/2), where roughness changes branch.
+  // The bare law is even in beta (zonal profiles use the row-split path above).
+  const latitudes = Array.from(x, (v, q) => {
+    const u = (v + 1) * Math.PI / 4, t = Math.tan(u);
+    const beta = Math.atan(scale * t);
+    const jac = scale * (1 + t * t) / (1 + scale * scale * t * t);
+    return { cb: Math.cos(beta), sb: Math.sin(beta), wb: w[q] * Math.PI / 4 * jac };
+  }).map(v => ({ ...v, wb: 2 * v.wb }));
+  const acc: XYZS = [0, 0, 0, 0];
+  for (const side of [-1, 1]) for (let p = 0; p < order; p++) {
+    const u = side * (x[p] + 1) * Math.PI / 4;
+    const eps = delta * (1 + Math.sin(u)) / 2;
+    const wl = w[p] * delta * Math.PI / 8 * Math.cos(u);
+    const cl = Math.sin(eps);
+    // mu0 = cos(beta)*sin(delta-eps) avoids cancellation in the thin crescent.
+    const ci = Math.sin(delta - eps);
+    for (const { cb, wb } of latitudes) {
+      const mu = cb * cl, mu0 = cb * ci;
+      const r = lawRadf(law, mu0, mu, a);
+      if (!(r > 0)) continue;
+      const f = r * mu * cb * wl * wb;
+      for (let k = 0; k < 4; k++) acc[k] += f;
     }
-    return acc.map(v => v / Math.PI) as XYZS;
+  }
+  return acc.map(v => v / Math.PI) as XYZS;
 }
 
 /**
@@ -615,12 +615,12 @@ export function installHapkePhaseTables(product: HapkePhaseFile | null, spatialC
     const resolved = t?.model?.kind === 'hapke' ? resolveLaw(t.model, 0) : null;
     let hi = 0;
     const valid = t?.algorithm === 'hapke-phase-v1' && t.spatialCodeSha256 === spatialCodeSha256
-      && spatialCodeSha256 !== null && t.relativeTolerance <= 1e-5 && t.interpolationTolerance <= 1e-7
-      && t.minCrescentRad > 0 && t.minCrescentRad <= 1e-4 && t.cells?.length > 0
+      && spatialCodeSha256 !== null && t.relativeTolerance > 0 && t.relativeTolerance <= 1e-5 && t.interpolationTolerance > 0 && t.interpolationTolerance <= 1e-7
+      && t.minCrescentRad > 0 && t.minCrescentRad <= 1e-4 && Array.isArray(t.cells) && t.cells.length > 0
       && t.cells.every(c => {
-        const good = c.lo === hi && c.hi > c.lo && Number.isFinite(c.hi)
-          && c.values?.length === 4 && c.values.every(Number.isFinite);
-        hi = c.hi; return good;
+        const good = c != null && c.lo === hi && c.hi > c.lo && Number.isFinite(c.hi)
+          && Array.isArray(c.values) && c.values.length === 4 && c.values.every(Number.isFinite);
+        if (c) hi = c.hi; return good;
       }) && Math.abs(hi - Math.log(Math.PI / t.minCrescentRad)) < 1e-12;
     if (!valid || !resolved || 'error' in resolved) {
       notes.push(`${id}: missing, stale or invalid bare Hapke phase table → bounded fixed-order normalization`);
@@ -962,7 +962,7 @@ export class MotionNormalization {
       key += `|${id}|${pole.join(',')}`;
       at = { profile: zonal.profile, pole };
     }
-    return this.fixed.get(key, () => (at ? fixedOrderZonalIntegral(law, centre, at, n) : bareDiskIntegralAtOrder(law, centre, n)));
+    return this.fixed.get(key, () => (at ? fixedOrderZonalIntegral(law, centre, at, n) : law.kind === LAW.hapke ? bareDiskIntegralAtOrder(law, centre, n) : lawDiskIntegral(law, centre, undefined, n)));
   }
 
   get(law: ResolvedLaw, alpha: number, zonal?: { profile: ZonalProfile; pole: V3 }): XYZS {
