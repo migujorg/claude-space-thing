@@ -274,6 +274,27 @@ def planet_longitudes(cat: dict, epoch_et: float, l7_epoch_jd: float) -> dict:
     return out
 
 
+def cfeps_observer():
+    """Geocentre (published observatory 500), DE442s, exposure JD interpreted as UTC.
+
+    Epoch convention is a disclosed assumption: characterization documentation says JD without a time scale.
+    """
+    import spiceypy as sp
+    from ..ephem_kernels import lsk
+    spk = {(s.target, s.center): s for s in read_spk(planetary(None))}
+    sp.furnsh(str(lsk()))
+    try:
+        epochs = {f['epochJd']: sp.str2et(f"JD {f['epochJd']:.10f} UTC") for f in ss.read_cfeps()}
+    finally:
+        sp.unload(str(lsk()))
+    def observer(jd):
+        et = epochs[jd]
+        r, v = _helio_state(spk, 3, et)
+        er, ev = evaluate(spk[(399, 3)], et)
+        return et, r + er[0], v + ev[0]
+    return observer
+
+
 # ---------------------------------------------------------------------------------------------- angles
 def _mean_longitude(cat: dict, m: np.ndarray) -> np.ndarray:
     return (cat["node"][m] + cat["peri"][m] + cat["M"][m]) % 360.0
@@ -520,6 +541,38 @@ def build(cat: dict, p: dict | None = None, *, only: tuple[str, ...] | None = No
             mi = objs["member"]
             el = {"a": members.a[mi], "e": members.e[mi], "i": members.i[mi], "node": ang[mi, 0], "peri": ang[mi, 1],
                   "M": ang[mi, 2], "H": members.H[mi]}
+            if pop == "tno":
+                fields = ss.read_cfeps()
+                g_minus_v = -v_minus_g
+                probability, survey = so.cfeps_probability(
+                    el, epoch, fields, cfeps_observer(), cat['mu'], AU_KM, cat['obliquity'],
+                    {'g': g_minus_v, 'r': g_minus_v-kb['gMinusR'],
+                     'R': g_minus_v-ss.cfeps_metadata()['gMinusCapitalR']['value']})
+                keep = so.cfeps_keep(probability, prefix, mi)
+                before = np.bincount(objs['cell'], minlength=cells.n)
+                survey.update(before=int(mi.size), removed=int((~keep).sum()), after=int(keep.sum()),
+                              source='cfeps-l7-characterization',
+                              byClass={str(k): {'before': int(np.sum(comp[mi] == k)),
+                                               'after': int(np.sum(comp[mi][keep] == k))}
+                                       for k in np.unique(comp[mi])})
+                objs = {k: v[keep] for k, v in objs.items()}
+                el = {k: v[keep] for k, v in el.items()}
+                cells.n_shown = np.bincount(objs['cell'], minlength=cells.n)
+                survey['changedCells'] = [dict(ia=int(cells.ia[c]), ie=int(cells.ie[c]), ii=int(cells.ii[c]),
+                                              ih=int(cells.ih[c]), before=int(before[c]), after=int(cells.n_shown[c]))
+                                          for c in np.flatnonzero(before != cells.n_shown)]
+                survey['method'] = (
+                    'CFEPS L7 discovery residual: at each published pointing epoch, propagate this candidate orbit '
+                    'two-body, solve light time, compute geocentric RA/Dec, H-G magnitude and sky rate/direction. '
+                    'Within its polygon, magnitude limit and rate cuts use filling factor times measured double-tanh '
+                    'efficiency. Keep with P(missed) = product(1 - P(discovery)); independent draws per pointing '
+                    'as in the released simulator. One separate SHA256 draw from seed prefix and original L7 member; '
+                    'no replacement. Tracking fractions are archived but do not discount discovery. '
+                    'Mean g-r and presurvey g-R colours and G=0.15 are assumptions; no measured-magnitude noise added. '
+                    'JD interpreted as UTC; geocentre matches published observatory code 500. '
+                    'Fainter than characterized limits has unknown detectability and receives no veto. '
+                    'Other surveys\' histories are not used.')
+                extra['surveyVeto'] = survey
             limit = {"method": "model-comparison", "rule": diag["limitRule"], "hLimPerABin": diag["hlimPerABin"]}
             hlim_exact = np.array([np.inf if x is None else x for x in diag["hlimPerABin"]], dtype=np.float64)
         attrs = attributes(pop, el["a"], el["H"], objs["u_pv"], objs["u_rot"], pools, rot)
@@ -629,6 +682,15 @@ def _order(res: dict) -> dict:
                                + "sample from the cited debiased a/e/i/H realization in its supported range; "
                                "conditioned on eligible catalogue counts, without applying its survey selection "
                                "function to this orbit. Angular elements are samples, not measurements.")
+            if pop == 'tno':
+                m['method'] = ('CFEPS L7 debiased realization conditioned on eligible catalogue counts and its a/H '
+                               'proxy, then thinned by its published discovery probabilities. Angular elements are '
+                               'samples, not measurements. ' + m['surveyVeto']['method'])
+                r['limit']['uncertainty'] = (
+                    'The a/H completeness limit remains a catalogue-count proxy, not a detection probability. '
+                    'A separate orbit-specific CFEPS discovery residual is applied at published pointings within its characterized domain. '
+                    'Other surveys\' histories and detectability beyond CFEPS characterization are unknown. '
+                    'Population-model normalization and systematic uncertainty are not propagated into the deficit cutoff.')
     return res
 
 
@@ -796,8 +858,9 @@ def run(ctx: BuildContext) -> None:
                 n_obj, STAGE, source_table=sorted({s for ph in pops_hdr for s in ph["sources"]}),
                 extra={**common, "cells": f"{DIR}/cells.json", "counts": {"synthetic": n_obj, "cells": n_cell}},
                 notes="Synthetic small bodies: statistical stand-ins for conditioned model deficits in (a, e, i, H) cells "
-                      "(the COMPLETE reality level). No orbit-specific survey detectability or observation veto is "
-                      "evaluated. Known attributes are synthetic; missing rotation is unknown.")
+                      "(the COMPLETE reality level). TNOs additionally yield to published CFEPS discovery probabilities; "
+                      "other surveys' histories are not used. Other populations have no orbit-specific survey veto. "
+                      "Known attributes are synthetic; missing rotation is unknown.")
     cfields = [Field("pop", "u8"), Field("ia", "u16"), Field("ie", "u16"), Field("ii", "u16"), Field("ih", "i32"),
                Field("aLo", "f32", 1, {"unit": "au"}), Field("aHi", "f32", 1, {"unit": "au"}), Field("eLo", "f32"),
                Field("eHi", "f32"), Field("iLo", "f32", 1, {"unit": "deg"}), Field("iHi", "f32", 1, {"unit": "deg"}),
@@ -809,7 +872,7 @@ def run(ctx: BuildContext) -> None:
                Field("rawDeficit", "f32", 1, {"method": "max(0, nModel - nObs)"}),
                Field("deficit", "f32", 1, {"method": "rawDeficit scaled so each (ia, ih) group totals max(0, model - known)"}),
                Field("u0", "f32", 1, {"method": "rounding offset from the cell seed"}),
-               Field("nShown", "u32", 1, {"method": "floor(deficit + u0)"}), Field("first", "u32", 1, {"method": "first object row in objects.bin"})]
+               Field("nShown", "u32", 1, {"method": "floor(deficit + u0), then CFEPS discovery residual for TNOs"}), Field("first", "u32", 1, {"method": "first object row in objects.bin"})]
     write_table(ctx, f"{DIR}/cells", cfields, {k: v.astype(np.float32) if k in ("aLo", "aHi", "eLo", "eHi", "iLo", "iHi", "hLo", "hHi", "hLim", "nModel", "rawDeficit", "deficit", "u0") else v for k, v in cells.items()},
                 n_cell, STAGE, extra={**{k: common[k] for k in ("algorithm", "seed", "epochEt", "catalogue", "seedRule", "yieldRule")},
                                       "populations": [{k: ph[k] for k in ("name", "code", "modelId", "firstCell", "cells", "grid")} for ph in pops_hdr]},
@@ -848,7 +911,7 @@ def _pop_sources(pop: str) -> list[str]:
     if pop in MOONS:
         planet = MOONS[pop]
         return [ss.NATSATS[planet].id, *MOON_SOURCES[planet], "grav-2015", "naif-gm-de440", "bowell-1989"]
-    srcs = {"neo": [ss.GRANVIK.id], "tno": [ss.L7.id, ss.PETIT.id, ss.JESTER.id],
+    srcs = {"neo": [ss.GRANVIK.id], "tno": [ss.L7.id, ss.PETIT.id, ss.JESTER.id, 'cfeps-l7-characterization', 'naif-de442s', 'naif-lsk-naif0012'],
             "centaur": [ss.KURLANDER_ARCHIVE.id, ss.KURLANDER.id, ss.MURTAGH.id, ss.NESVORNY_2019.id, ss.JESTER.id]
             }.get(pop, [])
     if pop in ANGLES:

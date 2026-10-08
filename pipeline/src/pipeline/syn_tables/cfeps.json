@@ -1,0 +1,191 @@
+{
+  "source": {
+    "id": "cfeps-l7-characterization",
+    "title": "CFEPS L7 published block pointings and detection efficiencies",
+    "citation": "Petit et al. (2011), AJ 142, 131, DOI:10.1088/0004-6256/142/4/131; OSSOS SurveySimulator public CFEPS characterization.",
+    "url": "https://github.com/OSSOS/SurveySimulator/tree/8e615762278566c2c524c2acc2e1526c172c3c82/F95/tests/Surveys/CFEPS",
+    "version": "8e615762278566c2c524c2acc2e1526c172c3c82",
+    "retrieved": "2026-10-07",
+    "sha256": "4c9b4831b800c003fc30a3942b6b7a6e88ef560dfa8e011ba3accb03f782e6a4",
+    "license": "EUPL (upstream LICENCE.txt)",
+    "notes": "Unmodified public CFEPS records: 45 pointings / 22 efficiency files. Individual URLs, retrieval instants and raw checksums in syn_tables/cfeps.json; docs/sources/cfeps-characterization.md."
+  },
+  "files": [
+    {
+      "url": "https://raw.githubusercontent.com/OSSOS/SurveySimulator/8e615762278566c2c524c2acc2e1526c172c3c82/F95/tests/Surveys/CFEPS/pointings.list",
+      "bytes": 4475,
+      "sha256": "c23695efb35b098e453e1e84428709983d7a1059e9b92faf31e9870e7ea8c6fc",
+      "retrievedUTC": "2026-10-08T01:46:09.361303+00:00",
+      "name": "pointings.list"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/OSSOS/SurveySimulator/8e615762278566c2c524c2acc2e1526c172c3c82/F95/tests/Surveys/CFEPS/L3h-smooth.eff",
+      "bytes": 717,
+      "sha256": "332f7dabce20b718fd463ba6aaf939c620c362f564a1c6fa3e7531a9f825a440",
+      "retrievedUTC": "2026-10-08T01:46:09.560437+00:00",
+      "name": "L3h-smooth.eff"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/OSSOS/SurveySimulator/8e615762278566c2c524c2acc2e1526c172c3c82/docs/Template.eff",
+      "bytes": 4250,
+      "sha256": "aa9f7ee994e9f8712570d6f67ff7260422983d2e74422f764dfa9dc47c9d2254",
+      "retrievedUTC": "2026-10-08T01:46:10.042405+00:00",
+      "name": "Template.eff"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/OSSOS/SurveySimulator/8e615762278566c2c524c2acc2e1526c172c3c82/F95/tests/Surveys/CFEPS/L3f-smooth.eff",
+      "bytes": 716,
+      "sha256": "0a27f1d1a51289dbb42a4e22b496aa2c777b5590648119fa5491fad9ba5bc8c4",
+      "retrievedUTC": "2026-10-08T01:46:10.221095+00:00",
+      "name": "L3f-smooth.eff"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/OSSOS/SurveySimulator/8e615762278566c2c524c2acc2e1526c172c3c82/F95/tests/Surveys/CFEPS/L3q-smooth.eff",
+      "bytes": 717,
+      "sha256": "144162d627042c9894fd56197cdf2f0feb8d029c9a53206cb7acaa87fa15c40d",
+      "retrievedUTC": "2026-10-08T01:46:10.384625+00:00",
+      "name": "L3q-smooth.eff"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/OSSOS/SurveySimulator/8e615762278566c2c524c2acc2e1526c172c3c82/F95/tests/Surveys/CFEPS/L3s-smooth.eff",
+      "bytes": 716,
+      "sha256": "a30dfbff14f805e9168b5e0fc3c3508085fa8523037eb7210e0d2517b00d7def",
+      "retrievedUTC": "2026-10-08T01:46:10.534449+00:00",
+      "name": "L3s-smooth.eff"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/OSSOS/SurveySimulator/8e615762278566c2c524c2acc2e1526c172c3c82/F95/tests/Surveys/CFEPS/L3w-smooth.eff",
+      "bytes": 716,
+      "sha256": "3a04b62989984496f98890784c1db246acad9752f7a38edfe2ab4b8b8af23ccd",
+      "retrievedUTC": "2026-10-08T01:46:10.720059+00:00",
+      "name": "L3w-smooth.eff"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/OSSOS/SurveySimulator/8e615762278566c2c524c2acc2e1526c172c3c82/F95/tests/Surveys/CFEPS/L3y-smooth.eff",
+      "bytes": 747,
+      "sha256": "0d852f73dea3845e789674de4e9c2ce24a91008653c25b87f60fe6940d669d39",
+      "retrievedUTC": "2026-10-08T01:46:10.856897+00:00",
+      "name": "L3y-smooth.eff"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/OSSOS/SurveySimulator/8e615762278566c2c524c2acc2e1526c172c3c82/F95/tests/Surveys/CFEPS/L4h-smooth.eff",
+      "bytes": 776,
+      "sha256": "eb34e5ce21bf528d39ba74ec1ae2cc82231db97f2650da30be64461cdd503952",
+      "retrievedUTC": "2026-10-08T01:46:11.030975+00:00",
+      "name": "L4h-smooth.eff"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/OSSOS/SurveySimulator/8e615762278566c2c524c2acc2e1526c172c3c82/F95/tests/Surveys/CFEPS/L4j-smooth.eff",
+      "bytes": 777,
+      "sha256": "a57e7867073a0a0dacaf7a30382da0fe961138f2016a676592670314a30fad7d",
+      "retrievedUTC": "2026-10-08T01:46:11.186814+00:00",
+      "name": "L4j-smooth.eff"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/OSSOS/SurveySimulator/8e615762278566c2c524c2acc2e1526c172c3c82/F95/tests/Surveys/CFEPS/L4k-smooth.eff",
+      "bytes": 778,
+      "sha256": "35854cfadc96b5404380ffe5d0f19c4ff487212db4287bea1bf4580778cf4ece",
+      "retrievedUTC": "2026-10-08T01:46:11.354905+00:00",
+      "name": "L4k-smooth.eff"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/OSSOS/SurveySimulator/8e615762278566c2c524c2acc2e1526c172c3c82/F95/tests/Surveys/CFEPS/L4m-smooth.eff",
+      "bytes": 763,
+      "sha256": "bef2b945640632b000279d9bc48b928cce586633a45102b53e93d3f42c696047",
+      "retrievedUTC": "2026-10-08T01:46:11.486817+00:00",
+      "name": "L4m-smooth.eff"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/OSSOS/SurveySimulator/8e615762278566c2c524c2acc2e1526c172c3c82/F95/tests/Surveys/CFEPS/L4n-smooth.eff",
+      "bytes": 764,
+      "sha256": "3886922aa7258a472b001c8573d2bfe68a0f94649455ce33f9ab04dc6f44fa52",
+      "retrievedUTC": "2026-10-08T01:46:11.624685+00:00",
+      "name": "L4n-smooth.eff"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/OSSOS/SurveySimulator/8e615762278566c2c524c2acc2e1526c172c3c82/F95/tests/Surveys/CFEPS/L4o-smooth.eff",
+      "bytes": 745,
+      "sha256": "0bbcaa646ecf3201dc2746c5e9dae9f23a0c000f567427261b16f31c9289f766",
+      "retrievedUTC": "2026-10-08T01:46:11.768529+00:00",
+      "name": "L4o-smooth.eff"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/OSSOS/SurveySimulator/8e615762278566c2c524c2acc2e1526c172c3c82/F95/tests/Surveys/CFEPS/L4p-smooth.eff",
+      "bytes": 777,
+      "sha256": "708cd2261d74a207d1e1dfc9ae60c3782e04e6db9223c1db4274a95262575d10",
+      "retrievedUTC": "2026-10-08T01:46:11.912929+00:00",
+      "name": "L4p-smooth.eff"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/OSSOS/SurveySimulator/8e615762278566c2c524c2acc2e1526c172c3c82/F95/tests/Surveys/CFEPS/L4q-smooth.eff",
+      "bytes": 777,
+      "sha256": "1d069d1aa30c02952e489e82a982493a6db7926741909b5838990a10849830e9",
+      "retrievedUTC": "2026-10-08T01:46:12.118358+00:00",
+      "name": "L4q-smooth.eff"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/OSSOS/SurveySimulator/8e615762278566c2c524c2acc2e1526c172c3c82/F95/tests/Surveys/CFEPS/L4v-smooth.eff",
+      "bytes": 777,
+      "sha256": "5fe166cb4cba56d1dfe8ab47805e8037d9566b8140ef9ecb539adc1a41764dd5",
+      "retrievedUTC": "2026-10-08T01:46:12.289944+00:00",
+      "name": "L4v-smooth.eff"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/OSSOS/SurveySimulator/8e615762278566c2c524c2acc2e1526c172c3c82/F95/tests/Surveys/CFEPS/L5c-smooth.eff",
+      "bytes": 775,
+      "sha256": "3236653bc8c92a60061d24d417afc28b531d4a237afa135d32bb5c0e18454b1f",
+      "retrievedUTC": "2026-10-08T01:46:12.431022+00:00",
+      "name": "L5c-smooth.eff"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/OSSOS/SurveySimulator/8e615762278566c2c524c2acc2e1526c172c3c82/F95/tests/Surveys/CFEPS/L5i-smooth.eff",
+      "bytes": 778,
+      "sha256": "f74fe221bb82d6f32c0c325a77b54fe4f0100fcdf345732d9d2680b0d834a5a1",
+      "retrievedUTC": "2026-10-08T01:46:12.588113+00:00",
+      "name": "L5i-smooth.eff"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/OSSOS/SurveySimulator/8e615762278566c2c524c2acc2e1526c172c3c82/F95/tests/Surveys/CFEPS/L5j-smooth.eff",
+      "bytes": 777,
+      "sha256": "88b94fd4fc37968c03d277cadcff11fd4a87d8ba38553cc922a21ba54bd0952a",
+      "retrievedUTC": "2026-10-08T01:46:12.727977+00:00",
+      "name": "L5j-smooth.eff"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/OSSOS/SurveySimulator/8e615762278566c2c524c2acc2e1526c172c3c82/F95/tests/Surveys/CFEPS/L5r-smooth.eff",
+      "bytes": 777,
+      "sha256": "fd69793149456883e08228ed2944d94730579ae01a2b4e514563ff2050d02c9c",
+      "retrievedUTC": "2026-10-08T01:46:12.881069+00:00",
+      "name": "L5r-smooth.eff"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/OSSOS/SurveySimulator/8e615762278566c2c524c2acc2e1526c172c3c82/F95/tests/Surveys/CFEPS/L5s-smooth.eff",
+      "bytes": 778,
+      "sha256": "11fab645c90885bec40921ba6aa130e367e5cc6adb34164f4349f2ce4be26652",
+      "retrievedUTC": "2026-10-08T01:46:13.031436+00:00",
+      "name": "L5s-smooth.eff"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/OSSOS/SurveySimulator/8e615762278566c2c524c2acc2e1526c172c3c82/F95/tests/Surveys/CFEPS/L7a-smooth.eff",
+      "bytes": 774,
+      "sha256": "9163075da1664cd05e1e36a6a6d7e846182639a4bed248001e011076026afca5",
+      "retrievedUTC": "2026-10-08T01:46:13.207539+00:00",
+      "name": "L7a-smooth.eff"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/OSSOS/SurveySimulator/8e615762278566c2c524c2acc2e1526c172c3c82/F95/tests/Surveys/CFEPS/presurvey-smooth.eff",
+      "bytes": 699,
+      "sha256": "f6a16e83d547ce8ac92ea5b6cfb9a7fc3977500835baff8ba13ee63901ae8f93",
+      "retrievedUTC": "2026-10-08T01:46:13.354269+00:00",
+      "name": "presurvey-smooth.eff"
+    }
+  ],
+  "gMinusCapitalR": {
+    "value": 0.8,
+    "label": "estimated",
+    "sources": [
+      "petit-2011-cfeps"
+    ],
+    "method": "Petit et al. 2011 section 4: constant g - Landolt R offset used for presurvey, citing Hainaut & Delsanti 2002."
+  }
+}

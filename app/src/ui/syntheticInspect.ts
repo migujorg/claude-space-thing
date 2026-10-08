@@ -57,6 +57,12 @@ export function syntheticPopulationFacts(p: SyntheticPopulation, level: ExistsLe
     value: p.name, sources: p.sources, withheld: !labelAllowed('synthetic', level), method: modelText(p),
     uncertainty: String(p.model.uncertainty ?? 'Population count and template-selection uncertainty are unknown in this product; the deficit is conditional on the model and eligible catalogue counts.') }];
   const nuclei = p.model.cometNuclei as { rule: string; objects: { designation: string; status: string }[] } | undefined;
+  const survey = p.model.surveyVeto as { method: string; before: number; after: number; removed: number } | undefined;
+  if (p.name === 'tno' && survey) {
+    rows.push({ key: 'syn:survey', name: 'CFEPS discovery residual', label: 'synthetic',
+      value: `${n0(survey.removed)} vetoed; ${n0(survey.after)} of ${n0(survey.before)} catalogue-conditioned candidates retained`,
+      sources: p.sources, withheld: !labelAllowed('synthetic', level), method: survey.method });
+  }
   if (p.name === 'centaur' && nuclei) {
     const counted = nuclei.objects.filter(r => r.status === 'conditioned');
     const omitted = nuclei.objects.filter(r => r.status !== 'conditioned');
@@ -97,7 +103,7 @@ export function syntheticFacts(s: SyntheticCatalog, j: number, level: ExistsLeve
     what = `Not a real object. It stands in for one of ~${fmt(stand, 3)} model-deficit ${popText} in its cell (a ${fmt(c.a[0], 4)}–${fmt(c.a[1], 4)} au${about}, e ${fmt(c.e[0], 3)}–${fmt(c.e[1], 3)}, i ${fmt(c.i[0], 3)}°–${fmt(c.i[1], 3)}°, H ${fmt(c.h[0], 4)}–${fmt(c.h[1], 4)}). The model (${modelText(pop)}) expects ${fmt(c.nModel, 4)} objects there; ${catalogue} has ${n0(c.nObs)}, with fitted completeness proxy H ${fmt(c.hLim, 4)}${pop.center ? '' : ' at this a'}, so the conditional deficit is ${fmt(c.deficit, 4)} and ${n0(c.nShown)} synthetic objects are shown in this cell. Yield to discoveries is aggregate, not one-to-one replacement: with fixed model, limits and templates, eligible known counts reduce group deficits; refits can change normalization and identities.`;
     rows.push(row('cell', 'Stands in for', `${fmt(c.deficit, 4)} conditional model-deficit objects (model ${fmt(c.nModel, 4)} − catalogued ${n0(c.nObs)}; raw deficit ${fmt(c.rawDeficit, 4)}) in cell ${cellRow.toLocaleString('en-US')} of ${pop.name}: a ${fmt(c.a[0], 4)}–${fmt(c.a[1], 4)} au, e ${fmt(c.e[0], 3)}–${fmt(c.e[1], 3)}, i ${fmt(c.i[0], 3)}°–${fmt(c.i[1], 3)}°, H ${fmt(c.h[0], 4)}–${fmt(c.h[1], 4)}; ${n0(c.nShown)} shown`,
       `Model: ${modelText(pop)}. Deficit per cell = max(0, model − catalogued), each (a, H) group scaled to its total model − catalogued (no Poisson bias from clipping small cells). ${s.header.yieldRule}.`));
-    rows.push(row('limit', 'Completeness proxy here', `H ${fmt(c.hLim, 4)} (stored H is never brighter; detectability unknown)`,
+    rows.push(row('limit', 'Completeness proxy here', `H ${fmt(c.hLim, 4)} (stored H is never brighter; ${pop.name === 'tno' && pop.model.surveyVeto ? 'separate CFEPS discovery residual applied; other surveys unknown' : 'detectability unknown'})`,
       String(pop.limit.method) === 'hendler-malhotra-2020'
         ? `Hendler & Malhotra (2020): H_lim(a) = −5 log10(a (a − 1 au)) + C, C = ${fmt(Number((pop.limit.fit as Record<string, number>)?.C ?? NaN), 5)} refitted to this catalogue (the most populated 0.25-mag H bin per 0.01-au a-bin).`
         : `First H bin (bright to faint) in which the catalogue has significantly fewer objects than the model: ${String(pop.limit.rule ?? '')}.${calibrationText(pop)}`,

@@ -168,7 +168,15 @@ def test_products_guard_and_layout(products):
     assert np.all(o["cell"][c["first"][nz]] == np.nonzero(nz)[0])
     # shown = floor(deficit + u0) (float32 storage: allow the rare rounding flip)
     want = np.floor(c["deficit"].astype(np.float64) + c["u0"])
-    assert np.mean(want == c["nShown"]) > 0.999
+    vetoed = {p['code'] for p in ho['populations'] if p['model'].get('surveyVeto')}
+    has_veto = np.isin(c['pop'], list(vetoed))
+    assert np.mean(want[~has_veto] == c['nShown'][~has_veto]) > 0.999
+    assert np.all(c['nShown'][has_veto] <= want[has_veto] + 1)
+    for p in ho['populations']:
+        v = p['model'].get('surveyVeto')
+        if v:
+            assert v['before'] - v['removed'] == v['after'] == p['objects']
+            assert sum(r['before']-r['after'] for r in v['changedCells']) == v['removed']
     assert np.all(c["deficit"] <= c["rawDeficit"] + 1e-3)
     # the population code of every object matches its cell's
     assert np.all(o["pop"] == c["pop"][o["cell"]])
@@ -403,7 +411,7 @@ def test_all_population_metadata_including_no_model():
     from pipeline.stages import synthetic as syn
     res = {"populations": {pop: {"limit": {}, "extra": {"orbitDistribution": "template assumption",
             "cataloguedCometsNotCounted": 44, "cataloguedCometsCounted": 0, "cometNuclei": {"rule": "Qualified H_V only", "objects": []},
-            "realization": {"sumWeightsOverModelSize": 0.99},
+            "realization": {"sumWeightsOverModelSize": 0.99}, "surveyVeto": {"method": "fixture survey"},
             "normalization": {"nBelowHr": 21400, "plus": 3400, "minus": 2800, "hrMax": 13.7}}} for pop in syn.POP_CODES}}
     result = syn._order(res)
     assert list(result["populations"]) == list(syn.POP_CODES)
