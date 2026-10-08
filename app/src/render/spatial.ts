@@ -290,9 +290,10 @@ function zonalDiskIntegral(law: ResolvedLaw, a: number, zonal: { profile: ZonalP
   const pv = P[2], ps = incidence(P), ev = E[2], es = incidence(E), fv = F[2], fs = incidence(F);
   const cuts = [-Math.PI / 2, Math.PI / 2];
   cuts.push(...profileCuts(zonal.profile));
-  // Latitudes where a circle becomes tangent to the limb, terminator, or i=e great circle.
+  // Latitudes where a circle becomes tangent to the limb, terminator, i=e plane,
+  // or Hapke roughness azimuth cusp in the Sun/observer plane.
   const sd = Math.hypot(sa, ca - 1);
-  for (const pd of [pv, ps, ...(sd > 1e-12 ? [(ps - pv) / sd] : [])]) {
+  for (const pd of [pv, ps, ...(law.kind === LAW.hapke && law.thetaBar > 0 ? [P[1]] : []), ...(sd > 1e-12 ? [(ps - pv) / sd] : [])]) {
     const lat = Math.acos(Math.min(1, Math.abs(pd)));
     cuts.push(-lat, lat);
   }
@@ -316,6 +317,10 @@ function zonalDiskIntegral(law: ResolvedLaw, a: number, zonal: { profile: ZonalP
         const as = z * ps, bs = cb * es, cs = cb * fs;
         const phiCuts = [-Math.PI, Math.PI];
         const boundaries = [[av, bv, cv], [as, bs, cs], [as - av, bs - bv, cs - cv]];
+        // Hapke's local azimuth is even across the Sun/observer plane and has a
+        // cusp there. In body coordinates that plane is not a row boundary.
+        // Split it explicitly rather than globally doubling through the cusp.
+        if (law.kind === LAW.hapke && law.thetaBar > 0) boundaries.push([z * P[1], cb * E[1], cb * F[1]]);
         if (law.kind === LAW.barkstrom) boundaries.push([av - 1e-3, bv, cv]);
         for (const [A, B, C] of boundaries) {
           const r = Math.hypot(B, C);
